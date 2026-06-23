@@ -1012,7 +1012,7 @@ These points are intentionally not final and should be refined in follow-up RFCs
 - Exact catalog inventory schema and move-detection heuristics
 - Exact instruction pack frontmatter fields and target-file mapping rules
 - Whether instruction packs should be enabled explicitly by default or selected by source policy
-- How much block drift recovery should exist in v1
+- How much block drift recovery should exist in the first instruction-pack release (V1.1)
 - Whether `requires` should use only stable skill IDs or also source-qualified names
 - Whether dependency policy should be global, per source, per catalog, or per selected skill
 - Which agent targets are implemented in v1
@@ -1044,7 +1044,9 @@ Although this RFC describes the full vision, the first implementation should be 
 
 ### 26.2 Deferred to V1.1
 
-Catalog support and instruction packs are deferred to V1.1, not because they are unimportant, but because they depend on design decisions that are still open: the skill identity key (§12, §19.1), managed/unmanaged name-collision resolution (§15, §19), and the instruction-pack target-file mapping (§13, §25). Shipping them before those decisions are made would bake in guesses. Pulling them out of V1 keeps the first slice focused on the riskiest engine code and resolves the tension between §25 (mapping rules still open) and the original V1 scope.
+Catalog support and instruction packs are deferred to V1.1, not because they are unimportant, but because they depend on design decisions that are still open: the skill identity key (§12, §19.1) for catalog move-detection, and the instruction-pack target-file mapping (§13, §25). Shipping them before those decisions are made would bake in guesses. Pulling them out of V1 keeps the first slice focused on the riskiest engine code and resolves the tension between §25 (mapping rules still open) and the original V1 scope.
+
+V1 still materializes skills and runs `adopt`, so it must already handle managed/unmanaged name collisions. V1 applies only the conservative rule already guaranteed in §15 (and RFC 0003 assumption A3): detect the collision, report it, and never overwrite an unmanaged directory. The *guided* resolution of such collisions (adopt, alias, or explicit replacement; §19) is a later refinement, not a V1 prerequisite. Name collision is therefore not a reason to defer catalog or instruction packs.
 
 - basic catalog source inspection and explicit selection
 - lockfile entries for selected catalog skills
