@@ -214,6 +214,7 @@ The implementation is being shaped through RFCs and ADRs:
 
 - [RFC 0001: Skillmgr vision](docs/rfcs/0001-skillmgr-vision.md)
 - [RFC 0002: Technical architecture](docs/rfcs/0002-technical-architecture.md)
+- [RFC 0003: Resolution engine](docs/rfcs/0003-resolution-engine.md)
 - [ADR 0001: Project language](docs/adr/0001-project-language.md)
 
 The README describes the product bar we are building toward.
