@@ -31,7 +31,7 @@ The resolver is a **pure function**: given inventories and config, it returns a 
 ### 3.1 Resolver inputs
 
 - the active set of sources from config, each with `id`, `kind`, `priority`, `enabled`, `trusted`
-- for each enabled source, an **inventory**: the scanned skills and instruction packs (RFC 0001 §5), already filtered for catalog sources to only the selected skills
+- for each enabled source, an **inventory**: the scanned skills and instruction packs (RFC 0001 §5). For a catalog source the inventory is the **full** discovered set, paired with the source's explicit selection; the resolver applies selection and `include` expansion itself (§4 step 2), so it must receive the unselected catalog skills too
 - per-catalog dependency policy (`warn` | `include` | `block`, default `warn`; RFC 0001 §10)
 - the previous resolved user lock (optional, used for drift comparison only)
 
@@ -55,21 +55,30 @@ Deterministic pipeline. Steps run in this order.
 ```text
 1. select sources
    - keep enabled sources
-   - sort by (priority asc, source_id asc)        # A: smaller priority wins
+   - sort by (priority asc, source_id asc)        # smaller priority wins
    - the (priority asc, source_id asc) order is the canonical tie-break
 
-2. collect skill candidates
+2. resolve catalog selections (+ include expansion)
+   - for each catalog source, start from its explicit selected set
+   - if the catalog's dependency policy is `include`:
+       repeatedly add any same-catalog skill that is `requires`d by an
+       already-selected skill, looked up in the FULL catalog inventory,
+       until no new skill is added (transitive closure within the catalog)
+   - the result is the catalog's effective selected set
+   - this step is the reason the resolver receives the full catalog
+     inventory rather than a pre-filtered one (§3.1)
+
+3. collect skill candidates
    - for each source in priority order:
-       for each skill in source.inventory.skills:
+       for each skill in source (catalog sources: effective selected set):
          candidate = {
            conflict_key = skill.name,              # A1/A2
            source_ref   = "<source.id>:<skill.name>",
            source, path, commit, id (optional),
            requires (optional),
          }
-   - catalog sources contribute only selected skills (already filtered)
 
-3. group + shadow
+4. group + shadow
    - group candidates by conflict_key
    - within each group, winner = first in canonical order
      (lowest priority number; ties broken by source_id)
@@ -79,27 +88,28 @@ Deterministic pipeline. Steps run in this order.
        winner.local_override = true
        emit diagnostic LOCAL_OVERRIDE(winner, shadowed_members)
 
-4. dependency check (per active skill with `requires`)
+5. dependency check (per active skill with `requires`)
    - for each required ref:
        resolve ref against active_skills (by id when ref is an id,
          else by name)                              # see §4.1
        if satisfied: ok
        else apply policy:
-         warn  -> emit DEPENDENCY_MISSING (non-blocking)
-         include -> attempt to also select the dependency if it exists
-                    in the same catalog; else emit DEPENDENCY_MISSING
-         block -> emit DEPENDENCY_MISSING(blocking = true)
+         warn    -> emit DEPENDENCY_MISSING (non-blocking)
+         include -> same-catalog deps were already added in step 2; a dep
+                    still missing here is cross-catalog or cross-source and
+                    cannot be auto-included -> emit DEPENDENCY_MISSING
+         block   -> emit DEPENDENCY_MISSING(blocking = true)
 
-5. resolve instruction packs                        # see §5
+6. resolve instruction packs                        # see §5
 
-6. attach source-state diagnostics
+7. attach source-state diagnostics
    - dirty source            -> DIRTY (per affected skill/source)
    - orphaned ref            -> ORPHANED
    - catalog drift           -> NEW_AVAILABLE / SELECTED_CHANGED /
                                 SELECTED_MOVED / SELECTED_REMOVED
    - (these come from inventory metadata, not recomputed here)
 
-7. return Resolution { active_skills, shadowed_skills,
+8. return Resolution { active_skills, shadowed_skills,
                        active_instruction_packs, diagnostics }
 ```
 
@@ -111,7 +121,7 @@ Deterministic pipeline. Steps run in this order.
 - else if it looks like an `id` → match against active skills' frontmatter `id`
 - else → match against active skills' `name`
 
-Cross-source dependency satisfaction is allowed (an `oss` skill may satisfy a `company` skill's requirement) but is **only checked, never auto-installed** across sources. `include` policy auto-selection is limited to the **same catalog**, matching RFC 0001 §10. Whether `requires` should be restricted to ids only remains open in #2/#7.
+Cross-source dependency satisfaction is allowed (an `oss` skill may satisfy a `company` skill's requirement) but is **only checked, never auto-installed** across sources. `include` policy auto-selection happens in §4 step 2 and is limited to the **same catalog**, matching RFC 0001 §10. Whether `requires` should be restricted to ids only remains open in #2/#7.
 
 ### 4.2 Determinism guarantees
 
@@ -134,7 +144,9 @@ Per the V1-scope recommendation (#8), instruction packs may ship in V1.1 rather 
 
 ### 6.1 Why
 
-Autosync, interactive commands, and agents editing symlinked store checkouts can run concurrently. RFC 0002 §8 specifies atomic single-file writes but no cross-operation serialization. A coarse store-level lock is sufficient and safe for V1.
+Autosync and interactive commands both mutate the store and can run concurrently. RFC 0002 §8 specifies atomic single-file writes but no cross-operation serialization. A coarse store-level lock closes that gap.
+
+The lock serializes **skillmgr operations against each other** only. It does **not** capture writes made by external agents that edit a materialized skill through its symlink into a source checkout — those processes never invoke skillmgr and so never take the lock. Such edits are handled as **dirty state**, not by the lock: every mutating operation first runs a dirty check (`git status --porcelain=v2`, RFC 0002 §5) on each source checkout it would touch, and `sync --auto` blocks on a dirty source instead of overwriting it (RFC 0001 §19.2). The two are complementary — the lock stops two skillmgr runs from racing, the dirty check stops skillmgr from clobbering an agent's in-flight edit.
 
 ### 6.2 Mechanism
 
@@ -189,6 +201,7 @@ Actual is one of: `absent`, `owned_correct` (symlink to the desired store path),
 | yes | yes | owned_broken | recreate symlink |
 | yes | yes | absent | recreate symlink (user removed it) |
 | yes | yes | unmanaged_real | **conflict** — report, never touch (A3 / #3) |
+| yes | yes | foreign_symlink | **conflict** — recorded slot was replaced by a non-owned symlink; report, never relink over it |
 | yes | no | absent | create symlink + record |
 | yes | no | unmanaged_real | **conflict** — name collision, report (A3 / #3) |
 | yes | no | foreign_symlink | **conflict** — report, do not touch |
@@ -238,6 +251,7 @@ Resolver (pure, no filesystem):
 - equal priority numbers tie-break deterministically by `source_id`
 - local winner over a team skill sets `local_override` and emits the diagnostic
 - `requires` satisfied cross-source → ok; unsatisfied → policy-dependent warn/block
+- `include` policy expands a same-catalog dependency into the effective selected set; a still-missing cross-source requirement stays a non-blocking warning
 - identical inventories produce byte-identical serialized output (snapshot)
 
 Store lock:
@@ -251,6 +265,7 @@ Reconciliation (temp store + temp target):
 - user-deleted owned symlink is recreated
 - owned symlink with stale target is relinked
 - desired skill colliding with an unmanaged real directory yields `Conflict`, no filesystem change
+- a recorded slot replaced by a foreign (outside-store) symlink yields `Conflict`, never a relink
 - deselected skill removes only its owned symlink, leaving unmanaged files untouched
 - orphaned owned symlink (source removed) is removed and reported
 - drifted owned instruction block blocks under `--auto`, offers restore interactively
