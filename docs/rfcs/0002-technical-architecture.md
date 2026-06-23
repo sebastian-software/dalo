@@ -237,14 +237,14 @@ Test layers:
 - snapshot tests for stable `--json` output and selected text output
 - dry-run tests that assert no filesystem mutation
 
-High-value scenarios:
+High-value scenarios (these describe the full vision; items marked (V1.1) ship with the catalog/instruction-pack slice deferred in RFC 0001 §26):
 
 - existing unmanaged skill is detected and not modified
 - equal skill names resolve by priority and report shadowing
-- catalog source selects only configured skills
-- removed selected catalog skill blocks auto-sync
-- instruction block rendering preserves unmarked content
-- malformed instruction block markers block writes
+- catalog source selects only configured skills (V1.1)
+- removed selected catalog skill blocks auto-sync (V1.1)
+- instruction block rendering preserves unmarked content (V1.1)
+- malformed instruction block markers block writes (V1.1)
 - dirty Git source blocks auto-sync
 - symlink removal only affects skillmgr-owned links
 
@@ -282,6 +282,6 @@ These are intentionally not part of v1:
 - Config, locks, inventory, status, and doctor data use typed structs.
 - `--dry-run` uses the same operation planning path as real execution.
 - Filesystem mutation code cannot delete unmanaged files by default.
-- Instruction pack rendering edits only managed blocks.
-- Tests cover resolver behavior, catalog selection, instruction block rendering, Git dirty detection, and symlink ownership.
+- Instruction pack rendering edits only managed blocks (V1.1).
+- Tests cover resolver behavior, Git dirty detection, and symlink ownership; catalog selection and instruction block rendering tests ship with V1.1 (RFC 0001 §26).
 - The project builds and tests on macOS and Linux without network access.
