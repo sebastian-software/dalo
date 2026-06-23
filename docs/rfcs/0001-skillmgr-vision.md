@@ -8,7 +8,7 @@ Author: Sebastian + Codex
 
 Skillmgr is a CLI-first manager for AI-agent skills on macOS and Linux. It centralizes skills and instruction packs from multiple Git-based sources, resolves them into one final asset set, materializes skills into configured agent skill directories through symlinks, and renders instruction packs into managed agent-instruction blocks.
 
-The vision addresses four core problems:
+The vision addresses six core problems:
 
 1. Teams need shared, versioned skills that can update automatically.
 2. Users often create and refine skills directly with agents inside existing agent skill directories.
@@ -1024,13 +1024,13 @@ These points are intentionally not final and should be refined in follow-up RFCs
 
 ## 26. Suggested V1 Slice
 
-Although this RFC describes the full vision, the first implementation should be narrow.
+Although this RFC describes the full vision, the first implementation should be narrow. V1 proves the architecture — store, resolver, materialization, reconciliation — on the core single- and multi-source skill loop, before taking on the features that carry the most unresolved design questions.
 
-Recommended v1 scope:
+### 26.1 V1 scope
 
 - `init`
 - `target detect/link/unlink`
-- `source add/list/priority`
+- `source add/list/priority` for `local` and `team` sources
 - `status`
 - `sync`
 - `adopt`
@@ -1038,15 +1038,34 @@ Recommended v1 scope:
 - TOML config
 - local store
 - symlink materialization
-- basic instruction pack discovery and managed block rendering
 - deterministic multi-source resolution
+- user lockfile for the resolved asset set
+- warnings for shadowing and dirty state
+
+### 26.2 Deferred to V1.1
+
+Catalog support and instruction packs are deferred to V1.1, not because they are unimportant, but because they depend on design decisions that are still open: the skill identity key (§12, §19.1), managed/unmanaged name-collision resolution (§15, §19), and the instruction-pack target-file mapping (§13, §25). Shipping them before those decisions are made would bake in guesses. Pulling them out of V1 keeps the first slice focused on the riskiest engine code and resolves the tension between §25 (mapping rules still open) and the original V1 scope.
+
 - basic catalog source inspection and explicit selection
 - lockfile entries for selected catalog skills
-- warnings for shadowing and dirty state
 - warnings for new catalog skills and missing declared dependencies
+- basic instruction pack discovery and managed block rendering
 - warnings for instruction topic overlap
 
-Not in the first slice:
+### 26.3 Suggested implementation sequence
+
+The V1 scope is a feature set, not an order. A workable sequence:
+
+1. store layout, TOML config parsing, and `init`
+2. target registry and `target detect/link/unlink`
+3. inventory scan and single-source `sync` with symlink materialization
+4. deterministic multi-source resolution (priority, shadowing) and `status`
+5. `adopt` into the local source, with optional symlink replacement
+6. `doctor` diagnostics
+
+This sequence front-loads the store and materializer (the highest-risk filesystem code) and adds multi-source behavior only once a single source materializes safely.
+
+### 26.4 Not in early slices
 
 - full automatic scheduler
 - `update` with lockfile PRs
@@ -1058,4 +1077,4 @@ Not in the first slice:
 - all agent targets
 - forge adapters beyond GitHub
 
-The v1 slice should prove the architecture without implementing the entire vision at once.
+The early slices should prove the architecture without implementing the entire vision at once.
