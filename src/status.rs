@@ -6,6 +6,7 @@ use serde::Serialize;
 
 use crate::error::SkillmgrResult;
 use crate::inventory::{self, InventoryWarning};
+use crate::lockfile::{self, LockDrift};
 use crate::materialize::SyncReport;
 use crate::resolver::{self, Resolution, ResolutionInput};
 use crate::source::{SourceAddReport, SourceKind, SourceListReport, SourcePriorityReport};
@@ -23,6 +24,19 @@ pub struct StatusReport {
     pub inventory_warnings: Vec<InventoryWarning>,
     /// Resolution output.
     pub resolution: Resolution,
+    /// Previous-lock comparison against the live resolution.
+    pub lock: LockStatus,
+}
+
+/// User lock status derived during `status`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LockStatus {
+    /// User lock path.
+    pub path: PathBuf,
+    /// Persisted schema version.
+    pub schema_version: u32,
+    /// Drift between the previous lock and the live resolution.
+    pub drift: Vec<LockDrift>,
 }
 
 /// One source status entry.
@@ -51,6 +65,7 @@ pub fn build_status_report(store_root: &Path) -> SkillmgrResult<StatusReport> {
     let paths = StorePaths::new(store_root.to_path_buf());
     let config = store::read_config(&paths)?;
     let approvals = store::read_approvals(&paths)?;
+    let previous_lock = store::read_user_lock(&paths)?;
     let mut sources = Vec::new();
     let mut inventories = Vec::new();
     let mut inventory_warnings = Vec::new();
@@ -123,17 +138,24 @@ pub fn build_status_report(store_root: &Path) -> SkillmgrResult<StatusReport> {
     inventory_warnings.sort_by(|left, right| left.path.cmp(&right.path));
 
     let resolution = resolver::resolve(&ResolutionInput {
-        sources: config.sources,
+        sources: config.sources.clone(),
         inventories,
         approvals: approvals.approvals,
-        previous_lock: None,
+        previous_lock: Some(previous_lock.clone()),
     });
+    let live_lock = lockfile::build_user_lock(&config.sources, &resolution, None);
+    let lock = LockStatus {
+        path: paths.lock_file,
+        schema_version: previous_lock.schema_version,
+        drift: lockfile::compare_user_lock(&previous_lock, &live_lock),
+    };
 
     Ok(StatusReport {
         store: store_root.to_path_buf(),
         sources,
         inventory_warnings,
         resolution,
+        lock,
     })
 }
 
@@ -195,6 +217,13 @@ pub fn print_status_report(report: &StatusReport) {
                 "  {} -> {} reason=shadowed by={}",
                 skill.skill.slot_name, skill.skill.source_ref, skill.shadowed_by
             );
+        }
+    }
+
+    if !report.lock.drift.is_empty() {
+        println!("lock drift:");
+        for drift in &report.lock.drift {
+            println!("  {:?} {}: {}", drift.code, drift.subject, drift.message);
         }
     }
 

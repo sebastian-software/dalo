@@ -14,7 +14,7 @@ use tempfile::NamedTempFile;
 use crate::config::UserConfig;
 use crate::error::{SkillmgrError, SkillmgrResult};
 use crate::git;
-use crate::lockfile::UserLock;
+use crate::lockfile::{USER_LOCK_SCHEMA_VERSION, UserLock};
 
 /// Environment variable used to override the default store path.
 pub const STORE_ENV_VAR: &str = "SKILLMGR_STORE";
@@ -322,6 +322,27 @@ pub fn read_config(paths: &StorePaths) -> SkillmgrResult<UserConfig> {
     Ok(toml::from_str(&content)?)
 }
 
+/// Read the resolved user lock and validate its schema version.
+pub fn read_user_lock(paths: &StorePaths) -> SkillmgrResult<UserLock> {
+    if !paths.lock_file.exists() {
+        return Err(SkillmgrError::StoreNotInitialized {
+            path: paths.root.clone(),
+        });
+    }
+
+    let content = fs::read_to_string(&paths.lock_file)?;
+    let lock: UserLock = toml::from_str(&content)?;
+    if lock.schema_version != USER_LOCK_SCHEMA_VERSION {
+        return Err(SkillmgrError::UnsupportedLockSchema {
+            path: paths.lock_file.clone(),
+            version: lock.schema_version,
+            supported: USER_LOCK_SCHEMA_VERSION,
+        });
+    }
+
+    Ok(lock)
+}
+
 /// Write the user config atomically.
 pub fn write_config(paths: &StorePaths, config: &UserConfig) -> SkillmgrResult<()> {
     if !paths.root.exists() {
@@ -331,6 +352,17 @@ pub fn write_config(paths: &StorePaths, config: &UserConfig) -> SkillmgrResult<(
     }
 
     write_toml_atomic(&paths.config_file, config)
+}
+
+/// Write the resolved user lock atomically.
+pub fn write_user_lock(paths: &StorePaths, lock: &UserLock) -> SkillmgrResult<()> {
+    if !paths.root.exists() {
+        return Err(SkillmgrError::StoreNotInitialized {
+            path: paths.root.clone(),
+        });
+    }
+
+    write_toml_atomic(&paths.lock_file, lock)
 }
 
 /// Read local approvals.

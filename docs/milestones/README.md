@@ -24,7 +24,7 @@ Milestones are intentionally small and stable. Progress is tracked by changing t
 | M04 | [Resolver and Status Model](0004-resolver-status-model.md) | done | Resolve source priority, approvals, shadowing, and status output. |
 | M05 | [Materializer and Sync Loop](0005-materializer-sync-loop.md) | done | Plan/apply directory symlinks without touching unmanaged files. |
 | M06 | [Team Sources and Git Safety](0006-team-sources-git-safety.md) | done | Add team Git checkouts, dirty checks, and clean tracking refresh. |
-| M07 | [User Lock and Multi-Source Reproducibility](0007-user-lock-multisource.md) | todo | Persist the resolved set and make multi-source sync reproducible. |
+| M07 | [User Lock and Multi-Source Reproducibility](0007-user-lock-multisource.md) | done | Persist the resolved set and make multi-source sync reproducible. |
 | M08 | [Adopt and Minimal Resolve](0008-adopt-minimal-resolve.md) | todo | Bring unmanaged skills into the local source and expose safe repair commands. |
 | M09 | [Doctor and Diagnostics](0009-doctor-diagnostics.md) | todo | Provide environment, path, Git, target, and state diagnostics. |
 | M10 | [V1 Release Readiness](0010-v1-release-readiness.md) | todo | Harden CLI UX, docs, tests, packaging, and release gates. |

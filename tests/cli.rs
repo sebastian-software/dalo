@@ -254,6 +254,168 @@ fn sync_should_report_existing_on_second_run() {
 }
 
 #[test]
+fn sync_should_write_user_lock_with_active_and_unlinked_skills() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo(&repo);
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    let local_skill_dir = store.join("local/skills/team");
+    std::fs::create_dir_all(&local_skill_dir).expect("local skill dir should be created");
+    std::fs::write(local_skill_dir.join("SKILL.md"), "# Local Team\n")
+        .expect("local skill should be written");
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "company"])
+        .arg(&repo)
+        .assert()
+        .success();
+    approve_source(&store, "company");
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "link", "generic"])
+        .arg(&target)
+        .assert()
+        .success();
+
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    let lock = std::fs::read_to_string(store.join("lock.toml")).expect("lock should be readable");
+    assert!(lock.contains("source_ref = \"local:team\""));
+    assert!(lock.contains("source_ref = \"company:team\""));
+    assert!(lock.contains("reason = \"shadowed\""));
+    assert!(lock.contains("status = \"applied\"") || lock.contains("status = \"existing\""));
+}
+
+#[test]
+fn status_json_should_report_lock_drift_after_skill_removal() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_skill_and_target(&store, &target);
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    std::fs::remove_dir_all(store.join("local/skills/review"))
+        .expect("local skill should be removed");
+    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"code\": \"active_removed\""))
+        .stdout(predicate::str::contains("\"subject\": \"local:review\""));
+}
+
+#[test]
+fn status_should_fail_on_unsupported_lock_schema() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::write(store.join("lock.toml"), "schema_version = 999\n")
+        .expect("lock should be overwritten");
+    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .arg("status")
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains(
+            "unsupported lock schema version 999",
+        ));
+}
+
+#[test]
+fn sync_should_remove_owned_symlink_after_source_is_removed_from_config() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo(&repo);
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "company"])
+        .arg(&repo)
+        .assert()
+        .success();
+    approve_source(&store, "company");
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "link", "generic"])
+        .arg(&target)
+        .assert()
+        .success();
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    assert!(
+        std::fs::symlink_metadata(target.join("team"))
+            .expect("team link should exist")
+            .file_type()
+            .is_symlink()
+    );
+
+    write_local_only_config(&store);
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    assert!(!target.join("team").exists());
+}
+
+#[test]
 fn source_add_should_clone_team_source_into_store() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -402,6 +564,25 @@ fn create_git_skill_repo(repo: &std::path::Path) {
             "-q",
         ],
     );
+}
+
+fn approve_source(store: &std::path::Path, source: &str) {
+    std::fs::write(
+        store.join("approvals.toml"),
+        format!("schema_version = 1\n\n[[approvals]]\nscope = \"source\"\nvalue = \"{source}\"\n"),
+    )
+    .expect("source approval should be written");
+}
+
+fn write_local_only_config(store: &std::path::Path) {
+    std::fs::write(
+        store.join("config.toml"),
+        format!(
+            "version = 1\n\n[settings]\nautosync = false\n\n[[sources]]\nid = \"local\"\nkind = \"local\"\npath = \"{}\"\npriority = 0\nenabled = true\ntrusted = true\n",
+            store.join("local").display()
+        ),
+    )
+    .expect("config should be written");
 }
 
 fn run_git(repo: &std::path::Path, args: &[&str]) {

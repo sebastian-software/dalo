@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use clap::{Args, CommandFactory, Parser, Subcommand};
 
 use crate::error::{SkillmgrError, SkillmgrResult};
+use crate::lockfile;
 use crate::materialize;
 use crate::source;
 use crate::status;
@@ -287,6 +288,12 @@ fn run_sync(options: &GlobalOptions) -> SkillmgrResult<()> {
     }
     let status_report = status::build_status_report(&options.store)?;
     let report = materialize::materialize(&paths, &status_report.resolution, options.dry_run)?;
+    if !options.dry_run {
+        let config = store::read_config(&paths)?;
+        let lock =
+            lockfile::build_user_lock(&config.sources, &status_report.resolution, Some(&report));
+        store::write_user_lock(&paths, &lock)?;
+    }
 
     if options.json {
         print_json(&report)?;

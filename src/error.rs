@@ -94,6 +94,19 @@ pub enum SkillmgrError {
         path: PathBuf,
     },
 
+    /// The persisted user lock uses an unsupported schema version.
+    #[error(
+        "unsupported lock schema version {version} in `{path}`; this skillmgr supports version {supported}"
+    )]
+    UnsupportedLockSchema {
+        /// Lock file path.
+        path: PathBuf,
+        /// Persisted version.
+        version: u32,
+        /// Supported version.
+        supported: u32,
+    },
+
     /// A system command failed.
     #[error("command `{program} {args}` failed in `{cwd}` with status {status}: {stderr}")]
     CommandFailed {
@@ -125,6 +138,7 @@ impl SkillmgrError {
             | Self::TargetPathRequired { .. }
             | Self::SourceAlreadyExists { .. }
             | Self::UnknownSource { .. }
+            | Self::UnsupportedLockSchema { .. }
             | Self::TomlDeserialize(_) => SkillmgrExitCode::ExpectedFailure,
             Self::DirtySource { .. } | Self::StoreLocked { .. } => SkillmgrExitCode::UnsafeState,
             Self::StorePath { .. } | Self::InvalidStorePath { .. } | Self::CommandFailed { .. } => {

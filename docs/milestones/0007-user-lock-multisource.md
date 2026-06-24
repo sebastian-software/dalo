@@ -1,6 +1,6 @@
 # M07: User Lock and Multi-Source Reproducibility
 
-Status: todo  
+Status: done
 Target: V1  
 Depends on: M06, RFC 0001, RFC 0003  
 
@@ -44,10 +44,23 @@ Persist the resolved skill set so sync state is reproducible and inspectable acr
 
 ```sh
 cargo fmt --check
-cargo test lockfile resolver status
-cargo test sync
+cargo test
+cargo clippy --all-targets --all-features -- -D warnings
 git diff --check
 ```
+
+Validated on 2026-06-24.
+
+## Completion Notes
+
+- Expanded `lock.toml` to record schema version, source commit identities, active skills, pending approval skills, unlinked skills with reasons, and target materialization summaries.
+- `sync` writes the resolved user lock after non-dry-run materialization.
+- `status` reads the previous lock, validates the schema version, and reports drift against the live resolution.
+- Unsupported lock schema versions fail with an actionable error.
+- Lock serialization is sorted for stable output.
+- Multi-source resolution is exercised by sync tests with local and team sources.
+- Shadowed skills are recorded as `unlinked` with reason `shadowed`.
+- Removing a source from config leaves owned symlinks eligible for removal during the next sync.
 
 ## Suggested Issue Split
 
