@@ -89,7 +89,9 @@ GitHub PR flows should use `gh` in the same style:
 - detect `gh` availability in `doctor`
 - use existing `gh` authentication
 - create PRs only from explicit `promote` or `resolve` flows
-- keep GitHub integration behind an adapter so GitLab or Forgejo can be added later
+- fail the PR flow when `gh` is missing or not authenticated
+- do not create an internal GitHub API client or manage GitHub secrets in V1
+- treat GitLab, Forgejo, and other forges as future features rather than V1 adapters
 
 Pure-Rust Git should remain a future optimization. `gix`/gitoxide can be evaluated later for read-only inventory, status, or performance-sensitive operations, but v1 should not depend on it for correctness.
 
@@ -147,6 +149,7 @@ Use typed Rust structs for all public schemas:
 - source manifest
 - source lock
 - resolved user lock
+- local approval state
 - state file
 - inventory snapshot
 - target registry entries
@@ -170,6 +173,7 @@ Filesystem writes must be modeled as explicit operation plans before execution.
 Required behavior:
 
 - `--dry-run` prints the planned operations and writes nothing
+- materialize each managed skill as one directory-level symlink per target slot
 - write generated files through a temporary file plus atomic rename where possible
 - never replace a real directory with a symlink without explicit confirmation
 - never delete unmanaged files
@@ -215,11 +219,11 @@ Error messages should include:
 
 ## 10. Scheduler Strategy
 
-Autosync should not require a daemon in v1.
+Scheduled sync should not require a daemon in v1.
 
 Target model:
 
-- macOS: generate a launchd plist that runs `skillmgr sync --auto`
+- macOS: generate a launchd plist that runs `skillmgr sync --yes --quiet`
 - Linux: generate a systemd user timer and service
 - cron fallback only if systemd user timers are unavailable
 
@@ -240,12 +244,19 @@ Test layers:
 High-value scenarios (these describe the full vision; items marked (V1.1) ship with the catalog/instruction-pack slice deferred in RFC 0001 §26):
 
 - existing unmanaged skill is detected and not modified
-- equal skill names resolve by priority and report shadowing
+- managed skill colliding with an unmanaged target entry reports a conflict and leaves the unmanaged entry untouched
+- logical targets that resolve to the same canonical directory are de-duplicated before materialization while still reported as separate logical agent targets
+- equal slot names resolve by priority and report shadowing
+- newly active unapproved skill is reported and not materialized by scheduled or non-interactive sync
+- source-, author-, and org-level approvals allow matching newly active skills without per-skill prompts
 - catalog source selects only configured skills (V1.1)
-- removed selected catalog skill blocks auto-sync (V1.1)
+- same-catalog required dependencies are expanded transitively before materialization (V1.1)
+- selected skill is blocked before materialization when a required dependency is missing, unapproved, shadowed by a non-equivalent winner, or blocked by a same-name target entry (V1.1)
+- removed selected catalog skill blocks scheduled sync (V1.1)
 - instruction block rendering preserves unmarked content (V1.1)
 - malformed instruction block markers block writes (V1.1)
-- dirty Git source blocks auto-sync
+- instruction pack rendering does not depend on native include/import support (V1.1)
+- dirty Git source blocks scheduled or non-interactive sync
 - symlink removal only affects skillmgr-owned links
 
 Tests should not require network access.
@@ -279,9 +290,9 @@ These are intentionally not part of v1:
 - The repository is scaffolded as a stable Rust 2024 project with one `skillmgr` binary and a reusable library.
 - Core behavior is reachable through library functions, not only CLI handlers.
 - Git and GitHub operations go through narrow wrappers around `git` and `gh`.
-- Config, locks, inventory, status, and doctor data use typed structs.
+- Config, locks, approvals, inventory, status, and doctor data use typed structs.
 - `--dry-run` uses the same operation planning path as real execution.
 - Filesystem mutation code cannot delete unmanaged files by default.
-- Instruction pack rendering edits only managed blocks (V1.1).
-- Tests cover resolver behavior, Git dirty detection, and symlink ownership; catalog selection and instruction block rendering tests ship with V1.1 (RFC 0001 §26).
+- Instruction pack rendering edits only managed blocks and does not rely on native include/import support (V1.1).
+- Tests cover resolver behavior, approval gating, Git dirty detection, and symlink ownership; catalog selection and instruction block rendering tests ship with V1.1 (RFC 0001 §26).
 - The project builds and tests on macOS and Linux without network access.

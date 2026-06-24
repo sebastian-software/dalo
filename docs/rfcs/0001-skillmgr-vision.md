@@ -52,7 +52,7 @@ Instead, skillmgr manages its own store and uses agent directories as materializ
 - Select individual skills from multi-skill external repositories without vendoring the whole repository.
 - Detect upstream inventory drift for selected external repositories, including new skills, removed selected skills, moved selected skills, and changed dependencies.
 - Manage lightweight instruction packs for team and user conventions in agent instruction files.
-- Run auto-sync safely and stop visibly on dirty states or conflicts.
+- Run scheduled sync safely and stop visibly on dirty states or conflicts.
 - Fully support macOS and Linux.
 - Provide a CLI that is friendly for humans and machine-readable for automation.
 
@@ -118,7 +118,13 @@ A skill explicitly chosen from a catalog source for inclusion in the resolved sk
 The discovered set of agent assets in a source or catalog source, including paths, names, stable IDs when available, metadata, content fingerprints, and declared dependencies.
 
 **Shadowed Skill**  
-A skill that is not materialized because another source with higher priority provides the same skill name.
+A skill that is not materialized because another source with higher priority provides the same slot name.
+
+**Unlinked Skill**
+A user-facing status for a managed skill that exists in the store but is not linked into an agent target. Shadowing is one possible reason a skill is unlinked.
+
+**Blocked Same-Name Skill**
+A managed skill that skillmgr would otherwise materialize, but cannot link because the target slot is already occupied by a non-skillmgr entry such as an unmanaged skill, project skill, or foreign symlink.
 
 **Dirty Skill**  
 A skill from a Git source whose working tree contains local changes.
@@ -210,6 +216,8 @@ enabled = true
 id = "company"
 kind = "team"
 url = "git@github.com:example/company-skills.git"
+branch = "main"
+update_policy = "track"
 priority = 10
 trusted = true
 enabled = true
@@ -218,6 +226,8 @@ enabled = true
 id = "oss"
 kind = "team"
 url = "git@github.com:example/oss-skills.git"
+branch = "main"
+update_policy = "track"
 priority = 20
 trusted = true
 enabled = true
@@ -235,18 +245,20 @@ path = "~/.claude/skills"
 enabled = true
 ```
 
-Priority: smaller numbers win. The local source has the highest default priority so explicitly adopted private skills are effective. If a local skill displaces a team or external skill with the same name, `status` must show that as a local override.
+Priority: smaller numbers win. The local source has the highest default priority so explicitly adopted private skills are effective. If a local skill displaces a team or external skill with the same slot name, `status` must show that as a local override.
+
+Team sources normally track a configured branch. `sync` refreshes clean tracking team sources before resolving and materializing skills. Sources that should not move during normal `sync` can use a pinning policy in later slices; external and catalog sources are pinned through source lockfiles by default.
 
 ## 9. Source Model
 
 Supported source classes:
 
 - `local`: the user's private local Git repository
-- `team`: a trusted team Git repository
+- `team`: a team Git repository whose updates may be followed by `sync`
 - `external`: a Git source referenced and pinned by another source
 - `catalog`: an external Git repository that exposes multiple selectable skills
 
-Team sources may declare external and catalog sources. If a team source is trusted, that trust extends to the external and catalog sources it declares. Sources added directly by the user must be added explicitly.
+Team sources may declare external and catalog sources. That declaration makes the sources visible to skillmgr, but it does not by itself approve newly active skills. Any skill that would become active for the first time needs local approval unless it is covered by an existing author-, org-, source-, or skill-level approval rule. Sources added directly by the user must be added explicitly.
 
 Catalog sources are treated as offer surfaces, not as all-or-nothing dependencies. A team source may inspect a catalog repository and select only the skills it wants to expose. Skillmgr still checks out or caches the full repository as needed, but only selected skills enter the resolved skill set.
 
@@ -320,7 +332,7 @@ Catalog support must distinguish four update outcomes:
 - `selected_moved`: a selected skill appears to have moved to a new path
 - `selected_removed`: a selected skill no longer exists in the updated inventory
 
-`new_available` is informational. `selected_changed` is reviewable through the normal lockfile update flow. `selected_moved` may be auto-reconciled only when the stable skill ID matches. `selected_removed` blocks auto-sync for that selection until the user or team updates the manifest.
+`new_available` is informational. `selected_changed` is reviewable through the normal source-refresh flow. `selected_moved` may be auto-reconciled only when the stable skill ID matches. `selected_removed` blocks scheduled sync for that selection until the user or team updates the manifest.
 
 Catalog repositories may contain internal skill dependencies. Skillmgr should support explicit dependency declarations in `SKILL.md` frontmatter:
 
@@ -333,13 +345,13 @@ requires:
 ---
 ```
 
-If a selected skill declares a required skill from the same catalog, skillmgr should warn when the dependency is not also selected. For trusted team sources, the team manifest may choose one of these policies per catalog:
+If a selected skill declares required skills from the same source or catalog, those required skills become part of the effective selection automatically. This expansion is transitive: required skills may require other skills, and the resolver walks the full closure before materialization.
 
-- `warn`: report missing dependencies but allow selection
-- `include`: automatically include declared required skills
-- `block`: reject selections with missing required skills
+Required skills are still subject to approval. If a required skill would become active for the first time and is not covered by an existing skill-, source-, author-, or org-level approval, the dependent skill is not materialized until approval is granted.
 
-The default policy is `warn`, because many existing repositories do not have reliable machine-readable dependency metadata. Skillmgr may add best-effort warnings when skill text mentions another skill by name, but text inference must never be the only blocker.
+If a required same-source skill is missing, blocked by a same-name target entry, unlinked because of conflict, pending approval, or otherwise not linkable, the dependent skill is blocked during preflight. Skillmgr must not materialize a selected skill whose declared required closure cannot be linked consistently.
+
+Cross-source dependencies are checked only and are never auto-installed across source boundaries. Skillmgr may add best-effort warnings when skill text mentions another skill by name, but text inference must never be the only blocker.
 
 ## 11. Lockfiles
 
@@ -351,10 +363,11 @@ There are two lockfile levels:
 2. **User lockfile**  
    The user lock describes the resolved sum of all active sources, including winners, shadowed skills, active instruction packs, and commit hashes.
 
-Normal `sync` respects existing pins.  
-`update` creates targeted lockfile changes and can turn them into PRs.
+Normal `sync` refreshes clean tracking team sources, respects pinned sources, resolves the final asset set, and materializes it into targets. For tracking team sources, the user lock is a descriptive snapshot of what was active after the last sync. For pinned sources, the lock is prescriptive: `sync` must not move them forward.
 
-For catalog sources, lockfiles must also record the selected skills and the inventory snapshot used to resolve them. This allows skillmgr to detect upstream structure drift on update rather than silently losing or adding skills.
+`source refresh` creates targeted lockfile changes for pinned external, catalog, or pinned team sources and can turn them into PRs.
+
+For catalog sources, lockfiles must also record the selected skills and the inventory snapshot used to resolve them. This allows skillmgr to detect upstream structure drift during `source refresh` rather than silently losing or adding skills.
 
 Example resolved user lock:
 
@@ -362,16 +375,18 @@ Example resolved user lock:
 version = 1
 
 [[resolved]]
-id = "company:copy-editing"
-name = "copy-editing"
+ref = "company:copy-editing"
+slot_name = "copy-editing"
+stable_id = "company.copy-editing"
 source = "company"
 path = "~/.skillmgr/sources/company/checkout/skills/copy-editing"
 commit = "abc123"
 status = "active"
 
 [[resolved]]
-id = "oss:copy-editing"
-name = "copy-editing"
+ref = "oss:copy-editing"
+slot_name = "copy-editing"
+stable_id = "oss.copy-editing"
 source = "oss"
 path = "~/.skillmgr/sources/oss/checkout/skills/copy-editing"
 commit = "def456"
@@ -404,7 +419,18 @@ status = "active"
 
 ## 12. Skill Identity and Metadata
 
-New skills should have a stable ID in the `SKILL.md` frontmatter. Existing skills without an ID are recognized by folder name.
+Skill identity has three layers:
+
+1. **Stable ID**
+   A long-lived identifier from `SKILL.md` frontmatter, used for dependencies, catalog move detection, drift tracking, and promotion history.
+
+2. **Source-qualified reference**
+   Skillmgr's internal unambiguous reference, with the form `<source-id>:<slot-name>`, for example `company:copy-editing` or `coreyhaines-marketing:positioning`.
+
+3. **Slot name**
+   The visible install name and physical target-directory name. This is the conflict and shadowing key because each target directory can contain only one entry with a given name.
+
+New team and catalog skills should have a stable ID in `SKILL.md` frontmatter. Existing skills without an ID are recognized by slot name.
 
 Example:
 
@@ -424,13 +450,22 @@ owners:
 Minimum common denominator:
 
 - `SKILL.md` exists in the skill folder.
-- `name` or the folder name determines the display name.
+- `name` or the folder name determines the slot name.
+- slot names must normalize to a safe single path segment.
 - `id` is recommended but not immediately required for migration.
+
+The default visible install name is the short slot name. Skillmgr does not automatically namespace every installed skill with its source. When multiple sources provide the same slot name, source priority decides which one gets the short name and the others become unlinked with reason `shadowed`.
+
+V1 does not provide a parallel alias layer for same-name variants. If users later need two same-name variants at the same time, a future explicit rename/adapt flow can copy or fork one variant under a new slot name and update machine-readable same-source references where possible. Lockfiles, dependency checks, and catalog move detection use stable IDs or source-qualified references, never user-facing aliases.
 
 Optional dependency metadata:
 
-- `requires` lists skill IDs or source-qualified names that should be available together with this skill.
-- Missing declared dependencies produce at least a warning and may block when the source policy is `block`.
+- `requires` lists dependencies that should be available together with this skill. Supported reference forms are stable skill IDs, source-qualified refs, and same-source relative slot names.
+- Same-source relative slot names are first-class, not just legacy compatibility. External multi-skill repositories often describe relationships in the local vocabulary of that repository, and skillmgr should not require patching those upstream skills before they can be used.
+- Relative `requires` entries resolve only inside the declaring source or catalog. They do not search all configured sources.
+- Cross-source dependencies require a stable ID or source-qualified ref and are checked only; they are never auto-installed across source boundaries.
+- Visible aliases are never dependency targets.
+- Missing or unlinked declared dependencies block dependent skills during preflight when they are part of the required closure.
 
 Agent-specific skill content variants are not a core feature. The skill itself remains one shared package. Adapters may only know installation details such as target path or link strategy.
 
@@ -482,9 +517,12 @@ Use OXLint for linting and OXFMT for formatting.
 <!-- skillmgr:end company.engineering-defaults -->
 ```
 
+Managed blocks are the portable baseline for V1.1. Some agents support native file imports or prompt-file references, but support is inconsistent and often agent-specific. Skillmgr must not assume a shared include syntax across targets. A later adapter may use native includes only when that target's support is verified; the fallback and default behavior remains rendering skillmgr-owned managed blocks into the configured instruction file.
+
 Rules:
 
 - skillmgr may only create, update, reorder, or remove blocks marked with its own `skillmgr:start` and `skillmgr:end` markers.
+- skillmgr must not emit unverified include/import references as the primary materialization strategy.
 - skillmgr must never rewrite unmarked content in files such as `AGENTS.md`, `CLAUDE.md`, or agent-specific global instruction files.
 - project-local instruction files remain owned by the project repository and are not replaced by global instruction packs.
 - team instruction packs and local instruction packs may both be active.
@@ -496,15 +534,19 @@ The resolver should treat instruction packs as a separate asset type from skills
 
 ## 14. Target Registry
 
-Skillmgr knows default targets for prominent agents:
+Skillmgr knows default targets for prominent agents. V1 supports a small verified target set:
 
-- Codex
-- Claude
-- Cursor
-- OpenCode
-- OpenClaw
-- Hermes
-- generic folder-based agents
+| Target | V1 status | Default skill path | Notes |
+| --- | --- | --- | --- |
+| Codex | supported | `~/.agents/skills` | Codex also discovers repo-scoped `.agents/skills`; skillmgr manages only the global/user target. |
+| Claude Code | supported | `~/.claude/skills` | Claude has explicit precedence rules; same-name project skills may still affect runtime behavior. |
+| OpenClaw | supported | `~/.agents/skills` | OpenClaw treats this as personal agent skills; workspace and project-agent skills have higher precedence. |
+| Hermes | supported | `~/.hermes/skills` | Hermes uses this as its primary skill source of truth; `~/.agents/skills` can be configured separately as an external directory. |
+| generic folder | supported | user-specified | For agents that consume Agent Skills from a directory but do not yet have a verified adapter. |
+| Cursor | experimental | TBD | Registry entry may exist, but V1 should not promise full support until discovery behavior is verified. |
+| OpenCode | experimental | TBD | Registry entry may exist, but V1 should not promise full support until discovery behavior is verified. |
+
+Multiple target adapters may resolve to the same physical directory. For example, Codex and OpenClaw can both use `~/.agents/skills`. Skillmgr must canonicalize target paths, de-duplicate identical materialization directories, and still report the logical agents that depend on that directory.
 
 The registry provides default paths, detection rules, link policy, and instruction-file policy. Users can manually add or override targets.
 
@@ -520,11 +562,11 @@ Detection must not change files.
 
 ## 15. Materialization
 
-Managed skills are installed into every enabled target through symlinks. Instruction packs are rendered into configured agent instruction files as managed blocks.
+Managed skills are installed into every enabled target as one directory-level symlink per skill slot. Instruction packs are rendered into configured agent instruction files as managed blocks.
 
 Rules:
 
-- skillmgr only creates symlinks to resolved store paths.
+- skillmgr only creates directory symlinks to resolved store paths.
 - skillmgr only writes instruction text inside its own managed block markers.
 - skillmgr does not replace real directories or files without an explicit action.
 - skillmgr only removes symlinks that it created and knows in `state.toml`.
@@ -532,8 +574,12 @@ Rules:
 - Unmanaged files and directories remain untouched.
 - Unmarked instruction-file content remains untouched.
 - Broken symlinks are reported by `doctor` and `status`.
-- A target may contain only one active managed link per skill name.
+- A target may contain only one active managed link per slot name.
 - A target instruction file may contain multiple managed instruction blocks, ordered by source priority and pack priority.
+
+Directory symlinks are deliberate. If an agent edits a materialized team skill through any target, it edits the underlying source checkout and makes that source dirty. All enabled targets that link the same resolved skill see the same underlying content. This avoids copy drift, but it also means cloud-synced target folders such as iCloud or Dropbox can be fragile; `doctor` should warn when a target appears to live inside a common cloud-sync location.
+
+If a resolved managed skill wants a slot already occupied by an unmanaged real directory or foreign symlink, `sync` reports a conflict and never touches the existing entry. V1 blocks only that affected target slot where possible and continues materializing safe slots. A later `resolve` flow may offer adoption, explicit replacement, ignore/protect, or a rename/adapt flow, but none of those choices happen automatically.
 
 If a skill is removed from a source, skillmgr removes its own symlink from targets during the next sync. The actual source content remains available only through Git history or the store checkout.
 
@@ -545,24 +591,28 @@ If an instruction pack is removed from a source, skillmgr removes only its own m
 
 - `managed`: installed by skillmgr
 - `unmanaged`: exists in a target but is not managed by skillmgr
+- `unlinked`: managed skill exists in the store but is not linked into a target
 - `local`: from the user's local source
 - `team`: from a team source
 - `external`: from a pinned external source
-- `shadowed`: inactive because another source has higher priority
+- `shadowed`: internal diagnostic/reason for an unlinked skill, caused by another managed source with higher priority
+- `blocked_by_same_name_skill`: not linked because an unmanaged, project, or foreign same-name entry occupies the target slot
 - `dirty`: source working tree has local changes
 - `conflicted`: conflict cannot be resolved safely
 - `orphaned`: link or state points to a removed source
 - `protected`: `.local` or another protection rule prevents automatic action
+- `pending_approval`: a skill is available or selected but not yet approved for local activation
 - `new_available`: a catalog source contains a new unselected skill
 - `selected_removed`: a selected catalog skill disappeared upstream
 - `selected_moved`: a selected catalog skill appears to have moved
-- `dependency_missing`: a selected skill declares a dependency that is not selected or otherwise available
+- `dependency_missing`: a selected skill declares a dependency that is not selected, available, approved, or linkable
+- `dependency_blocked`: a selected skill is not materialized because a required dependency cannot be linked consistently
 - `instruction_active`: an instruction pack is active and materialized
 - `instruction_topic_overlap`: multiple active instruction packs declare the same topic
 - `instruction_block_drift`: a managed instruction block differs from the resolved source content
 - `instruction_block_orphaned`: a managed instruction block references a removed instruction pack
 
-Conflicts may be visible without always being blocking. Equal skill names are resolved deterministically by source priority but reported as shadowing.
+Conflicts may be visible without always being blocking. Equal slot names are resolved deterministically by source priority but reported as shadowing.
 
 ## 17. CLI Surface
 
@@ -576,6 +626,8 @@ Global flags:
 --dry-run    show planned actions without changing anything
 --store      alternate store path
 ```
+
+`--yes` must not create Git commits. Commits write source history and require an explicit command, explicit flag, or interactive confirmation in a flow that is already about committing or promoting work.
 
 ### 17.1 `skillmgr init`
 
@@ -654,12 +706,14 @@ Shows:
 - active skills
 - local skills
 - unmanaged skills
-- shadowed skills
+- unlinked skills, including whether they are shadowed by a higher-priority managed skill
+- same-name target blockers when a managed skill cannot be linked because an unmanaged or project skill occupies the slot
 - dirty sources
 - conflicted skills
 - orphaned symlinks
 - protected `.local` skills
 - catalog skills that are new, moved, removed, changed, or missing declared dependencies
+- skills pending local approval, including source, author/org metadata when available, and the reason approval is needed
 - active instruction packs
 - instruction topic overlap
 - managed instruction block drift
@@ -670,12 +724,12 @@ Shows:
 
 ### 17.10 `skillmgr sync`
 
-Updates sources safely and materializes the resolved asset set.
+Refreshes the local skill environment and materializes the resolved asset set.
 
 Normal behavior:
 
-- fetches/pulls only clean sources
-- respects lockfiles
+- fetches and fast-forwards only clean tracking team sources
+- respects pins for external, catalog, and pinned sources
 - respects catalog selections and does not materialize unselected catalog skills
 - creates or updates symlinks
 - creates or updates managed instruction blocks
@@ -684,9 +738,10 @@ Normal behavior:
 - reports shadowing
 - reports instruction topic overlap
 - reports new catalog skills
-- stops on dirty state, broken locks, selected catalog skill removal, instruction block drift during auto-sync, or unresolved conflicts
+- reports skills pending approval
+- stops on dirty state, broken locks, selected catalog skill removal, instruction block drift during scheduled or non-interactive sync, or unresolved conflicts
 
-`sync --auto` is used by the scheduler and must be more conservative than interactive sync. It must not make risky decisions.
+`sync` is the everyday command. It is intentionally both the source-refresh step for tracking team sources and the materialization step for agent targets. Scheduler integrations run ordinary `sync` with non-interactive flags such as `--yes --quiet`; there is no separate `sync --auto` mode in the core model.
 
 ### 17.11 `skillmgr instruction list`
 
@@ -713,10 +768,14 @@ Adopts unmanaged skills into the local source.
 Default flow:
 
 1. detect unmanaged skill
-2. copy skill into `~/.skillmgr/local/skills/<name>`
-3. leave the local source dirty or optionally offer a commit
+2. copy skill into `~/.skillmgr/local/skills/<slot-name>`
+3. ask whether to commit the copied skill when running interactively
 4. offer to replace the original folder with a symlink
 5. do not remove existing files without confirmation
+
+Adoption is local-first. When the adopted skill has the same slot name as a team or external skill, the local source wins by priority and the adopted skill becomes a visible local override. Team updates for the shadowed slot remain available in `status`, but they do not replace the local override until the user removes, renames, adapts, or promotes it.
+
+If the user declines the commit prompt, or if `adopt` runs non-interactively without an explicit `--commit`, the local source remains dirty and `status` reports that. `--yes` must not imply `--commit`.
 
 `.local` skills remain protected. Adoption is possible but always explicit.
 
@@ -727,10 +786,13 @@ Turns a local skill or dirty team edit into a team contribution.
 Vision:
 
 - PR-first workflow
+- creates or reuses an explicit commit for the promoted skill changes
 - with multiple team sources, `--target` or interactive selection is required
-- creates branch, commit, and GitHub PR when auth is available
-- uses existing Git and `gh` credentials
-- GitLab and other forges remain future adapters
+- creates branch, commit, push, and GitHub PR through the `gh` CLI
+- requires `gh` to be installed and authenticated
+- fails hard when `gh` is missing or not authenticated; no partial local-only promote fallback
+- no internal GitHub API client and no secret management in V1
+- GitLab and other forges remain future features
 
 Examples:
 
@@ -746,19 +808,21 @@ Assisted conflict resolution.
 Supported cases:
 
 - dirty team skill: commit+PR, stash, local override, or discard
-- shadowed skill: change priority, assign alias, disable source, or ignore
+- unlinked shadowed skill: change priority, disable source, ignore, or use a later explicit rename/adapt flow
+- managed/unmanaged slot collision: adopt local, keep unmanaged/protected, explicitly replace after confirmation, or use a later explicit rename/adapt flow
 - broken symlink: rematerialize or remove link
 - orphaned source: restore source or remove link
-- lock conflict: regenerate lock or abort update
+- lock conflict: regenerate lock or abort source refresh
 - instruction block drift: restore from source, keep local edit as local instruction pack, or remove managed block
 
-### 17.17 `skillmgr update`
+### 17.17 `skillmgr source refresh`
 
-Updates external pins and creates reviewable lockfile changes.
+Refreshes pinned source references and creates reviewable lockfile changes.
 
 Default:
 
-- no floating update through normal `sync`
+- normal `sync` already refreshes clean tracking team sources
+- pinned external, catalog, or pinned team sources move only through `source refresh`
 - targeted updates by source or skill
 - catalog updates compare old and new inventories before changing selected skills
 - new unselected catalog skills are reported but not automatically enabled
@@ -774,20 +838,44 @@ Checks:
 - lockfile consistency
 - source reachability
 - Git auth
-- GitHub auth for PR flows
+- `gh` availability and authentication for PR flows
 - target paths
 - broken symlinks
 - malformed managed instruction block markers
 - managed instruction blocks whose source no longer exists
 - instruction topic overlap
 - unmanaged/protected skills
+- pending approvals and the current approval graph
 - catalog selections whose paths no longer exist
 - selected skills with missing declared dependencies
 - catalog inventories that cannot be scanned
 - scheduler installation
 - unknown targets
 
-## 18. Autosync
+### 17.19 `skillmgr approve`
+
+Approves newly active skill artifacts or the origins that produce them.
+
+Examples:
+
+```text
+skillmgr approve list
+skillmgr approve skill coreyhaines-marketing:launch-copy
+skillmgr approve source coreyhaines-marketing
+skillmgr approve author coreyhaines
+skillmgr approve org company
+```
+
+Approval is local user state stored in the skillmgr store, not in the team repository. Approval scopes:
+
+- `skill`: approves exactly one source-qualified skill, optionally tied to its stable ID and current fingerprint
+- `source`: approves future active skills from one source
+- `author`: approves future active skills attributed to one author
+- `org`: approves future active skills attributed to one organization or owner namespace
+
+Scheduled or non-interactive `sync` never grants approvals. It skips or blocks newly active unapproved skills and reports them through `status` and `doctor`.
+
+## 18. Scheduled Sync
 
 `skillmgr autosync install` sets up an OS-native scheduler:
 
@@ -798,33 +886,60 @@ Default:
 
 - daily
 - with jitter
-- runs `skillmgr sync --auto`
+- runs `skillmgr sync --yes --quiet`
 - writes logs into the store
 - reports blocking conflicts visibly through `status` and `doctor`
 
-Autosync must not make interactive decisions or overwrite dirty states.
+Scheduled sync must not make interactive decisions or overwrite dirty states. `--yes` only confirms safe standard actions; dirty sources, unresolved conflicts, malformed locks, and protected target slots still block.
+
+Scheduled sync never commits local source changes. Dirty local skills remain local working-tree changes until the user explicitly commits, discards, or promotes them.
 
 ## 19. Conflict Model
 
-### 19.1 Equal Skill Names
+### 19.1 Equal Slot Names
 
-If multiple sources provide the same skill name, the source with the highest user priority wins. The others become `shadowed`. If the local source wins, the winner is additionally shown as a `local override`.
+If multiple managed sources provide the same slot name, the source with the highest user priority wins. The others become unlinked with reason `shadowed`. If the local source wins, the winner is additionally shown as a `local override`.
 
 This is not a hard error, but it must be visible:
 
 ```text
 active: company/copy-editing
-shadowed: oss/copy-editing by company/copy-editing
+unlinked: oss/copy-editing
+reason: shadowed by company/copy-editing
 ```
 
 ```text
 active: local/copy-editing (local override)
-shadowed: company/copy-editing by local/copy-editing
+unlinked: company/copy-editing
+reason: shadowed by local/copy-editing
 ```
 
-### 19.2 Dirty Team Skills
+`shadowed` is the resolver cause. `unlinked` is the user-facing state: the skill exists in the store but is not linked into the target. This distinction keeps the UI close to the actual symlink model.
 
-If a symlinked team skill is edited locally, the underlying source becomes dirty. `sync --auto` blocks for that source or skill.
+### 19.2 Managed vs Unmanaged Slot Collision
+
+A managed/unmanaged slot collision happens when the resolver wants to materialize a managed skill into a target slot that already contains an unmanaged real directory or foreign symlink.
+
+V1 behavior:
+
+- report the slot as `conflicted`
+- never overwrite, move, delete, or relink the unmanaged entry
+- use `blocked_by_same_name_skill` when the blocker appears to be an unmanaged, project, or foreign same-name skill
+- materialize other safe slots where possible
+- expose the conflict in `status` and `doctor`
+
+Guided resolution is explicit and may include:
+
+- `adopt`: copy the unmanaged folder into the local source first, then optionally replace the target folder with a skillmgr symlink
+- keep/protect unmanaged: leave the existing folder in place and skip the managed skill for that target slot
+- explicit replacement: only after confirmation, preserve the unmanaged folder first, then create the managed symlink
+- rename/adapt: in a later slice, intentionally create a renamed variant and update machine-readable same-source references where possible
+
+None of these actions happen during scheduled sync.
+
+### 19.3 Dirty Team Skills
+
+If a symlinked team skill is edited locally, the underlying source becomes dirty. Scheduled or non-interactive `sync` blocks for that source or skill.
 
 The user can then choose through `resolve`:
 
@@ -835,7 +950,7 @@ The user can then choose through `resolve`:
 
 None of these actions happen automatically.
 
-### 19.3 `.local`
+### 19.4 `.local`
 
 A skill with a `.local` suffix or matching protection marker is private and protected.
 
@@ -848,25 +963,25 @@ Rules:
 
 `.local` is a legacy and protection marker, not the primary management mechanism. The primary mechanism for private skills is the local source.
 
-### 19.4 Orphans
+### 19.5 Orphans
 
 An orphan exists when a target symlink or state entry points to a source or skill that no longer exists.
 
 Skillmgr may remove its own orphaned symlinks, but it should make that visible in `status` and `doctor`.
 
-### 19.5 Catalog Drift
+### 19.6 Catalog Drift
 
 Catalog drift happens when an upstream multi-skill repository changes shape between pinned commits.
 
 Rules:
 
 - newly discovered unselected skills are informational
-- changed selected skills are handled through normal update review
+- changed selected skills are handled through normal source-refresh review
 - moved selected skills may be reconciled automatically only when stable IDs match
-- removed selected skills block auto-sync for that selection
-- missing declared dependencies warn by default and may block under stricter source policy
+- removed selected skills block scheduled sync for that selection
+- missing, unapproved, or unlinked declared dependencies block the dependent selected skill during preflight
 
-### 19.6 Instruction Block Drift
+### 19.7 Instruction Block Drift
 
 Instruction block drift happens when a managed instruction block in an agent instruction file differs from the resolved instruction pack content.
 
@@ -874,7 +989,7 @@ Rules:
 
 - unmarked content is never considered drift and must not be changed
 - interactive sync may offer to restore the managed block from source
-- auto-sync reports and blocks on drift instead of overwriting local edits
+- scheduled sync reports and blocks on drift instead of overwriting local edits
 - `resolve` may convert local block edits into a local instruction pack
 - orphaned managed blocks may be removed only when their markers are intact and the block is known in `state.toml`
 
@@ -887,32 +1002,47 @@ Principles:
 - no custom secret management
 - no generic settings sync or dotfile management
 - no silent floating updates of external sources
-- no silent enabling of new catalog skills
+- no silent first activation of new skill artifacts
 - no silent rewriting of unmarked agent instruction content
 - new direct user sources only through explicit action
-- trusted team sources may extend trust to declared external and catalog sources
+- team sources may declare external and catalog sources, but newly active skills still require approval unless covered by an existing approval rule
 - lockfile changes are reviewable
-- PR flows use existing GitHub auth
+- PR flows use existing `gh` authentication
 - project repositories must not automatically activate global skills
+
+Approval is modeled separately from source configuration. A source can be configured, reachable, and selected while one or more skills from it remain pending local approval. This mirrors package-manager safety models where newly introduced artifacts with local execution or instruction impact require acknowledgement before they become active.
+
+Approval may be granted at different scopes:
+
+- skill-level approval for one exact source-qualified skill
+- source-level approval for future active skills from a configured source
+- author-level approval for future active skills attributed to a known author
+- org-level approval for future active skills attributed to an organization or owner namespace
+
+When a team source, external source, catalog source, or source refresh introduces a skill that would become active for the first time, skillmgr checks these approval rules. If no rule applies, the skill is `pending_approval`. Interactive commands may offer to approve the skill or a broader origin. Scheduled sync must not approve anything and must not materialize unapproved skills. If an unapproved higher-priority skill would shadow an already approved lower-priority skill, the approved skill remains active until the new one is approved.
+
+Approval metadata should be stored locally in the skillmgr store and exposed through `status --json` and `doctor`. At minimum it should record the approval scope, the approved identifier, the granting user or local actor when known, and enough source metadata to explain why a later skill matched the approval.
 
 `doctor` should surface risks, for example:
 
 - source without lock
 - external source with floating ref and no pin
+- newly active skill pending approval
+- broad approval scopes such as source-, author-, or org-level approvals
 - selected catalog skill that disappeared upstream
 - selected catalog skill with missing declared dependency
 - managed instruction block drift
 - instruction topic overlap
 - malformed managed instruction block markers
 - broken symlink
-- unmanaged skill with name conflict
+- unmanaged skill with slot-name conflict
 - dirty team checkout
 
 ## 21. Project-Specific Skills
 
 Real project-specific skills remain in the code repository they belong to. Many agents already discover those project skills by themselves. Skillmgr should not automatically switch global user targets based on the current project.
 
-In the future, skillmgr may optionally detect project skills and show them informatively in `doctor` or `status`. That is not a core feature of this RFC.
+Skillmgr cannot know every future project context, especially for agents that discover nested project skills dynamically based on the current working directory or edited files. When skillmgr can see a same-name project skill during a concrete target scan, it should report the managed skill as `blocked_by_same_name_skill` with the blocker path. When it cannot see the project context, it makes no global guarantee.
 
 ## 22. Promotion Flow
 
@@ -932,7 +1062,7 @@ Expected behavior:
 - branch is created
 - files are copied into the team repository
 - commit is created
-- GitHub PR is created when auth is available
+- GitHub PR is created through `gh`
 
 ### 22.2 Dirty Team Edit to PR
 
@@ -960,7 +1090,6 @@ Warnings:
 - incomplete description
 - skill without stable ID
 - path-based catalog selection without stable skill ID
-- missing declared dependency under `warn` policy
 - instruction topic overlap
 - managed instruction block drift during interactive sync
 
@@ -968,38 +1097,42 @@ Blockers:
 
 - missing `SKILL.md`
 - broken source path
+- newly active skill without matching approval in scheduled or non-interactive sync
 - symlink target outside allowed store paths
 - unparseable config or lockfiles
-- dirty state during auto-sync
+- dirty state during scheduled or non-interactive sync
 - unresolved conflict in target path
 - selected catalog skill removed upstream
-- missing declared dependency under `block` policy
+- missing, unapproved, or unlinked required dependency in a selected skill's required closure
 - malformed managed instruction block markers
-- managed instruction block drift during auto-sync
+- managed instruction block drift during scheduled or non-interactive sync
 
 ## 24. Acceptance Criteria
 
 - `init` detects existing agent skill directories, shows unmanaged skills, and does not change them.
 - `init` detects existing agent instruction files and does not rewrite them.
 - Multiple sources resolve deterministically through user priority.
-- The user lock makes the resolved asset set reproducible.
+- The user lock records the resolved asset set; it is prescriptive for pinned sources and descriptive for tracking team sources.
 - Instruction packs are resolved as a separate asset type from skills.
 - Instruction packs render only into skillmgr-owned managed blocks.
 - Unmarked content in `AGENTS.md`, `CLAUDE.md`, or agent-specific instruction files is never rewritten.
 - Topic overlap between instruction packs is reported without semantic inference.
-- Auto-sync blocks on managed instruction block drift.
+- Scheduled sync blocks on managed instruction block drift.
 - Catalog sources allow selecting only specific skills from a multi-skill repository.
 - Catalog updates report new upstream skills without enabling them automatically.
 - Catalog updates block when a selected skill disappears upstream.
 - Catalog updates reconcile moved selected skills only when stable IDs match.
-- Missing declared dependencies are reported, and policy controls whether they warn or block.
-- Equal skill names are reported visibly as active/shadowed.
-- `sync --auto` updates clean sources and blocks dirty states without data loss.
+- Same-source and same-catalog required dependencies are expanded transitively; missing, unapproved, or unlinked required dependencies block dependent skills before materialization.
+- Same-source relative dependency names are supported as first-class references for external multi-skill repositories.
+- Equal managed slot names are reported visibly as active/unlinked, with `shadowed` as the reason.
+- `sync` updates clean tracking team sources, respects pinned sources, and blocks dirty states without data loss.
+- Newly active skills are not materialized until approved directly or covered by an approved source, author, or org.
 - Managed skills are materialized through symlinks.
+- Managed/unmanaged slot collisions are reported without touching the unmanaged entry, while other safe slots still materialize where possible.
 - Removed skills delete only skillmgr-owned symlinks, never real files.
 - `adopt` copies into the local source first and replaces the original folder only after confirmation.
 - `.local` skills remain protected.
-- `promote` creates a PR for local skills or dirty team edits against the explicitly selected team target.
+- `promote` uses `git` and authenticated `gh` directly to create a PR for local skills or dirty team edits against the explicitly selected team target.
 - `doctor` finds broken symlinks, missing auth, broken locks, and unknown targets.
 - macOS and Linux are fully supported.
 
@@ -1007,20 +1140,15 @@ Blockers:
 
 These points are intentionally not final and should be refined in follow-up RFCs or before implementation slices:
 
-- Exact `SKILL.md` frontmatter fields and naming conventions
+- Exact `SKILL.md` frontmatter fields beyond stable ID and slot name
 - Exact lockfile schema and compatibility rules for schema upgrades
 - Exact catalog inventory schema and move-detection heuristics
-- Exact instruction pack frontmatter fields and target-file mapping rules
+- Exact instruction pack frontmatter fields and target-file mapping UX
 - Whether instruction packs should be enabled explicitly by default or selected by source policy
 - How much block drift recovery should exist in the first instruction-pack release (V1.1)
-- Whether `requires` should use only stable skill IDs or also source-qualified names
-- Whether dependency policy should be global, per source, per catalog, or per selected skill
-- Which agent targets are implemented in v1
-- Whether local source changes should be committed automatically or always remain manual
-- How aliasing should work for shadowed skills when a user wants both variants in parallel
+- Whether a later explicit rename/adapt flow should help users keep two same-name variants in parallel
 - How detailed `resolve` must be in v1
-- Whether `promote` uses `gh` directly or an internal GitHub API abstraction
-- How notifications for blocked auto-syncs should work
+- How notifications for blocked scheduled syncs should work
 
 ## 26. Suggested V1 Slice
 
@@ -1040,18 +1168,20 @@ Although this RFC describes the full vision, the first implementation should be 
 - symlink materialization
 - deterministic multi-source resolution
 - user lockfile for the resolved asset set
+- local approval state for newly active team skills
 - warnings for shadowing and dirty state
 
 ### 26.2 Deferred to V1.1
 
-Catalog support and instruction packs are deferred to V1.1, not because they are unimportant, but because they depend on design decisions that are still open: the skill identity key (§12, §19.1) for catalog move-detection, and the instruction-pack target-file mapping (§13, §25). Shipping them before those decisions are made would bake in guesses. Pulling them out of V1 keeps the first slice focused on the riskiest engine code and resolves the tension between §25 (mapping rules still open) and the original V1 scope.
+Catalog support and instruction packs are deferred to V1.1, not because they are unimportant, but because they depend on schema and UX decisions that should not block the first slice: exact catalog inventory and move-detection rules, source-refresh review flow, and instruction-pack target-file mapping UX (§13, §25). Pulling them out of V1 keeps the first slice focused on the riskiest engine code and resolves the tension between §25 (mapping UX still open) and the original V1 scope.
 
-V1 still materializes skills and runs `adopt`, so it must already handle managed/unmanaged name collisions. V1 applies only the conservative rule already guaranteed in §15 (and RFC 0003 assumption A3): detect the collision, report it, and never overwrite an unmanaged directory. The *guided* resolution of such collisions (adopt, alias, or explicit replacement; §19) is a later refinement, not a V1 prerequisite. Name collision is therefore not a reason to defer catalog or instruction packs.
+V1 still materializes skills and runs `adopt`, so it must already handle managed/unmanaged slot collisions. V1 applies the conservative rule guaranteed in §15 and RFC 0003 D3: detect the collision, report it, never overwrite an unmanaged entry, and materialize other safe slots where possible. Guided resolution is explicit and may include adoption, keep/protect, replacement after preservation and confirmation, or rename/adapt in a later slice. Slot collision is therefore not a reason to defer catalog or instruction packs.
 
 - basic catalog source inspection and explicit selection
 - lockfile entries for selected catalog skills
-- warnings for new catalog skills and missing declared dependencies
+- warnings for new catalog skills and preflight blockers for missing declared dependencies
 - basic instruction pack discovery and managed block rendering
+- no dependency on native include/import support for instruction packs
 - warnings for instruction topic overlap
 
 ### 26.3 Suggested implementation sequence
@@ -1061,19 +1191,20 @@ The V1 scope is a feature set, not an order. A workable sequence:
 1. store layout, TOML config parsing, and `init`
 2. target registry and `target detect/link/unlink`
 3. inventory scan and single-source `sync` with symlink materialization
-4. deterministic multi-source resolution (priority, shadowing) and `status`
-5. `adopt` into the local source, with optional symlink replacement
-6. `doctor` diagnostics
+4. local approval checks for newly active skills
+5. deterministic multi-source resolution (priority, shadowing) and `status`
+6. `adopt` into the local source, with optional symlink replacement
+7. `doctor` diagnostics
 
 This sequence front-loads the store and materializer (the highest-risk filesystem code) and adds multi-source behavior only once a single source materializes safely.
 
 ### 26.4 Not in early slices
 
 - full automatic scheduler
-- `update` with lockfile PRs
+- `source refresh` with lockfile PRs
 - full `resolve` assistant
 - automatic catalog move reconciliation
-- strict dependency enforcement beyond warnings
+- cross-source automatic dependency installation
 - advanced instruction block drift recovery
 - full `promote` PR flow
 - all agent targets

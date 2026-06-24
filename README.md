@@ -64,7 +64,7 @@ Use it to:
 - keep shared team skills in Git
 - pin public skill collections to known commits
 - select only the skills you want from a multi-skill repository
-- sync Codex, Claude, Cursor, OpenCode, OpenClaw, Hermes, and generic folder-based agents
+- sync Codex, Claude Code, OpenClaw, Hermes, and generic folder-based agents, with room for experimental Cursor and OpenCode adapters
 - keep private user skills separate from team skills
 - adopt skills that agents created directly in their own folders
 - promote good local skills into a team repository through a PR-first workflow
@@ -109,7 +109,7 @@ You may have:
 
 Skillmgr resolves them in priority order and shows what happened.
 
-If two sources provide `copy-editing`, one wins and the other is shown as shadowed. If a local skill overrides a team skill, that is visible. If a selected public skill disappears upstream, auto-sync stops instead of silently removing the skill from your agents.
+If two sources provide `copy-editing`, one wins and the other is shown as unlinked because it is shadowed by the higher-priority source. If a local skill overrides a team skill, that is visible. If a selected public skill disappears upstream, scheduled sync stops instead of silently removing the skill from your agents.
 
 Quiet magic is where trust goes to die. Skillmgr should make the state obvious.
 
@@ -135,7 +135,7 @@ When the upstream catalog changes, Skillmgr tells you what changed:
 - selected skills disappeared
 - selected skills now require other skills
 
-New upstream skills are not enabled behind your back. Removed selected skills block auto-sync until someone makes a decision.
+New upstream skills are not enabled behind your back. Removed selected skills block scheduled sync until someone makes a decision.
 
 ## Instruction packs, not settings sync
 
@@ -163,6 +163,8 @@ Prefer TypeScript for application code.
 
 Everything outside the block belongs to the user or project. Skillmgr does not touch it.
 
+Native include/import support differs too much between agents to be the core contract. Skillmgr's V1.1 instruction-pack slice should use managed blocks as the portable baseline and only use native includes later for targets where the adapter has verified support.
+
 ## Where other approaches stop
 
 There are useful tools for installing skills into a local agent setup. They are good for getting something onto one machine.
@@ -189,9 +191,9 @@ It should never:
 
 - delete unmanaged files
 - rewrite unmarked instruction content
-- silently enable new public skills
+- silently enable newly active skills
 - float external dependencies without a lockfile
-- overwrite dirty team checkouts during auto-sync
+- overwrite dirty team checkouts during scheduled sync
 - replace a real folder with a symlink without explicit confirmation
 
 When in doubt, it stops and explains what needs a human decision.
