@@ -1,6 +1,6 @@
 # M05: Materializer and Sync Loop
 
-Status: todo  
+Status: done
 Target: V1  
 Depends on: M02, M04, RFC 0002, RFC 0003  
 
@@ -50,8 +50,22 @@ Implement the first safe end-to-end local sync loop: inventory -> resolve -> pla
 cargo fmt --check
 cargo test materialize
 cargo test sync
+cargo test
+cargo clippy --all-targets --all-features -- -D warnings
 git diff --check
 ```
+
+## Completion Notes
+
+- Added a materialization reconciliation plan for create, relink, remove, drop-record, conflict, and no-op operations.
+- Implemented `skillmgr sync` for the current local/team resolution model without source refresh.
+- Materialized managed skills as directory-level symlinks into configured target directories.
+- Made `sync --dry-run` use the same plan path while writing nothing.
+- Blocked unmanaged real entries and foreign symlinks instead of overwriting them.
+- Recorded owned symlinks in `state.toml` and made repeated sync idempotent.
+- Added unit tests for symlink creation, unmanaged real-directory conflict, and idempotence.
+- Added command-level tests for dry-run, symlink creation, and second-run no-op reporting.
+- Validation passed on 2026-06-24.
 
 ## Suggested Issue Split
 

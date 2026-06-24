@@ -24,12 +24,12 @@ fn stubbed_command_should_fail_with_clear_message() {
     let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
 
     command
-        .arg("sync")
+        .arg("doctor")
         .assert()
         .failure()
         .code(1)
         .stderr(predicate::str::contains(
-            "command `sync` is not implemented yet",
+            "command `doctor` is not implemented yet",
         ));
 }
 
@@ -184,4 +184,92 @@ fn target_unlink_should_keep_target_directory() {
         .stdout(predicate::str::contains("unlinked target generic"));
 
     assert!(target.is_dir());
+}
+
+#[test]
+fn sync_dry_run_should_not_create_symlink() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_skill_and_target(&store, &target);
+    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .args(["--dry-run", "sync"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("planned"));
+
+    assert!(!target.join("review").exists());
+}
+
+#[test]
+fn sync_should_create_directory_symlink() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_skill_and_target(&store, &target);
+    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("applied"));
+
+    assert!(
+        std::fs::symlink_metadata(target.join("review"))
+            .expect("link should exist")
+            .file_type()
+            .is_symlink()
+    );
+}
+
+#[test]
+fn sync_should_report_existing_on_second_run() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_skill_and_target(&store, &target);
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("existing"));
+}
+
+fn setup_store_with_skill_and_target(store: &std::path::Path, target: &std::path::Path) {
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(store)
+        .arg("init")
+        .assert()
+        .success();
+    let skill_dir = store.join("local/skills/review");
+    std::fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+    std::fs::write(skill_dir.join("SKILL.md"), "# Review\n").expect("skill should be written");
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(store)
+        .args(["target", "link", "generic"])
+        .arg(target)
+        .assert()
+        .success();
 }

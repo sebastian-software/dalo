@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use clap::{Args, CommandFactory, Parser, Subcommand};
 
 use crate::error::{SkillmgrError, SkillmgrResult};
+use crate::materialize;
 use crate::status;
 use crate::store;
 use crate::target;
@@ -241,6 +242,7 @@ pub fn run_cli(cli: Cli) -> SkillmgrResult<()> {
         Command::Init => run_init(&options),
         Command::Target(command) => run_target(&options, command),
         Command::Status => run_status(&options),
+        Command::Sync => run_sync(&options),
         command => Err(SkillmgrError::NotImplemented {
             command: command.name().to_owned(),
         }),
@@ -266,6 +268,20 @@ fn run_status(options: &GlobalOptions) -> SkillmgrResult<()> {
         print_json(&report)?;
     } else {
         status::print_status_report(&report);
+    }
+
+    Ok(())
+}
+
+fn run_sync(options: &GlobalOptions) -> SkillmgrResult<()> {
+    let status_report = status::build_status_report(&options.store)?;
+    let paths = store::StorePaths::new(options.store.clone());
+    let report = materialize::materialize(&paths, &status_report.resolution, options.dry_run)?;
+
+    if options.json {
+        print_json(&report)?;
+    } else {
+        status::print_sync_report(&report);
     }
 
     Ok(())
@@ -360,11 +376,11 @@ mod tests {
             dry_run: false,
             no_color: false,
             verbose: 0,
-            command: Some(Command::Sync),
+            command: Some(Command::Doctor),
         };
 
-        let error = run_cli(cli).expect_err("sync should be stubbed");
+        let error = run_cli(cli).expect_err("doctor should be stubbed");
 
-        assert_eq!(error.to_string(), "command `sync` is not implemented yet");
+        assert_eq!(error.to_string(), "command `doctor` is not implemented yet");
     }
 }

@@ -6,6 +6,7 @@ use serde::Serialize;
 
 use crate::error::SkillmgrResult;
 use crate::inventory::{self, InventoryWarning};
+use crate::materialize::SyncReport;
 use crate::resolver::{self, Resolution, ResolutionInput};
 use crate::source::SourceKind;
 use crate::store::{self, InitReport, StorePaths};
@@ -207,6 +208,29 @@ pub fn print_status_report(report: &StatusReport) {
                 warning.message
             );
         }
+    }
+}
+
+/// Print a human-readable sync report.
+pub fn print_sync_report(report: &SyncReport) {
+    println!("skillmgr store: {}", report.store.display());
+    for operation in &report.operations {
+        let desired = operation
+            .desired_path
+            .as_ref()
+            .map_or(String::new(), |path| format!(" -> {}", path.display()));
+        let reason = operation
+            .reason
+            .as_ref()
+            .map_or(String::new(), |reason| format!(" ({reason})"));
+        println!(
+            "{:<8} {:<10} {}{}{}",
+            operation.status.as_str(),
+            operation.kind.as_str(),
+            operation.link_path.display(),
+            desired,
+            reason
+        );
     }
 }
 
