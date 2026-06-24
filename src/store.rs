@@ -78,6 +78,9 @@ pub struct StateFile {
     pub schema_version: u32,
     /// Configured logical targets.
     pub targets: Vec<TargetState>,
+    /// Canonical materialization directories derived from logical targets.
+    #[serde(default)]
+    pub materialization_dirs: Vec<MaterializationDirState>,
     /// Recorded owned skill symlinks.
     pub owned_skills: Vec<OwnedSkillState>,
 }
@@ -89,8 +92,19 @@ pub struct TargetState {
     pub id: String,
     /// Target directory.
     pub path: PathBuf,
+    /// Canonical target directory used for de-duplication.
+    pub canonical_path: PathBuf,
     /// Whether the target is enabled.
     pub enabled: bool,
+}
+
+/// One physical materialization directory shared by one or more logical targets.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MaterializationDirState {
+    /// Canonical physical directory.
+    pub path: PathBuf,
+    /// Logical target IDs that use this directory.
+    pub logical_targets: Vec<String>,
 }
 
 /// Recorded owned skill symlink.
@@ -113,6 +127,7 @@ impl StateFile {
         Self {
             schema_version: STATE_SCHEMA_VERSION,
             targets: Vec::new(),
+            materialization_dirs: Vec::new(),
             owned_skills: Vec::new(),
         }
     }
@@ -227,7 +242,7 @@ pub fn resolve_store_path(explicit: Option<&Path>) -> SkillmgrResult<PathBuf> {
         home_dir()?.join(DEFAULT_STORE_DIR)
     };
 
-    expand_tilde(&candidate)
+    expand_user_path(&candidate)
 }
 
 /// Initialize the skillmgr store.
@@ -275,6 +290,29 @@ pub fn init_store(store_root: PathBuf, dry_run: bool) -> SkillmgrResult<InitRepo
         dry_run,
         operations,
     })
+}
+
+/// Read the initialized store state file.
+pub fn read_state(paths: &StorePaths) -> SkillmgrResult<StateFile> {
+    if !paths.state_file.exists() {
+        return Err(SkillmgrError::StoreNotInitialized {
+            path: paths.root.clone(),
+        });
+    }
+
+    let content = fs::read_to_string(&paths.state_file)?;
+    Ok(toml::from_str(&content)?)
+}
+
+/// Write the store state file atomically.
+pub fn write_state(paths: &StorePaths, state: &StateFile) -> SkillmgrResult<()> {
+    if !paths.root.exists() {
+        return Err(SkillmgrError::StoreNotInitialized {
+            path: paths.root.clone(),
+        });
+    }
+
+    write_toml_atomic(&paths.state_file, state)
 }
 
 fn ensure_dir(path: &Path, dry_run: bool) -> SkillmgrResult<InitOperation> {
@@ -374,7 +412,8 @@ fn validate_store_path(path: &Path) -> SkillmgrResult<()> {
     Ok(())
 }
 
-fn expand_tilde(path: &Path) -> SkillmgrResult<PathBuf> {
+/// Expand a leading `~` in a user-provided path.
+pub fn expand_user_path(path: &Path) -> SkillmgrResult<PathBuf> {
     let path_string = path.to_string_lossy();
 
     if path_string == "~" {

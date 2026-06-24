@@ -5,6 +5,7 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 use crate::error::{SkillmgrError, SkillmgrResult};
 use crate::status;
 use crate::store;
+use crate::target;
 
 /// Parsed command-line arguments.
 #[derive(Debug, Parser)]
@@ -120,9 +121,19 @@ pub enum TargetSubcommand {
     /// Detect known agent targets.
     Detect,
     /// Link a target by ID.
-    Link(TargetIdArg),
+    Link(TargetLinkArgs),
     /// Unlink a target by ID.
     Unlink(TargetIdArg),
+}
+
+/// Target link arguments.
+#[derive(Debug, Args)]
+pub struct TargetLinkArgs {
+    /// Target ID, such as `codex`, `claude`, `openclaw`, `hermes`, or `generic`.
+    pub target: String,
+
+    /// Optional target path. Required for `generic`.
+    pub path: Option<PathBuf>,
 }
 
 /// Target ID argument.
@@ -228,6 +239,7 @@ pub fn run_cli(cli: Cli) -> SkillmgrResult<()> {
 
     match command {
         Command::Init => run_init(&options),
+        Command::Target(command) => run_target(&options, command),
         command => Err(SkillmgrError::NotImplemented {
             command: command.name().to_owned(),
         }),
@@ -238,12 +250,57 @@ fn run_init(options: &GlobalOptions) -> SkillmgrResult<()> {
     let report = store::init_store(options.store.clone(), options.dry_run)?;
 
     if options.json {
-        serde_json::to_writer_pretty(std::io::stdout(), &report)?;
-        println!();
+        print_json(&report)?;
     } else {
         status::print_init_report(&report);
     }
 
+    Ok(())
+}
+
+fn run_target(options: &GlobalOptions, command: TargetCommand) -> SkillmgrResult<()> {
+    match command.command {
+        TargetSubcommand::Detect => {
+            let report = target::detect_targets(&options.store)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                status::print_target_detect_report(&report);
+            }
+            Ok(())
+        }
+        TargetSubcommand::Link(args) => {
+            let report = target::link_target(
+                &options.store,
+                &args.target,
+                args.path.as_deref(),
+                options.dry_run,
+            )?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                status::print_target_link_report(&report);
+            }
+            Ok(())
+        }
+        TargetSubcommand::Unlink(args) => {
+            let report = target::unlink_target(&options.store, &args.target, options.dry_run)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                status::print_target_unlink_report(&report);
+            }
+            Ok(())
+        }
+    }
+}
+
+fn print_json<T>(value: &T) -> SkillmgrResult<()>
+where
+    T: serde::Serialize,
+{
+    serde_json::to_writer_pretty(std::io::stdout(), value)?;
+    println!();
     Ok(())
 }
 

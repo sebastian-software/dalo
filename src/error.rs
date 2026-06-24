@@ -41,6 +41,31 @@ pub enum SkillmgrError {
     #[error(transparent)]
     Json(#[from] serde_json::Error),
 
+    /// TOML deserialization failed.
+    #[error(transparent)]
+    TomlDeserialize(#[from] toml::de::Error),
+
+    /// The store has not been initialized yet.
+    #[error("skillmgr store is not initialized at `{path}`; run `skillmgr init` first")]
+    StoreNotInitialized {
+        /// Store path.
+        path: PathBuf,
+    },
+
+    /// Target ID is unknown.
+    #[error("unknown target `{target}`")]
+    UnknownTarget {
+        /// Target ID.
+        target: String,
+    },
+
+    /// Target requires an explicit path.
+    #[error("target `{target}` requires an explicit path")]
+    TargetPathRequired {
+        /// Target ID.
+        target: String,
+    },
+
     /// A system command failed.
     #[error("command `{program} {args}` failed in `{cwd}` with status {status}: {stderr}")]
     CommandFailed {
@@ -67,6 +92,10 @@ impl SkillmgrError {
     pub fn exit_code(&self) -> SkillmgrExitCode {
         match self {
             Self::NotImplemented { .. } => SkillmgrExitCode::ExpectedFailure,
+            Self::StoreNotInitialized { .. }
+            | Self::UnknownTarget { .. }
+            | Self::TargetPathRequired { .. }
+            | Self::TomlDeserialize(_) => SkillmgrExitCode::ExpectedFailure,
             Self::StorePath { .. } | Self::InvalidStorePath { .. } | Self::CommandFailed { .. } => {
                 SkillmgrExitCode::EnvironmentProblem
             }

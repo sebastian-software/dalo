@@ -71,3 +71,91 @@ fn init_should_create_store_layout() {
     assert!(store.join("approvals.toml").is_file());
     assert!(store.join("local/.git").is_dir());
 }
+
+#[test]
+fn target_detect_should_report_known_targets() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "target", "detect"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"id\": \"codex\""))
+        .stdout(predicate::str::contains("\"id\": \"hermes\""))
+        .stdout(predicate::str::contains("\"id\": \"opencode\""));
+}
+
+#[test]
+fn target_link_generic_should_create_directory_and_update_state() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "link", "generic"])
+        .arg(&target)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("linked target generic"));
+
+    assert!(target.is_dir());
+    assert!(
+        std::fs::read_to_string(store.join("state.toml"))
+            .expect("state should be readable")
+            .contains("generic")
+    );
+}
+
+#[test]
+fn target_unlink_should_keep_target_directory() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "link", "generic"])
+        .arg(&target)
+        .assert()
+        .success();
+    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "unlink", "generic"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("unlinked target generic"));
+
+    assert!(target.is_dir());
+}
