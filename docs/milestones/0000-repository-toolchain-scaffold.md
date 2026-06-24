@@ -1,6 +1,6 @@
 # M00: Repository and Toolchain Scaffold
 
-Status: todo  
+Status: done
 Target: V1  
 Depends on: RFC 0002  
 
@@ -59,9 +59,18 @@ Create the Rust project foundation for a single `skillmgr` binary backed by a re
 ```sh
 cargo fmt --check
 cargo test
+cargo clippy --all-targets --all-features -- -D warnings
 cargo run -- --help
 git diff --check
 ```
+
+## Completion Notes
+
+- Added the Rust 2024 Cargo package with a stable toolchain pin.
+- Added the reusable library target, `skillmgr` binary, and RFC 0002 module skeleton.
+- Added the planned CLI command groups and global flags with explicit not-implemented errors for stub commands.
+- Added unit and command-level tests for help output and stubbed command behavior.
+- Validation passed on 2026-06-24.
 
 ## Suggested Issue Split
 

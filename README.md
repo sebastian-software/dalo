@@ -251,11 +251,24 @@ Later work includes:
 - additional verified agent adapters
 - forge adapters beyond GitHub
 
+## Development
+
+Skillmgr is implemented as a Rust CLI with a reusable library core.
+
+```sh
+cargo fmt --check
+cargo test
+cargo clippy --all-targets --all-features -- -D warnings
+cargo run -- --help
+```
+
+The current implementation has the Rust project scaffold and CLI shell in place. Product behavior is being implemented milestone by milestone from [the implementation plan](docs/milestones/README.md).
+
 ## Project status
 
-Skillmgr is currently in the RFC and early implementation planning phase.
+Skillmgr is currently in early implementation.
 
-The product direction, resolver model, source terminology, target strategy, approval model, and V1/V1.1 boundary are being written down before code is built. The README describes the intended product, while the RFCs define the implementation contract.
+The product direction, resolver model, source terminology, target strategy, approval model, and V1/V1.1 boundary are defined in RFCs. The README describes the intended product, while the RFCs and milestone plan define the implementation contract.
 
 ## Design docs
 

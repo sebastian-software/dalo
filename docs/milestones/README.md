@@ -11,7 +11,7 @@ Milestones are intentionally small and stable. Progress is tracked by changing t
 - `todo`: not started
 - `in_progress`: actively being implemented
 - `blocked`: cannot move without a decision or dependency
-- `done`: implemented, validated, and merged
+- `done`: implemented, validated, and committed
 
 ## Current Plan
 
