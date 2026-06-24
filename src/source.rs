@@ -4,6 +4,10 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::error::{SkillmgrError, SkillmgrResult};
+use crate::git;
+use crate::store::{self, StorePaths};
+
 /// Source kind supported by the V1 config schema.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -38,4 +42,129 @@ pub struct SourceConfig {
     /// Update policy, such as `track`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub update_policy: Option<String>,
+}
+
+/// Source add report.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SourceAddReport {
+    /// Added source.
+    pub source: SourceConfig,
+}
+
+/// Source list report.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SourceListReport {
+    /// Configured sources.
+    pub sources: Vec<SourceConfig>,
+}
+
+/// Source priority report.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SourcePriorityReport {
+    /// Updated source.
+    pub source: SourceConfig,
+}
+
+/// Add a team source and clone it into the store.
+pub fn add_team_source(paths: &StorePaths, id: &str, url: &str) -> SkillmgrResult<SourceAddReport> {
+    let mut config = store::read_config(paths)?;
+    if config.sources.iter().any(|source| source.id == id) {
+        return Err(SkillmgrError::SourceAlreadyExists {
+            source_id: id.to_owned(),
+        });
+    }
+
+    let checkout = paths.sources_dir.join(id).join("checkout");
+    if checkout.exists() {
+        return Err(SkillmgrError::InvalidStorePath {
+            path: checkout,
+            reason: "source checkout path already exists".to_owned(),
+        });
+    }
+    if let Some(parent) = checkout.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    git::clone_repo(url, &checkout)?;
+
+    let priority = config
+        .sources
+        .iter()
+        .map(|source| source.priority)
+        .max()
+        .unwrap_or(0)
+        + 10;
+    let source = SourceConfig {
+        id: id.to_owned(),
+        kind: SourceKind::Team,
+        path: checkout,
+        priority,
+        enabled: true,
+        trusted: true,
+        url: Some(url.to_owned()),
+        branch: None,
+        update_policy: Some("track".to_owned()),
+    };
+    config.sources.push(source.clone());
+    config.sources.sort_by(|left, right| {
+        left.priority
+            .cmp(&right.priority)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    store::write_config(paths, &config)?;
+
+    Ok(SourceAddReport { source })
+}
+
+/// List configured sources.
+pub fn list_sources(paths: &StorePaths) -> SkillmgrResult<SourceListReport> {
+    let mut sources = store::read_config(paths)?.sources;
+    sources.sort_by(|left, right| {
+        left.priority
+            .cmp(&right.priority)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    Ok(SourceListReport { sources })
+}
+
+/// Update source priority.
+pub fn set_source_priority(
+    paths: &StorePaths,
+    id: &str,
+    priority: i32,
+) -> SkillmgrResult<SourcePriorityReport> {
+    let mut config = store::read_config(paths)?;
+    let Some(source) = config.sources.iter_mut().find(|source| source.id == id) else {
+        return Err(SkillmgrError::UnknownSource {
+            source_id: id.to_owned(),
+        });
+    };
+    source.priority = priority;
+    let source = source.clone();
+    config.sources.sort_by(|left, right| {
+        left.priority
+            .cmp(&right.priority)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    store::write_config(paths, &config)?;
+
+    Ok(SourcePriorityReport { source })
+}
+
+/// Refresh clean tracking team sources before sync.
+pub fn refresh_tracking_team_sources(paths: &StorePaths) -> SkillmgrResult<()> {
+    let config = store::read_config(paths)?;
+    for source in config
+        .sources
+        .iter()
+        .filter(|source| source.enabled && source.kind == SourceKind::Team)
+    {
+        if git::is_dirty(&source.path)? {
+            return Err(SkillmgrError::DirtySource {
+                source_id: source.id.clone(),
+            });
+        }
+        git::pull_ff_only(&source.path)?;
+    }
+
+    Ok(())
 }

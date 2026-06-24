@@ -66,6 +66,34 @@ pub enum SkillmgrError {
         target: String,
     },
 
+    /// A source ID already exists.
+    #[error("source `{source_id}` already exists")]
+    SourceAlreadyExists {
+        /// Source ID.
+        source_id: String,
+    },
+
+    /// A source ID does not exist.
+    #[error("unknown source `{source_id}`")]
+    UnknownSource {
+        /// Source ID.
+        source_id: String,
+    },
+
+    /// A source has local changes that block the operation.
+    #[error("source `{source_id}` has local changes; resolve or commit them before syncing")]
+    DirtySource {
+        /// Source ID.
+        source_id: String,
+    },
+
+    /// Another skillmgr operation is already running.
+    #[error("another skillmgr operation is running (lock `{path}`)")]
+    StoreLocked {
+        /// Lock file path.
+        path: PathBuf,
+    },
+
     /// A system command failed.
     #[error("command `{program} {args}` failed in `{cwd}` with status {status}: {stderr}")]
     CommandFailed {
@@ -95,7 +123,10 @@ impl SkillmgrError {
             Self::StoreNotInitialized { .. }
             | Self::UnknownTarget { .. }
             | Self::TargetPathRequired { .. }
+            | Self::SourceAlreadyExists { .. }
+            | Self::UnknownSource { .. }
             | Self::TomlDeserialize(_) => SkillmgrExitCode::ExpectedFailure,
+            Self::DirtySource { .. } | Self::StoreLocked { .. } => SkillmgrExitCode::UnsafeState,
             Self::StorePath { .. } | Self::InvalidStorePath { .. } | Self::CommandFailed { .. } => {
                 SkillmgrExitCode::EnvironmentProblem
             }

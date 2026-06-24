@@ -4,6 +4,7 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 
 use crate::error::{SkillmgrError, SkillmgrResult};
 use crate::materialize;
+use crate::source;
 use crate::status;
 use crate::store;
 use crate::target;
@@ -241,6 +242,7 @@ pub fn run_cli(cli: Cli) -> SkillmgrResult<()> {
     match command {
         Command::Init => run_init(&options),
         Command::Target(command) => run_target(&options, command),
+        Command::Source(command) => run_source(&options, command),
         Command::Status => run_status(&options),
         Command::Sync => run_sync(&options),
         command => Err(SkillmgrError::NotImplemented {
@@ -274,8 +276,16 @@ fn run_status(options: &GlobalOptions) -> SkillmgrResult<()> {
 }
 
 fn run_sync(options: &GlobalOptions) -> SkillmgrResult<()> {
-    let status_report = status::build_status_report(&options.store)?;
     let paths = store::StorePaths::new(options.store.clone());
+    let _lock = if options.dry_run {
+        None
+    } else {
+        Some(store::StoreLock::acquire(&paths)?)
+    };
+    if !options.dry_run {
+        source::refresh_tracking_team_sources(&paths)?;
+    }
+    let status_report = status::build_status_report(&options.store)?;
     let report = materialize::materialize(&paths, &status_report.resolution, options.dry_run)?;
 
     if options.json {
@@ -285,6 +295,41 @@ fn run_sync(options: &GlobalOptions) -> SkillmgrResult<()> {
     }
 
     Ok(())
+}
+
+fn run_source(options: &GlobalOptions, command: SourceCommand) -> SkillmgrResult<()> {
+    let paths = store::StorePaths::new(options.store.clone());
+    match command.command {
+        SourceSubcommand::Add(args) => {
+            let _lock = store::StoreLock::acquire(&paths)?;
+            let report = source::add_team_source(&paths, &args.id, &args.location)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                status::print_source_add_report(&report);
+            }
+            Ok(())
+        }
+        SourceSubcommand::List => {
+            let report = source::list_sources(&paths)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                status::print_source_list_report(&report);
+            }
+            Ok(())
+        }
+        SourceSubcommand::Priority(args) => {
+            let _lock = store::StoreLock::acquire(&paths)?;
+            let report = source::set_source_priority(&paths, &args.id, args.priority)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                status::print_source_priority_report(&report);
+            }
+            Ok(())
+        }
+    }
 }
 
 fn run_target(options: &GlobalOptions, command: TargetCommand) -> SkillmgrResult<()> {
@@ -299,6 +344,12 @@ fn run_target(options: &GlobalOptions, command: TargetCommand) -> SkillmgrResult
             Ok(())
         }
         TargetSubcommand::Link(args) => {
+            let paths = store::StorePaths::new(options.store.clone());
+            let _lock = if options.dry_run {
+                None
+            } else {
+                Some(store::StoreLock::acquire(&paths)?)
+            };
             let report = target::link_target(
                 &options.store,
                 &args.target,
@@ -313,6 +364,12 @@ fn run_target(options: &GlobalOptions, command: TargetCommand) -> SkillmgrResult
             Ok(())
         }
         TargetSubcommand::Unlink(args) => {
+            let paths = store::StorePaths::new(options.store.clone());
+            let _lock = if options.dry_run {
+                None
+            } else {
+                Some(store::StoreLock::acquire(&paths)?)
+            };
             let report = target::unlink_target(&options.store, &args.target, options.dry_run)?;
             if options.json {
                 print_json(&report)?;

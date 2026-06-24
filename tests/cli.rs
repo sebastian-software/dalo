@@ -253,6 +253,114 @@ fn sync_should_report_existing_on_second_run() {
         .stdout(predicate::str::contains("existing"));
 }
 
+#[test]
+fn source_add_should_clone_team_source_into_store() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo(&repo);
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "company"])
+        .arg(&repo)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("added source company"));
+
+    assert!(store.join("sources/company/checkout/.git").is_dir());
+}
+
+#[test]
+fn source_priority_should_update_config() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo(&repo);
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "company"])
+        .arg(&repo)
+        .assert()
+        .success();
+    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "priority", "company", "3"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("priority=3"));
+}
+
+#[test]
+fn sync_should_block_dirty_team_source() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo(&repo);
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "company"])
+        .arg(&repo)
+        .assert()
+        .success();
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "link", "generic"])
+        .arg(&target)
+        .assert()
+        .success();
+    std::fs::write(
+        store.join("sources/company/checkout/skills/team/SKILL.md"),
+        "# Dirty\n",
+    )
+    .expect("checkout should be dirtied");
+    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .failure()
+        .code(3)
+        .stderr(predicate::str::contains(
+            "source `company` has local changes",
+        ));
+}
+
 fn setup_store_with_skill_and_target(store: &std::path::Path, target: &std::path::Path) {
     Command::cargo_bin("skillmgr")
         .expect("binary should build")
@@ -272,4 +380,35 @@ fn setup_store_with_skill_and_target(store: &std::path::Path, target: &std::path
         .arg(target)
         .assert()
         .success();
+}
+
+fn create_git_skill_repo(repo: &std::path::Path) {
+    std::fs::create_dir_all(repo.join("skills/team")).expect("repo dirs should be created");
+    std::fs::write(repo.join("skills/team/SKILL.md"), "# Team\n").expect("skill should be written");
+    run_git(repo, &["init", "-q"]);
+    run_git(repo, &["add", "."]);
+    run_git(
+        repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "initial",
+            "-q",
+        ],
+    );
+}
+
+fn run_git(repo: &std::path::Path, args: &[&str]) {
+    let status = std::process::Command::new("git")
+        .args(args)
+        .current_dir(repo)
+        .status()
+        .expect("git should run");
+    assert!(status.success());
 }

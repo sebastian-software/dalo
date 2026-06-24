@@ -2,8 +2,11 @@
 
 use std::env;
 use std::fs;
+use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::thread;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
@@ -38,6 +41,8 @@ pub struct StorePaths {
     pub state_file: PathBuf,
     /// Local approval state path.
     pub approvals_file: PathBuf,
+    /// Coarse store lock path.
+    pub lock_guard_file: PathBuf,
     /// Local source root.
     pub local_dir: PathBuf,
     /// Local skills directory.
@@ -61,6 +66,7 @@ impl StorePaths {
             lock_file: root.join("lock.toml"),
             state_file: root.join("state.toml"),
             approvals_file: root.join("approvals.toml"),
+            lock_guard_file: root.join(".lock"),
             local_skills_dir: local_dir.join("skills"),
             local_instructions_dir: local_dir.join("instructions"),
             sources_dir: root.join("sources"),
@@ -316,6 +322,17 @@ pub fn read_config(paths: &StorePaths) -> SkillmgrResult<UserConfig> {
     Ok(toml::from_str(&content)?)
 }
 
+/// Write the user config atomically.
+pub fn write_config(paths: &StorePaths, config: &UserConfig) -> SkillmgrResult<()> {
+    if !paths.root.exists() {
+        return Err(SkillmgrError::StoreNotInitialized {
+            path: paths.root.clone(),
+        });
+    }
+
+    write_toml_atomic(&paths.config_file, config)
+}
+
 /// Read local approvals.
 pub fn read_approvals(paths: &StorePaths) -> SkillmgrResult<ApprovalsFile> {
     if !paths.approvals_file.exists() {
@@ -337,6 +354,62 @@ pub fn write_state(paths: &StorePaths, state: &StateFile) -> SkillmgrResult<()> 
     }
 
     write_toml_atomic(&paths.state_file, state)
+}
+
+/// Exclusive store lock guard for mutating commands.
+#[derive(Debug)]
+pub struct StoreLock {
+    path: PathBuf,
+}
+
+impl StoreLock {
+    /// Acquire the store lock with a short interactive retry window.
+    pub fn acquire(paths: &StorePaths) -> SkillmgrResult<Self> {
+        let delays = [
+            Duration::from_millis(0),
+            Duration::from_millis(100),
+            Duration::from_millis(250),
+            Duration::from_millis(500),
+            Duration::from_secs(1),
+            Duration::from_secs(2),
+        ];
+
+        Self::acquire_with_delays(paths, &delays)
+    }
+
+    fn acquire_with_delays(paths: &StorePaths, delays: &[Duration]) -> SkillmgrResult<Self> {
+        for delay in delays {
+            if !delay.is_zero() {
+                thread::sleep(*delay);
+            }
+
+            match try_create_lock(&paths.lock_guard_file) {
+                Ok(()) => {
+                    return Ok(Self {
+                        path: paths.lock_guard_file.clone(),
+                    });
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+
+        Err(SkillmgrError::StoreLocked {
+            path: paths.lock_guard_file.clone(),
+        })
+    }
+}
+
+impl Drop for StoreLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
+fn try_create_lock(path: &Path) -> std::io::Result<()> {
+    let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
+    writeln!(file, "pid={}", std::process::id())?;
+    Ok(())
 }
 
 fn ensure_dir(path: &Path, dry_run: bool) -> SkillmgrResult<InitOperation> {
@@ -519,5 +592,19 @@ mod tests {
                 .iter()
                 .all(|operation| { matches!(operation.status, InitOperationStatus::Existing) })
         );
+    }
+
+    #[test]
+    fn store_lock_should_fail_when_already_held() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root);
+        let _lock = StoreLock::acquire(&paths).expect("first lock should be acquired");
+
+        let error = StoreLock::acquire_with_delays(&paths, &[Duration::from_millis(0)])
+            .expect_err("second lock should fail");
+
+        assert!(matches!(error, SkillmgrError::StoreLocked { .. }));
     }
 }

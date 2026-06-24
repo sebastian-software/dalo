@@ -8,7 +8,7 @@ use crate::error::SkillmgrResult;
 use crate::inventory::{self, InventoryWarning};
 use crate::materialize::SyncReport;
 use crate::resolver::{self, Resolution, ResolutionInput};
-use crate::source::SourceKind;
+use crate::source::{SourceAddReport, SourceKind, SourceListReport, SourcePriorityReport};
 use crate::store::{self, InitReport, StorePaths};
 use crate::target::{TargetDetectReport, TargetLinkReport, TargetUnlinkReport};
 
@@ -232,6 +232,37 @@ pub fn print_sync_report(report: &SyncReport) {
             reason
         );
     }
+}
+
+/// Print a human-readable source add report.
+pub fn print_source_add_report(report: &SourceAddReport) {
+    println!(
+        "added source {} -> {}",
+        report.source.id,
+        report.source.path.display()
+    );
+}
+
+/// Print a human-readable source list report.
+pub fn print_source_list_report(report: &SourceListReport) {
+    for source in &report.sources {
+        println!(
+            "{:<12} {:<5?} priority={:<4} enabled={} {}",
+            source.id,
+            source.kind,
+            source.priority,
+            source.enabled,
+            source.path.display()
+        );
+    }
+}
+
+/// Print a human-readable source priority report.
+pub fn print_source_priority_report(report: &SourcePriorityReport) {
+    println!(
+        "updated source {} priority={}",
+        report.source.id, report.source.priority
+    );
 }
 
 /// Print a human-readable target detection report.
