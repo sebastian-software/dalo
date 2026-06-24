@@ -259,6 +259,7 @@ The product direction, resolver model, source terminology, target strategy, appr
 
 ## Design docs
 
+- [Implementation milestones](docs/milestones/README.md)
 - [RFC 0001: Skillmgr vision](docs/rfcs/0001-skillmgr-vision.md)
 - [RFC 0002: Technical architecture](docs/rfcs/0002-technical-architecture.md)
 - [RFC 0003: Resolution engine](docs/rfcs/0003-resolution-engine.md)
