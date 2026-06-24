@@ -1,6 +1,6 @@
 # M08: Adopt and Minimal Resolve
 
-Status: todo  
+Status: done
 Target: V1  
 Depends on: M07, RFC 0001, RFC 0003  
 
@@ -42,10 +42,25 @@ Support the local development loop: detect unmanaged skills, copy them into the 
 
 ```sh
 cargo fmt --check
-cargo test adopt resolve
+cargo test
+cargo clippy --all-targets --all-features -- -D warnings
 cargo test materialize
 git diff --check
 ```
+
+Validated on 2026-06-24.
+
+## Completion Notes
+
+- Added unmanaged skill discovery for linked target directories.
+- `status` reports unmanaged target skills and whether they are protected.
+- Added `skillmgr adopt <slot-or-path>` with copy-first adoption into the local source.
+- Adoption only replaces the original target folder when `--yes` is passed.
+- `.local` marker skills and explicitly kept skills are protected from replacement.
+- `--yes` replacement records an owned symlink but does not create Git commits.
+- Adopted local skills participate in resolution immediately and show as local overrides over team skills.
+- Added `resolve list`, `resolve adopt`, `resolve keep`, and `resolve remove-owned`.
+- `resolve remove-owned` removes only recorded skillmgr-owned symlinks and blocks on real entries.
 
 ## Suggested Issue Split
 

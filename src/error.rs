@@ -87,6 +87,20 @@ pub enum SkillmgrError {
         source_id: String,
     },
 
+    /// A requested skill could not be found.
+    #[error("skill `{skill}` was not found")]
+    SkillNotFound {
+        /// Skill slot, ID, or path.
+        skill: String,
+    },
+
+    /// A local skill destination already exists.
+    #[error("local skill destination `{path}` already exists; skillmgr will not overwrite it")]
+    AdoptionDestinationExists {
+        /// Existing destination path.
+        path: PathBuf,
+    },
+
     /// Another skillmgr operation is already running.
     #[error("another skillmgr operation is running (lock `{path}`)")]
     StoreLocked {
@@ -138,6 +152,8 @@ impl SkillmgrError {
             | Self::TargetPathRequired { .. }
             | Self::SourceAlreadyExists { .. }
             | Self::UnknownSource { .. }
+            | Self::SkillNotFound { .. }
+            | Self::AdoptionDestinationExists { .. }
             | Self::UnsupportedLockSchema { .. }
             | Self::TomlDeserialize(_) => SkillmgrExitCode::ExpectedFailure,
             Self::DirtySource { .. } | Self::StoreLocked { .. } => SkillmgrExitCode::UnsafeState,

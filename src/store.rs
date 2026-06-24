@@ -89,6 +89,9 @@ pub struct StateFile {
     pub materialization_dirs: Vec<MaterializationDirState>,
     /// Recorded owned skill symlinks.
     pub owned_skills: Vec<OwnedSkillState>,
+    /// Explicitly protected unmanaged skills.
+    #[serde(default)]
+    pub protected_skills: Vec<ProtectedSkillState>,
 }
 
 /// Configured target state.
@@ -126,6 +129,15 @@ pub struct OwnedSkillState {
     pub store_path: PathBuf,
 }
 
+/// Explicitly protected unmanaged skill.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProtectedSkillState {
+    /// Skill slot name.
+    pub slot_name: String,
+    /// Protected target path.
+    pub path: PathBuf,
+}
+
 impl StateFile {
     /// Empty state for a new store.
     #[must_use]
@@ -135,6 +147,7 @@ impl StateFile {
             targets: Vec::new(),
             materialization_dirs: Vec::new(),
             owned_skills: Vec::new(),
+            protected_skills: Vec::new(),
         }
     }
 }

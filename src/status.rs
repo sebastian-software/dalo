@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
+use crate::adopt::{AdoptReport, KeepReport, RemoveOwnedReport, ResolveListReport, UnmanagedSkill};
 use crate::error::SkillmgrResult;
 use crate::inventory::{self, InventoryWarning};
 use crate::lockfile::{self, LockDrift};
@@ -26,6 +27,8 @@ pub struct StatusReport {
     pub resolution: Resolution,
     /// Previous-lock comparison against the live resolution.
     pub lock: LockStatus,
+    /// Unmanaged skills found in linked targets.
+    pub unmanaged_skills: Vec<UnmanagedSkill>,
 }
 
 /// User lock status derived during `status`.
@@ -145,10 +148,11 @@ pub fn build_status_report(store_root: &Path) -> SkillmgrResult<StatusReport> {
     });
     let live_lock = lockfile::build_user_lock(&config.sources, &resolution, None);
     let lock = LockStatus {
-        path: paths.lock_file,
+        path: paths.lock_file.clone(),
         schema_version: previous_lock.schema_version,
         drift: lockfile::compare_user_lock(&previous_lock, &live_lock),
     };
+    let unmanaged_skills = crate::adopt::discover_unmanaged_skills(&paths)?;
 
     Ok(StatusReport {
         store: store_root.to_path_buf(),
@@ -156,6 +160,7 @@ pub fn build_status_report(store_root: &Path) -> SkillmgrResult<StatusReport> {
         inventory_warnings,
         resolution,
         lock,
+        unmanaged_skills,
     })
 }
 
@@ -227,6 +232,14 @@ pub fn print_status_report(report: &StatusReport) {
         }
     }
 
+    if !report.unmanaged_skills.is_empty() {
+        println!("unmanaged skills:");
+        for skill in &report.unmanaged_skills {
+            let marker = if skill.protected { " protected" } else { "" };
+            println!("  {} -> {}{}", skill.id, skill.path.display(), marker);
+        }
+    }
+
     if !report.inventory_warnings.is_empty() {
         println!("inventory warnings:");
         for warning in &report.inventory_warnings {
@@ -292,6 +305,55 @@ pub fn print_source_priority_report(report: &SourcePriorityReport) {
         "updated source {} priority={}",
         report.source.id, report.source.priority
     );
+}
+
+/// Print a human-readable adopt report.
+pub fn print_adopt_report(report: &AdoptReport) {
+    println!(
+        "{} {} -> {}",
+        report.copy.as_str(),
+        report.source_path.display(),
+        report.local_path.display()
+    );
+    println!("replacement: {}", report.replacement.as_str());
+}
+
+/// Print a human-readable resolve list report.
+pub fn print_resolve_list_report(report: &ResolveListReport) {
+    if !report.unmanaged_skills.is_empty() {
+        println!("unmanaged skills:");
+        for skill in &report.unmanaged_skills {
+            let marker = if skill.protected { " protected" } else { "" };
+            println!("  {} -> {}{}", skill.id, skill.path.display(), marker);
+        }
+    }
+
+    if !report.owned_skills.is_empty() {
+        println!("owned symlinks:");
+        for skill in &report.owned_skills {
+            println!(
+                "  {} -> {} ({})",
+                skill.id,
+                skill.link_path.display(),
+                skill.store_path.display()
+            );
+        }
+    }
+}
+
+/// Print a human-readable keep report.
+pub fn print_keep_report(report: &KeepReport) {
+    let status = if report.existing {
+        "existing"
+    } else {
+        "protected"
+    };
+    println!("{status} {}", report.skill.path.display());
+}
+
+/// Print a human-readable remove-owned report.
+pub fn print_remove_owned_report(report: &RemoveOwnedReport) {
+    println!("{} {}", report.status.as_str(), report.link_path.display());
 }
 
 /// Print a human-readable target detection report.

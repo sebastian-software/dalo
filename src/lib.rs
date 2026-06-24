@@ -5,6 +5,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod adopt;
 pub mod cli;
 pub mod config;
 pub mod doctor;

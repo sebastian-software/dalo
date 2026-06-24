@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Args, CommandFactory, Parser, Subcommand};
 
+use crate::adopt;
 use crate::error::{SkillmgrError, SkillmgrResult};
 use crate::lockfile;
 use crate::materialize;
@@ -246,6 +247,8 @@ pub fn run_cli(cli: Cli) -> SkillmgrResult<()> {
         Command::Source(command) => run_source(&options, command),
         Command::Status => run_status(&options),
         Command::Sync => run_sync(&options),
+        Command::Adopt(command) => run_adopt(&options, command),
+        Command::Resolve(command) => run_resolve(&options, command),
         command => Err(SkillmgrError::NotImplemented {
             command: command.name().to_owned(),
         }),
@@ -333,6 +336,75 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> SkillmgrResult
                 print_json(&report)?;
             } else {
                 status::print_source_priority_report(&report);
+            }
+            Ok(())
+        }
+    }
+}
+
+fn run_adopt(options: &GlobalOptions, command: AdoptCommand) -> SkillmgrResult<()> {
+    let paths = store::StorePaths::new(options.store.clone());
+    let _lock = if options.dry_run {
+        None
+    } else {
+        Some(store::StoreLock::acquire(&paths)?)
+    };
+    let report = adopt::adopt_skill(&paths, &command.skill, options.yes, options.dry_run)?;
+    if options.json {
+        print_json(&report)?;
+    } else {
+        status::print_adopt_report(&report);
+    }
+    Ok(())
+}
+
+fn run_resolve(options: &GlobalOptions, command: ResolveCommand) -> SkillmgrResult<()> {
+    let paths = store::StorePaths::new(options.store.clone());
+    match command.command {
+        ResolveSubcommand::List => {
+            let report = adopt::list_resolve_items(&paths)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                status::print_resolve_list_report(&report);
+            }
+            Ok(())
+        }
+        ResolveSubcommand::Adopt(args) => {
+            let _lock = if options.dry_run {
+                None
+            } else {
+                Some(store::StoreLock::acquire(&paths)?)
+            };
+            let report = adopt::adopt_skill(&paths, &args.id, options.yes, options.dry_run)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                status::print_adopt_report(&report);
+            }
+            Ok(())
+        }
+        ResolveSubcommand::Keep(args) => {
+            let _lock = store::StoreLock::acquire(&paths)?;
+            let report = adopt::keep_unmanaged_skill(&paths, &args.id)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                status::print_keep_report(&report);
+            }
+            Ok(())
+        }
+        ResolveSubcommand::RemoveOwned(args) => {
+            let _lock = if options.dry_run {
+                None
+            } else {
+                Some(store::StoreLock::acquire(&paths)?)
+            };
+            let report = adopt::remove_owned_skill(&paths, &args.id, options.dry_run)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                status::print_remove_owned_report(&report);
             }
             Ok(())
         }

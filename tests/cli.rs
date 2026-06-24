@@ -359,6 +359,245 @@ fn status_should_fail_on_unsupported_lock_schema() {
 }
 
 #[test]
+fn status_json_should_report_unmanaged_target_skills() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"unmanaged_skills\""))
+        .stdout(predicate::str::contains("\"id\": \"review\""));
+}
+
+#[test]
+fn adopt_should_copy_unmanaged_skill_without_replacing_by_default() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .args(["adopt", "review"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("copied"))
+        .stdout(predicate::str::contains("replacement: skipped"));
+
+    assert!(store.join("local/skills/review/SKILL.md").is_file());
+    assert!(
+        !std::fs::symlink_metadata(target.join("review"))
+            .expect("original should remain")
+            .file_type()
+            .is_symlink()
+    );
+}
+
+#[test]
+fn adopt_yes_should_replace_original_with_owned_symlink_without_committing() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .args(["--yes", "adopt", "review"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("replacement: replaced"));
+
+    assert!(
+        std::fs::symlink_metadata(target.join("review"))
+            .expect("replacement should exist")
+            .file_type()
+            .is_symlink()
+    );
+    assert!(!git_command_succeeds(
+        &store.join("local"),
+        &["rev-parse", "HEAD"]
+    ));
+}
+
+#[test]
+fn adopt_yes_should_not_replace_local_marker_skill() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review.local");
+    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .args(["--yes", "adopt", "review.local"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("replacement: protected"));
+
+    assert!(store.join("local/skills/review.local/SKILL.md").is_file());
+    assert!(
+        !std::fs::symlink_metadata(target.join("review.local"))
+            .expect("local marker should remain real")
+            .file_type()
+            .is_symlink()
+    );
+}
+
+#[test]
+fn adopted_skill_should_show_as_local_override_over_team_skill() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo(&repo);
+    setup_store_with_target(&store, &target);
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "company"])
+        .arg(&repo)
+        .assert()
+        .success();
+    approve_source(&store, "company");
+    create_unmanaged_skill(&target, "team");
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["adopt", "team"])
+        .assert()
+        .success();
+    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"source_ref\": \"local:team\""))
+        .stdout(predicate::str::contains("\"local_override\": true"));
+}
+
+#[test]
+fn resolve_list_should_report_unmanaged_skills() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("unmanaged skills:"))
+        .stdout(predicate::str::contains("review"));
+}
+
+#[test]
+fn resolve_keep_should_protect_unmanaged_skill() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "keep", "review"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("protected"));
+    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"protected\": true"));
+}
+
+#[test]
+fn resolve_remove_owned_should_remove_only_recorded_symlink() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["--yes", "adopt", "review"])
+        .assert()
+        .success();
+    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "remove-owned", "review"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("removed"));
+
+    assert!(!target.join("review").exists());
+}
+
+#[test]
+fn resolve_remove_owned_should_not_remove_real_entry() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["--yes", "adopt", "review"])
+        .assert()
+        .success();
+    std::fs::remove_file(target.join("review")).expect("owned symlink should be removed");
+    create_unmanaged_skill(&target, "review");
+    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "remove-owned", "review"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("blocked_real_entry"));
+
+    assert!(target.join("review/SKILL.md").is_file());
+}
+
+#[test]
 fn sync_should_remove_owned_symlink_after_source_is_removed_from_config() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -524,6 +763,13 @@ fn sync_should_block_dirty_team_source() {
 }
 
 fn setup_store_with_skill_and_target(store: &std::path::Path, target: &std::path::Path) {
+    setup_store_with_target(store, target);
+    let skill_dir = store.join("local/skills/review");
+    std::fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+    std::fs::write(skill_dir.join("SKILL.md"), "# Review\n").expect("skill should be written");
+}
+
+fn setup_store_with_target(store: &std::path::Path, target: &std::path::Path) {
     Command::cargo_bin("skillmgr")
         .expect("binary should build")
         .args(["--store"])
@@ -531,9 +777,6 @@ fn setup_store_with_skill_and_target(store: &std::path::Path, target: &std::path
         .arg("init")
         .assert()
         .success();
-    let skill_dir = store.join("local/skills/review");
-    std::fs::create_dir_all(&skill_dir).expect("skill dir should be created");
-    std::fs::write(skill_dir.join("SKILL.md"), "# Review\n").expect("skill should be written");
     Command::cargo_bin("skillmgr")
         .expect("binary should build")
         .args(["--store"])
@@ -542,6 +785,13 @@ fn setup_store_with_skill_and_target(store: &std::path::Path, target: &std::path
         .arg(target)
         .assert()
         .success();
+}
+
+fn create_unmanaged_skill(target: &std::path::Path, slot_name: &str) {
+    let skill_dir = target.join(slot_name);
+    std::fs::create_dir_all(&skill_dir).expect("unmanaged skill dir should be created");
+    std::fs::write(skill_dir.join("SKILL.md"), format!("# {slot_name}\n"))
+        .expect("unmanaged skill should be written");
 }
 
 fn create_git_skill_repo(repo: &std::path::Path) {
@@ -592,4 +842,15 @@ fn run_git(repo: &std::path::Path, args: &[&str]) {
         .status()
         .expect("git should run");
     assert!(status.success());
+}
+
+fn git_command_succeeds(repo: &std::path::Path, args: &[&str]) -> bool {
+    std::process::Command::new("git")
+        .args(args)
+        .current_dir(repo)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .expect("git should run")
+        .success()
 }
