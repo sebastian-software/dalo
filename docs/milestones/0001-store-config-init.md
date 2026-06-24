@@ -1,6 +1,6 @@
 # M01: Store, Config, and Init
 
-Status: todo  
+Status: done
 Target: V1  
 Depends on: M00, RFC 0001, RFC 0002  
 
@@ -49,11 +49,22 @@ Implement the local store and `skillmgr init` so the tool can create a safe, ins
 ```sh
 cargo fmt --check
 cargo test store config lockfile
+cargo test
+cargo clippy --all-targets --all-features -- -D warnings
 cargo run -- --store /tmp/skillmgr-test init --dry-run
 cargo run -- --store /tmp/skillmgr-test init
 cargo run -- --store /tmp/skillmgr-test init
 git diff --check
 ```
+
+## Completion Notes
+
+- Added store path resolution from `--store`, `SKILLMGR_STORE`, or `~/.skillmgr`.
+- Added typed TOML schemas for user config, user lock, state, and approvals.
+- Added atomic TOML writes for generated store files.
+- Implemented `skillmgr init` with text output, JSON output, dry-run planning, idempotent behavior, and local Git repository initialization.
+- Added unit and command-level tests for dry-run, real init, idempotence, and layout creation.
+- Validation passed on 2026-06-24.
 
 ## Suggested Issue Split
 

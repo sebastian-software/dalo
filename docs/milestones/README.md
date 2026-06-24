@@ -17,8 +17,8 @@ Milestones are intentionally small and stable. Progress is tracked by changing t
 
 | ID | Milestone | Status | Purpose |
 | --- | --- | --- | --- |
-| M00 | [Repository and Toolchain Scaffold](0000-repository-toolchain-scaffold.md) | todo | Create the Rust project shape and baseline validation loop. |
-| M01 | [Store, Config, and Init](0001-store-config-init.md) | todo | Establish `~/.skillmgr`, TOML schemas, local source, and `init`. |
+| M00 | [Repository and Toolchain Scaffold](0000-repository-toolchain-scaffold.md) | done | Create the Rust project shape and baseline validation loop. |
+| M01 | [Store, Config, and Init](0001-store-config-init.md) | done | Establish `~/.skillmgr`, TOML schemas, local source, and `init`. |
 | M02 | [Target Registry](0002-target-registry.md) | todo | Detect and link supported agent skill directories safely. |
 | M03 | [Inventory Scanner](0003-inventory-scanner.md) | todo | Scan local/team checkouts into deterministic skill inventories. |
 | M04 | [Resolver and Status Model](0004-resolver-status-model.md) | todo | Resolve source priority, approvals, shadowing, and status output. |
@@ -84,6 +84,7 @@ Every implementation PR should run the narrowest useful validation for the miles
 ```sh
 cargo fmt --check
 cargo test
+cargo clippy --all-targets --all-features -- -D warnings
 git diff --check
 ```
 

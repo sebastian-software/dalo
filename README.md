@@ -262,7 +262,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo run -- --help
 ```
 
-The current implementation has the Rust project scaffold and CLI shell in place. Product behavior is being implemented milestone by milestone from [the implementation plan](docs/milestones/README.md).
+The current implementation has the Rust project scaffold, CLI shell, store layout, TOML schemas, and `skillmgr init` in place. Product behavior is being implemented milestone by milestone from [the implementation plan](docs/milestones/README.md).
 
 ## Project status
 

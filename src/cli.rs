@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use clap::{Args, CommandFactory, Parser, Subcommand};
 
 use crate::error::{SkillmgrError, SkillmgrResult};
+use crate::status;
+use crate::store;
 
 /// Parsed command-line arguments.
 #[derive(Debug, Parser)]
@@ -36,6 +38,43 @@ pub struct Cli {
     /// Command to execute.
     #[command(subcommand)]
     pub command: Option<Command>,
+}
+
+/// Global command options after path resolution.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GlobalOptions {
+    /// Resolved store path.
+    pub store: PathBuf,
+    /// Emit JSON.
+    pub json: bool,
+    /// Accept safe prompts.
+    pub yes: bool,
+    /// Plan without mutating.
+    pub dry_run: bool,
+    /// Disable colored output.
+    pub no_color: bool,
+    /// Verbosity count.
+    pub verbose: u8,
+}
+
+impl GlobalOptions {
+    fn resolve(
+        store: Option<&std::path::Path>,
+        json: bool,
+        yes: bool,
+        dry_run: bool,
+        no_color: bool,
+        verbose: u8,
+    ) -> SkillmgrResult<Self> {
+        Ok(Self {
+            store: store::resolve_store_path(store)?,
+            json,
+            yes,
+            dry_run,
+            no_color,
+            verbose,
+        })
+    }
 }
 
 impl Cli {
@@ -169,15 +208,43 @@ pub struct ResolveIdArg {
 
 /// Execute a parsed CLI command.
 pub fn run_cli(cli: Cli) -> SkillmgrResult<()> {
-    let Some(command) = cli.command else {
+    let Cli {
+        store,
+        json,
+        yes,
+        dry_run,
+        no_color,
+        verbose,
+        command,
+    } = cli;
+
+    let Some(command) = command else {
         Cli::command().print_help()?;
         println!();
         return Ok(());
     };
 
-    Err(SkillmgrError::NotImplemented {
-        command: command.name().to_owned(),
-    })
+    let options = GlobalOptions::resolve(store.as_deref(), json, yes, dry_run, no_color, verbose)?;
+
+    match command {
+        Command::Init => run_init(&options),
+        command => Err(SkillmgrError::NotImplemented {
+            command: command.name().to_owned(),
+        }),
+    }
+}
+
+fn run_init(options: &GlobalOptions) -> SkillmgrResult<()> {
+    let report = store::init_store(options.store.clone(), options.dry_run)?;
+
+    if options.json {
+        serde_json::to_writer_pretty(std::io::stdout(), &report)?;
+        println!();
+    } else {
+        status::print_init_report(&report);
+    }
+
+    Ok(())
 }
 
 impl Command {

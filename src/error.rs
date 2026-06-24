@@ -1,4 +1,5 @@
 use std::io;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use thiserror::Error;
@@ -16,6 +17,45 @@ pub enum SkillmgrError {
         command: String,
     },
 
+    /// The store path could not be resolved.
+    #[error("could not resolve the skillmgr store path: {reason}")]
+    StorePath {
+        /// Human-readable reason.
+        reason: String,
+    },
+
+    /// The configured store path is invalid.
+    #[error("invalid store path `{path}`: {reason}")]
+    InvalidStorePath {
+        /// Invalid path.
+        path: PathBuf,
+        /// Human-readable reason.
+        reason: String,
+    },
+
+    /// TOML serialization failed.
+    #[error(transparent)]
+    TomlSerialize(#[from] toml::ser::Error),
+
+    /// JSON serialization failed.
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
+
+    /// A system command failed.
+    #[error("command `{program} {args}` failed in `{cwd}` with status {status}: {stderr}")]
+    CommandFailed {
+        /// Program name.
+        program: String,
+        /// Shell-escaped-ish argument display for humans.
+        args: String,
+        /// Working directory.
+        cwd: PathBuf,
+        /// Exit status.
+        status: String,
+        /// Standard error output.
+        stderr: String,
+    },
+
     /// Terminal or filesystem I/O failed.
     #[error(transparent)]
     Io(#[from] io::Error),
@@ -27,6 +67,10 @@ impl SkillmgrError {
     pub fn exit_code(&self) -> SkillmgrExitCode {
         match self {
             Self::NotImplemented { .. } => SkillmgrExitCode::ExpectedFailure,
+            Self::StorePath { .. } | Self::InvalidStorePath { .. } | Self::CommandFailed { .. } => {
+                SkillmgrExitCode::EnvironmentProblem
+            }
+            Self::TomlSerialize(_) | Self::Json(_) => SkillmgrExitCode::ExpectedFailure,
             Self::Io(_) => SkillmgrExitCode::EnvironmentProblem,
         }
     }
