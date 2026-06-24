@@ -262,7 +262,7 @@ Team sources may declare external and catalog sources. That declaration makes th
 
 Catalog sources are treated as offer surfaces, not as all-or-nothing dependencies. A team source may inspect a catalog repository and select only the skills it wants to expose. Skillmgr still checks out or caches the full repository as needed, but only selected skills enter the resolved skill set.
 
-Sources may also provide instruction packs. Instruction packs are selected explicitly or by source policy, then rendered into managed blocks in configured agent instruction files.
+Sources may also provide instruction packs. Instruction packs are explicitly enabled by the user or team manifest, then rendered into managed blocks in configured agent instruction files.
 
 Example source file inside a team repository:
 
@@ -340,10 +340,27 @@ Catalog repositories may contain internal skill dependencies. Skillmgr should su
 ---
 id: example.launch-copy
 name: launch-copy
+description: Helps create launch copy from positioning inputs.
+owners:
+  - marketing
+tags:
+  - marketing
+  - launch
 requires:
   - example.positioning
 ---
 ```
+
+V1 frontmatter interpretation is intentionally small:
+
+- `id`: stable identity, recommended for new managed skills
+- `name`: slot name and visible install name
+- `description`: human and agent-facing summary
+- `requires`: required skill references
+- `owners`: maintainers or responsible team/user handles
+- `tags`: optional discovery labels
+
+Unknown fields are tolerated and preserved by source repositories, but V1 does not interpret them. For existing skills without `id`, skillmgr falls back to slot name and path, with stronger drift warnings.
 
 If a selected skill declares required skills from the same source or catalog, those required skills become part of the effective selection automatically. This expansion is transitive: required skills may require other skills, and the resolver walks the full closure before materialization.
 
@@ -369,10 +386,14 @@ Normal `sync` refreshes clean tracking team sources, respects pinned sources, re
 
 For catalog sources, lockfiles must also record the selected skills and the inventory snapshot used to resolve them. This allows skillmgr to detect upstream structure drift during `source refresh` rather than silently losing or adding skills.
 
+Lockfiles use TOML and include `schema_version`. A newer unsupported major schema version blocks mutation until skillmgr is upgraded. Unknown minor-version fields are ignored for forward compatibility. `source-lock.toml` is prescriptive for pinned external, catalog, and pinned team sources. The user's `lock.toml` is a resolved snapshot: prescriptive for pinned sources and descriptive for tracking team sources.
+
+Catalog inventory entries record at least stable ID when present, slot name, path, content hash, metadata hash, and declared `requires`. Move detection is automatic only when the stable ID is unchanged. Without a stable ID, path/name/content heuristics may warn about a likely move, but must not silently rewrite the selection.
+
 Example resolved user lock:
 
 ```toml
-version = 1
+schema_version = 1
 
 [[resolved]]
 ref = "company:copy-editing"
@@ -390,7 +411,8 @@ stable_id = "oss.copy-editing"
 source = "oss"
 path = "~/.skillmgr/sources/oss/checkout/skills/copy-editing"
 commit = "def456"
-status = "shadowed"
+status = "unlinked"
+reason = "shadowed"
 shadowed_by = "company:copy-editing"
 
 [[catalogs]]
@@ -403,7 +425,7 @@ inventory_hash = "sha256:..."
 [[catalogs.selected]]
 catalog = "marketing-skills"
 id = "example.positioning"
-name = "positioning"
+slot_name = "positioning"
 path = "skills/positioning"
 content_hash = "sha256:..."
 status = "active"
@@ -509,6 +531,15 @@ priority: 10
 Use OXLint for linting and OXFMT for formatting. Prefer TypeScript for application code. Use Rust for performance-sensitive non-browser code that does not need to run in the browser.
 ```
 
+V1.1 instruction pack frontmatter uses the same small-field approach:
+
+- `id`: stable pack identity
+- `name`: display name
+- `topics`: coarse overlap labels
+- `priority`: ordering within the same target file
+
+Instruction packs are not auto-enabled just because a source provides them. The user or team manifest must explicitly enable a pack and map it to one or more target instruction files. This avoids silently writing team guidance into a user's personal agent files.
+
 Instruction packs are materialized into agent instruction files as managed blocks:
 
 ```markdown
@@ -530,6 +561,8 @@ Rules:
 - topic overlap is reported by `status` and `doctor`, but skillmgr does not try to infer semantic contradictions.
 - local instruction packs may override or supplement team instruction packs, but overrides must be visible.
 
+Drift handling in the first instruction-pack release is intentionally small. Malformed managed block markers block writes to that file. A drifted managed block blocks scheduled or non-interactive sync. Interactive sync may restore the block from source or leave it as-is. Converting a drifted block into a local instruction pack is a later enhancement.
+
 The resolver should treat instruction packs as a separate asset type from skills. They share source, lock, trust, and update mechanics with skills, but their materialization strategy is managed text blocks rather than symlinks.
 
 ## 14. Target Registry
@@ -543,8 +576,8 @@ Skillmgr knows default targets for prominent agents. V1 supports a small verifie
 | OpenClaw | supported | `~/.agents/skills` | OpenClaw treats this as personal agent skills; workspace and project-agent skills have higher precedence. |
 | Hermes | supported | `~/.hermes/skills` | Hermes uses this as its primary skill source of truth; `~/.agents/skills` can be configured separately as an external directory. |
 | generic folder | supported | user-specified | For agents that consume Agent Skills from a directory but do not yet have a verified adapter. |
-| Cursor | experimental | TBD | Registry entry may exist, but V1 should not promise full support until discovery behavior is verified. |
-| OpenCode | experimental | TBD | Registry entry may exist, but V1 should not promise full support until discovery behavior is verified. |
+| Cursor | experimental | unverified | Registry entry may exist, but V1 should not promise full support until discovery behavior is verified. |
+| OpenCode | experimental | unverified | Registry entry may exist, but V1 should not promise full support until discovery behavior is verified. |
 
 Multiple target adapters may resolve to the same physical directory. For example, Codex and OpenClaw can both use `~/.agents/skills`. Skillmgr must canonicalize target paths, de-duplicate identical materialization directories, and still report the logical agents that depend on that directory.
 
@@ -612,7 +645,7 @@ If an instruction pack is removed from a source, skillmgr removes only its own m
 - `instruction_block_drift`: a managed instruction block differs from the resolved source content
 - `instruction_block_orphaned`: a managed instruction block references a removed instruction pack
 
-Conflicts may be visible without always being blocking. Equal slot names are resolved deterministically by source priority but reported as shadowing.
+Conflicts may be visible without always being blocking. Equal slot names are resolved deterministically by source priority; non-winning managed skills are reported as `unlinked` with reason `shadowed`.
 
 ## 17. CLI Surface
 
@@ -803,17 +836,18 @@ skillmgr promote copy-editing --from-dirty --target company
 
 ### 17.16 `skillmgr resolve`
 
-Assisted conflict resolution.
+Explicit tools for resolving known blocking states.
 
-Supported cases:
+V1 scope:
 
-- dirty team skill: commit+PR, stash, local override, or discard
-- unlinked shadowed skill: change priority, disable source, ignore, or use a later explicit rename/adapt flow
-- managed/unmanaged slot collision: adopt local, keep unmanaged/protected, explicitly replace after confirmation, or use a later explicit rename/adapt flow
-- broken symlink: rematerialize or remove link
-- orphaned source: restore source or remove link
-- lock conflict: regenerate lock or abort source refresh
-- instruction block drift: restore from source, keep local edit as local instruction pack, or remove managed block
+- `skillmgr resolve list`: show blocking states with stable IDs and suggested commands
+- `skillmgr resolve adopt <id>`: resolve a managed/unmanaged collision by copying the unmanaged entry into the local source first
+- `skillmgr resolve keep <id>`: keep an unmanaged/protected same-name entry and leave the managed skill blocked for that target slot
+- `skillmgr resolve remove-owned <id>`: remove broken or orphaned skillmgr-owned symlinks
+
+V1 `resolve` is a small safe toolbox, not a general repair assistant. It does not run a broad "fix everything" flow. Dirty team skills are reported; `promote` is the PR-first path for turning those edits into team changes. Instruction-pack drift recovery belongs to V1.1 because instruction packs themselves are deferred.
+
+Later `resolve` slices may add source restore, lock regeneration, rename/adapt, instruction-block drift recovery, and richer interactive guidance.
 
 ### 17.17 `skillmgr source refresh`
 
@@ -894,6 +928,8 @@ Scheduled sync must not make interactive decisions or overwrite dirty states. `-
 
 Scheduled sync never commits local source changes. Dirty local skills remain local working-tree changes until the user explicitly commits, discards, or promotes them.
 
+Blocked scheduled syncs are always recorded in the store log and surfaced through `status` and `doctor`. V1 does not send email, Slack/webhooks, or desktop notifications. OS-level or external notifications can be added later without changing sync semantics.
+
 ## 19. Conflict Model
 
 ### 19.1 Equal Slot Names
@@ -937,13 +973,33 @@ Guided resolution is explicit and may include:
 
 None of these actions happen during scheduled sync.
 
+### 19.2.1 Deferred Rename/Adapt Flow
+
+V1 and V1.1 do not provide a parallel alias layer or runtime router skill for same-name variants. If users later need two same-name variants at the same time, skillmgr may add an explicit rename/adapt flow.
+
+Example:
+
+```text
+skillmgr adapt-name coreyhaines:review review_coreyhaines
+```
+
+Expected semantics:
+
+- create a real local or team-ready copy under the new slot name
+- leave the original upstream skill unchanged and updateable
+- update machine-readable same-source `requires` references where possible
+- warn when text references or ambiguous references cannot be safely updated
+- produce a local dirty skill or an explicit PR flow, not a hidden alias
+
+This is a deferred power-user feature. V1 users should resolve same-name variants through source priority, adoption, promotion, or a manual fork.
+
 ### 19.3 Dirty Team Skills
 
 If a symlinked team skill is edited locally, the underlying source becomes dirty. Scheduled or non-interactive `sync` blocks for that source or skill.
 
-The user can then choose through `resolve`:
+The user can then choose explicit Git actions:
 
-- `commit+PR`
+- `promote --from-dirty`
 - `stash`
 - `local override`
 - `discard`
@@ -990,7 +1046,7 @@ Rules:
 - unmarked content is never considered drift and must not be changed
 - interactive sync may offer to restore the managed block from source
 - scheduled sync reports and blocks on drift instead of overwriting local edits
-- `resolve` may convert local block edits into a local instruction pack
+- converting local block edits into a local instruction pack is deferred beyond the first instruction-pack release
 - orphaned managed blocks may be removed only when their markers are intact and the block is known in `state.toml`
 
 ## 20. Security and Trust Model
@@ -1068,7 +1124,7 @@ Expected behavior:
 
 ```text
 skillmgr status
-skillmgr resolve copy-editing --commit-pr --target company
+skillmgr promote copy-editing --from-dirty --target company
 ```
 
 Expected behavior:
@@ -1138,17 +1194,7 @@ Blockers:
 
 ## 25. Open Questions
 
-These points are intentionally not final and should be refined in follow-up RFCs or before implementation slices:
-
-- Exact `SKILL.md` frontmatter fields beyond stable ID and slot name
-- Exact lockfile schema and compatibility rules for schema upgrades
-- Exact catalog inventory schema and move-detection heuristics
-- Exact instruction pack frontmatter fields and target-file mapping UX
-- Whether instruction packs should be enabled explicitly by default or selected by source policy
-- How much block drift recovery should exist in the first instruction-pack release (V1.1)
-- Whether a later explicit rename/adapt flow should help users keep two same-name variants in parallel
-- How detailed `resolve` must be in v1
-- How notifications for blocked scheduled syncs should work
+There are no blocking open product questions for the V1 RFC. Deferred features are tracked in §26.4.
 
 ## 26. Suggested V1 Slice
 
@@ -1162,6 +1208,7 @@ Although this RFC describes the full vision, the first implementation should be 
 - `status`
 - `sync`
 - `adopt`
+- minimal `resolve` toolbox for listed blockers, adoption into local source, keep/protect, and owned symlink cleanup
 - `doctor`
 - TOML config
 - local store
@@ -1169,11 +1216,11 @@ Although this RFC describes the full vision, the first implementation should be 
 - deterministic multi-source resolution
 - user lockfile for the resolved asset set
 - local approval state for newly active team skills
-- warnings for shadowing and dirty state
+- warnings for unlinked shadowed skills and dirty state
 
 ### 26.2 Deferred to V1.1
 
-Catalog support and instruction packs are deferred to V1.1, not because they are unimportant, but because they depend on schema and UX decisions that should not block the first slice: exact catalog inventory and move-detection rules, source-refresh review flow, and instruction-pack target-file mapping UX (§13, §25). Pulling them out of V1 keeps the first slice focused on the riskiest engine code and resolves the tension between §25 (mapping UX still open) and the original V1 scope.
+Catalog support and instruction packs are deferred to V1.1, not because they are unimportant, but because they add schema and UX surface that should not block the first slice: catalog inventory and move-detection rules, source-refresh review flow, explicit instruction-pack enablement, and target-file mapping (§13). Pulling them out of V1 keeps the first slice focused on the riskiest engine code.
 
 V1 still materializes skills and runs `adopt`, so it must already handle managed/unmanaged slot collisions. V1 applies the conservative rule guaranteed in §15 and RFC 0003 D3: detect the collision, report it, never overwrite an unmanaged entry, and materialize other safe slots where possible. Guided resolution is explicit and may include adoption, keep/protect, replacement after preservation and confirmation, or rename/adapt in a later slice. Slot collision is therefore not a reason to defer catalog or instruction packs.
 
@@ -1202,7 +1249,8 @@ This sequence front-loads the store and materializer (the highest-risk filesyste
 
 - full automatic scheduler
 - `source refresh` with lockfile PRs
-- full `resolve` assistant
+- full interactive `resolve` assistant
+- explicit rename/adapt flow for keeping same-name variants in parallel
 - automatic catalog move reconciliation
 - cross-source automatic dependency installation
 - advanced instruction block drift recovery

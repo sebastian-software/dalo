@@ -31,7 +31,7 @@ The resolver is a **pure function**: given inventories and config, it returns a 
 ### 3.1 Resolver inputs
 
 - the active set of sources from config, each with `id`, `kind`, `priority`, `enabled`, `trusted`
-- for each enabled source, an **inventory**: the scanned skills and instruction packs (RFC 0001 §5). For a catalog source the inventory is the **full** discovered set, paired with the source's explicit selection; the resolver applies selection and `include` expansion itself (§4 step 2), so it must receive the unselected catalog skills too
+- for each enabled source, an **inventory**: the scanned skills and instruction packs (RFC 0001 §5). For a catalog source the inventory is the **full** discovered set, paired with the source's explicit selection; the resolver applies selection and required-closure expansion itself (§4 step 2), so it must receive the unselected catalog skills too
 - local approval state for skill-, source-, author-, and org-level approvals (RFC 0001 §20)
 - the previous resolved user lock (optional, used for drift comparison only)
 
@@ -141,14 +141,14 @@ Cross-source dependency satisfaction is allowed only for stable IDs or source-qu
 
 ## 5. Instruction Pack Resolution
 
-Instruction packs resolve as a **separate asset type** (RFC 0001 §13). V1.1 materializes them through configured target instruction files and skillmgr-owned managed blocks, not through assumed native include/import support. The exact mapping UX remains outside this resolver RFC; the resolver owns only ordering and overlap rules:
+Instruction packs resolve as a **separate asset type** (RFC 0001 §13). V1.1 materializes them through explicitly configured target instruction files and skillmgr-owned managed blocks, not through assumed native include/import support. Mapping configuration belongs to RFC 0001; this resolver RFC owns only ordering and overlap rules:
 
 - group active packs by the target instruction file they map to
 - within a file, order by (source `priority` asc, pack `priority` asc, pack `id` asc)
 - if two active packs declare the same `topic`, emit `INSTRUCTION_TOPIC_OVERLAP` (informational; no semantic inference)
 - a local pack with the same `id` as a team pack overrides it; emit a visible override diagnostic, mirroring skill `local_override`
 
-Per the V1-scope recommendation (#8), instruction packs may ship in V1.1 rather than V1. This section stands regardless of when it ships.
+Per RFC 0001 §26, instruction packs ship in V1.1 rather than V1. This section stands regardless of when it ships.
 
 ## 6. Store Lock
 
@@ -169,13 +169,13 @@ Operations are classified:
 | Class | Commands | Lock |
 | --- | --- | --- |
 | mutating | `sync`, `adopt`, `promote`, `source refresh`, `instruction enable/disable`, `target link/unlink`, `source add/remove/priority`, `init` | exclusive |
-| read-only | `status`, `doctor`, `source list`, `instruction list`, `target detect` | none (or shared) |
+| read-only | `status`, `doctor`, `source list`, `instruction list`, `target detect` | none |
 
 Read-only commands take no lock so diagnostics always work, even while a sync is running. They may observe a transient state; that is acceptable and preferable to blocking inspection.
 
 ### 6.3 Contention behavior
 
-- **Interactive mutating command** finds the lock held: retry briefly with backoff (a few seconds total), then fail with exit code `3` (unsafe state blocked, RFC 0002 §9) and a message naming the holder: `another skillmgr operation is running (pid <pid> since <time>)`.
+- **Interactive mutating command** finds the lock held: retry immediately, then after 100 ms, 250 ms, 500 ms, 1 s, and 2 s. If the lock is still held after about 5 seconds total, fail with exit code `3` (unsafe state blocked, RFC 0002 §9) and a message naming the holder: `another skillmgr operation is running (pid <pid> since <time>)`.
 - **Scheduled sync** finds the lock held: do **not** wait and do **not** fail loudly. Log "skipped: store lock held by pid <pid>" and exit `0`. The next scheduled run retries. Scheduled sync must never contend with an interactive session.
 
 ### 6.4 Stale lock recovery
@@ -187,6 +187,7 @@ Read-only commands take no lock so diagnostics always work, even while a sync is
 
 - One global store lock in V1. Finer-grained per-source locks are a future optimization and are out of scope.
 - The lock guards store mutation only. It does not guard agent target directories; those are protected by the ownership rules in §7, not by the lock.
+- Local source Git operations are not wrapped in a separate skillmgr Git lock in V1. Git's own index lock remains the authority for concurrent Git operations.
 
 ## 7. Materialize Reconciliation
 
@@ -291,7 +292,4 @@ Reconciliation (temp store + temp target):
 
 ## 9. Open Questions
 
-- Whether read-only commands should take a shared lock or no lock at all.
-- Whether the store lock should also cover the local source's Git operations or leave those to Git's own index lock.
-- Backoff/timeout numbers for interactive lock contention (left as implementation detail for now).
-- How drift restoration interacts with converting a local block edit into a local instruction pack (RFC 0001 §19.7); detailed `resolve` behavior is still open in RFC 0001 §25.
+There are no blocking open resolver questions for V1.

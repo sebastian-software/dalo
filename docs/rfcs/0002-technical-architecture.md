@@ -88,7 +88,7 @@ GitHub PR flows should use `gh` in the same style:
 
 - detect `gh` availability in `doctor`
 - use existing `gh` authentication
-- create PRs only from explicit `promote` or `resolve` flows
+- create PRs only from explicit `promote` flows in V1
 - fail the PR flow when `gh` is missing or not authenticated
 - do not create an internal GitHub API client or manage GitHub secrets in V1
 - treat GitLab, Forgejo, and other forges as future features rather than V1 adapters
@@ -246,7 +246,7 @@ High-value scenarios (these describe the full vision; items marked (V1.1) ship w
 - existing unmanaged skill is detected and not modified
 - managed skill colliding with an unmanaged target entry reports a conflict and leaves the unmanaged entry untouched
 - logical targets that resolve to the same canonical directory are de-duplicated before materialization while still reported as separate logical agent targets
-- equal slot names resolve by priority and report shadowing
+- equal slot names resolve by priority and report non-winning skills as unlinked with reason `shadowed`
 - newly active unapproved skill is reported and not materialized by scheduled or non-interactive sync
 - source-, author-, and org-level approvals allow matching newly active skills without per-skill prompts
 - catalog source selects only configured skills (V1.1)

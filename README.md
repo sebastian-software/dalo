@@ -1,147 +1,142 @@
 # Skillmgr
 
-Your agents are getting better. Their skills should not live in random folders.
+Git-backed skill management for AI agents.
 
-Skillmgr is a CLI-first manager for AI-agent skills, team conventions, and shared instruction packs. It gives teams a clean way to version, review, sync, and promote the knowledge their agents rely on.
+Skillmgr gives teams one place to manage the skills, shared agent conventions, and local experiments their AI agents depend on. It keeps the source of truth in a local store, resolves skills from multiple Git sources, and links the final set into the agent folders people already use.
 
-One developer writes a useful skill. Another improves it. A team turns it into a shared standard. Everyone's agents pick it up safely.
+Codex, Claude Code, OpenClaw, Hermes, and folder-based agents can keep reading normal skill directories. Skillmgr handles the part that gets hard once skills become team knowledge: source priority, safe sync, local overrides, catalog selection, adoption, promotion, and drift.
 
-That is the loop Skillmgr is built for.
+## Why this exists
 
-## Why this should exist
+Agent skills are becoming operational knowledge.
 
-Agent skills are starting to look like code, but most teams still manage them like snippets.
+They encode how your team reviews code, writes release notes, investigates incidents, uses internal tooling, formats output, and applies judgment that should not live in one developer's private folder.
 
-They sit in global folders. They get copied between machines. They drift across agents. Someone installs a useful public skill and nobody knows which version is in use. A local experiment works well for one person, then dies in a private directory because sharing it is too annoying.
+Most existing flows are still built around one machine:
 
-That is fine for tinkering. It breaks down once a team starts depending on agents for real work.
+- install this skill here
+- copy that folder there
+- choose the target agent again
+- hope nobody changed the public repo
+- hope the local edit does not get lost
+- hope the team knows which version is in use
 
-Skillmgr treats agent knowledge as part of the engineering system:
+That is fine for experimenting. It breaks down when agents become part of daily engineering work.
 
-- versioned
-- reviewable
-- reproducible
-- local when it should stay local
-- shared when it is ready for the team
+Skillmgr treats agent knowledge like something worth managing:
 
-## What Skillmgr manages
+- versioned in Git
+- resolved deterministically
+- synced across a team
+- kept separate from private local work
+- safe around existing unmanaged files
+- ready to promote through review when a local experiment proves useful
 
-Skillmgr manages two kinds of agent assets.
+## The model
 
-**Skills** are reusable capabilities with a `SKILL.md` entry point and optional supporting files.
-
-**Instruction packs** are shared standing instructions for agents: team conventions, review style, engineering defaults, writing preferences, and other guidance that belongs in `AGENTS.md`, `CLAUDE.md`, or an agent-specific instruction file.
-
-Skillmgr does not manage arbitrary dotfiles. It does not sync editor settings, shell profiles, linter configs, formatter configs, or secrets. That line matters.
-
-## The core idea
-
-Skillmgr keeps its own local store, resolves the assets you want from multiple sources, and materializes them into the agents you use.
+Skillmgr separates source, resolution, and installation.
 
 ```text
-team sources + public catalogs + local skills
+team sources + local source + selected catalogs
         |
         v
-skillmgr resolver
+~/.skillmgr store
         |
         v
-one resolved asset set
+deterministic resolver
         |
         v
 agent skill folders + managed instruction blocks
 ```
 
-Agent folders are output targets, not the database.
+The agent folder is an output target, not the database.
 
-That one decision avoids a lot of pain. Agents can keep reading from their normal locations, but team state lives in a controlled store where Git, lockfiles, sync, and promotion make sense.
+That one boundary keeps the system predictable. Team repositories stay clean Git sources. Local experiments live in a private local source. Agent folders contain symlinks and remain safe to inspect. Existing files are never silently absorbed or overwritten.
 
-## Built for teams, not just installs
+## What it feels like
 
-Skillmgr is for teams that want their agents to inherit taste, process, and hard-won lessons.
+Set up the store, detect agents, link the targets you want, add a team source, then sync.
 
-Use it to:
-
-- keep shared team skills in Git
-- pin public skill collections to known commits
-- select only the skills you want from a multi-skill repository
-- sync Codex, Claude Code, OpenClaw, Hermes, and generic folder-based agents, with room for experimental Cursor and OpenCode adapters
-- keep private user skills separate from team skills
-- adopt skills that agents created directly in their own folders
-- promote good local skills into a team repository through a PR-first workflow
-- ship team conventions as managed instruction blocks without touching the rest of a user's files
-
-The goal is not to make every agent identical. The goal is to make the shared parts intentional.
-
-## How it feels
-
-```bash
+```sh
 skillmgr init
-skillmgr source add company git@github.com:acme/agent-skills.git
+skillmgr target detect
 skillmgr target link codex
 skillmgr target link claude
+skillmgr source add company git@github.com:acme/agent-skills.git
 skillmgr sync
 ```
 
-Your team skills appear where your agents expect them.
+The team skills appear where each agent expects them.
 
-Then an agent creates something useful in a local skill folder:
+When an agent creates a useful local skill directly in its own folder, Skillmgr can bring it under management without losing the original work.
 
-```bash
+```sh
 skillmgr status
 skillmgr adopt release-notes.local
+```
+
+The first step copies the skill into the local source. Replacing the original folder with a symlink is a separate confirmation. Committing the adopted skill is also explicit; `--yes` never means "commit this for me".
+
+When that local skill is ready for the team, the intended full flow is PR-first:
+
+```sh
 skillmgr promote release-notes --target company
 ```
 
-The private experiment becomes a reviewed team asset. No copy-paste ritual. No "which folder was that in again?"
+Promotion uses normal `git` plus an authenticated `gh` CLI. If GitHub auth is missing, Skillmgr should fail loudly instead of inventing a weaker fallback.
 
-## Multi-source by default
+## Sources
 
-Most teams will not have one perfect source of truth.
+Skillmgr is multi-source by default.
 
-You may have:
+| Source kind | Purpose | Version behavior |
+| --- | --- | --- |
+| Local | Private user skills and instruction packs | Local Git repository in the store |
+| Team | Shared team skills and conventions | Usually tracks a branch during `sync` |
+| External | Git source declared by another trusted source | Pinned through source locks |
+| Catalog | Multi-skill repository used as an offer surface | Selected skills are pinned and tracked |
 
-- company skills
-- personal skills
-- open-source skill collections
-- vendor-maintained skill repositories
-- team instruction packs
-- local experiments
+The first V1 implementation starts with local and team sources. External sources and catalogs are the next product layer once the store, resolver, and materializer are proven.
 
-Skillmgr resolves them in priority order and shows what happened.
+The everyday command is `sync`: refresh clean tracking team sources, resolve the final skill set, and materialize it into configured targets.
 
-If two sources provide `copy-editing`, one wins and the other is shown as unlinked because it is shadowed by the higher-priority source. If a local skill overrides a team skill, that is visible. If a selected public skill disappears upstream, scheduled sync stops instead of silently removing the skill from your agents.
+Pinned external and catalog sources use explicit lock advancement through `source refresh`. That is a reviewable source-maintenance operation, not the normal daily installation path, and it belongs to the later source-maintenance slice.
 
-Quiet magic is where trust goes to die. Skillmgr should make the state obvious.
+## Resolution
 
-## Public catalogs without the mess
+Source order decides conflicts. Lower priority wins.
 
-Some of the most useful skill repositories are catalogs: one Git repo with many skills inside.
+If two sources provide the same skill slot, Skillmgr links the highest-priority approved skill and reports the others as `unlinked` with reason `shadowed`.
 
-Skillmgr treats those as offer surfaces. You can inspect the catalog, choose the exact skills you want, and pin the selected set.
+If a target folder already contains a real unmanaged skill with the same name, Skillmgr does not overwrite it. The managed skill is blocked with `blocked_by_same_name_skill`, and `status` explains what happened.
 
-```bash
-skillmgr source add-catalog marketing-skills https://github.com/example/marketing-skills.git
-skillmgr source inspect marketing-skills
-skillmgr source select marketing-skills positioning
-skillmgr source select marketing-skills launch-copy
-skillmgr sync
-```
+The important rule is simple:
 
-When the upstream catalog changes, Skillmgr tells you what changed:
+> Skillmgr may remove or repair what it owns. It does not take ownership of user files by surprise.
+
+## Public skill catalogs
+
+Some of the most useful public repositories are not one-skill packages. They are catalogs: one Git repository with many skills inside, often with informal relationships between them.
+
+Skillmgr is designed to treat those repositories as offer surfaces. This is a V1.1 feature, not the first implementation slice.
+
+You inspect the catalog, select the skills you want, and Skillmgr records the selected set in a lockfile. It also scans the full catalog inventory so it can detect meaningful upstream changes:
 
 - new skills are available
 - selected skills changed
 - selected skills moved
 - selected skills disappeared
-- selected skills now require other skills
+- selected skills now require other same-catalog skills
 
-New upstream skills are not enabled behind your back. Removed selected skills block scheduled sync until someone makes a decision.
+Same-source and same-catalog `requires` are first-class. If you select a skill that depends on another skill from the same catalog, Skillmgr expands that required closure. If a required skill is missing, unapproved, unlinked, or blocked by a name conflict, the dependent skill blocks before materialization.
 
-## Instruction packs, not settings sync
+Cross-source dependencies are checked, not auto-installed.
 
-Teams often need to tell agents how work is done here.
+## Instruction packs
 
-For example:
+Some shared agent context is not a skill.
+
+Examples:
 
 ```markdown
 Use OXLint for linting and OXFMT for formatting.
@@ -150,9 +145,7 @@ Use Rust for performance-sensitive non-browser code.
 Call out behavioral regressions before style nits.
 ```
 
-That is not a skill. It is standing context.
-
-Skillmgr manages that as an instruction pack and renders it into agent instruction files as a marked block:
+Skillmgr models this as an instruction pack: a versioned Markdown artifact rendered into agent instruction files as a managed block. This is also a V1.1 feature.
 
 ```markdown
 <!-- skillmgr:start company.engineering-defaults -->
@@ -161,62 +154,112 @@ Prefer TypeScript for application code.
 <!-- skillmgr:end company.engineering-defaults -->
 ```
 
-Everything outside the block belongs to the user or project. Skillmgr does not touch it.
+Everything outside the marked block belongs to the user or project. Skillmgr does not manage arbitrary dotfiles, editor settings, formatter configs, shell profiles, secrets, or project-specific instructions.
 
-Native include/import support differs too much between agents to be the core contract. Skillmgr's V1.1 instruction-pack slice should use managed blocks as the portable baseline and only use native includes later for targets where the adapter has verified support.
+Native include/import support is not portable enough to be the baseline. Managed blocks are the conservative V1.1 target.
 
-## Where other approaches stop
+## Target agents
 
-There are useful tools for installing skills into a local agent setup. They are good for getting something onto one machine.
+V1 focuses on directory-based skill targets.
 
-Skillmgr starts where that workflow gets uncomfortable:
-
-| Approach | Works well for | Where it gets painful |
+| Agent | Default skill path | Status |
 | --- | --- | --- |
-| One-off skill installers | Personal setup | Repeated choices, weak team review, unclear versions |
-| Dotfile repositories | Personal config | Too broad, too easy to overwrite unrelated files |
-| Git submodules | Pinning external repos | Awkward UX, detached states, poor fit for selective skills |
-| Copying public skill folders | Quick experiments | No upgrade path, no drift detection, no provenance |
-| Project-local instructions | Repo-specific context | Does not solve shared team-wide agent behavior |
+| Codex | `~/.agents/skills` | V1 target |
+| Claude Code | `~/.claude/skills` | V1 target |
+| OpenClaw | `~/.agents/skills` | V1 target |
+| Hermes | `~/.hermes/skills` | V1 target |
+| Generic folder target | User-provided path | V1 target |
+| Cursor | unverified | experimental |
+| OpenCode | unverified | experimental |
+
+When multiple agents share the same physical directory, Skillmgr should de-duplicate the target path and avoid double-linking the same slot.
+
+## Safety guarantees
+
+Skillmgr is intentionally conservative.
+
+It should never:
+
+- delete unmanaged files
+- overwrite a real skill folder with a symlink without confirmation
+- rewrite unmarked instruction content
+- silently enable newly active skills during scheduled sync
+- advance pinned external sources without a lockfile change
+- overwrite dirty team checkouts during non-interactive sync
+- commit adopted local work just because `--yes` was passed
+
+Newly active skills require local approval unless covered by a trusted source, author, or organization approval. Scheduled and non-interactive sync can apply existing approvals, but they never grant new ones.
+
+Dirty team edits block sync for the affected source or skill. The guided answer is promotion, stash, local override, or discard. The default is no data loss.
+
+## Compared with local installers
+
+Single-user skill installers are useful. They are good at putting a skill onto one machine.
+
+Skillmgr starts at the point where that workflow gets awkward for teams.
+
+| Approach | Good fit | Limit |
+| --- | --- | --- |
+| One-off skill installer | Personal setup | Repeated target choices, weak team review, unclear versions |
+| Dotfile repo | Personal environment | Too broad, easy to overwrite unrelated files |
+| Git submodule | Pinning one external repo | Awkward selective use, detached UX, poor catalog fit |
+| Copying public folders | Fast experiments | No drift detection, provenance, or upgrade path |
+| Project-local instructions | Repo-specific context | Does not solve global team agent behavior |
 
 Skillmgr is narrower than a dotfile manager and more team-aware than a local installer.
 
 It is the missing layer between "I found a useful skill" and "our agents can rely on this."
 
-## Safety model
+## V1 scope
 
-Skillmgr is conservative because it operates in places people care about.
+The first implementation should prove the core loop before expanding the surface area.
 
-It should never:
+V1 includes:
 
-- delete unmanaged files
-- rewrite unmarked instruction content
-- silently enable newly active skills
-- float external dependencies without a lockfile
-- overwrite dirty team checkouts during scheduled sync
-- replace a real folder with a symlink without explicit confirmation
+- `init`
+- `target detect`, `target link`, `target unlink`
+- `source add`, `source list`, `source priority` for local and team sources
+- `status`
+- `sync`
+- `adopt`
+- minimal `resolve` helpers for listed blockers
+- `doctor`
+- TOML config and lockfiles
+- local store under `~/.skillmgr`
+- directory-level symlink materialization
+- deterministic multi-source resolution
+- local approval state for newly active team skills
+- user-facing `unlinked` reporting for shadowed skills
+- dirty-state blocking for non-interactive sync
 
-When in doubt, it stops and explains what needs a human decision.
+V1.1 adds the next product layer:
 
-## Designed for the agent era
+- catalog inspection and selected catalog locks
+- catalog drift reporting
+- same-catalog required-closure expansion
+- instruction pack discovery and managed block rendering
+- topic-overlap warnings for instruction packs
 
-The more you use agents, the more your actual advantage moves into the instructions, workflows, and judgments they carry.
+Later work includes:
 
-Your best review checklist. Your release-note style. Your migration playbook. Your team's defaults. The tiny procedural details that make one agent run feel sharp and another feel like a stranger.
+- full scheduled autosync installation
+- `source refresh` lockfile PRs
+- full interactive resolve assistant
+- rename/adapt flows for conflicts
+- automatic catalog move reconciliation
+- full PR-first promotion
+- additional verified agent adapters
+- forge adapters beyond GitHub
 
-Those things deserve a lifecycle.
+## Project status
 
-Draft them locally. Try them in real work. Promote the ones that hold up. Keep the team current. Retire what stops working.
+Skillmgr is currently in the RFC and early implementation planning phase.
 
-Skillmgr makes that loop explicit.
+The product direction, resolver model, source terminology, target strategy, approval model, and V1/V1.1 boundary are being written down before code is built. The README describes the intended product, while the RFCs define the implementation contract.
 
-## Current design docs
-
-The implementation is being shaped through RFCs and ADRs:
+## Design docs
 
 - [RFC 0001: Skillmgr vision](docs/rfcs/0001-skillmgr-vision.md)
 - [RFC 0002: Technical architecture](docs/rfcs/0002-technical-architecture.md)
 - [RFC 0003: Resolution engine](docs/rfcs/0003-resolution-engine.md)
 - [ADR 0001: Project language](docs/adr/0001-project-language.md)
-
-The README describes the product bar we are building toward.
