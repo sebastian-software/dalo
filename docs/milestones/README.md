@@ -27,7 +27,7 @@ Milestones are intentionally small and stable. Progress is tracked by changing t
 | M07 | [User Lock and Multi-Source Reproducibility](0007-user-lock-multisource.md) | done | Persist the resolved set and make multi-source sync reproducible. |
 | M08 | [Adopt and Minimal Resolve](0008-adopt-minimal-resolve.md) | done | Bring unmanaged skills into the local source and expose safe repair commands. |
 | M09 | [Doctor and Diagnostics](0009-doctor-diagnostics.md) | done | Provide environment, path, Git, target, and state diagnostics. |
-| M10 | [V1 Release Readiness](0010-v1-release-readiness.md) | todo | Harden CLI UX, docs, tests, packaging, and release gates. |
+| M10 | [V1 Release Readiness](0010-v1-release-readiness.md) | done | Harden CLI UX, docs, tests, packaging, and release gates. |
 
 ## Recommended Order
 

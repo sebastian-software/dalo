@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{SkillmgrError, SkillmgrResult};
 use crate::git;
-use crate::store::{self, StorePaths};
+use crate::store::{self, ApprovalRecord, StorePaths};
 
 /// Source kind supported by the V1 config schema.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -111,6 +111,7 @@ pub fn add_team_source(paths: &StorePaths, id: &str, url: &str) -> SkillmgrResul
             .then_with(|| left.id.cmp(&right.id))
     });
     store::write_config(paths, &config)?;
+    approve_added_source(paths, id)?;
 
     Ok(SourceAddReport { source })
 }
@@ -164,6 +165,28 @@ pub fn refresh_tracking_team_sources(paths: &StorePaths) -> SkillmgrResult<()> {
             });
         }
         git::pull_ff_only(&source.path)?;
+    }
+
+    Ok(())
+}
+
+fn approve_added_source(paths: &StorePaths, id: &str) -> SkillmgrResult<()> {
+    let mut approvals = store::read_approvals(paths)?;
+    if !approvals
+        .approvals
+        .iter()
+        .any(|approval| approval.scope == "source" && approval.value == id)
+    {
+        approvals.approvals.push(ApprovalRecord {
+            scope: "source".to_owned(),
+            value: id.to_owned(),
+        });
+        approvals.approvals.sort_by(|left, right| {
+            left.scope
+                .cmp(&right.scope)
+                .then_with(|| left.value.cmp(&right.value))
+        });
+        store::write_approvals(paths, &approvals)?;
     }
 
     Ok(())

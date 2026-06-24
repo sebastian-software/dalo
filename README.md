@@ -2,9 +2,9 @@
 
 Git-backed skill management for AI agents.
 
-Skillmgr gives teams one place to manage the skills, shared agent conventions, and local experiments their AI agents depend on. It keeps the source of truth in a local store, resolves skills from multiple Git sources, and links the final set into the agent folders people already use.
+Skillmgr gives teams one place to manage the skills and local experiments their AI agents depend on. It keeps the source of truth in a local store, resolves skills from multiple Git sources, and links the final set into the agent folders people already use.
 
-Codex, Claude Code, OpenClaw, Hermes, and folder-based agents can keep reading normal skill directories. Skillmgr handles the part that gets hard once skills become team knowledge: source priority, safe sync, local overrides, catalog selection, adoption, promotion, and drift.
+Codex, Claude Code, OpenClaw, Hermes, and folder-based agents can keep reading normal skill directories. Skillmgr handles the part that gets hard once skills become team knowledge: source priority, safe sync, local overrides, adoption, diagnostics, and drift.
 
 ## Why this exists
 
@@ -32,12 +32,68 @@ Skillmgr treats agent knowledge like something worth managing:
 - safe around existing unmanaged files
 - ready to promote through review when a local experiment proves useful
 
+## Installation
+
+The current release candidate is source-built:
+
+```sh
+git clone https://github.com/sebastian-software/skillmgr.git
+cd skillmgr
+cargo install --path .
+```
+
+For development:
+
+```sh
+cargo fmt --check
+cargo test
+cargo clippy --all-targets --all-features -- -D warnings
+cargo build --release
+```
+
+Skillmgr shells out to `git` for source operations. `gh` is checked by `doctor` for future PR flows, but normal V1 sync does not require GitHub auth.
+
+## Quickstart
+
+This quickstart uses a temporary store and a temporary generic target, so it will not touch your real agent folders.
+
+```sh
+export SKILLMGR_STORE="$(mktemp -d)/store"
+export SKILLMGR_TARGET="$(mktemp -d)/skills"
+
+skillmgr init
+skillmgr target link generic "$SKILLMGR_TARGET"
+
+mkdir -p "$SKILLMGR_STORE/local/skills/review"
+printf '# Review\n' > "$SKILLMGR_STORE/local/skills/review/SKILL.md"
+
+skillmgr status
+skillmgr sync
+ls -la "$SKILLMGR_TARGET"
+skillmgr doctor
+```
+
+To try a local team source without network access:
+
+```sh
+TEAM_REPO="$(mktemp -d)/team-skills"
+mkdir -p "$TEAM_REPO/skills/release-notes"
+printf '# Release Notes\n' > "$TEAM_REPO/skills/release-notes/SKILL.md"
+git -C "$TEAM_REPO" init
+git -C "$TEAM_REPO" add .
+git -C "$TEAM_REPO" -c user.email=test@example.com -c user.name='Test User' commit -m initial
+
+skillmgr source add company "$TEAM_REPO"
+skillmgr source list
+skillmgr sync
+```
+
 ## The model
 
 Skillmgr separates source, resolution, and installation.
 
 ```text
-team sources + local source + selected catalogs
+team sources + local source
         |
         v
 ~/.skillmgr store
@@ -46,7 +102,7 @@ team sources + local source + selected catalogs
 deterministic resolver
         |
         v
-agent skill folders + managed instruction blocks
+agent skill folders
 ```
 
 The agent folder is an output target, not the database.
@@ -66,7 +122,7 @@ skillmgr source add company git@github.com:acme/agent-skills.git
 skillmgr sync
 ```
 
-The team skills appear where each agent expects them.
+The team skills appear where each agent expects them. A source explicitly added by the user is locally approved for V1 resolution.
 
 When an agent creates a useful local skill directly in its own folder, Skillmgr can bring it under management without losing the original work.
 
@@ -77,17 +133,11 @@ skillmgr adopt release-notes.local
 
 The first step copies the skill into the local source. Replacing the original folder with a symlink is a separate confirmation. Committing the adopted skill is also explicit; `--yes` never means "commit this for me".
 
-When that local skill is ready for the team, the intended full flow is PR-first:
-
-```sh
-skillmgr promote release-notes --target company
-```
-
-Promotion uses normal `git` plus an authenticated `gh` CLI. If GitHub auth is missing, Skillmgr should fail loudly instead of inventing a weaker fallback.
+Promotion is intentionally deferred. The planned flow is PR-first and will use normal `git` plus an authenticated `gh` CLI. If GitHub auth is missing, Skillmgr should fail loudly instead of inventing a weaker fallback.
 
 ## Sources
 
-Skillmgr is multi-source by default.
+Skillmgr is multi-source by default. V1 implements local and team sources.
 
 | Source kind | Purpose | Version behavior |
 | --- | --- | --- |
@@ -145,7 +195,7 @@ Use Rust for performance-sensitive non-browser code.
 Call out behavioral regressions before style nits.
 ```
 
-Skillmgr models this as an instruction pack: a versioned Markdown artifact rendered into agent instruction files as a managed block. This is also a V1.1 feature.
+Skillmgr will model this as an instruction pack: a versioned Markdown artifact rendered into agent instruction files as a managed block. This is a V1.1 feature and is not implemented in the V1 release candidate.
 
 ```markdown
 <!-- skillmgr:start company.engineering-defaults -->
@@ -262,13 +312,13 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo run -- --help
 ```
 
-The current implementation has the Rust project scaffold, CLI shell, store layout, TOML schemas, `skillmgr init`, target detect/link/unlink, team source add/list/priority, deterministic skill inventory scanning, resolver, approval gating, `skillmgr status`, `skillmgr sync` symlink materialization, clean team source refresh, dirty-source blocking, a coarse store lock, resolved user-lock writing, status lock-drift reporting, unmanaged skill discovery, copy-first adoption, minimal resolve helpers, and `skillmgr doctor` diagnostics in place. Product behavior is being implemented milestone by milestone from [the implementation plan](docs/milestones/README.md).
+The current implementation has the Rust project scaffold, CLI shell, store layout, TOML schemas, `skillmgr init`, target detect/link/unlink, team source add/list/priority, deterministic skill inventory scanning, resolver, approval gating, `skillmgr status`, `skillmgr sync` symlink materialization, clean team source refresh, dirty-source blocking, a coarse store lock, resolved user-lock writing, status lock-drift reporting, unmanaged skill discovery, copy-first adoption, minimal resolve helpers, and `skillmgr doctor` diagnostics in place. The V1 release-candidate scope is tracked in [the implementation plan](docs/milestones/README.md).
 
 ## Project status
 
-Skillmgr is currently in early implementation.
+Skillmgr is currently a V1 release candidate.
 
-The product direction, resolver model, source terminology, target strategy, approval model, and V1/V1.1 boundary are defined in RFCs. The README describes the intended product, while the RFCs and milestone plan define the implementation contract.
+The implemented V1 loop covers local/team sources, target linking, safe sync, lock drift, adoption, minimal resolve helpers, and doctor diagnostics. Catalogs, instruction packs, autosync, promotion, and package distribution are deferred.
 
 ## Design docs
 
@@ -276,4 +326,6 @@ The product direction, resolver model, source terminology, target strategy, appr
 - [RFC 0001: Skillmgr vision](docs/rfcs/0001-skillmgr-vision.md)
 - [RFC 0002: Technical architecture](docs/rfcs/0002-technical-architecture.md)
 - [RFC 0003: Resolution engine](docs/rfcs/0003-resolution-engine.md)
+- [V1 implementation status](docs/rfcs/v1-implementation-status.md)
+- [v0.1.0-rc.1 release notes](docs/releases/v0.1.0-rc.1.md)
 - [ADR 0001: Project language](docs/adr/0001-project-language.md)

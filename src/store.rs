@@ -390,6 +390,17 @@ pub fn read_approvals(paths: &StorePaths) -> SkillmgrResult<ApprovalsFile> {
     Ok(toml::from_str(&content)?)
 }
 
+/// Write local approvals atomically.
+pub fn write_approvals(paths: &StorePaths, approvals: &ApprovalsFile) -> SkillmgrResult<()> {
+    if !paths.root.exists() {
+        return Err(SkillmgrError::StoreNotInitialized {
+            path: paths.root.clone(),
+        });
+    }
+
+    write_toml_atomic(&paths.approvals_file, approvals)
+}
+
 /// Write the store state file atomically.
 pub fn write_state(paths: &StorePaths, state: &StateFile) -> SkillmgrResult<()> {
     if !paths.root.exists() {

@@ -20,6 +20,25 @@ fn help_should_list_planned_top_level_commands() {
 }
 
 #[test]
+fn help_should_render_implemented_command_groups() {
+    for args in [
+        vec!["target", "--help"],
+        vec!["source", "--help"],
+        vec!["resolve", "--help"],
+        vec!["adopt", "--help"],
+        vec!["status", "--help"],
+        vec!["sync", "--help"],
+        vec!["doctor", "--help"],
+    ] {
+        Command::cargo_bin("skillmgr")
+            .expect("binary should build")
+            .args(args)
+            .assert()
+            .success();
+    }
+}
+
+#[test]
 fn init_dry_run_json_should_not_create_store() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -785,6 +804,53 @@ fn source_add_should_clone_team_source_into_store() {
         .stdout(predicate::str::contains("added source company"));
 
     assert!(store.join("sources/company/checkout/.git").is_dir());
+}
+
+#[test]
+fn source_add_should_approve_added_source() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo(&repo);
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "link", "generic"])
+        .arg(&target)
+        .assert()
+        .success();
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "company"])
+        .arg(&repo)
+        .assert()
+        .success();
+
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    assert!(
+        std::fs::symlink_metadata(target.join("team"))
+            .expect("team skill should be linked")
+            .file_type()
+            .is_symlink()
+    );
 }
 
 #[test]
