@@ -24,12 +24,12 @@ fn stubbed_command_should_fail_with_clear_message() {
     let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
 
     command
-        .arg("status")
+        .arg("sync")
         .assert()
         .failure()
         .code(1)
         .stderr(predicate::str::contains(
-            "command `status` is not implemented yet",
+            "command `sync` is not implemented yet",
         ));
 }
 
@@ -70,6 +70,32 @@ fn init_should_create_store_layout() {
     assert!(store.join("state.toml").is_file());
     assert!(store.join("approvals.toml").is_file());
     assert!(store.join("local/.git").is_dir());
+}
+
+#[test]
+fn status_json_should_report_local_skill_as_active() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    let skill_dir = store.join("local/skills/review");
+    std::fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+    std::fs::write(skill_dir.join("SKILL.md"), "# Review\n").expect("skill should be written");
+    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"source_ref\": \"local:review\""))
+        .stdout(predicate::str::contains("\"active_skills\""));
 }
 
 #[test]

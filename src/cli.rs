@@ -240,6 +240,7 @@ pub fn run_cli(cli: Cli) -> SkillmgrResult<()> {
     match command {
         Command::Init => run_init(&options),
         Command::Target(command) => run_target(&options, command),
+        Command::Status => run_status(&options),
         command => Err(SkillmgrError::NotImplemented {
             command: command.name().to_owned(),
         }),
@@ -253,6 +254,18 @@ fn run_init(options: &GlobalOptions) -> SkillmgrResult<()> {
         print_json(&report)?;
     } else {
         status::print_init_report(&report);
+    }
+
+    Ok(())
+}
+
+fn run_status(options: &GlobalOptions) -> SkillmgrResult<()> {
+    let report = status::build_status_report(&options.store)?;
+
+    if options.json {
+        print_json(&report)?;
+    } else {
+        status::print_status_report(&report);
     }
 
     Ok(())
@@ -347,11 +360,11 @@ mod tests {
             dry_run: false,
             no_color: false,
             verbose: 0,
-            command: Some(Command::Status),
+            command: Some(Command::Sync),
         };
 
-        let error = run_cli(cli).expect_err("status should be stubbed");
+        let error = run_cli(cli).expect_err("sync should be stubbed");
 
-        assert_eq!(error.to_string(), "command `status` is not implemented yet");
+        assert_eq!(error.to_string(), "command `sync` is not implemented yet");
     }
 }

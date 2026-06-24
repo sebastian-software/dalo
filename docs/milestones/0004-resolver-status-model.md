@@ -1,6 +1,6 @@
 # M04: Resolver and Status Model
 
-Status: todo  
+Status: done
 Target: V1  
 Depends on: M03, RFC 0003  
 
@@ -48,9 +48,22 @@ Implement the pure resolver and status model for local/team sources before any f
 ```sh
 cargo fmt --check
 cargo test resolver status
+cargo test
+cargo clippy --all-targets --all-features -- -D warnings
 cargo run -- --store /tmp/skillmgr-test status --json
 git diff --check
 ```
+
+## Completion Notes
+
+- Added a pure resolver with enabled source selection, deterministic priority ordering, source-ID tie breaks, approval gating, local overrides, pending approval output, and unlinked shadowed skills.
+- Added local approval matching for `skill`, `source`, `author`, and `org` scopes.
+- Implemented the rule that an unapproved higher-priority candidate does not displace an approved lower-priority skill.
+- Added `skillmgr status` with text and JSON output.
+- Added status store integration that reads config and approvals, scans enabled source inventories, carries inventory warnings, and renders resolution output.
+- Added unit tests for priority, tie-breaks, local override, pending approval, lower-priority approved fallback, and owner-based approvals.
+- Added command-level status JSON coverage.
+- Validation passed on 2026-06-24.
 
 ## Suggested Issue Split
 

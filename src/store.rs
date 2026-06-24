@@ -304,6 +304,30 @@ pub fn read_state(paths: &StorePaths) -> SkillmgrResult<StateFile> {
     Ok(toml::from_str(&content)?)
 }
 
+/// Read the initialized user config.
+pub fn read_config(paths: &StorePaths) -> SkillmgrResult<UserConfig> {
+    if !paths.config_file.exists() {
+        return Err(SkillmgrError::StoreNotInitialized {
+            path: paths.root.clone(),
+        });
+    }
+
+    let content = fs::read_to_string(&paths.config_file)?;
+    Ok(toml::from_str(&content)?)
+}
+
+/// Read local approvals.
+pub fn read_approvals(paths: &StorePaths) -> SkillmgrResult<ApprovalsFile> {
+    if !paths.approvals_file.exists() {
+        return Err(SkillmgrError::StoreNotInitialized {
+            path: paths.root.clone(),
+        });
+    }
+
+    let content = fs::read_to_string(&paths.approvals_file)?;
+    Ok(toml::from_str(&content)?)
+}
+
 /// Write the store state file atomically.
 pub fn write_state(paths: &StorePaths, state: &StateFile) -> SkillmgrResult<()> {
     if !paths.root.exists() {
