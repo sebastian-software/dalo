@@ -262,7 +262,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo run -- --help
 ```
 
-The current implementation has the Rust project scaffold, CLI shell, store layout, TOML schemas, `skillmgr init`, target detect/link/unlink, deterministic skill inventory scanning, resolver, approval gating, `skillmgr status`, and local `skillmgr sync` symlink materialization in place. Product behavior is being implemented milestone by milestone from [the implementation plan](docs/milestones/README.md).
+The current implementation has the Rust project scaffold, CLI shell, store layout, TOML schemas, `skillmgr init`, target detect/link/unlink, team source add/list/priority, deterministic skill inventory scanning, resolver, approval gating, `skillmgr status`, `skillmgr sync` symlink materialization, clean team source refresh, dirty-source blocking, and a coarse store lock in place. Product behavior is being implemented milestone by milestone from [the implementation plan](docs/milestones/README.md).
 
 ## Project status
 

@@ -1,6 +1,6 @@
 # M06: Team Sources and Git Safety
 
-Status: todo  
+Status: done
 Target: V1  
 Depends on: M05, RFC 0002, RFC 0003  
 
@@ -46,10 +46,23 @@ Add Git-backed team sources to the sync loop while preserving the no-data-loss m
 
 ```sh
 cargo fmt --check
-cargo test git source
-cargo test sync
+cargo test
+cargo clippy --all-targets --all-features -- -D warnings
 git diff --check
 ```
+
+Validated on 2026-06-24.
+
+## Completion Notes
+
+- Added `source add`, `source list`, and `source priority` for team sources.
+- Team sources clone into the skillmgr store under `sources/<id>/checkout`.
+- Added Git wrappers for clone, fast-forward pull, dirty checks, and `rev-parse HEAD`.
+- `sync` refreshes clean tracking team sources before scanning and materializing.
+- Dirty team sources block sync with an unsafe-state exit instead of discarding edits.
+- Added a coarse store lock for mutating post-init commands.
+- Read-only `source list` remains lock-free.
+- Added command tests for source add, source priority, and dirty-source sync blocking.
 
 ## Suggested Issue Split
 
