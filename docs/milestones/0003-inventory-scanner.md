@@ -1,6 +1,6 @@
 # M03: Inventory Scanner
 
-Status: todo  
+Status: done
 Target: V1  
 Depends on: M01, RFC 0001, RFC 0003  
 
@@ -46,8 +46,21 @@ Scan skills from local and team source checkouts into deterministic inventories.
 ```sh
 cargo fmt --check
 cargo test inventory
+cargo test
+cargo clippy --all-targets --all-features -- -D warnings
 git diff --check
 ```
+
+## Completion Notes
+
+- Added recursive source scanning for directories containing `SKILL.md`.
+- Added YAML frontmatter parsing for `id`, `name`, `description`, `requires`, `owners`, and `tags`.
+- Added slot-name derivation from valid frontmatter `name` with folder-name fallback.
+- Added stable source-qualified refs in the form `<source-id>:<slot-name>`.
+- Added deterministic SHA-256 content hashes over skill directories and metadata hashes over parsed frontmatter.
+- Added warnings for malformed frontmatter, invalid slot names, unreadable paths, and duplicate slot names within a source.
+- Added unit tests for frontmatter parsing, fallback behavior, duplicate detection, and supporting-file hash changes.
+- Validation passed on 2026-06-24.
 
 ## Suggested Issue Split
 
