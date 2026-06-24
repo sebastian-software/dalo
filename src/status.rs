@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::adopt::{AdoptReport, KeepReport, RemoveOwnedReport, ResolveListReport, UnmanagedSkill};
+use crate::doctor::{DoctorReport, DoctorSeverity};
 use crate::error::SkillmgrResult;
 use crate::inventory::{self, InventoryWarning};
 use crate::lockfile::{self, LockDrift};
@@ -354,6 +355,37 @@ pub fn print_keep_report(report: &KeepReport) {
 /// Print a human-readable remove-owned report.
 pub fn print_remove_owned_report(report: &RemoveOwnedReport) {
     println!("{} {}", report.status.as_str(), report.link_path.display());
+}
+
+/// Print a human-readable doctor report.
+pub fn print_doctor_report(report: &DoctorReport) {
+    println!("skillmgr store: {}", report.store.display());
+    println!(
+        "summary: errors={} warnings={} info={} ok={}",
+        report.summary.errors, report.summary.warnings, report.summary.info, report.summary.ok
+    );
+    for finding in &report.findings {
+        let next = finding
+            .next_command
+            .as_ref()
+            .map_or(String::new(), |command| format!(" next={command}"));
+        println!(
+            "{:<7} {:?}: {}{}",
+            doctor_severity_label(finding.severity),
+            finding.code,
+            finding.message,
+            next
+        );
+    }
+}
+
+fn doctor_severity_label(severity: DoctorSeverity) -> &'static str {
+    match severity {
+        DoctorSeverity::Error => "error",
+        DoctorSeverity::Warning => "warning",
+        DoctorSeverity::Info => "info",
+        DoctorSeverity::Ok => "ok",
+    }
 }
 
 /// Print a human-readable target detection report.

@@ -20,20 +20,6 @@ fn help_should_list_planned_top_level_commands() {
 }
 
 #[test]
-fn stubbed_command_should_fail_with_clear_message() {
-    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
-
-    command
-        .arg("doctor")
-        .assert()
-        .failure()
-        .code(1)
-        .stderr(predicate::str::contains(
-            "command `doctor` is not implemented yet",
-        ));
-}
-
-#[test]
 fn init_dry_run_json_should_not_create_store() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -70,6 +56,126 @@ fn init_should_create_store_layout() {
     assert!(store.join("state.toml").is_file());
     assert!(store.join("approvals.toml").is_file());
     assert!(store.join("local/.git").is_dir());
+}
+
+#[test]
+fn doctor_json_should_report_missing_store_without_creating_it() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("missing-store");
+    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "doctor"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"code\": \"store_missing\""));
+
+    assert!(!store.exists());
+}
+
+#[test]
+fn doctor_json_should_report_initialized_store() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "doctor"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"code\": \"store_exists\""))
+        .stdout(predicate::str::contains("\"code\": \"config_ok\""))
+        .stdout(predicate::str::contains("\"code\": \"lock_ok\""));
+}
+
+#[test]
+fn doctor_json_should_report_broken_owned_symlink() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_skill_and_target(&store, &target);
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    std::fs::remove_dir_all(store.join("local/skills/review"))
+        .expect("local skill should be removed");
+    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "doctor"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "\"code\": \"broken_owned_symlink\"",
+        ));
+}
+
+#[test]
+fn doctor_json_should_report_foreign_owned_symlink() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let foreign = temp_dir.path().join("foreign");
+    setup_store_with_skill_and_target(&store, &target);
+    Command::cargo_bin("skillmgr")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    std::fs::create_dir_all(&foreign).expect("foreign target should be created");
+    std::fs::remove_file(target.join("review")).expect("owned symlink should be removed");
+    std::os::unix::fs::symlink(&foreign, target.join("review"))
+        .expect("foreign symlink should be created");
+    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "doctor"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "\"code\": \"foreign_owned_symlink\"",
+        ));
+}
+
+#[test]
+fn doctor_json_should_report_unmanaged_same_name_blocker() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_skill_and_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    let mut command = Command::cargo_bin("skillmgr").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "doctor"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "\"code\": \"unmanaged_same_name_blocker\"",
+        ));
 }
 
 #[test]

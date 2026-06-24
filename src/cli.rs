@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use clap::{Args, CommandFactory, Parser, Subcommand};
 
 use crate::adopt;
-use crate::error::{SkillmgrError, SkillmgrResult};
+use crate::doctor;
+use crate::error::SkillmgrResult;
 use crate::lockfile;
 use crate::materialize;
 use crate::source;
@@ -249,9 +250,7 @@ pub fn run_cli(cli: Cli) -> SkillmgrResult<()> {
         Command::Sync => run_sync(&options),
         Command::Adopt(command) => run_adopt(&options, command),
         Command::Resolve(command) => run_resolve(&options, command),
-        command => Err(SkillmgrError::NotImplemented {
-            command: command.name().to_owned(),
-        }),
+        Command::Doctor => run_doctor(&options),
     }
 }
 
@@ -411,6 +410,16 @@ fn run_resolve(options: &GlobalOptions, command: ResolveCommand) -> SkillmgrResu
     }
 }
 
+fn run_doctor(options: &GlobalOptions) -> SkillmgrResult<()> {
+    let report = doctor::run_doctor(&options.store);
+    if options.json {
+        print_json(&report)?;
+    } else {
+        status::print_doctor_report(&report);
+    }
+    Ok(())
+}
+
 fn run_target(options: &GlobalOptions, command: TargetCommand) -> SkillmgrResult<()> {
     match command.command {
         TargetSubcommand::Detect => {
@@ -469,21 +478,6 @@ where
     Ok(())
 }
 
-impl Command {
-    fn name(&self) -> &'static str {
-        match self {
-            Self::Init => "init",
-            Self::Target(_) => "target",
-            Self::Source(_) => "source",
-            Self::Status => "status",
-            Self::Sync => "sync",
-            Self::Adopt(_) => "adopt",
-            Self::Resolve(_) => "resolve",
-            Self::Doctor => "doctor",
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -501,22 +495,5 @@ mod tests {
         };
 
         assert!(run_cli(cli).is_ok());
-    }
-
-    #[test]
-    fn run_cli_should_return_not_implemented_for_stubbed_command() {
-        let cli = Cli {
-            store: None,
-            json: false,
-            yes: false,
-            dry_run: false,
-            no_color: false,
-            verbose: 0,
-            command: Some(Command::Doctor),
-        };
-
-        let error = run_cli(cli).expect_err("doctor should be stubbed");
-
-        assert_eq!(error.to_string(), "command `doctor` is not implemented yet");
     }
 }

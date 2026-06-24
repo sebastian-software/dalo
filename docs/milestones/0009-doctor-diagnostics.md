@@ -1,6 +1,6 @@
 # M09: Doctor and Diagnostics
 
-Status: todo  
+Status: done
 Target: V1  
 Depends on: M08, RFC 0001, RFC 0002  
 
@@ -48,10 +48,24 @@ Make skillmgr self-explanatory when something is wrong. `doctor` should inspect 
 
 ```sh
 cargo fmt --check
-cargo test doctor
-cargo run -- --store /tmp/skillmgr-test doctor --json
+cargo test
+cargo clippy --all-targets --all-features -- -D warnings
+cargo run -- --store /tmp/skillmgr-test --json doctor
 git diff --check
 ```
+
+Validated on 2026-06-24.
+
+## Completion Notes
+
+- Added `skillmgr doctor` with text and JSON output.
+- Doctor is read-only and returns a report instead of mutating or repairing state.
+- Each finding includes severity, code, message, and an optional next command.
+- Added store layout, config, state, lock, local Git, `git`, `gh`, target, duplicate target directory, source dirtiness, pending approval, and cloud-synced path checks.
+- Added owned symlink checks for valid, missing, broken, real-entry, and foreign symlink states.
+- Added unmanaged same-name blocker reporting.
+- Missing or unauthenticated `gh` is reported as PR-flow readiness, not normal sync readiness.
+- Added unit and CLI tests for missing stores, initialized stores, broken symlinks, foreign symlinks, and unmanaged blockers.
 
 ## Suggested Issue Split
 
