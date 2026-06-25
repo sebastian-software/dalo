@@ -33,6 +33,9 @@ pub struct UserLock {
     /// Target materialization summary from the last successful sync.
     #[serde(default)]
     pub target_materializations: Vec<LockedTargetMaterialization>,
+    /// Active instruction packs rendered into instruction-file targets.
+    #[serde(default)]
+    pub active_instruction_packs: Vec<LockedInstructionPack>,
 }
 
 /// Source identity captured in the user lock.
@@ -85,6 +88,23 @@ pub struct LockedTargetMaterialization {
     pub reason: Option<String>,
 }
 
+/// One active instruction pack captured in the user lock.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LockedInstructionPack {
+    /// Pack ID.
+    pub pack_id: String,
+    /// Instruction-file target the block was rendered into.
+    pub target: PathBuf,
+    /// Source ID the pack came from.
+    pub source_id: String,
+    /// Source commit the pack was rendered from, when available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commit: Option<String>,
+    /// Pack version, when declared.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+}
+
 /// Drift between the previous lock and the current live resolution.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LockDrift {
@@ -131,6 +151,7 @@ impl UserLock {
             pending_approval_skills: Vec::new(),
             unlinked_skills: Vec::new(),
             target_materializations: Vec::new(),
+            active_instruction_packs: Vec::new(),
         }
     }
 }
@@ -194,6 +215,9 @@ pub fn build_user_lock(
                 })
                 .collect()
         }),
+        // Instruction packs are managed by the `instructions` command, not by sync;
+        // the caller restores the previous lock's packs after rebuilding.
+        active_instruction_packs: Vec::new(),
     };
     sort_user_lock(&mut lock);
     lock
