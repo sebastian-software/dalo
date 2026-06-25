@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dalo · Git-backed skill management for AI agents</title>
+  <meta name="description" content="Dalo keeps every skill your AI agents run in Git, resolves them deterministically across local and team sources, and links the final set into the folders your agents already read: Codex, Claude Code, OpenClaw, Hermes." />
+  <link rel="canonical" href="https://dalo.sh/" />
+  <meta name="theme-color" content="#15171c" />
+
+  <!-- Open Graph / Twitter -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://dalo.sh/" />
+  <meta property="og:title" content="Dalo · Git-backed skill management for AI agents" />
+  <meta property="og:description" content="One source of truth for every skill your agents run. Versioned in Git, resolved deterministically, linked into the agent folders you already use." />
+  <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Dalo · Git-backed skill management for AI agents" />
+  <meta name="twitter:description" content="One source of truth for every skill your agents run. Versioned in Git, resolved deterministically, linked into the agent folders you already use." />
+  <meta name="twitter:image" content="https://dalo.sh/assets/img/og.png" />
+
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
+  <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
+
+  <link rel="preload" href="/assets/fonts/bricolage-800.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/assets/fonts/hanken-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/assets/fonts/geistmono-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header" data-scope="dark">
+  <div class="wrap header-inner">
+    <a class="brand" href="/" aria-label="Dalo home">
+      <svg class="brand-mark" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true" focusable="false">
+        <rect x="1.25" y="1.25" width="29.5" height="29.5" rx="8" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <circle cx="9" cy="9.5" r="2" fill="currentColor" />
+        <circle cx="9" cy="16" r="2" fill="currentColor" />
+        <circle cx="9" cy="22.5" r="2" fill="currentColor" />
+        <path d="M11 9.5 H17 Q22 9.5 22 16 Q22 22.5 17 22.5 H11 M11 16 H22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" />
+        <circle cx="22.5" cy="16" r="2.6" fill="var(--accent)" />
+      </svg>
+      <span class="brand-word">dalo</span>
+    </a>
+
+    <nav class="site-nav" aria-label="Primary">
+      <a href="#why">Why</a>
+      <a href="#how">How it works</a>
+      <a href="#workflow">Workflow</a>
+      <a href="#quickstart">Quickstart</a>
+      <a href="#targets">Targets</a>
+    </nav>
+
+    <div class="header-actions">
+      <a class="ghost-btn" href="https://github.com/sebastian-software/dalo" rel="noopener">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- ───────────────────────── HERO ───────────────────────── -->
+  <section class="hero" data-scope="dark">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <p class="kicker reveal"><span class="dot"></span> Rust CLI · macOS &amp; Linux · v0.1.0-rc</p>
+        <h1 class="reveal">Bring order to the skills your AI agents run.</h1>
+        <p class="hero-lede reveal">
+          Skills are turning into team knowledge: how you review code, write release
+          notes, investigate incidents. Dalo keeps them in Git, resolves them
+          deterministically across your local and team sources, and links the final
+          set into the folders your agents already read.
+        </p>
+        <div class="hero-cta reveal">
+          <a class="btn btn-accent" href="#quickstart">
+            Get started
+            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M2 8h11M9 4l4 4-4 4"/></svg>
+          </a>
+          <a class="btn btn-quiet" href="https://github.com/sebastian-software/dalo" rel="noopener">View on GitHub</a>
+        </div>
+        <p class="hero-meta reveal">Open source under MIT. No daemon, no network required, single binary.</p>
+      </div>
+
+      <div class="hero-demo reveal" aria-hidden="false">
+        <div class="terminal">
+          <div class="terminal-bar">
+            <span class="tdot"></span><span class="tdot"></span><span class="tdot"></span>
+            <span class="terminal-title">~/work · dalo sync</span>
+          </div>
+          <pre class="terminal-body"><code><span class="ln"><span class="prompt">$</span> dalo sync</span>
+<span class="ln c-dim">  refresh   company        clean · fast-forward</span>
+<span class="ln"><span class="c-ok">  link      </span>review         <span class="c-dim">→ ~/.codex/skills/review</span></span>
+<span class="ln"><span class="c-ok">  link      </span>release-notes  <span class="c-dim">→ ~/.claude/skills/release-notes</span></span>
+<span class="ln"><span class="c-warn">  shadow    </span>copy-editing   <span class="c-dim">company over oss</span></span>
+<span class="ln"><span class="c-block">  block     </span>deploy         <span class="c-dim">slot held by unmanaged skill</span></span>
+<span class="ln"> </span>
+<span class="ln c-strong">  2 linked · 1 shadowed · 1 blocked · 0 overwritten</span></code></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── WHY ───────────────────────── -->
+  <section class="band" id="why">
+    <div class="wrap why-grid">
+      <div class="why-lead">
+        <h2 class="section-h reveal">Agent skills are becoming operational knowledge.</h2>
+        <p class="lead reveal">
+          They encode how your team works. But most of them still live in one
+          machine's folder, a pasted snippet, or a chat thread. Over time, versions
+          diverge, ownership blurs, and the same skill behaves differently for
+          everyone.
+        </p>
+      </div>
+
+      <div class="why-compare reveal">
+        <div class="compare-col compare-before">
+          <p class="compare-label">The usual flow</p>
+          <ul class="checklist">
+            <li>install this skill here</li>
+            <li>copy that folder there</li>
+            <li>pick the target agent again</li>
+            <li>hope nobody changed the public repo</li>
+            <li>hope the local edit doesn't get lost</li>
+            <li>hope the team runs the same version</li>
+          </ul>
+        </div>
+        <div class="compare-col compare-after">
+          <p class="compare-label">With Dalo</p>
+          <ul class="checklist checklist-ok">
+            <li>every skill versioned in Git</li>
+            <li>resolved deterministically</li>
+            <li>synced across the whole team</li>
+            <li>private work kept separate</li>
+            <li>existing files never touched</li>
+            <li>ready to promote when it proves out</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── WHAT CHANGES ───────────────────────── -->
+  <section class="band band-tint" id="changes">
+    <div class="wrap">
+      <h2 class="section-h reveal">Three things Dalo gives you.</h2>
+      <div class="feature-rows">
+
+        <article class="feature-row reveal">
+          <div class="feature-text">
+            <span class="feature-index">01</span>
+            <h3>One source of truth</h3>
+            <p>
+              All skills live in Git, locally and across the team. Dalo's store
+              becomes the single, versioned source of truth, so the team repository
+              stays a clean input and your agent folders stay an output.
+            </p>
+          </div>
+          <div class="feature-aside">
+            <div class="store-card">
+              <span class="store-path">~/.dalo/</span>
+              <ul class="store-tree">
+                <li><span class="c-accent">local/</span> <span class="c-dim">private skills, git-tracked</span></li>
+                <li><span class="c-accent">sources/</span> <span class="c-dim">team checkouts</span></li>
+                <li><span class="c-accent">lock.toml</span> <span class="c-dim">resolved set</span></li>
+              </ul>
+            </div>
+          </div>
+        </article>
+
+        <article class="feature-row feature-row-flip reveal">
+          <div class="feature-text">
+            <span class="feature-index">02</span>
+            <h3>Deterministic resolution</h3>
+            <p>
+              The resolver is a pure function: given your sources and config, it
+              returns the same result every time. Source priority decides conflicts,
+              lower wins. Re-running on the same inputs is byte-for-byte identical.
+            </p>
+          </div>
+          <div class="feature-aside">
+            <div class="resolve-card">
+              <div class="resolve-row"><span class="rsrc">local</span><span class="rprio">prio 0</span><span class="rwin c-ok">wins</span></div>
+              <div class="resolve-row"><span class="rsrc">company</span><span class="rprio">prio 10</span><span class="rwin c-dim">shadowed</span></div>
+              <div class="resolve-row"><span class="rsrc">oss</span><span class="rprio">prio 20</span><span class="rwin c-dim">shadowed</span></div>
+              <p class="resolve-note">same name <code>review</code> · one slot · highest priority linked</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="feature-row reveal">
+          <div class="feature-text">
+            <span class="feature-index">03</span>
+            <h3>Safe sync</h3>
+            <p>
+              Dalo only writes paths it owns. It links resolved skills as directory
+              symlinks, removes only the links it created, and never overwrites a real
+              file or folder it didn't make. <code>--dry-run</code> prints the plan and
+              writes nothing.
+            </p>
+          </div>
+          <div class="feature-aside">
+            <div class="guard-card">
+              <div class="guard-line"><svg class="ic-shield" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0 1 2.6v4.8C1 11.5 4 14.8 8 16c4-1.2 7-4.5 7-8.6V2.6L8 0Zm-1 11L4 8l1.2-1.2L7 8.6l3.8-3.8L12 6l-5 5Z"/></svg> unmanaged files left untouched</div>
+              <div class="guard-line"><svg class="ic-shield" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0 1 2.6v4.8C1 11.5 4 14.8 8 16c4-1.2 7-4.5 7-8.6V2.6L8 0Zm-1 11L4 8l1.2-1.2L7 8.6l3.8-3.8L12 6l-5 5Z"/></svg> only dalo-owned symlinks removed</div>
+              <div class="guard-line"><svg class="ic-shield" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0 1 2.6v4.8C1 11.5 4 14.8 8 16c4-1.2 7-4.5 7-8.6V2.6L8 0Zm-1 11L4 8l1.2-1.2L7 8.6l3.8-3.8L12 6l-5 5Z"/></svg> conflicts reported, never forced</div>
+            </div>
+          </div>
+        </article>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── HOW IT WORKS ───────────────────────── -->
+  <section class="band band-dark" id="how" data-scope="dark">
+    <div class="wrap">
+      <h2 class="section-h reveal">How it works</h2>
+      <p class="lead lead-center reveal">
+        Dalo is a small pipeline: it turns many skill sources into one reliable set,
+        then links that set into the folders your agents already read.
+      </p>
+
+      <div class="pipeline reveal" role="img" aria-label="Pipeline: local and team sources feed the dalo store, a deterministic resolver assembles the final set, which is materialized into agent target folders.">
+        <div class="pipe-stage">
+          <div class="pipe-node">
+            <span class="pipe-kicker">Sources</span>
+            <span class="pipe-title">Local + team</span>
+            <span class="pipe-sub">your machine and Git repos</span>
+          </div>
+        </div>
+        <svg class="pipe-arrow" viewBox="0 0 48 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M2 12h40M36 6l8 6-8 6"/></svg>
+        <div class="pipe-stage">
+          <div class="pipe-node pipe-node-store">
+            <span class="pipe-kicker">Store</span>
+            <span class="pipe-title">~/.dalo</span>
+            <span class="pipe-sub">normalized, versioned</span>
+          </div>
+        </div>
+        <svg class="pipe-arrow" viewBox="0 0 48 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M2 12h40M36 6l8 6-8 6"/></svg>
+        <div class="pipe-stage">
+          <div class="pipe-node pipe-node-accent">
+            <span class="pipe-kicker">Resolver</span>
+            <span class="pipe-title">Deterministic</span>
+            <span class="pipe-sub">priority &amp; conflict rules</span>
+          </div>
+        </div>
+        <svg class="pipe-arrow" viewBox="0 0 48 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M2 12h40M36 6l8 6-8 6"/></svg>
+        <div class="pipe-stage">
+          <div class="pipe-targets">
+            <span class="pipe-kicker">Targets</span>
+            <span class="pipe-target">~/.codex/skills</span>
+            <span class="pipe-target">~/.claude/skills</span>
+            <span class="pipe-target">~/.hermes/skills</span>
+          </div>
+        </div>
+      </div>
+
+      <p class="pipeline-foot reveal">
+        The agent folder is an output, not the database. That one boundary keeps team
+        repos clean, local experiments private, and existing files safe to inspect.
+      </p>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── WORKFLOW ───────────────────────── -->
+  <section class="band" id="workflow">
+    <div class="wrap">
+      <h2 class="section-h reveal">From local experiment to team standard.</h2>
+      <p class="lead reveal">A path that scales from a single developer to the whole org, one step at a time.</p>
+
+      <ol class="steps">
+        <li class="step reveal">
+          <span class="step-n">1</span>
+          <h3>Adopt</h3>
+          <p>An agent wrote a useful skill straight into its own folder. Bring it under management without losing the original. Dalo copies it into your local source first.</p>
+          <code class="step-cmd">dalo adopt release-notes</code>
+        </li>
+        <li class="step reveal">
+          <span class="step-n">2</span>
+          <h3>Add a source</h3>
+          <p>Connect a team repository of shared skills. Dalo checks it out into the store and tracks its branch.</p>
+          <code class="step-cmd">dalo source add company git@github.com:acme/skills.git</code>
+        </li>
+        <li class="step reveal">
+          <span class="step-n">3</span>
+          <h3>Sync</h3>
+          <p>Resolve every active source into one set and link it into your agent folders. Safe to run any time; dirty edits block instead of getting lost.</p>
+          <code class="step-cmd">dalo sync</code>
+        </li>
+        <li class="step reveal">
+          <span class="step-n">4</span>
+          <h3>Promote <span class="soon">planned</span></h3>
+          <p>When a local skill proves useful, send it upstream through a PR-first flow so the whole team gets it. On the roadmap for a future release.</p>
+          <code class="step-cmd step-cmd-soon">dalo promote release-notes --target company</code>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── QUICKSTART ───────────────────────── -->
+  <section class="band band-dark" id="quickstart" data-scope="dark">
+    <div class="wrap quickstart-grid">
+      <div class="quickstart-copy">
+        <h2 class="section-h reveal">Running in a few minutes.</h2>
+        <p class="lead reveal">
+          Dalo builds from source today (macOS and Linux). It shells out to
+          <code>git</code> for source operations, no other runtime to install.
+        </p>
+        <ul class="qs-points reveal">
+          <li><span class="c-ok">✓</span> Single Rust binary, no daemon</li>
+          <li><span class="c-ok">✓</span> Local-only, no network needed to try it</li>
+          <li><span class="c-ok">✓</span> Detects Codex, Claude Code, OpenClaw, Hermes</li>
+        </ul>
+      </div>
+
+      <div class="quickstart-demo reveal">
+        <div class="terminal">
+          <div class="terminal-bar">
+            <span class="tdot"></span><span class="tdot"></span><span class="tdot"></span>
+            <span class="terminal-title">install &amp; first sync</span>
+          </div>
+          <pre class="terminal-body"><code><span class="ln c-dim"># build and install</span>
+<span class="ln"><span class="prompt">$</span> git clone https://github.com/sebastian-software/dalo</span>
+<span class="ln"><span class="prompt">$</span> cd dalo &amp;&amp; cargo install --path .</span>
+<span class="ln"> </span>
+<span class="ln c-dim"># set up the store and link agents</span>
+<span class="ln"><span class="prompt">$</span> dalo init</span>
+<span class="ln"><span class="prompt">$</span> dalo target detect</span>
+<span class="ln"><span class="prompt">$</span> dalo target link codex</span>
+<span class="ln"><span class="prompt">$</span> dalo target link claude</span>
+<span class="ln"> </span>
+<span class="ln c-dim"># add a team source and sync</span>
+<span class="ln"><span class="prompt">$</span> dalo source add company git@github.com:acme/skills.git</span>
+<span class="ln"><span class="prompt">$</span> dalo sync</span></code></pre>
+        </div>
+        <p class="copy-hint">Prefer a dry run first? Every command takes <code>--dry-run</code>.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── SAFE BY DESIGN ───────────────────────── -->
+  <section class="band" id="safe">
+    <div class="wrap">
+      <h2 class="section-h reveal">Safe by design.</h2>
+      <p class="lead reveal">Dalo is conservative on purpose. It protects the work that's already on your disk, and it makes every change visible before and after it happens.</p>
+
+      <div class="safe-grid">
+        <div class="safe-item reveal">
+          <h3>Protects unmanaged files</h3>
+          <p>If a real skill folder already holds a slot, Dalo reports the conflict and leaves it exactly where it is. It never overwrites what it didn't create.</p>
+        </div>
+        <div class="safe-item reveal">
+          <h3>Approval gating</h3>
+          <p>A newly active skill stays pending until you approve it: by skill, source, author, or org. Scheduled syncs apply existing approvals but never grant new ones.</p>
+        </div>
+        <div class="safe-item reveal">
+          <h3>Visible conflicts</h3>
+          <p>Same-name skills resolve by priority and the rest are reported as <code>shadowed</code>, not silently dropped. <code>status</code> explains every state.</p>
+        </div>
+        <div class="safe-item reveal">
+          <h3>Dirty work blocks, not breaks</h3>
+          <p>Edited a team skill in place? The source is dirty, and sync stops for it instead of discarding your change. The default is no data loss.</p>
+        </div>
+        <div class="safe-item reveal">
+          <h3>Dry-run everything</h3>
+          <p>The same planning path drives real runs and <code>--dry-run</code>. See exactly which symlinks would be created or removed before anything changes.</p>
+        </div>
+        <div class="safe-item reveal">
+          <h3>Built-in diagnostics</h3>
+          <p><code>dalo doctor</code> checks store structure, lockfiles, Git auth, target paths, and broken symlinks, so you trust the result.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── TARGETS ───────────────────────── -->
+  <section class="band band-tint" id="targets">
+    <div class="wrap targets-grid">
+      <div class="targets-lead">
+        <h2 class="section-h reveal">Works with the folders your agents already use.</h2>
+        <p class="lead reveal">
+          Dalo syncs the resolved set into normal skill directories. Your agents keep
+          reading the same paths. They never know Dalo is there.
+        </p>
+        <p class="targets-note reveal">When several agents share one directory, Dalo de-duplicates the path and links each slot once.</p>
+      </div>
+
+      <ul class="target-list reveal">
+        <li class="target"><span class="target-name">Codex</span><code class="target-path">~/.codex/skills</code><span class="badge badge-ok">supported</span></li>
+        <li class="target"><span class="target-name">Claude Code</span><code class="target-path">~/.claude/skills</code><span class="badge badge-ok">supported</span></li>
+        <li class="target"><span class="target-name">OpenClaw</span><code class="target-path">~/.openclaw/skills</code><span class="badge badge-ok">supported</span></li>
+        <li class="target"><span class="target-name">Hermes</span><code class="target-path">~/.hermes/skills</code><span class="badge badge-ok">supported</span></li>
+        <li class="target"><span class="target-name">Generic folder</span><code class="target-path">any path you choose</code><span class="badge badge-ok">supported</span></li>
+        <li class="target target-exp"><span class="target-name">Cursor · OpenCode</span><code class="target-path">unverified</code><span class="badge badge-exp">experimental</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── ROADMAP ───────────────────────── -->
+  <section class="band" id="roadmap">
+    <div class="wrap">
+      <h2 class="section-h reveal">Early, and honest about it.</h2>
+      <p class="lead reveal">
+        Dalo is a v0.1 release candidate. The core loop (local and team sources,
+        deterministic resolution, safe sync, adoption, and diagnostics) works today.
+        Here's what's intentionally deferred to later releases.
+      </p>
+      <ul class="roadmap-list reveal">
+        <li><span class="rm-tag">next</span> Catalog sources: pick specific skills from a multi-skill repo</li>
+        <li><span class="rm-tag">next</span> Instruction packs: shared conventions as managed blocks</li>
+        <li><span class="rm-tag">later</span> PR-first promotion of local skills into team repos</li>
+        <li><span class="rm-tag">later</span> Scheduled autosync via launchd / systemd timers</li>
+        <li><span class="rm-tag">later</span> More verified agent adapters and package distribution</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── FINAL CTA ───────────────────────── -->
+  <section class="cta" data-scope="dark">
+    <div class="wrap cta-inner">
+      <h2 class="reveal">Make your agents boringly reliable.</h2>
+      <p class="reveal">Stop fighting drift. Keep your team's agent skills in Git, resolve them once, and sync with confidence.</p>
+      <div class="hero-cta reveal">
+        <a class="btn btn-accent" href="https://github.com/sebastian-software/dalo" rel="noopener">
+          View on GitHub
+          <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M2 8h11M9 4l4 4-4 4"/></svg>
+        </a>
+        <a class="btn btn-quiet" href="#quickstart">Read the quickstart</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer" data-scope="dark">
+  <div class="wrap footer-inner">
+    <div class="footer-brand">
+      <a class="brand" href="/" aria-label="Dalo home">
+        <svg class="brand-mark" viewBox="0 0 32 32" width="26" height="26" aria-hidden="true" focusable="false">
+          <rect x="1.25" y="1.25" width="29.5" height="29.5" rx="8" fill="none" stroke="currentColor" stroke-width="1.5" />
+          <circle cx="9" cy="9.5" r="2" fill="currentColor" />
+          <circle cx="9" cy="16" r="2" fill="currentColor" />
+          <circle cx="9" cy="22.5" r="2" fill="currentColor" />
+          <path d="M11 9.5 H17 Q22 9.5 22 16 Q22 22.5 17 22.5 H11 M11 16 H22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" />
+          <circle cx="22.5" cy="16" r="2.6" fill="var(--accent)" />
+        </svg>
+        <span class="brand-word">dalo</span>
+      </a>
+      <p class="footer-tag">Git-backed skill management for AI agents. Built in Rust.</p>
+    </div>
+
+    <nav class="footer-cols" aria-label="Footer">
+      <div class="footer-col">
+        <p class="footer-h">Product</p>
+        <a href="#how">How it works</a>
+        <a href="#quickstart">Quickstart</a>
+        <a href="#targets">Targets</a>
+        <a href="#roadmap">Roadmap</a>
+      </div>
+      <div class="footer-col">
+        <p class="footer-h">Docs</p>
+        <a href="https://github.com/sebastian-software/dalo#readme" rel="noopener">README</a>
+        <a href="https://github.com/sebastian-software/dalo/tree/main/docs/rfcs" rel="noopener">RFCs</a>
+        <a href="https://github.com/sebastian-software/dalo/tree/main/docs/milestones" rel="noopener">Milestones</a>
+      </div>
+      <div class="footer-col">
+        <p class="footer-h">Project</p>
+        <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+        <a href="https://github.com/sebastian-software/dalo/blob/main/LICENSE" rel="noopener">MIT License</a>
+        <a href="https://github.com/sebastian-software/dalo/issues" rel="noopener">Issues</a>
+      </div>
+    </nav>
+  </div>
+  <div class="wrap footer-base">
+    <span>© 2026 Sebastian Software · Dalo</span>
+    <span class="footer-os">macOS · Linux</span>
+  </div>
+</footer>
+
+<script src="/main.js" defer></script>
+</body>
+</html>
