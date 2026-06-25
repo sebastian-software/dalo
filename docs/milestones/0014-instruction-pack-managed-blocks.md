@@ -1,6 +1,6 @@
 # M14: Instruction Pack Managed Blocks
 
-Status: todo
+Status: done
 Target: V1.1  
 Depends on: M01, M05, RFC 0001, RFC 0002  
 

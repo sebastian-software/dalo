@@ -1304,6 +1304,132 @@ fn sync_should_not_block_on_dirty_local_source() {
         .success();
 }
 
+#[test]
+fn status_json_schema_should_model_instruction_packs_and_blocked_skills() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let agents = temp_dir.path().join("AGENTS.md");
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    for (pack, body) in [
+        ("style", "topics: formatting\n\nUse tabs.\n"),
+        ("format", "topics: formatting\n\nWrap at 100.\n"),
+    ] {
+        std::fs::write(
+            store.join("local/instructions").join(format!("{pack}.md")),
+            body,
+        )
+        .expect("pack should be written");
+        Command::cargo_bin("dalo")
+            .expect("binary should build")
+            .args(["--store"])
+            .arg(&store)
+            .args(["instructions", "enable", pack])
+            .arg(&agents)
+            .assert()
+            .success();
+    }
+
+    let output = Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: StatusReportSchema =
+        serde_json::from_slice(&output).expect("status JSON should match the status schema");
+
+    assert_eq!(report.instruction_packs.len(), 2);
+    assert!(report.instruction_packs.iter().all(|pack| pack.enabled));
+    assert!(
+        report
+            .instruction_packs
+            .iter()
+            .any(|pack| pack.id == "style" && pack.source_id == "local")
+    );
+    assert_eq!(report.instruction_pack_overlaps.len(), 1);
+    assert_eq!(
+        report.instruction_pack_overlaps[0].topics,
+        vec!["formatting".to_owned()]
+    );
+    assert!(
+        report.instruction_pack_overlaps[0]
+            .packs
+            .contains(&"local:style".to_owned())
+    );
+    // blocked_skills is modeled (empty here); referencing its fields guards the schema.
+    assert!(
+        report
+            .resolution
+            .blocked_skills
+            .iter()
+            .all(|blocked| !blocked.requirement.is_empty() && !blocked.reason.is_empty())
+    );
+}
+
+#[test]
+fn source_inspect_json_should_model_catalog_candidates() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "copy-editing"])
+        .assert()
+        .success();
+
+    let output = Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "source", "inspect", "marketing"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: CatalogInspectSchema =
+        serde_json::from_slice(&output).expect("inspect JSON should match the catalog schema");
+
+    assert_eq!(report.source_id, "marketing");
+    assert!(
+        report
+            .candidates
+            .iter()
+            .any(|candidate| candidate.slot_name == "copy-editing" && candidate.selected)
+    );
+    assert!(
+        report
+            .candidates
+            .iter()
+            .any(|candidate| candidate.slot_name == "launch-copy" && !candidate.selected)
+    );
+}
+
 // Mirror structs for the machine-output schema. They intentionally live in the test
 // crate so production types are not forced to derive `Deserialize`. Deserialization
 // fails if a named field is renamed, removed, or changes type, which is the schema
@@ -1313,16 +1439,50 @@ fn sync_should_not_block_on_dirty_local_source() {
 struct StatusReportSchema {
     resolution: ResolutionSchema,
     lock: LockStatusSchema,
+    instruction_packs: Vec<InstructionPackSchema>,
+    instruction_pack_overlaps: Vec<TopicOverlapSchema>,
 }
 
 #[derive(serde::Deserialize)]
 struct ResolutionSchema {
     active_skills: Vec<ActiveSkillSchema>,
+    blocked_skills: Vec<BlockedSkillSchema>,
 }
 
 #[derive(serde::Deserialize)]
 struct ActiveSkillSchema {
     source_ref: String,
+}
+
+#[derive(serde::Deserialize)]
+struct BlockedSkillSchema {
+    requirement: String,
+    reason: String,
+}
+
+#[derive(serde::Deserialize)]
+struct InstructionPackSchema {
+    id: String,
+    source_id: String,
+    enabled: bool,
+}
+
+#[derive(serde::Deserialize)]
+struct TopicOverlapSchema {
+    packs: [String; 2],
+    topics: Vec<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct CatalogInspectSchema {
+    source_id: String,
+    candidates: Vec<CatalogCandidateSchema>,
+}
+
+#[derive(serde::Deserialize)]
+struct CatalogCandidateSchema {
+    slot_name: String,
+    selected: bool,
 }
 
 #[derive(serde::Deserialize)]

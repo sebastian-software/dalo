@@ -148,11 +148,11 @@ Dalo is multi-source by default. V1 implements local and team sources.
 | External | Git source declared by another trusted source | Pinned through source locks |
 | Catalog | Multi-skill repository used as an offer surface | Selected skills are pinned and tracked |
 
-The first V1 implementation starts with local and team sources. External sources and catalogs are the next product layer once the store, resolver, and materializer are proven.
+V1 ships local and team sources. V1.1 adds catalog sources (multi-skill repositories used as offer surfaces); external sources remain a later product layer.
 
 The everyday command is `sync`: refresh clean tracking team sources, resolve the final skill set, and materialize it into configured targets.
 
-Pinned external and catalog sources use explicit lock advancement through `source refresh`. That is a reviewable source-maintenance operation, not the normal daily installation path, and it belongs to the later source-maintenance slice.
+Catalog sources are drift-checked read-only through `source refresh --check`, which compares the upstream inventory against the pinned snapshot without advancing the pin. Lock advancement (writing a new pin) is a later source-maintenance slice.
 
 ## Resolution
 
@@ -170,9 +170,9 @@ The important rule is simple:
 
 Some of the most useful public repositories are not one-skill packages. They are catalogs: one Git repository with many skills inside, often with informal relationships between them.
 
-Dalo is designed to treat those repositories as offer surfaces. This is a V1.1 feature, not the first implementation slice.
+Dalo treats those repositories as offer surfaces (V1.1). Add one with `source add-catalog <id> <url>`, list its skills with `source inspect <id>`, and choose what you want with `source select <id> <skill...>`.
 
-You inspect the catalog, select the skills you want, and Dalo records the selected set in a lockfile. It also scans the full catalog inventory so it can detect meaningful upstream changes:
+You inspect the catalog, select the skills you want, and Dalo records the selected set in a source lockfile. It also scans the full catalog inventory so `source refresh --check` can detect meaningful upstream changes:
 
 - new skills are available
 - selected skills changed
@@ -197,7 +197,7 @@ Use Rust for performance-sensitive non-browser code.
 Call out behavioral regressions before style nits.
 ```
 
-Dalo will model this as an instruction pack: a versioned Markdown artifact rendered into agent instruction files as a managed block. This is a V1.1 feature and is not implemented in the V1 release candidate.
+Dalo models this as an instruction pack: a versioned Markdown artifact rendered into agent instruction files as a managed block (V1.1). Enable one with `instructions enable <pack> <file>` and remove it with `instructions disable <pack> <file>`; `instructions list` shows what is active.
 
 ```markdown
 <!-- dalo:start company.engineering-defaults -->
@@ -208,7 +208,7 @@ Prefer TypeScript for application code.
 
 Everything outside the marked block belongs to the user or project. Dalo does not manage arbitrary dotfiles, editor settings, formatter configs, shell profiles, secrets, or project-specific instructions.
 
-Native include/import support is not portable enough to be the baseline. Managed blocks are the conservative V1.1 target.
+Native include/import support is not portable enough to be the baseline, so managed blocks are the approach. Discovery lists available and enabled packs, and overlapping declared topics across active packs raise an advisory warning in `status` and `doctor`.
 
 ## Target agents
 
@@ -286,11 +286,11 @@ V1 includes:
 
 V1.1 adds the next product layer:
 
-- catalog inspection and selected catalog locks
-- catalog drift reporting
-- same-catalog required-closure expansion
-- instruction pack discovery and managed block rendering
-- topic-overlap warnings for instruction packs
+- catalog sources: `source add-catalog`, `source inspect`, `source select`
+- catalog drift reporting via read-only `source refresh --check`
+- same-catalog required-closure expansion with a linkability preflight
+- instruction packs: `instructions enable`/`disable`/`list` rendering managed blocks
+- instruction pack discovery and topic-overlap warnings
 
 Later work includes:
 

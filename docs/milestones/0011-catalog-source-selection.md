@@ -1,6 +1,6 @@
 # M11: Catalog Source and Selection
 
-Status: todo
+Status: done
 Target: V1.1  
 Depends on: M03, M04, M07, RFC 0001, RFC 0003  
 
