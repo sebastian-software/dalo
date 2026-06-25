@@ -10,6 +10,7 @@ use serde::Serialize;
 use crate::adopt;
 use crate::config::UserConfig;
 use crate::git;
+use crate::instructions;
 use crate::resolver;
 use crate::source::SourceKind;
 use crate::store::{self, ApprovalsFile, StateFile, StorePaths};
@@ -132,6 +133,8 @@ pub enum DoctorCode {
     PendingApproval,
     /// A skill is blocked because its required closure is not linkable.
     RequiredClosureBlocked,
+    /// Two active instruction packs declare overlapping topics.
+    InstructionPackTopicOverlap,
     /// Target path looks cloud-synced.
     CloudSyncedTarget,
 }
@@ -485,6 +488,26 @@ fn check_resolution(paths: &StorePaths, config: &UserConfig, findings: &mut Vec<
         ));
     }
 
+    let lock = store::read_user_lock(paths).unwrap_or_default();
+    let discovered =
+        instructions::discover_packs(paths, &config.sources, &lock.active_instruction_packs);
+    let active_packs = discovered
+        .into_iter()
+        .filter(|pack| pack.enabled)
+        .collect::<Vec<_>>();
+    for overlap in instructions::topic_overlaps(&active_packs) {
+        findings.push(finding_warning(
+            DoctorCode::InstructionPackTopicOverlap,
+            format!(
+                "instruction packs `{}` and `{}` overlap on topics: {}",
+                overlap.packs[0],
+                overlap.packs[1],
+                overlap.topics.join(", ")
+            ),
+            Some("dalo status".to_owned()),
+        ));
+    }
+
     let active_slots = resolution
         .active_skills
         .iter()
@@ -622,6 +645,7 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::DirtySource => "dirty_source",
         DoctorCode::PendingApproval => "pending_approval",
         DoctorCode::RequiredClosureBlocked => "required_closure_blocked",
+        DoctorCode::InstructionPackTopicOverlap => "instruction_pack_topic_overlap",
         DoctorCode::CloudSyncedTarget => "cloud_synced_target",
     }
 }

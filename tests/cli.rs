@@ -1615,6 +1615,56 @@ fn instructions_enable_disable_should_manage_block_idempotently() {
     assert!(!after_disable.contains("dalo:start"));
 }
 
+#[test]
+fn status_json_should_report_instruction_pack_topic_overlap() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let agents = temp_dir.path().join("AGENTS.md");
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    // Two local packs declaring a shared topic.
+    std::fs::write(
+        store.join("local/instructions/style.md"),
+        "topics: formatting\n\nUse tabs.\n",
+    )
+    .expect("pack should be written");
+    std::fs::write(
+        store.join("local/instructions/format.md"),
+        "topics: formatting\n\nWrap at 100.\n",
+    )
+    .expect("pack should be written");
+
+    for pack in ["style", "format"] {
+        Command::cargo_bin("dalo")
+            .expect("binary should build")
+            .args(["--store"])
+            .arg(&store)
+            .args(["instructions", "enable", pack])
+            .arg(&agents)
+            .assert()
+            .success();
+    }
+
+    // status --json surfaces the advisory overlap naming both pack refs.
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("instruction_pack_overlaps"))
+        .stdout(predicate::str::contains("local:style"))
+        .stdout(predicate::str::contains("local:format"));
+}
+
 fn setup_store_with_target(store: &std::path::Path, target: &std::path::Path) {
     Command::cargo_bin("dalo")
         .expect("binary should build")
