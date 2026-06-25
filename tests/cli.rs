@@ -593,6 +593,78 @@ fn adopt_yes_should_replace_original_with_owned_symlink_without_committing() {
 }
 
 #[test]
+fn adopt_then_adopt_yes_should_complete_the_two_step_replacement() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+
+    // Step 1: copy only (no --yes).
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["adopt", "review"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("replacement: skipped"));
+
+    // Step 2: replace, reusing the copy from step 1 (previously failed).
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["--yes", "adopt", "review"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("replacement: replaced"));
+
+    assert!(
+        std::fs::symlink_metadata(target.join("review"))
+            .expect("replacement should exist")
+            .file_type()
+            .is_symlink()
+    );
+}
+
+#[test]
+fn adopt_yes_should_refuse_when_local_destination_is_an_unrelated_skill() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    // A pre-existing, UNRELATED local skill with the same slot name (different body).
+    let local = store.join("local/skills/review");
+    std::fs::create_dir_all(&local).expect("local skill dir should be created");
+    std::fs::write(local.join("SKILL.md"), "# pre-existing local\n")
+        .expect("local skill should be written");
+    // Unmanaged target skill with different content (create writes "# review\n").
+    create_unmanaged_skill(&target, "review");
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["--yes", "adopt", "review"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("already exists"));
+
+    // The unmanaged content must be preserved: still a real dir with its own body.
+    assert!(
+        !std::fs::symlink_metadata(target.join("review"))
+            .expect("target should remain")
+            .file_type()
+            .is_symlink()
+    );
+    assert_eq!(
+        std::fs::read_to_string(target.join("review/SKILL.md")).expect("content remains"),
+        "# review\n"
+    );
+}
+
+#[test]
 fn adopt_yes_should_not_replace_local_marker_skill() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

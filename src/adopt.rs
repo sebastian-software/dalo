@@ -50,6 +50,8 @@ pub enum AdoptCopyStatus {
     Planned,
     /// Skill was copied into the local source.
     Copied,
+    /// A local copy already existed and was reused (second step of a two-step adopt).
+    Existing,
 }
 
 impl AdoptCopyStatus {
@@ -59,6 +61,7 @@ impl AdoptCopyStatus {
         match self {
             Self::Planned => "planned",
             Self::Copied => "copied",
+            Self::Existing => "existing",
         }
     }
 }
@@ -216,13 +219,26 @@ pub fn adopt_skill(
 ) -> DaloResult<AdoptReport> {
     let skill = find_unmanaged_skill(paths, selector)?;
     let local_path = paths.local_skills_dir.join(&skill.slot_name);
-    if local_path.exists() {
-        return Err(DaloError::AdoptionDestinationExists { path: local_path });
-    }
 
-    if !dry_run {
+    let copy = if local_path.exists() {
+        // A local copy already exists. A plain `adopt` must never clobber it.
+        if !replace_original {
+            return Err(DaloError::AdoptionDestinationExists { path: local_path });
+        }
+        // `--yes`: treat this as the second step of the two-step flow ONLY if the
+        // existing copy has the same content as the skill being adopted. If it is
+        // an unrelated, pre-existing local skill, replacing the target would delete
+        // the unmanaged content and link to foreign content — refuse instead.
+        if !directories_match(&skill.path, &local_path)? {
+            return Err(DaloError::AdoptionDestinationExists { path: local_path });
+        }
+        AdoptCopyStatus::Existing
+    } else if dry_run {
+        AdoptCopyStatus::Planned
+    } else {
         copy_dir(&skill.path, &local_path)?;
-    }
+        AdoptCopyStatus::Copied
+    };
 
     let replacement = if replace_original {
         replace_with_owned_symlink(paths, &skill, &local_path, dry_run)?
@@ -234,11 +250,7 @@ pub fn adopt_skill(
         slot_name: skill.slot_name,
         source_path: skill.path,
         local_path,
-        copy: if dry_run {
-            AdoptCopyStatus::Planned
-        } else {
-            AdoptCopyStatus::Copied
-        },
+        copy,
         replacement,
     })
 }
@@ -449,6 +461,42 @@ fn copy_dir(source: &Path, destination: &Path) -> DaloResult<()> {
             unix_fs::symlink(fs::read_link(&source_path)?, destination_path)?;
         } else {
             fs::copy(source_path, destination_path)?;
+        }
+    }
+    Ok(())
+}
+
+/// Whether two directories have identical content: the same set of relative file
+/// paths, each with identical bytes. Used to confirm an existing local destination
+/// is the copy a prior `adopt` made — not an unrelated pre-existing local skill —
+/// before replacing (and deleting) the unmanaged original. On any doubt it returns
+/// `false`, so the caller refuses rather than risk discarding unmanaged content.
+fn directories_match(left: &Path, right: &Path) -> DaloResult<bool> {
+    let mut left_files = Vec::new();
+    let mut right_files = Vec::new();
+    collect_relative_files(left, left, &mut left_files)?;
+    collect_relative_files(right, right, &mut right_files)?;
+    left_files.sort();
+    right_files.sort();
+    if left_files != right_files {
+        return Ok(false);
+    }
+    for relative in &left_files {
+        if fs::read(left.join(relative))? != fs::read(right.join(relative))? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn collect_relative_files(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> DaloResult<()> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if entry.file_type()?.is_dir() {
+            collect_relative_files(root, &path, out)?;
+        } else if let Ok(relative) = path.strip_prefix(root) {
+            out.push(relative.to_path_buf());
         }
     }
     Ok(())
