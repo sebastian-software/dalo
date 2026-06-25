@@ -374,8 +374,14 @@ fn replace_with_owned_symlink(
         return Ok(AdoptReplacementStatus::Planned);
     }
 
+    // The skill was already copied into the local source, so its content is safe.
+    // Remove the original folder and link it; if linking fails, restore the
+    // original from the copy so we never leave a deleted folder with no symlink.
     fs::remove_dir_all(&skill.path)?;
-    unix_fs::symlink(local_path, &skill.path)?;
+    if let Err(error) = unix_fs::symlink(local_path, &skill.path) {
+        let _ = copy_dir(local_path, &skill.path);
+        return Err(error.into());
+    }
     let mut state = store::read_state(paths)?;
     state.owned_skills.push(OwnedSkillState {
         target_id: skill

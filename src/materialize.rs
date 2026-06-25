@@ -315,11 +315,16 @@ fn apply_plan(
                 if operation.status == MaterializeOperationStatus::Blocked {
                     continue;
                 }
-                if operation.link_path.exists()
-                    || fs::symlink_metadata(&operation.link_path)
-                        .is_ok_and(|metadata| metadata.file_type().is_symlink())
-                {
-                    fs::remove_file(&operation.link_path)?;
+                match fs::symlink_metadata(&operation.link_path) {
+                    // Only ever unlink a symlink we are about to replace.
+                    Ok(metadata) if metadata.file_type().is_symlink() => {
+                        fs::remove_file(&operation.link_path)?;
+                    }
+                    // A real file/dir appeared at the slot after planning (TOCTOU).
+                    // Refuse to delete unmanaged content; skip rather than overwrite.
+                    Ok(_) => continue,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error.into()),
                 }
                 if let Some(parent) = operation.link_path.parent() {
                     fs::create_dir_all(parent)?;
@@ -457,6 +462,37 @@ mod tests {
             materialize(&paths, &resolution, false).expect("second materialize should succeed");
 
         assert_eq!(report.operations[0].kind, MaterializeOperationKind::NoOp);
+    }
+
+    #[test]
+    fn apply_plan_should_not_replace_real_entry_at_create_slot() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let link_path = temp_dir.path().join("review");
+        fs::write(&link_path, "unmanaged user file").expect("real file should be written");
+        let store_path = temp_dir.path().join("store/review");
+        let operation = MaterializeOperation {
+            kind: MaterializeOperationKind::Create,
+            link_path: link_path.clone(),
+            desired_path: Some(store_path.clone()),
+            status: MaterializeOperationStatus::Applied,
+            reason: None,
+        };
+        let desired = DesiredLink {
+            target_id: "generic".to_owned(),
+            slot_name: "review".to_owned(),
+            link_path: link_path.clone(),
+            store_path,
+        };
+
+        apply_plan(&mut StateFile::empty(), &[operation], &[desired])
+            .expect("apply should succeed");
+
+        assert!(
+            !fs::symlink_metadata(&link_path)
+                .expect("file should still exist")
+                .file_type()
+                .is_symlink()
+        );
     }
 
     fn write_state_with_target(store_root: &Path, target_dir: &Path) {

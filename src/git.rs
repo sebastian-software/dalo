@@ -14,7 +14,9 @@ pub fn init_repo(path: &Path) -> DaloResult<()> {
 pub fn clone_repo(url: &str, destination: &Path) -> DaloResult<()> {
     let cwd = destination.parent().unwrap_or_else(|| Path::new("."));
     let destination_arg = destination.to_string_lossy().into_owned();
-    run_git(cwd, &["clone", "--quiet", url, &destination_arg]).map(|_| ())
+    // `--` terminates option parsing so a user-supplied URL that looks like a
+    // flag (e.g. `--upload-pack=...`) can never be treated as a git option.
+    run_git(cwd, &["clone", "--quiet", "--", url, &destination_arg]).map(|_| ())
 }
 
 /// Update the current tracking branch through a fast-forward-only pull.

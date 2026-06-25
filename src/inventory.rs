@@ -258,13 +258,19 @@ fn select_slot_name(
 }
 
 fn is_valid_slot_name(value: &str) -> bool {
-    !value.is_empty()
-        && value.chars().all(|character| {
-            character.is_ascii_alphanumeric()
-                || character == '-'
-                || character == '_'
-                || character == '.'
-        })
+    // A slot name becomes a single path component under each target directory,
+    // so reject the `.`/`..` traversal segments outright. Everything else must
+    // be a conservative `[A-Za-z0-9._-]` token.
+    if value.is_empty() || value == "." || value == ".." {
+        return false;
+    }
+
+    value.chars().all(|character| {
+        character.is_ascii_alphanumeric()
+            || character == '-'
+            || character == '_'
+            || character == '.'
+    })
 }
 
 fn hash_metadata(frontmatter: &SkillFrontmatter) -> DaloResult<String> {
@@ -434,5 +440,24 @@ mod tests {
         let second = scan_source("company", temp_dir.path()).expect("scan should succeed");
 
         assert_ne!(first.skills[0].content_hash, second.skills[0].content_hash);
+    }
+
+    #[test]
+    fn is_valid_slot_name_should_reject_dot_segments() {
+        assert!(!is_valid_slot_name("."));
+        assert!(!is_valid_slot_name(".."));
+    }
+
+    #[test]
+    fn scan_source_should_reject_traversal_frontmatter_name() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("legit");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        fs::write(skill_dir.join(SKILL_FILE), "---\nname: ..\n---\n# Legit\n")
+            .expect("skill file should be written");
+
+        let inventory = scan_source("company", temp_dir.path()).expect("scan should succeed");
+
+        assert_eq!(inventory.skills[0].slot_name, "legit");
     }
 }
