@@ -445,6 +445,61 @@ mod tests {
     }
 
     #[test]
+    fn materialize_should_block_foreign_symlink() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let target_dir = temp_dir.path().join("target");
+        let foreign_dir = temp_dir.path().join("foreign");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        fs::create_dir_all(&target_dir).expect("target should be created");
+        fs::create_dir_all(&foreign_dir).expect("foreign dir should be created");
+        let skill_dir = store_root.join("local/skills/review");
+        fs::create_dir_all(&skill_dir).expect("skill should be created");
+        unix_fs::symlink(&foreign_dir, target_dir.join("review"))
+            .expect("foreign symlink should be created");
+        write_state_with_target(&store_root, &target_dir);
+
+        let report = materialize(
+            &StorePaths::new(store_root),
+            &resolution_with_skill("review", &skill_dir),
+            false,
+        )
+        .expect("materialize should succeed");
+
+        assert_eq!(
+            report.operations[0].kind,
+            MaterializeOperationKind::Conflict
+        );
+    }
+
+    #[test]
+    fn materialize_should_relink_owned_symlink_pointing_elsewhere() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let target_dir = temp_dir.path().join("target");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        fs::create_dir_all(&target_dir).expect("target should be created");
+        let skill_dir = store_root.join("local/skills/review");
+        let stale_store_dir = store_root.join("local/skills/review-old");
+        fs::create_dir_all(&skill_dir).expect("skill should be created");
+        fs::create_dir_all(&stale_store_dir).expect("stale skill should be created");
+        let link_path = target_dir.join("review");
+        // An owned symlink that already exists but points at a different in-store path
+        // must be relinked, not treated as a foreign conflict.
+        unix_fs::symlink(&stale_store_dir, &link_path).expect("owned symlink should be created");
+        write_state_with_owned_skill(&store_root, &target_dir, &link_path, &stale_store_dir);
+
+        let report = materialize(
+            &StorePaths::new(store_root),
+            &resolution_with_skill("review", &skill_dir),
+            false,
+        )
+        .expect("materialize should succeed");
+
+        assert_eq!(report.operations[0].kind, MaterializeOperationKind::Relink);
+    }
+
+    #[test]
     fn materialize_should_be_idempotent() {
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
         let store_root = temp_dir.path().join("store");
@@ -507,6 +562,33 @@ mod tests {
         state.materialization_dirs = vec![MaterializationDirState {
             path: target_dir.to_path_buf(),
             logical_targets: vec!["generic".to_owned()],
+        }];
+        store::write_state(&paths, &state).expect("state should be written");
+    }
+
+    fn write_state_with_owned_skill(
+        store_root: &Path,
+        target_dir: &Path,
+        link_path: &Path,
+        store_path: &Path,
+    ) {
+        let paths = StorePaths::new(store_root.to_path_buf());
+        let mut state = store::read_state(&paths).expect("state should be readable");
+        state.targets = vec![TargetState {
+            id: "generic".to_owned(),
+            path: target_dir.to_path_buf(),
+            canonical_path: target_dir.to_path_buf(),
+            enabled: true,
+        }];
+        state.materialization_dirs = vec![MaterializationDirState {
+            path: target_dir.to_path_buf(),
+            logical_targets: vec!["generic".to_owned()],
+        }];
+        state.owned_skills = vec![OwnedSkillState {
+            target_id: "generic".to_owned(),
+            slot_name: "review".to_owned(),
+            link_path: link_path.to_path_buf(),
+            store_path: store_path.to_path_buf(),
         }];
         store::write_state(&paths, &state).expect("state should be written");
     }

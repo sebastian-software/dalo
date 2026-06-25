@@ -671,6 +671,116 @@ mod tests {
         );
     }
 
+    #[test]
+    fn check_sources_should_rate_dirty_team_source_as_error() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store = temp_dir.path().join("store");
+        store::init_store(store.clone(), false).expect("init should succeed");
+        let team_repo = temp_dir.path().join("team-repo");
+        create_dirty_git_repo(&team_repo);
+        write_config_with_dirty_sources(&store, &team_repo, None);
+
+        let report = run_doctor(&store);
+
+        assert!(report.findings.iter().any(|finding| {
+            finding.code == DoctorCode::DirtySource
+                && finding.severity == DoctorSeverity::Error
+                && finding.message.contains("`team`")
+        }));
+    }
+
+    #[test]
+    fn check_sources_should_rate_dirty_local_source_as_warning() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store = temp_dir.path().join("store");
+        store::init_store(store.clone(), false).expect("init should succeed");
+        let team_repo = temp_dir.path().join("team-repo");
+        let local_repo = temp_dir.path().join("local-repo");
+        create_dirty_git_repo(&team_repo);
+        create_dirty_git_repo(&local_repo);
+        write_config_with_dirty_sources(&store, &team_repo, Some(&local_repo));
+
+        let report = run_doctor(&store);
+
+        assert!(report.findings.iter().any(|finding| {
+            finding.code == DoctorCode::DirtySource
+                && finding.severity == DoctorSeverity::Warning
+                && finding.message.contains("`workspace`")
+        }));
+    }
+
+    fn create_dirty_git_repo(repo: &Path) {
+        fs::create_dir_all(repo).expect("repo dir should be created");
+        run_git(repo, &["init", "-q"]);
+        fs::write(repo.join("README.md"), "tracked\n").expect("tracked file should be written");
+        run_git(repo, &["add", "."]);
+        run_git(
+            repo,
+            &[
+                "-c",
+                "commit.gpgsign=false",
+                "-c",
+                "user.email=test@example.com",
+                "-c",
+                "user.name=Test User",
+                "commit",
+                "-m",
+                "initial",
+                "-q",
+            ],
+        );
+        fs::write(repo.join("README.md"), "dirty\n").expect("repo should be dirtied");
+    }
+
+    fn write_config_with_dirty_sources(store: &Path, team_repo: &Path, local_repo: Option<&Path>) {
+        use crate::config::{Settings, UserConfig};
+        use crate::source::{SourceConfig, SourceKind};
+
+        let paths = StorePaths::new(store.to_path_buf());
+        let mut sources = vec![SourceConfig {
+            id: "team".to_owned(),
+            kind: SourceKind::Team,
+            path: team_repo.to_path_buf(),
+            priority: 10,
+            enabled: true,
+            trusted: true,
+            url: None,
+            branch: None,
+            update_policy: None,
+        }];
+        if let Some(local_repo) = local_repo {
+            sources.push(SourceConfig {
+                id: "workspace".to_owned(),
+                kind: SourceKind::Local,
+                path: local_repo.to_path_buf(),
+                priority: 0,
+                enabled: true,
+                trusted: true,
+                url: None,
+                branch: None,
+                update_policy: None,
+            });
+        }
+        let config = UserConfig {
+            version: crate::config::CONFIG_VERSION,
+            settings: Settings {
+                autosync: false,
+                sync_interval: None,
+            },
+            sources,
+        };
+        store::write_config(&paths, &config).expect("config should be written");
+    }
+
+    fn run_git(repo: &Path, args: &[&str]) {
+        let status = Command::new("git")
+            .args(args)
+            .current_dir(repo)
+            .status()
+            .expect("git should run");
+        assert!(status.success());
+    }
+
     fn write_state(store: &Path, target: &Path, link: &Path, store_path: &Path) {
         let paths = StorePaths::new(store.to_path_buf());
         let mut state = store::read_state(&paths).expect("state should be readable");

@@ -440,6 +440,135 @@ mod tests {
         );
     }
 
+    #[test]
+    fn compare_sources_should_report_source_commit_changed_when_commit_differs() {
+        let previous = UserLock {
+            sources: vec![locked_source("company", Some("aaaa"))],
+            ..UserLock::empty()
+        };
+        let current = UserLock {
+            sources: vec![locked_source("company", Some("bbbb"))],
+            ..UserLock::empty()
+        };
+
+        let drift = compare_user_lock(&previous, &current);
+
+        assert!(
+            drift
+                .iter()
+                .any(|entry| entry.code == LockDriftCode::SourceCommitChanged
+                    && entry.subject == "company")
+        );
+    }
+
+    #[test]
+    fn compare_sources_should_report_source_removed_when_source_disappears() {
+        let previous = UserLock {
+            sources: vec![locked_source("company", Some("aaaa"))],
+            ..UserLock::empty()
+        };
+        let current = UserLock::empty();
+
+        let drift = compare_user_lock(&previous, &current);
+
+        assert!(
+            drift
+                .iter()
+                .any(|entry| entry.code == LockDriftCode::SourceRemoved
+                    && entry.subject == "company")
+        );
+    }
+
+    #[test]
+    fn compare_sources_should_report_source_added_when_source_appears() {
+        let previous = UserLock::empty();
+        let current = UserLock {
+            sources: vec![locked_source("company", Some("aaaa"))],
+            ..UserLock::empty()
+        };
+
+        let drift = compare_user_lock(&previous, &current);
+
+        assert!(
+            drift
+                .iter()
+                .any(|entry| entry.code == LockDriftCode::SourceAdded
+                    && entry.subject == "company")
+        );
+    }
+
+    #[test]
+    fn compare_user_lock_should_report_unlinked_added_when_skill_becomes_unlinked() {
+        let previous = UserLock::empty();
+        let current = UserLock {
+            unlinked_skills: vec![locked_skill("company:review")],
+            ..UserLock::empty()
+        };
+
+        let drift = compare_user_lock(&previous, &current);
+
+        assert!(
+            drift
+                .iter()
+                .any(|entry| entry.code == LockDriftCode::UnlinkedAdded
+                    && entry.subject == "company:review")
+        );
+    }
+
+    #[test]
+    fn compare_user_lock_should_report_unlinked_removed_when_skill_stops_being_unlinked() {
+        let previous = UserLock {
+            unlinked_skills: vec![locked_skill("company:review")],
+            ..UserLock::empty()
+        };
+        let current = UserLock::empty();
+
+        let drift = compare_user_lock(&previous, &current);
+
+        assert!(
+            drift
+                .iter()
+                .any(|entry| entry.code == LockDriftCode::UnlinkedRemoved
+                    && entry.subject == "company:review")
+        );
+    }
+
+    #[test]
+    fn compare_user_lock_should_report_pending_approval_added_when_skill_becomes_pending() {
+        let previous = UserLock::empty();
+        let current = UserLock {
+            pending_approval_skills: vec![locked_skill("company:review")],
+            ..UserLock::empty()
+        };
+
+        let drift = compare_user_lock(&previous, &current);
+
+        assert!(
+            drift
+                .iter()
+                .any(|entry| entry.code == LockDriftCode::PendingApprovalAdded
+                    && entry.subject == "company:review")
+        );
+    }
+
+    #[test]
+    fn compare_user_lock_should_report_pending_approval_removed_when_skill_stops_being_pending() {
+        let previous = UserLock {
+            pending_approval_skills: vec![locked_skill("company:review")],
+            ..UserLock::empty()
+        };
+        let current = UserLock::empty();
+
+        let drift = compare_user_lock(&previous, &current);
+
+        assert!(
+            drift
+                .iter()
+                .any(|entry| entry.code == LockDriftCode::PendingApprovalRemoved
+                    && entry.subject == "company:review")
+        );
+    }
+
     fn skill(source_ref: &str, slot_name: &str) -> ResolvedSkill {
         ResolvedSkill {
             source_ref: source_ref.to_owned(),
@@ -474,6 +603,15 @@ mod tests {
             source_id: "local".to_owned(),
             source_kind: SourceKind::Local,
             reason: None,
+        }
+    }
+
+    fn locked_source(id: &str, commit: Option<&str>) -> LockedSource {
+        LockedSource {
+            id: id.to_owned(),
+            kind: SourceKind::Team,
+            path: PathBuf::from(format!("/store/sources/{id}")),
+            commit: commit.map(str::to_owned),
         }
     }
 }
