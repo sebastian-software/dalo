@@ -113,6 +113,7 @@ pub enum ResolutionDiagnosticCode {
 struct Candidate {
     skill: ResolvedSkill,
     owners: Vec<String>,
+    trusted: bool,
 }
 
 /// Resolve active sources and inventories into a deterministic skill set.
@@ -144,6 +145,7 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
                     local_override: false,
                 },
                 owners: skill.owners.clone(),
+                trusted: source.trusted,
             });
         }
     }
@@ -258,7 +260,9 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
 }
 
 fn is_approved(candidate: &Candidate, approvals: &[ApprovalRecord]) -> bool {
-    if candidate.skill.source_kind == SourceKind::Local {
+    // Local skills and skills from a source the user marked trusted are always
+    // approved; everything else needs an explicit approval record.
+    if candidate.skill.source_kind == SourceKind::Local || candidate.trusted {
         return true;
     }
 
@@ -428,6 +432,21 @@ mod tests {
     }
 
     #[test]
+    fn resolve_should_approve_trusted_source_without_record() {
+        let mut trusted = source("company", SourceKind::Team, 10);
+        trusted.trusted = true;
+        let input = input_with_sources(
+            vec![trusted],
+            vec![inventory("company", vec![skill("company", "review")])],
+            Vec::new(),
+        );
+
+        let resolution = resolve(&input);
+
+        assert_eq!(resolution.active_skills[0].source_ref, "company:review");
+    }
+
+    #[test]
     fn resolve_should_be_order_independent_across_input_permutations() {
         // Same-priority and distinct-priority sources, plus a shadowed slot, so the
         // resolver must lean on the full tie-break chain rather than input order.
@@ -500,7 +519,7 @@ mod tests {
             path: PathBuf::from(format!("/tmp/{id}")),
             priority,
             enabled: true,
-            trusted: true,
+            trusted: false,
             url: None,
             branch: None,
             update_policy: None,

@@ -1180,7 +1180,7 @@ fn sync_should_not_link_unapproved_team_skill() {
         .arg(&repo)
         .assert()
         .success();
-    clear_approvals(&store);
+    set_source_untrusted(&store, "company");
     Command::cargo_bin("dalo")
         .expect("binary should build")
         .args(["--store"])
@@ -1423,12 +1423,26 @@ fn approve_source(store: &std::path::Path, source: &str) {
     .expect("source approval should be written");
 }
 
-fn clear_approvals(store: &std::path::Path) {
-    std::fs::write(
-        store.join("approvals.toml"),
-        "schema_version = 1\napprovals = []\n",
-    )
-    .expect("approvals should be cleared");
+fn set_source_untrusted(store: &std::path::Path, source_id: &str) {
+    let config_path = store.join("config.toml");
+    let content = std::fs::read_to_string(&config_path).expect("config should be readable");
+    let mut in_source = false;
+    let mut out = String::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed == "[[sources]]" {
+            in_source = false;
+        } else if let Some(rest) = trimmed.strip_prefix("id = ") {
+            in_source = rest.trim().trim_matches('"') == source_id;
+        }
+        if in_source && trimmed == "trusted = true" {
+            out.push_str("trusted = false\n");
+        } else {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    std::fs::write(&config_path, out).expect("config should be written");
 }
 
 fn write_local_only_config(store: &std::path::Path) {

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::config::UserConfig;
 use crate::error::{DaloError, DaloResult};
 use crate::git;
-use crate::store::{self, ApprovalRecord, StorePaths};
+use crate::store::{self, StorePaths};
 
 /// Source kind supported by the V1 config schema.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -186,20 +186,17 @@ pub fn is_valid_source_id(value: &str) -> bool {
     })
 }
 
-/// Persist a freshly cloned team source into approvals and config.
+/// Persist a freshly cloned team source into config.
 ///
-/// The approval is recorded before the config write so that the critical
-/// invariant holds even on partial failure: `config.toml` must never reference a
-/// checkout that does not exist. If any step here fails the caller removes the
-/// clone, and because the source is only written to config in the final step, a
-/// failed add leaves config untouched. A leftover approval grant without a
-/// matching source is idempotent and harmless.
+/// User-added sources are `trusted: true`, and the resolver treats trusted
+/// sources as approved, so no approval record is needed. If the config write
+/// fails, the caller removes the clone so `config.toml` never references a
+/// checkout that does not exist.
 fn finish_team_source(
     paths: &StorePaths,
     config: &mut UserConfig,
     source: SourceConfig,
 ) -> DaloResult<()> {
-    approve_added_source(paths, &source.id)?;
     config.sources.push(source);
     config.sources.sort_by(|left, right| {
         left.priority
@@ -277,30 +274,10 @@ pub fn refresh_tracking_team_sources(paths: &StorePaths) -> DaloResult<()> {
     Ok(())
 }
 
-fn approve_added_source(paths: &StorePaths, id: &str) -> DaloResult<()> {
-    let mut approvals = store::read_approvals(paths)?;
-    if !approvals
-        .approvals
-        .iter()
-        .any(|approval| approval.scope == "source" && approval.value == id)
-    {
-        approvals.approvals.push(ApprovalRecord {
-            scope: "source".to_owned(),
-            value: id.to_owned(),
-        });
-        approvals.approvals.sort_by(|left, right| {
-            left.scope
-                .cmp(&right.scope)
-                .then_with(|| left.value.cmp(&right.value))
-        });
-        store::write_approvals(paths, &approvals)?;
-    }
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
     use std::path::Path;
     use std::process::Command;
 
@@ -359,18 +336,20 @@ mod tests {
         create_git_repo(&repo);
         store::init_store(store_root.clone(), false).expect("init should succeed");
         let paths = StorePaths::new(store_root);
-        // Force the persist step to fail after the clone: an approvals file with a
-        // future schema version makes `approve_added_source` (the first persist
-        // step, which reads approvals) reject the store before config is touched.
-        let mut approvals = store::ApprovalsFile::empty();
-        approvals.schema_version = 999;
-        store::write_approvals(&paths, &approvals).expect("approvals should be overwritten");
+        // Force the config persist step to fail after the clone: cloning writes
+        // under `sources/`, but atomic config writes need a temp file in the
+        // store root, which is made read-only for this check.
+        fs::set_permissions(&paths.root, fs::Permissions::from_mode(0o555))
+            .expect("store root should be made read-only");
         let checkout = paths.sources_dir.join("company").join("checkout");
 
         let error = add_team_source(&paths, "company", &repo.to_string_lossy(), false)
-            .expect_err("add should fail when the approval cannot be recorded");
+            .expect_err("add should fail when config cannot be recorded");
 
-        assert!(matches!(error, DaloError::UnsupportedSchema { .. }));
+        fs::set_permissions(&paths.root, fs::Permissions::from_mode(0o755))
+            .expect("store root permissions should be restored");
+
+        assert!(matches!(error, DaloError::Io(_)));
         // The orphaned checkout must be gone so a later `source add` is not blocked
         // by a stale checkout, and config must not reference the half-added source.
         assert!(!checkout.exists());
