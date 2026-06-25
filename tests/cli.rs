@@ -1170,6 +1170,175 @@ fn sync_should_not_link_unapproved_team_skill() {
     assert!(!target.join("team").exists());
 }
 
+#[test]
+fn sync_should_not_block_on_dirty_local_source() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    let local = store.join("local");
+    let skill_dir = local.join("skills/review");
+    std::fs::create_dir_all(&skill_dir).expect("local skill dir should be created");
+    std::fs::write(skill_dir.join("SKILL.md"), "# Review\n").expect("skill should be written");
+    run_git(&local, &["add", "."]);
+    run_git(
+        &local,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "add review",
+            "-q",
+        ],
+    );
+    // Modify the committed skill so the local source is dirty in the same Git sense
+    // that blocks a Team source.
+    std::fs::write(skill_dir.join("SKILL.md"), "# Review dirty\n")
+        .expect("local skill should be dirtied");
+    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+}
+
+// Mirror structs for the machine-output schema. They intentionally live in the test
+// crate so production types are not forced to derive `Deserialize`. Deserialization
+// fails if a named field is renamed, removed, or changes type, which is the schema
+// guarantee the substring assertions could not provide. Only fields under test are
+// modeled; serde ignores the rest of the payload.
+#[derive(serde::Deserialize)]
+struct StatusReportSchema {
+    resolution: ResolutionSchema,
+    lock: LockStatusSchema,
+}
+
+#[derive(serde::Deserialize)]
+struct ResolutionSchema {
+    active_skills: Vec<ActiveSkillSchema>,
+}
+
+#[derive(serde::Deserialize)]
+struct ActiveSkillSchema {
+    source_ref: String,
+}
+
+#[derive(serde::Deserialize)]
+struct LockStatusSchema {
+    schema_version: u32,
+}
+
+#[derive(serde::Deserialize)]
+struct DoctorReportSchema {
+    findings: Vec<DoctorFindingSchema>,
+}
+
+#[derive(serde::Deserialize)]
+struct DoctorFindingSchema {
+    severity: String,
+    code: String,
+}
+
+#[test]
+fn status_json_should_deserialize_into_status_schema_with_active_skill() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    let skill_dir = store.join("local/skills/review");
+    std::fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+    std::fs::write(skill_dir.join("SKILL.md"), "# Review\n").expect("skill should be written");
+    let output = Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: StatusReportSchema =
+        serde_json::from_slice(&output).expect("status JSON should match the status schema");
+
+    assert_eq!(
+        report.resolution.active_skills[0].source_ref,
+        "local:review"
+    );
+}
+
+#[test]
+fn status_json_should_expose_lock_schema_version_field() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    let output = Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: StatusReportSchema =
+        serde_json::from_slice(&output).expect("status JSON should match the status schema");
+
+    assert_eq!(report.lock.schema_version, 1);
+}
+
+#[test]
+fn doctor_json_should_deserialize_into_doctor_schema_with_store_exists_finding() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    let output = Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "doctor"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: DoctorReportSchema =
+        serde_json::from_slice(&output).expect("doctor JSON should match the doctor schema");
+
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.code == "store_exists" && finding.severity == "ok")
+    );
+}
+
 fn setup_store_with_skill_and_target(store: &std::path::Path, target: &std::path::Path) {
     setup_store_with_target(store, target);
     let skill_dir = store.join("local/skills/review");

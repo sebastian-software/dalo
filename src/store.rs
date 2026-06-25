@@ -713,4 +713,71 @@ mod tests {
 
         assert!(matches!(error, DaloError::StoreLocked { .. }));
     }
+
+    #[test]
+    fn store_lock_should_release_on_drop() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root);
+        let lock = StoreLock::acquire(&paths).expect("first lock should be acquired");
+        drop(lock);
+
+        let reacquired = StoreLock::acquire_with_delays(&paths, &[Duration::from_millis(0)]);
+
+        assert!(reacquired.is_ok());
+    }
+
+    #[test]
+    fn store_lock_should_block_on_stale_lock_when_guard_file_left_behind() {
+        // Documents the present behavior: `try_create_lock` uses `create_new`, so a
+        // `.lock` file left by a dead process blocks the store indefinitely. The
+        // recorded `pid=` is never read back, so the guard cannot recover on its own.
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root);
+        fs::write(&paths.lock_guard_file, "pid=999999\n").expect("stale lock should be written");
+
+        let error = StoreLock::acquire_with_delays(&paths, &[Duration::from_millis(0)])
+            .expect_err("stale lock should block acquisition");
+
+        assert!(matches!(error, DaloError::StoreLocked { .. }));
+    }
+
+    #[test]
+    fn store_lock_should_grant_to_exactly_one_thread_under_contention() {
+        use std::sync::Arc;
+        use std::sync::Barrier;
+
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = Arc::new(StorePaths::new(store_root));
+        // A single zero delay means neither thread retries: each makes exactly one
+        // attempt, so exactly one must win and the other must observe `StoreLocked`.
+        let delays = Arc::new([Duration::from_millis(0)]);
+        let barrier = Arc::new(Barrier::new(2));
+
+        // Both threads must be spawned before either is joined so they actually
+        // contend; an explicit Vec keeps the spawn-all-then-join-all ordering and
+        // holds every acquired guard alive until the loser makes its single attempt.
+        let mut handles = Vec::new();
+        for _ in 0..2 {
+            let paths = Arc::clone(&paths);
+            let delays = Arc::clone(&delays);
+            let barrier = Arc::clone(&barrier);
+            handles.push(thread::spawn(move || {
+                barrier.wait();
+                StoreLock::acquire_with_delays(&paths, delays.as_ref())
+            }));
+        }
+        let mut outcomes = Vec::new();
+        for handle in handles {
+            outcomes.push(handle.join().expect("thread should not panic"));
+        }
+        let successes = outcomes.iter().filter(|outcome| outcome.is_ok()).count();
+
+        assert_eq!(successes, 1);
+    }
 }
