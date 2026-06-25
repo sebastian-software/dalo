@@ -13,7 +13,7 @@ use serde::Serialize;
 
 use crate::error::{DaloError, DaloResult};
 use crate::lockfile::LockedInstructionPack;
-use crate::source::SourceConfig;
+use crate::source::{SourceConfig, SourceKind};
 use crate::store::{self, StorePaths};
 
 /// A versioned instruction pack: standing agent-facing conventions as Markdown.
@@ -281,6 +281,11 @@ pub fn discover_packs(
     let mut packs = Vec::new();
     scan_pack_dir(&paths.local_instructions_dir, "local", &enabled, &mut packs);
     for source in sources {
+        // The local source's instructions dir is the one scanned above; skip it so
+        // local packs are not counted twice.
+        if source.kind == SourceKind::Local {
+            continue;
+        }
         scan_pack_dir(
             &source.path.join("instructions"),
             &source.id,

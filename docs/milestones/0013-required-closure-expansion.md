@@ -1,6 +1,6 @@
 # M13: Same-Catalog Required-Closure Expansion
 
-Status: todo
+Status: done
 Target: V1.1  
 Depends on: M04, M11, RFC 0001, RFC 0003  
 

@@ -1,6 +1,6 @@
 # M15: Instruction Pack Discovery and Topic-Overlap Warnings
 
-Status: todo
+Status: done
 Target: V1.1  
 Depends on: M14, RFC 0001, RFC 0002  
 
