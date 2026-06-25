@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -293,11 +294,26 @@ fn hash_directory(source_root: &Path, skill_dir: &Path) -> DaloResult<String> {
         let relative = file.strip_prefix(source_root).unwrap_or(file.as_path());
         hasher.update(relative.to_string_lossy().as_bytes());
         hasher.update([0]);
-        hasher.update(fs::read(&file)?);
+        hash_file_into(&mut hasher, &file)?;
         hasher.update([0]);
     }
 
     Ok(hex_digest(hasher.finalize().as_slice()))
+}
+
+/// Stream a file into the hasher in fixed-size chunks to avoid buffering whole
+/// files (a skill may carry large assets).
+fn hash_file_into(hasher: &mut Sha256, path: &Path) -> DaloResult<()> {
+    let mut file = fs::File::open(path)?;
+    let mut buffer = [0u8; 8192];
+    loop {
+        let bytes_read = file.read(&mut buffer)?;
+        if bytes_read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..bytes_read]);
+    }
+    Ok(())
 }
 
 fn collect_files(dir: &Path, files: &mut Vec<PathBuf>) -> DaloResult<()> {
@@ -361,6 +377,12 @@ fn warning_code_name(code: InventoryWarningCode) -> &'static str {
         InventoryWarningCode::InvalidSlotName => "invalid_slot_name",
         InventoryWarningCode::DuplicateSlotName => "duplicate_slot_name",
         InventoryWarningCode::UnreadablePath => "unreadable_path",
+    }
+}
+
+impl std::fmt::Display for InventoryWarningCode {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(warning_code_name(*self))
     }
 }
 

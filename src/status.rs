@@ -194,7 +194,7 @@ pub fn print_status_report(report: &StatusReport) {
             .as_ref()
             .map_or(String::new(), |error| format!(" ({error})"));
         println!(
-            "  {:<12} {:<5?} priority={:<4} skills={:<3} {}{}",
+            "  {:<12} {:<5} priority={:<4} skills={:<3} {}{}",
             source.id, source.kind, source.priority, source.skill_count, state, error
         );
     }
@@ -229,7 +229,7 @@ pub fn print_status_report(report: &StatusReport) {
     if !report.lock.drift.is_empty() {
         println!("lock drift:");
         for drift in &report.lock.drift {
-            println!("  {:?} {}: {}", drift.code, drift.subject, drift.message);
+            println!("  {} {}: {}", drift.code, drift.subject, drift.message);
         }
     }
 
@@ -245,7 +245,7 @@ pub fn print_status_report(report: &StatusReport) {
         println!("inventory warnings:");
         for warning in &report.inventory_warnings {
             println!(
-                "  {:?} {}: {}",
+                "  {} {}: {}",
                 warning.code,
                 warning.path.display(),
                 warning.message
@@ -291,7 +291,7 @@ pub fn print_source_add_report(report: &SourceAddReport) {
 pub fn print_source_list_report(report: &SourceListReport) {
     for source in &report.sources {
         println!(
-            "{:<12} {:<5?} priority={:<4} enabled={} {}",
+            "{:<12} {:<5} priority={:<4} enabled={} {}",
             source.id,
             source.kind,
             source.priority,
@@ -376,7 +376,7 @@ pub fn print_doctor_report(report: &DoctorReport) {
             .as_ref()
             .map_or(String::new(), |command| format!(" next={command}"));
         println!(
-            "{:<7} {:?}: {}{}",
+            "{:<7} {}: {}{}",
             doctor_severity_label(finding.severity),
             finding.code,
             finding.message,

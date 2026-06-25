@@ -169,8 +169,8 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
         check_sources(config, &mut findings);
     }
 
-    if let (Some(config), Some(state), true) = (config.as_ref(), state.as_ref(), lock_ok) {
-        check_resolution(&paths, config, state, &mut findings);
+    if let (Some(config), Some(_state), true) = (config.as_ref(), state.as_ref(), lock_ok) {
+        check_resolution(&paths, config, &mut findings);
     }
 
     findings.sort_by(|left, right| {
@@ -459,12 +459,7 @@ fn check_sources(config: &UserConfig, findings: &mut Vec<DoctorFinding>) {
     }
 }
 
-fn check_resolution(
-    paths: &StorePaths,
-    config: &UserConfig,
-    _state: &StateFile,
-    findings: &mut Vec<DoctorFinding>,
-) {
+fn check_resolution(paths: &StorePaths, config: &UserConfig, findings: &mut Vec<DoctorFinding>) {
     let approvals = store::read_approvals(paths).unwrap_or_else(|_| ApprovalsFile::empty());
     let mut inventories = Vec::new();
     for source in config.sources.iter().filter(|source| source.enabled) {
@@ -624,6 +619,12 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::DirtySource => "dirty_source",
         DoctorCode::PendingApproval => "pending_approval",
         DoctorCode::CloudSyncedTarget => "cloud_synced_target",
+    }
+}
+
+impl std::fmt::Display for DoctorCode {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(code_name(*self))
     }
 }
 
