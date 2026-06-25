@@ -391,6 +391,7 @@ mod tests {
         let resolution = Resolution {
             active_skills: vec![skill("team:b", "b"), skill("team:a", "a")],
             pending_approval_skills: Vec::new(),
+            blocked_skills: Vec::new(),
             unlinked_skills: vec![UnlinkedSkill {
                 skill: skill("team:c", "c"),
                 status: UnlinkedStatus::Unlinked,
