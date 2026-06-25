@@ -1,13 +1,12 @@
 //! Agent target registry and detection.
 
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
 use crate::error::{DaloError, DaloResult};
-use crate::store::{self, MaterializationDirState, StateFile, StorePaths, TargetState};
+use crate::store::{self, StateFile, StorePaths, TargetState};
 
 /// Target support level.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -255,7 +254,7 @@ pub fn unlink_target(
         let mut state = store::read_state(&paths)?;
         let original_len = state.targets.len();
         state.targets.retain(|target| target.id != target_id);
-        rebuild_materialization_dirs(&mut state);
+        state.rebuild_materialization_dirs();
         store::write_state(&paths, &state)?;
 
         if state.targets.len() == original_len {
@@ -378,30 +377,8 @@ fn upsert_target_state(
         TargetLinkStatus::Linked
     };
 
-    rebuild_materialization_dirs(state);
+    state.rebuild_materialization_dirs();
     status
-}
-
-fn rebuild_materialization_dirs(state: &mut StateFile) {
-    let mut grouped: BTreeMap<PathBuf, Vec<String>> = BTreeMap::new();
-
-    for target in state.targets.iter().filter(|target| target.enabled) {
-        grouped
-            .entry(target.canonical_path.clone())
-            .or_default()
-            .push(target.id.clone());
-    }
-
-    state.materialization_dirs = grouped
-        .into_iter()
-        .map(|(path, mut logical_targets)| {
-            logical_targets.sort();
-            MaterializationDirState {
-                path,
-                logical_targets,
-            }
-        })
-        .collect();
 }
 
 #[cfg(test)]
