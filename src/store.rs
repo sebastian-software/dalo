@@ -1,5 +1,6 @@
 //! Store path resolution and managed state layout.
 
+use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::fs::OpenOptions;
@@ -146,6 +147,29 @@ impl StateFile {
             owned_skills: Vec::new(),
             protected_skills: Vec::new(),
         }
+    }
+
+    /// Recompute the canonical materialization directories from the enabled
+    /// logical targets. `logical_targets` is sorted so a directory shared by
+    /// several targets gets a deterministic representative.
+    pub fn rebuild_materialization_dirs(&mut self) {
+        let mut grouped: BTreeMap<PathBuf, Vec<String>> = BTreeMap::new();
+        for target in self.targets.iter().filter(|target| target.enabled) {
+            grouped
+                .entry(target.canonical_path.clone())
+                .or_default()
+                .push(target.id.clone());
+        }
+        self.materialization_dirs = grouped
+            .into_iter()
+            .map(|(path, mut logical_targets)| {
+                logical_targets.sort();
+                MaterializationDirState {
+                    path,
+                    logical_targets,
+                }
+            })
+            .collect();
     }
 }
 
@@ -316,13 +340,20 @@ pub fn read_state(paths: &StorePaths) -> DaloResult<StateFile> {
     }
 
     let content = fs::read_to_string(&paths.state_file)?;
-    let state: StateFile = parse_store_toml(&paths.state_file, &content)?;
+    let mut state: StateFile = parse_store_toml(&paths.state_file, &content)?;
     if state.schema_version != STATE_SCHEMA_VERSION {
         return Err(DaloError::UnsupportedSchema {
             path: paths.state_file.clone(),
             version: state.schema_version,
             supported: STATE_SCHEMA_VERSION,
         });
+    }
+    // Lazy migration: `materialization_dirs` was added after the initial schema
+    // without a version bump. A state written before it exists has no block, which
+    // would make `sync` treat every owned skill as orphaned and remove its symlink.
+    // Reconstruct it from the targets when it is missing but targets are present.
+    if state.materialization_dirs.is_empty() && !state.targets.is_empty() {
+        state.rebuild_materialization_dirs();
     }
 
     Ok(state)
@@ -757,6 +788,29 @@ mod tests {
                 .iter()
                 .all(|operation| { matches!(operation.status, InitOperationStatus::Existing) })
         );
+    }
+
+    #[test]
+    fn read_state_should_rebuild_materialization_dirs_when_missing() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root);
+        let mut state = read_state(&paths).expect("state should be readable");
+        // Simulate a state written before `materialization_dirs` existed: a linked
+        // target but no materialization dirs.
+        state.targets = vec![TargetState {
+            id: "generic".to_owned(),
+            path: PathBuf::from("/target"),
+            canonical_path: PathBuf::from("/target"),
+            enabled: true,
+        }];
+        state.materialization_dirs = Vec::new();
+        write_state(&paths, &state).expect("state should be written");
+
+        let loaded = read_state(&paths).expect("state should reload");
+
+        assert_eq!(loaded.materialization_dirs.len(), 1);
     }
 
     #[test]
