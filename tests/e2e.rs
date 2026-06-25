@@ -236,8 +236,15 @@ fn create_git_skill_repo(repo: &std::path::Path, slot_name: &str, body: &str) {
 }
 
 fn approve_source(store: &std::path::Path, source: &str) {
-    let mut content = std::fs::read_to_string(store.join("approvals.toml"))
+    let existing = std::fs::read_to_string(store.join("approvals.toml"))
         .expect("approvals should be readable");
+    // A freshly initialized file serializes the empty list as `approvals = []`,
+    // which collides with the `[[approvals]]` array-of-tables form; drop it first.
+    let mut content = existing
+        .lines()
+        .filter(|line| line.trim() != "approvals = []")
+        .collect::<Vec<_>>()
+        .join("\n");
     content.push_str(&format!(
         "\n[[approvals]]\nscope = \"source\"\nvalue = \"{source}\"\n"
     ));
