@@ -136,20 +136,22 @@ pub fn materialize(
 }
 
 fn desired_links(state: &StateFile, resolution: &Resolution) -> Vec<DesiredLink> {
-    let active_targets = state
-        .targets
-        .iter()
-        .filter(|target| target.enabled)
-        .map(|target| (target.canonical_path.clone(), target.id.clone()))
-        .collect::<BTreeMap<_, _>>();
     let mut links = Vec::new();
 
-    for (target_dir, target_id) in active_targets {
+    // Drive links from the canonical materialization directories, not from the raw
+    // logical targets: several logical targets can share one physical directory
+    // (e.g. `codex` and `openclaw` both at `~/.agents/skills`). `logical_targets`
+    // is kept sorted, so its first element is a deterministic representative for
+    // the recorded `target_id` instead of an arbitrary last-writer-wins value.
+    for dir in &state.materialization_dirs {
+        let Some(target_id) = dir.logical_targets.first() else {
+            continue;
+        };
         for skill in &resolution.active_skills {
             links.push(DesiredLink {
                 target_id: target_id.clone(),
                 slot_name: skill.slot_name.clone(),
-                link_path: target_dir.join(&skill.slot_name),
+                link_path: dir.path.join(&skill.slot_name),
                 store_path: skill.path.clone(),
             });
         }
@@ -548,6 +550,39 @@ mod tests {
                 .file_type()
                 .is_symlink()
         );
+    }
+
+    #[test]
+    fn desired_links_should_pick_deterministic_target_id_for_shared_dir() {
+        let shared = PathBuf::from("/agents/skills");
+        let state = StateFile {
+            schema_version: store::STATE_SCHEMA_VERSION,
+            targets: vec![
+                TargetState {
+                    id: "openclaw".to_owned(),
+                    path: shared.clone(),
+                    canonical_path: shared.clone(),
+                    enabled: true,
+                },
+                TargetState {
+                    id: "codex".to_owned(),
+                    path: shared.clone(),
+                    canonical_path: shared.clone(),
+                    enabled: true,
+                },
+            ],
+            materialization_dirs: vec![MaterializationDirState {
+                path: shared,
+                logical_targets: vec!["codex".to_owned(), "openclaw".to_owned()],
+            }],
+            owned_skills: Vec::new(),
+            protected_skills: Vec::new(),
+        };
+        let resolution = resolution_with_skill("review", Path::new("/store/review"));
+
+        let links = desired_links(&state, &resolution);
+
+        assert_eq!(links[0].target_id, "codex");
     }
 
     fn write_state_with_target(store_root: &Path, target_dir: &Path) {

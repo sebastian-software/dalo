@@ -182,6 +182,13 @@ pub fn set_source_priority(
             source_id: id.to_owned(),
         });
     };
+    // The local source is the guaranteed override (priority 0); refuse to move it,
+    // otherwise a team skill could shadow a locally adapted one.
+    if source.kind == SourceKind::Local {
+        return Err(DaloError::LocalSourcePriorityFixed {
+            source_id: id.to_owned(),
+        });
+    }
     source.priority = priority;
     let source = source.clone();
 

@@ -1094,6 +1094,28 @@ fn source_priority_should_update_config() {
 }
 
 #[test]
+fn source_priority_should_refuse_to_move_local_source() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "priority", "local", "5"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("local source"));
+}
+
+#[test]
 fn sync_should_block_dirty_team_source() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
