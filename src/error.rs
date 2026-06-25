@@ -136,6 +136,15 @@ pub enum DaloError {
         stderr: String,
     },
 
+    /// A store file exists but could not be parsed.
+    #[error("could not parse `{path}`: {reason}")]
+    FileParse {
+        /// File path.
+        path: PathBuf,
+        /// Parser error message.
+        reason: String,
+    },
+
     /// Terminal or filesystem I/O failed.
     #[error(transparent)]
     Io(#[from] io::Error),
@@ -155,6 +164,7 @@ impl DaloError {
             | Self::SkillNotFound { .. }
             | Self::AdoptionDestinationExists { .. }
             | Self::UnsupportedLockSchema { .. }
+            | Self::FileParse { .. }
             | Self::TomlDeserialize(_) => DaloExitCode::ExpectedFailure,
             Self::DirtySource { .. } | Self::StoreLocked { .. } => DaloExitCode::UnsafeState,
             Self::StorePath { .. } | Self::InvalidStorePath { .. } | Self::CommandFailed { .. } => {

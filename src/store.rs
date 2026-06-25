@@ -320,7 +320,7 @@ pub fn read_state(paths: &StorePaths) -> DaloResult<StateFile> {
     }
 
     let content = fs::read_to_string(&paths.state_file)?;
-    Ok(toml::from_str(&content)?)
+    parse_store_toml(&paths.state_file, &content)
 }
 
 /// Read the initialized user config.
@@ -332,7 +332,7 @@ pub fn read_config(paths: &StorePaths) -> DaloResult<UserConfig> {
     }
 
     let content = fs::read_to_string(&paths.config_file)?;
-    Ok(toml::from_str(&content)?)
+    parse_store_toml(&paths.config_file, &content)
 }
 
 /// Read the resolved user lock and validate its schema version.
@@ -344,7 +344,7 @@ pub fn read_user_lock(paths: &StorePaths) -> DaloResult<UserLock> {
     }
 
     let content = fs::read_to_string(&paths.lock_file)?;
-    let lock: UserLock = toml::from_str(&content)?;
+    let lock: UserLock = parse_store_toml(&paths.lock_file, &content)?;
     if lock.schema_version != USER_LOCK_SCHEMA_VERSION {
         return Err(DaloError::UnsupportedLockSchema {
             path: paths.lock_file.clone(),
@@ -387,7 +387,15 @@ pub fn read_approvals(paths: &StorePaths) -> DaloResult<ApprovalsFile> {
     }
 
     let content = fs::read_to_string(&paths.approvals_file)?;
-    Ok(toml::from_str(&content)?)
+    parse_store_toml(&paths.approvals_file, &content)
+}
+
+/// Parse store TOML, attaching the file path to any parser error.
+fn parse_store_toml<T: serde::de::DeserializeOwned>(path: &Path, content: &str) -> DaloResult<T> {
+    toml::from_str(content).map_err(|error| DaloError::FileParse {
+        path: path.to_path_buf(),
+        reason: error.to_string(),
+    })
 }
 
 /// Write local approvals atomically.

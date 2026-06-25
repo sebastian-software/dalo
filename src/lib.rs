@@ -5,6 +5,13 @@
 
 #![forbid(unsafe_code)]
 
+// dalo relies on `std::os::unix` symlink APIs and `$HOME` resolution. Fail the
+// build early on unsupported platforms instead of with a deep type error.
+#[cfg(not(unix))]
+compile_error!(
+    "dalo currently targets Unix-like platforms (Linux, macOS); Windows is not yet supported"
+);
+
 pub mod adopt;
 pub mod cli;
 pub mod config;

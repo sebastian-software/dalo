@@ -208,7 +208,12 @@ fn scan_skill(
 
 fn parse_frontmatter(markdown: &str, path: &Path) -> (SkillFrontmatter, Vec<InventoryWarning>) {
     let mut warnings = Vec::new();
-    let Some(rest) = markdown.strip_prefix("---\n") else {
+    // Accept both LF and CRLF after the opening `---` fence so skills authored
+    // on Windows parse the same as Unix ones.
+    let opened = markdown
+        .strip_prefix("---\n")
+        .or_else(|| markdown.strip_prefix("---\r\n"));
+    let Some(rest) = opened else {
         return (SkillFrontmatter::default(), warnings);
     };
 
@@ -459,5 +464,21 @@ mod tests {
         let inventory = scan_source("company", temp_dir.path()).expect("scan should succeed");
 
         assert_eq!(inventory.skills[0].slot_name, "legit");
+    }
+
+    #[test]
+    fn scan_source_should_parse_crlf_frontmatter() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("copy-editing");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        fs::write(
+            skill_dir.join(SKILL_FILE),
+            "---\r\nname: copy-editing\r\nid: team.copy-editing\r\n---\r\n# Copy Editing\r\n",
+        )
+        .expect("skill file should be written");
+
+        let inventory = scan_source("company", temp_dir.path()).expect("scan should succeed");
+
+        assert_eq!(inventory.skills[0].id.as_deref(), Some("team.copy-editing"));
     }
 }
