@@ -619,6 +619,153 @@ fn adopt_yes_should_not_replace_local_marker_skill() {
 }
 
 #[test]
+fn adopt_yes_should_refuse_replacement_for_kept_skill() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "keep", "review"])
+        .assert()
+        .success();
+    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .args(["--yes", "adopt", "review"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("replacement: protected"));
+}
+
+#[test]
+fn adopt_yes_should_keep_kept_skill_directory_as_real_entry() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "keep", "review"])
+        .assert()
+        .success();
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["--yes", "adopt", "review"])
+        .assert()
+        .success();
+
+    assert!(
+        !std::fs::symlink_metadata(target.join("review"))
+            .expect("kept skill should remain")
+            .file_type()
+            .is_symlink()
+    );
+}
+
+#[test]
+fn adopt_yes_should_preserve_kept_skill_contents() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "keep", "review"])
+        .assert()
+        .success();
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["--yes", "adopt", "review"])
+        .assert()
+        .success();
+
+    assert_eq!(
+        std::fs::read_to_string(target.join("review/SKILL.md"))
+            .expect("kept skill should remain readable"),
+        "# review\n"
+    );
+}
+
+#[test]
+fn adopt_yes_should_preserve_original_contents_via_symlink_when_not_protected() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["--yes", "adopt", "review"])
+        .assert()
+        .success();
+
+    assert_eq!(
+        std::fs::read_to_string(target.join("review/SKILL.md"))
+            .expect("adopted skill should still resolve through the symlink"),
+        "# review\n"
+    );
+}
+
+#[test]
+fn adopt_should_fail_for_path_outside_materialization_dirs() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let outside = temp_dir.path().join("outside");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&outside, "review");
+    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .args(["--yes", "adopt"])
+        .arg(outside.join("review"))
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("was not found"));
+}
+
+#[test]
+fn adopt_should_not_touch_path_outside_materialization_dirs() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let outside = temp_dir.path().join("outside");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&outside, "review");
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["--yes", "adopt"])
+        .arg(outside.join("review"))
+        .assert()
+        .failure();
+
+    assert!(outside.join("review/SKILL.md").is_file());
+}
+
+#[test]
 fn adopted_skill_should_show_as_local_override_over_team_skill() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -995,6 +1142,34 @@ fn sync_should_block_dirty_team_source() {
         ));
 }
 
+#[test]
+fn sync_should_not_link_unapproved_team_skill() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo(&repo);
+    setup_store_with_target(&store, &target);
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "company"])
+        .arg(&repo)
+        .assert()
+        .success();
+    clear_approvals(&store);
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    assert!(!target.join("team").exists());
+}
+
 fn setup_store_with_skill_and_target(store: &std::path::Path, target: &std::path::Path) {
     setup_store_with_target(store, target);
     let skill_dir = store.join("local/skills/review");
@@ -1055,6 +1230,14 @@ fn approve_source(store: &std::path::Path, source: &str) {
         format!("schema_version = 1\n\n[[approvals]]\nscope = \"source\"\nvalue = \"{source}\"\n"),
     )
     .expect("source approval should be written");
+}
+
+fn clear_approvals(store: &std::path::Path) {
+    std::fs::write(
+        store.join("approvals.toml"),
+        "schema_version = 1\napprovals = []\n",
+    )
+    .expect("approvals should be cleared");
 }
 
 fn write_local_only_config(store: &std::path::Path) {
