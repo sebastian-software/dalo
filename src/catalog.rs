@@ -376,6 +376,186 @@ fn candidate_matches_ref(candidate: &CatalogCandidate, reference: &str) -> bool 
     candidate.slot_name == reference || candidate.id.as_deref() == Some(reference)
 }
 
+/// Drift outcome code (RFC 0001 §10).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DriftCode {
+    /// Upstream added a skill that is not selected (informational).
+    NewAvailable,
+    /// A selected skill changed content or metadata (reviewable).
+    SelectedChanged,
+    /// A selected skill moved to a new path (auto-reconcilable on stable ID).
+    SelectedMoved,
+    /// A selected skill no longer exists (blocks scheduled sync for it).
+    SelectedRemoved,
+}
+
+impl DriftCode {
+    /// Whether this outcome blocks non-interactive sync for the selection.
+    #[must_use]
+    pub fn blocks_sync(self) -> bool {
+        matches!(self, Self::SelectedRemoved)
+    }
+
+    /// Snake-case label, matching the serialized form.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NewAvailable => "new_available",
+            Self::SelectedChanged => "selected_changed",
+            Self::SelectedMoved => "selected_moved",
+            Self::SelectedRemoved => "selected_removed",
+        }
+    }
+}
+
+/// One drift finding for a catalog skill.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DriftEntry {
+    /// Outcome code.
+    pub code: DriftCode,
+    /// Affected skill (slot name or stable ID).
+    pub skill: String,
+    /// Human-readable message.
+    pub message: String,
+}
+
+/// Catalog drift report from a read-only check.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CatalogDrift {
+    /// Catalog source ID.
+    pub source_id: String,
+    /// Pinned commit (from the lock).
+    pub pinned_commit: String,
+    /// Upstream commit observed by the check.
+    pub upstream_commit: String,
+    /// Classified drift outcomes.
+    pub outcomes: Vec<DriftEntry>,
+}
+
+/// Compare a pinned inventory snapshot against a fresh inventory and classify the
+/// four drift outcomes. Selected skills are matched by stable ID first (which
+/// enables move detection), then by path.
+#[must_use]
+pub fn compare_catalog_inventory(
+    locked: &[CatalogEntry],
+    selected: &[String],
+    fresh: &[CatalogEntry],
+) -> Vec<DriftEntry> {
+    let is_selected = |entry: &CatalogEntry| {
+        selected.iter().any(|reference| {
+            reference == &entry.slot_name || entry.id.as_deref() == Some(reference.as_str())
+        })
+    };
+    let mut outcomes = Vec::new();
+
+    // new_available: a fresh entry absent from the locked snapshot and unselected.
+    for fresh_entry in fresh {
+        let known = locked.iter().any(|l| same_entry(l, fresh_entry));
+        if !known && !is_selected(fresh_entry) {
+            outcomes.push(DriftEntry {
+                code: DriftCode::NewAvailable,
+                skill: fresh_entry.slot_name.clone(),
+                message: format!(
+                    "`{}` is newly available (not selected)",
+                    fresh_entry.slot_name
+                ),
+            });
+        }
+    }
+
+    // changed / moved / removed for each selected locked entry.
+    for locked_entry in locked.iter().filter(|entry| is_selected(entry)) {
+        let by_id = locked_entry
+            .id
+            .as_deref()
+            .and_then(|id| fresh.iter().find(|f| f.id.as_deref() == Some(id)));
+        let by_path = fresh.iter().find(|f| f.path == locked_entry.path);
+        let skill = locked_entry
+            .id
+            .clone()
+            .unwrap_or_else(|| locked_entry.slot_name.clone());
+        match by_id.or(by_path) {
+            Some(fresh_entry) => {
+                if by_id.is_some() && fresh_entry.path != locked_entry.path {
+                    outcomes.push(DriftEntry {
+                        code: DriftCode::SelectedMoved,
+                        skill,
+                        message: format!(
+                            "`{}` moved from `{}` to `{}`",
+                            locked_entry.slot_name, locked_entry.path, fresh_entry.path
+                        ),
+                    });
+                } else if fresh_entry.content_hash != locked_entry.content_hash
+                    || fresh_entry.metadata_hash != locked_entry.metadata_hash
+                {
+                    outcomes.push(DriftEntry {
+                        code: DriftCode::SelectedChanged,
+                        skill,
+                        message: format!("`{}` changed upstream", locked_entry.slot_name),
+                    });
+                }
+            }
+            None => outcomes.push(DriftEntry {
+                code: DriftCode::SelectedRemoved,
+                skill,
+                message: format!("`{}` was removed upstream", locked_entry.slot_name),
+            }),
+        }
+    }
+
+    outcomes.sort_by(|a, b| {
+        a.code
+            .as_str()
+            .cmp(b.code.as_str())
+            .then_with(|| a.skill.cmp(&b.skill))
+    });
+    outcomes
+}
+
+/// Read-only drift check: fetch the catalog's upstream ref and compare a fresh
+/// inventory against the pinned snapshot. Does not advance the pin or change
+/// config, the lock, or the resolved set.
+pub fn check_catalog_drift(paths: &StorePaths, id: &str) -> DaloResult<CatalogDrift> {
+    let source = catalog_source(paths, id)?;
+    let lock = read_source_lock(paths)?;
+    let catalog_lock = lock
+        .catalog(id)
+        .ok_or_else(|| DaloError::UnknownSource {
+            source_id: id.to_owned(),
+        })?
+        .clone();
+
+    git::fetch(&source.path)?;
+    let upstream_commit = git::rev_parse(&source.path, "FETCH_HEAD")?;
+
+    let fresh = if upstream_commit == catalog_lock.commit {
+        catalog_lock.inventory.clone()
+    } else {
+        let temp = tempfile::tempdir()?;
+        let worktree = temp.path().join("upstream");
+        git::add_detached_worktree(&source.path, &worktree, &upstream_commit)?;
+        let scanned = catalog_inventory(&worktree);
+        let _ = git::remove_worktree(&source.path, &worktree);
+        scanned?
+    };
+
+    let outcomes = compare_catalog_inventory(&catalog_lock.inventory, &source.selection, &fresh);
+    Ok(CatalogDrift {
+        source_id: id.to_owned(),
+        pinned_commit: catalog_lock.commit,
+        upstream_commit,
+        outcomes,
+    })
+}
+
+fn same_entry(a: &CatalogEntry, b: &CatalogEntry) -> bool {
+    match (a.id.as_deref(), b.id.as_deref()) {
+        (Some(left), Some(right)) => left == right,
+        _ => a.path == b.path,
+    }
+}
+
 fn relative_path(root: &Path, path: &Path) -> String {
     path.strip_prefix(root)
         .unwrap_or(path)
@@ -447,4 +627,71 @@ fn hex_digest(bytes: &[u8]) -> String {
         let _ = write!(&mut output, "{byte:02x}");
     }
     output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(id: Option<&str>, slot: &str, path: &str, content: &str) -> CatalogEntry {
+        CatalogEntry {
+            id: id.map(str::to_owned),
+            slot_name: slot.to_owned(),
+            path: path.to_owned(),
+            content_hash: content.to_owned(),
+            metadata_hash: "m".to_owned(),
+            requires: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn compare_should_flag_new_available_for_unselected_additions() {
+        let locked = vec![entry(Some("a"), "alpha", "skills/alpha", "h1")];
+        let fresh = vec![
+            entry(Some("a"), "alpha", "skills/alpha", "h1"),
+            entry(Some("b"), "beta", "skills/beta", "h2"),
+        ];
+        let outcomes = compare_catalog_inventory(&locked, &["alpha".to_owned()], &fresh);
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].code, DriftCode::NewAvailable);
+        assert_eq!(outcomes[0].skill, "beta");
+    }
+
+    #[test]
+    fn compare_should_flag_selected_changed_on_content_hash() {
+        let locked = vec![entry(Some("a"), "alpha", "skills/alpha", "h1")];
+        let fresh = vec![entry(Some("a"), "alpha", "skills/alpha", "h2")];
+        let outcomes = compare_catalog_inventory(&locked, &["alpha".to_owned()], &fresh);
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].code, DriftCode::SelectedChanged);
+    }
+
+    #[test]
+    fn compare_should_flag_selected_moved_via_stable_id() {
+        let locked = vec![entry(Some("a"), "alpha", "skills/alpha", "h1")];
+        let fresh = vec![entry(Some("a"), "alpha", "catalog/alpha", "h1")];
+        let outcomes = compare_catalog_inventory(&locked, &["alpha".to_owned()], &fresh);
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].code, DriftCode::SelectedMoved);
+    }
+
+    #[test]
+    fn compare_should_flag_selected_removed_when_absent() {
+        let locked = vec![entry(Some("a"), "alpha", "skills/alpha", "h1")];
+        let fresh: Vec<CatalogEntry> = Vec::new();
+        let outcomes = compare_catalog_inventory(&locked, &["alpha".to_owned()], &fresh);
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].code, DriftCode::SelectedRemoved);
+        assert!(outcomes[0].code.blocks_sync());
+    }
+
+    #[test]
+    fn compare_should_ignore_unselected_changes() {
+        let locked = vec![entry(Some("a"), "alpha", "skills/alpha", "h1")];
+        let fresh = vec![entry(Some("a"), "alpha", "skills/alpha", "h2")];
+        // `alpha` is not selected: no changed/removed outcome, and it is already
+        // known, so no new_available either.
+        let outcomes = compare_catalog_inventory(&locked, &[], &fresh);
+        assert!(outcomes.is_empty());
+    }
 }

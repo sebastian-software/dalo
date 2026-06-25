@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::adopt::{AdoptReport, KeepReport, RemoveOwnedReport, ResolveListReport, UnmanagedSkill};
-use crate::catalog::{CatalogInspectReport, CatalogSelectReport};
+use crate::catalog::{CatalogDrift, CatalogInspectReport, CatalogSelectReport};
 use crate::doctor::{DoctorReport, DoctorSeverity};
 use crate::error::DaloResult;
 use crate::inventory::InventoryWarning;
@@ -331,6 +331,32 @@ pub fn print_catalog_select_report(report: &CatalogSelectReport) {
             report.selected.join(", ")
         );
     }
+}
+
+/// Print a human-readable catalog drift report.
+pub fn print_catalog_drift_report(report: &CatalogDrift) {
+    if report.outcomes.is_empty() {
+        println!(
+            "catalog {}: up to date (pinned {})",
+            report.source_id,
+            short_commit(&report.pinned_commit)
+        );
+        return;
+    }
+    println!(
+        "catalog {}: {} drift outcome(s) (pinned {} -> upstream {})",
+        report.source_id,
+        report.outcomes.len(),
+        short_commit(&report.pinned_commit),
+        short_commit(&report.upstream_commit)
+    );
+    for outcome in &report.outcomes {
+        println!("  [{}] {}", outcome.code.as_str(), outcome.message);
+    }
+}
+
+fn short_commit(commit: &str) -> &str {
+    commit.get(..12).unwrap_or(commit)
 }
 
 /// Print a human-readable adopt report.

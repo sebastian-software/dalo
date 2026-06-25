@@ -5,7 +5,7 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 use crate::adopt;
 use crate::catalog;
 use crate::doctor;
-use crate::error::DaloResult;
+use crate::error::{DaloError, DaloResult};
 use crate::lockfile;
 use crate::materialize;
 use crate::source;
@@ -156,6 +156,8 @@ pub enum SourceSubcommand {
     Inspect(SourceInspectArgs),
     /// Select or unselect catalog skills.
     Select(SourceSelectArgs),
+    /// Check a catalog source for upstream drift (read-only).
+    Refresh(SourceRefreshArgs),
 }
 
 /// Arguments for `source add`.
@@ -198,6 +200,17 @@ pub struct SourceSelectArgs {
     /// Unselect the given skills instead of selecting them.
     #[arg(long)]
     pub unselect: bool,
+}
+
+/// Arguments for `source refresh`.
+#[derive(Debug, Args)]
+pub struct SourceRefreshArgs {
+    /// Catalog source ID.
+    pub id: String,
+
+    /// Only check for drift without advancing the pin (currently required).
+    #[arg(long)]
+    pub check: bool,
 }
 
 /// Arguments for `adopt`.
@@ -375,6 +388,22 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
                 print_json(&report)?;
             } else {
                 status::print_catalog_select_report(&report);
+            }
+            Ok(())
+        }
+        SourceSubcommand::Refresh(args) => {
+            // Lock advancement (new pins / lockfile PRs) is a later slice; only the
+            // read-only `--check` drift path is in scope for now.
+            if !args.check {
+                return Err(DaloError::NotImplemented {
+                    command: "source refresh (advancing the pin)".to_owned(),
+                });
+            }
+            let report = catalog::check_catalog_drift(&paths, &args.id)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                status::print_catalog_drift_report(&report);
             }
             Ok(())
         }

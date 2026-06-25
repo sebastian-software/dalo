@@ -1492,6 +1492,69 @@ fn catalog_select_should_materialize_only_selected_skills() {
     assert!(!target.join("launch-copy").exists());
 }
 
+#[test]
+fn catalog_refresh_check_should_report_upstream_drift() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "copy-editing"])
+        .assert()
+        .success();
+
+    // Upstream drift: change the selected skill and add a new unselected one.
+    std::fs::write(
+        repo.join("skills/copy-editing/SKILL.md"),
+        "# copy-editing v2\n",
+    )
+    .expect("skill rewritten");
+    std::fs::create_dir_all(repo.join("skills/seo")).expect("dir created");
+    std::fs::write(repo.join("skills/seo/SKILL.md"), "# seo\n").expect("skill written");
+    run_git(&repo, &["add", "."]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "update",
+            "-q",
+        ],
+    );
+
+    // The read-only check reports the changed selection and the new offering
+    // without advancing the pin.
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "refresh", "marketing", "--check"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("selected_changed"))
+        .stdout(predicate::str::contains("new_available"));
+}
+
 fn setup_store_with_target(store: &std::path::Path, target: &std::path::Path) {
     Command::cargo_bin("dalo")
         .expect("binary should build")
