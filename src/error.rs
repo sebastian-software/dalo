@@ -139,6 +139,19 @@ pub enum DaloError {
         supported: u32,
     },
 
+    /// A persisted store file uses an unsupported schema version.
+    #[error(
+        "unsupported schema version {version} in `{path}`; this dalo supports version {supported}"
+    )]
+    UnsupportedSchema {
+        /// Store file path.
+        path: PathBuf,
+        /// Persisted version.
+        version: u32,
+        /// Supported version.
+        supported: u32,
+    },
+
     /// A system command failed.
     #[error("command `{program} {args}` failed in `{cwd}` with status {status}: {stderr}")]
     CommandFailed {
@@ -183,6 +196,7 @@ impl DaloError {
             | Self::SkillNotFound { .. }
             | Self::AdoptionDestinationExists { .. }
             | Self::UnsupportedLockSchema { .. }
+            | Self::UnsupportedSchema { .. }
             | Self::FileParse { .. }
             | Self::LocalSourcePriorityFixed { .. }
             | Self::TomlDeserialize(_) => DaloExitCode::ExpectedFailure,
@@ -401,6 +415,21 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "unsupported lock schema version 999 in `/tmp/store/lock.toml`; this dalo supports version 1"
+        );
+    }
+
+    #[test]
+    fn unsupported_schema_should_render_versions_and_use_expected_failure() {
+        let error = DaloError::UnsupportedSchema {
+            path: PathBuf::from("/tmp/store/state.toml"),
+            version: 999,
+            supported: 1,
+        };
+
+        assert_eq!(error.exit_code(), DaloExitCode::ExpectedFailure);
+        assert_eq!(
+            error.to_string(),
+            "unsupported schema version 999 in `/tmp/store/state.toml`; this dalo supports version 1"
         );
     }
 

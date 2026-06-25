@@ -329,7 +329,22 @@ fn target_path(entry: &TargetRegistryEntry, path_override: Option<&Path>) -> Dal
 }
 
 fn canonicalize_target_path(path: &Path) -> PathBuf {
-    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+    if let Ok(canonical) = path.canonicalize() {
+        return canonical;
+    }
+
+    // The directory may not exist yet (notably during dry-run, which skips
+    // `create_dir_all`). Canonicalize the parent and re-attach the final
+    // component so a symlinked ancestor (e.g. `/var` -> `/private/var`) resolves
+    // identically whether or not the leaf exists. This keeps the dry-run
+    // "planned" canonical path equal to what the real run later persists.
+    match (path.parent(), path.file_name()) {
+        (Some(parent), Some(file_name)) => match parent.canonicalize() {
+            Ok(canonical_parent) => canonical_parent.join(file_name),
+            Err(_) => path.to_path_buf(),
+        },
+        _ => path.to_path_buf(),
+    }
 }
 
 fn upsert_target_state(
@@ -425,6 +440,30 @@ mod tests {
             state.materialization_dirs[0].logical_targets,
             ["codex".to_owned(), "openclaw".to_owned()]
         );
+    }
+
+    #[test]
+    fn link_target_should_report_stable_canonical_path_between_dry_run_and_real_run() {
+        use std::os::unix::fs as unix_fs;
+
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        // A symlinked parent means the not-yet-created leaf path differs from its
+        // canonical form. Dry-run (which skips dir creation) must still report the
+        // same canonical path the real run later persists.
+        let real_parent = temp_dir.path().join("real");
+        std::fs::create_dir_all(&real_parent).expect("real parent should be created");
+        let linked_parent = temp_dir.path().join("linked");
+        unix_fs::symlink(&real_parent, &linked_parent).expect("symlink should be created");
+        let target = linked_parent.join("skills");
+
+        let planned = link_target(&store_root, "codex", Some(&target), true)
+            .expect("dry-run link should succeed");
+        let applied = link_target(&store_root, "codex", Some(&target), false)
+            .expect("real link should succeed");
+
+        assert_eq!(planned.canonical_path, applied.canonical_path);
     }
 
     #[test]

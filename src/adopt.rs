@@ -332,13 +332,24 @@ fn find_unmanaged_skill(paths: &StorePaths, selector: &str) -> DaloResult<Unmana
 }
 
 fn unmanaged_from_path(paths: &StorePaths, path: &Path) -> DaloResult<UnmanagedSkill> {
-    let path = path.to_path_buf();
+    // Candidate paths come from `entry.path()` and are absolute, but the selector
+    // may be relative (`./skills/review`), carry a trailing slash, or route
+    // through a symlinked component. Compare on the canonical form so those still
+    // match, falling back to the raw path when canonicalization is unavailable.
+    // Only skills discovered inside a materialization dir are considered, so the
+    // directory boundary that `discover_unmanaged_skills` enforces still holds.
+    let target = canonical_or_self(path);
     discover_unmanaged_skills(paths)?
         .into_iter()
-        .find(|skill| skill.path == path)
+        .find(|skill| canonical_or_self(&skill.path) == target)
         .ok_or_else(|| DaloError::SkillNotFound {
             skill: path.display().to_string(),
         })
+}
+
+/// Canonicalize a path, falling back to the original when it cannot be resolved.
+fn canonical_or_self(path: &Path) -> PathBuf {
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
 }
 
 fn assign_unmanaged_ids(mut skills: Vec<UnmanagedSkill>) -> Vec<UnmanagedSkill> {
@@ -503,6 +514,32 @@ mod tests {
                 .file_type()
                 .is_symlink()
         );
+    }
+
+    #[test]
+    fn adopt_skill_should_accept_non_canonical_path_selector() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let target = temp_dir.path().join("target");
+        let unmanaged = target.join("review");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        fs::create_dir_all(&unmanaged).expect("unmanaged dir should be created");
+        fs::write(unmanaged.join(SKILL_FILE), "# Review\n").expect("skill should be written");
+        write_state(&store_root, &target, &target.join("unused"));
+        // A `.`-component path (mirroring a user-supplied `./skills/review`) is a
+        // valid handle for the same directory but is not byte-equal to the clean
+        // absolute path stored in state; only canonicalization makes them match.
+        let selector = target.join(".").join("review");
+
+        let report = adopt_skill(
+            &StorePaths::new(store_root),
+            &selector.to_string_lossy(),
+            false,
+            false,
+        )
+        .expect("non-canonical path selector should resolve");
+
+        assert_eq!(report.slot_name, "review");
     }
 
     #[test]

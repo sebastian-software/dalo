@@ -320,7 +320,16 @@ pub fn read_state(paths: &StorePaths) -> DaloResult<StateFile> {
     }
 
     let content = fs::read_to_string(&paths.state_file)?;
-    parse_store_toml(&paths.state_file, &content)
+    let state: StateFile = parse_store_toml(&paths.state_file, &content)?;
+    if state.schema_version != STATE_SCHEMA_VERSION {
+        return Err(DaloError::UnsupportedSchema {
+            path: paths.state_file.clone(),
+            version: state.schema_version,
+            supported: STATE_SCHEMA_VERSION,
+        });
+    }
+
+    Ok(state)
 }
 
 /// Read the initialized user config.
@@ -408,7 +417,16 @@ pub fn read_approvals(paths: &StorePaths) -> DaloResult<ApprovalsFile> {
     }
 
     let content = fs::read_to_string(&paths.approvals_file)?;
-    parse_store_toml(&paths.approvals_file, &content)
+    let approvals: ApprovalsFile = parse_store_toml(&paths.approvals_file, &content)?;
+    if approvals.schema_version != APPROVALS_SCHEMA_VERSION {
+        return Err(DaloError::UnsupportedSchema {
+            path: paths.approvals_file.clone(),
+            version: approvals.schema_version,
+            supported: APPROVALS_SCHEMA_VERSION,
+        });
+    }
+
+    Ok(approvals)
 }
 
 /// Parse store TOML, attaching the file path to any parser error.
@@ -474,7 +492,20 @@ impl StoreLock {
                         path: paths.lock_guard_file.clone(),
                     });
                 }
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                    // The guard file exists. If its owner has died, the lock is
+                    // stale: drop it and immediately retry so a crashed process
+                    // never blocks the store permanently. A live owner (or an
+                    // unreadable/owner-unknown lock) keeps blocking through the
+                    // remaining retry window.
+                    if reclaim_if_stale(&paths.lock_guard_file)?
+                        && try_create_lock(&paths.lock_guard_file).is_ok()
+                    {
+                        return Ok(Self {
+                            path: paths.lock_guard_file.clone(),
+                        });
+                    }
+                }
                 Err(error) => return Err(error.into()),
             }
         }
@@ -482,6 +513,60 @@ impl StoreLock {
         Err(DaloError::StoreLocked {
             path: paths.lock_guard_file.clone(),
         })
+    }
+}
+
+/// Remove the guard file when its recorded owner is provably dead.
+///
+/// Returns `true` when a stale lock was removed (so the caller should retry to
+/// claim it), `false` when the lock should be treated as live and kept. A lock
+/// with no readable `pid=` line, or whose owner is still alive, is preserved.
+fn reclaim_if_stale(path: &Path) -> DaloResult<bool> {
+    let Some(pid) = read_lock_pid(path) else {
+        // No readable owner: be conservative and keep blocking. This also covers
+        // the race where another process just removed the file before we read it.
+        return Ok(false);
+    };
+
+    if process_is_alive(pid) {
+        return Ok(false);
+    }
+
+    // The owner is gone. Best-effort removal; a concurrent reclaimer winning the
+    // race (NotFound) is fine and still lets us retry the create below.
+    match fs::remove_file(path) {
+        Ok(()) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(true),
+        Err(error) => Err(error.into()),
+    }
+}
+
+/// Read the `pid=<n>` owner recorded by [`try_create_lock`].
+fn read_lock_pid(path: &Path) -> Option<u32> {
+    let content = fs::read_to_string(path).ok()?;
+    content
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("pid="))
+        .and_then(|value| value.trim().parse::<u32>().ok())
+}
+
+/// Probe whether a process is still alive.
+///
+/// Platform assumption: Unix. dalo ships for Unix-like systems, so liveness is
+/// probed with `kill -0 <pid>`, which delivers no signal but reports whether the
+/// process exists: success means alive, a non-zero status means it is gone. We
+/// shell out to `kill` rather than calling `libc::kill` so the crate keeps
+/// `unsafe-code = forbid` and takes on no extra dependency. The store is
+/// single-user, so the owner is always the current user and `kill -0` never hits
+/// the cross-user permission case. If `kill` itself cannot be spawned we err on
+/// the side of caution and treat the owner as alive, so a live lock is never
+/// reclaimed by mistake.
+fn process_is_alive(pid: u32) -> bool {
+    use std::process::Command;
+
+    match Command::new("kill").args(["-0", &pid.to_string()]).status() {
+        Ok(status) => status.success(),
+        Err(_) => true,
     }
 }
 
@@ -733,6 +818,40 @@ mod tests {
     }
 
     #[test]
+    fn read_state_should_reject_unsupported_schema_version() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root);
+        // Write a structurally valid state document with a future schema version
+        // so the schema check (not a parse error) is what rejects the file.
+        let mut state = StateFile::empty();
+        state.schema_version = 999;
+        write_state(&paths, &state).expect("state should be overwritten");
+
+        let error = read_state(&paths).expect_err("read should reject the unsupported schema");
+
+        assert!(matches!(error, DaloError::UnsupportedSchema { .. }));
+    }
+
+    #[test]
+    fn read_approvals_should_reject_unsupported_schema_version() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root);
+        // Write a structurally valid approvals document with a future schema
+        // version so the schema check is what rejects the file, not parsing.
+        let mut approvals = ApprovalsFile::empty();
+        approvals.schema_version = 999;
+        write_approvals(&paths, &approvals).expect("approvals should be overwritten");
+
+        let error = read_approvals(&paths).expect_err("read should reject the unsupported schema");
+
+        assert!(matches!(error, DaloError::UnsupportedSchema { .. }));
+    }
+
+    #[test]
     fn init_store_should_reject_empty_store_path() {
         let error =
             init_store(PathBuf::new(), false).expect_err("init should reject an empty path");
@@ -769,18 +888,40 @@ mod tests {
     }
 
     #[test]
-    fn store_lock_should_block_on_stale_lock_when_guard_file_left_behind() {
-        // Documents the present behavior: `try_create_lock` uses `create_new`, so a
-        // `.lock` file left by a dead process blocks the store indefinitely. The
-        // recorded `pid=` is never read back, so the guard cannot recover on its own.
+    fn store_lock_should_reclaim_stale_lock_when_owner_is_dead() {
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
         let store_root = temp_dir.path().join("store");
         init_store(store_root.clone(), false).expect("init should succeed");
         let paths = StorePaths::new(store_root);
-        fs::write(&paths.lock_guard_file, "pid=999999\n").expect("stale lock should be written");
+        // Heuristic: 2147480000 is just under i32::MAX, far above any pid a live
+        // system assigns (default Linux/macOS pid_max is 32768/99999), so
+        // `kill -0` reliably reports "no such process". A crashed owner leaves a
+        // guard file like this; the lock must be reclaimable rather than fatal.
+        fs::write(&paths.lock_guard_file, "pid=2147480000\n")
+            .expect("stale lock should be written");
+
+        let lock = StoreLock::acquire_with_delays(&paths, &[Duration::from_millis(0)])
+            .expect("stale lock with a dead owner should be reclaimed");
+
+        assert_eq!(lock.path, paths.lock_guard_file);
+    }
+
+    #[test]
+    fn store_lock_should_block_on_stale_lock_when_owner_is_alive() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root);
+        // The current test process is provably alive, so a guard file naming it
+        // must keep blocking: live contention is never mistaken for a stale lock.
+        fs::write(
+            &paths.lock_guard_file,
+            format!("pid={}\n", std::process::id()),
+        )
+        .expect("live lock should be written");
 
         let error = StoreLock::acquire_with_delays(&paths, &[Duration::from_millis(0)])
-            .expect_err("stale lock should block acquisition");
+            .expect_err("a live owner should still block acquisition");
 
         assert!(matches!(error, DaloError::StoreLocked { .. }));
     }
