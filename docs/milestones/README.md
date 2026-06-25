@@ -1,6 +1,6 @@
 # Dalo Implementation Milestones
 
-Status: Draft  
+Status: Complete (V1 RC)  
 Scope: V1 implementation plan plus V1.1 staging notes  
 Last updated: 2026-06-24  
 
