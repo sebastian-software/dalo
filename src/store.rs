@@ -52,6 +52,8 @@ pub struct StorePaths {
     pub local_instructions_dir: PathBuf,
     /// Source checkout root.
     pub sources_dir: PathBuf,
+    /// Catalog source lock path (pinned commits, selections, inventory snapshot).
+    pub source_lock_file: PathBuf,
 }
 
 impl StorePaths {
@@ -69,6 +71,7 @@ impl StorePaths {
             local_skills_dir: local_dir.join("skills"),
             local_instructions_dir: local_dir.join("instructions"),
             sources_dir: root.join("sources"),
+            source_lock_file: root.join("source-lock.toml"),
             local_dir,
             root,
         }
@@ -676,7 +679,7 @@ fn ensure_git_repo(path: &Path, dry_run: bool) -> DaloResult<InitOperation> {
     })
 }
 
-fn write_toml_atomic<T>(path: &Path, value: &T) -> DaloResult<()>
+pub(crate) fn write_toml_atomic<T>(path: &Path, value: &T) -> DaloResult<()>
 where
     T: Serialize,
 {

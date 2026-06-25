@@ -1304,6 +1304,132 @@ fn sync_should_not_block_on_dirty_local_source() {
         .success();
 }
 
+#[test]
+fn status_json_schema_should_model_instruction_packs_and_blocked_skills() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let agents = temp_dir.path().join("AGENTS.md");
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    for (pack, body) in [
+        ("style", "topics: formatting\n\nUse tabs.\n"),
+        ("format", "topics: formatting\n\nWrap at 100.\n"),
+    ] {
+        std::fs::write(
+            store.join("local/instructions").join(format!("{pack}.md")),
+            body,
+        )
+        .expect("pack should be written");
+        Command::cargo_bin("dalo")
+            .expect("binary should build")
+            .args(["--store"])
+            .arg(&store)
+            .args(["instructions", "enable", pack])
+            .arg(&agents)
+            .assert()
+            .success();
+    }
+
+    let output = Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: StatusReportSchema =
+        serde_json::from_slice(&output).expect("status JSON should match the status schema");
+
+    assert_eq!(report.instruction_packs.len(), 2);
+    assert!(report.instruction_packs.iter().all(|pack| pack.enabled));
+    assert!(
+        report
+            .instruction_packs
+            .iter()
+            .any(|pack| pack.id == "style" && pack.source_id == "local")
+    );
+    assert_eq!(report.instruction_pack_overlaps.len(), 1);
+    assert_eq!(
+        report.instruction_pack_overlaps[0].topics,
+        vec!["formatting".to_owned()]
+    );
+    assert!(
+        report.instruction_pack_overlaps[0]
+            .packs
+            .contains(&"local:style".to_owned())
+    );
+    // blocked_skills is modeled (empty here); referencing its fields guards the schema.
+    assert!(
+        report
+            .resolution
+            .blocked_skills
+            .iter()
+            .all(|blocked| !blocked.requirement.is_empty() && !blocked.reason.is_empty())
+    );
+}
+
+#[test]
+fn source_inspect_json_should_model_catalog_candidates() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "copy-editing"])
+        .assert()
+        .success();
+
+    let output = Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "source", "inspect", "marketing"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: CatalogInspectSchema =
+        serde_json::from_slice(&output).expect("inspect JSON should match the catalog schema");
+
+    assert_eq!(report.source_id, "marketing");
+    assert!(
+        report
+            .candidates
+            .iter()
+            .any(|candidate| candidate.slot_name == "copy-editing" && candidate.selected)
+    );
+    assert!(
+        report
+            .candidates
+            .iter()
+            .any(|candidate| candidate.slot_name == "launch-copy" && !candidate.selected)
+    );
+}
+
 // Mirror structs for the machine-output schema. They intentionally live in the test
 // crate so production types are not forced to derive `Deserialize`. Deserialization
 // fails if a named field is renamed, removed, or changes type, which is the schema
@@ -1313,16 +1439,50 @@ fn sync_should_not_block_on_dirty_local_source() {
 struct StatusReportSchema {
     resolution: ResolutionSchema,
     lock: LockStatusSchema,
+    instruction_packs: Vec<InstructionPackSchema>,
+    instruction_pack_overlaps: Vec<TopicOverlapSchema>,
 }
 
 #[derive(serde::Deserialize)]
 struct ResolutionSchema {
     active_skills: Vec<ActiveSkillSchema>,
+    blocked_skills: Vec<BlockedSkillSchema>,
 }
 
 #[derive(serde::Deserialize)]
 struct ActiveSkillSchema {
     source_ref: String,
+}
+
+#[derive(serde::Deserialize)]
+struct BlockedSkillSchema {
+    requirement: String,
+    reason: String,
+}
+
+#[derive(serde::Deserialize)]
+struct InstructionPackSchema {
+    id: String,
+    source_id: String,
+    enabled: bool,
+}
+
+#[derive(serde::Deserialize)]
+struct TopicOverlapSchema {
+    packs: [String; 2],
+    topics: Vec<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct CatalogInspectSchema {
+    source_id: String,
+    candidates: Vec<CatalogCandidateSchema>,
+}
+
+#[derive(serde::Deserialize)]
+struct CatalogCandidateSchema {
+    slot_name: String,
+    selected: bool,
 }
 
 #[derive(serde::Deserialize)]
@@ -1440,6 +1600,231 @@ fn setup_store_with_skill_and_target(store: &std::path::Path, target: &std::path
     std::fs::write(skill_dir.join("SKILL.md"), "# Review\n").expect("skill should be written");
 }
 
+#[test]
+fn catalog_select_should_materialize_only_selected_skills() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "inspect", "marketing"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("copy-editing"))
+        .stdout(predicate::str::contains("launch-copy"));
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "copy-editing"])
+        .assert()
+        .success();
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    // Only the selected catalog skill is materialized; the unselected one is not.
+    assert!(
+        std::fs::symlink_metadata(target.join("copy-editing"))
+            .expect("selected skill should be linked")
+            .file_type()
+            .is_symlink()
+    );
+    assert!(!target.join("launch-copy").exists());
+}
+
+#[test]
+fn catalog_refresh_check_should_report_upstream_drift() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "copy-editing"])
+        .assert()
+        .success();
+
+    // Upstream drift: change the selected skill and add a new unselected one.
+    std::fs::write(
+        repo.join("skills/copy-editing/SKILL.md"),
+        "# copy-editing v2\n",
+    )
+    .expect("skill rewritten");
+    std::fs::create_dir_all(repo.join("skills/seo")).expect("dir created");
+    std::fs::write(repo.join("skills/seo/SKILL.md"), "# seo\n").expect("skill written");
+    run_git(&repo, &["add", "."]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "update",
+            "-q",
+        ],
+    );
+
+    // The read-only check reports the changed selection and the new offering
+    // without advancing the pin.
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "refresh", "marketing", "--check"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("selected_changed"))
+        .stdout(predicate::str::contains("new_available"));
+}
+
+#[test]
+fn instructions_enable_disable_should_manage_block_idempotently() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target_file = temp_dir.path().join("AGENTS.md");
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    // Author a local instruction pack and seed the target with user content.
+    std::fs::write(
+        store.join("local/instructions/house-style.md"),
+        "version: 1.0\n\nUse tabs, not spaces.\n",
+    )
+    .expect("pack should be written");
+    std::fs::write(&target_file, "# Project\n\nUser notes.\n").expect("target should be written");
+
+    let enable = || {
+        Command::cargo_bin("dalo")
+            .expect("binary should build")
+            .args(["--store"])
+            .arg(&store)
+            .args(["instructions", "enable", "house-style"])
+            .arg(&target_file)
+            .assert()
+            .success();
+    };
+
+    enable();
+    let after_enable = std::fs::read_to_string(&target_file).expect("target readable");
+    assert!(after_enable.contains("# Project"));
+    assert!(after_enable.contains("User notes."));
+    assert!(after_enable.contains("Use tabs, not spaces."));
+    assert!(after_enable.contains("<!-- dalo:start house-style -->"));
+
+    // Enabling again is idempotent.
+    enable();
+    let after_second = std::fs::read_to_string(&target_file).expect("target readable");
+    assert_eq!(after_enable, after_second);
+
+    // Disabling removes exactly the block and keeps user content.
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "disable", "house-style"])
+        .arg(&target_file)
+        .assert()
+        .success();
+    let after_disable = std::fs::read_to_string(&target_file).expect("target readable");
+    assert!(after_disable.contains("# Project"));
+    assert!(after_disable.contains("User notes."));
+    assert!(!after_disable.contains("dalo:start"));
+}
+
+#[test]
+fn status_json_should_report_instruction_pack_topic_overlap() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let agents = temp_dir.path().join("AGENTS.md");
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    // Two local packs declaring a shared topic.
+    std::fs::write(
+        store.join("local/instructions/style.md"),
+        "topics: formatting\n\nUse tabs.\n",
+    )
+    .expect("pack should be written");
+    std::fs::write(
+        store.join("local/instructions/format.md"),
+        "topics: formatting\n\nWrap at 100.\n",
+    )
+    .expect("pack should be written");
+
+    for pack in ["style", "format"] {
+        Command::cargo_bin("dalo")
+            .expect("binary should build")
+            .args(["--store"])
+            .arg(&store)
+            .args(["instructions", "enable", pack])
+            .arg(&agents)
+            .assert()
+            .success();
+    }
+
+    // status --json surfaces the advisory overlap naming both pack refs.
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("instruction_pack_overlaps"))
+        .stdout(predicate::str::contains("local:style"))
+        .stdout(predicate::str::contains("local:format"));
+}
+
 fn setup_store_with_target(store: &std::path::Path, target: &std::path::Path) {
     Command::cargo_bin("dalo")
         .expect("binary should build")
@@ -1526,6 +1911,34 @@ fn write_local_only_config(store: &std::path::Path) {
         ),
     )
     .expect("config should be written");
+}
+
+fn create_git_catalog_repo(repo: &std::path::Path) {
+    for slot in ["copy-editing", "launch-copy"] {
+        std::fs::create_dir_all(repo.join("skills").join(slot)).expect("repo dirs created");
+        std::fs::write(
+            repo.join("skills").join(slot).join("SKILL.md"),
+            format!("# {slot}\n"),
+        )
+        .expect("skill written");
+    }
+    run_git(repo, &["init", "-q"]);
+    run_git(repo, &["add", "."]);
+    run_git(
+        repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "initial",
+            "-q",
+        ],
+    );
 }
 
 fn run_git(repo: &std::path::Path, args: &[&str]) {

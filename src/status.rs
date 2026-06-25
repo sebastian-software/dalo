@@ -5,13 +5,17 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::adopt::{AdoptReport, KeepReport, RemoveOwnedReport, ResolveListReport, UnmanagedSkill};
+use crate::catalog::{CatalogDrift, CatalogInspectReport, CatalogSelectReport};
 use crate::doctor::{DoctorReport, DoctorSeverity};
 use crate::error::DaloResult;
+use crate::instructions::{self, DiscoveredPack, TopicOverlap};
 use crate::inventory::InventoryWarning;
 use crate::lockfile::{self, LockDrift};
 use crate::materialize::SyncReport;
 use crate::resolver::{self, Resolution};
-use crate::source::{SourceAddReport, SourceKind, SourceListReport, SourcePriorityReport};
+use crate::source::{
+    SourceAddReport, SourceConfig, SourceKind, SourceListReport, SourcePriorityReport,
+};
 use crate::store::{self, InitReport, StorePaths};
 use crate::target::{TargetDetectReport, TargetLinkReport, TargetUnlinkReport};
 
@@ -30,6 +34,10 @@ pub struct StatusReport {
     pub lock: LockStatus,
     /// Unmanaged skills found in linked targets.
     pub unmanaged_skills: Vec<UnmanagedSkill>,
+    /// Discovered instruction packs (available and enabled).
+    pub instruction_packs: Vec<DiscoveredPack>,
+    /// Declared-topic overlaps among active instruction packs (advisory).
+    pub instruction_pack_overlaps: Vec<TopicOverlap>,
 }
 
 /// User lock status derived during `status`.
@@ -131,6 +139,18 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
     };
     let unmanaged_skills = crate::adopt::discover_unmanaged_skills(&paths)?;
 
+    let instruction_packs = instructions::discover_packs(
+        &paths,
+        &config.sources,
+        &previous_lock.active_instruction_packs,
+    );
+    let active_packs = instruction_packs
+        .iter()
+        .filter(|pack| pack.enabled)
+        .cloned()
+        .collect::<Vec<_>>();
+    let instruction_pack_overlaps = instructions::topic_overlaps(&active_packs);
+
     Ok(StatusReport {
         store: store_root.to_path_buf(),
         sources,
@@ -138,6 +158,8 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         resolution,
         lock,
         unmanaged_skills,
+        instruction_packs,
+        instruction_pack_overlaps,
     })
 }
 
@@ -202,6 +224,19 @@ pub fn print_status_report(report: &StatusReport) {
         }
     }
 
+    if !report.resolution.blocked_skills.is_empty() {
+        println!("blocked skills (required closure not linkable):");
+        for blocked in &report.resolution.blocked_skills {
+            println!(
+                "  {} -> {} requires=`{}` reason={}",
+                blocked.skill.slot_name,
+                blocked.skill.source_ref,
+                blocked.requirement,
+                resolver::closure_block_reason_name(blocked.reason)
+            );
+        }
+    }
+
     if !report.lock.drift.is_empty() {
         println!("lock drift:");
         for drift in &report.lock.drift {
@@ -225,6 +260,26 @@ pub fn print_status_report(report: &StatusReport) {
                 warning.code,
                 warning.path.display(),
                 warning.message
+            );
+        }
+    }
+
+    if !report.instruction_packs.is_empty() {
+        println!("instruction packs:");
+        for pack in &report.instruction_packs {
+            let state = if pack.enabled { "enabled" } else { "available" };
+            println!("  {} ({state})", pack.pack_ref());
+        }
+    }
+
+    if !report.instruction_pack_overlaps.is_empty() {
+        println!("instruction pack topic overlaps:");
+        for overlap in &report.instruction_pack_overlaps {
+            println!(
+                "  {} <-> {} share: {}",
+                overlap.packs[0],
+                overlap.packs[1],
+                overlap.topics.join(", ")
             );
         }
     }
@@ -288,6 +343,72 @@ pub fn print_source_priority_report(report: &SourcePriorityReport) {
         "{verb} source {} priority={}",
         report.source.id, report.source.priority
     );
+}
+
+/// Print a human-readable catalog add report.
+pub fn print_catalog_add_report(source: &SourceConfig, dry_run: bool) {
+    let verb = if dry_run { "would add" } else { "added" };
+    println!(
+        "{verb} catalog source {} -> {}",
+        source.id,
+        source.path.display()
+    );
+}
+
+/// Print a human-readable catalog inspect report.
+pub fn print_catalog_inspect_report(report: &CatalogInspectReport) {
+    println!(
+        "catalog {}: {} available skill(s)",
+        report.source_id,
+        report.candidates.len()
+    );
+    for candidate in &report.candidates {
+        let marker = if candidate.selected { "*" } else { " " };
+        let id = candidate.id.as_deref().unwrap_or("-");
+        println!(
+            "  {marker} {:<24} id={:<24} {}",
+            candidate.slot_name, id, candidate.path
+        );
+    }
+}
+
+/// Print a human-readable catalog select report.
+pub fn print_catalog_select_report(report: &CatalogSelectReport) {
+    if report.selected.is_empty() {
+        println!("catalog {}: no skills selected", report.source_id);
+    } else {
+        println!(
+            "catalog {}: selected {}",
+            report.source_id,
+            report.selected.join(", ")
+        );
+    }
+}
+
+/// Print a human-readable catalog drift report.
+pub fn print_catalog_drift_report(report: &CatalogDrift) {
+    if report.outcomes.is_empty() {
+        println!(
+            "catalog {}: up to date (pinned {})",
+            report.source_id,
+            short_commit(&report.pinned_commit)
+        );
+        return;
+    }
+    println!(
+        "catalog {}: {} drift outcome(s) (pinned {} -> upstream {})",
+        report.source_id,
+        report.outcomes.len(),
+        short_commit(&report.pinned_commit),
+        short_commit(&report.upstream_commit)
+    );
+    for outcome in &report.outcomes {
+        println!("  [{}] {}", outcome.code.as_str(), outcome.message);
+    }
+}
+
+fn short_commit(commit: &str) -> &str {
+    commit.get(..12).unwrap_or(commit)
 }
 
 /// Print a human-readable adopt report.

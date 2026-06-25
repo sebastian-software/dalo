@@ -3,8 +3,10 @@ use std::path::PathBuf;
 use clap::{Args, CommandFactory, Parser, Subcommand};
 
 use crate::adopt;
+use crate::catalog;
 use crate::doctor;
-use crate::error::DaloResult;
+use crate::error::{DaloError, DaloResult};
+use crate::instructions;
 use crate::lockfile;
 use crate::materialize;
 use crate::source;
@@ -94,6 +96,37 @@ pub enum Command {
     Resolve(ResolveCommand),
     /// Diagnose store, target, Git, and lockfile health.
     Doctor,
+    /// Manage instruction packs rendered into instruction files.
+    Instructions(InstructionsCommand),
+}
+
+/// `instructions` command group.
+#[derive(Debug, Args)]
+pub struct InstructionsCommand {
+    /// Instructions subcommand.
+    #[command(subcommand)]
+    pub command: InstructionsSubcommand,
+}
+
+/// `instructions` subcommands.
+#[derive(Debug, Subcommand)]
+pub enum InstructionsSubcommand {
+    /// Render a local instruction pack into a target file as a managed block.
+    Enable(InstructionsFileArgs),
+    /// Remove a pack's managed block from a target file.
+    Disable(InstructionsFileArgs),
+    /// List active instruction packs recorded in the user lock.
+    List,
+}
+
+/// Arguments for `instructions enable`/`disable`.
+#[derive(Debug, Args)]
+pub struct InstructionsFileArgs {
+    /// Instruction pack ID (a `local/instructions/<id>.md` file).
+    pub pack: String,
+
+    /// Target instruction file to render into.
+    pub file: PathBuf,
 }
 
 /// `target` command group.
@@ -145,10 +178,18 @@ pub struct SourceCommand {
 pub enum SourceSubcommand {
     /// Add a team source from a Git URL.
     Add(SourceAddArgs),
+    /// Add a catalog source (a multi-skill repository) from a Git URL.
+    AddCatalog(SourceAddArgs),
     /// List configured sources.
     List,
     /// Change a source priority.
     Priority(SourcePriorityArgs),
+    /// Inspect a catalog source's available skills.
+    Inspect(SourceInspectArgs),
+    /// Select or unselect catalog skills.
+    Select(SourceSelectArgs),
+    /// Check a catalog source for upstream drift (read-only).
+    Refresh(SourceRefreshArgs),
 }
 
 /// Arguments for `source add`.
@@ -169,6 +210,39 @@ pub struct SourcePriorityArgs {
 
     /// New priority. Lower numbers win.
     pub priority: i32,
+}
+
+/// Arguments for `source inspect`.
+#[derive(Debug, Args)]
+pub struct SourceInspectArgs {
+    /// Catalog source ID.
+    pub id: String,
+}
+
+/// Arguments for `source select`.
+#[derive(Debug, Args)]
+pub struct SourceSelectArgs {
+    /// Catalog source ID.
+    pub id: String,
+
+    /// Skill references to select (stable ID or slot name).
+    #[arg(required = true)]
+    pub skills: Vec<String>,
+
+    /// Unselect the given skills instead of selecting them.
+    #[arg(long)]
+    pub unselect: bool,
+}
+
+/// Arguments for `source refresh`.
+#[derive(Debug, Args)]
+pub struct SourceRefreshArgs {
+    /// Catalog source ID.
+    pub id: String,
+
+    /// Only check for drift without advancing the pin (currently required).
+    #[arg(long)]
+    pub check: bool,
 }
 
 /// Arguments for `adopt`.
@@ -233,6 +307,56 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         Command::Adopt(command) => run_adopt(&options, command),
         Command::Resolve(command) => run_resolve(&options, command),
         Command::Doctor => run_doctor(&options),
+        Command::Instructions(command) => run_instructions(&options, command),
+    }
+}
+
+fn run_instructions(options: &GlobalOptions, command: InstructionsCommand) -> DaloResult<()> {
+    let paths = store::StorePaths::new(options.store.clone());
+    match command.command {
+        InstructionsSubcommand::Enable(args) => {
+            let _lock = store::StoreLock::acquire(&paths)?;
+            let report = instructions::enable_pack(&paths, &args.pack, &args.file)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                println!(
+                    "{} pack {} -> {}",
+                    report.action,
+                    report.pack_id,
+                    report.target.display()
+                );
+            }
+            Ok(())
+        }
+        InstructionsSubcommand::Disable(args) => {
+            let _lock = store::StoreLock::acquire(&paths)?;
+            let report = instructions::disable_pack(&paths, &args.pack, &args.file)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                println!(
+                    "{} pack {} -> {}",
+                    report.action,
+                    report.pack_id,
+                    report.target.display()
+                );
+            }
+            Ok(())
+        }
+        InstructionsSubcommand::List => {
+            let lock = store::read_user_lock(&paths)?;
+            if options.json {
+                print_json(&lock.active_instruction_packs)?;
+            } else if lock.active_instruction_packs.is_empty() {
+                println!("no active instruction packs");
+            } else {
+                for pack in &lock.active_instruction_packs {
+                    println!("{} -> {}", pack.pack_id, pack.target.display());
+                }
+            }
+            Ok(())
+        }
     }
 }
 
@@ -274,8 +398,13 @@ fn run_sync(options: &GlobalOptions) -> DaloResult<()> {
     let report = materialize::materialize(&paths, &status_report.resolution, options.dry_run)?;
     if !options.dry_run {
         let config = store::read_config(&paths)?;
-        let lock =
+        let previous =
+            store::read_user_lock(&paths).unwrap_or_else(|_| lockfile::UserLock::empty());
+        let mut lock =
             lockfile::build_user_lock(&config.sources, &status_report.resolution, Some(&report));
+        // Instruction packs are owned by the `instructions` command; preserve them
+        // across a sync instead of dropping them.
+        lock.active_instruction_packs = previous.active_instruction_packs;
         store::write_user_lock(&paths, &lock)?;
     }
 
@@ -306,12 +435,62 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             }
             Ok(())
         }
+        SourceSubcommand::AddCatalog(args) => {
+            let _lock = if options.dry_run {
+                None
+            } else {
+                Some(store::StoreLock::acquire(&paths)?)
+            };
+            let source =
+                catalog::add_catalog_source(&paths, &args.id, &args.location, options.dry_run)?;
+            if options.json {
+                print_json(&source)?;
+            } else {
+                status::print_catalog_add_report(&source, options.dry_run);
+            }
+            Ok(())
+        }
         SourceSubcommand::List => {
             let report = source::list_sources(&paths)?;
             if options.json {
                 print_json(&report)?;
             } else {
                 status::print_source_list_report(&report);
+            }
+            Ok(())
+        }
+        SourceSubcommand::Inspect(args) => {
+            let report = catalog::inspect_catalog(&paths, &args.id)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                status::print_catalog_inspect_report(&report);
+            }
+            Ok(())
+        }
+        SourceSubcommand::Select(args) => {
+            let _lock = store::StoreLock::acquire(&paths)?;
+            let report = catalog::select_skills(&paths, &args.id, &args.skills, args.unselect)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                status::print_catalog_select_report(&report);
+            }
+            Ok(())
+        }
+        SourceSubcommand::Refresh(args) => {
+            // Lock advancement (new pins / lockfile PRs) is a later slice; only the
+            // read-only `--check` drift path is in scope for now.
+            if !args.check {
+                return Err(DaloError::NotImplemented {
+                    command: "source refresh (advancing the pin)".to_owned(),
+                });
+            }
+            let report = catalog::check_catalog_drift(&paths, &args.id)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                status::print_catalog_drift_report(&report);
             }
             Ok(())
         }

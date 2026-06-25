@@ -1,12 +1,12 @@
 //! Deterministic source resolution.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::PathBuf;
 
 use serde::Serialize;
 
 use crate::config::UserConfig;
-use crate::inventory::{self, SourceInventory};
+use crate::inventory::{self, SkillRecord, SourceInventory};
 use crate::source::{SourceConfig, SourceKind};
 use crate::store::ApprovalRecord;
 
@@ -53,6 +53,8 @@ pub struct Resolution {
     pub pending_approval_skills: Vec<ResolvedSkill>,
     /// Managed skills not linked because another skill won the slot.
     pub unlinked_skills: Vec<UnlinkedSkill>,
+    /// Skills held back because their required closure cannot be linked.
+    pub blocked_skills: Vec<BlockedSkill>,
     /// Resolver diagnostics.
     pub diagnostics: Vec<ResolutionDiagnostic>,
 }
@@ -89,6 +91,38 @@ pub struct UnlinkedSkill {
     pub reason: UnlinkedReason,
     /// Winning skill that caused this skill to be unlinked.
     pub shadowed_by: String,
+}
+
+/// A skill held back from materialization because its required closure cannot be
+/// linked consistently (RFC 0003 section 4 step 5).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct BlockedSkill {
+    /// The dependent skill held back.
+    pub skill: ResolvedSkill,
+    /// The required reference that could not be satisfied.
+    pub requirement: String,
+    /// Why the requirement could not be satisfied.
+    pub reason: ClosureBlockReason,
+}
+
+/// Why a required-closure preflight blocked a dependent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClosureBlockReason {
+    /// The required ref exists in no enabled source.
+    Missing,
+    /// The required skill is a would-be winner still waiting for approval.
+    PendingApproval,
+    /// The required skill is shadowed by a non-equivalent winner of its slot.
+    ShadowedNotSatisfied,
+    /// A same-name entry already owned by the target blocks the required skill.
+    ///
+    /// The resolver itself has no target view, so this is reserved for the
+    /// link-time preflight; it is part of the public reason set for completeness.
+    SameNameBlocked,
+    /// The required skill exists but is otherwise not linked (including when a
+    /// transitive dependency was itself blocked and removed from the active set).
+    Unlinked,
 }
 
 /// User-facing unlinked state.
@@ -128,6 +162,12 @@ pub enum ResolutionDiagnosticCode {
     LocalOverride,
     /// A managed skill is shadowed by another managed skill.
     Shadowed,
+    /// A skill was pulled into the selection by a same-catalog `requires`.
+    RequiredExpanded,
+    /// A `requires` points to another source; reported but never auto-installed.
+    CrossSourceRequire,
+    /// A dependent is held back because its required closure is not linkable.
+    RequiredBlocked,
 }
 
 #[derive(Debug, Clone)]
@@ -135,6 +175,8 @@ struct Candidate {
     skill: ResolvedSkill,
     owners: Vec<String>,
     trusted: bool,
+    /// Declared dependencies, carried through for required-closure preflight.
+    requires: Vec<String>,
 }
 
 /// Scan every enabled source and resolve it into a deterministic skill set.
@@ -196,14 +238,28 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
         .filter(|source| source.enabled)
         .map(|source| (source.id.as_str(), source))
         .collect::<BTreeMap<_, _>>();
-    let mut candidates = Vec::new();
+    // Phase 1: expand each catalog source's selection along its same-catalog
+    // `requires` closure, so a selected skill pulls in the same-catalog skills it
+    // depends on (transitively) before candidates are built.
+    let effective_selection = expand_catalog_selections(&source_by_id, &input.inventories);
 
+    let mut candidates = Vec::new();
     for inventory in &input.inventories {
         let Some(source) = source_by_id.get(inventory.source_id.as_str()) else {
             continue;
         };
+        let selection = effective_selection
+            .get(source.id.as_str())
+            .map_or(source.selection.as_slice(), Vec::as_slice);
 
         for skill in &inventory.skills {
+            if source.kind == SourceKind::Catalog
+                && !crate::catalog::skill_is_selected(skill, selection)
+            {
+                // Unselected catalog skills are offers, not part of the resolved
+                // set; they surface through `source inspect`.
+                continue;
+            }
             candidates.push(Candidate {
                 skill: ResolvedSkill {
                     source_ref: skill.source_ref.clone(),
@@ -217,9 +273,23 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
                 },
                 owners: skill.owners.clone(),
                 trusted: source.trusted,
+                requires: skill.requires.clone(),
             });
         }
     }
+
+    // Carry each candidate's declared dependencies by ref for the post-resolution
+    // required-closure preflight.
+    let requires_by_ref: BTreeMap<String, Vec<String>> = candidates
+        .iter()
+        .filter(|candidate| !candidate.requires.is_empty())
+        .map(|candidate| {
+            (
+                candidate.skill.source_ref.clone(),
+                candidate.requires.clone(),
+            )
+        })
+        .collect();
 
     candidates.sort_by(|left, right| {
         left.skill
@@ -301,6 +371,17 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
         active_skills.push(winner);
     }
 
+    // Phase 3: required-closure preflight (RFC 0003 section 4 step 5). A skill
+    // whose required closure cannot be linked consistently must not materialize;
+    // blocking propagates to dependents through a fixpoint.
+    let (mut blocked_skills, closure_diagnostics) = required_closure_preflight(
+        &mut active_skills,
+        &pending_approval_skills,
+        &requires_by_ref,
+        &input.inventories,
+    );
+    diagnostics.extend(closure_diagnostics);
+
     active_skills.sort_by(|left, right| {
         left.slot_name
             .cmp(&right.slot_name)
@@ -317,16 +398,47 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
             .cmp(&right.skill.slot_name)
             .then_with(|| left.skill.source_ref.cmp(&right.skill.source_ref))
     });
+
+    // Report selections that grew via the requires closure, so status/doctor can
+    // show which selections expanded beyond what the user explicitly chose.
+    for (source_id, effective) in &effective_selection {
+        let Some(source) = source_by_id.get(source_id.as_str()) else {
+            continue;
+        };
+        for reference in effective {
+            if !source
+                .selection
+                .iter()
+                .any(|selected| selected == reference)
+            {
+                diagnostics.push(ResolutionDiagnostic {
+                    code: ResolutionDiagnosticCode::RequiredExpanded,
+                    message: format!(
+                        "`{reference}` was pulled into catalog `{source_id}` by a requires closure"
+                    ),
+                    source_ref: Some(format!("{source_id}:{reference}")),
+                });
+            }
+        }
+    }
     diagnostics.sort_by(|left, right| {
         diagnostic_code_name(left.code)
             .cmp(diagnostic_code_name(right.code))
             .then_with(|| left.source_ref.cmp(&right.source_ref))
     });
 
+    blocked_skills.sort_by(|left, right| {
+        left.skill
+            .slot_name
+            .cmp(&right.skill.slot_name)
+            .then_with(|| left.skill.source_ref.cmp(&right.skill.source_ref))
+    });
+
     Resolution {
         active_skills,
         pending_approval_skills,
         unlinked_skills,
+        blocked_skills,
         diagnostics,
     }
 }
@@ -369,7 +481,259 @@ fn diagnostic_code_name(code: ResolutionDiagnosticCode) -> &'static str {
         ResolutionDiagnosticCode::PendingApproval => "pending_approval",
         ResolutionDiagnosticCode::LocalOverride => "local_override",
         ResolutionDiagnosticCode::Shadowed => "shadowed",
+        ResolutionDiagnosticCode::RequiredExpanded => "required_expanded",
+        ResolutionDiagnosticCode::CrossSourceRequire => "cross_source_require",
+        ResolutionDiagnosticCode::RequiredBlocked => "required_blocked",
     }
+}
+
+/// Human-readable label for a closure block reason.
+#[must_use]
+pub fn closure_block_reason_name(reason: ClosureBlockReason) -> &'static str {
+    match reason {
+        ClosureBlockReason::Missing => "missing",
+        ClosureBlockReason::PendingApproval => "pending approval",
+        ClosureBlockReason::ShadowedNotSatisfied => "shadowed but not satisfied",
+        ClosureBlockReason::SameNameBlocked => "blocked by a same-name target entry",
+        ClosureBlockReason::Unlinked => "unlinked",
+    }
+}
+
+/// Whether a `requires` reference matches a skill by slot, ref, or stable ID.
+fn ref_matches_skill(reference: &str, skill: &SkillRecord) -> bool {
+    skill.slot_name == reference
+        || skill.source_ref == reference
+        || skill.id.as_deref() == Some(reference)
+}
+
+fn inventory_for<'a>(
+    inventories: &'a [SourceInventory],
+    source_id: &str,
+) -> Option<&'a [SkillRecord]> {
+    inventories
+        .iter()
+        .find(|inventory| inventory.source_id == source_id)
+        .map(|inventory| inventory.skills.as_slice())
+}
+
+/// Expand each catalog source's explicit selection with the transitive closure of
+/// its same-catalog `requires`. Cross-source requires are never expanded here.
+fn expand_catalog_selections(
+    source_by_id: &BTreeMap<&str, &SourceConfig>,
+    inventories: &[SourceInventory],
+) -> BTreeMap<String, Vec<String>> {
+    let mut expanded = BTreeMap::new();
+    for inventory in inventories {
+        let Some(source) = source_by_id.get(inventory.source_id.as_str()) else {
+            continue;
+        };
+        if source.kind != SourceKind::Catalog {
+            continue;
+        }
+        expanded.insert(
+            source.id.clone(),
+            closure_for_selection(&source.selection, &inventory.skills),
+        );
+    }
+    expanded
+}
+
+fn closure_for_selection(selection: &[String], skills: &[SkillRecord]) -> Vec<String> {
+    let mut result: Vec<String> = selection.to_vec();
+    let mut seen: BTreeSet<String> = selection.iter().cloned().collect();
+    let mut queue: VecDeque<String> = selection.iter().cloned().collect();
+    while let Some(reference) = queue.pop_front() {
+        let Some(skill) = skills
+            .iter()
+            .find(|skill| ref_matches_skill(&reference, skill))
+        else {
+            continue;
+        };
+        for requirement in &skill.requires {
+            // Only same-catalog requirements expand the selection.
+            let Some(required) = skills
+                .iter()
+                .find(|skill| ref_matches_skill(requirement, skill))
+            else {
+                continue;
+            };
+            // Canonicalize on slot name so different refs to the same skill dedupe.
+            let canonical = required.slot_name.clone();
+            if seen.insert(canonical.clone()) {
+                result.push(canonical.clone());
+                queue.push_back(canonical);
+            }
+        }
+    }
+    result
+}
+
+/// Resolved state of one `requires` reference against the active skill set.
+enum RequirementStatus {
+    /// A linked active skill fills the requirement.
+    Satisfied,
+    /// The dependent must be held back for this reason.
+    Block(ClosureBlockReason),
+}
+
+/// Classify a same-source requirement against the active set.
+fn requirement_status(
+    requirement: &str,
+    required: &SkillRecord,
+    active: &[ResolvedSkill],
+    pending_refs: &BTreeSet<&str>,
+) -> RequirementStatus {
+    let winner = active
+        .iter()
+        .find(|skill| skill.slot_name == required.slot_name);
+    match winner {
+        // The exact required skill, or an equivalent one (same stable ID), is active.
+        Some(skill) if skill.source_ref == required.source_ref => RequirementStatus::Satisfied,
+        Some(skill) if skill.id.is_some() && skill.id == required.id => {
+            RequirementStatus::Satisfied
+        }
+        // The slot is filled by a different skill. A requirement that named a stable
+        // ID is not satisfied by a non-equivalent winner; one that named a slot is.
+        Some(_) => {
+            if required.id.as_deref() == Some(requirement) {
+                RequirementStatus::Block(ClosureBlockReason::ShadowedNotSatisfied)
+            } else {
+                RequirementStatus::Satisfied
+            }
+        }
+        None if pending_refs.contains(required.source_ref.as_str()) => {
+            RequirementStatus::Block(ClosureBlockReason::PendingApproval)
+        }
+        None => RequirementStatus::Block(ClosureBlockReason::Unlinked),
+    }
+}
+
+/// Find the first active skill whose required closure cannot be satisfied.
+fn find_blocked(
+    active: &[ResolvedSkill],
+    pending_refs: &BTreeSet<&str>,
+    requires_by_ref: &BTreeMap<String, Vec<String>>,
+    inventories: &[SourceInventory],
+) -> Option<(usize, BlockedSkill)> {
+    for (index, dependent) in active.iter().enumerate() {
+        let Some(requires) = requires_by_ref.get(&dependent.source_ref) else {
+            continue;
+        };
+        for requirement in requires {
+            let same_source = inventory_for(inventories, &dependent.source_id).and_then(|skills| {
+                skills
+                    .iter()
+                    .find(|skill| ref_matches_skill(requirement, skill))
+            });
+            let Some(required) = same_source else {
+                // Not same-source: cross-source requires are reported later, never
+                // installed; only a requirement that exists nowhere blocks here.
+                let exists_elsewhere = inventories.iter().any(|inventory| {
+                    inventory.source_id != dependent.source_id
+                        && inventory
+                            .skills
+                            .iter()
+                            .any(|skill| ref_matches_skill(requirement, skill))
+                });
+                if exists_elsewhere {
+                    continue;
+                }
+                return Some((
+                    index,
+                    BlockedSkill {
+                        skill: dependent.clone(),
+                        requirement: requirement.clone(),
+                        reason: ClosureBlockReason::Missing,
+                    },
+                ));
+            };
+            if let RequirementStatus::Block(reason) =
+                requirement_status(requirement, required, active, pending_refs)
+            {
+                return Some((
+                    index,
+                    BlockedSkill {
+                        skill: dependent.clone(),
+                        requirement: requirement.clone(),
+                        reason,
+                    },
+                ));
+            }
+        }
+    }
+    None
+}
+
+/// Required-closure preflight. Removes from `active` any skill whose required
+/// closure cannot be linked, propagating blocks to dependents via a fixpoint, and
+/// reports cross-source requires without installing them.
+fn required_closure_preflight(
+    active: &mut Vec<ResolvedSkill>,
+    pending: &[ResolvedSkill],
+    requires_by_ref: &BTreeMap<String, Vec<String>>,
+    inventories: &[SourceInventory],
+) -> (Vec<BlockedSkill>, Vec<ResolutionDiagnostic>) {
+    let mut blocked = Vec::new();
+    let mut diagnostics = Vec::new();
+    let pending_refs: BTreeSet<&str> = pending
+        .iter()
+        .map(|skill| skill.source_ref.as_str())
+        .collect();
+
+    // Fixpoint: blocking a dependent can in turn block skills that required it.
+    while let Some((index, block)) =
+        find_blocked(active, &pending_refs, requires_by_ref, inventories)
+    {
+        diagnostics.push(ResolutionDiagnostic {
+            code: ResolutionDiagnosticCode::RequiredBlocked,
+            message: format!(
+                "skill `{}` is blocked: requirement `{}` is {}",
+                block.skill.source_ref,
+                block.requirement,
+                closure_block_reason_name(block.reason)
+            ),
+            source_ref: Some(block.skill.source_ref.clone()),
+        });
+        active.remove(index);
+        blocked.push(block);
+    }
+
+    // With the active set final, report cross-source requires (checked, not installed).
+    for dependent in active.iter() {
+        let Some(requires) = requires_by_ref.get(&dependent.source_ref) else {
+            continue;
+        };
+        for requirement in requires {
+            let same_source =
+                inventory_for(inventories, &dependent.source_id).is_some_and(|skills| {
+                    skills
+                        .iter()
+                        .any(|skill| ref_matches_skill(requirement, skill))
+                });
+            if same_source {
+                continue;
+            }
+            let cross_source = inventories.iter().any(|inventory| {
+                inventory.source_id != dependent.source_id
+                    && inventory
+                        .skills
+                        .iter()
+                        .any(|skill| ref_matches_skill(requirement, skill))
+            });
+            if cross_source {
+                diagnostics.push(ResolutionDiagnostic {
+                    code: ResolutionDiagnosticCode::CrossSourceRequire,
+                    message: format!(
+                        "skill `{}` requires `{}` from another source; reported, not installed",
+                        dependent.source_ref, requirement
+                    ),
+                    source_ref: Some(dependent.source_ref.clone()),
+                });
+            }
+        }
+    }
+
+    (blocked, diagnostics)
 }
 
 #[cfg(test)]
@@ -574,6 +938,7 @@ mod tests {
             url: None,
             branch: None,
             update_policy: None,
+            selection: Vec::new(),
         }
     }
 
@@ -605,5 +970,126 @@ mod tests {
             scope: scope.to_owned(),
             value: value.to_owned(),
         }
+    }
+
+    fn catalog(id: &str, priority: i32, selection: &[&str]) -> SourceConfig {
+        let mut source = source(id, SourceKind::Catalog, priority);
+        source.trusted = true;
+        source.selection = selection.iter().map(|item| (*item).to_owned()).collect();
+        source
+    }
+
+    fn skill_req(source_id: &str, slot_name: &str, requires: &[&str]) -> SkillRecord {
+        let mut record = skill(source_id, slot_name);
+        record.requires = requires.iter().map(|item| (*item).to_owned()).collect();
+        record
+    }
+
+    fn active_slots(resolution: &Resolution) -> Vec<&str> {
+        resolution
+            .active_skills
+            .iter()
+            .map(|skill| skill.slot_name.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn resolve_should_expand_same_catalog_required_closure() {
+        let resolution = resolve_with(
+            vec![catalog("cat", 10, &["alpha"])],
+            vec![inventory(
+                "cat",
+                vec![skill_req("cat", "alpha", &["beta"]), skill("cat", "beta")],
+            )],
+            Vec::new(),
+        );
+
+        let active = active_slots(&resolution);
+        assert!(active.contains(&"alpha"));
+        // `beta` was pulled into the selection by `alpha`'s requires.
+        assert!(active.contains(&"beta"));
+        assert!(resolution.blocked_skills.is_empty());
+    }
+
+    #[test]
+    fn resolve_should_expand_required_closure_transitively() {
+        let resolution = resolve_with(
+            vec![catalog("cat", 10, &["alpha"])],
+            vec![inventory(
+                "cat",
+                vec![
+                    skill_req("cat", "alpha", &["beta"]),
+                    skill_req("cat", "beta", &["gamma"]),
+                    skill("cat", "gamma"),
+                ],
+            )],
+            Vec::new(),
+        );
+
+        // The closure is walked transitively: gamma is reachable only through beta.
+        assert!(active_slots(&resolution).contains(&"gamma"));
+    }
+
+    #[test]
+    fn resolve_should_block_dependent_on_missing_requirement() {
+        let resolution = resolve_with(
+            vec![catalog("cat", 10, &["alpha"])],
+            vec![inventory(
+                "cat",
+                vec![skill_req("cat", "alpha", &["ghost"])],
+            )],
+            Vec::new(),
+        );
+
+        assert!(resolution.active_skills.is_empty());
+        assert_eq!(resolution.blocked_skills.len(), 1);
+        assert_eq!(
+            resolution.blocked_skills[0].reason,
+            ClosureBlockReason::Missing
+        );
+    }
+
+    #[test]
+    fn resolve_should_block_dependent_when_requirement_pending_approval() {
+        // Same untrusted team source: only `alpha` is approved, so its required
+        // `beta` is still pending and `alpha` must not materialize.
+        let resolution = resolve_with(
+            vec![source("team", SourceKind::Team, 10)],
+            vec![inventory(
+                "team",
+                vec![skill_req("team", "alpha", &["beta"]), skill("team", "beta")],
+            )],
+            vec![approval("skill", "alpha")],
+        );
+
+        assert!(!active_slots(&resolution).contains(&"alpha"));
+        assert_eq!(
+            resolution.blocked_skills[0].reason,
+            ClosureBlockReason::PendingApproval
+        );
+    }
+
+    #[test]
+    fn resolve_should_report_cross_source_require_without_installing() {
+        let mut team = source("team", SourceKind::Team, 20);
+        team.trusted = true;
+        let resolution = resolve_with(
+            vec![catalog("cat", 10, &["alpha"]), team],
+            vec![
+                inventory("cat", vec![skill_req("cat", "alpha", &["beta"])]),
+                inventory("team", vec![skill("team", "beta")]),
+            ],
+            Vec::new(),
+        );
+
+        // The cross-source requirement is reported but never auto-installs `beta`
+        // into the catalog selection, and it does not block `alpha`.
+        assert!(active_slots(&resolution).contains(&"alpha"));
+        assert!(
+            resolution
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == ResolutionDiagnosticCode::CrossSourceRequire)
+        );
     }
 }
