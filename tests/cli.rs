@@ -841,6 +841,33 @@ fn source_add_should_clone_team_source_into_store() {
 }
 
 #[test]
+fn source_add_dry_run_should_not_clone_or_write_config() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo(&repo);
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["--dry-run", "source", "add", "company"])
+        .arg(&repo)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("would add source company"));
+
+    assert!(!store.join("sources/company/checkout").exists());
+}
+
+#[test]
 fn source_add_should_approve_added_source() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
