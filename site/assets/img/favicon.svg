@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Dalo">
+  <rect width="32" height="32" rx="7" fill="#191c22"/>
+  <circle cx="9" cy="9.5" r="2" fill="#e9ecf2"/>
+  <circle cx="9" cy="16" r="2" fill="#e9ecf2"/>
+  <circle cx="9" cy="22.5" r="2" fill="#e9ecf2"/>
+  <path d="M11 9.5 H17 Q22 9.5 22 16 Q22 22.5 17 22.5 H11 M11 16 H22" fill="none" stroke="#e9ecf2" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
+  <circle cx="22.5" cy="16" r="2.8" fill="#e8623a"/>
+</svg>
