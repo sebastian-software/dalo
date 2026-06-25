@@ -96,6 +96,16 @@ pub fn add_team_source(
     url: &str,
     dry_run: bool,
 ) -> DaloResult<SourceAddReport> {
+    // Validate the id before anything touches the store: it is joined straight
+    // into the checkout path and `git clone`d there, so an id like `../../evil`
+    // or `a/b` would escape `sources/` to an attacker-chosen location.
+    if !is_valid_source_id(id) {
+        return Err(DaloError::InvalidSourceId {
+            id: id.to_owned(),
+            reason: "must be non-empty, not `.`/`..`, and only contain `[A-Za-z0-9._-]`".to_owned(),
+        });
+    }
+
     let mut config = store::read_config(paths)?;
     if config.sources.iter().any(|source| source.id == id) {
         return Err(DaloError::SourceAlreadyExists {
@@ -153,6 +163,26 @@ pub fn add_team_source(
     Ok(SourceAddReport {
         source,
         dry_run: false,
+    })
+}
+
+/// Return whether a source ID is safe to use as a store path component.
+///
+/// A source ID becomes a single directory below `sources/` and feeds approval
+/// records and resolver output, so the same conservative rules as slot names
+/// apply: non-empty, never the `.`/`..` traversal segments, and limited to a
+/// `[A-Za-z0-9._-]` token (no `/` path separators).
+#[must_use]
+pub fn is_valid_source_id(value: &str) -> bool {
+    if value.is_empty() || value == "." || value == ".." {
+        return false;
+    }
+
+    value.chars().all(|character| {
+        character.is_ascii_alphanumeric()
+            || character == '-'
+            || character == '_'
+            || character == '.'
     })
 }
 
@@ -243,4 +273,54 @@ fn approve_added_source(paths: &StorePaths, id: &str) -> DaloResult<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_valid_source_id_should_reject_traversal_and_slash_ids() {
+        assert!(!is_valid_source_id(".."));
+        assert!(!is_valid_source_id("a/b"));
+        assert!(!is_valid_source_id(""));
+    }
+
+    #[test]
+    fn is_valid_source_id_should_accept_plain_id() {
+        assert!(is_valid_source_id("company"));
+    }
+
+    #[test]
+    fn add_team_source_should_reject_traversal_id_without_cloning() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root);
+
+        let error = add_team_source(
+            &paths,
+            "../../evil",
+            "https://example.invalid/repo.git",
+            false,
+        )
+        .expect_err("traversal id should be rejected");
+
+        assert!(matches!(error, DaloError::InvalidSourceId { .. }));
+        // The id must be rejected before any clone target is touched, so nothing
+        // may have been written below (or alongside) the sources directory.
+        assert!(
+            !paths
+                .sources_dir
+                .join("../../evil")
+                .join("checkout")
+                .exists()
+        );
+        assert!(
+            std::fs::read_dir(&paths.sources_dir)
+                .expect("sources dir should exist")
+                .next()
+                .is_none()
+        );
+    }
 }

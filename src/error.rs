@@ -73,6 +73,15 @@ pub enum DaloError {
         source_id: String,
     },
 
+    /// A source ID is not a valid path component.
+    #[error("invalid source id `{id}`: {reason}")]
+    InvalidSourceId {
+        /// Rejected source ID.
+        id: String,
+        /// Human-readable reason.
+        reason: String,
+    },
+
     /// A source ID does not exist.
     #[error("unknown source `{source_id}`")]
     UnknownSource {
@@ -169,6 +178,7 @@ impl DaloError {
             | Self::UnknownTarget { .. }
             | Self::TargetPathRequired { .. }
             | Self::SourceAlreadyExists { .. }
+            | Self::InvalidSourceId { .. }
             | Self::UnknownSource { .. }
             | Self::SkillNotFound { .. }
             | Self::AdoptionDestinationExists { .. }
@@ -301,6 +311,29 @@ mod tests {
         }));
 
         assert_eq!(error.to_string(), "source `company` already exists");
+    }
+
+    #[test]
+    fn invalid_source_id_should_render_id_and_reason() {
+        let error = err::<()>(Err(DaloError::InvalidSourceId {
+            id: "../../evil".to_owned(),
+            reason: "contains `/`".to_owned(),
+        }));
+
+        assert_eq!(
+            error.to_string(),
+            "invalid source id `../../evil`: contains `/`"
+        );
+    }
+
+    #[test]
+    fn invalid_source_id_should_use_expected_failure_exit_code() {
+        let error = DaloError::InvalidSourceId {
+            id: "a/b".to_owned(),
+            reason: "contains `/`".to_owned(),
+        };
+
+        assert_eq!(error.exit_code(), DaloExitCode::ExpectedFailure);
     }
 
     #[test]

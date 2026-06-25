@@ -332,7 +332,28 @@ pub fn read_config(paths: &StorePaths) -> DaloResult<UserConfig> {
     }
 
     let content = fs::read_to_string(&paths.config_file)?;
-    parse_store_toml(&paths.config_file, &content)
+    let config: UserConfig = parse_store_toml(&paths.config_file, &content)?;
+    ensure_unique_source_ids(&paths.config_file, &config)?;
+    Ok(config)
+}
+
+/// Reject a hand-edited config that declares the same source id twice.
+///
+/// The resolver keys sources by id in a map (last write wins), so a duplicate
+/// would silently drop a source while `list`/`status` still show both. Fail
+/// loudly instead with the offending id.
+fn ensure_unique_source_ids(path: &Path, config: &UserConfig) -> DaloResult<()> {
+    let mut seen = std::collections::BTreeSet::new();
+    for source in &config.sources {
+        if !seen.insert(source.id.as_str()) {
+            return Err(DaloError::FileParse {
+                path: path.to_path_buf(),
+                reason: format!("duplicate source id `{}`", source.id),
+            });
+        }
+    }
+
+    Ok(())
 }
 
 /// Read the resolved user lock and validate its schema version.
@@ -677,6 +698,25 @@ mod tests {
             .expect_err("write should fail when the store root is absent");
 
         assert!(matches!(error, DaloError::StoreNotInitialized { .. }));
+    }
+
+    #[test]
+    fn read_config_should_reject_duplicate_source_ids() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root);
+        fs::write(
+            &paths.config_file,
+            "version = 1\n\n[settings]\nautosync = false\n\n\
+             [[sources]]\nid = \"company\"\nkind = \"team\"\npath = \"a\"\npriority = 10\nenabled = true\ntrusted = true\n\n\
+             [[sources]]\nid = \"company\"\nkind = \"team\"\npath = \"b\"\npriority = 20\nenabled = true\ntrusted = true\n",
+        )
+        .expect("config should be overwritten");
+
+        let error = read_config(&paths).expect_err("duplicate source ids should be rejected");
+
+        assert!(matches!(error, DaloError::FileParse { .. }));
     }
 
     #[test]

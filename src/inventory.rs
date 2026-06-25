@@ -99,7 +99,11 @@ pub fn scan_source(source_id: &str, source_root: &Path) -> DaloResult<SourceInve
     for skill_dir in skill_dirs {
         match scan_skill(source_id, source_root, &skill_dir) {
             Ok((skill, mut skill_warnings)) => {
-                skills.push(skill);
+                // `skill` is `None` when the slot name could not be resolved; the
+                // skill is dropped while its warning is still collected.
+                if let Some(skill) = skill {
+                    skills.push(skill);
+                }
                 warnings.append(&mut skill_warnings);
             }
             Err(error) => warnings.push(InventoryWarning {
@@ -177,7 +181,7 @@ fn scan_skill(
     source_id: &str,
     source_root: &Path,
     skill_dir: &Path,
-) -> DaloResult<(SkillRecord, Vec<InventoryWarning>)> {
+) -> DaloResult<(Option<SkillRecord>, Vec<InventoryWarning>)> {
     let skill_file = skill_dir.join(SKILL_FILE);
     let skill_markdown = fs::read_to_string(&skill_file)?;
     let (frontmatter, mut warnings) = parse_frontmatter(&skill_markdown, &skill_file);
@@ -185,11 +189,16 @@ fn scan_skill(
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| source_id.to_owned());
-    let slot_name = select_slot_name(&frontmatter, &folder_name, &skill_file, &mut warnings);
+    let Some(slot_name) = select_slot_name(&frontmatter, &folder_name, &skill_file, &mut warnings)
+    else {
+        // Neither the front-matter name nor the folder name is a usable slot
+        // name; drop the skill but keep the warning so callers can surface it.
+        return Ok((None, warnings));
+    };
     let source_ref = format!("{source_id}:{slot_name}");
 
     Ok((
-        SkillRecord {
+        Some(SkillRecord {
             source_id: source_id.to_owned(),
             source_ref,
             id: frontmatter.id.clone(),
@@ -202,7 +211,7 @@ fn scan_skill(
             tags: frontmatter.tags.clone(),
             content_hash: hash_directory(source_root, skill_dir)?,
             metadata_hash: hash_metadata(&frontmatter)?,
-        },
+        }),
         warnings,
     ))
 }
@@ -241,16 +250,23 @@ fn parse_frontmatter(markdown: &str, path: &Path) -> (SkillFrontmatter, Vec<Inve
     }
 }
 
+/// Resolve the slot name for a skill, or `None` when the skill must be skipped.
+///
+/// The front-matter `name` wins when valid. Otherwise the directory name is the
+/// fallback, but it has to clear the same `is_valid_slot_name` bar because it
+/// also becomes a path component under each target (a dir like `.config` would
+/// otherwise create `~/.claude/skills/.config`). An invalid fallback yields an
+/// `InvalidSlotName` warning and a `None`, so the caller drops the skill.
 fn select_slot_name(
     frontmatter: &SkillFrontmatter,
     folder_name: &str,
     path: &Path,
     warnings: &mut Vec<InventoryWarning>,
-) -> String {
+) -> Option<String> {
     if let Some(name) = frontmatter.name.as_deref() {
         let trimmed = name.trim();
         if is_valid_slot_name(trimmed) {
-            return trimmed.to_owned();
+            return Some(trimmed.to_owned());
         }
 
         warnings.push(InventoryWarning {
@@ -260,7 +276,16 @@ fn select_slot_name(
         });
     }
 
-    folder_name.to_owned()
+    if is_valid_slot_name(folder_name) {
+        return Some(folder_name.to_owned());
+    }
+
+    warnings.push(InventoryWarning {
+        code: InventoryWarningCode::InvalidSlotName,
+        path: path.to_path_buf(),
+        message: format!("folder name `{folder_name}` is not a valid slot name"),
+    });
+    None
 }
 
 fn is_valid_slot_name(value: &str) -> bool {
@@ -473,6 +498,41 @@ mod tests {
     fn is_valid_slot_name_should_reject_dot_segments() {
         assert!(!is_valid_slot_name("."));
         assert!(!is_valid_slot_name(".."));
+    }
+
+    #[test]
+    fn scan_source_should_skip_skill_when_folder_name_is_invalid() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        // No front-matter `name`, so the slot name falls back to the folder name;
+        // the space makes it an invalid slot name, so the skill must be dropped.
+        let skill_dir = temp_dir.path().join("bad name");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        fs::write(skill_dir.join(SKILL_FILE), "# No Frontmatter Name\n")
+            .expect("skill file should be written");
+
+        let inventory = scan_source("company", temp_dir.path()).expect("scan should succeed");
+
+        assert!(inventory.skills.is_empty());
+        assert_eq!(
+            inventory.warnings[0].code,
+            InventoryWarningCode::InvalidSlotName
+        );
+    }
+
+    #[test]
+    fn select_slot_name_should_return_none_when_folder_name_is_invalid() {
+        let frontmatter = SkillFrontmatter::default();
+        let mut warnings = Vec::new();
+
+        let slot_name = select_slot_name(
+            &frontmatter,
+            "bad name",
+            Path::new("/tmp/bad name/SKILL.md"),
+            &mut warnings,
+        );
+
+        assert!(slot_name.is_none());
+        assert_eq!(warnings[0].code, InventoryWarningCode::InvalidSlotName);
     }
 
     #[test]
