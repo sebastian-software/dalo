@@ -370,6 +370,12 @@ fn drift_code_name(code: LockDriftCode) -> &'static str {
     }
 }
 
+impl std::fmt::Display for LockDriftCode {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(drift_code_name(*self))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
