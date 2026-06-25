@@ -1,8 +1,8 @@
 # Dalo Implementation Milestones
 
-Status: Complete (V1 RC)  
-Scope: V1 implementation plan plus V1.1 staging notes  
-Last updated: 2026-06-24  
+Status: V1 complete; V1.1 planned  
+Scope: V1 implementation plan plus the V1.1 catalog and instruction-pack plan  
+Last updated: 2026-06-25  
 
 This directory turns the RFCs into implementation milestones. The RFCs remain the product and architecture contract; these files define the order of work, acceptance criteria, and validation gates.
 
@@ -28,6 +28,12 @@ Milestones are intentionally small and stable. Progress is tracked by changing t
 | M08 | [Adopt and Minimal Resolve](0008-adopt-minimal-resolve.md) | done | Bring unmanaged skills into the local source and expose safe repair commands. |
 | M09 | [Doctor and Diagnostics](0009-doctor-diagnostics.md) | done | Provide environment, path, Git, target, and state diagnostics. |
 | M10 | [V1 Release Readiness](0010-v1-release-readiness.md) | done | Harden CLI UX, docs, tests, packaging, and release gates. |
+| M11 | [Catalog Source and Selection](0011-catalog-source-selection.md) | todo | Inspect multi-skill catalog repos, select skills, pin the catalog commit and selection. |
+| M12 | [Catalog Drift Reporting](0012-catalog-drift-reporting.md) | todo | Detect new/changed/moved/removed catalog skills before changing the resolved set. |
+| M13 | [Same-Catalog Required-Closure](0013-required-closure-expansion.md) | todo | Expand `requires` within a source/catalog, with approval and linkability preflight. |
+| M14 | [Instruction Pack Managed Blocks](0014-instruction-pack-managed-blocks.md) | todo | Render versioned instruction packs into isolated managed blocks in agent files. |
+| M15 | [Instruction Pack Discovery and Overlap](0015-instruction-pack-discovery-overlap.md) | todo | Discover packs across sources and warn on topic overlap between active packs. |
+| M16 | [V1.1 Release Readiness](0016-v1-1-release-readiness.md) | todo | Harden the V1.1 surface, docs, and tests, and reconnect prepared fields. |
 
 ## Recommended Order
 
@@ -61,18 +67,22 @@ V1 includes the core local/team skill loop:
 - minimal `resolve`
 - `doctor`
 
+## V1.1 Boundary
+
+V1.1 adds the next product layer in M11–M16, in two tracks plus a readiness pass:
+
+- Catalogs (M11–M13): treat multi-skill repositories as offer surfaces — inspect, select, pin, detect drift, and expand same-catalog required closures.
+- Instruction packs (M14–M15): render versioned instruction packs into isolated managed blocks, discover packs across sources, and warn on topic overlap.
+- Readiness (M16): harden the V1.1 surface and reconnect the fields V1 left in place.
+
 ## Deferred Boundary
 
-V1.1 and later work remain outside this milestone set unless explicitly pulled forward:
+Later work remains outside this milestone set unless explicitly pulled forward:
 
-- catalog source inspection and selected catalog locks
-- catalog drift reporting
-- same-catalog required-closure expansion
-- instruction pack managed-block rendering
 - `source refresh` lockfile PRs
 - scheduled autosync installer
 - full interactive resolve assistant
-- rename/adapt flows
+- rename/adapt flows for conflicts
 - full PR-first `promote`
 - verified Cursor/OpenCode adapters
 - forge adapters beyond GitHub
