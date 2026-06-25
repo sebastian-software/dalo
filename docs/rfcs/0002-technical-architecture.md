@@ -49,6 +49,8 @@ Use a small dependency set in v1:
 - `serde`: typed serialization and deserialization
 - `toml`: TOML config and lockfile parsing/writing
 - `serde_json`: `--json` output
+- `serde_yaml`: YAML front-matter parsing in the skill inventory
+- `sha2`: content fingerprints for skill files in the inventory
 - `thiserror`: typed library errors
 - `anyhow`: CLI boundary error context
 - `tempfile`: tests and safe temporary writes

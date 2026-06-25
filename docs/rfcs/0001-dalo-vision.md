@@ -691,7 +691,7 @@ Examples:
 
 ```text
 dalo target link codex
-dalo target link generic --id my-agent --path ~/.my-agent/skills
+dalo target link generic ~/.my-agent/skills
 ```
 
 ### 17.4 `dalo target unlink`
@@ -706,12 +706,18 @@ Examples:
 
 ```text
 dalo source add company git@github.com:example/company-skills.git
-dalo source add oss https://github.com/example/oss-skills.git --priority 20
+dalo source add oss https://github.com/example/oss-skills.git
+dalo source priority oss 20
 ```
 
 New direct sources must be added explicitly by the user.
 
-Catalog examples:
+Catalog examples (planned, not part of the V1 CLI):
+
+The catalog workflow below — `source add-catalog`, `source inspect`, and
+`source select` (including its `--path` flag) — is aspirational and not yet
+implemented. The V1 `source` command exposes only `add`, `list`, and
+`priority`.
 
 ```text
 dalo source add-catalog marketing-skills https://github.com/example/marketing-skills.git
