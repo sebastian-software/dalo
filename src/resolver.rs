@@ -204,6 +204,13 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
         };
 
         for skill in &inventory.skills {
+            if source.kind == SourceKind::Catalog
+                && !crate::catalog::skill_is_selected(skill, &source.selection)
+            {
+                // Unselected catalog skills are offers, not part of the resolved
+                // set; they surface through `source inspect`.
+                continue;
+            }
             candidates.push(Candidate {
                 skill: ResolvedSkill {
                     source_ref: skill.source_ref.clone(),
@@ -574,6 +581,7 @@ mod tests {
             url: None,
             branch: None,
             update_policy: None,
+            selection: Vec::new(),
         }
     }
 

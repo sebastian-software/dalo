@@ -17,6 +17,9 @@ pub enum SourceKind {
     Local,
     /// Git-backed team source.
     Team,
+    /// Git-backed catalog source: a multi-skill repository whose skills are
+    /// individually selected rather than taken wholesale.
+    Catalog,
 }
 
 impl SourceKind {
@@ -26,6 +29,7 @@ impl SourceKind {
         match self {
             Self::Local => "local",
             Self::Team => "team",
+            Self::Catalog => "catalog",
         }
     }
 }
@@ -60,6 +64,11 @@ pub struct SourceConfig {
     /// Update policy, such as `track`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub update_policy: Option<String>,
+    /// Selected skill references for a catalog source. Each entry is a stable
+    /// frontmatter ID, a `<source-id>:<slot>` ref, or a slot name. Always empty
+    /// for non-catalog sources.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub selection: Vec<String>,
 }
 
 /// Source add report.
@@ -139,6 +148,7 @@ pub fn add_team_source(
         url: Some(url.to_owned()),
         branch: None,
         update_policy: Some("track".to_owned()),
+        selection: Vec::new(),
     };
 
     if dry_run {

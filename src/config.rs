@@ -52,6 +52,7 @@ impl UserConfig {
                 url: None,
                 branch: None,
                 update_policy: None,
+                selection: Vec::new(),
             }],
         }
     }
