@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::config::UserConfig;
 use crate::error::{DaloError, DaloResult};
 use crate::git;
 use crate::store::{self, ApprovalRecord, StorePaths};
@@ -151,14 +152,13 @@ pub fn add_team_source(
         std::fs::create_dir_all(parent)?;
     }
     git::clone_repo(url, &checkout)?;
-    config.sources.push(source.clone());
-    config.sources.sort_by(|left, right| {
-        left.priority
-            .cmp(&right.priority)
-            .then_with(|| left.id.cmp(&right.id))
-    });
-    store::write_config(paths, &config)?;
-    approve_added_source(paths, id)?;
+
+    // From here on the checkout exists on disk. If persisting the source fails,
+    // remove the clone so a later `source add` does not trip over an orphaned
+    // checkout that is absent from config (InvalidStorePath).
+    finish_team_source(paths, &mut config, source.clone()).inspect_err(|_| {
+        let _ = std::fs::remove_dir_all(&checkout);
+    })?;
 
     Ok(SourceAddReport {
         source,
@@ -184,6 +184,30 @@ pub fn is_valid_source_id(value: &str) -> bool {
             || character == '_'
             || character == '.'
     })
+}
+
+/// Persist a freshly cloned team source into approvals and config.
+///
+/// The approval is recorded before the config write so that the critical
+/// invariant holds even on partial failure: `config.toml` must never reference a
+/// checkout that does not exist. If any step here fails the caller removes the
+/// clone, and because the source is only written to config in the final step, a
+/// failed add leaves config untouched. A leftover approval grant without a
+/// matching source is idempotent and harmless.
+fn finish_team_source(
+    paths: &StorePaths,
+    config: &mut UserConfig,
+    source: SourceConfig,
+) -> DaloResult<()> {
+    approve_added_source(paths, &source.id)?;
+    config.sources.push(source);
+    config.sources.sort_by(|left, right| {
+        left.priority
+            .cmp(&right.priority)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    store::write_config(paths, config)?;
+    Ok(())
 }
 
 /// List configured sources.
@@ -277,6 +301,9 @@ fn approve_added_source(paths: &StorePaths, id: &str) -> DaloResult<()> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+    use std::process::Command;
+
     use super::*;
 
     #[test]
@@ -322,5 +349,71 @@ mod tests {
                 .next()
                 .is_none()
         );
+    }
+
+    #[test]
+    fn add_team_source_should_remove_checkout_when_persisting_fails() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let repo = temp_dir.path().join("team-repo");
+        create_git_repo(&repo);
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root);
+        // Force the persist step to fail after the clone: an approvals file with a
+        // future schema version makes `approve_added_source` (the first persist
+        // step, which reads approvals) reject the store before config is touched.
+        let mut approvals = store::ApprovalsFile::empty();
+        approvals.schema_version = 999;
+        store::write_approvals(&paths, &approvals).expect("approvals should be overwritten");
+        let checkout = paths.sources_dir.join("company").join("checkout");
+
+        let error = add_team_source(&paths, "company", &repo.to_string_lossy(), false)
+            .expect_err("add should fail when the approval cannot be recorded");
+
+        assert!(matches!(error, DaloError::UnsupportedSchema { .. }));
+        // The orphaned checkout must be gone so a later `source add` is not blocked
+        // by a stale checkout, and config must not reference the half-added source.
+        assert!(!checkout.exists());
+        let config = store::read_config(&paths).expect("config should remain readable");
+        assert!(!config.sources.iter().any(|source| source.id == "company"));
+    }
+
+    #[test]
+    fn add_team_source_should_persist_source_without_leftovers_on_success() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let repo = temp_dir.path().join("team-repo");
+        create_git_repo(&repo);
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root);
+
+        let report = add_team_source(&paths, "company", &repo.to_string_lossy(), false)
+            .expect("add should succeed against a local repo");
+
+        // The checkout exists and a second add of the same id is rejected as a
+        // clean duplicate rather than tripping over a stale checkout.
+        assert!(report.source.path.join(".git").is_dir());
+        let second = add_team_source(&paths, "company", &repo.to_string_lossy(), false)
+            .expect_err("a second add of the same id should be a clean duplicate error");
+        assert!(matches!(second, DaloError::SourceAlreadyExists { .. }));
+    }
+
+    fn create_git_repo(repo: &Path) {
+        std::fs::create_dir_all(repo).expect("repo dir should be created");
+        run_git(repo, &["init", "-q"]);
+        run_git(repo, &["config", "user.email", "test@example.com"]);
+        run_git(repo, &["config", "user.name", "Test"]);
+        std::fs::write(repo.join("README.md"), "# Repo\n").expect("file should be written");
+        run_git(repo, &["add", "."]);
+        run_git(repo, &["commit", "-q", "-m", "initial"]);
+    }
+
+    fn run_git(repo: &Path, args: &[&str]) {
+        let status = Command::new("git")
+            .current_dir(repo)
+            .args(args)
+            .status()
+            .expect("git should run");
+        assert!(status.success(), "git {args:?} should succeed");
     }
 }
