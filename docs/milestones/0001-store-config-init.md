@@ -21,7 +21,6 @@ Implement the local store and `dalo init` so the tool can create a safe, inspect
   - `approvals.toml`
   - `local/`
   - `sources/`
-  - `logs/`
 - Local source initialization as a Git repository under `local/`.
 - Typed TOML schemas for config, state, approvals, and user lock.
 - Atomic write helper for generated TOML files.

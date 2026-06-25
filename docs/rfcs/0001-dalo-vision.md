@@ -179,11 +179,11 @@ Proposed structure:
   sources/
     <source-id>/
       checkout/
-      lock.toml
-  targets/
-    registry.toml
-  logs/
+      lock.toml        # (V1.1: per-source pinned lock)
 ```
+
+V1 keeps target configuration in `state.toml`; the dedicated `targets/registry.toml`
+and per-source `lock.toml` files above are planned for V1.1 and are not written yet.
 
 `config.toml` is the user configuration.  
 `lock.toml` is the resolved user lock for the sum of all active sources.  

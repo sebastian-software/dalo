@@ -22,7 +22,6 @@ Scan skills from local and team source checkouts into deterministic inventories.
   - frontmatter `name` when present and valid
   - folder name fallback
 - Stable source-qualified refs: `<source-id>:<slot-name>`.
-- Content and metadata hashes for inventory records.
 - Deterministic ordering.
 - Warnings for malformed frontmatter, invalid names, duplicate slot names within the same source, and unreadable skill directories.
 
@@ -57,10 +56,14 @@ git diff --check
 - Added YAML frontmatter parsing for `id`, `name`, `description`, `requires`, `owners`, and `tags`.
 - Added slot-name derivation from valid frontmatter `name` with folder-name fallback.
 - Added stable source-qualified refs in the form `<source-id>:<slot-name>`.
-- Added deterministic SHA-256 content hashes over skill directories and metadata hashes over parsed frontmatter.
 - Added warnings for malformed frontmatter, invalid slot names, unreadable paths, and duplicate slot names within a source.
-- Added unit tests for frontmatter parsing, fallback behavior, duplicate detection, and supporting-file hash changes.
+- Added unit tests for frontmatter parsing, fallback behavior, and duplicate detection.
 - Validation passed on 2026-06-24.
+
+> Note: an early version added deterministic SHA-256 content hashes over skill
+> directories and metadata hashes over parsed frontmatter. These were removed in
+> a later review together with the `sha2` dependency; content/metadata
+> fingerprints return with V1.1 drift detection (see `src/inventory.rs`).
 
 ## Suggested Issue Split
 
