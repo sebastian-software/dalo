@@ -651,6 +651,48 @@ mod tests {
     }
 
     #[test]
+    fn read_state_should_fail_when_store_is_not_initialized() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let paths = StorePaths::new(temp_dir.path().join("missing-store"));
+
+        let error = read_state(&paths).expect_err("read should fail on uninitialized store");
+
+        assert!(matches!(error, DaloError::StoreNotInitialized { .. }));
+    }
+
+    #[test]
+    fn write_state_should_fail_when_store_root_is_absent() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let paths = StorePaths::new(temp_dir.path().join("missing-store"));
+
+        let error = write_state(&paths, &StateFile::empty())
+            .expect_err("write should fail when the store root is absent");
+
+        assert!(matches!(error, DaloError::StoreNotInitialized { .. }));
+    }
+
+    #[test]
+    fn read_user_lock_should_reject_unsupported_schema_version() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root);
+        fs::write(&paths.lock_file, "schema_version = 999\n").expect("lock should be overwritten");
+
+        let error = read_user_lock(&paths).expect_err("read should reject the unsupported schema");
+
+        assert!(matches!(error, DaloError::UnsupportedLockSchema { .. }));
+    }
+
+    #[test]
+    fn init_store_should_reject_empty_store_path() {
+        let error =
+            init_store(PathBuf::new(), false).expect_err("init should reject an empty path");
+
+        assert!(matches!(error, DaloError::InvalidStorePath { .. }));
+    }
+
+    #[test]
     fn store_lock_should_fail_when_already_held() {
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
         let store_root = temp_dir.path().join("store");

@@ -398,6 +398,35 @@ mod tests {
         assert_eq!(resolution.active_skills[0].source_ref, "company:review");
     }
 
+    #[test]
+    fn resolve_should_hold_unapproved_team_skill_as_pending() {
+        let input = input_with_sources(
+            vec![source("company", SourceKind::Team, 10)],
+            vec![inventory("company", vec![skill("company", "review")])],
+            Vec::new(),
+        );
+
+        let resolution = resolve(&input);
+
+        assert!(resolution.active_skills.is_empty());
+    }
+
+    #[test]
+    fn resolve_should_list_unapproved_team_skill_in_pending_approval() {
+        let input = input_with_sources(
+            vec![source("company", SourceKind::Team, 10)],
+            vec![inventory("company", vec![skill("company", "review")])],
+            Vec::new(),
+        );
+
+        let resolution = resolve(&input);
+
+        assert_eq!(
+            resolution.pending_approval_skills[0].source_ref,
+            "company:review"
+        );
+    }
+
     fn input_with_sources(
         sources: Vec<SourceConfig>,
         inventories: Vec<SourceInventory>,

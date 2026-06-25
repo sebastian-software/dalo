@@ -499,6 +499,49 @@ mod tests {
         );
     }
 
+    #[test]
+    fn adopt_skill_should_reject_path_outside_materialization_dirs() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let target = temp_dir.path().join("target");
+        let outside = temp_dir.path().join("outside/review");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        fs::create_dir_all(&outside).expect("outside dir should be created");
+        fs::write(outside.join(SKILL_FILE), "# Review\n").expect("skill should be written");
+        write_state(&store_root, &target, &target.join("unused"));
+
+        let error = adopt_skill(
+            &StorePaths::new(store_root),
+            &outside.to_string_lossy(),
+            true,
+            false,
+        )
+        .expect_err("adopt should refuse a path outside materialization dirs");
+
+        assert!(matches!(error, DaloError::SkillNotFound { .. }));
+    }
+
+    #[test]
+    fn adopt_skill_should_not_remove_path_outside_materialization_dirs() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let target = temp_dir.path().join("target");
+        let outside = temp_dir.path().join("outside/review");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        fs::create_dir_all(&outside).expect("outside dir should be created");
+        fs::write(outside.join(SKILL_FILE), "# Review\n").expect("skill should be written");
+        write_state(&store_root, &target, &target.join("unused"));
+
+        let _ = adopt_skill(
+            &StorePaths::new(store_root),
+            &outside.to_string_lossy(),
+            true,
+            false,
+        );
+
+        assert!(outside.join(SKILL_FILE).is_file());
+    }
+
     fn write_state(store_root: &Path, target: &Path, owned: &Path) {
         fs::create_dir_all(target).expect("target should be created");
         let paths = StorePaths::new(store_root.to_path_buf());
