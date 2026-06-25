@@ -192,6 +192,7 @@ pub fn registry() -> &'static [TargetRegistryEntry] {
 }
 
 /// Detect target paths and current link state.
+#[must_use = "the target detection report should be rendered or inspected"]
 pub fn detect_targets(store_root: &Path) -> DaloResult<TargetDetectReport> {
     let paths = StorePaths::new(store_root.to_path_buf());
     let state = read_state_if_initialized(&paths)?;

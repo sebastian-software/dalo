@@ -10,8 +10,7 @@ use serde::Serialize;
 use crate::adopt;
 use crate::config::UserConfig;
 use crate::git;
-use crate::inventory;
-use crate::resolver::{self, ResolutionInput};
+use crate::resolver;
 use crate::source::SourceKind;
 use crate::store::{self, ApprovalsFile, StateFile, StorePaths};
 
@@ -169,7 +168,7 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
         check_sources(config, &mut findings);
     }
 
-    if let (Some(config), Some(_state), true) = (config.as_ref(), state.as_ref(), lock_ok) {
+    if let (Some(config), Some(_), true) = (config.as_ref(), state.as_ref(), lock_ok) {
         check_resolution(&paths, config, &mut findings);
     }
 
@@ -461,18 +460,7 @@ fn check_sources(config: &UserConfig, findings: &mut Vec<DoctorFinding>) {
 
 fn check_resolution(paths: &StorePaths, config: &UserConfig, findings: &mut Vec<DoctorFinding>) {
     let approvals = store::read_approvals(paths).unwrap_or_else(|_| ApprovalsFile::empty());
-    let mut inventories = Vec::new();
-    for source in config.sources.iter().filter(|source| source.enabled) {
-        if let Ok(inventory) = inventory::scan_source(&source.id, &source.path) {
-            inventories.push(inventory);
-        }
-    }
-    let resolution = resolver::resolve(&ResolutionInput {
-        sources: config.sources.clone(),
-        inventories,
-        approvals: approvals.approvals,
-        previous_lock: None,
-    });
+    let resolution = resolver::resolve_from_config(config, approvals.approvals).resolution;
 
     for skill in &resolution.pending_approval_skills {
         findings.push(finding_warning(

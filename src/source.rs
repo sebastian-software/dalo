@@ -208,6 +208,7 @@ fn finish_team_source(
 }
 
 /// List configured sources.
+#[must_use = "the source list report should be rendered or inspected"]
 pub fn list_sources(paths: &StorePaths) -> DaloResult<SourceListReport> {
     let mut sources = store::read_config(paths)?.sources;
     sources.sort_by(|left, right| {
