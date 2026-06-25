@@ -5,13 +5,16 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::adopt::{AdoptReport, KeepReport, RemoveOwnedReport, ResolveListReport, UnmanagedSkill};
+use crate::catalog::{CatalogInspectReport, CatalogSelectReport};
 use crate::doctor::{DoctorReport, DoctorSeverity};
 use crate::error::DaloResult;
 use crate::inventory::InventoryWarning;
 use crate::lockfile::{self, LockDrift};
 use crate::materialize::SyncReport;
 use crate::resolver::{self, Resolution};
-use crate::source::{SourceAddReport, SourceKind, SourceListReport, SourcePriorityReport};
+use crate::source::{
+    SourceAddReport, SourceConfig, SourceKind, SourceListReport, SourcePriorityReport,
+};
 use crate::store::{self, InitReport, StorePaths};
 use crate::target::{TargetDetectReport, TargetLinkReport, TargetUnlinkReport};
 
@@ -288,6 +291,46 @@ pub fn print_source_priority_report(report: &SourcePriorityReport) {
         "{verb} source {} priority={}",
         report.source.id, report.source.priority
     );
+}
+
+/// Print a human-readable catalog add report.
+pub fn print_catalog_add_report(source: &SourceConfig, dry_run: bool) {
+    let verb = if dry_run { "would add" } else { "added" };
+    println!(
+        "{verb} catalog source {} -> {}",
+        source.id,
+        source.path.display()
+    );
+}
+
+/// Print a human-readable catalog inspect report.
+pub fn print_catalog_inspect_report(report: &CatalogInspectReport) {
+    println!(
+        "catalog {}: {} available skill(s)",
+        report.source_id,
+        report.candidates.len()
+    );
+    for candidate in &report.candidates {
+        let marker = if candidate.selected { "*" } else { " " };
+        let id = candidate.id.as_deref().unwrap_or("-");
+        println!(
+            "  {marker} {:<24} id={:<24} {}",
+            candidate.slot_name, id, candidate.path
+        );
+    }
+}
+
+/// Print a human-readable catalog select report.
+pub fn print_catalog_select_report(report: &CatalogSelectReport) {
+    if report.selected.is_empty() {
+        println!("catalog {}: no skills selected", report.source_id);
+    } else {
+        println!(
+            "catalog {}: selected {}",
+            report.source_id,
+            report.selected.join(", ")
+        );
+    }
 }
 
 /// Print a human-readable adopt report.

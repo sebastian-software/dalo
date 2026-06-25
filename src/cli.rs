@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use clap::{Args, CommandFactory, Parser, Subcommand};
 
 use crate::adopt;
+use crate::catalog;
 use crate::doctor;
 use crate::error::DaloResult;
 use crate::lockfile;
@@ -145,10 +146,16 @@ pub struct SourceCommand {
 pub enum SourceSubcommand {
     /// Add a team source from a Git URL.
     Add(SourceAddArgs),
+    /// Add a catalog source (a multi-skill repository) from a Git URL.
+    AddCatalog(SourceAddArgs),
     /// List configured sources.
     List,
     /// Change a source priority.
     Priority(SourcePriorityArgs),
+    /// Inspect a catalog source's available skills.
+    Inspect(SourceInspectArgs),
+    /// Select or unselect catalog skills.
+    Select(SourceSelectArgs),
 }
 
 /// Arguments for `source add`.
@@ -169,6 +176,28 @@ pub struct SourcePriorityArgs {
 
     /// New priority. Lower numbers win.
     pub priority: i32,
+}
+
+/// Arguments for `source inspect`.
+#[derive(Debug, Args)]
+pub struct SourceInspectArgs {
+    /// Catalog source ID.
+    pub id: String,
+}
+
+/// Arguments for `source select`.
+#[derive(Debug, Args)]
+pub struct SourceSelectArgs {
+    /// Catalog source ID.
+    pub id: String,
+
+    /// Skill references to select (stable ID or slot name).
+    #[arg(required = true)]
+    pub skills: Vec<String>,
+
+    /// Unselect the given skills instead of selecting them.
+    #[arg(long)]
+    pub unselect: bool,
 }
 
 /// Arguments for `adopt`.
@@ -306,12 +335,46 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             }
             Ok(())
         }
+        SourceSubcommand::AddCatalog(args) => {
+            let _lock = if options.dry_run {
+                None
+            } else {
+                Some(store::StoreLock::acquire(&paths)?)
+            };
+            let source =
+                catalog::add_catalog_source(&paths, &args.id, &args.location, options.dry_run)?;
+            if options.json {
+                print_json(&source)?;
+            } else {
+                status::print_catalog_add_report(&source, options.dry_run);
+            }
+            Ok(())
+        }
         SourceSubcommand::List => {
             let report = source::list_sources(&paths)?;
             if options.json {
                 print_json(&report)?;
             } else {
                 status::print_source_list_report(&report);
+            }
+            Ok(())
+        }
+        SourceSubcommand::Inspect(args) => {
+            let report = catalog::inspect_catalog(&paths, &args.id)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                status::print_catalog_inspect_report(&report);
+            }
+            Ok(())
+        }
+        SourceSubcommand::Select(args) => {
+            let _lock = store::StoreLock::acquire(&paths)?;
+            let report = catalog::select_skills(&paths, &args.id, &args.skills, args.unselect)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                status::print_catalog_select_report(&report);
             }
             Ok(())
         }

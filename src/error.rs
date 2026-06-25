@@ -176,6 +176,13 @@ pub enum DaloError {
         reason: String,
     },
 
+    /// A catalog command targeted a source that is not a catalog source.
+    #[error("source `{source_id}` is not a catalog source")]
+    NotACatalogSource {
+        /// Source ID.
+        source_id: String,
+    },
+
     /// Terminal or filesystem I/O failed.
     #[error(transparent)]
     Io(#[from] io::Error),
@@ -192,6 +199,7 @@ impl DaloError {
             | Self::TargetPathRequired { .. }
             | Self::SourceAlreadyExists { .. }
             | Self::InvalidSourceId { .. }
+            | Self::NotACatalogSource { .. }
             | Self::UnknownSource { .. }
             | Self::SkillNotFound { .. }
             | Self::AdoptionDestinationExists { .. }

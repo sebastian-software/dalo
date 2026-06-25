@@ -1440,6 +1440,58 @@ fn setup_store_with_skill_and_target(store: &std::path::Path, target: &std::path
     std::fs::write(skill_dir.join("SKILL.md"), "# Review\n").expect("skill should be written");
 }
 
+#[test]
+fn catalog_select_should_materialize_only_selected_skills() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "inspect", "marketing"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("copy-editing"))
+        .stdout(predicate::str::contains("launch-copy"));
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "copy-editing"])
+        .assert()
+        .success();
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    // Only the selected catalog skill is materialized; the unselected one is not.
+    assert!(
+        std::fs::symlink_metadata(target.join("copy-editing"))
+            .expect("selected skill should be linked")
+            .file_type()
+            .is_symlink()
+    );
+    assert!(!target.join("launch-copy").exists());
+}
+
 fn setup_store_with_target(store: &std::path::Path, target: &std::path::Path) {
     Command::cargo_bin("dalo")
         .expect("binary should build")
@@ -1526,6 +1578,34 @@ fn write_local_only_config(store: &std::path::Path) {
         ),
     )
     .expect("config should be written");
+}
+
+fn create_git_catalog_repo(repo: &std::path::Path) {
+    for slot in ["copy-editing", "launch-copy"] {
+        std::fs::create_dir_all(repo.join("skills").join(slot)).expect("repo dirs created");
+        std::fs::write(
+            repo.join("skills").join(slot).join("SKILL.md"),
+            format!("# {slot}\n"),
+        )
+        .expect("skill written");
+    }
+    run_git(repo, &["init", "-q"]);
+    run_git(repo, &["add", "."]);
+    run_git(
+        repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "initial",
+            "-q",
+        ],
+    );
 }
 
 fn run_git(repo: &std::path::Path, args: &[&str]) {

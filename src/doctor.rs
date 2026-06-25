@@ -735,6 +735,7 @@ mod tests {
             url: None,
             branch: None,
             update_policy: None,
+            selection: Vec::new(),
         }];
         if let Some(local_repo) = local_repo {
             sources.push(SourceConfig {
@@ -747,6 +748,7 @@ mod tests {
                 url: None,
                 branch: None,
                 update_policy: None,
+                selection: Vec::new(),
             });
         }
         let config = UserConfig {

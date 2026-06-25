@@ -13,6 +13,7 @@ compile_error!(
 );
 
 pub mod adopt;
+pub mod catalog;
 pub mod cli;
 pub mod config;
 pub mod doctor;
