@@ -50,6 +50,8 @@ pub enum AdoptCopyStatus {
     Planned,
     /// Skill was copied into the local source.
     Copied,
+    /// A local copy already existed and was reused (second step of a two-step adopt).
+    Existing,
 }
 
 impl AdoptCopyStatus {
@@ -59,6 +61,7 @@ impl AdoptCopyStatus {
         match self {
             Self::Planned => "planned",
             Self::Copied => "copied",
+            Self::Existing => "existing",
         }
     }
 }
@@ -216,13 +219,24 @@ pub fn adopt_skill(
 ) -> DaloResult<AdoptReport> {
     let skill = find_unmanaged_skill(paths, selector)?;
     let local_path = paths.local_skills_dir.join(&skill.slot_name);
-    if local_path.exists() {
+    let already_copied = local_path.exists();
+
+    // A plain `adopt` must not clobber an existing local skill. But with `--yes`
+    // (replace requested) an existing copy is the second step of the documented
+    // two-step flow (`adopt X` then `adopt X --yes`), so reuse it instead of
+    // failing with AdoptionDestinationExists.
+    if already_copied && !replace_original {
         return Err(DaloError::AdoptionDestinationExists { path: local_path });
     }
 
-    if !dry_run {
+    let copy = if dry_run {
+        AdoptCopyStatus::Planned
+    } else if already_copied {
+        AdoptCopyStatus::Existing
+    } else {
         copy_dir(&skill.path, &local_path)?;
-    }
+        AdoptCopyStatus::Copied
+    };
 
     let replacement = if replace_original {
         replace_with_owned_symlink(paths, &skill, &local_path, dry_run)?
@@ -234,11 +248,7 @@ pub fn adopt_skill(
         slot_name: skill.slot_name,
         source_path: skill.path,
         local_path,
-        copy: if dry_run {
-            AdoptCopyStatus::Planned
-        } else {
-            AdoptCopyStatus::Copied
-        },
+        copy,
         replacement,
     })
 }
