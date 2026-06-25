@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use crate::error::SkillmgrResult;
+use crate::error::DaloResult;
 use crate::resolver::Resolution;
 use crate::store::{self, OwnedSkillState, StateFile, StorePaths};
 
@@ -110,7 +110,7 @@ pub fn materialize(
     paths: &StorePaths,
     resolution: &Resolution,
     dry_run: bool,
-) -> SkillmgrResult<SyncReport> {
+) -> DaloResult<SyncReport> {
     let mut state = store::read_state(paths)?;
     let desired_links = desired_links(&state, resolution);
     let mut operations = build_plan(paths, &state, &desired_links)?;
@@ -163,7 +163,7 @@ fn build_plan(
     paths: &StorePaths,
     state: &StateFile,
     desired_links: &[DesiredLink],
-) -> SkillmgrResult<Vec<MaterializeOperation>> {
+) -> DaloResult<Vec<MaterializeOperation>> {
     let desired_by_link = desired_links
         .iter()
         .map(|desired| (desired.link_path.clone(), desired))
@@ -204,7 +204,7 @@ fn build_plan(
 fn plan_desired_recorded(
     paths: &StorePaths,
     desired: &DesiredLink,
-) -> SkillmgrResult<MaterializeOperation> {
+) -> DaloResult<MaterializeOperation> {
     let actual = actual_link_state(&desired.link_path)?;
     let operation = match actual {
         ActualLinkState::Absent => MaterializeOperation {
@@ -249,7 +249,7 @@ fn plan_desired_recorded(
     Ok(operation)
 }
 
-fn plan_desired_unrecorded(desired: &DesiredLink) -> SkillmgrResult<MaterializeOperation> {
+fn plan_desired_unrecorded(desired: &DesiredLink) -> DaloResult<MaterializeOperation> {
     let actual = actual_link_state(&desired.link_path)?;
     let operation = match actual {
         ActualLinkState::Absent => MaterializeOperation {
@@ -308,7 +308,7 @@ fn apply_plan(
     state: &mut StateFile,
     operations: &[MaterializeOperation],
     desired_links: &[DesiredLink],
-) -> SkillmgrResult<()> {
+) -> DaloResult<()> {
     for operation in operations {
         match operation.kind {
             MaterializeOperationKind::Create | MaterializeOperationKind::Relink => {
@@ -368,7 +368,7 @@ enum ActualLinkState {
     RealEntry,
 }
 
-fn actual_link_state(link_path: &Path) -> SkillmgrResult<ActualLinkState> {
+fn actual_link_state(link_path: &Path) -> DaloResult<ActualLinkState> {
     match fs::symlink_metadata(link_path) {
         Ok(metadata) if metadata.file_type().is_symlink() => {
             Ok(ActualLinkState::Symlink(fs::read_link(link_path)?))

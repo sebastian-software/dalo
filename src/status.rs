@@ -6,7 +6,7 @@ use serde::Serialize;
 
 use crate::adopt::{AdoptReport, KeepReport, RemoveOwnedReport, ResolveListReport, UnmanagedSkill};
 use crate::doctor::{DoctorReport, DoctorSeverity};
-use crate::error::SkillmgrResult;
+use crate::error::DaloResult;
 use crate::inventory::{self, InventoryWarning};
 use crate::lockfile::{self, LockDrift};
 use crate::materialize::SyncReport;
@@ -65,7 +65,7 @@ pub struct SourceStatus {
 }
 
 /// Build the current status report.
-pub fn build_status_report(store_root: &Path) -> SkillmgrResult<StatusReport> {
+pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
     let paths = StorePaths::new(store_root.to_path_buf());
     let config = store::read_config(&paths)?;
     let approvals = store::read_approvals(&paths)?;
@@ -167,7 +167,7 @@ pub fn build_status_report(store_root: &Path) -> SkillmgrResult<StatusReport> {
 
 /// Print a human-readable init report.
 pub fn print_init_report(report: &InitReport) {
-    println!("skillmgr store: {}", report.store.display());
+    println!("dalo store: {}", report.store.display());
 
     for operation in &report.operations {
         println!(
@@ -181,7 +181,7 @@ pub fn print_init_report(report: &InitReport) {
 
 /// Print a human-readable status report.
 pub fn print_status_report(report: &StatusReport) {
-    println!("skillmgr store: {}", report.store.display());
+    println!("dalo store: {}", report.store.display());
     println!("sources:");
     for source in &report.sources {
         let state = if source.enabled {
@@ -256,7 +256,7 @@ pub fn print_status_report(report: &StatusReport) {
 
 /// Print a human-readable sync report.
 pub fn print_sync_report(report: &SyncReport) {
-    println!("skillmgr store: {}", report.store.display());
+    println!("dalo store: {}", report.store.display());
     for operation in &report.operations {
         let desired = operation
             .desired_path
@@ -359,7 +359,7 @@ pub fn print_remove_owned_report(report: &RemoveOwnedReport) {
 
 /// Print a human-readable doctor report.
 pub fn print_doctor_report(report: &DoctorReport) {
-    println!("skillmgr store: {}", report.store.display());
+    println!("dalo store: {}", report.store.display());
     println!(
         "summary: errors={} warnings={} info={} ok={}",
         report.summary.errors, report.summary.warnings, report.summary.info, report.summary.ok

@@ -5,11 +5,11 @@ use std::process::ExitCode;
 use thiserror::Error;
 
 /// Crate-wide result type.
-pub type SkillmgrResult<T> = Result<T, SkillmgrError>;
+pub type DaloResult<T> = Result<T, DaloError>;
 
-/// Errors returned by skillmgr library operations.
+/// Errors returned by dalo library operations.
 #[derive(Debug, Error)]
-pub enum SkillmgrError {
+pub enum DaloError {
     /// A planned command exists in the CLI but has not been implemented yet.
     #[error("command `{command}` is not implemented yet")]
     NotImplemented {
@@ -18,7 +18,7 @@ pub enum SkillmgrError {
     },
 
     /// The store path could not be resolved.
-    #[error("could not resolve the skillmgr store path: {reason}")]
+    #[error("could not resolve the dalo store path: {reason}")]
     StorePath {
         /// Human-readable reason.
         reason: String,
@@ -46,7 +46,7 @@ pub enum SkillmgrError {
     TomlDeserialize(#[from] toml::de::Error),
 
     /// The store has not been initialized yet.
-    #[error("skillmgr store is not initialized at `{path}`; run `skillmgr init` first")]
+    #[error("dalo store is not initialized at `{path}`; run `dalo init` first")]
     StoreNotInitialized {
         /// Store path.
         path: PathBuf,
@@ -95,14 +95,14 @@ pub enum SkillmgrError {
     },
 
     /// A local skill destination already exists.
-    #[error("local skill destination `{path}` already exists; skillmgr will not overwrite it")]
+    #[error("local skill destination `{path}` already exists; dalo will not overwrite it")]
     AdoptionDestinationExists {
         /// Existing destination path.
         path: PathBuf,
     },
 
-    /// Another skillmgr operation is already running.
-    #[error("another skillmgr operation is running (lock `{path}`)")]
+    /// Another dalo operation is already running.
+    #[error("another dalo operation is running (lock `{path}`)")]
     StoreLocked {
         /// Lock file path.
         path: PathBuf,
@@ -110,7 +110,7 @@ pub enum SkillmgrError {
 
     /// The persisted user lock uses an unsupported schema version.
     #[error(
-        "unsupported lock schema version {version} in `{path}`; this skillmgr supports version {supported}"
+        "unsupported lock schema version {version} in `{path}`; this dalo supports version {supported}"
     )]
     UnsupportedLockSchema {
         /// Lock file path.
@@ -141,12 +141,12 @@ pub enum SkillmgrError {
     Io(#[from] io::Error),
 }
 
-impl SkillmgrError {
+impl DaloError {
     /// Exit code for this error.
     #[must_use]
-    pub fn exit_code(&self) -> SkillmgrExitCode {
+    pub fn exit_code(&self) -> DaloExitCode {
         match self {
-            Self::NotImplemented { .. } => SkillmgrExitCode::ExpectedFailure,
+            Self::NotImplemented { .. } => DaloExitCode::ExpectedFailure,
             Self::StoreNotInitialized { .. }
             | Self::UnknownTarget { .. }
             | Self::TargetPathRequired { .. }
@@ -155,20 +155,20 @@ impl SkillmgrError {
             | Self::SkillNotFound { .. }
             | Self::AdoptionDestinationExists { .. }
             | Self::UnsupportedLockSchema { .. }
-            | Self::TomlDeserialize(_) => SkillmgrExitCode::ExpectedFailure,
-            Self::DirtySource { .. } | Self::StoreLocked { .. } => SkillmgrExitCode::UnsafeState,
+            | Self::TomlDeserialize(_) => DaloExitCode::ExpectedFailure,
+            Self::DirtySource { .. } | Self::StoreLocked { .. } => DaloExitCode::UnsafeState,
             Self::StorePath { .. } | Self::InvalidStorePath { .. } | Self::CommandFailed { .. } => {
-                SkillmgrExitCode::EnvironmentProblem
+                DaloExitCode::EnvironmentProblem
             }
-            Self::TomlSerialize(_) | Self::Json(_) => SkillmgrExitCode::ExpectedFailure,
-            Self::Io(_) => SkillmgrExitCode::EnvironmentProblem,
+            Self::TomlSerialize(_) | Self::Json(_) => DaloExitCode::ExpectedFailure,
+            Self::Io(_) => DaloExitCode::EnvironmentProblem,
         }
     }
 }
 
 /// Public process exit code policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SkillmgrExitCode {
+pub enum DaloExitCode {
     /// Success.
     Success = 0,
     /// Expected actionable failure.
@@ -181,8 +181,8 @@ pub enum SkillmgrExitCode {
     EnvironmentProblem = 4,
 }
 
-impl From<SkillmgrExitCode> for ExitCode {
-    fn from(code: SkillmgrExitCode) -> Self {
+impl From<DaloExitCode> for ExitCode {
+    fn from(code: DaloExitCode) -> Self {
         Self::from(code as u8)
     }
 }
@@ -193,10 +193,10 @@ mod tests {
 
     #[test]
     fn not_implemented_should_use_expected_failure_exit_code() {
-        let error = SkillmgrError::NotImplemented {
+        let error = DaloError::NotImplemented {
             command: "sync".to_owned(),
         };
 
-        assert_eq!(error.exit_code(), SkillmgrExitCode::ExpectedFailure);
+        assert_eq!(error.exit_code(), DaloExitCode::ExpectedFailure);
     }
 }

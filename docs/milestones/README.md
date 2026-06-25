@@ -1,4 +1,4 @@
-# Skillmgr Implementation Milestones
+# Dalo Implementation Milestones
 
 Status: Draft  
 Scope: V1 implementation plan plus V1.1 staging notes  
@@ -18,7 +18,7 @@ Milestones are intentionally small and stable. Progress is tracked by changing t
 | ID | Milestone | Status | Purpose |
 | --- | --- | --- | --- |
 | M00 | [Repository and Toolchain Scaffold](0000-repository-toolchain-scaffold.md) | done | Create the Rust project shape and baseline validation loop. |
-| M01 | [Store, Config, and Init](0001-store-config-init.md) | done | Establish `~/.skillmgr`, TOML schemas, local source, and `init`. |
+| M01 | [Store, Config, and Init](0001-store-config-init.md) | done | Establish `~/.dalo`, TOML schemas, local source, and `init`. |
 | M02 | [Target Registry](0002-target-registry.md) | done | Detect and link supported agent skill directories safely. |
 | M03 | [Inventory Scanner](0003-inventory-scanner.md) | done | Scan local/team checkouts into deterministic skill inventories. |
 | M04 | [Resolver and Status Model](0004-resolver-status-model.md) | done | Resolve source priority, approvals, shadowing, and status output. |
@@ -46,7 +46,7 @@ V1 includes the core local/team skill loop:
 
 - Rust CLI and reusable library
 - TOML config, state, approvals, and user lock
-- local store under `~/.skillmgr`
+- local store under `~/.dalo`
 - `init`
 - `target detect/link/unlink`
 - `source add/list/priority` for local and team sources

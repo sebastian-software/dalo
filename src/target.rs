@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use crate::error::{SkillmgrError, SkillmgrResult};
+use crate::error::{DaloError, DaloResult};
 use crate::store::{self, MaterializationDirState, StateFile, StorePaths, TargetState};
 
 /// Target support level.
@@ -192,14 +192,14 @@ pub fn registry() -> &'static [TargetRegistryEntry] {
 }
 
 /// Detect target paths and current link state.
-pub fn detect_targets(store_root: &Path) -> SkillmgrResult<TargetDetectReport> {
+pub fn detect_targets(store_root: &Path) -> DaloResult<TargetDetectReport> {
     let paths = StorePaths::new(store_root.to_path_buf());
     let state = read_state_if_initialized(&paths)?;
 
     let targets = registry()
         .iter()
         .map(|entry| detect_entry(entry, state.as_ref()))
-        .collect::<SkillmgrResult<Vec<_>>>()?;
+        .collect::<DaloResult<Vec<_>>>()?;
 
     Ok(TargetDetectReport { targets })
 }
@@ -210,7 +210,7 @@ pub fn link_target(
     target_id: &str,
     path_override: Option<&Path>,
     dry_run: bool,
-) -> SkillmgrResult<TargetLinkReport> {
+) -> DaloResult<TargetLinkReport> {
     let entry = registry_entry(target_id)?;
     let path = target_path(entry, path_override)?;
     let existed_before = path.exists();
@@ -244,7 +244,7 @@ pub fn unlink_target(
     store_root: &Path,
     target_id: &str,
     dry_run: bool,
-) -> SkillmgrResult<TargetUnlinkReport> {
+) -> DaloResult<TargetUnlinkReport> {
     registry_entry(target_id)?;
 
     let status = if dry_run {
@@ -273,7 +273,7 @@ pub fn unlink_target(
 fn detect_entry(
     entry: &TargetRegistryEntry,
     state: Option<&StateFile>,
-) -> SkillmgrResult<TargetDetection> {
+) -> DaloResult<TargetDetection> {
     let path = entry
         .default_path
         .map(PathBuf::from)
@@ -297,7 +297,7 @@ fn detect_entry(
     })
 }
 
-fn read_state_if_initialized(paths: &StorePaths) -> SkillmgrResult<Option<StateFile>> {
+fn read_state_if_initialized(paths: &StorePaths) -> DaloResult<Option<StateFile>> {
     if paths.state_file.exists() {
         Ok(Some(store::read_state(paths)?))
     } else {
@@ -305,25 +305,22 @@ fn read_state_if_initialized(paths: &StorePaths) -> SkillmgrResult<Option<StateF
     }
 }
 
-fn registry_entry(target_id: &str) -> SkillmgrResult<&'static TargetRegistryEntry> {
+fn registry_entry(target_id: &str) -> DaloResult<&'static TargetRegistryEntry> {
     registry()
         .iter()
         .find(|entry| entry.id == target_id)
-        .ok_or_else(|| SkillmgrError::UnknownTarget {
+        .ok_or_else(|| DaloError::UnknownTarget {
             target: target_id.to_owned(),
         })
 }
 
-fn target_path(
-    entry: &TargetRegistryEntry,
-    path_override: Option<&Path>,
-) -> SkillmgrResult<PathBuf> {
+fn target_path(entry: &TargetRegistryEntry, path_override: Option<&Path>) -> DaloResult<PathBuf> {
     if let Some(path) = path_override {
         return store::expand_user_path(path);
     }
 
     let Some(default_path) = entry.default_path else {
-        return Err(SkillmgrError::TargetPathRequired {
+        return Err(DaloError::TargetPathRequired {
             target: entry.id.to_owned(),
         });
     };

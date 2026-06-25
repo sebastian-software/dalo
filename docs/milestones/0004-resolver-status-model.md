@@ -25,7 +25,7 @@ Implement the pure resolver and status model for local/team sources before any f
 - Deterministic conflict handling by slot name.
 - Approval matching for skill-, source-, author-, and org-level approvals.
 - Text and JSON status rendering data.
-- `skillmgr status` for store, source, target, and resolution summaries.
+- `dalo status` for store, source, target, and resolution summaries.
 
 ## Out of Scope
 
@@ -50,7 +50,7 @@ cargo fmt --check
 cargo test resolver status
 cargo test
 cargo clippy --all-targets --all-features -- -D warnings
-cargo run -- --store /tmp/skillmgr-test status --json
+cargo run -- --store /tmp/dalo-test status --json
 git diff --check
 ```
 
@@ -59,7 +59,7 @@ git diff --check
 - Added a pure resolver with enabled source selection, deterministic priority ordering, source-ID tie breaks, approval gating, local overrides, pending approval output, and unlinked shadowed skills.
 - Added local approval matching for `skill`, `source`, `author`, and `org` scopes.
 - Implemented the rule that an unapproved higher-priority candidate does not displace an approved lower-priority skill.
-- Added `skillmgr status` with text and JSON output.
+- Added `dalo status` with text and JSON output.
 - Added status store integration that reads config and approvals, scans enabled source inventories, carries inventory warnings, and renders resolution output.
 - Added unit tests for priority, tie-breaks, local override, pending approval, lower-priority approved fallback, and owner-based approvals.
 - Added command-level status JSON coverage.

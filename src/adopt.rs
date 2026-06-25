@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use crate::error::{SkillmgrError, SkillmgrResult};
+use crate::error::{DaloError, DaloResult};
 use crate::store::{self, OwnedSkillState, ProtectedSkillState, StorePaths};
 
 const SKILL_FILE: &str = "SKILL.md";
@@ -160,7 +160,7 @@ impl RemoveOwnedStatus {
 }
 
 /// Discover unmanaged skills in configured target directories.
-pub fn discover_unmanaged_skills(paths: &StorePaths) -> SkillmgrResult<Vec<UnmanagedSkill>> {
+pub fn discover_unmanaged_skills(paths: &StorePaths) -> DaloResult<Vec<UnmanagedSkill>> {
     let state = store::read_state(paths)?;
     let owned_paths = state
         .owned_skills
@@ -213,11 +213,11 @@ pub fn adopt_skill(
     selector: &str,
     replace_original: bool,
     dry_run: bool,
-) -> SkillmgrResult<AdoptReport> {
+) -> DaloResult<AdoptReport> {
     let skill = find_unmanaged_skill(paths, selector)?;
     let local_path = paths.local_skills_dir.join(&skill.slot_name);
     if local_path.exists() {
-        return Err(SkillmgrError::AdoptionDestinationExists { path: local_path });
+        return Err(DaloError::AdoptionDestinationExists { path: local_path });
     }
 
     if !dry_run {
@@ -244,7 +244,7 @@ pub fn adopt_skill(
 }
 
 /// List minimal resolve items.
-pub fn list_resolve_items(paths: &StorePaths) -> SkillmgrResult<ResolveListReport> {
+pub fn list_resolve_items(paths: &StorePaths) -> DaloResult<ResolveListReport> {
     let state = store::read_state(paths)?;
     let mut owned_skills = state
         .owned_skills
@@ -265,7 +265,7 @@ pub fn list_resolve_items(paths: &StorePaths) -> SkillmgrResult<ResolveListRepor
 }
 
 /// Mark an unmanaged skill as explicitly protected.
-pub fn keep_unmanaged_skill(paths: &StorePaths, selector: &str) -> SkillmgrResult<KeepReport> {
+pub fn keep_unmanaged_skill(paths: &StorePaths, selector: &str) -> DaloResult<KeepReport> {
     let skill = find_unmanaged_skill(paths, selector)?;
     let mut state = store::read_state(paths)?;
     let existing = state
@@ -286,19 +286,19 @@ pub fn keep_unmanaged_skill(paths: &StorePaths, selector: &str) -> SkillmgrResul
     Ok(KeepReport { skill, existing })
 }
 
-/// Remove a recorded skillmgr-owned symlink by slot, path, or generated ID.
+/// Remove a recorded dalo-owned symlink by slot, path, or generated ID.
 pub fn remove_owned_skill(
     paths: &StorePaths,
     selector: &str,
     dry_run: bool,
-) -> SkillmgrResult<RemoveOwnedReport> {
+) -> DaloResult<RemoveOwnedReport> {
     let mut state = store::read_state(paths)?;
     let Some(index) = state.owned_skills.iter().position(|skill| {
         skill.slot_name == selector
             || skill.link_path.to_string_lossy() == selector
             || owned_id(skill) == selector
     }) else {
-        return Err(SkillmgrError::SkillNotFound {
+        return Err(DaloError::SkillNotFound {
             skill: selector.to_owned(),
         });
     };
@@ -317,7 +317,7 @@ pub fn remove_owned_skill(
     })
 }
 
-fn find_unmanaged_skill(paths: &StorePaths, selector: &str) -> SkillmgrResult<UnmanagedSkill> {
+fn find_unmanaged_skill(paths: &StorePaths, selector: &str) -> DaloResult<UnmanagedSkill> {
     let selector_path = PathBuf::from(selector);
     if selector_path.exists() {
         return unmanaged_from_path(paths, &selector_path);
@@ -326,17 +326,17 @@ fn find_unmanaged_skill(paths: &StorePaths, selector: &str) -> SkillmgrResult<Un
     discover_unmanaged_skills(paths)?
         .into_iter()
         .find(|skill| skill.id == selector || skill.slot_name == selector)
-        .ok_or_else(|| SkillmgrError::SkillNotFound {
+        .ok_or_else(|| DaloError::SkillNotFound {
             skill: selector.to_owned(),
         })
 }
 
-fn unmanaged_from_path(paths: &StorePaths, path: &Path) -> SkillmgrResult<UnmanagedSkill> {
+fn unmanaged_from_path(paths: &StorePaths, path: &Path) -> DaloResult<UnmanagedSkill> {
     let path = path.to_path_buf();
     discover_unmanaged_skills(paths)?
         .into_iter()
         .find(|skill| skill.path == path)
-        .ok_or_else(|| SkillmgrError::SkillNotFound {
+        .ok_or_else(|| DaloError::SkillNotFound {
             skill: path.display().to_string(),
         })
 }
@@ -366,7 +366,7 @@ fn replace_with_owned_symlink(
     skill: &UnmanagedSkill,
     local_path: &Path,
     dry_run: bool,
-) -> SkillmgrResult<AdoptReplacementStatus> {
+) -> DaloResult<AdoptReplacementStatus> {
     if skill.protected {
         return Ok(AdoptReplacementStatus::Protected);
     }
@@ -397,7 +397,7 @@ fn replace_with_owned_symlink(
     Ok(AdoptReplacementStatus::Replaced)
 }
 
-fn remove_owned_link(path: &Path, dry_run: bool) -> SkillmgrResult<RemoveOwnedStatus> {
+fn remove_owned_link(path: &Path, dry_run: bool) -> DaloResult<RemoveOwnedStatus> {
     match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.file_type().is_symlink() => {
             if dry_run {
@@ -419,7 +419,7 @@ fn remove_owned_link(path: &Path, dry_run: bool) -> SkillmgrResult<RemoveOwnedSt
     }
 }
 
-fn copy_dir(source: &Path, destination: &Path) -> SkillmgrResult<()> {
+fn copy_dir(source: &Path, destination: &Path) -> DaloResult<()> {
     fs::create_dir_all(destination)?;
     for entry in fs::read_dir(source)? {
         let entry = entry?;

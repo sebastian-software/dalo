@@ -10,9 +10,9 @@ Add Git-backed team sources to the sync loop while preserving the no-data-loss m
 
 ## Deliverables
 
-- `skillmgr source add <id> <url>` for `team` sources.
-- `skillmgr source list`.
-- `skillmgr source priority`.
+- `dalo source add <id> <url>` for `team` sources.
+- `dalo source list`.
+- `dalo source priority`.
 - Git wrapper for:
   - clone
   - fetch
@@ -56,7 +56,7 @@ Validated on 2026-06-24.
 ## Completion Notes
 
 - Added `source add`, `source list`, and `source priority` for team sources.
-- Team sources clone into the skillmgr store under `sources/<id>/checkout`.
+- Team sources clone into the dalo store under `sources/<id>/checkout`.
 - Added Git wrappers for clone, fast-forward pull, dirty checks, and `rev-parse HEAD`.
 - `sync` refreshes clean tracking team sources before scanning and materializing.
 - Dirty team sources block sync with an unsafe-state exit instead of discarding edits.

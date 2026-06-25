@@ -4,7 +4,7 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 
 use crate::adopt;
 use crate::doctor;
-use crate::error::SkillmgrResult;
+use crate::error::DaloResult;
 use crate::lockfile;
 use crate::materialize;
 use crate::source;
@@ -14,10 +14,10 @@ use crate::target;
 
 /// Parsed command-line arguments.
 #[derive(Debug, Parser)]
-#[command(name = "skillmgr")]
+#[command(name = "dalo")]
 #[command(version, about = "Git-backed skill management for AI agents.")]
 pub struct Cli {
-    /// Override the skillmgr store path.
+    /// Override the dalo store path.
     #[arg(long, global = true, value_name = "PATH")]
     pub store: Option<PathBuf>,
 
@@ -71,7 +71,7 @@ impl GlobalOptions {
         dry_run: bool,
         no_color: bool,
         verbose: u8,
-    ) -> SkillmgrResult<Self> {
+    ) -> DaloResult<Self> {
         Ok(Self {
             store: store::resolve_store_path(store)?,
             json,
@@ -94,7 +94,7 @@ impl Cli {
 /// Top-level command groups.
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Initialize the skillmgr store.
+    /// Initialize the dalo store.
     Init,
     /// Detect, link, or unlink agent targets.
     Target(TargetCommand),
@@ -223,7 +223,7 @@ pub struct ResolveIdArg {
 }
 
 /// Execute a parsed CLI command.
-pub fn run_cli(cli: Cli) -> SkillmgrResult<()> {
+pub fn run_cli(cli: Cli) -> DaloResult<()> {
     let Cli {
         store,
         json,
@@ -254,7 +254,7 @@ pub fn run_cli(cli: Cli) -> SkillmgrResult<()> {
     }
 }
 
-fn run_init(options: &GlobalOptions) -> SkillmgrResult<()> {
+fn run_init(options: &GlobalOptions) -> DaloResult<()> {
     let report = store::init_store(options.store.clone(), options.dry_run)?;
 
     if options.json {
@@ -266,7 +266,7 @@ fn run_init(options: &GlobalOptions) -> SkillmgrResult<()> {
     Ok(())
 }
 
-fn run_status(options: &GlobalOptions) -> SkillmgrResult<()> {
+fn run_status(options: &GlobalOptions) -> DaloResult<()> {
     let report = status::build_status_report(&options.store)?;
 
     if options.json {
@@ -278,7 +278,7 @@ fn run_status(options: &GlobalOptions) -> SkillmgrResult<()> {
     Ok(())
 }
 
-fn run_sync(options: &GlobalOptions) -> SkillmgrResult<()> {
+fn run_sync(options: &GlobalOptions) -> DaloResult<()> {
     let paths = store::StorePaths::new(options.store.clone());
     let _lock = if options.dry_run {
         None
@@ -306,7 +306,7 @@ fn run_sync(options: &GlobalOptions) -> SkillmgrResult<()> {
     Ok(())
 }
 
-fn run_source(options: &GlobalOptions, command: SourceCommand) -> SkillmgrResult<()> {
+fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()> {
     let paths = store::StorePaths::new(options.store.clone());
     match command.command {
         SourceSubcommand::Add(args) => {
@@ -341,7 +341,7 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> SkillmgrResult
     }
 }
 
-fn run_adopt(options: &GlobalOptions, command: AdoptCommand) -> SkillmgrResult<()> {
+fn run_adopt(options: &GlobalOptions, command: AdoptCommand) -> DaloResult<()> {
     let paths = store::StorePaths::new(options.store.clone());
     let _lock = if options.dry_run {
         None
@@ -357,7 +357,7 @@ fn run_adopt(options: &GlobalOptions, command: AdoptCommand) -> SkillmgrResult<(
     Ok(())
 }
 
-fn run_resolve(options: &GlobalOptions, command: ResolveCommand) -> SkillmgrResult<()> {
+fn run_resolve(options: &GlobalOptions, command: ResolveCommand) -> DaloResult<()> {
     let paths = store::StorePaths::new(options.store.clone());
     match command.command {
         ResolveSubcommand::List => {
@@ -410,7 +410,7 @@ fn run_resolve(options: &GlobalOptions, command: ResolveCommand) -> SkillmgrResu
     }
 }
 
-fn run_doctor(options: &GlobalOptions) -> SkillmgrResult<()> {
+fn run_doctor(options: &GlobalOptions) -> DaloResult<()> {
     let report = doctor::run_doctor(&options.store);
     if options.json {
         print_json(&report)?;
@@ -420,7 +420,7 @@ fn run_doctor(options: &GlobalOptions) -> SkillmgrResult<()> {
     Ok(())
 }
 
-fn run_target(options: &GlobalOptions, command: TargetCommand) -> SkillmgrResult<()> {
+fn run_target(options: &GlobalOptions, command: TargetCommand) -> DaloResult<()> {
     match command.command {
         TargetSubcommand::Detect => {
             let report = target::detect_targets(&options.store)?;
@@ -469,7 +469,7 @@ fn run_target(options: &GlobalOptions, command: TargetCommand) -> SkillmgrResult
     }
 }
 
-fn print_json<T>(value: &T) -> SkillmgrResult<()>
+fn print_json<T>(value: &T) -> DaloResult<()>
 where
     T: serde::Serialize,
 {

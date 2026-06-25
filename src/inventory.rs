@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::error::SkillmgrResult;
+use crate::error::DaloResult;
 
 const SKILL_FILE: &str = "SKILL.md";
 
@@ -90,7 +90,7 @@ struct SkillFrontmatter {
 }
 
 /// Scan a source checkout for skills.
-pub fn scan_source(source_id: &str, source_root: &Path) -> SkillmgrResult<SourceInventory> {
+pub fn scan_source(source_id: &str, source_root: &Path) -> DaloResult<SourceInventory> {
     let mut warnings = Vec::new();
     let skill_dirs = find_skill_dirs(source_root, &mut warnings)?;
     let mut skills = Vec::new();
@@ -132,7 +132,7 @@ pub fn scan_source(source_id: &str, source_root: &Path) -> SkillmgrResult<Source
 fn find_skill_dirs(
     source_root: &Path,
     warnings: &mut Vec<InventoryWarning>,
-) -> SkillmgrResult<Vec<PathBuf>> {
+) -> DaloResult<Vec<PathBuf>> {
     let mut found = Vec::new();
     let mut pending = vec![source_root.to_path_buf()];
 
@@ -176,7 +176,7 @@ fn scan_skill(
     source_id: &str,
     source_root: &Path,
     skill_dir: &Path,
-) -> SkillmgrResult<(SkillRecord, Vec<InventoryWarning>)> {
+) -> DaloResult<(SkillRecord, Vec<InventoryWarning>)> {
     let skill_file = skill_dir.join(SKILL_FILE);
     let skill_markdown = fs::read_to_string(&skill_file)?;
     let (frontmatter, mut warnings) = parse_frontmatter(&skill_markdown, &skill_file);
@@ -267,12 +267,12 @@ fn is_valid_slot_name(value: &str) -> bool {
         })
 }
 
-fn hash_metadata(frontmatter: &SkillFrontmatter) -> SkillmgrResult<String> {
+fn hash_metadata(frontmatter: &SkillFrontmatter) -> DaloResult<String> {
     let bytes = serde_json::to_vec(frontmatter)?;
     Ok(hash_bytes(&bytes))
 }
 
-fn hash_directory(source_root: &Path, skill_dir: &Path) -> SkillmgrResult<String> {
+fn hash_directory(source_root: &Path, skill_dir: &Path) -> DaloResult<String> {
     let mut files = Vec::new();
     collect_files(skill_dir, &mut files)?;
     files.sort();
@@ -289,7 +289,7 @@ fn hash_directory(source_root: &Path, skill_dir: &Path) -> SkillmgrResult<String
     Ok(hex_digest(hasher.finalize().as_slice()))
 }
 
-fn collect_files(dir: &Path, files: &mut Vec<PathBuf>) -> SkillmgrResult<()> {
+fn collect_files(dir: &Path, files: &mut Vec<PathBuf>) -> DaloResult<()> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         let file_type = entry.file_type()?;

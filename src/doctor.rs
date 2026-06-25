@@ -156,7 +156,7 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
         findings.push(finding_error(
             DoctorCode::LocalGitMissing,
             "local source Git repository is missing",
-            Some("skillmgr init".to_owned()),
+            Some("dalo init".to_owned()),
         ));
     }
 
@@ -226,7 +226,7 @@ fn check_store_layout(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) {
         findings.push(finding_error(
             DoctorCode::StoreMissing,
             format!("store root `{}` does not exist", paths.root.display()),
-            Some("skillmgr init".to_owned()),
+            Some("dalo init".to_owned()),
         ));
         return;
     }
@@ -249,7 +249,7 @@ fn check_store_layout(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) {
             findings.push(finding_error(
                 DoctorCode::StoreLayoutMissing,
                 format!("expected store path is missing: `{}`", path.display()),
-                Some("skillmgr init".to_owned()),
+                Some("dalo init".to_owned()),
             ));
         }
     }
@@ -265,7 +265,7 @@ fn read_config(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) -> Option<
             findings.push(finding_error(
                 DoctorCode::ConfigInvalid,
                 format!("config could not be read: {error}"),
-                Some("skillmgr init".to_owned()),
+                Some("dalo init".to_owned()),
             ));
             None
         }
@@ -282,7 +282,7 @@ fn read_state(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) -> Option<S
             findings.push(finding_error(
                 DoctorCode::StateInvalid,
                 format!("state could not be read: {error}"),
-                Some("skillmgr init".to_owned()),
+                Some("dalo init".to_owned()),
             ));
             None
         }
@@ -299,7 +299,7 @@ fn read_lock(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) -> bool {
             findings.push(finding_error(
                 DoctorCode::LockInvalid,
                 format!("user lock could not be read: {error}"),
-                Some("skillmgr sync".to_owned()),
+                Some("dalo sync".to_owned()),
             ));
             false
         }
@@ -325,7 +325,7 @@ fn check_targets(state: &StateFile, findings: &mut Vec<DoctorFinding>) {
                     target.id,
                     target.path.display()
                 ),
-                Some(format!("skillmgr target link {}", target.id)),
+                Some(format!("dalo target link {}", target.id)),
             ));
         }
 
@@ -369,7 +369,7 @@ fn check_owned_symlinks(paths: &StorePaths, state: &StateFile, findings: &mut Ve
                                 owned.link_path.display(),
                                 target.display()
                             ),
-                            Some(format!("skillmgr resolve remove-owned {}", owned.slot_name)),
+                            Some(format!("dalo resolve remove-owned {}", owned.slot_name)),
                         ));
                     }
                     Ok(target) if !target.exists() => {
@@ -380,7 +380,7 @@ fn check_owned_symlinks(paths: &StorePaths, state: &StateFile, findings: &mut Ve
                                 owned.link_path.display(),
                                 target.display()
                             ),
-                            Some(format!("skillmgr resolve remove-owned {}", owned.slot_name)),
+                            Some(format!("dalo resolve remove-owned {}", owned.slot_name)),
                         ));
                     }
                     Ok(_) => findings.push(ok(
@@ -393,7 +393,7 @@ fn check_owned_symlinks(paths: &StorePaths, state: &StateFile, findings: &mut Ve
                             "owned symlink `{}` could not be read: {error}",
                             owned.link_path.display()
                         ),
-                        Some(format!("skillmgr resolve remove-owned {}", owned.slot_name)),
+                        Some(format!("dalo resolve remove-owned {}", owned.slot_name)),
                     )),
                 }
             }
@@ -403,7 +403,7 @@ fn check_owned_symlinks(paths: &StorePaths, state: &StateFile, findings: &mut Ve
                     "recorded owned path `{}` is a real entry, not a symlink",
                     owned.link_path.display()
                 ),
-                Some(format!("skillmgr resolve remove-owned {}", owned.slot_name)),
+                Some(format!("dalo resolve remove-owned {}", owned.slot_name)),
             )),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 findings.push(finding_warning(
@@ -412,7 +412,7 @@ fn check_owned_symlinks(paths: &StorePaths, state: &StateFile, findings: &mut Ve
                         "recorded owned symlink `{}` is missing",
                         owned.link_path.display()
                     ),
-                    Some(format!("skillmgr resolve remove-owned {}", owned.slot_name)),
+                    Some(format!("dalo resolve remove-owned {}", owned.slot_name)),
                 ));
             }
             Err(error) => findings.push(finding_error(
@@ -421,7 +421,7 @@ fn check_owned_symlinks(paths: &StorePaths, state: &StateFile, findings: &mut Ve
                     "recorded owned symlink `{}` could not be inspected: {error}",
                     owned.link_path.display()
                 ),
-                Some(format!("skillmgr resolve remove-owned {}", owned.slot_name)),
+                Some(format!("dalo resolve remove-owned {}", owned.slot_name)),
             )),
         }
     }
@@ -483,7 +483,7 @@ fn check_resolution(
         findings.push(finding_warning(
             DoctorCode::PendingApproval,
             format!("skill `{}` is pending approval", skill.source_ref),
-            Some("skillmgr status".to_owned()),
+            Some("dalo status".to_owned()),
         ));
     }
 
@@ -502,7 +502,7 @@ fn check_resolution(
                         unmanaged.path.display(),
                         source_ref
                     ),
-                    Some(format!("skillmgr adopt {}", unmanaged.id)),
+                    Some(format!("dalo adopt {}", unmanaged.id)),
                 ));
             }
         }

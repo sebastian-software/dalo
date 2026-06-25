@@ -17,9 +17,9 @@ Implement target detection and linking for the first directory-based agents with
   - Hermes: `~/.hermes/skills`
   - generic folder target
 - Experimental registry placeholders for Cursor and OpenCode marked as unverified.
-- `skillmgr target detect`.
-- `skillmgr target link <target>`.
-- `skillmgr target unlink <target>`.
+- `dalo target detect`.
+- `dalo target link <target>`.
+- `dalo target unlink <target>`.
 - Canonical path de-duplication for logical targets that share a physical directory.
 - State updates that record logical targets and materialization directories separately.
 - `--dry-run` and `--json` support.
@@ -47,8 +47,8 @@ cargo fmt --check
 cargo test target
 cargo test
 cargo clippy --all-targets --all-features -- -D warnings
-cargo run -- --store /tmp/skillmgr-test target detect --json
-cargo run -- --store /tmp/skillmgr-test target link codex --dry-run
+cargo run -- --store /tmp/dalo-test target detect --json
+cargo run -- --store /tmp/dalo-test target link codex --dry-run
 git diff --check
 ```
 

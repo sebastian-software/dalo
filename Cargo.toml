@@ -1,10 +1,10 @@
 [package]
-name = "skillmgr"
+name = "dalo"
 version = "0.1.0"
 edition = "2024"
 description = "Git-backed skill management for AI agents."
 license = "MIT"
-repository = "https://github.com/sebastian-software/skillmgr"
+repository = "https://github.com/sebastian-software/dalo"
 
 [dependencies]
 anyhow = "1"

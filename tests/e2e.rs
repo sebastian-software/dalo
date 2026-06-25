@@ -10,7 +10,7 @@ fn e2e_local_only_sync_quickstart() {
     link_target(&store, &target);
     create_local_skill(&store, "review", "# Review\n");
 
-    Command::cargo_bin("skillmgr")
+    Command::cargo_bin("dalo")
         .expect("binary should build")
         .args(["--store"])
         .arg(&store)
@@ -39,7 +39,7 @@ fn e2e_team_source_sync_from_local_git_repo() {
     add_source(&store, "company", &repo);
     approve_source(&store, "company");
 
-    Command::cargo_bin("skillmgr")
+    Command::cargo_bin("dalo")
         .expect("binary should build")
         .args(["--store"])
         .arg(&store)
@@ -65,7 +65,7 @@ fn e2e_unmanaged_conflict_does_not_overwrite_real_folder() {
     create_local_skill(&store, "review", "# Managed Review\n");
     create_unmanaged_skill(&target, "review", "# Unmanaged Review\n");
 
-    Command::cargo_bin("skillmgr")
+    Command::cargo_bin("dalo")
         .expect("binary should build")
         .args(["--store"])
         .arg(&store)
@@ -90,7 +90,7 @@ fn e2e_adoption_flow_copies_then_replaces_on_yes() {
     link_target(&store, &target);
     create_unmanaged_skill(&target, "review", "# Review\n");
 
-    Command::cargo_bin("skillmgr")
+    Command::cargo_bin("dalo")
         .expect("binary should build")
         .args(["--store"])
         .arg(&store)
@@ -124,7 +124,7 @@ fn e2e_multi_source_shadowing_is_recorded_in_lock() {
     approve_source(&store, "a");
     approve_source(&store, "b");
 
-    Command::cargo_bin("skillmgr")
+    Command::cargo_bin("dalo")
         .expect("binary should build")
         .args(["--store"])
         .arg(&store)
@@ -155,7 +155,7 @@ fn e2e_dirty_team_source_blocks_sync() {
     )
     .expect("checkout should be dirtied");
 
-    Command::cargo_bin("skillmgr")
+    Command::cargo_bin("dalo")
         .expect("binary should build")
         .args(["--store"])
         .arg(&store)
@@ -169,7 +169,7 @@ fn e2e_dirty_team_source_blocks_sync() {
 }
 
 fn init_store(store: &std::path::Path) {
-    Command::cargo_bin("skillmgr")
+    Command::cargo_bin("dalo")
         .expect("binary should build")
         .args(["--store"])
         .arg(store)
@@ -179,7 +179,7 @@ fn init_store(store: &std::path::Path) {
 }
 
 fn link_target(store: &std::path::Path, target: &std::path::Path) {
-    Command::cargo_bin("skillmgr")
+    Command::cargo_bin("dalo")
         .expect("binary should build")
         .args(["--store"])
         .arg(store)
@@ -190,7 +190,7 @@ fn link_target(store: &std::path::Path, target: &std::path::Path) {
 }
 
 fn add_source(store: &std::path::Path, source: &str, repo: &std::path::Path) {
-    Command::cargo_bin("skillmgr")
+    Command::cargo_bin("dalo")
         .expect("binary should build")
         .args(["--store"])
         .arg(store)

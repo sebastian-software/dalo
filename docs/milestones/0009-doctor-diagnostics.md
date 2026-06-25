@@ -6,11 +6,11 @@ Depends on: M08, RFC 0001, RFC 0002
 
 ## Goal
 
-Make skillmgr self-explanatory when something is wrong. `doctor` should inspect environment, store, Git, targets, locks, and owned symlinks without mutating state.
+Make dalo self-explanatory when something is wrong. `doctor` should inspect environment, store, Git, targets, locks, and owned symlinks without mutating state.
 
 ## Deliverables
 
-- `skillmgr doctor`.
+- `dalo doctor`.
 - Checks for:
   - store exists and has expected layout
   - config parses
@@ -50,7 +50,7 @@ Make skillmgr self-explanatory when something is wrong. `doctor` should inspect 
 cargo fmt --check
 cargo test
 cargo clippy --all-targets --all-features -- -D warnings
-cargo run -- --store /tmp/skillmgr-test --json doctor
+cargo run -- --store /tmp/dalo-test --json doctor
 git diff --check
 ```
 
@@ -58,7 +58,7 @@ Validated on 2026-06-24.
 
 ## Completion Notes
 
-- Added `skillmgr doctor` with text and JSON output.
+- Added `dalo doctor` with text and JSON output.
 - Doctor is read-only and returns a report instead of mutating or repairing state.
 - Each finding includes severity, code, message, and an optional next command.
 - Added store layout, config, state, lock, local Git, `git`, `gh`, target, duplicate target directory, source dirtiness, pending approval, and cloud-synced path checks.

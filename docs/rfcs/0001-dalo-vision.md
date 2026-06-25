@@ -1,4 +1,4 @@
-# RFC 0001: Skillmgr Vision
+# RFC 0001: Dalo Vision
 
 Status: Draft  
 Date: 2026-06-23  
@@ -6,7 +6,7 @@ Author: Sebastian + Codex
 
 ## 1. Summary
 
-Skillmgr is a CLI-first manager for AI-agent skills on macOS and Linux. It centralizes skills and instruction packs from multiple Git-based sources, resolves them into one final asset set, materializes skills into configured agent skill directories through symlinks, and renders instruction packs into managed agent-instruction blocks.
+Dalo is a CLI-first manager for AI-agent skills on macOS and Linux. It centralizes skills and instruction packs from multiple Git-based sources, resolves them into one final asset set, materializes skills into configured agent skill directories through symlinks, and renders instruction packs into managed agent-instruction blocks.
 
 The vision addresses six core problems:
 
@@ -17,7 +17,7 @@ The vision addresses six core problems:
 5. Useful third-party repositories often contain many skills, of which a team may only want to use a selected subset.
 6. Teams and individuals also need lightweight shared conventions that belong in agent instruction files rather than in executable tool configuration.
 
-Skillmgr is intentionally not a public registry service and not a project-profile switcher. The central product idea is a robust source resolver with a local store, safe sync, visible conflicts, adoption of existing skills, and PR-first promotion into team repositories.
+Dalo is intentionally not a public registry service and not a project-profile switcher. The central product idea is a robust source resolver with a local store, safe sync, visible conflicts, adoption of existing skills, and PR-first promotion into team repositories.
 
 ## 2. Problem Statement
 
@@ -37,7 +37,7 @@ Current skill-management tools are typically optimized for individual users and 
 
 One obvious approach would be to make the agent skill directory itself a Git repository. This RFC rejects that approach as the default model because the agent directory would then become the installation target, active working tree, sync target, local experimentation area, and team database at the same time. That creates fragile merge situations in the exact directory that agents actively read and write.
 
-Instead, skillmgr manages its own store and uses agent directories as materialization targets and discovery locations.
+Instead, dalo manages its own store and uses agent directories as materialization targets and discovery locations.
 
 ## 3. Goals
 
@@ -79,28 +79,28 @@ A managed artifact intended for AI-agent use. In this RFC, supported agent asset
 A versioned Markdown artifact containing standing agent-facing conventions, such as team engineering defaults or personal communication preferences. Instruction packs are not executable tool configuration.
 
 **Managed Instruction Block**  
-A clearly marked block inserted by skillmgr into an agent instruction file. Skillmgr may update or remove only blocks it owns.
+A clearly marked block inserted by dalo into an agent instruction file. Dalo may update or remove only blocks it owns.
 
 **Source**  
-A location skillmgr reads agent assets from. Examples: a private local repository, a team Git repository, or an external Git source.
+A location dalo reads agent assets from. Examples: a private local repository, a team Git repository, or an external Git source.
 
 **Store**  
-The local area managed by skillmgr, for example `~/.skillmgr`, where sources are checked out, locks are stored, and local skills are versioned.
+The local area managed by dalo, for example `~/.dalo`, where sources are checked out, locks are stored, and local skills are versioned.
 
 **Target**  
-An agent location into which skillmgr materializes managed assets. For skills, this is usually a skill directory. For instruction packs, this is usually an agent instruction file such as `AGENTS.md`, `CLAUDE.md`, or an agent-specific global instruction file.
+An agent location into which dalo materializes managed assets. For skills, this is usually a skill directory. For instruction packs, this is usually an agent instruction file such as `AGENTS.md`, `CLAUDE.md`, or an agent-specific global instruction file.
 
 **Materialization**  
 The process of making resolved agent assets visible in agent targets through symlinks or managed instruction blocks.
 
 **Managed Skill**  
-A skill whose symlink or store entry is managed by skillmgr.
+A skill whose symlink or store entry is managed by dalo.
 
 **Unmanaged Skill**  
-A skill that exists in an agent target but was not created by skillmgr.
+A skill that exists in an agent target but was not created by dalo.
 
 **Local Skill**  
-A private user skill in the local skillmgr source.
+A private user skill in the local dalo source.
 
 **Team Skill**  
 A skill from a trusted team source.
@@ -109,7 +109,7 @@ A skill from a trusted team source.
 A skill from an external Git source referenced by another source and pinned through a lockfile.
 
 **Catalog Source**  
-An external Git repository that may contain multiple skills. Skillmgr can inspect the repository, build an inventory, and select only specific skills from it.
+An external Git repository that may contain multiple skills. Dalo can inspect the repository, build an inventory, and select only specific skills from it.
 
 **Selected Skill**  
 A skill explicitly chosen from a catalog source for inclusion in the resolved skill set.
@@ -124,14 +124,14 @@ A skill that is not materialized because another source with higher priority pro
 A user-facing status for a managed skill that exists in the store but is not linked into an agent target. Shadowing is one possible reason a skill is unlinked.
 
 **Blocked Same-Name Skill**
-A managed skill that skillmgr would otherwise materialize, but cannot link because the target slot is already occupied by a non-skillmgr entry such as an unmanaged skill, project skill, or foreign symlink.
+A managed skill that dalo would otherwise materialize, but cannot link because the target slot is already occupied by a non-dalo entry such as an unmanaged skill, project skill, or foreign symlink.
 
 **Dirty Skill**  
 A skill from a Git source whose working tree contains local changes.
 
 ## 6. Core Model
 
-Skillmgr separates three roles:
+Dalo separates three roles:
 
 1. **The store is the managed-state source of truth**  
    Git checkouts, private local skills, locks, source metadata, and materialization state live in the store.
@@ -148,7 +148,7 @@ Typical data flow:
 Git sources + local source
         |
         v
-skillmgr resolver
+dalo resolver
         |
         v
 resolved asset set + user lock
@@ -162,13 +162,13 @@ symlinks and managed instruction blocks in configured agent targets
 The default store lives at:
 
 ```text
-~/.skillmgr/
+~/.dalo/
 ```
 
 Proposed structure:
 
 ```text
-~/.skillmgr/
+~/.dalo/
   config.toml
   lock.toml
   state.toml
@@ -195,9 +195,9 @@ The exact internal layout may change in later versions. The stable public surfac
 
 ## 8. Configuration
 
-Skillmgr uses TOML for user, source, and lock configuration.
+Dalo uses TOML for user, source, and lock configuration.
 
-Example `~/.skillmgr/config.toml`:
+Example `~/.dalo/config.toml`:
 
 ```toml
 [settings]
@@ -208,7 +208,7 @@ sync_interval = "daily"
 [[sources]]
 id = "local"
 kind = "local"
-path = "~/.skillmgr/local"
+path = "~/.dalo/local"
 priority = 0
 enabled = true
 
@@ -258,9 +258,9 @@ Supported source classes:
 - `external`: a Git source referenced and pinned by another source
 - `catalog`: an external Git repository that exposes multiple selectable skills
 
-Team sources may declare external and catalog sources. That declaration makes the sources visible to skillmgr, but it does not by itself approve newly active skills. Any skill that would become active for the first time needs local approval unless it is covered by an existing author-, org-, source-, or skill-level approval rule. Sources added directly by the user must be added explicitly.
+Team sources may declare external and catalog sources. That declaration makes the sources visible to dalo, but it does not by itself approve newly active skills. Any skill that would become active for the first time needs local approval unless it is covered by an existing author-, org-, source-, or skill-level approval rule. Sources added directly by the user must be added explicitly.
 
-Catalog sources are treated as offer surfaces, not as all-or-nothing dependencies. A team source may inspect a catalog repository and select only the skills it wants to expose. Skillmgr still checks out or caches the full repository as needed, but only selected skills enter the resolved skill set.
+Catalog sources are treated as offer surfaces, not as all-or-nothing dependencies. A team source may inspect a catalog repository and select only the skills it wants to expose. Dalo still checks out or caches the full repository as needed, but only selected skills enter the resolved skill set.
 
 Sources may also provide instruction packs. Instruction packs are explicitly enabled by the user or team manifest, then rendered into managed blocks in configured agent instruction files.
 
@@ -306,15 +306,15 @@ Catalog selections should prefer stable skill IDs from `SKILL.md` frontmatter wh
 
 ## 10. Multi-Skill Catalog Repositories
 
-Some useful upstream repositories are collections of many skills rather than one package. Examples include marketing-oriented skill collections or design skill collections where one repository acts as a browsable catalog. These repositories may not have been authored for skillmgr and may not include skillmgr-specific manifests.
+Some useful upstream repositories are collections of many skills rather than one package. Examples include marketing-oriented skill collections or design skill collections where one repository acts as a browsable catalog. These repositories may not have been authored for dalo and may not include dalo-specific manifests.
 
-Skillmgr supports these repositories through catalog mode:
+Dalo supports these repositories through catalog mode:
 
 1. **Inspect**  
-   Skillmgr scans the repository for candidate skill directories. A candidate normally contains `SKILL.md`.
+   Dalo scans the repository for candidate skill directories. A candidate normally contains `SKILL.md`.
 
 2. **Inventory**  
-   Skillmgr records the discovered skills, their paths, stable IDs when present, names, descriptions, content fingerprints, and dependency declarations.
+   Dalo records the discovered skills, their paths, stable IDs when present, names, descriptions, content fingerprints, and dependency declarations.
 
 3. **Select**  
    A team or user source explicitly selects the skills it wants to expose. Unselected skills remain visible in catalog status but are not materialized.
@@ -334,7 +334,7 @@ Catalog support must distinguish four update outcomes:
 
 `new_available` is informational. `selected_changed` is reviewable through the normal source-refresh flow. `selected_moved` may be auto-reconciled only when the stable skill ID matches. `selected_removed` blocks scheduled sync for that selection until the user or team updates the manifest.
 
-Catalog repositories may contain internal skill dependencies. Skillmgr should support explicit dependency declarations in `SKILL.md` frontmatter:
+Catalog repositories may contain internal skill dependencies. Dalo should support explicit dependency declarations in `SKILL.md` frontmatter:
 
 ```markdown
 ---
@@ -360,15 +360,15 @@ V1 frontmatter interpretation is intentionally small:
 - `owners`: maintainers or responsible team/user handles
 - `tags`: optional discovery labels
 
-Unknown fields are tolerated and preserved by source repositories, but V1 does not interpret them. For existing skills without `id`, skillmgr falls back to slot name and path, with stronger drift warnings.
+Unknown fields are tolerated and preserved by source repositories, but V1 does not interpret them. For existing skills without `id`, dalo falls back to slot name and path, with stronger drift warnings.
 
 If a selected skill declares required skills from the same source or catalog, those required skills become part of the effective selection automatically. This expansion is transitive: required skills may require other skills, and the resolver walks the full closure before materialization.
 
 Required skills are still subject to approval. If a required skill would become active for the first time and is not covered by an existing skill-, source-, author-, or org-level approval, the dependent skill is not materialized until approval is granted.
 
-If a required same-source skill is missing, blocked by a same-name target entry, unlinked because of conflict, pending approval, or otherwise not linkable, the dependent skill is blocked during preflight. Skillmgr must not materialize a selected skill whose declared required closure cannot be linked consistently.
+If a required same-source skill is missing, blocked by a same-name target entry, unlinked because of conflict, pending approval, or otherwise not linkable, the dependent skill is blocked during preflight. Dalo must not materialize a selected skill whose declared required closure cannot be linked consistently.
 
-Cross-source dependencies are checked only and are never auto-installed across source boundaries. Skillmgr may add best-effort warnings when skill text mentions another skill by name, but text inference must never be the only blocker.
+Cross-source dependencies are checked only and are never auto-installed across source boundaries. Dalo may add best-effort warnings when skill text mentions another skill by name, but text inference must never be the only blocker.
 
 ## 11. Lockfiles
 
@@ -384,9 +384,9 @@ Normal `sync` refreshes clean tracking team sources, respects pinned sources, re
 
 `source refresh` creates targeted lockfile changes for pinned external, catalog, or pinned team sources and can turn them into PRs.
 
-For catalog sources, lockfiles must also record the selected skills and the inventory snapshot used to resolve them. This allows skillmgr to detect upstream structure drift during `source refresh` rather than silently losing or adding skills.
+For catalog sources, lockfiles must also record the selected skills and the inventory snapshot used to resolve them. This allows dalo to detect upstream structure drift during `source refresh` rather than silently losing or adding skills.
 
-Lockfiles use TOML and include `schema_version`. A newer unsupported major schema version blocks mutation until skillmgr is upgraded. Unknown minor-version fields are ignored for forward compatibility. `source-lock.toml` is prescriptive for pinned external, catalog, and pinned team sources. The user's `lock.toml` is a resolved snapshot: prescriptive for pinned sources and descriptive for tracking team sources.
+Lockfiles use TOML and include `schema_version`. A newer unsupported major schema version blocks mutation until dalo is upgraded. Unknown minor-version fields are ignored for forward compatibility. `source-lock.toml` is prescriptive for pinned external, catalog, and pinned team sources. The user's `lock.toml` is a resolved snapshot: prescriptive for pinned sources and descriptive for tracking team sources.
 
 Catalog inventory entries record at least stable ID when present, slot name, path, content hash, metadata hash, and declared `requires`. Move detection is automatic only when the stable ID is unchanged. Without a stable ID, path/name/content heuristics may warn about a likely move, but must not silently rewrite the selection.
 
@@ -400,7 +400,7 @@ ref = "company:copy-editing"
 slot_name = "copy-editing"
 stable_id = "company.copy-editing"
 source = "company"
-path = "~/.skillmgr/sources/company/checkout/skills/copy-editing"
+path = "~/.dalo/sources/company/checkout/skills/copy-editing"
 commit = "abc123"
 status = "active"
 
@@ -409,7 +409,7 @@ ref = "oss:copy-editing"
 slot_name = "copy-editing"
 stable_id = "oss.copy-editing"
 source = "oss"
-path = "~/.skillmgr/sources/oss/checkout/skills/copy-editing"
+path = "~/.dalo/sources/oss/checkout/skills/copy-editing"
 commit = "def456"
 status = "unlinked"
 reason = "shadowed"
@@ -447,7 +447,7 @@ Skill identity has three layers:
    A long-lived identifier from `SKILL.md` frontmatter, used for dependencies, catalog move detection, drift tracking, and promotion history.
 
 2. **Source-qualified reference**
-   Skillmgr's internal unambiguous reference, with the form `<source-id>:<slot-name>`, for example `company:copy-editing` or `coreyhaines-marketing:positioning`.
+   Dalo's internal unambiguous reference, with the form `<source-id>:<slot-name>`, for example `company:copy-editing` or `coreyhaines-marketing:positioning`.
 
 3. **Slot name**
    The visible install name and physical target-directory name. This is the conflict and shadowing key because each target directory can contain only one entry with a given name.
@@ -476,14 +476,14 @@ Minimum common denominator:
 - slot names must normalize to a safe single path segment.
 - `id` is recommended but not immediately required for migration.
 
-The default visible install name is the short slot name. Skillmgr does not automatically namespace every installed skill with its source. When multiple sources provide the same slot name, source priority decides which one gets the short name and the others become unlinked with reason `shadowed`.
+The default visible install name is the short slot name. Dalo does not automatically namespace every installed skill with its source. When multiple sources provide the same slot name, source priority decides which one gets the short name and the others become unlinked with reason `shadowed`.
 
 V1 does not provide a parallel alias layer for same-name variants. If users later need two same-name variants at the same time, a future explicit rename/adapt flow can copy or fork one variant under a new slot name and update machine-readable same-source references where possible. Lockfiles, dependency checks, and catalog move detection use stable IDs or source-qualified references, never user-facing aliases.
 
 Optional dependency metadata:
 
 - `requires` lists dependencies that should be available together with this skill. Supported reference forms are stable skill IDs, source-qualified refs, and same-source relative slot names.
-- Same-source relative slot names are first-class, not just legacy compatibility. External multi-skill repositories often describe relationships in the local vocabulary of that repository, and skillmgr should not require patching those upstream skills before they can be used.
+- Same-source relative slot names are first-class, not just legacy compatibility. External multi-skill repositories often describe relationships in the local vocabulary of that repository, and dalo should not require patching those upstream skills before they can be used.
 - Relative `requires` entries resolve only inside the declaring source or catalog. They do not search all configured sources.
 - Cross-source dependencies require a stable ID or source-qualified ref and are checked only; they are never auto-installed across source boundaries.
 - Visible aliases are never dependency targets.
@@ -543,22 +543,22 @@ Instruction packs are not auto-enabled just because a source provides them. The 
 Instruction packs are materialized into agent instruction files as managed blocks:
 
 ```markdown
-<!-- skillmgr:start company.engineering-defaults -->
+<!-- dalo:start company.engineering-defaults -->
 Use OXLint for linting and OXFMT for formatting.
-<!-- skillmgr:end company.engineering-defaults -->
+<!-- dalo:end company.engineering-defaults -->
 ```
 
-Managed blocks are the portable baseline for V1.1. Some agents support native file imports or prompt-file references, but support is inconsistent and often agent-specific. Skillmgr must not assume a shared include syntax across targets. A later adapter may use native includes only when that target's support is verified; the fallback and default behavior remains rendering skillmgr-owned managed blocks into the configured instruction file.
+Managed blocks are the portable baseline for V1.1. Some agents support native file imports or prompt-file references, but support is inconsistent and often agent-specific. Dalo must not assume a shared include syntax across targets. A later adapter may use native includes only when that target's support is verified; the fallback and default behavior remains rendering dalo-owned managed blocks into the configured instruction file.
 
 Rules:
 
-- skillmgr may only create, update, reorder, or remove blocks marked with its own `skillmgr:start` and `skillmgr:end` markers.
-- skillmgr must not emit unverified include/import references as the primary materialization strategy.
-- skillmgr must never rewrite unmarked content in files such as `AGENTS.md`, `CLAUDE.md`, or agent-specific global instruction files.
+- dalo may only create, update, reorder, or remove blocks marked with its own `dalo:start` and `dalo:end` markers.
+- dalo must not emit unverified include/import references as the primary materialization strategy.
+- dalo must never rewrite unmarked content in files such as `AGENTS.md`, `CLAUDE.md`, or agent-specific global instruction files.
 - project-local instruction files remain owned by the project repository and are not replaced by global instruction packs.
 - team instruction packs and local instruction packs may both be active.
 - source priority decides ordering when multiple instruction packs target the same file.
-- topic overlap is reported by `status` and `doctor`, but skillmgr does not try to infer semantic contradictions.
+- topic overlap is reported by `status` and `doctor`, but dalo does not try to infer semantic contradictions.
 - local instruction packs may override or supplement team instruction packs, but overrides must be visible.
 
 Drift handling in the first instruction-pack release is intentionally small. Malformed managed block markers block writes to that file. A drifted managed block blocks scheduled or non-interactive sync. Interactive sync may restore the block from source or leave it as-is. Converting a drifted block into a local instruction pack is a later enhancement.
@@ -567,11 +567,11 @@ The resolver should treat instruction packs as a separate asset type from skills
 
 ## 14. Target Registry
 
-Skillmgr knows default targets for prominent agents. V1 supports a small verified target set:
+Dalo knows default targets for prominent agents. V1 supports a small verified target set:
 
 | Target | V1 status | Default skill path | Notes |
 | --- | --- | --- | --- |
-| Codex | supported | `~/.agents/skills` | Codex also discovers repo-scoped `.agents/skills`; skillmgr manages only the global/user target. |
+| Codex | supported | `~/.agents/skills` | Codex also discovers repo-scoped `.agents/skills`; dalo manages only the global/user target. |
 | Claude Code | supported | `~/.claude/skills` | Claude has explicit precedence rules; same-name project skills may still affect runtime behavior. |
 | OpenClaw | supported | `~/.agents/skills` | OpenClaw treats this as personal agent skills; workspace and project-agent skills have higher precedence. |
 | Hermes | supported | `~/.hermes/skills` | Hermes uses this as its primary skill source of truth; `~/.agents/skills` can be configured separately as an external directory. |
@@ -579,7 +579,7 @@ Skillmgr knows default targets for prominent agents. V1 supports a small verifie
 | Cursor | experimental | unverified | Registry entry may exist, but V1 should not promise full support until discovery behavior is verified. |
 | OpenCode | experimental | unverified | Registry entry may exist, but V1 should not promise full support until discovery behavior is verified. |
 
-Multiple target adapters may resolve to the same physical directory. For example, Codex and OpenClaw can both use `~/.agents/skills`. Skillmgr must canonicalize target paths, de-duplicate identical materialization directories, and still report the logical agents that depend on that directory.
+Multiple target adapters may resolve to the same physical directory. For example, Codex and OpenClaw can both use `~/.agents/skills`. Dalo must canonicalize target paths, de-duplicate identical materialization directories, and still report the logical agents that depend on that directory.
 
 The registry provides default paths, detection rules, link policy, and instruction-file policy. Users can manually add or override targets.
 
@@ -599,11 +599,11 @@ Managed skills are installed into every enabled target as one directory-level sy
 
 Rules:
 
-- skillmgr only creates directory symlinks to resolved store paths.
-- skillmgr only writes instruction text inside its own managed block markers.
-- skillmgr does not replace real directories or files without an explicit action.
-- skillmgr only removes symlinks that it created and knows in `state.toml`.
-- skillmgr only removes instruction blocks that it created and knows in `state.toml`.
+- dalo only creates directory symlinks to resolved store paths.
+- dalo only writes instruction text inside its own managed block markers.
+- dalo does not replace real directories or files without an explicit action.
+- dalo only removes symlinks that it created and knows in `state.toml`.
+- dalo only removes instruction blocks that it created and knows in `state.toml`.
 - Unmanaged files and directories remain untouched.
 - Unmarked instruction-file content remains untouched.
 - Broken symlinks are reported by `doctor` and `status`.
@@ -614,16 +614,16 @@ Directory symlinks are deliberate. If an agent edits a materialized team skill t
 
 If a resolved managed skill wants a slot already occupied by an unmanaged real directory or foreign symlink, `sync` reports a conflict and never touches the existing entry. V1 blocks only that affected target slot where possible and continues materializing safe slots. A later `resolve` flow may offer adoption, explicit replacement, ignore/protect, or a rename/adapt flow, but none of those choices happen automatically.
 
-If a skill is removed from a source, skillmgr removes its own symlink from targets during the next sync. The actual source content remains available only through Git history or the store checkout.
+If a skill is removed from a source, dalo removes its own symlink from targets during the next sync. The actual source content remains available only through Git history or the store checkout.
 
-If an instruction pack is removed from a source, skillmgr removes only its own managed block from configured instruction files. Manual content outside skillmgr markers must never be removed.
+If an instruction pack is removed from a source, dalo removes only its own managed block from configured instruction files. Manual content outside dalo markers must never be removed.
 
 ## 16. Status Model
 
 `status` should be able to show skills in at least these states:
 
-- `managed`: installed by skillmgr
-- `unmanaged`: exists in a target but is not managed by skillmgr
+- `managed`: installed by dalo
+- `unmanaged`: exists in a target but is not managed by dalo
 - `unlinked`: managed skill exists in the store but is not linked into a target
 - `local`: from the user's local source
 - `team`: from a team source
@@ -662,14 +662,14 @@ Global flags:
 
 `--yes` must not create Git commits. Commits write source history and require an explicit command, explicit flag, or interactive confirmation in a flow that is already about committing or promoting work.
 
-### 17.1 `skillmgr init`
+### 17.1 `dalo init`
 
 Sets up the store, local source, configuration, and optional targets.
 
 Behavior:
 
-- creates `~/.skillmgr`
-- initializes `~/.skillmgr/local` as a private Git repository
+- creates `~/.dalo`
+- initializes `~/.dalo/local` as a private Git repository
 - detects existing agent targets
 - detects existing agent instruction files
 - shows unmanaged skills
@@ -677,36 +677,36 @@ Behavior:
 - does not rewrite existing instruction files
 - offers target linking
 
-### 17.2 `skillmgr target detect`
+### 17.2 `dalo target detect`
 
 Detects known agent skill directories, instruction files, and unmanaged skills.
 
 No mutation.
 
-### 17.3 `skillmgr target link`
+### 17.3 `dalo target link`
 
 Enables a target for materialization.
 
 Examples:
 
 ```text
-skillmgr target link codex
-skillmgr target link generic --id my-agent --path ~/.my-agent/skills
+dalo target link codex
+dalo target link generic --id my-agent --path ~/.my-agent/skills
 ```
 
-### 17.4 `skillmgr target unlink`
+### 17.4 `dalo target unlink`
 
-Disables a target. Optionally removes skillmgr-owned symlinks and managed instruction blocks from that target. Unmanaged files and unmarked instruction content are never removed.
+Disables a target. Optionally removes dalo-owned symlinks and managed instruction blocks from that target. Unmanaged files and unmarked instruction content are never removed.
 
-### 17.5 `skillmgr source add`
+### 17.5 `dalo source add`
 
 Adds a Git or local source.
 
 Examples:
 
 ```text
-skillmgr source add company git@github.com:example/company-skills.git
-skillmgr source add oss https://github.com/example/oss-skills.git --priority 20
+dalo source add company git@github.com:example/company-skills.git
+dalo source add oss https://github.com/example/oss-skills.git --priority 20
 ```
 
 New direct sources must be added explicitly by the user.
@@ -714,25 +714,25 @@ New direct sources must be added explicitly by the user.
 Catalog examples:
 
 ```text
-skillmgr source add-catalog marketing-skills https://github.com/example/marketing-skills.git
-skillmgr source inspect marketing-skills
-skillmgr source select marketing-skills positioning
-skillmgr source select marketing-skills launch-copy --path skills/launch-copy
+dalo source add-catalog marketing-skills https://github.com/example/marketing-skills.git
+dalo source inspect marketing-skills
+dalo source select marketing-skills positioning
+dalo source select marketing-skills launch-copy --path skills/launch-copy
 ```
 
-### 17.6 `skillmgr source list`
+### 17.6 `dalo source list`
 
 Lists sources, priority, trust, sync status, head commit, and dirty state.
 
-### 17.7 `skillmgr source remove`
+### 17.7 `dalo source remove`
 
-Disables or removes a source. On the next sync, only skillmgr-owned symlinks are removed.
+Disables or removes a source. On the next sync, only dalo-owned symlinks are removed.
 
-### 17.8 `skillmgr source priority`
+### 17.8 `dalo source priority`
 
 Sets source order. This order decides equal-name skill conflicts.
 
-### 17.9 `skillmgr status`
+### 17.9 `dalo status`
 
 Shows:
 
@@ -755,7 +755,7 @@ Shows:
 
 `status --json` is the foundation for agents, CI, or later UI layers.
 
-### 17.10 `skillmgr sync`
+### 17.10 `dalo sync`
 
 Refreshes the local skill environment and materializes the resolved asset set.
 
@@ -776,32 +776,32 @@ Normal behavior:
 
 `sync` is the everyday command. It is intentionally both the source-refresh step for tracking team sources and the materialization step for agent targets. Scheduler integrations run ordinary `sync` with non-interactive flags such as `--yes --quiet`; there is no separate `sync --auto` mode in the core model.
 
-### 17.11 `skillmgr instruction list`
+### 17.11 `dalo instruction list`
 
 Lists available and active instruction packs from all active sources.
 
-### 17.12 `skillmgr instruction enable`
+### 17.12 `dalo instruction enable`
 
 Enables an instruction pack for materialization.
 
 Example:
 
 ```text
-skillmgr instruction enable company.engineering-defaults
+dalo instruction enable company.engineering-defaults
 ```
 
-### 17.13 `skillmgr instruction disable`
+### 17.13 `dalo instruction disable`
 
 Disables an instruction pack and removes only its owned managed blocks during the next sync.
 
-### 17.14 `skillmgr adopt`
+### 17.14 `dalo adopt`
 
 Adopts unmanaged skills into the local source.
 
 Default flow:
 
 1. detect unmanaged skill
-2. copy skill into `~/.skillmgr/local/skills/<slot-name>`
+2. copy skill into `~/.dalo/local/skills/<slot-name>`
 3. ask whether to commit the copied skill when running interactively
 4. offer to replace the original folder with a symlink
 5. do not remove existing files without confirmation
@@ -812,7 +812,7 @@ If the user declines the commit prompt, or if `adopt` runs non-interactively wit
 
 `.local` skills remain protected. Adoption is possible but always explicit.
 
-### 17.15 `skillmgr promote`
+### 17.15 `dalo promote`
 
 Turns a local skill or dirty team edit into a team contribution.
 
@@ -830,26 +830,26 @@ Vision:
 Examples:
 
 ```text
-skillmgr promote copy-editing --target company
-skillmgr promote copy-editing --from-dirty --target company
+dalo promote copy-editing --target company
+dalo promote copy-editing --from-dirty --target company
 ```
 
-### 17.16 `skillmgr resolve`
+### 17.16 `dalo resolve`
 
 Explicit tools for resolving known blocking states.
 
 V1 scope:
 
-- `skillmgr resolve list`: show blocking states with stable IDs and suggested commands
-- `skillmgr resolve adopt <id>`: resolve a managed/unmanaged collision by copying the unmanaged entry into the local source first
-- `skillmgr resolve keep <id>`: keep an unmanaged/protected same-name entry and leave the managed skill blocked for that target slot
-- `skillmgr resolve remove-owned <id>`: remove broken or orphaned skillmgr-owned symlinks
+- `dalo resolve list`: show blocking states with stable IDs and suggested commands
+- `dalo resolve adopt <id>`: resolve a managed/unmanaged collision by copying the unmanaged entry into the local source first
+- `dalo resolve keep <id>`: keep an unmanaged/protected same-name entry and leave the managed skill blocked for that target slot
+- `dalo resolve remove-owned <id>`: remove broken or orphaned dalo-owned symlinks
 
 V1 `resolve` is a small safe toolbox, not a general repair assistant. It does not run a broad "fix everything" flow. Dirty team skills are reported; `promote` is the PR-first path for turning those edits into team changes. Instruction-pack drift recovery belongs to V1.1 because instruction packs themselves are deferred.
 
 Later `resolve` slices may add source restore, lock regeneration, rename/adapt, instruction-block drift recovery, and richer interactive guidance.
 
-### 17.17 `skillmgr source refresh`
+### 17.17 `dalo source refresh`
 
 Refreshes pinned source references and creates reviewable lockfile changes.
 
@@ -863,7 +863,7 @@ Default:
 - removed selected catalog skills block until selection is changed or intentionally removed
 - optional GitHub PR for lockfile changes
 
-### 17.18 `skillmgr doctor`
+### 17.18 `dalo doctor`
 
 Checks:
 
@@ -886,21 +886,21 @@ Checks:
 - scheduler installation
 - unknown targets
 
-### 17.19 `skillmgr approve`
+### 17.19 `dalo approve`
 
 Approves newly active skill artifacts or the origins that produce them.
 
 Examples:
 
 ```text
-skillmgr approve list
-skillmgr approve skill coreyhaines-marketing:launch-copy
-skillmgr approve source coreyhaines-marketing
-skillmgr approve author coreyhaines
-skillmgr approve org company
+dalo approve list
+dalo approve skill coreyhaines-marketing:launch-copy
+dalo approve source coreyhaines-marketing
+dalo approve author coreyhaines
+dalo approve org company
 ```
 
-Approval is local user state stored in the skillmgr store, not in the team repository. Approval scopes:
+Approval is local user state stored in the dalo store, not in the team repository. Approval scopes:
 
 - `skill`: approves exactly one source-qualified skill, optionally tied to its stable ID and current fingerprint
 - `source`: approves future active skills from one source
@@ -911,7 +911,7 @@ Scheduled or non-interactive `sync` never grants approvals. It skips or blocks n
 
 ## 18. Scheduled Sync
 
-`skillmgr autosync install` sets up an OS-native scheduler:
+`dalo autosync install` sets up an OS-native scheduler:
 
 - macOS: launchd
 - Linux: systemd timer, falling back to cron only when necessary
@@ -920,7 +920,7 @@ Default:
 
 - daily
 - with jitter
-- runs `skillmgr sync --yes --quiet`
+- runs `dalo sync --yes --quiet`
 - writes logs into the store
 - reports blocking conflicts visibly through `status` and `doctor`
 
@@ -966,7 +966,7 @@ V1 behavior:
 
 Guided resolution is explicit and may include:
 
-- `adopt`: copy the unmanaged folder into the local source first, then optionally replace the target folder with a skillmgr symlink
+- `adopt`: copy the unmanaged folder into the local source first, then optionally replace the target folder with a dalo symlink
 - keep/protect unmanaged: leave the existing folder in place and skip the managed skill for that target slot
 - explicit replacement: only after confirmation, preserve the unmanaged folder first, then create the managed symlink
 - rename/adapt: in a later slice, intentionally create a renamed variant and update machine-readable same-source references where possible
@@ -975,12 +975,12 @@ None of these actions happen during scheduled sync.
 
 ### 19.2.1 Deferred Rename/Adapt Flow
 
-V1 and V1.1 do not provide a parallel alias layer or runtime router skill for same-name variants. If users later need two same-name variants at the same time, skillmgr may add an explicit rename/adapt flow.
+V1 and V1.1 do not provide a parallel alias layer or runtime router skill for same-name variants. If users later need two same-name variants at the same time, dalo may add an explicit rename/adapt flow.
 
 Example:
 
 ```text
-skillmgr adapt-name coreyhaines:review review_coreyhaines
+dalo adapt-name coreyhaines:review review_coreyhaines
 ```
 
 Expected semantics:
@@ -1023,7 +1023,7 @@ Rules:
 
 An orphan exists when a target symlink or state entry points to a source or skill that no longer exists.
 
-Skillmgr may remove its own orphaned symlinks, but it should make that visible in `status` and `doctor`.
+Dalo may remove its own orphaned symlinks, but it should make that visible in `status` and `doctor`.
 
 ### 19.6 Catalog Drift
 
@@ -1051,7 +1051,7 @@ Rules:
 
 ## 20. Security and Trust Model
 
-Skillmgr treats skills as executable agent instructions with supply-chain relevance.
+Dalo treats skills as executable agent instructions with supply-chain relevance.
 
 Principles:
 
@@ -1075,9 +1075,9 @@ Approval may be granted at different scopes:
 - author-level approval for future active skills attributed to a known author
 - org-level approval for future active skills attributed to an organization or owner namespace
 
-When a team source, external source, catalog source, or source refresh introduces a skill that would become active for the first time, skillmgr checks these approval rules. If no rule applies, the skill is `pending_approval`. Interactive commands may offer to approve the skill or a broader origin. Scheduled sync must not approve anything and must not materialize unapproved skills. If an unapproved higher-priority skill would shadow an already approved lower-priority skill, the approved skill remains active until the new one is approved.
+When a team source, external source, catalog source, or source refresh introduces a skill that would become active for the first time, dalo checks these approval rules. If no rule applies, the skill is `pending_approval`. Interactive commands may offer to approve the skill or a broader origin. Scheduled sync must not approve anything and must not materialize unapproved skills. If an unapproved higher-priority skill would shadow an already approved lower-priority skill, the approved skill remains active until the new one is approved.
 
-Approval metadata should be stored locally in the skillmgr store and exposed through `status --json` and `doctor`. At minimum it should record the approval scope, the approved identifier, the granting user or local actor when known, and enough source metadata to explain why a later skill matched the approval.
+Approval metadata should be stored locally in the dalo store and exposed through `status --json` and `doctor`. At minimum it should record the approval scope, the approved identifier, the granting user or local actor when known, and enough source metadata to explain why a later skill matched the approval.
 
 `doctor` should surface risks, for example:
 
@@ -1096,9 +1096,9 @@ Approval metadata should be stored locally in the skillmgr store and exposed thr
 
 ## 21. Project-Specific Skills
 
-Real project-specific skills remain in the code repository they belong to. Many agents already discover those project skills by themselves. Skillmgr should not automatically switch global user targets based on the current project.
+Real project-specific skills remain in the code repository they belong to. Many agents already discover those project skills by themselves. Dalo should not automatically switch global user targets based on the current project.
 
-Skillmgr cannot know every future project context, especially for agents that discover nested project skills dynamically based on the current working directory or edited files. When skillmgr can see a same-name project skill during a concrete target scan, it should report the managed skill as `blocked_by_same_name_skill` with the blocker path. When it cannot see the project context, it makes no global guarantee.
+Dalo cannot know every future project context, especially for agents that discover nested project skills dynamically based on the current working directory or edited files. When dalo can see a same-name project skill during a concrete target scan, it should report the managed skill as `blocked_by_same_name_skill` with the blocker path. When it cannot see the project context, it makes no global guarantee.
 
 ## 22. Promotion Flow
 
@@ -1107,8 +1107,8 @@ Promotion is the feedback path from local skill growth into team standards.
 ### 22.1 Local Skill to Team Skill
 
 ```text
-skillmgr adopt writing-helper
-skillmgr promote writing-helper --target company
+dalo adopt writing-helper
+dalo promote writing-helper --target company
 ```
 
 Expected behavior:
@@ -1123,8 +1123,8 @@ Expected behavior:
 ### 22.2 Dirty Team Edit to PR
 
 ```text
-skillmgr status
-skillmgr promote copy-editing --from-dirty --target company
+dalo status
+dalo promote copy-editing --from-dirty --target company
 ```
 
 Expected behavior:
@@ -1170,7 +1170,7 @@ Blockers:
 - Multiple sources resolve deterministically through user priority.
 - The user lock records the resolved asset set; it is prescriptive for pinned sources and descriptive for tracking team sources.
 - Instruction packs are resolved as a separate asset type from skills.
-- Instruction packs render only into skillmgr-owned managed blocks.
+- Instruction packs render only into dalo-owned managed blocks.
 - Unmarked content in `AGENTS.md`, `CLAUDE.md`, or agent-specific instruction files is never rewritten.
 - Topic overlap between instruction packs is reported without semantic inference.
 - Scheduled sync blocks on managed instruction block drift.
@@ -1185,7 +1185,7 @@ Blockers:
 - Newly active skills are not materialized until approved directly or covered by an approved source, author, or org.
 - Managed skills are materialized through symlinks.
 - Managed/unmanaged slot collisions are reported without touching the unmanaged entry, while other safe slots still materialize where possible.
-- Removed skills delete only skillmgr-owned symlinks, never real files.
+- Removed skills delete only dalo-owned symlinks, never real files.
 - `adopt` copies into the local source first and replaces the original folder only after confirmation.
 - `.local` skills remain protected.
 - `promote` uses `git` and authenticated `gh` directly to create a PR for local skills or dirty team edits against the explicitly selected team target.

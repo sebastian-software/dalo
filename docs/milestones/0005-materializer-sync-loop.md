@@ -20,7 +20,7 @@ Implement the first safe end-to-end local sync loop: inventory -> resolve -> pla
   - conflict on unmanaged real entry
   - conflict on foreign symlink
   - no-op
-- `skillmgr sync` for local source and configured targets.
+- `dalo sync` for local source and configured targets.
 - Directory-level symlink creation.
 - `--dry-run` using the same plan path as real sync.
 - Idempotent second sync.
@@ -40,7 +40,7 @@ Implement the first safe end-to-end local sync loop: inventory -> resolve -> pla
 - Foreign symlinks are never overwritten.
 - User-deleted owned symlinks are recreated.
 - Stale owned symlinks are relinked.
-- Removed desired skills remove only skillmgr-owned symlinks.
+- Removed desired skills remove only dalo-owned symlinks.
 - Running `sync` twice with no changes produces an all-no-op plan.
 - `sync --dry-run` mutates nothing.
 
@@ -58,7 +58,7 @@ git diff --check
 ## Completion Notes
 
 - Added a materialization reconciliation plan for create, relink, remove, drop-record, conflict, and no-op operations.
-- Implemented `skillmgr sync` for the current local/team resolution model without source refresh.
+- Implemented `dalo sync` for the current local/team resolution model without source refresh.
 - Materialized managed skills as directory-level symlinks into configured target directories.
 - Made `sync --dry-run` use the same plan path while writing nothing.
 - Blocked unmanaged real entries and foreign symlinks instead of overwriting them.

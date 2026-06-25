@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::{SkillmgrError, SkillmgrResult};
+use crate::error::{DaloError, DaloResult};
 use crate::git;
 use crate::store::{self, ApprovalRecord, StorePaths};
 
@@ -12,7 +12,7 @@ use crate::store::{self, ApprovalRecord, StorePaths};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SourceKind {
-    /// Private local source in the skillmgr store.
+    /// Private local source in the dalo store.
     Local,
     /// Git-backed team source.
     Team,
@@ -66,17 +66,17 @@ pub struct SourcePriorityReport {
 }
 
 /// Add a team source and clone it into the store.
-pub fn add_team_source(paths: &StorePaths, id: &str, url: &str) -> SkillmgrResult<SourceAddReport> {
+pub fn add_team_source(paths: &StorePaths, id: &str, url: &str) -> DaloResult<SourceAddReport> {
     let mut config = store::read_config(paths)?;
     if config.sources.iter().any(|source| source.id == id) {
-        return Err(SkillmgrError::SourceAlreadyExists {
+        return Err(DaloError::SourceAlreadyExists {
             source_id: id.to_owned(),
         });
     }
 
     let checkout = paths.sources_dir.join(id).join("checkout");
     if checkout.exists() {
-        return Err(SkillmgrError::InvalidStorePath {
+        return Err(DaloError::InvalidStorePath {
             path: checkout,
             reason: "source checkout path already exists".to_owned(),
         });
@@ -117,7 +117,7 @@ pub fn add_team_source(paths: &StorePaths, id: &str, url: &str) -> SkillmgrResul
 }
 
 /// List configured sources.
-pub fn list_sources(paths: &StorePaths) -> SkillmgrResult<SourceListReport> {
+pub fn list_sources(paths: &StorePaths) -> DaloResult<SourceListReport> {
     let mut sources = store::read_config(paths)?.sources;
     sources.sort_by(|left, right| {
         left.priority
@@ -132,10 +132,10 @@ pub fn set_source_priority(
     paths: &StorePaths,
     id: &str,
     priority: i32,
-) -> SkillmgrResult<SourcePriorityReport> {
+) -> DaloResult<SourcePriorityReport> {
     let mut config = store::read_config(paths)?;
     let Some(source) = config.sources.iter_mut().find(|source| source.id == id) else {
-        return Err(SkillmgrError::UnknownSource {
+        return Err(DaloError::UnknownSource {
             source_id: id.to_owned(),
         });
     };
@@ -152,7 +152,7 @@ pub fn set_source_priority(
 }
 
 /// Refresh clean tracking team sources before sync.
-pub fn refresh_tracking_team_sources(paths: &StorePaths) -> SkillmgrResult<()> {
+pub fn refresh_tracking_team_sources(paths: &StorePaths) -> DaloResult<()> {
     let config = store::read_config(paths)?;
     for source in config
         .sources
@@ -160,7 +160,7 @@ pub fn refresh_tracking_team_sources(paths: &StorePaths) -> SkillmgrResult<()> {
         .filter(|source| source.enabled && source.kind == SourceKind::Team)
     {
         if git::is_dirty(&source.path)? {
-            return Err(SkillmgrError::DirtySource {
+            return Err(DaloError::DirtySource {
                 source_id: source.id.clone(),
             });
         }
@@ -170,7 +170,7 @@ pub fn refresh_tracking_team_sources(paths: &StorePaths) -> SkillmgrResult<()> {
     Ok(())
 }
 
-fn approve_added_source(paths: &StorePaths, id: &str) -> SkillmgrResult<()> {
+fn approve_added_source(paths: &StorePaths, id: &str) -> DaloResult<()> {
     let mut approvals = store::read_approvals(paths)?;
     if !approvals
         .approvals

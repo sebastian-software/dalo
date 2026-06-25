@@ -11,8 +11,8 @@ Support the local development loop: detect unmanaged skills, copy them into the 
 ## Deliverables
 
 - Unmanaged skill detection in configured targets.
-- `skillmgr adopt <slot-or-path>`.
-- Copy-first adoption into `~/.skillmgr/local/skills/<slot>`.
+- `dalo adopt <slot-or-path>`.
+- Copy-first adoption into `~/.dalo/local/skills/<slot>`.
 - Optional replacement of original folder with an owned symlink after confirmation.
 - Local override status when adopted skill has the same slot name as a team skill.
 - Minimal `resolve` commands:
@@ -36,7 +36,7 @@ Support the local development loop: detect unmanaged skills, copy them into the 
 - Existing unmanaged folders are preserved unless the user confirms replacement.
 - Adopted skills are immediately visible as local source skills.
 - `--yes` does not commit local source changes.
-- `resolve remove-owned` removes only recorded skillmgr-owned symlinks.
+- `resolve remove-owned` removes only recorded dalo-owned symlinks.
 
 ## Validation
 
@@ -54,13 +54,13 @@ Validated on 2026-06-24.
 
 - Added unmanaged skill discovery for linked target directories.
 - `status` reports unmanaged target skills and whether they are protected.
-- Added `skillmgr adopt <slot-or-path>` with copy-first adoption into the local source.
+- Added `dalo adopt <slot-or-path>` with copy-first adoption into the local source.
 - Adoption only replaces the original target folder when `--yes` is passed.
 - `.local` marker skills and explicitly kept skills are protected from replacement.
 - `--yes` replacement records an owned symlink but does not create Git commits.
 - Adopted local skills participate in resolution immediately and show as local overrides over team skills.
 - Added `resolve list`, `resolve adopt`, `resolve keep`, and `resolve remove-owned`.
-- `resolve remove-owned` removes only recorded skillmgr-owned symlinks and blocks on real entries.
+- `resolve remove-owned` removes only recorded dalo-owned symlinks and blocks on real entries.
 
 ## Suggested Issue Split
 

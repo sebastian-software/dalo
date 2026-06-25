@@ -9,7 +9,7 @@ use crate::source::{SourceConfig, SourceKind};
 /// Current persisted config schema version.
 pub const CONFIG_VERSION: u32 = 1;
 
-/// User-authored skillmgr configuration.
+/// User-authored dalo configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UserConfig {
     /// Persisted schema version.

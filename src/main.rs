@@ -1,11 +1,11 @@
 use std::process::ExitCode;
 
-use skillmgr::cli::{Cli, run_cli};
-use skillmgr::error::SkillmgrExitCode;
+use dalo::cli::{Cli, run_cli};
+use dalo::error::DaloExitCode;
 
 fn main() -> ExitCode {
     match run_cli(Cli::parse_args()) {
-        Ok(()) => SkillmgrExitCode::Success.into(),
+        Ok(()) => DaloExitCode::Success.into(),
         Err(error) => {
             eprintln!("error: {error}");
             error.exit_code().into()

@@ -12,15 +12,15 @@ use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 
 use crate::config::UserConfig;
-use crate::error::{SkillmgrError, SkillmgrResult};
+use crate::error::{DaloError, DaloResult};
 use crate::git;
 use crate::lockfile::{USER_LOCK_SCHEMA_VERSION, UserLock};
 
 /// Environment variable used to override the default store path.
-pub const STORE_ENV_VAR: &str = "SKILLMGR_STORE";
+pub const STORE_ENV_VAR: &str = "DALO_STORE";
 
 /// Default store directory name below the user's home directory.
-pub const DEFAULT_STORE_DIR: &str = ".skillmgr";
+pub const DEFAULT_STORE_DIR: &str = ".dalo";
 
 /// Current internal state schema version.
 pub const STATE_SCHEMA_VERSION: u32 = 1;
@@ -252,7 +252,7 @@ pub struct InitReport {
 }
 
 /// Resolve the store path from CLI input, environment, or default.
-pub fn resolve_store_path(explicit: Option<&Path>) -> SkillmgrResult<PathBuf> {
+pub fn resolve_store_path(explicit: Option<&Path>) -> DaloResult<PathBuf> {
     let candidate = if let Some(path) = explicit {
         path.to_path_buf()
     } else if let Some(path) = env::var_os(STORE_ENV_VAR) {
@@ -264,8 +264,8 @@ pub fn resolve_store_path(explicit: Option<&Path>) -> SkillmgrResult<PathBuf> {
     expand_user_path(&candidate)
 }
 
-/// Initialize the skillmgr store.
-pub fn init_store(store_root: PathBuf, dry_run: bool) -> SkillmgrResult<InitReport> {
+/// Initialize the dalo store.
+pub fn init_store(store_root: PathBuf, dry_run: bool) -> DaloResult<InitReport> {
     validate_store_path(&store_root)?;
 
     let paths = StorePaths::new(store_root);
@@ -312,9 +312,9 @@ pub fn init_store(store_root: PathBuf, dry_run: bool) -> SkillmgrResult<InitRepo
 }
 
 /// Read the initialized store state file.
-pub fn read_state(paths: &StorePaths) -> SkillmgrResult<StateFile> {
+pub fn read_state(paths: &StorePaths) -> DaloResult<StateFile> {
     if !paths.state_file.exists() {
-        return Err(SkillmgrError::StoreNotInitialized {
+        return Err(DaloError::StoreNotInitialized {
             path: paths.root.clone(),
         });
     }
@@ -324,9 +324,9 @@ pub fn read_state(paths: &StorePaths) -> SkillmgrResult<StateFile> {
 }
 
 /// Read the initialized user config.
-pub fn read_config(paths: &StorePaths) -> SkillmgrResult<UserConfig> {
+pub fn read_config(paths: &StorePaths) -> DaloResult<UserConfig> {
     if !paths.config_file.exists() {
-        return Err(SkillmgrError::StoreNotInitialized {
+        return Err(DaloError::StoreNotInitialized {
             path: paths.root.clone(),
         });
     }
@@ -336,9 +336,9 @@ pub fn read_config(paths: &StorePaths) -> SkillmgrResult<UserConfig> {
 }
 
 /// Read the resolved user lock and validate its schema version.
-pub fn read_user_lock(paths: &StorePaths) -> SkillmgrResult<UserLock> {
+pub fn read_user_lock(paths: &StorePaths) -> DaloResult<UserLock> {
     if !paths.lock_file.exists() {
-        return Err(SkillmgrError::StoreNotInitialized {
+        return Err(DaloError::StoreNotInitialized {
             path: paths.root.clone(),
         });
     }
@@ -346,7 +346,7 @@ pub fn read_user_lock(paths: &StorePaths) -> SkillmgrResult<UserLock> {
     let content = fs::read_to_string(&paths.lock_file)?;
     let lock: UserLock = toml::from_str(&content)?;
     if lock.schema_version != USER_LOCK_SCHEMA_VERSION {
-        return Err(SkillmgrError::UnsupportedLockSchema {
+        return Err(DaloError::UnsupportedLockSchema {
             path: paths.lock_file.clone(),
             version: lock.schema_version,
             supported: USER_LOCK_SCHEMA_VERSION,
@@ -357,9 +357,9 @@ pub fn read_user_lock(paths: &StorePaths) -> SkillmgrResult<UserLock> {
 }
 
 /// Write the user config atomically.
-pub fn write_config(paths: &StorePaths, config: &UserConfig) -> SkillmgrResult<()> {
+pub fn write_config(paths: &StorePaths, config: &UserConfig) -> DaloResult<()> {
     if !paths.root.exists() {
-        return Err(SkillmgrError::StoreNotInitialized {
+        return Err(DaloError::StoreNotInitialized {
             path: paths.root.clone(),
         });
     }
@@ -368,9 +368,9 @@ pub fn write_config(paths: &StorePaths, config: &UserConfig) -> SkillmgrResult<(
 }
 
 /// Write the resolved user lock atomically.
-pub fn write_user_lock(paths: &StorePaths, lock: &UserLock) -> SkillmgrResult<()> {
+pub fn write_user_lock(paths: &StorePaths, lock: &UserLock) -> DaloResult<()> {
     if !paths.root.exists() {
-        return Err(SkillmgrError::StoreNotInitialized {
+        return Err(DaloError::StoreNotInitialized {
             path: paths.root.clone(),
         });
     }
@@ -379,9 +379,9 @@ pub fn write_user_lock(paths: &StorePaths, lock: &UserLock) -> SkillmgrResult<()
 }
 
 /// Read local approvals.
-pub fn read_approvals(paths: &StorePaths) -> SkillmgrResult<ApprovalsFile> {
+pub fn read_approvals(paths: &StorePaths) -> DaloResult<ApprovalsFile> {
     if !paths.approvals_file.exists() {
-        return Err(SkillmgrError::StoreNotInitialized {
+        return Err(DaloError::StoreNotInitialized {
             path: paths.root.clone(),
         });
     }
@@ -391,9 +391,9 @@ pub fn read_approvals(paths: &StorePaths) -> SkillmgrResult<ApprovalsFile> {
 }
 
 /// Write local approvals atomically.
-pub fn write_approvals(paths: &StorePaths, approvals: &ApprovalsFile) -> SkillmgrResult<()> {
+pub fn write_approvals(paths: &StorePaths, approvals: &ApprovalsFile) -> DaloResult<()> {
     if !paths.root.exists() {
-        return Err(SkillmgrError::StoreNotInitialized {
+        return Err(DaloError::StoreNotInitialized {
             path: paths.root.clone(),
         });
     }
@@ -402,9 +402,9 @@ pub fn write_approvals(paths: &StorePaths, approvals: &ApprovalsFile) -> Skillmg
 }
 
 /// Write the store state file atomically.
-pub fn write_state(paths: &StorePaths, state: &StateFile) -> SkillmgrResult<()> {
+pub fn write_state(paths: &StorePaths, state: &StateFile) -> DaloResult<()> {
     if !paths.root.exists() {
-        return Err(SkillmgrError::StoreNotInitialized {
+        return Err(DaloError::StoreNotInitialized {
             path: paths.root.clone(),
         });
     }
@@ -420,7 +420,7 @@ pub struct StoreLock {
 
 impl StoreLock {
     /// Acquire the store lock with a short interactive retry window.
-    pub fn acquire(paths: &StorePaths) -> SkillmgrResult<Self> {
+    pub fn acquire(paths: &StorePaths) -> DaloResult<Self> {
         let delays = [
             Duration::from_millis(0),
             Duration::from_millis(100),
@@ -433,7 +433,7 @@ impl StoreLock {
         Self::acquire_with_delays(paths, &delays)
     }
 
-    fn acquire_with_delays(paths: &StorePaths, delays: &[Duration]) -> SkillmgrResult<Self> {
+    fn acquire_with_delays(paths: &StorePaths, delays: &[Duration]) -> DaloResult<Self> {
         for delay in delays {
             if !delay.is_zero() {
                 thread::sleep(*delay);
@@ -450,7 +450,7 @@ impl StoreLock {
             }
         }
 
-        Err(SkillmgrError::StoreLocked {
+        Err(DaloError::StoreLocked {
             path: paths.lock_guard_file.clone(),
         })
     }
@@ -468,10 +468,10 @@ fn try_create_lock(path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-fn ensure_dir(path: &Path, dry_run: bool) -> SkillmgrResult<InitOperation> {
+fn ensure_dir(path: &Path, dry_run: bool) -> DaloResult<InitOperation> {
     let status = if path.exists() {
         if !path.is_dir() {
-            return Err(SkillmgrError::InvalidStorePath {
+            return Err(DaloError::InvalidStorePath {
                 path: path.to_path_buf(),
                 reason: "expected a directory".to_owned(),
             });
@@ -491,13 +491,13 @@ fn ensure_dir(path: &Path, dry_run: bool) -> SkillmgrResult<InitOperation> {
     })
 }
 
-fn ensure_toml_file<T>(path: &Path, value: &T, dry_run: bool) -> SkillmgrResult<InitOperation>
+fn ensure_toml_file<T>(path: &Path, value: &T, dry_run: bool) -> DaloResult<InitOperation>
 where
     T: Serialize,
 {
     let status = if path.exists() {
         if !path.is_file() {
-            return Err(SkillmgrError::InvalidStorePath {
+            return Err(DaloError::InvalidStorePath {
                 path: path.to_path_buf(),
                 reason: "expected a file".to_owned(),
             });
@@ -517,7 +517,7 @@ where
     })
 }
 
-fn ensure_git_repo(path: &Path, dry_run: bool) -> SkillmgrResult<InitOperation> {
+fn ensure_git_repo(path: &Path, dry_run: bool) -> DaloResult<InitOperation> {
     let git_dir = path.join(".git");
     let status = if git_dir.exists() {
         InitOperationStatus::Existing
@@ -535,12 +535,12 @@ fn ensure_git_repo(path: &Path, dry_run: bool) -> SkillmgrResult<InitOperation> 
     })
 }
 
-fn write_toml_atomic<T>(path: &Path, value: &T) -> SkillmgrResult<()>
+fn write_toml_atomic<T>(path: &Path, value: &T) -> DaloResult<()>
 where
     T: Serialize,
 {
     let Some(parent) = path.parent() else {
-        return Err(SkillmgrError::InvalidStorePath {
+        return Err(DaloError::InvalidStorePath {
             path: path.to_path_buf(),
             reason: "file has no parent directory".to_owned(),
         });
@@ -554,9 +554,9 @@ where
     Ok(())
 }
 
-fn validate_store_path(path: &Path) -> SkillmgrResult<()> {
+fn validate_store_path(path: &Path) -> DaloResult<()> {
     if path.as_os_str().is_empty() {
-        return Err(SkillmgrError::InvalidStorePath {
+        return Err(DaloError::InvalidStorePath {
             path: path.to_path_buf(),
             reason: "path is empty".to_owned(),
         });
@@ -566,7 +566,7 @@ fn validate_store_path(path: &Path) -> SkillmgrResult<()> {
 }
 
 /// Expand a leading `~` in a user-provided path.
-pub fn expand_user_path(path: &Path) -> SkillmgrResult<PathBuf> {
+pub fn expand_user_path(path: &Path) -> DaloResult<PathBuf> {
     let path_string = path.to_string_lossy();
 
     if path_string == "~" {
@@ -580,10 +580,10 @@ pub fn expand_user_path(path: &Path) -> SkillmgrResult<PathBuf> {
     Ok(path.to_path_buf())
 }
 
-fn home_dir() -> SkillmgrResult<PathBuf> {
+fn home_dir() -> DaloResult<PathBuf> {
     env::var_os("HOME")
         .map(PathBuf::from)
-        .ok_or_else(|| SkillmgrError::StorePath {
+        .ok_or_else(|| DaloError::StorePath {
             reason: "HOME is not set and no explicit store path was provided".to_owned(),
         })
 }
@@ -661,6 +661,6 @@ mod tests {
         let error = StoreLock::acquire_with_delays(&paths, &[Duration::from_millis(0)])
             .expect_err("second lock should fail");
 
-        assert!(matches!(error, SkillmgrError::StoreLocked { .. }));
+        assert!(matches!(error, DaloError::StoreLocked { .. }));
     }
 }

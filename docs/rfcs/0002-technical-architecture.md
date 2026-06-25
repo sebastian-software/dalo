@@ -7,7 +7,7 @@ Depends on: RFC 0001
 
 ## 1. Summary
 
-Skillmgr should be implemented as a Rust CLI distributed as a single `skillmgr` binary. The v1 implementation should use the existing `git` and `gh` CLIs for Git and GitHub operations instead of embedding a Git implementation or managing credentials directly.
+Dalo should be implemented as a Rust CLI distributed as a single `dalo` binary. The v1 implementation should use the existing `git` and `gh` CLIs for Git and GitHub operations instead of embedding a Git implementation or managing credentials directly.
 
 This architecture optimizes for predictable local behavior, strong state modeling, careful filesystem operations, and simple installation on macOS and Linux.
 
@@ -16,7 +16,7 @@ This architecture optimizes for predictable local behavior, strong state modelin
 - Language: Rust.
 - Edition: Rust 2024.
 - Toolchain: stable Rust only; no nightly-only features.
-- Packaging: one binary named `skillmgr`.
+- Packaging: one binary named `dalo`.
 - Runtime dependencies: no Node, Python, or long-running runtime required.
 - Git operations in v1: shell out to `git`.
 - GitHub PR operations in v1: shell out to `gh`.
@@ -29,7 +29,7 @@ The local development machine currently has a nightly Rust toolchain installed, 
 
 ## 3. Why Rust
 
-Skillmgr is a local state-management CLI that touches user home directories, Git checkouts, symlinks, lockfiles, scheduler files, and agent instruction files. The main engineering risks are accidental data loss, ambiguous state transitions, path handling mistakes, and weak error reporting.
+Dalo is a local state-management CLI that touches user home directories, Git checkouts, symlinks, lockfiles, scheduler files, and agent instruction files. The main engineering risks are accidental data loss, ambiguous state transitions, path handling mistakes, and weak error reporting.
 
 Rust is a good fit because:
 
@@ -126,7 +126,7 @@ Responsibilities:
 - `cli.rs`: `clap` command definitions, flags, and output-mode selection
 - `config.rs`: user config schema and validation
 - `lockfile.rs`: source locks and resolved user lock schema
-- `store.rs`: `~/.skillmgr` layout, state files, atomic writes
+- `store.rs`: `~/.dalo` layout, state files, atomic writes
 - `source.rs`: local, team, external, and catalog source definitions
 - `inventory.rs`: scan skills and instruction packs
 - `resolver.rs`: priority, shadowing, catalog selection, instruction selection
@@ -177,7 +177,7 @@ Required behavior:
 - write generated files through a temporary file plus atomic rename where possible
 - never replace a real directory with a symlink without explicit confirmation
 - never delete unmanaged files
-- only remove symlinks recorded as skillmgr-owned
+- only remove symlinks recorded as dalo-owned
 - only edit text inside managed instruction block markers
 - block on malformed instruction block markers
 - preserve unmarked content in instruction files byte-for-byte where possible
@@ -214,7 +214,7 @@ Exit code policy:
 Error messages should include:
 
 - what failed
-- why skillmgr refused or stopped
+- why dalo refused or stopped
 - the next command to inspect or resolve the issue
 
 ## 10. Scheduler Strategy
@@ -223,7 +223,7 @@ Scheduled sync should not require a daemon in v1.
 
 Target model:
 
-- macOS: generate a launchd plist that runs `skillmgr sync --yes --quiet`
+- macOS: generate a launchd plist that runs `dalo sync --yes --quiet`
 - Linux: generate a systemd user timer and service
 - cron fallback only if systemd user timers are unavailable
 
@@ -257,7 +257,7 @@ High-value scenarios (these describe the full vision; items marked (V1.1) ship w
 - malformed instruction block markers block writes (V1.1)
 - instruction pack rendering does not depend on native include/import support (V1.1)
 - dirty Git source blocks scheduled or non-interactive sync
-- symlink removal only affects skillmgr-owned links
+- symlink removal only affects dalo-owned links
 
 Tests should not require network access.
 
@@ -270,7 +270,7 @@ Initial distribution can be:
 - Homebrew tap later
 - cargo-binstall support later if useful
 
-The binary should not assume it was installed by Cargo. It should locate its store through explicit `--store`, environment override, or the default `~/.skillmgr`.
+The binary should not assume it was installed by Cargo. It should locate its store through explicit `--store`, environment override, or the default `~/.dalo`.
 
 ## 13. Deferred Choices
 
@@ -287,7 +287,7 @@ These are intentionally not part of v1:
 
 ## 14. Acceptance Criteria
 
-- The repository is scaffolded as a stable Rust 2024 project with one `skillmgr` binary and a reusable library.
+- The repository is scaffolded as a stable Rust 2024 project with one `dalo` binary and a reusable library.
 - Core behavior is reachable through library functions, not only CLI handlers.
 - Git and GitHub operations go through narrow wrappers around `git` and `gh`.
 - Config, locks, approvals, inventory, status, and doctor data use typed structs.

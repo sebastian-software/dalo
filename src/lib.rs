@@ -1,4 +1,4 @@
-//! Core library for the `skillmgr` command-line application.
+//! Core library for the `dalo` command-line application.
 //!
 //! The library owns the domain model and operations so CLI handlers stay thin
 //! and command behavior can be tested without spawning the binary.
@@ -20,4 +20,4 @@ pub mod status;
 pub mod store;
 pub mod target;
 
-pub use error::{SkillmgrError, SkillmgrResult};
+pub use error::{DaloError, DaloResult};

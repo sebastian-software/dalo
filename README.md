@@ -1,10 +1,10 @@
-# Skillmgr
+# Dalo
 
 Git-backed skill management for AI agents.
 
-Skillmgr gives teams one place to manage the skills and local experiments their AI agents depend on. It keeps the source of truth in a local store, resolves skills from multiple Git sources, and links the final set into the agent folders people already use.
+Dalo gives teams one place to manage the skills and local experiments their AI agents depend on. It keeps the source of truth in a local store, resolves skills from multiple Git sources, and links the final set into the agent folders people already use.
 
-Codex, Claude Code, OpenClaw, Hermes, and folder-based agents can keep reading normal skill directories. Skillmgr handles the part that gets hard once skills become team knowledge: source priority, safe sync, local overrides, adoption, diagnostics, and drift.
+Codex, Claude Code, OpenClaw, Hermes, and folder-based agents can keep reading normal skill directories. Dalo handles the part that gets hard once skills become team knowledge: source priority, safe sync, local overrides, adoption, diagnostics, and drift.
 
 ## Why this exists
 
@@ -23,7 +23,7 @@ Most existing flows are still built around one machine:
 
 That is fine for experimenting. It breaks down when agents become part of daily engineering work.
 
-Skillmgr treats agent knowledge like something worth managing:
+Dalo treats agent knowledge like something worth managing:
 
 - versioned in Git
 - resolved deterministically
@@ -37,8 +37,8 @@ Skillmgr treats agent knowledge like something worth managing:
 The current release candidate is source-built:
 
 ```sh
-git clone https://github.com/sebastian-software/skillmgr.git
-cd skillmgr
+git clone https://github.com/sebastian-software/dalo.git
+cd dalo
 cargo install --path .
 ```
 
@@ -51,26 +51,26 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo build --release
 ```
 
-Skillmgr shells out to `git` for source operations. `gh` is checked by `doctor` for future PR flows, but normal V1 sync does not require GitHub auth.
+Dalo shells out to `git` for source operations. `gh` is checked by `doctor` for future PR flows, but normal V1 sync does not require GitHub auth.
 
 ## Quickstart
 
 This quickstart uses a temporary store and a temporary generic target, so it will not touch your real agent folders.
 
 ```sh
-export SKILLMGR_STORE="$(mktemp -d)/store"
-export SKILLMGR_TARGET="$(mktemp -d)/skills"
+export DALO_STORE="$(mktemp -d)/store"
+export DALO_TARGET="$(mktemp -d)/skills"
 
-skillmgr init
-skillmgr target link generic "$SKILLMGR_TARGET"
+dalo init
+dalo target link generic "$DALO_TARGET"
 
-mkdir -p "$SKILLMGR_STORE/local/skills/review"
-printf '# Review\n' > "$SKILLMGR_STORE/local/skills/review/SKILL.md"
+mkdir -p "$DALO_STORE/local/skills/review"
+printf '# Review\n' > "$DALO_STORE/local/skills/review/SKILL.md"
 
-skillmgr status
-skillmgr sync
-ls -la "$SKILLMGR_TARGET"
-skillmgr doctor
+dalo status
+dalo sync
+ls -la "$DALO_TARGET"
+dalo doctor
 ```
 
 To try a local team source without network access:
@@ -83,20 +83,20 @@ git -C "$TEAM_REPO" init
 git -C "$TEAM_REPO" add .
 git -C "$TEAM_REPO" -c user.email=test@example.com -c user.name='Test User' commit -m initial
 
-skillmgr source add company "$TEAM_REPO"
-skillmgr source list
-skillmgr sync
+dalo source add company "$TEAM_REPO"
+dalo source list
+dalo sync
 ```
 
 ## The model
 
-Skillmgr separates source, resolution, and installation.
+Dalo separates source, resolution, and installation.
 
 ```text
 team sources + local source
         |
         v
-~/.skillmgr store
+~/.dalo store
         |
         v
 deterministic resolver
@@ -114,30 +114,30 @@ That one boundary keeps the system predictable. Team repositories stay clean Git
 Set up the store, detect agents, link the targets you want, add a team source, then sync.
 
 ```sh
-skillmgr init
-skillmgr target detect
-skillmgr target link codex
-skillmgr target link claude
-skillmgr source add company git@github.com:acme/agent-skills.git
-skillmgr sync
+dalo init
+dalo target detect
+dalo target link codex
+dalo target link claude
+dalo source add company git@github.com:acme/agent-skills.git
+dalo sync
 ```
 
 The team skills appear where each agent expects them. A source explicitly added by the user is locally approved for V1 resolution.
 
-When an agent creates a useful local skill directly in its own folder, Skillmgr can bring it under management without losing the original work.
+When an agent creates a useful local skill directly in its own folder, Dalo can bring it under management without losing the original work.
 
 ```sh
-skillmgr status
-skillmgr adopt release-notes.local
+dalo status
+dalo adopt release-notes.local
 ```
 
 The first step copies the skill into the local source. Replacing the original folder with a symlink is a separate confirmation. Committing the adopted skill is also explicit; `--yes` never means "commit this for me".
 
-Promotion is intentionally deferred. The planned flow is PR-first and will use normal `git` plus an authenticated `gh` CLI. If GitHub auth is missing, Skillmgr should fail loudly instead of inventing a weaker fallback.
+Promotion is intentionally deferred. The planned flow is PR-first and will use normal `git` plus an authenticated `gh` CLI. If GitHub auth is missing, Dalo should fail loudly instead of inventing a weaker fallback.
 
 ## Sources
 
-Skillmgr is multi-source by default. V1 implements local and team sources.
+Dalo is multi-source by default. V1 implements local and team sources.
 
 | Source kind | Purpose | Version behavior |
 | --- | --- | --- |
@@ -156,21 +156,21 @@ Pinned external and catalog sources use explicit lock advancement through `sourc
 
 Source order decides conflicts. Lower priority wins.
 
-If two sources provide the same skill slot, Skillmgr links the highest-priority approved skill and reports the others as `unlinked` with reason `shadowed`.
+If two sources provide the same skill slot, Dalo links the highest-priority approved skill and reports the others as `unlinked` with reason `shadowed`.
 
-If a target folder already contains a real unmanaged skill with the same name, Skillmgr does not overwrite it. The managed skill is blocked with `blocked_by_same_name_skill`, and `status` explains what happened.
+If a target folder already contains a real unmanaged skill with the same name, Dalo does not overwrite it. The managed skill is blocked with `blocked_by_same_name_skill`, and `status` explains what happened.
 
 The important rule is simple:
 
-> Skillmgr may remove or repair what it owns. It does not take ownership of user files by surprise.
+> Dalo may remove or repair what it owns. It does not take ownership of user files by surprise.
 
 ## Public skill catalogs
 
 Some of the most useful public repositories are not one-skill packages. They are catalogs: one Git repository with many skills inside, often with informal relationships between them.
 
-Skillmgr is designed to treat those repositories as offer surfaces. This is a V1.1 feature, not the first implementation slice.
+Dalo is designed to treat those repositories as offer surfaces. This is a V1.1 feature, not the first implementation slice.
 
-You inspect the catalog, select the skills you want, and Skillmgr records the selected set in a lockfile. It also scans the full catalog inventory so it can detect meaningful upstream changes:
+You inspect the catalog, select the skills you want, and Dalo records the selected set in a lockfile. It also scans the full catalog inventory so it can detect meaningful upstream changes:
 
 - new skills are available
 - selected skills changed
@@ -178,7 +178,7 @@ You inspect the catalog, select the skills you want, and Skillmgr records the se
 - selected skills disappeared
 - selected skills now require other same-catalog skills
 
-Same-source and same-catalog `requires` are first-class. If you select a skill that depends on another skill from the same catalog, Skillmgr expands that required closure. If a required skill is missing, unapproved, unlinked, or blocked by a name conflict, the dependent skill blocks before materialization.
+Same-source and same-catalog `requires` are first-class. If you select a skill that depends on another skill from the same catalog, Dalo expands that required closure. If a required skill is missing, unapproved, unlinked, or blocked by a name conflict, the dependent skill blocks before materialization.
 
 Cross-source dependencies are checked, not auto-installed.
 
@@ -195,16 +195,16 @@ Use Rust for performance-sensitive non-browser code.
 Call out behavioral regressions before style nits.
 ```
 
-Skillmgr will model this as an instruction pack: a versioned Markdown artifact rendered into agent instruction files as a managed block. This is a V1.1 feature and is not implemented in the V1 release candidate.
+Dalo will model this as an instruction pack: a versioned Markdown artifact rendered into agent instruction files as a managed block. This is a V1.1 feature and is not implemented in the V1 release candidate.
 
 ```markdown
-<!-- skillmgr:start company.engineering-defaults -->
+<!-- dalo:start company.engineering-defaults -->
 Use OXLint for linting and OXFMT for formatting.
 Prefer TypeScript for application code.
-<!-- skillmgr:end company.engineering-defaults -->
+<!-- dalo:end company.engineering-defaults -->
 ```
 
-Everything outside the marked block belongs to the user or project. Skillmgr does not manage arbitrary dotfiles, editor settings, formatter configs, shell profiles, secrets, or project-specific instructions.
+Everything outside the marked block belongs to the user or project. Dalo does not manage arbitrary dotfiles, editor settings, formatter configs, shell profiles, secrets, or project-specific instructions.
 
 Native include/import support is not portable enough to be the baseline. Managed blocks are the conservative V1.1 target.
 
@@ -222,11 +222,11 @@ V1 focuses on directory-based skill targets.
 | Cursor | unverified | experimental |
 | OpenCode | unverified | experimental |
 
-When multiple agents share the same physical directory, Skillmgr should de-duplicate the target path and avoid double-linking the same slot.
+When multiple agents share the same physical directory, Dalo should de-duplicate the target path and avoid double-linking the same slot.
 
 ## Safety guarantees
 
-Skillmgr is intentionally conservative.
+Dalo is intentionally conservative.
 
 It should never:
 
@@ -246,7 +246,7 @@ Dirty team edits block sync for the affected source or skill. The guided answer 
 
 Single-user skill installers are useful. They are good at putting a skill onto one machine.
 
-Skillmgr starts at the point where that workflow gets awkward for teams.
+Dalo starts at the point where that workflow gets awkward for teams.
 
 | Approach | Good fit | Limit |
 | --- | --- | --- |
@@ -256,7 +256,7 @@ Skillmgr starts at the point where that workflow gets awkward for teams.
 | Copying public folders | Fast experiments | No drift detection, provenance, or upgrade path |
 | Project-local instructions | Repo-specific context | Does not solve global team agent behavior |
 
-Skillmgr is narrower than a dotfile manager and more team-aware than a local installer.
+Dalo is narrower than a dotfile manager and more team-aware than a local installer.
 
 It is the missing layer between "I found a useful skill" and "our agents can rely on this."
 
@@ -275,7 +275,7 @@ V1 includes:
 - minimal `resolve` helpers for listed blockers
 - `doctor`
 - TOML config and lockfiles
-- local store under `~/.skillmgr`
+- local store under `~/.dalo`
 - directory-level symlink materialization
 - deterministic multi-source resolution
 - local approval state for newly active team skills
@@ -303,7 +303,7 @@ Later work includes:
 
 ## Development
 
-Skillmgr is implemented as a Rust CLI with a reusable library core.
+Dalo is implemented as a Rust CLI with a reusable library core.
 
 ```sh
 cargo fmt --check
@@ -312,18 +312,18 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo run -- --help
 ```
 
-The current implementation has the Rust project scaffold, CLI shell, store layout, TOML schemas, `skillmgr init`, target detect/link/unlink, team source add/list/priority, deterministic skill inventory scanning, resolver, approval gating, `skillmgr status`, `skillmgr sync` symlink materialization, clean team source refresh, dirty-source blocking, a coarse store lock, resolved user-lock writing, status lock-drift reporting, unmanaged skill discovery, copy-first adoption, minimal resolve helpers, and `skillmgr doctor` diagnostics in place. The V1 release-candidate scope is tracked in [the implementation plan](docs/milestones/README.md).
+The current implementation has the Rust project scaffold, CLI shell, store layout, TOML schemas, `dalo init`, target detect/link/unlink, team source add/list/priority, deterministic skill inventory scanning, resolver, approval gating, `dalo status`, `dalo sync` symlink materialization, clean team source refresh, dirty-source blocking, a coarse store lock, resolved user-lock writing, status lock-drift reporting, unmanaged skill discovery, copy-first adoption, minimal resolve helpers, and `dalo doctor` diagnostics in place. The V1 release-candidate scope is tracked in [the implementation plan](docs/milestones/README.md).
 
 ## Project status
 
-Skillmgr is currently a V1 release candidate.
+Dalo is currently a V1 release candidate.
 
 The implemented V1 loop covers local/team sources, target linking, safe sync, lock drift, adoption, minimal resolve helpers, and doctor diagnostics. Catalogs, instruction packs, autosync, promotion, and package distribution are deferred.
 
 ## Design docs
 
 - [Implementation milestones](docs/milestones/README.md)
-- [RFC 0001: Skillmgr vision](docs/rfcs/0001-skillmgr-vision.md)
+- [RFC 0001: Dalo vision](docs/rfcs/0001-dalo-vision.md)
 - [RFC 0002: Technical architecture](docs/rfcs/0002-technical-architecture.md)
 - [RFC 0003: Resolution engine](docs/rfcs/0003-resolution-engine.md)
 - [V1 implementation status](docs/rfcs/v1-implementation-status.md)

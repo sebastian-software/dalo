@@ -141,7 +141,7 @@ Cross-source dependency satisfaction is allowed only for stable IDs or source-qu
 
 ## 5. Instruction Pack Resolution
 
-Instruction packs resolve as a **separate asset type** (RFC 0001 §13). V1.1 materializes them through explicitly configured target instruction files and skillmgr-owned managed blocks, not through assumed native include/import support. Mapping configuration belongs to RFC 0001; this resolver RFC owns only ordering and overlap rules:
+Instruction packs resolve as a **separate asset type** (RFC 0001 §13). V1.1 materializes them through explicitly configured target instruction files and dalo-owned managed blocks, not through assumed native include/import support. Mapping configuration belongs to RFC 0001; this resolver RFC owns only ordering and overlap rules:
 
 - group active packs by the target instruction file they map to
 - within a file, order by (source `priority` asc, pack `priority` asc, pack `id` asc)
@@ -156,11 +156,11 @@ Per RFC 0001 §26, instruction packs ship in V1.1 rather than V1. This section s
 
 Interactive commands and scheduled sync both mutate the store and can run concurrently. RFC 0002 §8 specifies atomic single-file writes but no cross-operation serialization. A coarse store-level lock closes that gap.
 
-The lock serializes **skillmgr operations against each other** only. It does **not** capture writes made by external agents that edit a materialized skill through its symlink into a source checkout — those processes never invoke skillmgr and so never take the lock. Such edits are handled as **dirty state**, not by the lock: every mutating operation first runs a dirty check (`git status --porcelain=v2`, RFC 0002 §5) on each source checkout it would touch, and scheduled or non-interactive `sync` blocks on a dirty source instead of overwriting it (RFC 0001 §19.3). The two are complementary — the lock stops two skillmgr runs from racing, the dirty check stops skillmgr from clobbering an agent's in-flight edit.
+The lock serializes **dalo operations against each other** only. It does **not** capture writes made by external agents that edit a materialized skill through its symlink into a source checkout — those processes never invoke dalo and so never take the lock. Such edits are handled as **dirty state**, not by the lock: every mutating operation first runs a dirty check (`git status --porcelain=v2`, RFC 0002 §5) on each source checkout it would touch, and scheduled or non-interactive `sync` blocks on a dirty source instead of overwriting it (RFC 0001 §19.3). The two are complementary — the lock stops two dalo runs from racing, the dirty check stops dalo from clobbering an agent's in-flight edit.
 
 ### 6.2 Mechanism
 
-- A single advisory exclusive lock at `~/.skillmgr/.lock` (distinct from `lock.toml`).
+- A single advisory exclusive lock at `~/.dalo/.lock` (distinct from `lock.toml`).
 - Acquired via OS advisory file locking (`flock`-style). The lock file records the holder's `pid` and process start time for stale detection.
 - Held for the whole duration of any **mutating** operation.
 
@@ -175,7 +175,7 @@ Read-only commands take no lock so diagnostics always work, even while a sync is
 
 ### 6.3 Contention behavior
 
-- **Interactive mutating command** finds the lock held: retry immediately, then after 100 ms, 250 ms, 500 ms, 1 s, and 2 s. If the lock is still held after about 5 seconds total, fail with exit code `3` (unsafe state blocked, RFC 0002 §9) and a message naming the holder: `another skillmgr operation is running (pid <pid> since <time>)`.
+- **Interactive mutating command** finds the lock held: retry immediately, then after 100 ms, 250 ms, 500 ms, 1 s, and 2 s. If the lock is still held after about 5 seconds total, fail with exit code `3` (unsafe state blocked, RFC 0002 §9) and a message naming the holder: `another dalo operation is running (pid <pid> since <time>)`.
 - **Scheduled sync** finds the lock held: do **not** wait and do **not** fail loudly. Log "skipped: store lock held by pid <pid>" and exit `0`. The next scheduled run retries. Scheduled sync must never contend with an interactive session.
 
 ### 6.4 Stale lock recovery
@@ -187,7 +187,7 @@ Read-only commands take no lock so diagnostics always work, even while a sync is
 
 - One global store lock in V1. Finer-grained per-source locks are a future optimization and are out of scope.
 - The lock guards store mutation only. It does not guard agent target directories; those are protected by the ownership rules in §7, not by the lock.
-- Local source Git operations are not wrapped in a separate skillmgr Git lock in V1. Git's own index lock remains the authority for concurrent Git operations.
+- Local source Git operations are not wrapped in a separate dalo Git lock in V1. Git's own index lock remains the authority for concurrent Git operations.
 
 ## 7. Materialize Reconciliation
 
@@ -196,10 +196,10 @@ Read-only commands take no lock so diagnostics always work, even while a sync is
 For every **managed slot** — a skill slot name within a target directory, or an instruction block within a target file — reconciliation compares:
 
 - **D (desired):** the slot is in the current `Resolution` and should exist
-- **R (recorded):** `state.toml` records this slot as skillmgr-owned
+- **R (recorded):** `state.toml` records this slot as dalo-owned
 - **A (actual):** the real filesystem state of the slot
 
-Actual is one of: `absent`, `owned_correct` (symlink to the desired store path), `owned_wrong` (skillmgr-owned symlink to a different/stale path), `owned_broken` (skillmgr-owned dangling symlink), `foreign_symlink` (a symlink skillmgr does not own), `unmanaged_real` (a real file/directory), or `unmanaged_present` for blocks (unmarked content occupying the conceptual slot).
+Actual is one of: `absent`, `owned_correct` (symlink to the desired store path), `owned_wrong` (dalo-owned symlink to a different/stale path), `owned_broken` (dalo-owned dangling symlink), `foreign_symlink` (a symlink dalo does not own), `unmanaged_real` (a real file/directory), or `unmanaged_present` for blocks (unmarked content occupying the conceptual slot).
 
 "Owned" means: recorded in `state.toml` **and** the symlink target points inside the canonicalized store (RFC 0002 §8). Both must hold; a symlink that merely looks like ours but is not recorded is treated as `foreign`.
 
@@ -220,7 +220,7 @@ Actual is one of: `absent`, `owned_correct` (symlink to the desired store path),
 | no | yes | absent | drop record (already gone) |
 | no | yes | unmanaged_real | drop record, do not touch |
 | no | yes | foreign_symlink | drop record, report (left the ownership set) |
-| no | no | anything | ignore (not skillmgr's concern) |
+| no | no | anything | ignore (not dalo's concern) |
 
 The **orphan** case (RFC 0001 §19.5) is `D=no` because a removed source/skill leaves the desired set; rows `no/yes/owned_*` cover it. Orphan removals are reported in `status`/`doctor` even though they are auto-applied.
 
@@ -228,7 +228,7 @@ The **orphan** case (RFC 0001 §19.5) is `D=no` because a removed source/skill l
 
 Analogous, with block markers instead of symlinks (RFC 0001 §13, §19.7):
 
-- `owned_correct` = a `skillmgr:start/​end` block whose content matches the resolved pack
+- `owned_correct` = a `dalo:start/​end` block whose content matches the resolved pack
 - `owned_wrong` = an owned block whose content differs → **drift**
 - interactive `sync` may offer to restore drifted owned blocks; scheduled or non-interactive `sync` reports and **blocks** on drift, never overwriting (RFC 0001 §19.7)
 - malformed markers block writes to that file entirely (RFC 0002 §8)
