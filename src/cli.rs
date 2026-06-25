@@ -33,14 +33,6 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub dry_run: bool,
 
-    /// Disable colored output.
-    #[arg(long, global = true)]
-    pub no_color: bool,
-
-    /// Increase diagnostic verbosity.
-    #[arg(long, short, global = true, action = clap::ArgAction::Count)]
-    pub verbose: u8,
-
     /// Command to execute.
     #[command(subcommand)]
     pub command: Option<Command>,
@@ -57,10 +49,6 @@ pub struct GlobalOptions {
     pub yes: bool,
     /// Plan without mutating.
     pub dry_run: bool,
-    /// Disable colored output.
-    pub no_color: bool,
-    /// Verbosity count.
-    pub verbose: u8,
 }
 
 impl GlobalOptions {
@@ -69,16 +57,12 @@ impl GlobalOptions {
         json: bool,
         yes: bool,
         dry_run: bool,
-        no_color: bool,
-        verbose: u8,
     ) -> DaloResult<Self> {
         Ok(Self {
             store: store::resolve_store_path(store)?,
             json,
             yes,
             dry_run,
-            no_color,
-            verbose,
         })
     }
 }
@@ -159,7 +143,7 @@ pub struct SourceCommand {
 /// `source` subcommands.
 #[derive(Debug, Subcommand)]
 pub enum SourceSubcommand {
-    /// Add a local or team source.
+    /// Add a team source from a Git URL.
     Add(SourceAddArgs),
     /// List configured sources.
     List,
@@ -173,7 +157,7 @@ pub struct SourceAddArgs {
     /// Source ID.
     pub id: String,
 
-    /// Git URL or local source path.
+    /// Git URL of the team source.
     pub location: String,
 }
 
@@ -229,8 +213,6 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         json,
         yes,
         dry_run,
-        no_color,
-        verbose,
         command,
     } = cli;
 
@@ -240,7 +222,7 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         return Ok(());
     };
 
-    let options = GlobalOptions::resolve(store.as_deref(), json, yes, dry_run, no_color, verbose)?;
+    let options = GlobalOptions::resolve(store.as_deref(), json, yes, dry_run)?;
 
     match command {
         Command::Init => run_init(&options),
@@ -310,8 +292,13 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
     let paths = store::StorePaths::new(options.store.clone());
     match command.command {
         SourceSubcommand::Add(args) => {
-            let _lock = store::StoreLock::acquire(&paths)?;
-            let report = source::add_team_source(&paths, &args.id, &args.location)?;
+            let _lock = if options.dry_run {
+                None
+            } else {
+                Some(store::StoreLock::acquire(&paths)?)
+            };
+            let report =
+                source::add_team_source(&paths, &args.id, &args.location, options.dry_run)?;
             if options.json {
                 print_json(&report)?;
             } else {
@@ -329,8 +316,13 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             Ok(())
         }
         SourceSubcommand::Priority(args) => {
-            let _lock = store::StoreLock::acquire(&paths)?;
-            let report = source::set_source_priority(&paths, &args.id, args.priority)?;
+            let _lock = if options.dry_run {
+                None
+            } else {
+                Some(store::StoreLock::acquire(&paths)?)
+            };
+            let report =
+                source::set_source_priority(&paths, &args.id, args.priority, options.dry_run)?;
             if options.json {
                 print_json(&report)?;
             } else {
@@ -489,8 +481,6 @@ mod tests {
             json: false,
             yes: false,
             dry_run: false,
-            no_color: false,
-            verbose: 0,
             command: None,
         };
 

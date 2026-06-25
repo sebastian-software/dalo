@@ -279,8 +279,9 @@ pub fn print_sync_report(report: &SyncReport) {
 
 /// Print a human-readable source add report.
 pub fn print_source_add_report(report: &SourceAddReport) {
+    let verb = if report.dry_run { "would add" } else { "added" };
     println!(
-        "added source {} -> {}",
+        "{verb} source {} -> {}",
         report.source.id,
         report.source.path.display()
     );
@@ -302,8 +303,13 @@ pub fn print_source_list_report(report: &SourceListReport) {
 
 /// Print a human-readable source priority report.
 pub fn print_source_priority_report(report: &SourcePriorityReport) {
+    let verb = if report.dry_run {
+        "would update"
+    } else {
+        "updated"
+    };
     println!(
-        "updated source {} priority={}",
+        "{verb} source {} priority={}",
         report.source.id, report.source.priority
     );
 }

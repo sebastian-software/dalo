@@ -49,6 +49,8 @@ pub struct SourceConfig {
 pub struct SourceAddReport {
     /// Added source.
     pub source: SourceConfig,
+    /// Whether the command ran as dry-run.
+    pub dry_run: bool,
 }
 
 /// Source list report.
@@ -63,10 +65,20 @@ pub struct SourceListReport {
 pub struct SourcePriorityReport {
     /// Updated source.
     pub source: SourceConfig,
+    /// Whether the command ran as dry-run.
+    pub dry_run: bool,
 }
 
 /// Add a team source and clone it into the store.
-pub fn add_team_source(paths: &StorePaths, id: &str, url: &str) -> DaloResult<SourceAddReport> {
+///
+/// When `dry_run` is set, the planned source is computed and returned without
+/// cloning, writing config, or recording an approval.
+pub fn add_team_source(
+    paths: &StorePaths,
+    id: &str,
+    url: &str,
+    dry_run: bool,
+) -> DaloResult<SourceAddReport> {
     let mut config = store::read_config(paths)?;
     if config.sources.iter().any(|source| source.id == id) {
         return Err(DaloError::SourceAlreadyExists {
@@ -81,10 +93,6 @@ pub fn add_team_source(paths: &StorePaths, id: &str, url: &str) -> DaloResult<So
             reason: "source checkout path already exists".to_owned(),
         });
     }
-    if let Some(parent) = checkout.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    git::clone_repo(url, &checkout)?;
 
     let priority = config
         .sources
@@ -96,7 +104,7 @@ pub fn add_team_source(paths: &StorePaths, id: &str, url: &str) -> DaloResult<So
     let source = SourceConfig {
         id: id.to_owned(),
         kind: SourceKind::Team,
-        path: checkout,
+        path: checkout.clone(),
         priority,
         enabled: true,
         trusted: true,
@@ -104,6 +112,18 @@ pub fn add_team_source(paths: &StorePaths, id: &str, url: &str) -> DaloResult<So
         branch: None,
         update_policy: Some("track".to_owned()),
     };
+
+    if dry_run {
+        return Ok(SourceAddReport {
+            source,
+            dry_run: true,
+        });
+    }
+
+    if let Some(parent) = checkout.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    git::clone_repo(url, &checkout)?;
     config.sources.push(source.clone());
     config.sources.sort_by(|left, right| {
         left.priority
@@ -113,7 +133,10 @@ pub fn add_team_source(paths: &StorePaths, id: &str, url: &str) -> DaloResult<So
     store::write_config(paths, &config)?;
     approve_added_source(paths, id)?;
 
-    Ok(SourceAddReport { source })
+    Ok(SourceAddReport {
+        source,
+        dry_run: false,
+    })
 }
 
 /// List configured sources.
@@ -128,10 +151,13 @@ pub fn list_sources(paths: &StorePaths) -> DaloResult<SourceListReport> {
 }
 
 /// Update source priority.
+///
+/// When `dry_run` is set, the updated source is returned without writing config.
 pub fn set_source_priority(
     paths: &StorePaths,
     id: &str,
     priority: i32,
+    dry_run: bool,
 ) -> DaloResult<SourcePriorityReport> {
     let mut config = store::read_config(paths)?;
     let Some(source) = config.sources.iter_mut().find(|source| source.id == id) else {
@@ -141,14 +167,17 @@ pub fn set_source_priority(
     };
     source.priority = priority;
     let source = source.clone();
-    config.sources.sort_by(|left, right| {
-        left.priority
-            .cmp(&right.priority)
-            .then_with(|| left.id.cmp(&right.id))
-    });
-    store::write_config(paths, &config)?;
 
-    Ok(SourcePriorityReport { source })
+    if !dry_run {
+        config.sources.sort_by(|left, right| {
+            left.priority
+                .cmp(&right.priority)
+                .then_with(|| left.id.cmp(&right.id))
+        });
+        store::write_config(paths, &config)?;
+    }
+
+    Ok(SourcePriorityReport { source, dry_run })
 }
 
 /// Refresh clean tracking team sources before sync.
