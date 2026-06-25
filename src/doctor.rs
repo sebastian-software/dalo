@@ -130,6 +130,8 @@ pub enum DoctorCode {
     DirtySource,
     /// A skill is pending approval.
     PendingApproval,
+    /// A skill is blocked because its required closure is not linkable.
+    RequiredClosureBlocked,
     /// Target path looks cloud-synced.
     CloudSyncedTarget,
 }
@@ -470,6 +472,19 @@ fn check_resolution(paths: &StorePaths, config: &UserConfig, findings: &mut Vec<
         ));
     }
 
+    for blocked in &resolution.blocked_skills {
+        findings.push(finding_warning(
+            DoctorCode::RequiredClosureBlocked,
+            format!(
+                "skill `{}` is blocked: requirement `{}` is {}",
+                blocked.skill.source_ref,
+                blocked.requirement,
+                resolver::closure_block_reason_name(blocked.reason)
+            ),
+            Some("dalo status".to_owned()),
+        ));
+    }
+
     let active_slots = resolution
         .active_skills
         .iter()
@@ -606,6 +621,7 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::SourceClean => "source_clean",
         DoctorCode::DirtySource => "dirty_source",
         DoctorCode::PendingApproval => "pending_approval",
+        DoctorCode::RequiredClosureBlocked => "required_closure_blocked",
         DoctorCode::CloudSyncedTarget => "cloud_synced_target",
     }
 }

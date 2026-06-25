@@ -205,6 +205,19 @@ pub fn print_status_report(report: &StatusReport) {
         }
     }
 
+    if !report.resolution.blocked_skills.is_empty() {
+        println!("blocked skills (required closure not linkable):");
+        for blocked in &report.resolution.blocked_skills {
+            println!(
+                "  {} -> {} requires=`{}` reason={}",
+                blocked.skill.slot_name,
+                blocked.skill.source_ref,
+                blocked.requirement,
+                resolver::closure_block_reason_name(blocked.reason)
+            );
+        }
+    }
+
     if !report.lock.drift.is_empty() {
         println!("lock drift:");
         for drift in &report.lock.drift {

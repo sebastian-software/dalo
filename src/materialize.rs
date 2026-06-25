@@ -642,6 +642,7 @@ mod tests {
             }],
             pending_approval_skills: Vec::new(),
             unlinked_skills: Vec::new(),
+            blocked_skills: Vec::new(),
             diagnostics: Vec::new(),
         }
     }
