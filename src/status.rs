@@ -8,6 +8,7 @@ use crate::adopt::{AdoptReport, KeepReport, RemoveOwnedReport, ResolveListReport
 use crate::catalog::{CatalogDrift, CatalogInspectReport, CatalogSelectReport};
 use crate::doctor::{DoctorReport, DoctorSeverity};
 use crate::error::DaloResult;
+use crate::instructions::{self, DiscoveredPack, TopicOverlap};
 use crate::inventory::InventoryWarning;
 use crate::lockfile::{self, LockDrift};
 use crate::materialize::SyncReport;
@@ -33,6 +34,10 @@ pub struct StatusReport {
     pub lock: LockStatus,
     /// Unmanaged skills found in linked targets.
     pub unmanaged_skills: Vec<UnmanagedSkill>,
+    /// Discovered instruction packs (available and enabled).
+    pub instruction_packs: Vec<DiscoveredPack>,
+    /// Declared-topic overlaps among active instruction packs (advisory).
+    pub instruction_pack_overlaps: Vec<TopicOverlap>,
 }
 
 /// User lock status derived during `status`.
@@ -134,6 +139,18 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
     };
     let unmanaged_skills = crate::adopt::discover_unmanaged_skills(&paths)?;
 
+    let instruction_packs = instructions::discover_packs(
+        &paths,
+        &config.sources,
+        &previous_lock.active_instruction_packs,
+    );
+    let active_packs = instruction_packs
+        .iter()
+        .filter(|pack| pack.enabled)
+        .cloned()
+        .collect::<Vec<_>>();
+    let instruction_pack_overlaps = instructions::topic_overlaps(&active_packs);
+
     Ok(StatusReport {
         store: store_root.to_path_buf(),
         sources,
@@ -141,6 +158,8 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         resolution,
         lock,
         unmanaged_skills,
+        instruction_packs,
+        instruction_pack_overlaps,
     })
 }
 
@@ -241,6 +260,26 @@ pub fn print_status_report(report: &StatusReport) {
                 warning.code,
                 warning.path.display(),
                 warning.message
+            );
+        }
+    }
+
+    if !report.instruction_packs.is_empty() {
+        println!("instruction packs:");
+        for pack in &report.instruction_packs {
+            let state = if pack.enabled { "enabled" } else { "available" };
+            println!("  {} ({state})", pack.pack_ref());
+        }
+    }
+
+    if !report.instruction_pack_overlaps.is_empty() {
+        println!("instruction pack topic overlaps:");
+        for overlap in &report.instruction_pack_overlaps {
+            println!(
+                "  {} <-> {} share: {}",
+                overlap.packs[0],
+                overlap.packs[1],
+                overlap.topics.join(", ")
             );
         }
     }

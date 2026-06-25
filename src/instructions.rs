@@ -5,6 +5,7 @@
 //! bytes between a pack's markers are ever rewritten; everything outside any
 //! managed block is preserved.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -12,6 +13,7 @@ use serde::Serialize;
 
 use crate::error::{DaloError, DaloResult};
 use crate::lockfile::LockedInstructionPack;
+use crate::source::SourceConfig;
 use crate::store::{self, StorePaths};
 
 /// A versioned instruction pack: standing agent-facing conventions as Markdown.
@@ -230,6 +232,147 @@ fn write_target(target: &Path, content: &str) -> DaloResult<()> {
     Ok(())
 }
 
+/// A discovered instruction pack (read-only inventory entry).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DiscoveredPack {
+    /// Pack ID.
+    pub id: String,
+    /// Source the pack was discovered in.
+    pub source_id: String,
+    /// Declared version, when present.
+    pub version: Option<String>,
+    /// Declared topics/tags.
+    pub topics: Vec<String>,
+    /// Whether the pack is currently enabled (active in the user lock).
+    pub enabled: bool,
+}
+
+impl DiscoveredPack {
+    /// Source-qualified pack ref.
+    #[must_use]
+    pub fn pack_ref(&self) -> String {
+        format!("{}:{}", self.source_id, self.id)
+    }
+}
+
+/// A topic overlap between two active instruction packs (advisory).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TopicOverlap {
+    /// The two overlapping pack refs.
+    pub packs: [String; 2],
+    /// The topics they share.
+    pub topics: Vec<String>,
+}
+
+/// Discover instruction packs across the local store and configured sources.
+///
+/// Read-only: never materializes a pack. A pack is `enabled` when an active lock
+/// entry matches its source and ID.
+#[must_use]
+pub fn discover_packs(
+    paths: &StorePaths,
+    sources: &[SourceConfig],
+    active: &[LockedInstructionPack],
+) -> Vec<DiscoveredPack> {
+    let enabled: BTreeSet<(&str, &str)> = active
+        .iter()
+        .map(|entry| (entry.source_id.as_str(), entry.pack_id.as_str()))
+        .collect();
+    let mut packs = Vec::new();
+    scan_pack_dir(&paths.local_instructions_dir, "local", &enabled, &mut packs);
+    for source in sources {
+        scan_pack_dir(
+            &source.path.join("instructions"),
+            &source.id,
+            &enabled,
+            &mut packs,
+        );
+    }
+    packs.sort_by(|left, right| {
+        left.source_id
+            .cmp(&right.source_id)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    packs
+}
+
+fn scan_pack_dir(
+    dir: &Path,
+    source_id: &str,
+    enabled: &BTreeSet<(&str, &str)>,
+    out: &mut Vec<DiscoveredPack>,
+) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("md") {
+            continue;
+        }
+        let Some(id) = path.file_stem().and_then(|stem| stem.to_str()) else {
+            continue;
+        };
+        if !is_valid_pack_id(id) {
+            continue;
+        }
+        let body = fs::read_to_string(&path).unwrap_or_default();
+        out.push(DiscoveredPack {
+            id: id.to_owned(),
+            source_id: source_id.to_owned(),
+            version: parse_version(&body),
+            topics: parse_topics(&body),
+            enabled: enabled.contains(&(source_id, id)),
+        });
+    }
+}
+
+/// Optional `topics:`/`tags:` line in the pack's leading lines (comma-separated).
+fn parse_topics(body: &str) -> Vec<String> {
+    body.lines()
+        .take(8)
+        .find_map(|line| {
+            let trimmed = line.trim();
+            trimmed
+                .strip_prefix("topics:")
+                .or_else(|| trimmed.strip_prefix("tags:"))
+        })
+        .map(|value| {
+            value
+                .split(',')
+                .map(|topic| topic.trim().to_owned())
+                .filter(|topic| !topic.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Detect declared-topic overlaps among active packs. Advisory only: overlaps
+/// never block materialization.
+#[must_use]
+pub fn topic_overlaps(active: &[DiscoveredPack]) -> Vec<TopicOverlap> {
+    let mut overlaps = Vec::new();
+    for (index, left) in active.iter().enumerate() {
+        for right in active.iter().skip(index + 1) {
+            let mut shared: Vec<String> = left
+                .topics
+                .iter()
+                .filter(|topic| right.topics.contains(topic))
+                .cloned()
+                .collect();
+            if !shared.is_empty() {
+                shared.sort();
+                shared.dedup();
+                overlaps.push(TopicOverlap {
+                    packs: [left.pack_ref(), right.pack_ref()],
+                    topics: shared,
+                });
+            }
+        }
+    }
+    overlaps
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -300,5 +443,74 @@ mod tests {
         assert!(!is_valid_pack_id(".."));
         assert!(!is_valid_pack_id("bad/slash"));
         assert!(!is_valid_pack_id(""));
+    }
+
+    #[test]
+    fn parse_topics_should_split_comma_separated_tags() {
+        assert_eq!(
+            parse_topics("topics: review, formatting, git\n\n# Body\n"),
+            vec!["review", "formatting", "git"]
+        );
+        assert_eq!(parse_topics("tags: a,b\n"), vec!["a", "b"]);
+        assert!(parse_topics("# No topics\n").is_empty());
+    }
+
+    fn discovered(id: &str, source: &str, topics: &[&str], enabled: bool) -> DiscoveredPack {
+        DiscoveredPack {
+            id: id.to_owned(),
+            source_id: source.to_owned(),
+            version: None,
+            topics: topics.iter().map(|topic| (*topic).to_owned()).collect(),
+            enabled,
+        }
+    }
+
+    #[test]
+    fn topic_overlaps_should_name_both_packs_sharing_a_topic() {
+        let active = vec![
+            discovered("style", "local", &["formatting", "tone"], true),
+            discovered("format", "team", &["formatting"], true),
+        ];
+        let overlaps = topic_overlaps(&active);
+        assert_eq!(overlaps.len(), 1);
+        assert_eq!(
+            overlaps[0].packs,
+            ["local:style".to_owned(), "team:format".to_owned()]
+        );
+        assert_eq!(overlaps[0].topics, vec!["formatting".to_owned()]);
+    }
+
+    #[test]
+    fn topic_overlaps_should_ignore_disjoint_topics() {
+        let active = vec![
+            discovered("a", "local", &["security"], true),
+            discovered("b", "team", &["formatting"], true),
+        ];
+        assert!(topic_overlaps(&active).is_empty());
+    }
+
+    #[test]
+    fn discover_packs_should_find_local_packs_and_mark_enabled() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let paths = StorePaths::new(temp.path().to_path_buf());
+        fs::create_dir_all(&paths.local_instructions_dir).expect("dir should be created");
+        fs::write(
+            paths.local_instructions_dir.join("house.md"),
+            "topics: x\n\nBody\n",
+        )
+        .expect("pack should be written");
+        let active = vec![LockedInstructionPack {
+            pack_id: "house".to_owned(),
+            target: PathBuf::from("/tmp/AGENTS.md"),
+            source_id: "local".to_owned(),
+            commit: None,
+            version: None,
+        }];
+
+        let packs = discover_packs(&paths, &[], &active);
+        assert_eq!(packs.len(), 1);
+        assert_eq!(packs[0].id, "house");
+        assert!(packs[0].enabled);
+        assert_eq!(packs[0].topics, vec!["x".to_owned()]);
     }
 }
