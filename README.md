@@ -34,6 +34,8 @@ Dalo treats agent knowledge like something worth managing:
 
 ## Installation
 
+Dalo currently targets Unix-like systems (Linux and macOS). Windows is not yet supported.
+
 The current release candidate is source-built:
 
 ```sh
