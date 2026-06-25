@@ -1555,6 +1555,66 @@ fn catalog_refresh_check_should_report_upstream_drift() {
         .stdout(predicate::str::contains("new_available"));
 }
 
+#[test]
+fn instructions_enable_disable_should_manage_block_idempotently() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target_file = temp_dir.path().join("AGENTS.md");
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    // Author a local instruction pack and seed the target with user content.
+    std::fs::write(
+        store.join("local/instructions/house-style.md"),
+        "version: 1.0\n\nUse tabs, not spaces.\n",
+    )
+    .expect("pack should be written");
+    std::fs::write(&target_file, "# Project\n\nUser notes.\n").expect("target should be written");
+
+    let enable = || {
+        Command::cargo_bin("dalo")
+            .expect("binary should build")
+            .args(["--store"])
+            .arg(&store)
+            .args(["instructions", "enable", "house-style"])
+            .arg(&target_file)
+            .assert()
+            .success();
+    };
+
+    enable();
+    let after_enable = std::fs::read_to_string(&target_file).expect("target readable");
+    assert!(after_enable.contains("# Project"));
+    assert!(after_enable.contains("User notes."));
+    assert!(after_enable.contains("Use tabs, not spaces."));
+    assert!(after_enable.contains("<!-- dalo:start house-style -->"));
+
+    // Enabling again is idempotent.
+    enable();
+    let after_second = std::fs::read_to_string(&target_file).expect("target readable");
+    assert_eq!(after_enable, after_second);
+
+    // Disabling removes exactly the block and keeps user content.
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "disable", "house-style"])
+        .arg(&target_file)
+        .assert()
+        .success();
+    let after_disable = std::fs::read_to_string(&target_file).expect("target readable");
+    assert!(after_disable.contains("# Project"));
+    assert!(after_disable.contains("User notes."));
+    assert!(!after_disable.contains("dalo:start"));
+}
+
 fn setup_store_with_target(store: &std::path::Path, target: &std::path::Path) {
     Command::cargo_bin("dalo")
         .expect("binary should build")

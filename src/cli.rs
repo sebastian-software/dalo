@@ -6,6 +6,7 @@ use crate::adopt;
 use crate::catalog;
 use crate::doctor;
 use crate::error::{DaloError, DaloResult};
+use crate::instructions;
 use crate::lockfile;
 use crate::materialize;
 use crate::source;
@@ -95,6 +96,37 @@ pub enum Command {
     Resolve(ResolveCommand),
     /// Diagnose store, target, Git, and lockfile health.
     Doctor,
+    /// Manage instruction packs rendered into instruction files.
+    Instructions(InstructionsCommand),
+}
+
+/// `instructions` command group.
+#[derive(Debug, Args)]
+pub struct InstructionsCommand {
+    /// Instructions subcommand.
+    #[command(subcommand)]
+    pub command: InstructionsSubcommand,
+}
+
+/// `instructions` subcommands.
+#[derive(Debug, Subcommand)]
+pub enum InstructionsSubcommand {
+    /// Render a local instruction pack into a target file as a managed block.
+    Enable(InstructionsFileArgs),
+    /// Remove a pack's managed block from a target file.
+    Disable(InstructionsFileArgs),
+    /// List active instruction packs recorded in the user lock.
+    List,
+}
+
+/// Arguments for `instructions enable`/`disable`.
+#[derive(Debug, Args)]
+pub struct InstructionsFileArgs {
+    /// Instruction pack ID (a `local/instructions/<id>.md` file).
+    pub pack: String,
+
+    /// Target instruction file to render into.
+    pub file: PathBuf,
 }
 
 /// `target` command group.
@@ -275,6 +307,56 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         Command::Adopt(command) => run_adopt(&options, command),
         Command::Resolve(command) => run_resolve(&options, command),
         Command::Doctor => run_doctor(&options),
+        Command::Instructions(command) => run_instructions(&options, command),
+    }
+}
+
+fn run_instructions(options: &GlobalOptions, command: InstructionsCommand) -> DaloResult<()> {
+    let paths = store::StorePaths::new(options.store.clone());
+    match command.command {
+        InstructionsSubcommand::Enable(args) => {
+            let _lock = store::StoreLock::acquire(&paths)?;
+            let report = instructions::enable_pack(&paths, &args.pack, &args.file)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                println!(
+                    "{} pack {} -> {}",
+                    report.action,
+                    report.pack_id,
+                    report.target.display()
+                );
+            }
+            Ok(())
+        }
+        InstructionsSubcommand::Disable(args) => {
+            let _lock = store::StoreLock::acquire(&paths)?;
+            let report = instructions::disable_pack(&paths, &args.pack, &args.file)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                println!(
+                    "{} pack {} -> {}",
+                    report.action,
+                    report.pack_id,
+                    report.target.display()
+                );
+            }
+            Ok(())
+        }
+        InstructionsSubcommand::List => {
+            let lock = store::read_user_lock(&paths)?;
+            if options.json {
+                print_json(&lock.active_instruction_packs)?;
+            } else if lock.active_instruction_packs.is_empty() {
+                println!("no active instruction packs");
+            } else {
+                for pack in &lock.active_instruction_packs {
+                    println!("{} -> {}", pack.pack_id, pack.target.display());
+                }
+            }
+            Ok(())
+        }
     }
 }
 
@@ -316,8 +398,13 @@ fn run_sync(options: &GlobalOptions) -> DaloResult<()> {
     let report = materialize::materialize(&paths, &status_report.resolution, options.dry_run)?;
     if !options.dry_run {
         let config = store::read_config(&paths)?;
-        let lock =
+        let previous =
+            store::read_user_lock(&paths).unwrap_or_else(|_| lockfile::UserLock::empty());
+        let mut lock =
             lockfile::build_user_lock(&config.sources, &status_report.resolution, Some(&report));
+        // Instruction packs are owned by the `instructions` command; preserve them
+        // across a sync instead of dropping them.
+        lock.active_instruction_packs = previous.active_instruction_packs;
         store::write_user_lock(&paths, &lock)?;
     }
 
