@@ -51,8 +51,6 @@ pub struct StorePaths {
     pub local_instructions_dir: PathBuf,
     /// Source checkout root.
     pub sources_dir: PathBuf,
-    /// Log directory.
-    pub logs_dir: PathBuf,
 }
 
 impl StorePaths {
@@ -70,7 +68,6 @@ impl StorePaths {
             local_skills_dir: local_dir.join("skills"),
             local_instructions_dir: local_dir.join("instructions"),
             sources_dir: root.join("sources"),
-            logs_dir: root.join("logs"),
             local_dir,
             root,
         }
@@ -277,7 +274,6 @@ pub fn init_store(store_root: PathBuf, dry_run: bool) -> DaloResult<InitReport> 
         &paths.local_skills_dir,
         &paths.local_instructions_dir,
         &paths.sources_dir,
-        &paths.logs_dir,
     ] {
         operations.push(ensure_dir(directory, dry_run)?);
     }
@@ -728,7 +724,6 @@ mod tests {
         assert!(store_root.join("local/skills").is_dir());
         assert!(store_root.join("local/instructions").is_dir());
         assert!(store_root.join("sources").is_dir());
-        assert!(store_root.join("logs").is_dir());
     }
 
     #[test]

@@ -7,10 +7,10 @@ use serde::Serialize;
 use crate::adopt::{AdoptReport, KeepReport, RemoveOwnedReport, ResolveListReport, UnmanagedSkill};
 use crate::doctor::{DoctorReport, DoctorSeverity};
 use crate::error::DaloResult;
-use crate::inventory::{self, InventoryWarning};
+use crate::inventory::InventoryWarning;
 use crate::lockfile::{self, LockDrift};
 use crate::materialize::SyncReport;
-use crate::resolver::{self, Resolution, ResolutionInput};
+use crate::resolver::{self, Resolution};
 use crate::source::{SourceAddReport, SourceKind, SourceListReport, SourcePriorityReport};
 use crate::store::{self, InitReport, StorePaths};
 use crate::target::{TargetDetectReport, TargetLinkReport, TargetUnlinkReport};
@@ -65,18 +65,43 @@ pub struct SourceStatus {
 }
 
 /// Build the current status report.
+#[must_use = "the status report should be rendered or inspected"]
 pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
     let paths = StorePaths::new(store_root.to_path_buf());
     let config = store::read_config(&paths)?;
     let approvals = store::read_approvals(&paths)?;
     let previous_lock = store::read_user_lock(&paths)?;
+
+    // The shared pipeline scans every enabled source once and resolves it; we
+    // reuse its per-source scan outcomes here for the status detail instead of
+    // re-scanning. Disabled sources are not scanned, so we render them directly.
+    let live = resolver::resolve_from_config(&config, approvals.approvals);
+    let scan_by_id = live
+        .scans
+        .iter()
+        .map(|scan| (scan.source.id.as_str(), scan))
+        .collect::<std::collections::BTreeMap<_, _>>();
+
     let mut sources = Vec::new();
-    let mut inventories = Vec::new();
     let mut inventory_warnings = Vec::new();
 
     for source in &config.sources {
-        if !source.enabled {
-            sources.push(SourceStatus {
+        let status = if let Some(scan) = scan_by_id.get(source.id.as_str()) {
+            if let Some(inventory) = &scan.inventory {
+                inventory_warnings.extend(inventory.warnings.iter().cloned());
+            }
+            SourceStatus {
+                id: source.id.clone(),
+                kind: source.kind,
+                path: source.path.clone(),
+                priority: source.priority,
+                enabled: true,
+                exists: source.path.exists(),
+                skill_count: scan.inventory.as_ref().map_or(0, |inv| inv.skills.len()),
+                error: scan.error.clone(),
+            }
+        } else {
+            SourceStatus {
                 id: source.id.clone(),
                 kind: source.kind,
                 path: source.path.clone(),
@@ -85,53 +110,9 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
                 exists: source.path.exists(),
                 skill_count: 0,
                 error: None,
-            });
-            continue;
-        }
-
-        if !source.path.exists() {
-            sources.push(SourceStatus {
-                id: source.id.clone(),
-                kind: source.kind,
-                path: source.path.clone(),
-                priority: source.priority,
-                enabled: true,
-                exists: false,
-                skill_count: 0,
-                error: Some("source path does not exist".to_owned()),
-            });
-            continue;
-        }
-
-        match inventory::scan_source(&source.id, &source.path) {
-            Ok(inventory) => {
-                let skill_count = inventory.skills.len();
-                inventory_warnings.extend(inventory.warnings.clone());
-                inventories.push(inventory);
-                sources.push(SourceStatus {
-                    id: source.id.clone(),
-                    kind: source.kind,
-                    path: source.path.clone(),
-                    priority: source.priority,
-                    enabled: true,
-                    exists: true,
-                    skill_count,
-                    error: None,
-                });
             }
-            Err(error) => {
-                sources.push(SourceStatus {
-                    id: source.id.clone(),
-                    kind: source.kind,
-                    path: source.path.clone(),
-                    priority: source.priority,
-                    enabled: true,
-                    exists: true,
-                    skill_count: 0,
-                    error: Some(error.to_string()),
-                });
-            }
-        }
+        };
+        sources.push(status);
     }
 
     sources.sort_by(|left, right| {
@@ -141,12 +122,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
     });
     inventory_warnings.sort_by(|left, right| left.path.cmp(&right.path));
 
-    let resolution = resolver::resolve(&ResolutionInput {
-        sources: config.sources.clone(),
-        inventories,
-        approvals: approvals.approvals,
-        previous_lock: Some(previous_lock.clone()),
-    });
+    let resolution = live.resolution;
     let live_lock = lockfile::build_user_lock(&config.sources, &resolution, None);
     let lock = LockStatus {
         path: paths.lock_file.clone(),

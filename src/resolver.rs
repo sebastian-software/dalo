@@ -5,22 +5,43 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 
-use crate::inventory::SourceInventory;
-use crate::lockfile::UserLock;
+use crate::config::UserConfig;
+use crate::inventory::{self, SourceInventory};
 use crate::source::{SourceConfig, SourceKind};
 use crate::store::ApprovalRecord;
 
 /// Resolver input.
 #[derive(Debug, Clone)]
-pub struct ResolutionInput {
-    /// Configured sources.
-    pub sources: Vec<SourceConfig>,
+pub struct ResolutionInput<'a> {
+    /// Enabled sources.
+    pub sources: &'a [SourceConfig],
     /// Scanned inventories.
     pub inventories: Vec<SourceInventory>,
     /// Local approval records.
     pub approvals: Vec<ApprovalRecord>,
-    /// Previous user lock, used for drift comparison in later milestones.
-    pub previous_lock: Option<UserLock>,
+}
+
+/// Outcome of scanning one enabled source for the live resolve pipeline.
+#[derive(Debug, Clone)]
+pub struct SourceScan {
+    /// Scanned source.
+    pub source: SourceConfig,
+    /// Successful inventory, or `None` when the scan failed.
+    pub inventory: Option<SourceInventory>,
+    /// Scan error message when the scan failed.
+    pub error: Option<String>,
+}
+
+/// Live resolve pipeline result shared by `status` and `doctor`.
+///
+/// Holds the per-source scan outcomes so callers can render per-source detail
+/// without re-scanning, plus the resolution computed from those inventories.
+#[derive(Debug, Clone)]
+pub struct LiveResolution {
+    /// Per-source scan outcomes for enabled sources, in config order.
+    pub scans: Vec<SourceScan>,
+    /// Resolution computed from the successful inventories.
+    pub resolution: Resolution,
 }
 
 /// Final resolution result.
@@ -116,6 +137,56 @@ struct Candidate {
     trusted: bool,
 }
 
+/// Scan every enabled source and resolve it into a deterministic skill set.
+///
+/// Shared by `status` and `doctor` so the scan-then-resolve pipeline lives in
+/// one place. Scan failures are captured per source rather than aborting, so
+/// callers can surface them as diagnostics.
+pub fn resolve_from_config(config: &UserConfig, approvals: Vec<ApprovalRecord>) -> LiveResolution {
+    let enabled = config
+        .sources
+        .iter()
+        .filter(|source| source.enabled)
+        .cloned()
+        .collect::<Vec<_>>();
+
+    let mut scans = Vec::with_capacity(enabled.len());
+    let mut inventories = Vec::new();
+    for source in &enabled {
+        match scan_enabled_source(source) {
+            Ok(inventory) => {
+                inventories.push(inventory.clone());
+                scans.push(SourceScan {
+                    source: source.clone(),
+                    inventory: Some(inventory),
+                    error: None,
+                });
+            }
+            Err(error) => scans.push(SourceScan {
+                source: source.clone(),
+                inventory: None,
+                error: Some(error),
+            }),
+        }
+    }
+
+    let resolution = resolve(&ResolutionInput {
+        sources: &enabled,
+        inventories,
+        approvals,
+    });
+
+    LiveResolution { scans, resolution }
+}
+
+/// Scan one enabled source, returning a human-readable error on failure.
+fn scan_enabled_source(source: &SourceConfig) -> Result<SourceInventory, String> {
+    if !source.path.exists() {
+        return Err("source path does not exist".to_owned());
+    }
+    inventory::scan_source(&source.id, &source.path).map_err(|error| error.to_string())
+}
+
 /// Resolve active sources and inventories into a deterministic skill set.
 #[must_use]
 pub fn resolve(input: &ResolutionInput) -> Resolution {
@@ -160,10 +231,11 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
 
     let mut groups: BTreeMap<String, Vec<Candidate>> = BTreeMap::new();
     for candidate in candidates {
-        groups
-            .entry(candidate.skill.slot_name.clone())
-            .or_default()
-            .push(candidate);
+        // The slot name keys the group and also lives on the candidate; take a
+        // single owned key up front so the candidate moves into the bucket
+        // unchanged without a second clone in the common (existing-key) path.
+        let slot_name = candidate.skill.slot_name.clone();
+        groups.entry(slot_name).or_default().push(candidate);
     }
 
     let mut active_skills = Vec::new();
@@ -307,7 +379,7 @@ mod tests {
 
     #[test]
     fn resolve_should_pick_lower_priority_skill_for_same_slot() {
-        let input = input_with_sources(
+        let resolution = resolve_with(
             vec![
                 source("team-a", SourceKind::Team, 10),
                 source("team-b", SourceKind::Team, 20),
@@ -319,8 +391,6 @@ mod tests {
             vec![approval("source", "team-a"), approval("source", "team-b")],
         );
 
-        let resolution = resolve(&input);
-
         assert_eq!(
             resolution.active_skills[0].source_ref,
             "team-a:copy-editing"
@@ -329,7 +399,7 @@ mod tests {
 
     #[test]
     fn resolve_should_tie_break_equal_priority_by_source_id() {
-        let input = input_with_sources(
+        let resolution = resolve_with(
             vec![
                 source("z-team", SourceKind::Team, 10),
                 source("a-team", SourceKind::Team, 10),
@@ -341,8 +411,6 @@ mod tests {
             vec![approval("source", "z-team"), approval("source", "a-team")],
         );
 
-        let resolution = resolve(&input);
-
         assert_eq!(
             resolution.active_skills[0].source_ref,
             "a-team:copy-editing"
@@ -351,7 +419,7 @@ mod tests {
 
     #[test]
     fn resolve_should_mark_local_winner_as_local_override() {
-        let input = input_with_sources(
+        let resolution = resolve_with(
             vec![
                 source("local", SourceKind::Local, 0),
                 source("company", SourceKind::Team, 10),
@@ -363,14 +431,12 @@ mod tests {
             vec![approval("source", "company")],
         );
 
-        let resolution = resolve(&input);
-
         assert!(resolution.active_skills[0].local_override);
     }
 
     #[test]
     fn resolve_should_keep_lower_priority_approved_skill_when_winner_is_unapproved() {
-        let input = input_with_sources(
+        let resolution = resolve_with(
             vec![
                 source("new-team", SourceKind::Team, 0),
                 source("old-team", SourceKind::Team, 10),
@@ -382,8 +448,6 @@ mod tests {
             vec![approval("source", "old-team")],
         );
 
-        let resolution = resolve(&input);
-
         assert_eq!(resolution.active_skills[0].source_ref, "old-team:review");
     }
 
@@ -391,39 +455,33 @@ mod tests {
     fn resolve_should_match_author_approval_against_owners() {
         let mut team_skill = skill("company", "review");
         team_skill.owners = vec!["core-team".to_owned()];
-        let input = input_with_sources(
+        let resolution = resolve_with(
             vec![source("company", SourceKind::Team, 10)],
             vec![inventory("company", vec![team_skill])],
             vec![approval("author", "core-team")],
         );
-
-        let resolution = resolve(&input);
 
         assert_eq!(resolution.active_skills[0].source_ref, "company:review");
     }
 
     #[test]
     fn resolve_should_hold_unapproved_team_skill_as_pending() {
-        let input = input_with_sources(
+        let resolution = resolve_with(
             vec![source("company", SourceKind::Team, 10)],
             vec![inventory("company", vec![skill("company", "review")])],
             Vec::new(),
         );
-
-        let resolution = resolve(&input);
 
         assert!(resolution.active_skills.is_empty());
     }
 
     #[test]
     fn resolve_should_list_unapproved_team_skill_in_pending_approval() {
-        let input = input_with_sources(
+        let resolution = resolve_with(
             vec![source("company", SourceKind::Team, 10)],
             vec![inventory("company", vec![skill("company", "review")])],
             Vec::new(),
         );
-
-        let resolution = resolve(&input);
 
         assert_eq!(
             resolution.pending_approval_skills[0].source_ref,
@@ -435,13 +493,11 @@ mod tests {
     fn resolve_should_approve_trusted_source_without_record() {
         let mut trusted = source("company", SourceKind::Team, 10);
         trusted.trusted = true;
-        let input = input_with_sources(
+        let resolution = resolve_with(
             vec![trusted],
             vec![inventory("company", vec![skill("company", "review")])],
             Vec::new(),
         );
-
-        let resolution = resolve(&input);
 
         assert_eq!(resolution.active_skills[0].source_ref, "company:review");
     }
@@ -468,12 +524,8 @@ mod tests {
             approval("source", "a-team"),
             approval("source", "c-team"),
         ];
-        let baseline = resolve(&input_with_sources(
-            sources.clone(),
-            inventories.clone(),
-            approvals.clone(),
-        ))
-        .active_skills;
+        let baseline =
+            resolve_with(sources.clone(), inventories.clone(), approvals.clone()).active_skills;
 
         let permuted = [
             (vec![2usize, 0, 1], vec![2usize, 1, 0]),
@@ -483,11 +535,11 @@ mod tests {
         ]
         .into_iter()
         .map(|(source_order, inventory_order)| {
-            resolve(&input_with_sources(
+            resolve_with(
                 permute(&sources, &source_order),
                 permute(&inventories, &inventory_order),
                 approvals.clone(),
-            ))
+            )
             .active_skills
         })
         .collect::<Vec<_>>();
@@ -499,17 +551,16 @@ mod tests {
         order.iter().map(|index| items[*index].clone()).collect()
     }
 
-    fn input_with_sources(
+    fn resolve_with(
         sources: Vec<SourceConfig>,
         inventories: Vec<SourceInventory>,
         approvals: Vec<ApprovalRecord>,
-    ) -> ResolutionInput {
-        ResolutionInput {
-            sources,
+    ) -> Resolution {
+        resolve(&ResolutionInput {
+            sources: &sources,
             inventories,
             approvals,
-            previous_lock: None,
-        }
+        })
     }
 
     fn source(id: &str, kind: SourceKind, priority: i32) -> SourceConfig {
@@ -546,8 +597,6 @@ mod tests {
             requires: Vec::new(),
             owners: Vec::new(),
             tags: Vec::new(),
-            content_hash: "content".to_owned(),
-            metadata_hash: "metadata".to_owned(),
         }
     }
 

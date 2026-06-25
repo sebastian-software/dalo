@@ -2,11 +2,9 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 use crate::error::DaloResult;
 
@@ -24,6 +22,10 @@ pub struct SourceInventory {
 }
 
 /// One discovered skill.
+///
+/// V1.1 (drift detection) will reintroduce content/metadata fingerprints here,
+/// computed once and ideally persisted into the user lock so `status`/`doctor`
+/// can detect drift without re-hashing every skill directory on each run.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SkillRecord {
     /// Source ID.
@@ -46,10 +48,6 @@ pub struct SkillRecord {
     pub owners: Vec<String>,
     /// Declared tags.
     pub tags: Vec<String>,
-    /// Stable content hash for the skill directory.
-    pub content_hash: String,
-    /// Stable metadata hash for parsed frontmatter fields.
-    pub metadata_hash: String,
 }
 
 /// Non-fatal inventory warning.
@@ -97,7 +95,7 @@ pub fn scan_source(source_id: &str, source_root: &Path) -> DaloResult<SourceInve
     let mut skills = Vec::new();
 
     for skill_dir in skill_dirs {
-        match scan_skill(source_id, source_root, &skill_dir) {
+        match scan_skill(source_id, &skill_dir) {
             Ok((skill, mut skill_warnings)) => {
                 // `skill` is `None` when the slot name could not be resolved; the
                 // skill is dropped while its warning is still collected.
@@ -179,7 +177,6 @@ fn find_skill_dirs(
 
 fn scan_skill(
     source_id: &str,
-    source_root: &Path,
     skill_dir: &Path,
 ) -> DaloResult<(Option<SkillRecord>, Vec<InventoryWarning>)> {
     let skill_file = skill_dir.join(SKILL_FILE);
@@ -201,16 +198,14 @@ fn scan_skill(
         Some(SkillRecord {
             source_id: source_id.to_owned(),
             source_ref,
-            id: frontmatter.id.clone(),
+            id: frontmatter.id,
             slot_name,
             path: skill_dir.to_path_buf(),
             skill_file,
-            description: frontmatter.description.clone(),
-            requires: frontmatter.requires.clone(),
-            owners: frontmatter.owners.clone(),
-            tags: frontmatter.tags.clone(),
-            content_hash: hash_directory(source_root, skill_dir)?,
-            metadata_hash: hash_metadata(&frontmatter)?,
+            description: frontmatter.description,
+            requires: frontmatter.requires,
+            owners: frontmatter.owners,
+            tags: frontmatter.tags,
         }),
         warnings,
     ))
@@ -302,74 +297,6 @@ fn is_valid_slot_name(value: &str) -> bool {
             || character == '_'
             || character == '.'
     })
-}
-
-fn hash_metadata(frontmatter: &SkillFrontmatter) -> DaloResult<String> {
-    let bytes = serde_json::to_vec(frontmatter)?;
-    Ok(hash_bytes(&bytes))
-}
-
-fn hash_directory(source_root: &Path, skill_dir: &Path) -> DaloResult<String> {
-    let mut files = Vec::new();
-    collect_files(skill_dir, &mut files)?;
-    files.sort();
-
-    let mut hasher = Sha256::new();
-    for file in files {
-        let relative = file.strip_prefix(source_root).unwrap_or(file.as_path());
-        hasher.update(relative.to_string_lossy().as_bytes());
-        hasher.update([0]);
-        hash_file_into(&mut hasher, &file)?;
-        hasher.update([0]);
-    }
-
-    Ok(hex_digest(hasher.finalize().as_slice()))
-}
-
-/// Stream a file into the hasher in fixed-size chunks to avoid buffering whole
-/// files (a skill may carry large assets).
-fn hash_file_into(hasher: &mut Sha256, path: &Path) -> DaloResult<()> {
-    let mut file = fs::File::open(path)?;
-    let mut buffer = [0u8; 8192];
-    loop {
-        let bytes_read = file.read(&mut buffer)?;
-        if bytes_read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..bytes_read]);
-    }
-    Ok(())
-}
-
-fn collect_files(dir: &Path, files: &mut Vec<PathBuf>) -> DaloResult<()> {
-    for entry in fs::read_dir(dir)? {
-        let entry = entry?;
-        let file_type = entry.file_type()?;
-        let path = entry.path();
-
-        if file_type.is_dir() {
-            collect_files(&path, files)?;
-        } else if file_type.is_file() {
-            files.push(path);
-        }
-    }
-
-    Ok(())
-}
-
-fn hash_bytes(bytes: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    hex_digest(hasher.finalize().as_slice())
-}
-
-fn hex_digest(bytes: &[u8]) -> String {
-    let mut output = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        use std::fmt::Write as _;
-        let _ = write!(&mut output, "{byte:02x}");
-    }
-    output
 }
 
 fn duplicate_slot_warnings(source_id: &str, skills: &[SkillRecord]) -> Vec<InventoryWarning> {
@@ -480,18 +407,20 @@ mod tests {
     }
 
     #[test]
-    fn scan_source_should_hash_supporting_files() {
+    fn scan_source_should_treat_supporting_files_as_part_of_one_skill() {
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
         let skill_dir = temp_dir.path().join("review");
         fs::create_dir_all(&skill_dir).expect("skill dir should be created");
         fs::write(skill_dir.join(SKILL_FILE), "# Review\n").expect("skill file should be written");
-        fs::write(skill_dir.join("guide.md"), "first").expect("guide should be written");
-        let first = scan_source("company", temp_dir.path()).expect("scan should succeed");
+        fs::write(skill_dir.join("guide.md"), "supporting").expect("guide should be written");
 
-        fs::write(skill_dir.join("guide.md"), "second").expect("guide should be updated");
-        let second = scan_source("company", temp_dir.path()).expect("scan should succeed");
+        let inventory = scan_source("company", temp_dir.path()).expect("scan should succeed");
 
-        assert_ne!(first.skills[0].content_hash, second.skills[0].content_hash);
+        // Supporting files live next to `SKILL.md`; they must not spawn extra skill
+        // records. Content fingerprints over those files return in V1.1 (drift
+        // detection), persisted into the user lock.
+        assert_eq!(inventory.skills.len(), 1);
+        assert_eq!(inventory.skills[0].source_ref, "company:review");
     }
 
     #[test]
