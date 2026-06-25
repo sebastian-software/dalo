@@ -87,6 +87,15 @@ pub enum DaloError {
         source_id: String,
     },
 
+    /// The local source priority is fixed and cannot be changed.
+    #[error(
+        "source `{source_id}` is the local source; its priority is fixed and cannot be changed"
+    )]
+    LocalSourcePriorityFixed {
+        /// Source ID.
+        source_id: String,
+    },
+
     /// A requested skill could not be found.
     #[error("skill `{skill}` was not found")]
     SkillNotFound {
@@ -165,6 +174,7 @@ impl DaloError {
             | Self::AdoptionDestinationExists { .. }
             | Self::UnsupportedLockSchema { .. }
             | Self::FileParse { .. }
+            | Self::LocalSourcePriorityFixed { .. }
             | Self::TomlDeserialize(_) => DaloExitCode::ExpectedFailure,
             Self::DirtySource { .. } | Self::StoreLocked { .. } => DaloExitCode::UnsafeState,
             Self::StorePath { .. } | Self::InvalidStorePath { .. } | Self::CommandFailed { .. } => {
