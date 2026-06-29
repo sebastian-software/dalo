@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.3.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.2.0...dalo-v0.3.0) (2026-06-29)
+
+
+### Features
+
+* add catalog sources with inspect and select (M11) ([aca74db](https://github.com/sebastian-software/dalo/commit/aca74dbb4471a4b0a305a74e1bd8b4b227dc22cc))
+* detect catalog drift with a read-only refresh check (M12) ([3a8a576](https://github.com/sebastian-software/dalo/commit/3a8a576cfdccb93eb6bce5230e6efb91527becaa))
+* discover instruction packs and warn on topic overlap (M15) ([a0e6460](https://github.com/sebastian-software/dalo/commit/a0e64603d6b221b1dcde881d0196c4b10edb01c6))
+* expand and preflight same-catalog required closures (M13) ([4269132](https://github.com/sebastian-software/dalo/commit/426913261da5926e0ff6e69d343e9275507e2ee0))
+* render instruction packs into managed blocks (M14) ([b758ef2](https://github.com/sebastian-software/dalo/commit/b758ef26942f57d0504ec1bedad0b097c02cd97d))
+
+
+### Bug Fixes
+
+* harden V1.1 catalog and instruction edge cases ([fcfdbcb](https://github.com/sebastian-software/dalo/commit/fcfdbcb1b22b36097155587cdb810d3f759b1cdf))
+
 ## [0.2.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.1.0...dalo-v0.2.0) (2026-06-25)
 
 
