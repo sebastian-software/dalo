@@ -254,7 +254,7 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
 
         for skill in &inventory.skills {
             if source.kind == SourceKind::Catalog
-                && !crate::catalog::skill_is_selected(skill, selection)
+                && !crate::catalog::skill_is_selected(skill, selection, &source.path)
             {
                 // Unselected catalog skills are offers, not part of the resolved
                 // set; they surface through `source inspect`.
