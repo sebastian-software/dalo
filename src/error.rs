@@ -183,6 +183,24 @@ pub enum DaloError {
         source_id: String,
     },
 
+    /// A catalog skill selector matches more than one candidate.
+    #[error("catalog skill reference `{reference}` is ambiguous; matches: {matches}")]
+    AmbiguousSkillReference {
+        /// User-provided selector.
+        reference: String,
+        /// Human-readable matching candidates.
+        matches: String,
+    },
+
+    /// Managed instruction block markers are malformed.
+    #[error("malformed instruction block for `{pack_id}`: {reason}")]
+    MalformedInstructionBlock {
+        /// Instruction pack ID.
+        pack_id: String,
+        /// Human-readable reason.
+        reason: String,
+    },
+
     /// Terminal or filesystem I/O failed.
     #[error(transparent)]
     Io(#[from] io::Error),
@@ -200,6 +218,7 @@ impl DaloError {
             | Self::SourceAlreadyExists { .. }
             | Self::InvalidSourceId { .. }
             | Self::NotACatalogSource { .. }
+            | Self::AmbiguousSkillReference { .. }
             | Self::UnknownSource { .. }
             | Self::SkillNotFound { .. }
             | Self::AdoptionDestinationExists { .. }
@@ -208,7 +227,9 @@ impl DaloError {
             | Self::FileParse { .. }
             | Self::LocalSourcePriorityFixed { .. }
             | Self::TomlDeserialize(_) => DaloExitCode::ExpectedFailure,
-            Self::DirtySource { .. } | Self::StoreLocked { .. } => DaloExitCode::UnsafeState,
+            Self::DirtySource { .. }
+            | Self::StoreLocked { .. }
+            | Self::MalformedInstructionBlock { .. } => DaloExitCode::UnsafeState,
             Self::StorePath { .. } | Self::InvalidStorePath { .. } | Self::CommandFailed { .. } => {
                 DaloExitCode::EnvironmentProblem
             }

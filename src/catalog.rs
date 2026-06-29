@@ -237,16 +237,11 @@ pub fn select_skills(
     refs: &[String],
     unselect: bool,
 ) -> DaloResult<CatalogSelectReport> {
-    let candidates = catalog_candidates(&catalog_source(paths, id)?.path)?;
+    let source_path = catalog_source(paths, id)?.path;
+    let candidates = catalog_candidates(&source_path)?;
+    let mut resolved = Vec::with_capacity(refs.len());
     for reference in refs {
-        if !candidates
-            .iter()
-            .any(|c| candidate_matches_ref(c, reference))
-        {
-            return Err(DaloError::SkillNotFound {
-                skill: format!("{id}:{reference}"),
-            });
-        }
+        resolved.push(resolve_candidate_reference(id, &candidates, reference)?);
     }
 
     let mut config = store::read_config(paths)?;
@@ -257,16 +252,30 @@ pub fn select_skills(
         .ok_or_else(|| DaloError::UnknownSource {
             source_id: id.to_owned(),
         })?;
-    for reference in refs {
-        source.selection.retain(|existing| existing != reference);
+    for candidate in &resolved {
+        source
+            .selection
+            .retain(|existing| !selection_matches_candidate(existing, candidate));
         if !unselect {
-            source.selection.push(reference.clone());
+            source.selection.push(canonical_selection(candidate));
         }
     }
     source.selection.sort();
     source.selection.dedup();
     let selected = source.selection.clone();
     store::write_config(paths, &config)?;
+
+    let mut lock = read_source_lock(paths)?;
+    if let Some(catalog) = lock
+        .catalogs
+        .iter_mut()
+        .find(|catalog| catalog.source_id == id)
+    {
+        catalog.selected = selected.clone();
+        catalog.commit = git::rev_parse_head(&source_path)?;
+        catalog.inventory = catalog_inventory(&source_path)?;
+        write_source_lock(paths, &lock)?;
+    }
 
     Ok(CatalogSelectReport {
         source_id: id.to_owned(),
@@ -276,11 +285,15 @@ pub fn select_skills(
 
 /// Whether an inventory skill is part of a catalog source's selection.
 #[must_use]
-pub fn skill_is_selected(skill: &SkillRecord, selection: &[String]) -> bool {
+pub fn skill_is_selected(skill: &SkillRecord, selection: &[String], source_root: &Path) -> bool {
     selection.iter().any(|reference| {
         reference == &skill.slot_name
             || reference == &skill.source_ref
             || skill.id.as_deref() == Some(reference.as_str())
+            || skill
+                .path
+                .strip_prefix(source_root)
+                .is_ok_and(|path| path.to_string_lossy() == reference.as_str())
     })
 }
 
@@ -373,7 +386,55 @@ fn candidate_is_selected(candidate: &CatalogCandidate, selection: &[String]) -> 
 }
 
 fn candidate_matches_ref(candidate: &CatalogCandidate, reference: &str) -> bool {
-    candidate.slot_name == reference || candidate.id.as_deref() == Some(reference)
+    candidate.slot_name == reference
+        || candidate.path == reference
+        || candidate.id.as_deref() == Some(reference)
+}
+
+fn resolve_candidate_reference(
+    source_id: &str,
+    candidates: &[CatalogCandidate],
+    reference: &str,
+) -> DaloResult<CatalogCandidate> {
+    let matches = candidates
+        .iter()
+        .filter(|candidate| candidate_matches_ref(candidate, reference))
+        .cloned()
+        .collect::<Vec<_>>();
+    match matches.as_slice() {
+        [] => Err(DaloError::SkillNotFound {
+            skill: format!("{source_id}:{reference}"),
+        }),
+        [candidate] => Ok(candidate.clone()),
+        _ => Err(DaloError::AmbiguousSkillReference {
+            reference: reference.to_owned(),
+            matches: matches
+                .iter()
+                .map(candidate_display)
+                .collect::<Vec<_>>()
+                .join(", "),
+        }),
+    }
+}
+
+fn canonical_selection(candidate: &CatalogCandidate) -> String {
+    candidate
+        .id
+        .clone()
+        .unwrap_or_else(|| candidate.path.clone())
+}
+
+fn selection_matches_candidate(selection: &str, candidate: &CatalogCandidate) -> bool {
+    selection == candidate.slot_name
+        || selection == candidate.path
+        || candidate.id.as_deref() == Some(selection)
+}
+
+fn candidate_display(candidate: &CatalogCandidate) -> String {
+    match &candidate.id {
+        Some(id) => format!("{id} ({})", candidate.path),
+        None => candidate.path.clone(),
+    }
 }
 
 /// Drift outcome code (RFC 0001 §10).
@@ -444,7 +505,9 @@ pub fn compare_catalog_inventory(
 ) -> Vec<DriftEntry> {
     let is_selected = |entry: &CatalogEntry| {
         selected.iter().any(|reference| {
-            reference == &entry.slot_name || entry.id.as_deref() == Some(reference.as_str())
+            reference == &entry.slot_name
+                || reference == &entry.path
+                || entry.id.as_deref() == Some(reference.as_str())
         })
     };
     let mut outcomes = Vec::new();

@@ -47,12 +47,30 @@ fn end_marker(pack_id: &str) -> String {
 }
 
 /// Byte offsets `(start, end)` spanning a pack's managed block, markers included.
-fn find_block(content: &str, pack_id: &str) -> Option<(usize, usize)> {
+fn find_block(content: &str, pack_id: &str) -> DaloResult<Option<(usize, usize)>> {
     let start = start_marker(pack_id);
     let end = end_marker(pack_id);
-    let start_idx = content.find(&start)?;
-    let end_rel = content[start_idx..].find(&end)?;
-    Some((start_idx, start_idx + end_rel + end.len()))
+    let starts = content.match_indices(&start).collect::<Vec<_>>();
+    let ends = content.match_indices(&end).collect::<Vec<_>>();
+
+    match (starts.as_slice(), ends.as_slice()) {
+        ([], []) => Ok(None),
+        ([(start_idx, _)], [(end_idx, _)]) if start_idx < end_idx => {
+            Ok(Some((*start_idx, end_idx + end.len())))
+        }
+        ([], _) => Err(DaloError::MalformedInstructionBlock {
+            pack_id: pack_id.to_owned(),
+            reason: "end marker exists without a matching start marker".to_owned(),
+        }),
+        (_, []) => Err(DaloError::MalformedInstructionBlock {
+            pack_id: pack_id.to_owned(),
+            reason: "start marker exists without a matching end marker".to_owned(),
+        }),
+        _ => Err(DaloError::MalformedInstructionBlock {
+            pack_id: pack_id.to_owned(),
+            reason: "expected exactly one ordered start/end marker pair".to_owned(),
+        }),
+    }
 }
 
 /// Render `body` into `content` as `pack_id`'s managed block.
@@ -60,20 +78,19 @@ fn find_block(content: &str, pack_id: &str) -> Option<(usize, usize)> {
 /// When the block exists, only the bytes between its markers change. When it does
 /// not, the block is appended, separated from existing content by a blank line.
 /// Rendering the same body twice is idempotent.
-#[must_use]
-pub fn render_block(content: &str, pack_id: &str, body: &str) -> String {
+pub fn render_block(content: &str, pack_id: &str, body: &str) -> DaloResult<String> {
     let block = format!(
         "{}\n{}\n{}",
         start_marker(pack_id),
         body.trim_matches('\n'),
         end_marker(pack_id)
     );
-    match find_block(content, pack_id) {
+    Ok(match find_block(content, pack_id)? {
         Some((start_idx, end_idx)) => {
             format!("{}{}{}", &content[..start_idx], block, &content[end_idx..])
         }
         None => append_block(content, &block),
-    }
+    })
 }
 
 fn append_block(content: &str, block: &str) -> String {
@@ -94,27 +111,26 @@ fn append_block(content: &str, block: &str) -> String {
 /// Remove `pack_id`'s managed block, preserving content outside it. A single
 /// separating newline on each side of the block is also dropped so removal leaves
 /// no blank gap where the block used to be.
-#[must_use]
-pub fn remove_block(content: &str, pack_id: &str) -> String {
-    let Some((start_idx, end_idx)) = find_block(content, pack_id) else {
-        return content.to_owned();
+pub fn remove_block(content: &str, pack_id: &str) -> DaloResult<String> {
+    let Some((start_idx, end_idx)) = find_block(content, pack_id)? else {
+        return Ok(content.to_owned());
     };
     let before_raw = &content[..start_idx];
     let before = before_raw.strip_suffix('\n').unwrap_or(before_raw);
     let after_raw = &content[end_idx..];
     let after = after_raw.strip_prefix('\n').unwrap_or(after_raw);
-    match (before.is_empty(), after.is_empty()) {
+    Ok(match (before.is_empty(), after.is_empty()) {
         (true, _) => after.to_owned(),
         (_, true) if before_raw.ends_with('\n') => format!("{before}\n"),
         (_, true) => before.to_owned(),
         _ => format!("{before}\n{after}"),
-    }
+    })
 }
 
 /// Whether `content` contains `pack_id`'s managed block.
 #[must_use]
 pub fn has_block(content: &str, pack_id: &str) -> bool {
-    find_block(content, pack_id).is_some()
+    find_block(content, pack_id).is_ok_and(|block| block.is_some())
 }
 
 /// Validate a pack ID (same character rules as a source ID).
@@ -165,7 +181,7 @@ pub fn enable_pack(
 ) -> DaloResult<InstructionPackReport> {
     let pack = read_local_pack(paths, pack_id)?;
     let existing = fs::read_to_string(target).unwrap_or_default();
-    let rendered = render_block(&existing, &pack.id, &pack.body);
+    let rendered = render_block(&existing, &pack.id, &pack.body)?;
     write_target(target, &rendered)?;
 
     let mut lock = store::read_user_lock(paths)?;
@@ -199,8 +215,8 @@ pub fn disable_pack(
     target: &Path,
 ) -> DaloResult<InstructionPackReport> {
     let existing = fs::read_to_string(target).unwrap_or_default();
-    let action = if has_block(&existing, pack_id) {
-        let updated = remove_block(&existing, pack_id);
+    let action = if find_block(&existing, pack_id)?.is_some() {
+        let updated = remove_block(&existing, pack_id)?;
         write_target(target, &updated)?;
         "disabled"
     } else {
@@ -387,18 +403,18 @@ mod tests {
     #[test]
     fn render_block_should_append_when_absent_and_be_idempotent() {
         let original = "# Project\n\nNotes.\n";
-        let once = render_block(original, PACK, "Use tabs.");
+        let once = render_block(original, PACK, "Use tabs.").expect("render should succeed");
         assert!(has_block(&once, PACK));
         assert!(once.starts_with("# Project\n\nNotes.\n"));
         // A second render with the same body changes nothing.
-        let twice = render_block(&once, PACK, "Use tabs.");
+        let twice = render_block(&once, PACK, "Use tabs.").expect("render should succeed");
         assert_eq!(once, twice);
     }
 
     #[test]
     fn render_block_should_only_touch_bytes_inside_markers() {
         let original = "TOP CONTENT\n\n<!-- dalo:start house-style -->\nold\n<!-- dalo:end house-style -->\n\nBOTTOM CONTENT\n";
-        let updated = render_block(original, PACK, "new body");
+        let updated = render_block(original, PACK, "new body").expect("render should succeed");
         // Everything outside the block is byte-identical.
         assert!(updated.starts_with("TOP CONTENT\n\n"));
         assert!(updated.ends_with("\n\nBOTTOM CONTENT\n"));
@@ -409,8 +425,8 @@ mod tests {
     #[test]
     fn remove_block_should_preserve_surrounding_content() {
         let original = "# Header\n\nIntro.\n";
-        let rendered = render_block(original, PACK, "Body.");
-        let removed = remove_block(&rendered, PACK);
+        let rendered = render_block(original, PACK, "Body.").expect("render should succeed");
+        let removed = remove_block(&rendered, PACK).expect("remove should succeed");
         assert!(!has_block(&removed, PACK));
         // The user-owned content survives the round trip.
         assert!(removed.contains("# Header"));
@@ -421,7 +437,7 @@ mod tests {
     #[test]
     fn remove_block_should_keep_content_on_both_sides() {
         let original = "ABOVE\n\n<!-- dalo:start house-style -->\nbody\n<!-- dalo:end house-style -->\n\nBELOW\n";
-        let removed = remove_block(original, PACK);
+        let removed = remove_block(original, PACK).expect("remove should succeed");
         assert!(removed.contains("ABOVE"));
         assert!(removed.contains("BELOW"));
         assert!(!removed.contains("dalo:"));
@@ -430,7 +446,18 @@ mod tests {
     #[test]
     fn remove_block_should_noop_when_absent() {
         let original = "# Header\n\nNo blocks here.\n";
-        assert_eq!(remove_block(original, PACK), original);
+        assert_eq!(
+            remove_block(original, PACK).expect("remove should succeed"),
+            original
+        );
+    }
+
+    #[test]
+    fn render_block_should_reject_malformed_markers() {
+        let malformed = "# Header\n\n<!-- dalo:start house-style -->\nmissing end\n";
+        let error = render_block(malformed, PACK, "Body.").expect_err("render should fail");
+
+        assert!(matches!(error, DaloError::MalformedInstructionBlock { .. }));
     }
 
     #[test]

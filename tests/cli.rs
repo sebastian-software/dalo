@@ -1634,6 +1634,9 @@ fn catalog_select_should_materialize_only_selected_skills() {
         .args(["source", "select", "marketing", "copy-editing"])
         .assert()
         .success();
+    let source_lock =
+        std::fs::read_to_string(store.join("source-lock.toml")).expect("source lock readable");
+    assert!(source_lock.contains("selected = [\"skills/copy-editing\"]"));
     Command::cargo_bin("dalo")
         .expect("binary should build")
         .args(["--store"])
@@ -1650,6 +1653,53 @@ fn catalog_select_should_materialize_only_selected_skills() {
             .is_symlink()
     );
     assert!(!target.join("launch-copy").exists());
+}
+
+#[test]
+fn catalog_select_should_support_path_fallback_for_duplicate_slots() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo_with_duplicate_slots(&repo);
+    setup_store_with_target(&store, &target);
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "catalog"])
+        .arg(&repo)
+        .assert()
+        .success();
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "catalog", "shared"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("ambiguous"));
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "catalog", "skills/a"])
+        .assert()
+        .success();
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    let linked = std::fs::read_link(target.join("shared")).expect("selected skill should link");
+    assert!(linked.ends_with("sources/catalog/checkout/skills/a"));
+    let source_lock =
+        std::fs::read_to_string(store.join("source-lock.toml")).expect("source lock readable");
+    assert!(source_lock.contains("selected = [\"skills/a\"]"));
 }
 
 #[test]
@@ -1773,6 +1823,43 @@ fn instructions_enable_disable_should_manage_block_idempotently() {
     assert!(after_disable.contains("# Project"));
     assert!(after_disable.contains("User notes."));
     assert!(!after_disable.contains("dalo:start"));
+}
+
+#[test]
+fn instructions_enable_should_reject_malformed_existing_block() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target_file = temp_dir.path().join("AGENTS.md");
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::write(
+        store.join("local/instructions/house-style.md"),
+        "version: 1.0\n\nUse tabs.\n",
+    )
+    .expect("pack should be written");
+    let malformed = "# Project\n\n<!-- dalo:start house-style -->\nmissing end\n";
+    std::fs::write(&target_file, malformed).expect("target should be written");
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "house-style"])
+        .arg(&target_file)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("malformed instruction block"));
+
+    assert_eq!(
+        std::fs::read_to_string(&target_file).expect("target readable"),
+        malformed
+    );
 }
 
 #[test]
@@ -1919,6 +2006,34 @@ fn create_git_catalog_repo(repo: &std::path::Path) {
         std::fs::write(
             repo.join("skills").join(slot).join("SKILL.md"),
             format!("# {slot}\n"),
+        )
+        .expect("skill written");
+    }
+    run_git(repo, &["init", "-q"]);
+    run_git(repo, &["add", "."]);
+    run_git(
+        repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "initial",
+            "-q",
+        ],
+    );
+}
+
+fn create_git_catalog_repo_with_duplicate_slots(repo: &std::path::Path) {
+    for folder in ["a", "b"] {
+        std::fs::create_dir_all(repo.join("skills").join(folder)).expect("repo dirs created");
+        std::fs::write(
+            repo.join("skills").join(folder).join("SKILL.md"),
+            "---\nname: shared\n---\n# Shared\n",
         )
         .expect("skill written");
     }
