@@ -228,7 +228,7 @@ pub fn adopt_skill(
         if !replace_original {
             return Err(DaloError::AdoptionDestinationExists { path: local_path });
         }
-        // `--yes`: treat this as the second step of the two-step flow ONLY if the
+        // Replacement may be the second step of a two-step flow ONLY if the
         // existing copy has the same content as the skill being adopted. If it is
         // an unrelated, pre-existing local skill, replacing the target would delete
         // the unmanaged content and link to foreign content — refuse instead.

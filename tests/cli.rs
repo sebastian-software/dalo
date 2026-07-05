@@ -178,7 +178,7 @@ fn relative_store_path_should_create_absolute_owned_symlink_and_clean_doctor() {
     Command::cargo_bin("dalo")
         .expect("binary should build")
         .current_dir(temp_dir.path())
-        .args(["--store", "store", "--yes", "adopt", "review"])
+        .args(["--store", "store", "adopt", "--replace", "review"])
         .assert()
         .success();
 
@@ -435,6 +435,36 @@ fn sync_should_create_directory_symlink() {
 }
 
 #[test]
+fn sync_yes_should_not_replace_unmanaged_real_directory() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_skill_and_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .args(["--yes", "sync"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("conflict"));
+
+    assert!(
+        !std::fs::symlink_metadata(target.join("review"))
+            .expect("unmanaged skill should remain")
+            .file_type()
+            .is_symlink()
+    );
+    assert_eq!(
+        std::fs::read_to_string(target.join("review/SKILL.md"))
+            .expect("unmanaged content should remain"),
+        "# review\n"
+    );
+}
+
+#[test]
 fn sync_should_report_existing_on_second_run() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -663,7 +693,7 @@ fn adopt_should_accept_explicit_relative_path_selector() {
 }
 
 #[test]
-fn adopt_yes_should_replace_original_with_owned_symlink_without_committing() {
+fn adopt_yes_should_not_replace_original_without_replace() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
@@ -675,6 +705,32 @@ fn adopt_yes_should_replace_original_with_owned_symlink_without_committing() {
         .args(["--store"])
         .arg(&store)
         .args(["--yes", "adopt", "review"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("replacement: skipped"));
+
+    assert!(store.join("local/skills/review/SKILL.md").is_file());
+    assert!(
+        !std::fs::symlink_metadata(target.join("review"))
+            .expect("original should remain")
+            .file_type()
+            .is_symlink()
+    );
+}
+
+#[test]
+fn adopt_replace_should_replace_original_with_owned_symlink_without_committing() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .args(["adopt", "--replace", "review"])
         .assert()
         .success()
         .stdout(predicate::str::contains("replacement: replaced"));
@@ -692,14 +748,14 @@ fn adopt_yes_should_replace_original_with_owned_symlink_without_committing() {
 }
 
 #[test]
-fn adopt_then_adopt_yes_should_complete_the_two_step_replacement() {
+fn adopt_then_adopt_replace_should_complete_the_two_step_replacement() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
     setup_store_with_target(&store, &target);
     create_unmanaged_skill(&target, "review");
 
-    // Step 1: copy only (no --yes).
+    // Step 1: copy only (no --replace).
     Command::cargo_bin("dalo")
         .expect("binary should build")
         .args(["--store"])
@@ -714,7 +770,7 @@ fn adopt_then_adopt_yes_should_complete_the_two_step_replacement() {
         .expect("binary should build")
         .args(["--store"])
         .arg(&store)
-        .args(["--yes", "adopt", "review"])
+        .args(["adopt", "--replace", "review"])
         .assert()
         .success()
         .stdout(predicate::str::contains("replacement: replaced"));
@@ -728,7 +784,7 @@ fn adopt_then_adopt_yes_should_complete_the_two_step_replacement() {
 }
 
 #[test]
-fn adopt_yes_should_refuse_when_local_destination_is_an_unrelated_skill() {
+fn adopt_replace_should_refuse_when_local_destination_is_an_unrelated_skill() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
@@ -745,7 +801,7 @@ fn adopt_yes_should_refuse_when_local_destination_is_an_unrelated_skill() {
         .expect("binary should build")
         .args(["--store"])
         .arg(&store)
-        .args(["--yes", "adopt", "review"])
+        .args(["adopt", "--replace", "review"])
         .assert()
         .failure()
         .stderr(predicate::str::contains("already exists"));
@@ -764,7 +820,7 @@ fn adopt_yes_should_refuse_when_local_destination_is_an_unrelated_skill() {
 }
 
 #[test]
-fn adopt_yes_should_not_replace_local_marker_skill() {
+fn adopt_replace_should_not_replace_local_marker_skill() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
@@ -775,7 +831,7 @@ fn adopt_yes_should_not_replace_local_marker_skill() {
     command
         .args(["--store"])
         .arg(&store)
-        .args(["--yes", "adopt", "review.local"])
+        .args(["adopt", "--replace", "review.local"])
         .assert()
         .success()
         .stdout(predicate::str::contains("replacement: protected"));
@@ -790,7 +846,7 @@ fn adopt_yes_should_not_replace_local_marker_skill() {
 }
 
 #[test]
-fn adopt_yes_should_refuse_replacement_for_kept_skill() {
+fn adopt_replace_should_refuse_replacement_for_kept_skill() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
@@ -808,14 +864,14 @@ fn adopt_yes_should_refuse_replacement_for_kept_skill() {
     command
         .args(["--store"])
         .arg(&store)
-        .args(["--yes", "adopt", "review"])
+        .args(["adopt", "--replace", "review"])
         .assert()
         .success()
         .stdout(predicate::str::contains("replacement: protected"));
 }
 
 #[test]
-fn adopt_yes_should_keep_kept_skill_directory_as_real_entry() {
+fn adopt_replace_should_keep_kept_skill_directory_as_real_entry() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
@@ -832,7 +888,7 @@ fn adopt_yes_should_keep_kept_skill_directory_as_real_entry() {
         .expect("binary should build")
         .args(["--store"])
         .arg(&store)
-        .args(["--yes", "adopt", "review"])
+        .args(["adopt", "--replace", "review"])
         .assert()
         .success();
 
@@ -845,7 +901,7 @@ fn adopt_yes_should_keep_kept_skill_directory_as_real_entry() {
 }
 
 #[test]
-fn adopt_yes_should_preserve_kept_skill_contents() {
+fn adopt_replace_should_preserve_kept_skill_contents() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
@@ -862,7 +918,7 @@ fn adopt_yes_should_preserve_kept_skill_contents() {
         .expect("binary should build")
         .args(["--store"])
         .arg(&store)
-        .args(["--yes", "adopt", "review"])
+        .args(["adopt", "--replace", "review"])
         .assert()
         .success();
 
@@ -874,7 +930,7 @@ fn adopt_yes_should_preserve_kept_skill_contents() {
 }
 
 #[test]
-fn adopt_yes_should_preserve_original_contents_via_symlink_when_not_protected() {
+fn adopt_replace_should_preserve_original_contents_via_symlink_when_not_protected() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
@@ -884,7 +940,7 @@ fn adopt_yes_should_preserve_original_contents_via_symlink_when_not_protected() 
         .expect("binary should build")
         .args(["--store"])
         .arg(&store)
-        .args(["--yes", "adopt", "review"])
+        .args(["adopt", "--replace", "review"])
         .assert()
         .success();
 
@@ -908,7 +964,7 @@ fn adopt_should_fail_for_path_outside_materialization_dirs() {
     command
         .args(["--store"])
         .arg(&store)
-        .args(["--yes", "adopt"])
+        .args(["adopt", "--replace"])
         .arg(outside.join("review"))
         .assert()
         .failure()
@@ -928,7 +984,7 @@ fn adopt_should_not_touch_path_outside_materialization_dirs() {
         .expect("binary should build")
         .args(["--store"])
         .arg(&store)
-        .args(["--yes", "adopt"])
+        .args(["adopt", "--replace"])
         .arg(outside.join("review"))
         .assert()
         .failure();
@@ -990,6 +1046,45 @@ fn resolve_list_should_report_unmanaged_skills() {
         .success()
         .stdout(predicate::str::contains("unmanaged skills:"))
         .stdout(predicate::str::contains("review"));
+}
+
+#[test]
+fn resolve_adopt_yes_should_copy_only_until_replace_is_explicit() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["--yes", "resolve", "adopt", "review"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("replacement: skipped"));
+    assert!(
+        !std::fs::symlink_metadata(target.join("review"))
+            .expect("original should remain after --yes")
+            .file_type()
+            .is_symlink()
+    );
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "adopt", "--replace", "review"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("replacement: replaced"));
+    assert!(
+        std::fs::symlink_metadata(target.join("review"))
+            .expect("replacement should exist")
+            .file_type()
+            .is_symlink()
+    );
 }
 
 #[test]
@@ -1087,7 +1182,7 @@ fn resolve_remove_owned_should_remove_only_recorded_symlink() {
         .expect("binary should build")
         .args(["--store"])
         .arg(&store)
-        .args(["--yes", "adopt", "review"])
+        .args(["adopt", "--replace", "review"])
         .assert()
         .success();
     let mut command = Command::cargo_bin("dalo").expect("binary should build");
@@ -1104,7 +1199,7 @@ fn resolve_remove_owned_should_remove_only_recorded_symlink() {
 }
 
 #[test]
-fn resolve_remove_owned_should_not_remove_real_entry() {
+fn resolve_remove_owned_yes_should_not_remove_real_entry() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
@@ -1114,7 +1209,7 @@ fn resolve_remove_owned_should_not_remove_real_entry() {
         .expect("binary should build")
         .args(["--store"])
         .arg(&store)
-        .args(["--yes", "adopt", "review"])
+        .args(["adopt", "--replace", "review"])
         .assert()
         .success();
     std::fs::remove_file(target.join("review")).expect("owned symlink should be removed");
@@ -1124,7 +1219,7 @@ fn resolve_remove_owned_should_not_remove_real_entry() {
     command
         .args(["--store"])
         .arg(&store)
-        .args(["resolve", "remove-owned", "review"])
+        .args(["--yes", "resolve", "remove-owned", "review"])
         .assert()
         .success()
         .stdout(predicate::str::contains("blocked_real_entry"));
