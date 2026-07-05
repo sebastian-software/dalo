@@ -971,6 +971,54 @@ mod tests {
     }
 
     #[test]
+    fn read_store_files_should_reject_truncated_toml() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root);
+
+        fs::write(&paths.config_file, "version = ").expect("config should be truncated");
+        let config_error = read_config(&paths).expect_err("truncated config should fail");
+        assert!(matches!(config_error, DaloError::FileParse { .. }));
+
+        fs::write(&paths.lock_file, "schema_version = ").expect("lock should be truncated");
+        let lock_error = read_user_lock(&paths).expect_err("truncated lock should fail");
+        assert!(matches!(lock_error, DaloError::FileParse { .. }));
+
+        fs::write(&paths.approvals_file, "schema_version = ")
+            .expect("approvals should be truncated");
+        let approvals_error = read_approvals(&paths).expect_err("truncated approvals should fail");
+        assert!(matches!(approvals_error, DaloError::FileParse { .. }));
+    }
+
+    #[test]
+    fn init_store_should_not_clobber_corrupt_config_lock_or_approvals() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root.clone());
+        fs::write(&paths.config_file, "version = ").expect("config should be truncated");
+        fs::write(&paths.lock_file, "schema_version = ").expect("lock should be truncated");
+        fs::write(&paths.approvals_file, "schema_version = ")
+            .expect("approvals should be truncated");
+
+        init_store(store_root, false).expect("init should leave non-state TOML files alone");
+
+        assert_eq!(
+            fs::read_to_string(&paths.config_file).expect("config should be readable"),
+            "version = "
+        );
+        assert_eq!(
+            fs::read_to_string(&paths.lock_file).expect("lock should be readable"),
+            "schema_version = "
+        );
+        assert_eq!(
+            fs::read_to_string(&paths.approvals_file).expect("approvals should be readable"),
+            "schema_version = "
+        );
+    }
+
+    #[test]
     fn read_user_lock_should_reject_unsupported_schema_version() {
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
         let store_root = temp_dir.path().join("store");

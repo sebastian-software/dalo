@@ -613,6 +613,39 @@ mod tests {
     }
 
     #[test]
+    fn materialize_should_block_dangling_foreign_symlink() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let target_dir = temp_dir.path().join("target");
+        let missing_foreign_dir = temp_dir.path().join("missing-foreign");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        fs::create_dir_all(&target_dir).expect("target should be created");
+        let skill_dir = store_root.join("local/skills/review");
+        fs::create_dir_all(&skill_dir).expect("skill should be created");
+        unix_fs::symlink(&missing_foreign_dir, target_dir.join("review"))
+            .expect("dangling foreign symlink should be created");
+        write_state_with_target(&store_root, &target_dir);
+
+        let report = materialize(
+            &StorePaths::new(store_root),
+            &resolution_with_skill("review", &skill_dir),
+            false,
+        )
+        .expect("materialize should succeed");
+
+        assert_eq!(
+            report.operations[0].kind,
+            MaterializeOperationKind::Conflict
+        );
+        assert!(
+            fs::symlink_metadata(target_dir.join("review"))
+                .expect("dangling symlink should survive")
+                .file_type()
+                .is_symlink()
+        );
+    }
+
+    #[test]
     fn materialize_should_relink_owned_symlink_pointing_elsewhere() {
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
         let store_root = temp_dir.path().join("store");
