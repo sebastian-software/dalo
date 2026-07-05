@@ -18,6 +18,9 @@ use crate::lockfile::LockedInstructionPack;
 use crate::source::{SourceConfig, SourceKind};
 use crate::store::{self, StorePaths};
 
+const START_MARKER_PREFIX: &str = "<!-- dalo:start ";
+const END_MARKER_PREFIX: &str = "<!-- dalo:end ";
+
 /// A versioned instruction pack: standing agent-facing conventions as Markdown.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct InstructionPack {
@@ -43,11 +46,11 @@ pub struct InstructionPackReport {
 }
 
 fn start_marker(pack_id: &str) -> String {
-    format!("<!-- dalo:start {pack_id} -->")
+    format!("{START_MARKER_PREFIX}{pack_id} -->")
 }
 
 fn end_marker(pack_id: &str) -> String {
-    format!("<!-- dalo:end {pack_id} -->")
+    format!("{END_MARKER_PREFIX}{pack_id} -->")
 }
 
 /// Byte offsets `(start, end)` spanning a pack's managed block, markers included.
@@ -83,6 +86,7 @@ fn find_block(content: &str, pack_id: &str) -> DaloResult<Option<(usize, usize)>
 /// not, the block is appended, separated from existing content by a blank line.
 /// Rendering the same body twice is idempotent.
 pub fn render_block(content: &str, pack_id: &str, body: &str) -> DaloResult<String> {
+    validate_body_markers(pack_id, body)?;
     let block = format!(
         "{}\n{}\n{}",
         start_marker(pack_id),
@@ -95,6 +99,17 @@ pub fn render_block(content: &str, pack_id: &str, body: &str) -> DaloResult<Stri
         }
         None => append_block(content, &block),
     })
+}
+
+fn validate_body_markers(pack_id: &str, body: &str) -> DaloResult<()> {
+    if body.contains(START_MARKER_PREFIX) || body.contains(END_MARKER_PREFIX) {
+        return Err(DaloError::MalformedInstructionBlock {
+            pack_id: pack_id.to_owned(),
+            reason: "instruction pack body contains dalo managed-block marker text".to_owned(),
+        });
+    }
+
+    Ok(())
 }
 
 fn append_block(content: &str, block: &str) -> String {
@@ -496,6 +511,52 @@ mod tests {
     }
 
     #[test]
+    fn render_block_should_reject_same_id_marker_in_body() {
+        let body = format!("Do not emit this marker:\n{}\n", end_marker(PACK));
+
+        let error = render_block("# Header\n", PACK, &body).expect_err("render should fail");
+
+        assert_body_marker_error(error, PACK);
+    }
+
+    #[test]
+    fn render_block_should_reject_different_id_marker_in_body() {
+        let body = format!(
+            "Example for another pack:\n{}\n",
+            start_marker("other-pack")
+        );
+
+        let error = render_block("# Header\n", PACK, &body).expect_err("render should fail");
+
+        assert_body_marker_error(error, PACK);
+    }
+
+    #[test]
+    fn enable_pack_should_reject_marker_body_without_rewriting_target() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp.path().join("store");
+        let target = temp.path().join("AGENTS.md");
+        store::init_store(store_root.clone(), false).expect("store should be initialized");
+        let paths = StorePaths::new(store_root);
+        fs::write(
+            paths.local_instructions_dir.join(format!("{PACK}.md")),
+            format!("Before\n{}\nAfter\n", start_marker("other-pack")),
+        )
+        .expect("pack should be written");
+        fs::write(&target, "user-owned content\n").expect("target should be seeded");
+
+        let error = enable_pack(&paths, PACK, &target, false).expect_err("enable should fail");
+
+        assert_body_marker_error(error, PACK);
+        assert_eq!(
+            fs::read_to_string(&target).expect("target should be readable"),
+            "user-owned content\n"
+        );
+        let lock = store::read_user_lock(&paths).expect("lock should be readable");
+        assert!(lock.active_instruction_packs.is_empty());
+    }
+
+    #[test]
     fn parse_version_should_read_leading_version_line() {
         assert_eq!(
             parse_version("version: 1.2.0\n\n# Body\n"),
@@ -617,5 +678,17 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    fn assert_body_marker_error(error: DaloError, pack_id: &str) {
+        let DaloError::MalformedInstructionBlock {
+            pack_id: actual,
+            reason,
+        } = error
+        else {
+            panic!("expected malformed instruction block error");
+        };
+        assert_eq!(actual, pack_id);
+        assert!(reason.contains("body contains dalo managed-block marker"));
     }
 }
