@@ -39,7 +39,7 @@
     "url": "https://dalo.sh/",
     "codeRepository": "https://github.com/sebastian-software/dalo",
     "license": "https://github.com/sebastian-software/dalo/blob/main/LICENSE",
-    "softwareVersion": "0.3.0",
+    "softwareVersion": "__DALO_VERSION__",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "macOS, Linux"
   }
@@ -102,7 +102,7 @@
   <section class="hero" data-scope="dark">
     <div class="wrap hero-grid">
       <div class="hero-copy">
-        <p class="kicker reveal"><span class="dot"></span> Rust CLI · macOS &amp; Linux · v0.3.0</p>
+        <p class="kicker reveal"><span class="dot"></span> Rust CLI · macOS &amp; Linux · v__DALO_VERSION__</p>
         <h1 class="reveal">Your team's agent skills, versioned like code.</h1>
         <p class="hero-lede reveal">
           Dalo is the missing layer between "I found a useful skill" and "our agents
@@ -384,7 +384,7 @@
         <h2 class="section-h reveal">Up and running in minutes.</h2>
         <p class="lead reveal">
           Install from crates.io or grab a prebuilt archive from GitHub Releases.
-          Dalo shells out to <code>git</code> for source operations, no other runtime
+          Dalo shells out to <code>git</code> for source operations; there is no other runtime
           to install.
         </p>
         <div class="install-copy reveal">
@@ -455,7 +455,7 @@
         </div>
         <div class="safe-item reveal">
           <h3>Built-in diagnostics</h3>
-          <p><code>dalo doctor</code> checks store structure, lockfiles, Git auth, target paths, and broken symlinks, so you trust the result.</p>
+          <p><code>dalo doctor</code> checks store structure, lockfiles, Git auth, target paths, and broken symlinks, so you can trust the result.</p>
         </div>
       </div>
     </div>
@@ -524,7 +524,7 @@
     <div class="wrap">
       <h2 class="section-h reveal">Early, and honest about it.</h2>
       <p class="lead reveal">
-        Dalo is v0.3.0. The V1 and V1.1 surfaces work today: local, team, and catalog
+        Dalo is v__DALO_VERSION__. The V1 and V1.1 surfaces work today: local, team, and catalog
         sources; deterministic resolution; safe sync; adoption; diagnostics; and
         instruction packs. Here's what's intentionally deferred to later releases.
       </p>

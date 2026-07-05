@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "site/**"
+      - "Cargo.toml"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -32,6 +33,14 @@ jobs:
 
       - name: Configure Pages
         uses: actions/configure-pages@v6
+
+      - name: Stamp site version
+        shell: bash
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)"
+          test -n "$version"
+          grep -R "__DALO_VERSION__" -n site
+          find site -type f -name "*.html" -exec sed -i "s/__DALO_VERSION__/${version}/g" {} +
 
       - name: Upload static site
         uses: actions/upload-pages-artifact@v5

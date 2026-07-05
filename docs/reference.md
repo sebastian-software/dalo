@@ -1,6 +1,6 @@
 # Dalo User Reference
 
-This is the user-facing reference for scripting Dalo and for understanding the files Dalo writes. It documents the current `v0.3.0` CLI and persisted schemas.
+This is the user-facing reference for scripting Dalo and for understanding the files Dalo writes. It documents the current CLI and persisted schemas.
 
 ## Store Resolution
 
@@ -20,7 +20,7 @@ Global flags can be placed before or after the command.
 | --- | --- |
 | `--store <PATH>` | Use a store other than the resolved default. |
 | `--json` | Emit machine-readable JSON for commands that support structured output. |
-| `--yes` | Accept safe prompts. This never implies `--replace`, never creates commits, and never grants new approvals. |
+| `--yes` | Reserved for future safe interactive prompts. It is currently a no-op and never implies `--replace`, creates commits, or grants new approvals. |
 | `--dry-run` | Plan supported mutating operations without writing files, cloning, linking, or changing locks. Read-only commands ignore it. |
 | `-h`, `--help` | Print command help. |
 | `-V`, `--version` | Print the installed version. |

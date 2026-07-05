@@ -145,7 +145,7 @@ dalo status
 dalo adopt release-notes.local
 ```
 
-The first step copies the skill into the local source. Replacing the original folder with a symlink is a separate explicit action via `dalo adopt --replace <skill>` or `dalo resolve adopt --replace <id>`. `--yes` only accepts prompts; it does not enable replacement or commit adopted work.
+The first step copies the skill into the local source. Replacing the original folder with a symlink is a separate explicit action via `dalo adopt --replace <skill>` or `dalo resolve adopt --replace <id>`. `--yes` is reserved for future safe prompts; it does not enable replacement or commit adopted work.
 
 Promotion is intentionally deferred. The planned flow is PR-first and will use normal `git` plus an authenticated `gh` CLI. If GitHub auth is missing, Dalo should fail loudly instead of inventing a weaker fallback.
 
@@ -332,7 +332,7 @@ For detailed implementation history, use the [changelog](CHANGELOG.md) and [mile
 
 ## Project status
 
-Dalo is currently `v0.3.0` in `Cargo.toml`.
+Dalo's current crate version is recorded in `Cargo.toml`.
 
 The V1 and V1.1 surfaces are implemented: local/team/catalog sources, target linking, safe sync, lock drift, adoption, minimal resolve helpers, doctor diagnostics, catalog selection/drift/required-closure handling, and instruction packs with managed blocks and topic-overlap warnings.
 
@@ -348,6 +348,7 @@ Later work includes scheduled autosync installation, lock-advancing `source refr
 - [RFC 0002: Technical architecture](docs/rfcs/0002-technical-architecture.md)
 - [RFC 0003: Resolution engine](docs/rfcs/0003-resolution-engine.md)
 - [Implementation status snapshot](docs/rfcs/v1-implementation-status.md)
+- [v0.4.0 release notes](docs/releases/v0.4.0.md)
 - [v0.3.0 release notes](docs/releases/v0.3.0.md)
 - [v0.2.0 release notes](docs/releases/v0.2.0.md)
 - [v0.1.0-rc.1 release notes](docs/releases/v0.1.0-rc.1.md)
