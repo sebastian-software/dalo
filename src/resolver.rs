@@ -228,15 +228,18 @@ fn scan_enabled_source(source: &SourceConfig) -> Result<SourceInventory, String>
     }
     let inventory =
         inventory::scan_source(&source.id, &source.path).map_err(|error| error.to_string())?;
-    if inventory.skills.is_empty()
-        && inventory.warnings.iter().any(|warning| {
-            warning.code == InventoryWarningCode::UnreadablePath && warning.path == source.path
-        })
-    {
-        return Err("source root could not be scanned".to_owned());
+    if inventory_degrades_source(&inventory) {
+        return Err("source scan degraded by unreadable paths".to_owned());
     }
 
     Ok(inventory)
+}
+
+fn inventory_degrades_source(inventory: &SourceInventory) -> bool {
+    inventory
+        .warnings
+        .iter()
+        .any(|warning| warning.code == InventoryWarningCode::UnreadablePath)
 }
 
 /// Resolve active sources and inventories into a deterministic skill set.
@@ -766,8 +769,23 @@ fn required_closure_preflight(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::inventory::{SkillRecord, SourceInventory};
+    use crate::inventory::{InventoryWarning, InventoryWarningCode, SkillRecord, SourceInventory};
     use proptest::prelude::*;
+
+    #[test]
+    fn inventory_degrades_source_for_subtree_unreadable_warning() {
+        let inventory = SourceInventory {
+            source_id: "company".to_owned(),
+            skills: vec![skill("company", "review")],
+            warnings: vec![InventoryWarning {
+                code: InventoryWarningCode::UnreadablePath,
+                path: PathBuf::from("/repo/skills/private"),
+                message: "permission denied".to_owned(),
+            }],
+        };
+
+        assert!(inventory_degrades_source(&inventory));
+    }
 
     #[test]
     fn resolve_should_pick_lower_priority_skill_for_same_slot() {
