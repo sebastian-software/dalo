@@ -69,6 +69,7 @@
       <a href="#quickstart">Quickstart</a>
       <a href="#targets">Targets</a>
       <a href="#compare">Compare</a>
+      <a href="#roadmap">Roadmap</a>
     </nav>
 
     <details class="mobile-menu">
@@ -115,6 +116,19 @@
             <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M2 8h11M9 4l4 4-4 4"/></svg>
           </a>
           <a class="btn btn-quiet" href="https://github.com/sebastian-software/dalo" rel="noopener">View on GitHub</a>
+        </div>
+        <div class="install-copy hero-install reveal">
+          <code id="hero-install-command">curl -fsSL https://dalo.sh/install.sh | sh</code>
+          <button class="copy-btn" type="button" data-copy-target="hero-install-command" aria-label="Copy install command">
+            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" d="M5.5 5.5h7v7h-7zM3.5 10.5h-1v-7h7v1"/></svg>
+            <span>Copy</span>
+          </button>
+        </div>
+        <div class="proof-badges reveal" aria-label="Project signals">
+          <a href="https://crates.io/crates/dalo" rel="noopener">crates.io</a>
+          <a href="https://github.com/sebastian-software/dalo/actions/workflows/ci.yml" rel="noopener">CI</a>
+          <a href="https://github.com/sebastian-software/dalo/blob/main/LICENSE" rel="noopener">MIT</a>
+          <a href="https://github.com/sebastian-software/dalo" rel="noopener">Star on GitHub</a>
         </div>
         <p class="hero-meta reveal">MIT-licensed. Single binary, no daemon; just <code>git</code> on your PATH.</p>
       </div>
@@ -353,13 +367,13 @@
           <span class="step-n">1</span>
           <h3>Adopt</h3>
           <p>An agent wrote a useful skill straight into its own folder. Bring it under management without losing the original. Dalo copies it into your local source first.</p>
-          <code class="step-cmd">dalo adopt release-notes</code>
+          <code class="step-cmd">dalo adopt release-notes.local</code>
         </li>
         <li class="step reveal">
           <span class="step-n">2</span>
           <h3>Add a source</h3>
           <p>Connect a team repository of shared skills. Dalo checks it out into the store and tracks its branch.</p>
-          <code class="step-cmd">dalo source add company git@github.com:acme/skills.git</code>
+          <code class="step-cmd">dalo source add company git@github.com:acme/agent-skills.git</code>
         </li>
         <li class="step reveal">
           <span class="step-n">3</span>
@@ -383,17 +397,20 @@
       <div class="quickstart-copy">
         <h2 class="section-h reveal">Up and running in minutes.</h2>
         <p class="lead reveal">
-          Install from crates.io or grab a prebuilt archive from GitHub Releases.
-          Dalo shells out to <code>git</code> for source operations; there is no other runtime
-          to install.
+          Install with the hosted script, Cargo Binstall, Cargo, or a prebuilt archive from
+          <a href="https://github.com/sebastian-software/dalo/releases" rel="noopener">GitHub Releases</a>.
+          Dalo shells out to <code>git</code> for source operations; there is no daemon.
         </p>
         <div class="install-copy reveal">
-          <code id="install-command">cargo install dalo</code>
+          <code id="install-command">curl -fsSL https://dalo.sh/install.sh | sh</code>
           <button class="copy-btn" type="button" data-copy-target="install-command" aria-label="Copy install command">
             <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" d="M5.5 5.5h7v7h-7zM3.5 10.5h-1v-7h7v1"/></svg>
             <span>Copy</span>
           </button>
         </div>
+        <p class="install-alt reveal">
+          Prefer Rust tooling? <a href="https://crates.io/crates/dalo" rel="noopener">crates.io</a> supports <code>cargo binstall dalo</code> and <code>cargo install dalo</code>.
+        </p>
         <ul class="qs-points reveal">
           <li><span class="c-ok">✓</span> Single Rust binary, no daemon</li>
           <li><span class="c-ok">✓</span> Local-only, no network needed to try it</li>
@@ -411,14 +428,15 @@
               <span>Copy</span>
             </button>
           </div>
-          <pre class="terminal-body"><code id="quickstart-code"><span class="ln c-dim"># set up the store and link agents</span>
+          <pre class="terminal-body"><code id="quickstart-code"><span class="ln c-dim"># sandbox: no real agent folders touched</span>
+<span class="ln"><span class="prompt">$</span> export DALO_STORE="$(mktemp -d)/store"</span>
+<span class="ln"><span class="prompt">$</span> export DALO_TARGET="$(mktemp -d)/skills"</span>
 <span class="ln"><span class="prompt">$</span> dalo init</span>
-<span class="ln"><span class="prompt">$</span> dalo target detect</span>
-<span class="ln"><span class="prompt">$</span> dalo target link codex</span>
-<span class="ln"><span class="prompt">$</span> dalo target link claude</span>
+<span class="ln"><span class="prompt">$</span> dalo target link generic "$DALO_TARGET"</span>
 <span class="ln"> </span>
-<span class="ln c-dim"># add a team source and sync</span>
-<span class="ln"><span class="prompt">$</span> dalo source add company git@github.com:acme/skills.git</span>
+<span class="ln c-dim"># add a local skill and sync</span>
+<span class="ln"><span class="prompt">$</span> mkdir -p "$DALO_STORE/local/skills/review"</span>
+<span class="ln"><span class="prompt">$</span> printf '# Review\n' &gt; "$DALO_STORE/local/skills/review/SKILL.md"</span>
 <span class="ln"><span class="prompt">$</span> dalo sync</span></code></pre>
         </div>
         <p class="copy-hint">Prefer a dry run first? Every command takes <code>--dry-run</code>.</p>
@@ -582,15 +600,19 @@
       </div>
       <div class="footer-col">
         <p class="footer-h">Docs</p>
-        <a href="https://github.com/sebastian-software/dalo#readme" rel="noopener">README</a>
-        <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a>
+        <a href="https://github.com/sebastian-software/dalo/blob/main/docs/getting-started.md" rel="noopener">Getting started</a>
+        <a href="https://github.com/sebastian-software/dalo/blob/main/docs/reference.md" rel="noopener">Reference</a>
+        <a href="https://github.com/sebastian-software/dalo/blob/main/docs/troubleshooting.md" rel="noopener">Troubleshooting</a>
+        <a href="https://github.com/sebastian-software/dalo/blob/main/docs/uninstall.md" rel="noopener">Uninstall</a>
         <a href="https://github.com/sebastian-software/dalo/releases" rel="noopener">Releases</a>
-        <a href="https://github.com/sebastian-software/dalo/tree/main/docs/rfcs" rel="noopener">RFCs</a>
-        <a href="https://github.com/sebastian-software/dalo/tree/main/docs/milestones" rel="noopener">Milestones</a>
       </div>
       <div class="footer-col">
         <p class="footer-h">Project</p>
         <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+        <a href="https://github.com/sebastian-software/dalo/security/policy" rel="noopener">Security</a>
+        <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a>
+        <a href="https://github.com/sebastian-software/dalo/tree/main/docs/rfcs" rel="noopener">RFCs</a>
+        <a href="https://github.com/sebastian-software/dalo/tree/main/docs/milestones" rel="noopener">Milestones</a>
         <a href="https://github.com/sebastian-software/dalo/blob/main/LICENSE" rel="noopener">MIT License</a>
         <a href="https://github.com/sebastian-software/dalo/issues" rel="noopener">Issues</a>
       </div>
