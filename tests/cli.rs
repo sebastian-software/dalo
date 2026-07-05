@@ -921,6 +921,30 @@ fn resolve_keep_should_protect_unmanaged_skill() {
 }
 
 #[test]
+fn resolve_keep_dry_run_should_not_write_state() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    let state_before = std::fs::read(store.join("state.toml")).expect("state should be readable");
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["--dry-run", "resolve", "keep", "review"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("planned"));
+
+    assert_eq!(
+        std::fs::read(store.join("state.toml")).expect("state should be readable"),
+        state_before
+    );
+}
+
+#[test]
 fn resolve_remove_owned_should_remove_only_recorded_symlink() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -1736,6 +1760,45 @@ fn catalog_select_should_materialize_only_selected_skills() {
 }
 
 #[test]
+fn catalog_select_dry_run_should_not_write_config_or_source_lock() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    let config_before = std::fs::read(store.join("config.toml")).expect("config readable");
+    let source_lock_before =
+        std::fs::read(store.join("source-lock.toml")).expect("source lock readable");
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["--dry-run", "source", "select", "marketing", "copy-editing"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("would select"));
+
+    assert_eq!(
+        std::fs::read(store.join("config.toml")).expect("config readable"),
+        config_before
+    );
+    assert_eq!(
+        std::fs::read(store.join("source-lock.toml")).expect("source lock readable"),
+        source_lock_before
+    );
+}
+
+#[test]
 fn catalog_select_should_support_path_fallback_for_duplicate_slots() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -1903,6 +1966,97 @@ fn instructions_enable_disable_should_manage_block_idempotently() {
     assert!(after_disable.contains("# Project"));
     assert!(after_disable.contains("User notes."));
     assert!(!after_disable.contains("dalo:start"));
+}
+
+#[test]
+fn instructions_enable_dry_run_should_not_write_target_or_lock() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target_file = temp_dir.path().join("AGENTS.md");
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::write(
+        store.join("local/instructions/house-style.md"),
+        "version: 1.0\n\nUse tabs.\n",
+    )
+    .expect("pack should be written");
+    std::fs::write(&target_file, "# Project\n").expect("target should be written");
+    let target_before = std::fs::read(&target_file).expect("target should be readable");
+    let lock_before = std::fs::read(store.join("lock.toml")).expect("lock should be readable");
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["--dry-run", "instructions", "enable", "house-style"])
+        .arg(&target_file)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("would enable"));
+
+    assert_eq!(
+        std::fs::read(&target_file).expect("target should be readable"),
+        target_before
+    );
+    assert_eq!(
+        std::fs::read(store.join("lock.toml")).expect("lock should be readable"),
+        lock_before
+    );
+}
+
+#[test]
+fn instructions_disable_dry_run_should_not_write_target_or_lock() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target_file = temp_dir.path().join("AGENTS.md");
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::write(
+        store.join("local/instructions/house-style.md"),
+        "version: 1.0\n\nUse tabs.\n",
+    )
+    .expect("pack should be written");
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "house-style"])
+        .arg(&target_file)
+        .assert()
+        .success();
+    let target_before = std::fs::read(&target_file).expect("target should be readable");
+    let lock_before = std::fs::read(store.join("lock.toml")).expect("lock should be readable");
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["--dry-run", "instructions", "disable", "house-style"])
+        .arg(&target_file)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("would disable"));
+
+    assert_eq!(
+        std::fs::read(&target_file).expect("target should be readable"),
+        target_before
+    );
+    assert_eq!(
+        std::fs::read(store.join("lock.toml")).expect("lock should be readable"),
+        lock_before
+    );
 }
 
 #[test]

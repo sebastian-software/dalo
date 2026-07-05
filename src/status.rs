@@ -8,7 +8,7 @@ use crate::adopt::{AdoptReport, KeepReport, RemoveOwnedReport, ResolveListReport
 use crate::catalog::{CatalogDrift, CatalogInspectReport, CatalogSelectReport};
 use crate::doctor::{DoctorReport, DoctorSeverity};
 use crate::error::DaloResult;
-use crate::instructions::{self, DiscoveredPack, TopicOverlap};
+use crate::instructions::{self, DiscoveredPack, InstructionPackReport, TopicOverlap};
 use crate::inventory::InventoryWarning;
 use crate::lockfile::{self, LockDrift};
 use crate::materialize::SyncReport;
@@ -374,15 +374,35 @@ pub fn print_catalog_inspect_report(report: &CatalogInspectReport) {
 
 /// Print a human-readable catalog select report.
 pub fn print_catalog_select_report(report: &CatalogSelectReport) {
+    let verb = if report.dry_run {
+        "would select"
+    } else {
+        "selected"
+    };
     if report.selected.is_empty() {
         println!("catalog {}: no skills selected", report.source_id);
     } else {
         println!(
-            "catalog {}: selected {}",
+            "catalog {}: {verb} {}",
             report.source_id,
             report.selected.join(", ")
         );
     }
+}
+
+/// Print a human-readable instruction pack mutation report.
+pub fn print_instruction_pack_report(report: &InstructionPackReport) {
+    let action = if report.dry_run && report.action != "unchanged" {
+        format!("would {}", report.action.trim_end_matches('d'))
+    } else {
+        report.action.clone()
+    };
+    println!(
+        "{} pack {} -> {}",
+        action,
+        report.pack_id,
+        report.target.display()
+    );
 }
 
 /// Print a human-readable catalog drift report.
@@ -449,6 +469,8 @@ pub fn print_resolve_list_report(report: &ResolveListReport) {
 pub fn print_keep_report(report: &KeepReport) {
     let status = if report.existing {
         "existing"
+    } else if report.dry_run {
+        "planned"
     } else {
         "protected"
     };

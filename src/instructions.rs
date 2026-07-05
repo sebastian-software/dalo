@@ -38,6 +38,8 @@ pub struct InstructionPackReport {
     pub target: PathBuf,
     /// What happened: `enabled`, `disabled`, or `unchanged`.
     pub action: String,
+    /// Whether the command ran as dry-run.
+    pub dry_run: bool,
 }
 
 fn start_marker(pack_id: &str) -> String {
@@ -180,33 +182,39 @@ pub fn enable_pack(
     paths: &StorePaths,
     pack_id: &str,
     target: &Path,
+    dry_run: bool,
 ) -> DaloResult<InstructionPackReport> {
     let pack = read_local_pack(paths, pack_id)?;
     let existing = read_target(target)?;
     let rendered = render_block(&existing, &pack.id, &pack.body)?;
-    write_target(target, &rendered)?;
+    if !dry_run {
+        write_target(target, &rendered)?;
+    }
 
     let mut lock = store::read_user_lock(paths)?;
-    lock.active_instruction_packs
-        .retain(|entry| !(entry.pack_id == pack.id && entry.target == target));
-    lock.active_instruction_packs.push(LockedInstructionPack {
-        pack_id: pack.id.clone(),
-        target: target.to_path_buf(),
-        source_id: "local".to_owned(),
-        commit: None,
-        version: pack.version,
-    });
-    lock.active_instruction_packs.sort_by(|left, right| {
-        left.pack_id
-            .cmp(&right.pack_id)
-            .then(left.target.cmp(&right.target))
-    });
-    store::write_user_lock(paths, &lock)?;
+    if !dry_run {
+        lock.active_instruction_packs
+            .retain(|entry| !(entry.pack_id == pack.id && entry.target == target));
+        lock.active_instruction_packs.push(LockedInstructionPack {
+            pack_id: pack.id.clone(),
+            target: target.to_path_buf(),
+            source_id: "local".to_owned(),
+            commit: None,
+            version: pack.version,
+        });
+        lock.active_instruction_packs.sort_by(|left, right| {
+            left.pack_id
+                .cmp(&right.pack_id)
+                .then(left.target.cmp(&right.target))
+        });
+        store::write_user_lock(paths, &lock)?;
+    }
 
     Ok(InstructionPackReport {
         pack_id: pack.id,
         target: target.to_path_buf(),
         action: "enabled".to_owned(),
+        dry_run,
     })
 }
 
@@ -215,21 +223,32 @@ pub fn disable_pack(
     paths: &StorePaths,
     pack_id: &str,
     target: &Path,
+    dry_run: bool,
 ) -> DaloResult<InstructionPackReport> {
     let existing = read_target(target)?;
-    let action = if find_block(&existing, pack_id)?.is_some() {
+    let has_block = find_block(&existing, pack_id)?.is_some();
+    let mut lock = store::read_user_lock(paths)?;
+    let before = lock.active_instruction_packs.len();
+    let has_lock_entry = lock
+        .active_instruction_packs
+        .iter()
+        .any(|entry| entry.pack_id == pack_id && entry.target == target);
+
+    let action = if has_block {
         let updated = remove_block(&existing, pack_id)?;
-        write_target(target, &updated)?;
+        if !dry_run {
+            write_target(target, &updated)?;
+        }
+        "disabled"
+    } else if has_lock_entry {
         "disabled"
     } else {
         "unchanged"
     };
 
-    let mut lock = store::read_user_lock(paths)?;
-    let before = lock.active_instruction_packs.len();
     lock.active_instruction_packs
         .retain(|entry| !(entry.pack_id == pack_id && entry.target == target));
-    if lock.active_instruction_packs.len() != before {
+    if !dry_run && lock.active_instruction_packs.len() != before {
         store::write_user_lock(paths, &lock)?;
     }
 
@@ -237,6 +256,7 @@ pub fn disable_pack(
         pack_id: pack_id.to_owned(),
         target: target.to_path_buf(),
         action: action.to_owned(),
+        dry_run,
     })
 }
 

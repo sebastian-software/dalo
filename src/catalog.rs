@@ -114,6 +114,8 @@ pub struct CatalogSelectReport {
     pub source_id: String,
     /// Selected skill references after the operation.
     pub selected: Vec<String>,
+    /// Whether the command ran as dry-run.
+    pub dry_run: bool,
 }
 
 /// Add a catalog source and clone it into the store.
@@ -236,6 +238,7 @@ pub fn select_skills(
     id: &str,
     refs: &[String],
     unselect: bool,
+    dry_run: bool,
 ) -> DaloResult<CatalogSelectReport> {
     let source_path = catalog_source(paths, id)?.path;
     let candidates = catalog_candidates(&source_path)?;
@@ -263,23 +266,28 @@ pub fn select_skills(
     source.selection.sort();
     source.selection.dedup();
     let selected = source.selection.clone();
-    store::write_config(paths, &config)?;
+    if !dry_run {
+        store::write_config(paths, &config)?;
+    }
 
-    let mut lock = read_source_lock(paths)?;
-    if let Some(catalog) = lock
-        .catalogs
-        .iter_mut()
-        .find(|catalog| catalog.source_id == id)
-    {
-        catalog.selected = selected.clone();
-        catalog.commit = git::rev_parse_head(&source_path)?;
-        catalog.inventory = catalog_inventory(&source_path)?;
-        write_source_lock(paths, &lock)?;
+    if !dry_run {
+        let mut lock = read_source_lock(paths)?;
+        if let Some(catalog) = lock
+            .catalogs
+            .iter_mut()
+            .find(|catalog| catalog.source_id == id)
+        {
+            catalog.selected = selected.clone();
+            catalog.commit = git::rev_parse_head(&source_path)?;
+            catalog.inventory = catalog_inventory(&source_path)?;
+            write_source_lock(paths, &lock)?;
+        }
     }
 
     Ok(CatalogSelectReport {
         source_id: id.to_owned(),
         selected,
+        dry_run,
     })
 }
 
