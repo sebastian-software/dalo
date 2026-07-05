@@ -45,6 +45,35 @@ pub struct InstructionPackReport {
     pub dry_run: bool,
 }
 
+/// Drift detected for an active instruction pack's rendered block.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct InstructionBlockDrift {
+    /// Source that owns the pack.
+    pub source_id: String,
+    /// Pack ID.
+    pub pack_id: String,
+    /// Instruction-file target that should contain the block.
+    pub target: PathBuf,
+    /// Drift kind.
+    pub kind: InstructionBlockDriftKind,
+    /// Human-readable detail.
+    pub message: String,
+}
+
+/// Instruction block drift classification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstructionBlockDriftKind {
+    /// The expected managed block is absent.
+    Missing,
+    /// Markers are malformed, duplicated, or unreadable.
+    Malformed,
+    /// The block exists but no longer matches the current pack body.
+    Stale,
+    /// The active lock entry points to a pack that cannot be read.
+    SourceMissing,
+}
+
 fn start_marker(pack_id: &str) -> String {
     format!("{START_MARKER_PREFIX}{pack_id} -->")
 }
@@ -86,19 +115,23 @@ fn find_block(content: &str, pack_id: &str) -> DaloResult<Option<(usize, usize)>
 /// not, the block is appended, separated from existing content by a blank line.
 /// Rendering the same body twice is idempotent.
 pub fn render_block(content: &str, pack_id: &str, body: &str) -> DaloResult<String> {
-    validate_body_markers(pack_id, body)?;
-    let block = format!(
-        "{}\n{}\n{}",
-        start_marker(pack_id),
-        body.trim_matches('\n'),
-        end_marker(pack_id)
-    );
+    let block = render_managed_block(pack_id, body)?;
     Ok(match find_block(content, pack_id)? {
         Some((start_idx, end_idx)) => {
             format!("{}{}{}", &content[..start_idx], block, &content[end_idx..])
         }
         None => append_block(content, &block),
     })
+}
+
+fn render_managed_block(pack_id: &str, body: &str) -> DaloResult<String> {
+    validate_body_markers(pack_id, body)?;
+    Ok(format!(
+        "{}\n{}\n{}",
+        start_marker(pack_id),
+        body.trim_matches('\n'),
+        end_marker(pack_id)
+    ))
 }
 
 fn validate_body_markers(pack_id: &str, body: &str) -> DaloResult<()> {
@@ -110,6 +143,121 @@ fn validate_body_markers(pack_id: &str, body: &str) -> DaloResult<()> {
     }
 
     Ok(())
+}
+
+/// Check active instruction-pack lock entries against their rendered target blocks.
+#[must_use]
+pub fn instruction_block_drifts(
+    paths: &StorePaths,
+    sources: &[SourceConfig],
+    active: &[LockedInstructionPack],
+) -> Vec<InstructionBlockDrift> {
+    let mut drifts = Vec::new();
+    for entry in active {
+        if let Some(drift) = instruction_block_drift(paths, sources, entry) {
+            drifts.push(drift);
+        }
+    }
+    drifts.sort_by(|left, right| {
+        left.target
+            .cmp(&right.target)
+            .then_with(|| left.source_id.cmp(&right.source_id))
+            .then_with(|| left.pack_id.cmp(&right.pack_id))
+    });
+    drifts
+}
+
+fn instruction_block_drift(
+    paths: &StorePaths,
+    sources: &[SourceConfig],
+    entry: &LockedInstructionPack,
+) -> Option<InstructionBlockDrift> {
+    let pack = match read_pack_for_lock_entry(paths, sources, entry) {
+        Ok(pack) => pack,
+        Err(error) => {
+            return Some(InstructionBlockDrift {
+                source_id: entry.source_id.clone(),
+                pack_id: entry.pack_id.clone(),
+                target: entry.target.clone(),
+                kind: InstructionBlockDriftKind::SourceMissing,
+                message: format!("active instruction pack source could not be read: {error}"),
+            });
+        }
+    };
+    let expected = match render_managed_block(&entry.pack_id, &pack.body) {
+        Ok(block) => block,
+        Err(error) => {
+            return Some(InstructionBlockDrift {
+                source_id: entry.source_id.clone(),
+                pack_id: entry.pack_id.clone(),
+                target: entry.target.clone(),
+                kind: InstructionBlockDriftKind::SourceMissing,
+                message: format!("active instruction pack body is invalid: {error}"),
+            });
+        }
+    };
+    let content = match fs::read_to_string(&entry.target) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Some(InstructionBlockDrift {
+                source_id: entry.source_id.clone(),
+                pack_id: entry.pack_id.clone(),
+                target: entry.target.clone(),
+                kind: InstructionBlockDriftKind::Missing,
+                message: "instruction target file is missing".to_owned(),
+            });
+        }
+        Err(error) => {
+            return Some(InstructionBlockDrift {
+                source_id: entry.source_id.clone(),
+                pack_id: entry.pack_id.clone(),
+                target: entry.target.clone(),
+                kind: InstructionBlockDriftKind::Malformed,
+                message: format!("instruction target file could not be read: {error}"),
+            });
+        }
+    };
+    match find_block(&content, &entry.pack_id) {
+        Ok(Some((start_idx, end_idx))) if content[start_idx..end_idx] == expected => None,
+        Ok(Some(_)) => Some(InstructionBlockDrift {
+            source_id: entry.source_id.clone(),
+            pack_id: entry.pack_id.clone(),
+            target: entry.target.clone(),
+            kind: InstructionBlockDriftKind::Stale,
+            message: "instruction block does not match current pack body".to_owned(),
+        }),
+        Ok(None) => Some(InstructionBlockDrift {
+            source_id: entry.source_id.clone(),
+            pack_id: entry.pack_id.clone(),
+            target: entry.target.clone(),
+            kind: InstructionBlockDriftKind::Missing,
+            message: "instruction block is missing from target file".to_owned(),
+        }),
+        Err(error) => Some(InstructionBlockDrift {
+            source_id: entry.source_id.clone(),
+            pack_id: entry.pack_id.clone(),
+            target: entry.target.clone(),
+            kind: InstructionBlockDriftKind::Malformed,
+            message: error.to_string(),
+        }),
+    }
+}
+
+fn read_pack_for_lock_entry(
+    paths: &StorePaths,
+    sources: &[SourceConfig],
+    entry: &LockedInstructionPack,
+) -> DaloResult<InstructionPack> {
+    if entry.source_id == "local" {
+        return read_local_pack(paths, &entry.pack_id);
+    }
+
+    let Some(source) = sources.iter().find(|source| source.id == entry.source_id) else {
+        return Err(DaloError::UnknownSource {
+            source_id: entry.source_id.clone(),
+        });
+    };
+    read_pack_from_dir(&source.path.join("instructions"), &entry.pack_id)
 }
 
 fn append_block(content: &str, block: &str) -> String {
@@ -179,7 +327,11 @@ pub fn read_local_pack(paths: &StorePaths, pack_id: &str) -> DaloResult<Instruct
             reason: "instruction pack id must be `[A-Za-z0-9._-]` and not `.`/`..`".to_owned(),
         });
     }
-    let path = paths.local_instructions_dir.join(format!("{pack_id}.md"));
+    read_pack_from_dir(&paths.local_instructions_dir, pack_id)
+}
+
+fn read_pack_from_dir(dir: &Path, pack_id: &str) -> DaloResult<InstructionPack> {
+    let path = dir.join(format!("{pack_id}.md"));
     let body = fs::read_to_string(&path).map_err(|_| DaloError::SkillNotFound {
         skill: format!("instruction-pack:{pack_id}"),
     })?;

@@ -140,6 +140,8 @@ pub enum DoctorCode {
     RequiredClosureBlocked,
     /// Two active instruction packs declare overlapping topics.
     InstructionPackTopicOverlap,
+    /// An active instruction pack's rendered block is missing, malformed, or stale.
+    InstructionBlockDrift,
     /// Target path looks cloud-synced.
     CloudSyncedTarget,
 }
@@ -512,6 +514,28 @@ fn check_resolution(paths: &StorePaths, config: &UserConfig, findings: &mut Vec<
             Some("dalo status".to_owned()),
         ));
     }
+    for drift in instructions::instruction_block_drifts(
+        paths,
+        &config.sources,
+        &lock.active_instruction_packs,
+    ) {
+        findings.push(finding_warning(
+            DoctorCode::InstructionBlockDrift,
+            format!(
+                "instruction pack `{}:{}` is {} at `{}`: {}",
+                drift.source_id,
+                drift.pack_id,
+                instruction_block_drift_kind_name(drift.kind),
+                drift.target.display(),
+                drift.message
+            ),
+            Some(format!(
+                "dalo instructions enable {} {}",
+                drift.pack_id,
+                drift.target.display()
+            )),
+        ));
+    }
 
     let active_slots = resolution
         .active_skills
@@ -676,7 +700,19 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::PendingApproval => "pending_approval",
         DoctorCode::RequiredClosureBlocked => "required_closure_blocked",
         DoctorCode::InstructionPackTopicOverlap => "instruction_pack_topic_overlap",
+        DoctorCode::InstructionBlockDrift => "instruction_block_drift",
         DoctorCode::CloudSyncedTarget => "cloud_synced_target",
+    }
+}
+
+fn instruction_block_drift_kind_name(
+    kind: instructions::InstructionBlockDriftKind,
+) -> &'static str {
+    match kind {
+        instructions::InstructionBlockDriftKind::Missing => "missing",
+        instructions::InstructionBlockDriftKind::Malformed => "malformed",
+        instructions::InstructionBlockDriftKind::Stale => "stale",
+        instructions::InstructionBlockDriftKind::SourceMissing => "source-missing",
     }
 }
 
@@ -749,6 +785,38 @@ mod tests {
     }
 
     #[test]
+    fn run_doctor_should_report_missing_instruction_block() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let (store, target) = setup_enabled_instruction_pack(temp_dir.path(), "Body v1\n");
+        fs::write(&target, "user-owned content\n").expect("target should be rewritten");
+
+        let report = run_doctor(&store);
+
+        assert!(report.findings.iter().any(|finding| {
+            finding.code == DoctorCode::InstructionBlockDrift
+                && finding.message.contains("missing")
+                && finding
+                    .next_command
+                    .as_deref()
+                    .is_some_and(|command| command.contains("dalo instructions enable house-style"))
+        }));
+    }
+
+    #[test]
+    fn run_doctor_should_report_stale_instruction_block() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let (store, _target) = setup_enabled_instruction_pack(temp_dir.path(), "Body v1\n");
+        fs::write(store.join("local/instructions/house-style.md"), "Body v2\n")
+            .expect("pack should be updated");
+
+        let report = run_doctor(&store);
+
+        assert!(report.findings.iter().any(|finding| {
+            finding.code == DoctorCode::InstructionBlockDrift && finding.message.contains("stale")
+        }));
+    }
+
+    #[test]
     fn check_sources_should_rate_dirty_team_source_as_error() {
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
         let store = temp_dir.path().join("store");
@@ -784,6 +852,19 @@ mod tests {
                 && finding.severity == DoctorSeverity::Warning
                 && finding.message.contains("`workspace`")
         }));
+    }
+
+    fn setup_enabled_instruction_pack(root: &Path, body: &str) -> (PathBuf, PathBuf) {
+        let store = root.join("store");
+        let target = root.join("AGENTS.md");
+        store::init_store(store.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store.clone());
+        fs::write(paths.local_instructions_dir.join("house-style.md"), body)
+            .expect("pack should be written");
+        fs::write(&target, "user-owned content\n").expect("target should be seeded");
+        crate::instructions::enable_pack(&paths, "house-style", &target, false)
+            .expect("pack should be enabled");
+        (store, target)
     }
 
     fn create_dirty_git_repo(repo: &Path) {
