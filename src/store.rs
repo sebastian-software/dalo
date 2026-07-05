@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::fs::OpenOptions;
-use std::io::Write;
+use std::io::{Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
@@ -492,7 +492,7 @@ pub fn write_state(paths: &StorePaths, state: &StateFile) -> DaloResult<()> {
 /// Exclusive store lock guard for mutating commands.
 #[derive(Debug)]
 pub struct StoreLock {
-    path: PathBuf,
+    _file: fs::File,
 }
 
 impl StoreLock {
@@ -516,27 +516,25 @@ impl StoreLock {
                 thread::sleep(*delay);
             }
 
-            match try_create_lock(&paths.lock_guard_file) {
+            // The file is persistent; the kernel advisory lock on this handle is
+            // the ownership signal. The pid text is diagnostic metadata only, so
+            // stale pids or missing `kill` binaries cannot block acquisition.
+            let mut file = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(&paths.lock_guard_file)?;
+            match file.try_lock() {
                 Ok(()) => {
-                    return Ok(Self {
-                        path: paths.lock_guard_file.clone(),
-                    });
+                    file.set_len(0)?;
+                    file.seek(SeekFrom::Start(0))?;
+                    writeln!(file, "pid={}", std::process::id())?;
+                    file.flush()?;
+                    return Ok(Self { _file: file });
                 }
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                    // The guard file exists. If its owner has died, the lock is
-                    // stale: drop it and immediately retry so a crashed process
-                    // never blocks the store permanently. A live owner (or an
-                    // unreadable/owner-unknown lock) keeps blocking through the
-                    // remaining retry window.
-                    if reclaim_if_stale(&paths.lock_guard_file)?
-                        && try_create_lock(&paths.lock_guard_file).is_ok()
-                    {
-                        return Ok(Self {
-                            path: paths.lock_guard_file.clone(),
-                        });
-                    }
-                }
-                Err(error) => return Err(error.into()),
+                Err(fs::TryLockError::WouldBlock) => {}
+                Err(fs::TryLockError::Error(error)) => return Err(error.into()),
             }
         }
 
@@ -544,72 +542,6 @@ impl StoreLock {
             path: paths.lock_guard_file.clone(),
         })
     }
-}
-
-/// Remove the guard file when its recorded owner is provably dead.
-///
-/// Returns `true` when a stale lock was removed (so the caller should retry to
-/// claim it), `false` when the lock should be treated as live and kept. A lock
-/// with no readable `pid=` line, or whose owner is still alive, is preserved.
-fn reclaim_if_stale(path: &Path) -> DaloResult<bool> {
-    let Some(pid) = read_lock_pid(path) else {
-        // No readable owner: be conservative and keep blocking. This also covers
-        // the race where another process just removed the file before we read it.
-        return Ok(false);
-    };
-
-    if process_is_alive(pid) {
-        return Ok(false);
-    }
-
-    // The owner is gone. Best-effort removal; a concurrent reclaimer winning the
-    // race (NotFound) is fine and still lets us retry the create below.
-    match fs::remove_file(path) {
-        Ok(()) => Ok(true),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(true),
-        Err(error) => Err(error.into()),
-    }
-}
-
-/// Read the `pid=<n>` owner recorded by [`try_create_lock`].
-fn read_lock_pid(path: &Path) -> Option<u32> {
-    let content = fs::read_to_string(path).ok()?;
-    content
-        .lines()
-        .find_map(|line| line.trim().strip_prefix("pid="))
-        .and_then(|value| value.trim().parse::<u32>().ok())
-}
-
-/// Probe whether a process is still alive.
-///
-/// Platform assumption: Unix. dalo ships for Unix-like systems, so liveness is
-/// probed with `kill -0 <pid>`, which delivers no signal but reports whether the
-/// process exists: success means alive, a non-zero status means it is gone. We
-/// shell out to `kill` rather than calling `libc::kill` so the crate keeps
-/// `unsafe-code = forbid` and takes on no extra dependency. The store is
-/// single-user, so the owner is always the current user and `kill -0` never hits
-/// the cross-user permission case. If `kill` itself cannot be spawned we err on
-/// the side of caution and treat the owner as alive, so a live lock is never
-/// reclaimed by mistake.
-fn process_is_alive(pid: u32) -> bool {
-    use std::process::Command;
-
-    match Command::new("kill").args(["-0", &pid.to_string()]).status() {
-        Ok(status) => status.success(),
-        Err(_) => true,
-    }
-}
-
-impl Drop for StoreLock {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.path);
-    }
-}
-
-fn try_create_lock(path: &Path) -> std::io::Result<()> {
-    let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
-    writeln!(file, "pid={}", std::process::id())?;
-    Ok(())
 }
 
 fn ensure_dir(path: &Path, dry_run: bool) -> DaloResult<InitOperation> {
@@ -937,49 +869,29 @@ mod tests {
         let reacquired = StoreLock::acquire_with_delays(&paths, &[Duration::from_millis(0)]);
 
         assert!(reacquired.is_ok());
+        assert!(paths.lock_guard_file.is_file());
     }
 
     #[test]
-    fn store_lock_should_reclaim_stale_lock_when_owner_is_dead() {
+    fn store_lock_should_ignore_stale_pid_metadata_when_file_is_unlocked() {
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
         let store_root = temp_dir.path().join("store");
         init_store(store_root.clone(), false).expect("init should succeed");
         let paths = StorePaths::new(store_root);
-        // Heuristic: 2147480000 is just under i32::MAX, far above any pid a live
-        // system assigns (default Linux/macOS pid_max is 32768/99999), so
-        // `kill -0` reliably reports "no such process". A crashed owner leaves a
-        // guard file like this; the lock must be reclaimable rather than fatal.
-        fs::write(&paths.lock_guard_file, "pid=2147480000\n")
-            .expect("stale lock should be written");
-
-        let lock = StoreLock::acquire_with_delays(&paths, &[Duration::from_millis(0)])
-            .expect("stale lock with a dead owner should be reclaimed");
-
-        assert_eq!(lock.path, paths.lock_guard_file);
-    }
-
-    #[test]
-    fn store_lock_should_block_on_stale_lock_when_owner_is_alive() {
-        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
-        let store_root = temp_dir.path().join("store");
-        init_store(store_root.clone(), false).expect("init should succeed");
-        let paths = StorePaths::new(store_root);
-        // The current test process is provably alive, so a guard file naming it
-        // must keep blocking: live contention is never mistaken for a stale lock.
         fs::write(
             &paths.lock_guard_file,
             format!("pid={}\n", std::process::id()),
         )
-        .expect("live lock should be written");
+        .expect("stale lock metadata should be written");
 
-        let error = StoreLock::acquire_with_delays(&paths, &[Duration::from_millis(0)])
-            .expect_err("a live owner should still block acquisition");
+        let _lock = StoreLock::acquire_with_delays(&paths, &[Duration::from_millis(0)])
+            .expect("unlocked stale metadata should not block acquisition");
 
-        assert!(matches!(error, DaloError::StoreLocked { .. }));
+        assert!(paths.lock_guard_file.is_file());
     }
 
     #[test]
-    fn store_lock_should_grant_to_exactly_one_thread_under_contention() {
+    fn store_lock_should_grant_to_exactly_one_thread_for_unlocked_stale_file() {
         use std::sync::Arc;
         use std::sync::Barrier;
 
@@ -987,8 +899,11 @@ mod tests {
         let store_root = temp_dir.path().join("store");
         init_store(store_root.clone(), false).expect("init should succeed");
         let paths = Arc::new(StorePaths::new(store_root));
+        fs::write(&paths.lock_guard_file, "pid=2147480000\n")
+            .expect("stale lock metadata should be written");
         // A single zero delay means neither thread retries: each makes exactly one
-        // attempt, so exactly one must win and the other must observe `StoreLocked`.
+        // attempt against an unlocked stale file, so exactly one must win and the
+        // other must observe `StoreLocked`.
         let delays = Arc::new([Duration::from_millis(0)]);
         let barrier = Arc::new(Barrier::new(2));
 
