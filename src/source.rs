@@ -106,6 +106,19 @@ pub fn add_team_source(
     url: &str,
     dry_run: bool,
 ) -> DaloResult<SourceAddReport> {
+    add_team_source_with_config_writer(paths, id, url, dry_run, store::write_config)
+}
+
+fn add_team_source_with_config_writer<F>(
+    paths: &StorePaths,
+    id: &str,
+    url: &str,
+    dry_run: bool,
+    write_config: F,
+) -> DaloResult<SourceAddReport>
+where
+    F: FnOnce(&StorePaths, &UserConfig) -> DaloResult<()>,
+{
     // Validate the id before anything touches the store: it is joined straight
     // into the checkout path and `git clone`d there, so an id like `../../evil`
     // or `a/b` would escape `sources/` to an attacker-chosen location.
@@ -166,7 +179,7 @@ pub fn add_team_source(
     // From here on the checkout exists on disk. If persisting the source fails,
     // remove the clone so a later `source add` does not trip over an orphaned
     // checkout that is absent from config (InvalidStorePath).
-    finish_team_source(paths, &mut config, source.clone()).inspect_err(|_| {
+    finish_team_source(paths, &mut config, source.clone(), write_config).inspect_err(|_| {
         let _ = std::fs::remove_dir_all(&checkout);
     })?;
 
@@ -206,6 +219,7 @@ fn finish_team_source(
     paths: &StorePaths,
     config: &mut UserConfig,
     source: SourceConfig,
+    write_config: impl FnOnce(&StorePaths, &UserConfig) -> DaloResult<()>,
 ) -> DaloResult<()> {
     config.sources.push(source);
     config.sources.sort_by(|left, right| {
@@ -213,7 +227,7 @@ fn finish_team_source(
             .cmp(&right.priority)
             .then_with(|| left.id.cmp(&right.id))
     });
-    store::write_config(paths, config)?;
+    write_config(paths, config)?;
     Ok(())
 }
 
@@ -289,8 +303,6 @@ pub fn refresh_tracking_team_sources(paths: &StorePaths) -> DaloResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-    use std::os::unix::fs::PermissionsExt;
     use std::path::Path;
     use std::process::Command;
 
@@ -349,18 +361,16 @@ mod tests {
         create_git_repo(&repo);
         store::init_store(store_root.clone(), false).expect("init should succeed");
         let paths = StorePaths::new(store_root);
-        // Force the config persist step to fail after the clone: cloning writes
-        // under `sources/`, but atomic config writes need a temp file in the
-        // store root, which is made read-only for this check.
-        fs::set_permissions(&paths.root, fs::Permissions::from_mode(0o555))
-            .expect("store root should be made read-only");
         let checkout = paths.sources_dir.join("company").join("checkout");
 
-        let error = add_team_source(&paths, "company", &repo.to_string_lossy(), false)
-            .expect_err("add should fail when config cannot be recorded");
-
-        fs::set_permissions(&paths.root, fs::Permissions::from_mode(0o755))
-            .expect("store root permissions should be restored");
+        let error = add_team_source_with_config_writer(
+            &paths,
+            "company",
+            &repo.to_string_lossy(),
+            false,
+            |_, _| Err(DaloError::Io(std::io::Error::other("persist failed"))),
+        )
+        .expect_err("add should fail when config cannot be recorded");
 
         assert!(matches!(error, DaloError::Io(_)));
         // The orphaned checkout must be gone so a later `source add` is not blocked

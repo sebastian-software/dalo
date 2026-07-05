@@ -406,6 +406,25 @@ fn replace_with_owned_symlink(
     local_path: &Path,
     dry_run: bool,
 ) -> DaloResult<AdoptReplacementStatus> {
+    replace_with_owned_symlink_with_state_writer(
+        paths,
+        skill,
+        local_path,
+        dry_run,
+        store::write_state,
+    )
+}
+
+fn replace_with_owned_symlink_with_state_writer<F>(
+    paths: &StorePaths,
+    skill: &UnmanagedSkill,
+    local_path: &Path,
+    dry_run: bool,
+    write_state: F,
+) -> DaloResult<AdoptReplacementStatus>
+where
+    F: FnOnce(&StorePaths, &store::StateFile) -> DaloResult<()>,
+{
     if skill.protected {
         return Ok(AdoptReplacementStatus::Protected);
     }
@@ -442,7 +461,7 @@ fn replace_with_owned_symlink(
             .cmp(&right.link_path)
             .then_with(|| left.store_path.cmp(&right.store_path))
     });
-    if let Err(error) = store::write_state(paths, &state) {
+    if let Err(error) = write_state(paths, &state) {
         return Err(rollback_replacement(&skill.path, &backup_path, error));
     }
     fs::remove_dir_all(&backup_path)?;
@@ -593,7 +612,7 @@ fn owned_id(skill: &OwnedSkillState) -> String {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::os::unix::fs::PermissionsExt;
+    use std::io;
 
     use super::*;
     use crate::store::{MaterializationDirState, StateFile, TargetState};
@@ -702,24 +721,15 @@ mod tests {
             target_ids: vec!["generic".to_owned()],
             protected: false,
         };
-        let original_permissions = fs::metadata(&store_root)
-            .expect("store root metadata should be readable")
-            .permissions();
-        let mut read_only_permissions = original_permissions.clone();
-        read_only_permissions.set_mode(0o500);
-        fs::set_permissions(&store_root, read_only_permissions)
-            .expect("store root should be made read-only");
-
-        let result = replace_with_owned_symlink(
-            &StorePaths::new(store_root.clone()),
+        let result = replace_with_owned_symlink_with_state_writer(
+            &StorePaths::new(store_root),
             &skill,
             &local_path,
             false,
+            |_, _| Err(DaloError::Io(io::Error::other("state write failed"))),
         );
 
-        fs::set_permissions(&store_root, original_permissions)
-            .expect("store root permissions should be restored");
-        let error = result.expect_err("read-only store should fail state write");
+        let error = result.expect_err("injected state write failure should abort replacement");
         assert!(matches!(error, DaloError::Io(_)));
         assert!(unmanaged.join(SKILL_FILE).is_file());
         assert!(
