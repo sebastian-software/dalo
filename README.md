@@ -50,6 +50,8 @@ For development:
 cargo fmt --check
 cargo test
 cargo clippy --all-targets --all-features -- -D warnings
+cargo deny check
+cargo llvm-cov --workspace --all-features --summary-only
 cargo build --release
 ```
 
