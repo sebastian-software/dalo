@@ -1,0 +1,50 @@
+name: Bug report
+description: Report a Dalo behavior that looks wrong or unsafe.
+title: "Bug: "
+labels: []
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include the smallest command sequence that shows the problem.
+      placeholder: |
+        dalo init
+        dalo status
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include stderr/stdout and exit code when relevant.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Dalo version
+      placeholder: dalo 0.4.1
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: macOS 15, Ubuntu 24.04, WSL, ...
+  - type: textarea
+    id: safety
+    attributes:
+      label: Safety context
+      description: Did this touch real agent folders, symlinks, Git checkouts, or lockfiles?

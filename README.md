@@ -2,9 +2,35 @@
 
 Git-backed skill management for AI agents.
 
+[![Crates.io](https://img.shields.io/crates/v/dalo.svg)](https://crates.io/crates/dalo)
+[![CI](https://github.com/sebastian-software/dalo/actions/workflows/ci.yml/badge.svg)](https://github.com/sebastian-software/dalo/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![MSRV](https://img.shields.io/badge/rust-1.93%2B-orange.svg)](Cargo.toml)
+
 Dalo gives teams one place to manage the skills and local experiments their AI agents depend on. It keeps the source of truth in a local store, resolves skills from multiple Git sources, and links the final set into the agent folders people already use.
 
 Codex, Claude Code, OpenClaw, Hermes, and folder-based agents can keep reading normal skill directories. Dalo handles the part that gets hard once skills become team knowledge: source priority, safe sync, local overrides, adoption, diagnostics, and drift.
+
+Website: **[dalo.sh](https://dalo.sh)**
+
+## Documentation
+
+User docs:
+
+- [Getting started](docs/getting-started.md)
+- [Agent integration](docs/agents.md)
+- [Dalo in CI](docs/ci.md)
+- [Command reference](docs/reference.md)
+- [Troubleshooting and FAQ](docs/troubleshooting.md)
+- [Uninstall guide](docs/uninstall.md)
+- [Security policy](SECURITY.md)
+
+Project docs:
+
+- [Changelog](CHANGELOG.md)
+- [Implementation milestones](docs/milestones/README.md)
+- [RFCs](docs/rfcs/)
+- [ADR 0001: Project language](docs/adr/0001-project-language.md)
 
 ## Why this exists
 
@@ -36,23 +62,71 @@ Dalo treats agent knowledge like something worth managing:
 
 Dalo currently targets Unix-like systems (Linux and macOS). Windows is not yet supported.
 
-Install from crates.io:
+Install with the hosted script:
+
+```sh
+curl -fsSL https://dalo.sh/install.sh | sh
+```
+
+The installer downloads the matching release archive, verifies its `.sha256`, installs `dalo` into `~/.local/bin` by default, and installs completions/man page files when the standard directories already exist. Set `DALO_INSTALL_DIR` to choose another binary directory.
+
+Ask your agent to install it:
+
+```text
+Read https://dalo.sh/install.md and install dalo for me.
+```
+
+Install with Cargo Binstall:
+
+```sh
+cargo binstall dalo
+```
+
+Install from crates.io with Cargo. This requires Rust 1.93 or newer:
 
 ```sh
 cargo install dalo
 ```
 
-Prebuilt Linux and macOS archives are attached to each GitHub release:
+Manual archive install:
 
 ```sh
-https://github.com/sebastian-software/dalo/releases
+version=0.4.1
+target=x86_64-apple-darwin # or x86_64-unknown-linux-gnu, aarch64-apple-darwin, aarch64-unknown-linux-gnu
+curl -LO "https://github.com/sebastian-software/dalo/releases/download/dalo-v${version}/dalo-${version}-${target}.tar.gz"
+curl -LO "https://github.com/sebastian-software/dalo/releases/download/dalo-v${version}/dalo-${version}-${target}.tar.gz.sha256"
+shasum -a 256 -c "dalo-${version}-${target}.tar.gz.sha256"
+tar xzf "dalo-${version}-${target}.tar.gz"
+install -m 0755 "dalo-${version}-${target}/dalo" "$HOME/.local/bin/dalo"
 ```
+
+Linux archives are published for GNU and musl libc targets. Use the GNU target for most desktop/server distributions; use musl when you specifically need a statically linked Linux binary.
 
 For an unreleased checkout:
 
 ```sh
 cargo install --git https://github.com/sebastian-software/dalo.git
 ```
+
+### Shell completions and man page
+
+Release archives include Bash, Zsh, and Fish completions plus `dalo.1`. If you installed with Cargo, generate them manually:
+
+```sh
+dalo completions bash > dalo.bash
+dalo completions zsh > _dalo
+dalo completions fish > dalo.fish
+dalo manpage > dalo.1
+```
+
+Place those files in the completion and manpage directories used by your shell or OS package manager.
+
+### Upgrading
+
+- Installer: rerun `curl -fsSL https://dalo.sh/install.sh | sh`.
+- Cargo Binstall: rerun `cargo binstall dalo`.
+- Cargo: rerun `cargo install dalo`.
+- Manual archive: repeat the download/verify/extract/install steps with the new version from [GitHub Releases](https://github.com/sebastian-software/dalo/releases).
 
 For development:
 
@@ -162,7 +236,7 @@ Dalo is multi-source by default.
 
 The everyday command is `sync`: refresh clean tracking team sources, resolve the final skill set, and materialize it into configured targets.
 
-Catalog sources are drift-checked read-only through `source refresh --check`, which compares the upstream inventory against the pinned snapshot without advancing the pin. Lock advancement (writing a new pin) is a later source-maintenance slice.
+Catalog sources are drift-checked read-only through `source refresh <id>`, which compares the upstream inventory against the pinned snapshot without advancing the pin. `--check` remains accepted for compatibility. Lock advancement (writing a new pin) is a later source-maintenance slice.
 
 ## Resolution
 
@@ -184,7 +258,7 @@ Some of the most useful public repositories are not one-skill packages. They are
 
 Dalo treats those repositories as offer surfaces (V1.1). Add one with `source add-catalog <id> <url>`, list its skills with `source inspect <id>`, and choose what you want with `source select <id> <skill...>`.
 
-You inspect the catalog, select the skills you want, and Dalo records the selected set in a source lockfile. It also scans the full catalog inventory so `source refresh --check` can detect meaningful upstream changes:
+You inspect the catalog, select the skills you want, and Dalo records the selected set in a source lockfile. It also scans the full catalog inventory so `source refresh <id>` can detect meaningful upstream changes:
 
 - new skills are available
 - selected skills changed
@@ -301,7 +375,7 @@ V1 includes:
 V1.1 adds the next product layer:
 
 - catalog sources: `source add-catalog`, `source inspect`, `source select`
-- catalog drift reporting via read-only `source refresh --check`
+- catalog drift reporting via read-only `source refresh <id>`
 - same-catalog required-closure expansion with a linkability preflight
 - instruction packs: `instructions enable`/`disable`/`list` rendering managed blocks
 - instruction pack discovery and topic-overlap warnings
@@ -341,6 +415,9 @@ Later work includes scheduled autosync installation, lock-advancing `source refr
 ## Design docs
 
 - [User reference](docs/reference.md)
+- [Getting started](docs/getting-started.md)
+- [Agent integration](docs/agents.md)
+- [Dalo in CI](docs/ci.md)
 - [Troubleshooting and FAQ](docs/troubleshooting.md)
 - [Uninstall guide](docs/uninstall.md)
 - [Implementation milestones](docs/milestones/README.md)
@@ -348,6 +425,7 @@ Later work includes scheduled autosync installation, lock-advancing `source refr
 - [RFC 0002: Technical architecture](docs/rfcs/0002-technical-architecture.md)
 - [RFC 0003: Resolution engine](docs/rfcs/0003-resolution-engine.md)
 - [Implementation status snapshot](docs/rfcs/v1-implementation-status.md)
+- [v0.4.1 release notes](docs/releases/v0.4.1.md)
 - [v0.4.0 release notes](docs/releases/v0.4.0.md)
 - [v0.3.0 release notes](docs/releases/v0.3.0.md)
 - [v0.2.0 release notes](docs/releases/v0.2.0.md)
