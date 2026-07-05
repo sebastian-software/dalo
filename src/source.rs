@@ -308,6 +308,7 @@ mod tests {
     use std::process::Command;
 
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn is_valid_source_id_should_reject_traversal_and_slash_ids() {
@@ -319,6 +320,25 @@ mod tests {
     #[test]
     fn is_valid_source_id_should_accept_plain_id() {
         assert!(is_valid_source_id("company"));
+    }
+
+    proptest! {
+        #[test]
+        fn valid_source_ids_should_stay_single_path_components(value in "\\PC{0,64}") {
+            if is_valid_source_id(&value) {
+                prop_assert!(!value.is_empty());
+                prop_assert_ne!(value.as_str(), ".");
+                prop_assert_ne!(value.as_str(), "..");
+                prop_assert!(!value.contains('/'));
+                let portable = value.chars().all(|character| {
+                    character.is_ascii_alphanumeric()
+                        || character == '-'
+                        || character == '_'
+                        || character == '.'
+                });
+                prop_assert!(portable);
+            }
+        }
     }
 
     #[test]

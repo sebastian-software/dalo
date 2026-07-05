@@ -767,6 +767,7 @@ fn required_closure_preflight(
 mod tests {
     use super::*;
     use crate::inventory::{SkillRecord, SourceInventory};
+    use proptest::prelude::*;
 
     #[test]
     fn resolve_should_pick_lower_priority_skill_for_same_slot() {
@@ -997,49 +998,56 @@ mod tests {
         assert_eq!(resolution.active_skills[0].source_ref, "company:review");
     }
 
-    #[test]
-    fn resolve_should_be_order_independent_across_input_permutations() {
-        // Same-priority and distinct-priority sources, plus a shadowed slot, so the
-        // resolver must lean on the full tie-break chain rather than input order.
-        let sources = vec![
-            source("z-team", SourceKind::Team, 10),
-            source("a-team", SourceKind::Team, 10),
-            source("c-team", SourceKind::Team, 5),
-        ];
-        let inventories = vec![
-            inventory(
-                "z-team",
-                vec![skill("z-team", "review"), skill("z-team", "format")],
-            ),
-            inventory("a-team", vec![skill("a-team", "review")]),
-            inventory("c-team", vec![skill("c-team", "format")]),
-        ];
-        let approvals = vec![
-            approval("source", "z-team"),
-            approval("source", "a-team"),
-            approval("source", "c-team"),
-        ];
-        let baseline =
-            resolve_with(sources.clone(), inventories.clone(), approvals.clone()).active_skills;
+    proptest! {
+        #[test]
+        fn resolve_should_be_order_independent_across_input_permutations(
+            source_order in prop::sample::select(index_permutations()),
+            inventory_order in prop::sample::select(index_permutations()),
+        ) {
+            // Same-priority and distinct-priority sources, plus a shadowed slot, so the
+            // resolver must lean on the full tie-break chain rather than input order.
+            let sources = vec![
+                source("z-team", SourceKind::Team, 10),
+                source("a-team", SourceKind::Team, 10),
+                source("c-team", SourceKind::Team, 5),
+            ];
+            let inventories = vec![
+                inventory(
+                    "z-team",
+                    vec![skill("z-team", "review"), skill("z-team", "format")],
+                ),
+                inventory("a-team", vec![skill("a-team", "review")]),
+                inventory("c-team", vec![skill("c-team", "format")]),
+            ];
+            let approvals = vec![
+                approval("source", "z-team"),
+                approval("source", "a-team"),
+                approval("source", "c-team"),
+            ];
+            let baseline =
+                resolve_with(sources.clone(), inventories.clone(), approvals.clone()).active_skills;
 
-        let permuted = [
-            (vec![2usize, 0, 1], vec![2usize, 1, 0]),
-            (vec![1, 2, 0], vec![0, 2, 1]),
-            (vec![2, 1, 0], vec![1, 0, 2]),
-            (vec![0, 2, 1], vec![2, 0, 1]),
+            prop_assert_eq!(
+                resolve_with(
+                    permute(&sources, &source_order),
+                    permute(&inventories, &inventory_order),
+                    approvals,
+                )
+                .active_skills,
+                baseline
+            );
+        }
+    }
+
+    fn index_permutations() -> Vec<Vec<usize>> {
+        vec![
+            vec![0, 1, 2],
+            vec![0, 2, 1],
+            vec![1, 0, 2],
+            vec![1, 2, 0],
+            vec![2, 0, 1],
+            vec![2, 1, 0],
         ]
-        .into_iter()
-        .map(|(source_order, inventory_order)| {
-            resolve_with(
-                permute(&sources, &source_order),
-                permute(&inventories, &inventory_order),
-                approvals.clone(),
-            )
-            .active_skills
-        })
-        .collect::<Vec<_>>();
-
-        assert!(permuted.iter().all(|active| *active == baseline));
     }
 
     fn permute<T: Clone>(items: &[T], order: &[usize]) -> Vec<T> {
