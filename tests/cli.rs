@@ -1652,6 +1652,44 @@ fn sync_should_preserve_owned_symlink_when_source_scan_is_degraded() {
 }
 
 #[test]
+fn sync_should_preserve_owned_symlink_when_slot_name_is_invalidated() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    let legacy_skill = store.join("local/skills/Review");
+    std::fs::create_dir_all(&legacy_skill).expect("legacy skill should be created");
+    std::fs::write(legacy_skill.join("SKILL.md"), "# Review\n").expect("skill should be written");
+    std::os::unix::fs::symlink(&legacy_skill, target.join("Review"))
+        .expect("legacy link should be created");
+    let paths = store::StorePaths::new(store.clone());
+    let mut state = store::read_state(&paths).expect("state should be readable");
+    state.owned_skills.push(store::OwnedSkillState {
+        target_id: "generic".to_owned(),
+        slot_name: "Review".to_owned(),
+        link_path: target.join("Review"),
+        store_path: legacy_skill,
+    });
+    store::write_state(&paths, &state).expect("state should be writable");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("scan degraded"))
+        .stdout(predicate::str::contains("preserving recorded owned link"));
+
+    assert!(
+        std::fs::symlink_metadata(target.join("Review"))
+            .expect("legacy link should survive sync")
+            .file_type()
+            .is_symlink()
+    );
+}
+
+#[test]
 fn source_add_should_clone_team_source_into_store() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -2099,6 +2137,41 @@ fn status_should_show_all_pending_approval_candidates_for_same_slot() {
         .stdout(predicate::str::contains("pending approval:"))
         .stdout(predicate::str::contains("team -> team-a:team"))
         .stdout(predicate::str::contains("team -> team-b:team"));
+}
+
+#[test]
+fn status_should_report_legacy_bare_skill_approval_replacement() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo(&repo);
+    setup_store_with_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "company"])
+        .arg(&repo)
+        .assert()
+        .success();
+    set_source_untrusted(&store, "company");
+    let paths = store::StorePaths::new(store.clone());
+    let mut approvals = store::read_approvals(&paths).expect("approvals should be readable");
+    approvals.approvals.push(store::ApprovalRecord {
+        scope: "skill".to_owned(),
+        value: "team".to_owned(),
+    });
+    store::write_approvals(&paths, &approvals).expect("approvals should be writable");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("legacy_bare_approval"))
+        .stdout(predicate::str::contains("legacy approval `team`"))
+        .stdout(predicate::str::contains("re-approve as `company:team`"));
 }
 
 #[test]

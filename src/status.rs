@@ -253,6 +253,17 @@ pub fn print_status_report(report: &StatusReport) {
         }
     }
 
+    if !report.resolution.diagnostics.is_empty() {
+        println!("resolution diagnostics:");
+        for diagnostic in &report.resolution.diagnostics {
+            println!(
+                "  {}: {}",
+                resolver::diagnostic_code_name(diagnostic.code),
+                diagnostic.message
+            );
+        }
+    }
+
     if !report.lock.drift.is_empty() {
         println!("lock drift:");
         for drift in &report.lock.drift {

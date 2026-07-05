@@ -464,7 +464,13 @@ fn run_sync(options: &GlobalOptions) -> DaloResult<()> {
     let degraded_sources = live
         .scans
         .iter()
-        .filter(|scan| scan.error.is_some())
+        .filter(|scan| {
+            scan.error.is_some()
+                || scan
+                    .inventory
+                    .as_ref()
+                    .is_some_and(resolver::inventory_degrades_source_for_removal)
+        })
         .map(|scan| materialize::DegradedSource {
             id: scan.source.id.clone(),
             path: scan.source.path.clone(),

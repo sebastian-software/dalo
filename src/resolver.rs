@@ -168,6 +168,8 @@ pub enum ResolutionDiagnosticCode {
     CrossSourceRequire,
     /// A dependent is held back because its required closure is not linkable.
     RequiredBlocked,
+    /// A legacy bare approval matched a pending skill but is no longer accepted.
+    LegacyBareApproval,
 }
 
 #[derive(Debug, Clone)]
@@ -228,18 +230,20 @@ fn scan_enabled_source(source: &SourceConfig) -> Result<SourceInventory, String>
     }
     let inventory =
         inventory::scan_source(&source.id, &source.path).map_err(|error| error.to_string())?;
-    if inventory_degrades_source(&inventory) {
-        return Err("source scan degraded by unreadable paths".to_owned());
-    }
-
     Ok(inventory)
 }
 
-fn inventory_degrades_source(inventory: &SourceInventory) -> bool {
-    inventory
-        .warnings
-        .iter()
-        .any(|warning| warning.code == InventoryWarningCode::UnreadablePath)
+/// Whether a successful inventory was partial enough that materialization must
+/// preserve existing records from that source instead of treating missing
+/// entries as removals.
+#[must_use]
+pub fn inventory_degrades_source_for_removal(inventory: &SourceInventory) -> bool {
+    inventory.warnings.iter().any(|warning| {
+        matches!(
+            warning.code,
+            InventoryWarningCode::UnreadablePath | InventoryWarningCode::InvalidSlotName
+        )
+    })
 }
 
 /// Resolve active sources and inventories into a deterministic skill set.
@@ -333,6 +337,17 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
         else {
             for candidate in &group {
                 pending_approval_skills.push(candidate.skill.clone());
+                if let Some((legacy, suggested)) = legacy_bare_approval(candidate, &input.approvals)
+                {
+                    diagnostics.push(ResolutionDiagnostic {
+                        code: ResolutionDiagnosticCode::LegacyBareApproval,
+                        message: format!(
+                            "legacy approval `{}` found for `{}`; re-approve as `{}`",
+                            legacy, candidate.skill.source_ref, suggested
+                        ),
+                        source_ref: Some(candidate.skill.source_ref.clone()),
+                    });
+                }
                 diagnostics.push(ResolutionDiagnostic {
                     code: ResolutionDiagnosticCode::PendingApproval,
                     message: format!("skill `{}` is pending approval", candidate.skill.source_ref),
@@ -344,6 +359,16 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
 
         for candidate in group.iter().take(winner_index) {
             pending_approval_skills.push(candidate.skill.clone());
+            if let Some((legacy, suggested)) = legacy_bare_approval(candidate, &input.approvals) {
+                diagnostics.push(ResolutionDiagnostic {
+                    code: ResolutionDiagnosticCode::LegacyBareApproval,
+                    message: format!(
+                        "legacy approval `{}` found for `{}`; re-approve as `{}`",
+                        legacy, candidate.skill.source_ref, suggested
+                    ),
+                    source_ref: Some(candidate.skill.source_ref.clone()),
+                });
+            }
             diagnostics.push(ResolutionDiagnostic {
                 code: ResolutionDiagnosticCode::PendingApproval,
                 message: format!("skill `{}` is pending approval", candidate.skill.source_ref),
@@ -470,6 +495,27 @@ fn is_approved(candidate: &Candidate, approvals: &[ApprovalRecord]) -> bool {
     })
 }
 
+fn legacy_bare_approval(
+    candidate: &Candidate,
+    approvals: &[ApprovalRecord],
+) -> Option<(String, String)> {
+    approvals
+        .iter()
+        .filter(|approval| approval.scope == "skill" && !approval.value.contains(':'))
+        .find_map(|approval| {
+            if approval.value == candidate.skill.slot_name {
+                return Some((approval.value.clone(), candidate.skill.source_ref.clone()));
+            }
+            let id = candidate.skill.id.as_ref()?;
+            (approval.value == *id).then(|| {
+                (
+                    approval.value.clone(),
+                    format!("{}:{}", candidate.skill.source_id, id),
+                )
+            })
+        })
+}
+
 fn approval_matches_skill(approval: &ApprovalRecord, candidate: &Candidate) -> bool {
     if approval.scope != "skill" {
         return false;
@@ -505,7 +551,9 @@ fn approval_matches_owner(approval: &ApprovalRecord, candidate: &Candidate) -> b
             .any(|owner| owner == &approval.value)
 }
 
-fn diagnostic_code_name(code: ResolutionDiagnosticCode) -> &'static str {
+/// Stable snake_case label for a resolver diagnostic code.
+#[must_use]
+pub fn diagnostic_code_name(code: ResolutionDiagnosticCode) -> &'static str {
     match code {
         ResolutionDiagnosticCode::PendingApproval => "pending_approval",
         ResolutionDiagnosticCode::LocalOverride => "local_override",
@@ -513,6 +561,7 @@ fn diagnostic_code_name(code: ResolutionDiagnosticCode) -> &'static str {
         ResolutionDiagnosticCode::RequiredExpanded => "required_expanded",
         ResolutionDiagnosticCode::CrossSourceRequire => "cross_source_require",
         ResolutionDiagnosticCode::RequiredBlocked => "required_blocked",
+        ResolutionDiagnosticCode::LegacyBareApproval => "legacy_bare_approval",
     }
 }
 
@@ -784,7 +833,22 @@ mod tests {
             }],
         };
 
-        assert!(inventory_degrades_source(&inventory));
+        assert!(inventory_degrades_source_for_removal(&inventory));
+    }
+
+    #[test]
+    fn inventory_degrades_source_for_invalidated_slot_name() {
+        let inventory = SourceInventory {
+            source_id: "company".to_owned(),
+            skills: Vec::new(),
+            warnings: vec![InventoryWarning {
+                code: InventoryWarningCode::InvalidSlotName,
+                path: PathBuf::from("/repo/skills/Review/SKILL.md"),
+                message: "folder name `Review` is not a valid slot name".to_owned(),
+            }],
+        };
+
+        assert!(inventory_degrades_source_for_removal(&inventory));
     }
 
     #[test]
@@ -874,6 +938,12 @@ mod tests {
             resolution.pending_approval_skills[0].source_ref,
             "company:review"
         );
+        assert!(resolution.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == ResolutionDiagnosticCode::LegacyBareApproval
+                && diagnostic
+                    .message
+                    .contains("re-approve as `company:review`")
+        }));
     }
 
     #[test]
@@ -892,6 +962,12 @@ mod tests {
             resolution.pending_approval_skills[0].source_ref,
             "company:review"
         );
+        assert!(resolution.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == ResolutionDiagnosticCode::LegacyBareApproval
+                && diagnostic
+                    .message
+                    .contains("re-approve as `company:shared.review`")
+        }));
     }
 
     #[test]
