@@ -129,6 +129,28 @@ fn add_team_source_with_config_writer<F>(
 where
     F: FnOnce(&StorePaths, &UserConfig) -> DaloResult<()>,
 {
+    add_team_source_with_config_writer_and_cloner(
+        paths,
+        id,
+        url,
+        dry_run,
+        write_config,
+        git::clone_repo,
+    )
+}
+
+fn add_team_source_with_config_writer_and_cloner<F, C>(
+    paths: &StorePaths,
+    id: &str,
+    url: &str,
+    dry_run: bool,
+    write_config: F,
+    clone_repo: C,
+) -> DaloResult<SourceAddReport>
+where
+    F: FnOnce(&StorePaths, &UserConfig) -> DaloResult<()>,
+    C: FnOnce(&str, &std::path::Path) -> DaloResult<()>,
+{
     // Validate the id before anything touches the store: it is joined straight
     // into the checkout path and `git clone`d there, so an id like `../../evil`
     // or `a/b` would escape `sources/` to an attacker-chosen location.
@@ -184,7 +206,9 @@ where
     if let Some(parent) = checkout.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    git::clone_repo(url, &checkout)?;
+    clone_repo(url, &checkout).inspect_err(|_| {
+        let _ = std::fs::remove_dir_all(&checkout);
+    })?;
 
     // From here on the checkout exists on disk. If persisting the source fails,
     // remove the clone so a later `source add` does not trip over an orphaned
@@ -407,6 +431,43 @@ mod tests {
     }
 
     #[test]
+    fn add_team_source_should_remove_checkout_when_clone_fails() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root);
+        let checkout = paths.sources_dir.join("company").join("checkout");
+
+        let error = add_team_source_with_config_writer_and_cloner(
+            &paths,
+            "company",
+            "https://example.invalid/repo.git",
+            false,
+            store::write_config,
+            |_, checkout| {
+                std::fs::create_dir_all(checkout.join(".git"))?;
+                std::fs::write(checkout.join("PARTIAL"), "left by clone")?;
+                Err(DaloError::CommandFailed {
+                    program: "git".to_owned(),
+                    args: "clone".to_owned(),
+                    cwd: checkout
+                        .parent()
+                        .unwrap_or_else(|| std::path::Path::new("."))
+                        .to_path_buf(),
+                    status: "timed out after 1s".to_owned(),
+                    stderr: "git command timed out".to_owned(),
+                })
+            },
+        )
+        .expect_err("clone failure should fail source add");
+
+        assert!(matches!(error, DaloError::CommandFailed { .. }));
+        assert!(!checkout.exists());
+        let config = store::read_config(&paths).expect("config should remain readable");
+        assert!(!config.sources.iter().any(|source| source.id == "company"));
+    }
+
+    #[test]
     fn add_team_source_should_persist_source_without_leftovers_on_success() {
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
         let store_root = temp_dir.path().join("store");
@@ -433,7 +494,17 @@ mod tests {
         run_git(repo, &["config", "user.name", "Test"]);
         std::fs::write(repo.join("README.md"), "# Repo\n").expect("file should be written");
         run_git(repo, &["add", "."]);
-        run_git(repo, &["commit", "-q", "-m", "initial"]);
+        run_git(
+            repo,
+            &[
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-q",
+                "-m",
+                "initial",
+            ],
+        );
     }
 
     fn run_git(repo: &Path, args: &[&str]) {
