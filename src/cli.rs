@@ -9,6 +9,7 @@ use crate::error::{DaloError, DaloResult};
 use crate::instructions;
 use crate::lockfile;
 use crate::materialize;
+use crate::resolver;
 use crate::source;
 use crate::status;
 use crate::store;
@@ -406,31 +407,31 @@ fn run_sync(options: &GlobalOptions) -> DaloResult<()> {
     } else {
         Some(store::StoreLock::acquire(&paths)?)
     };
+    let config = store::read_config(&paths)?;
     if !options.dry_run {
-        source::refresh_tracking_team_sources(&paths)?;
+        source::refresh_tracking_team_sources_from_config(&config)?;
     }
-    let status_report = status::build_status_report(&options.store)?;
-    let degraded_sources = status_report
-        .sources
+    let approvals = store::read_approvals(&paths)?;
+    let live = resolver::resolve_from_config(&config, approvals.approvals);
+    let degraded_sources = live
+        .scans
         .iter()
-        .filter(|source| source.enabled && source.error.is_some())
-        .map(|source| materialize::DegradedSource {
-            id: source.id.clone(),
-            path: source.path.clone(),
+        .filter(|scan| scan.error.is_some())
+        .map(|scan| materialize::DegradedSource {
+            id: scan.source.id.clone(),
+            path: scan.source.path.clone(),
         })
         .collect::<Vec<_>>();
     let report = materialize::materialize_with_degraded_sources(
         &paths,
-        &status_report.resolution,
+        &live.resolution,
         options.dry_run,
         &degraded_sources,
     )?;
     if !options.dry_run {
-        let config = store::read_config(&paths)?;
         let previous =
             store::read_user_lock(&paths).unwrap_or_else(|_| lockfile::UserLock::empty());
-        let mut lock =
-            lockfile::build_user_lock(&config.sources, &status_report.resolution, Some(&report));
+        let mut lock = lockfile::build_user_lock(&config.sources, &live.resolution, Some(&report));
         // Instruction packs are owned by the `instructions` command; preserve them
         // across a sync instead of dropping them.
         lock.active_instruction_packs = previous.active_instruction_packs;

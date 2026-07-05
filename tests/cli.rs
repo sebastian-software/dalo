@@ -7,8 +7,9 @@ mod common;
 use common::{
     approve_source, create_git_catalog_repo, create_git_catalog_repo_with_duplicate_slots,
     create_git_skill_repo, create_unmanaged_skill, dalo_command, git_command_succeeds,
-    read_source_lock, read_user_lock, remove_source_update_policy, run_git, set_source_untrusted,
-    setup_store_with_skill_and_target, setup_store_with_target, write_local_only_config,
+    git_rev_parse_logger, read_source_lock, read_user_lock, remove_source_update_policy, run_git,
+    set_source_untrusted, setup_store_with_skill_and_target, setup_store_with_target,
+    write_local_only_config,
 };
 
 #[test]
@@ -560,6 +561,37 @@ fn sync_should_write_user_lock_with_active_and_unlinked_skills() {
         materialization.link_path.ends_with("team")
             && ["applied", "existing"].contains(&materialization.status.as_str())
     }));
+}
+
+#[test]
+fn sync_should_resolve_source_commits_once_per_enabled_source() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo(&repo);
+    setup_store_with_target(&store, &target);
+    common::add_source(&store, "company", &repo);
+    let git_logger = git_rev_parse_logger(temp_dir.path());
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .env("PATH", &git_logger.path_env)
+        .env("DALO_REAL_GIT", &git_logger.real_git)
+        .env("DALO_GIT_REV_PARSE_LOG", &git_logger.log)
+        .assert()
+        .success();
+
+    let rev_parse_count = std::fs::read_to_string(&git_logger.log)
+        .unwrap_or_default()
+        .lines()
+        .count();
+    assert_eq!(
+        rev_parse_count, 2,
+        "sync should run one git rev-parse HEAD per enabled source"
+    );
 }
 
 #[test]

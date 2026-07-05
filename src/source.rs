@@ -286,6 +286,13 @@ pub fn set_source_priority(
 /// Missing or unknown update policies are treated as pinned and are not pulled.
 pub fn refresh_tracking_team_sources(paths: &StorePaths) -> DaloResult<()> {
     let config = store::read_config(paths)?;
+    refresh_tracking_team_sources_from_config(&config)
+}
+
+/// Refresh clean tracking team sources from an already-read config.
+///
+/// Missing or unknown update policies are treated as pinned and are not pulled.
+pub fn refresh_tracking_team_sources_from_config(config: &UserConfig) -> DaloResult<()> {
     for source in config.sources.iter().filter(|source| {
         source.enabled
             && source.kind == SourceKind::Team
