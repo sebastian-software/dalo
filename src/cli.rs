@@ -395,7 +395,21 @@ fn run_sync(options: &GlobalOptions) -> DaloResult<()> {
         source::refresh_tracking_team_sources(&paths)?;
     }
     let status_report = status::build_status_report(&options.store)?;
-    let report = materialize::materialize(&paths, &status_report.resolution, options.dry_run)?;
+    let degraded_sources = status_report
+        .sources
+        .iter()
+        .filter(|source| source.enabled && source.error.is_some())
+        .map(|source| materialize::DegradedSource {
+            id: source.id.clone(),
+            path: source.path.clone(),
+        })
+        .collect::<Vec<_>>();
+    let report = materialize::materialize_with_degraded_sources(
+        &paths,
+        &status_report.resolution,
+        options.dry_run,
+        &degraded_sources,
+    )?;
     if !options.dry_run {
         let config = store::read_config(&paths)?;
         let previous =
