@@ -2193,7 +2193,9 @@ fn sync_should_fail_cleanly_on_non_fast_forward_tracking_team_source() {
         .assert()
         .failure()
         .code(4)
-        .stderr(predicate::str::contains("git pull --ff-only --quiet"));
+        .stderr(predicate::str::contains("Could not refresh this source"))
+        .stderr(predicate::str::contains("fast-forward"))
+        .stderr(predicate::str::contains("Git said:"));
 }
 
 #[test]
