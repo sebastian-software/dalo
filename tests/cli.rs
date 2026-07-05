@@ -46,6 +46,26 @@ fn help_should_render_implemented_command_groups() {
 }
 
 #[test]
+fn completions_should_generate_zsh_script() {
+    dalo_command()
+        .args(["completions", "zsh"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("#compdef dalo"))
+        .stdout(predicate::str::contains("_dalo"));
+}
+
+#[test]
+fn manpage_should_generate_roff() {
+    dalo_command()
+        .arg("manpage")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(".TH dalo"))
+        .stdout(predicate::str::contains(".SH DESCRIPTION"));
+}
+
+#[test]
 fn init_dry_run_json_should_not_create_store() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

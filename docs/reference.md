@@ -334,6 +334,32 @@ dalo --json instructions list
 
 JSON output shape: array of `LockedInstructionPack`.
 
+### `dalo completions <shell>`
+
+Generate shell completions to stdout. Supported shell names are provided by `clap_complete`, including `bash`, `zsh`, and `fish`.
+
+Examples:
+
+```sh
+dalo completions zsh > _dalo
+dalo completions bash > dalo.bash
+dalo completions fish > dalo.fish
+```
+
+This command is hidden from `dalo --help`, but it is supported for release packaging and local shell setup.
+
+### `dalo manpage`
+
+Generate the `dalo(1)` man page to stdout from the same Clap command definition used for `--help`.
+
+Example:
+
+```sh
+dalo manpage > dalo.1
+```
+
+This command is hidden from `dalo --help`, but release archives include the generated man page.
+
 ## Exit Codes
 
 Dalo uses a small scripting contract:

@@ -4,6 +4,7 @@
 //! and command behavior can be tested without spawning the binary.
 
 #![forbid(unsafe_code)]
+#![warn(missing_docs)]
 
 // dalo relies on `std::os::unix` symlink APIs and `$HOME` resolution. Fail the
 // build early on unsupported platforms instead of with a deep type error.

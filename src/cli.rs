@@ -1,6 +1,11 @@
+//! Command-line parser and handlers.
+
+use std::io;
 use std::path::PathBuf;
 
 use clap::{Args, CommandFactory, Parser, Subcommand};
+use clap_complete::{Shell, generate};
+use clap_mangen::Man;
 
 use crate::adopt;
 use crate::catalog;
@@ -99,6 +104,19 @@ pub enum Command {
     Doctor,
     /// Manage instruction packs rendered into instruction files.
     Instructions(InstructionsCommand),
+    /// Generate shell completions.
+    #[command(hide = true)]
+    Completions(CompletionsCommand),
+    /// Generate a man page.
+    #[command(hide = true)]
+    Manpage,
+}
+
+/// `completions` command.
+#[derive(Debug, Args)]
+pub struct CompletionsCommand {
+    /// Shell to generate completions for.
+    pub shell: Shell,
 }
 
 /// `instructions` command group.
@@ -312,6 +330,12 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         return Ok(());
     };
 
+    match command {
+        Command::Completions(command) => return run_completions(command),
+        Command::Manpage => return run_manpage(),
+        _ => {}
+    }
+
     let options = GlobalOptions::resolve(store.as_deref(), json, yes, dry_run)?;
 
     match command {
@@ -324,7 +348,23 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         Command::Resolve(command) => run_resolve(&options, command),
         Command::Doctor => run_doctor(&options),
         Command::Instructions(command) => run_instructions(&options, command),
+        Command::Completions(_) | Command::Manpage => {
+            unreachable!("handled before store resolution")
+        }
     }
+}
+
+fn run_completions(command: CompletionsCommand) -> DaloResult<()> {
+    let mut clap_command = Cli::command();
+    generate(command.shell, &mut clap_command, "dalo", &mut io::stdout());
+    Ok(())
+}
+
+fn run_manpage() -> DaloResult<()> {
+    let mut buffer = Vec::new();
+    Man::new(Cli::command()).render(&mut buffer)?;
+    io::copy(&mut buffer.as_slice(), &mut io::stdout())?;
+    Ok(())
 }
 
 fn run_instructions(options: &GlobalOptions, command: InstructionsCommand) -> DaloResult<()> {
