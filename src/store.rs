@@ -8,7 +8,7 @@ use std::fs::OpenOptions;
 use std::io::{Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
@@ -216,6 +216,8 @@ pub enum InitOperationStatus {
     Created,
     /// Requested state already existed.
     Existing,
+    /// Existing state was corrupt and was regenerated.
+    Repaired,
 }
 
 impl InitOperationStatus {
@@ -226,6 +228,7 @@ impl InitOperationStatus {
             Self::Planned => "planned",
             Self::Created => "created",
             Self::Existing => "existing",
+            Self::Repaired => "repaired",
         }
     }
 }
@@ -381,11 +384,7 @@ pub fn init_store(store_root: PathBuf, dry_run: bool) -> DaloResult<InitReport> 
         &UserLock::empty(),
         dry_run,
     )?);
-    operations.push(ensure_toml_file(
-        &paths.state_file,
-        &StateFile::empty(),
-        dry_run,
-    )?);
+    operations.push(ensure_state_file(&paths, dry_run)?);
     operations.push(ensure_toml_file(
         &paths.approvals_file,
         &ApprovalsFile::empty(),
@@ -409,7 +408,11 @@ pub fn read_state(paths: &StorePaths) -> DaloResult<StateFile> {
     }
 
     let content = fs::read_to_string(&paths.state_file)?;
-    let mut state: StateFile = parse_store_toml(&paths.state_file, &content)?;
+    let mut state: StateFile =
+        toml::from_str(&content).map_err(|error| DaloError::CorruptState {
+            path: paths.state_file.clone(),
+            reason: error.to_string(),
+        })?;
     if state.schema_version != STATE_SCHEMA_VERSION {
         return Err(DaloError::UnsupportedSchema {
             path: paths.state_file.clone(),
@@ -659,6 +662,66 @@ where
     })
 }
 
+fn ensure_state_file(paths: &StorePaths, dry_run: bool) -> DaloResult<InitOperation> {
+    let status = if paths.state_file.exists() {
+        if !paths.state_file.is_file() {
+            return Err(DaloError::InvalidStorePath {
+                path: paths.state_file.clone(),
+                reason: "expected a file".to_owned(),
+            });
+        }
+        match read_state(paths) {
+            Ok(_) => InitOperationStatus::Existing,
+            Err(DaloError::CorruptState { .. }) if dry_run => InitOperationStatus::Planned,
+            Err(DaloError::CorruptState { .. }) => {
+                backup_corrupt_file(&paths.state_file)?;
+                write_toml_atomic(&paths.state_file, &StateFile::empty())?;
+                InitOperationStatus::Repaired
+            }
+            Err(error) => return Err(error),
+        }
+    } else if dry_run {
+        InitOperationStatus::Planned
+    } else {
+        write_toml_atomic(&paths.state_file, &StateFile::empty())?;
+        InitOperationStatus::Created
+    };
+
+    Ok(InitOperation {
+        action: InitOperationAction::WriteFile,
+        path: paths.state_file.clone(),
+        status,
+    })
+}
+
+fn backup_corrupt_file(path: &Path) -> DaloResult<PathBuf> {
+    let Some(parent) = path.parent() else {
+        return Err(DaloError::InvalidStorePath {
+            path: path.to_path_buf(),
+            reason: "file has no parent directory".to_owned(),
+        });
+    };
+    let Some(file_name) = path.file_name() else {
+        return Err(DaloError::InvalidStorePath {
+            path: path.to_path_buf(),
+            reason: "file has no file name".to_owned(),
+        });
+    };
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    let mut backup_name = file_name.to_os_string();
+    backup_name.push(format!(
+        ".corrupt-{}-{}",
+        stamp.as_secs(),
+        stamp.subsec_nanos()
+    ));
+    let backup_path = parent.join(backup_name);
+    fs::rename(path, &backup_path)?;
+    sync_directory(parent)?;
+    Ok(backup_path)
+}
+
 fn ensure_git_repo(path: &Path, dry_run: bool) -> DaloResult<InitOperation> {
     let git_dir = path.join(".git");
     let status = if git_dir.exists() {
@@ -692,7 +755,14 @@ where
     let mut temp_file = NamedTempFile::new_in(parent)?;
     temp_file.write_all(content.as_bytes())?;
     temp_file.flush()?;
+    temp_file.as_file().sync_all()?;
     temp_file.persist(path).map_err(|error| error.error)?;
+    sync_directory(parent)?;
+    Ok(())
+}
+
+fn sync_directory(path: &Path) -> DaloResult<()> {
+    fs::File::open(path)?.sync_all()?;
     Ok(())
 }
 
@@ -831,6 +901,54 @@ mod tests {
             .expect_err("write should fail when the store root is absent");
 
         assert!(matches!(error, DaloError::StoreNotInitialized { .. }));
+    }
+
+    #[test]
+    fn read_state_should_report_actionable_corrupt_state() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root);
+        fs::write(&paths.state_file, "schema_version = ").expect("state should be corrupted");
+
+        let error = read_state(&paths).expect_err("corrupt state should fail");
+
+        assert!(matches!(error, DaloError::CorruptState { .. }));
+        assert!(error.to_string().contains("run `dalo init`"));
+    }
+
+    #[test]
+    fn init_store_should_repair_corrupt_state_file() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root.clone());
+        fs::write(&paths.state_file, "schema_version = ").expect("state should be corrupted");
+
+        let report = init_store(store_root.clone(), false).expect("init should repair state");
+
+        assert!(report.operations.iter().any(|operation| {
+            operation.path == paths.state_file && operation.status == InitOperationStatus::Repaired
+        }));
+        assert_eq!(
+            read_state(&paths).expect("repaired state should parse"),
+            StateFile::empty()
+        );
+        let backups = fs::read_dir(&store_root)
+            .expect("store dir should be readable")
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("state.toml.corrupt-")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(backups.len(), 1);
+        assert_eq!(
+            fs::read_to_string(backups[0].path()).expect("backup should be readable"),
+            "schema_version = "
+        );
     }
 
     #[test]
