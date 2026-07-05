@@ -6,10 +6,12 @@
   <title>Dalo · Git-backed skill management for AI agents</title>
   <meta name="description" content="Dalo keeps every skill your AI agents run in Git, resolves them deterministically across local and team sources, and links the final set into the folders your agents already read: Codex, Claude Code, OpenClaw, Hermes." />
   <link rel="canonical" href="https://dalo.sh/" />
-  <meta name="theme-color" content="#15171c" />
+  <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#15171c" media="(prefers-color-scheme: dark)" />
 
   <!-- Open Graph / Twitter -->
   <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Dalo" />
   <meta property="og:url" content="https://dalo.sh/" />
   <meta property="og:title" content="Dalo · Git-backed skill management for AI agents" />
   <meta property="og:description" content="One source of truth for every skill your agents run. Versioned in Git, resolved deterministically, linked into the agent folders you already use." />
@@ -29,6 +31,19 @@
   <link rel="preload" href="/assets/fonts/hanken-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="/assets/fonts/geistmono-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="/styles.css" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Dalo",
+    "url": "https://dalo.sh/",
+    "codeRepository": "https://github.com/sebastian-software/dalo",
+    "license": "https://github.com/sebastian-software/dalo/blob/main/LICENSE",
+    "softwareVersion": "0.3.0",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "macOS, Linux"
+  }
+  </script>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
@@ -55,6 +70,22 @@
       <a href="#targets">Targets</a>
       <a href="#compare">Compare</a>
     </nav>
+
+    <details class="mobile-menu">
+      <summary aria-label="Open navigation">
+        <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>
+        <span class="sr-only">Menu</span>
+      </summary>
+      <nav class="mobile-nav" aria-label="Mobile">
+        <a href="#why">Why</a>
+        <a href="#how">How it works</a>
+        <a href="#workflow">Workflow</a>
+        <a href="#quickstart">Quickstart</a>
+        <a href="#targets">Targets</a>
+        <a href="#compare">Compare</a>
+        <a href="#roadmap">Roadmap</a>
+      </nav>
+    </details>
 
     <div class="header-actions">
       <a class="ghost-btn" href="https://github.com/sebastian-software/dalo" rel="noopener">
@@ -356,6 +387,13 @@
           Dalo shells out to <code>git</code> for source operations, no other runtime
           to install.
         </p>
+        <div class="install-copy reveal">
+          <code id="install-command">cargo install dalo</code>
+          <button class="copy-btn" type="button" data-copy-target="install-command" aria-label="Copy install command">
+            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" d="M5.5 5.5h7v7h-7zM3.5 10.5h-1v-7h7v1"/></svg>
+            <span>Copy</span>
+          </button>
+        </div>
         <ul class="qs-points reveal">
           <li><span class="c-ok">✓</span> Single Rust binary, no daemon</li>
           <li><span class="c-ok">✓</span> Local-only, no network needed to try it</li>
@@ -367,12 +405,13 @@
         <div class="terminal">
           <div class="terminal-bar">
             <span class="tdot"></span><span class="tdot"></span><span class="tdot"></span>
-            <span class="terminal-title">install &amp; first sync</span>
+            <span class="terminal-title">first sync</span>
+            <button class="copy-btn copy-btn-terminal" type="button" data-copy-target="quickstart-code" aria-label="Copy quickstart commands">
+              <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" d="M5.5 5.5h7v7h-7zM3.5 10.5h-1v-7h7v1"/></svg>
+              <span>Copy</span>
+            </button>
           </div>
-          <pre class="terminal-body"><code><span class="ln c-dim"># install</span>
-<span class="ln"><span class="prompt">$</span> cargo install dalo</span>
-<span class="ln"> </span>
-<span class="ln c-dim"># set up the store and link agents</span>
+          <pre class="terminal-body"><code id="quickstart-code"><span class="ln c-dim"># set up the store and link agents</span>
 <span class="ln"><span class="prompt">$</span> dalo init</span>
 <span class="ln"><span class="prompt">$</span> dalo target detect</span>
 <span class="ln"><span class="prompt">$</span> dalo target link codex</span>
@@ -544,6 +583,8 @@
       <div class="footer-col">
         <p class="footer-h">Docs</p>
         <a href="https://github.com/sebastian-software/dalo#readme" rel="noopener">README</a>
+        <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a>
+        <a href="https://github.com/sebastian-software/dalo/releases" rel="noopener">Releases</a>
         <a href="https://github.com/sebastian-software/dalo/tree/main/docs/rfcs" rel="noopener">RFCs</a>
         <a href="https://github.com/sebastian-software/dalo/tree/main/docs/milestones" rel="noopener">Milestones</a>
       </div>
