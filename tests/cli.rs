@@ -1,3 +1,4 @@
+use dalo::lockfile::LockedInstructionPack;
 use dalo::store;
 use predicates::prelude::*;
 use std::os::unix::fs::PermissionsExt;
@@ -2890,6 +2891,116 @@ fn instructions_disable_should_match_normalized_absolute_target() {
             .expect("target a should be readable")
             .contains("dalo:start")
     );
+}
+
+#[test]
+fn instructions_disable_should_match_legacy_relative_lock_target() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let project = temp_dir.path().join("project");
+    std::fs::create_dir_all(&project).expect("project dir should be created");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::write(
+        store.join("local/instructions/house-style.md"),
+        "version: 1.0\n\nUse tabs.\n",
+    )
+    .expect("pack should be written");
+    std::fs::write(
+        project.join("AGENTS.md"),
+        "# Project\n\n<!-- dalo:start house-style -->\nUse tabs.\n<!-- dalo:end house-style -->\n",
+    )
+    .expect("target should be written");
+    let paths = store::StorePaths::new(store.clone());
+    let mut lock = store::read_user_lock(&paths).expect("lock should be readable");
+    lock.active_instruction_packs.push(LockedInstructionPack {
+        pack_id: "house-style".to_owned(),
+        target: std::path::PathBuf::from("AGENTS.md"),
+        source_id: "local".to_owned(),
+        commit: None,
+        version: Some("1.0".to_owned()),
+    });
+    store::write_user_lock(&paths, &lock).expect("lock should be writable");
+
+    dalo_command()
+        .current_dir(&project)
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "disable", "house-style", "AGENTS.md"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("disabled"));
+
+    let lock = read_user_lock(&store);
+    assert!(lock.active_instruction_packs.is_empty());
+    assert!(
+        !std::fs::read_to_string(project.join("AGENTS.md"))
+            .expect("target should be readable")
+            .contains("dalo:start")
+    );
+}
+
+#[test]
+fn status_should_report_legacy_relative_instruction_target_independent_of_cwd() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let dir_a = temp_dir.path().join("a");
+    let dir_b = temp_dir.path().join("b");
+    std::fs::create_dir_all(&dir_a).expect("dir a should be created");
+    std::fs::create_dir_all(&dir_b).expect("dir b should be created");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::write(
+        store.join("local/instructions/house-style.md"),
+        "version: 1.0\n\nUse tabs.\n",
+    )
+    .expect("pack should be written");
+    let paths = store::StorePaths::new(store.clone());
+    let mut lock = store::read_user_lock(&paths).expect("lock should be readable");
+    lock.active_instruction_packs.push(LockedInstructionPack {
+        pack_id: "house-style".to_owned(),
+        target: std::path::PathBuf::from("AGENTS.md"),
+        source_id: "local".to_owned(),
+        commit: None,
+        version: Some("1.0".to_owned()),
+    });
+    store::write_user_lock(&paths, &lock).expect("lock should be writable");
+
+    let output_a = dalo_command()
+        .current_dir(&dir_a)
+        .args(["--store"])
+        .arg(&store)
+        .arg("status")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let output_b = dalo_command()
+        .current_dir(&dir_b)
+        .args(["--store"])
+        .arg(&store)
+        .arg("status")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    assert_eq!(output_a, output_b);
+    let text = String::from_utf8(output_a).expect("status should be utf-8");
+    assert!(text.contains("instruction block drift"), "{text}");
+    assert!(text.contains("house-style"));
 }
 
 #[test]

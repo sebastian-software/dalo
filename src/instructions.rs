@@ -189,6 +189,7 @@ fn instruction_block_drift(
     sources: &[SourceConfig],
     entry: &LockedInstructionPack,
 ) -> Option<InstructionBlockDrift> {
+    let target = lock_entry_target_path(paths, &entry.target);
     let pack = match read_pack_for_lock_entry(paths, sources, entry) {
         Ok(pack) => pack,
         Err(error) => {
@@ -201,7 +202,7 @@ fn instruction_block_drift(
             });
         }
     };
-    let content = match fs::read_to_string(&entry.target) {
+    let content = match fs::read_to_string(&target) {
         Ok(content) => content,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return Some(InstructionBlockDrift {
@@ -261,6 +262,14 @@ fn instruction_block_drift(
             kind: InstructionBlockDriftKind::Malformed,
             message: error.to_string(),
         }),
+    }
+}
+
+fn lock_entry_target_path(paths: &StorePaths, target: &Path) -> PathBuf {
+    if target.is_absolute() {
+        target.to_path_buf()
+    } else {
+        lexically_normalize(&paths.root.join(target))
     }
 }
 
@@ -438,7 +447,7 @@ pub fn enable_pack(
     let mut lock = store::read_user_lock(paths)?;
     if !dry_run {
         lock.active_instruction_packs
-            .retain(|entry| !(entry.pack_id == pack.id && entry.target == target));
+            .retain(|entry| !(entry.pack_id == pack.id && targets_match(entry, &target)));
         lock.active_instruction_packs.push(LockedInstructionPack {
             pack_id: pack.id.clone(),
             target: target.clone(),
@@ -477,7 +486,7 @@ pub fn disable_pack(
     let has_lock_entry = lock
         .active_instruction_packs
         .iter()
-        .any(|entry| entry.pack_id == pack_id && entry.target == target);
+        .any(|entry| entry.pack_id == pack_id && targets_match(entry, &target));
 
     let action = if has_block {
         let updated = remove_block(&existing, pack_id)?;
@@ -492,7 +501,7 @@ pub fn disable_pack(
     };
 
     lock.active_instruction_packs
-        .retain(|entry| !(entry.pack_id == pack_id && entry.target == target));
+        .retain(|entry| !(entry.pack_id == pack_id && targets_match(entry, &target)));
     if !dry_run && lock.active_instruction_packs.len() != before {
         store::write_user_lock(paths, &lock)?;
     }
@@ -508,6 +517,12 @@ pub fn disable_pack(
 fn normalize_target_path(target: &Path) -> DaloResult<PathBuf> {
     let absolute = store::absolute_path(target)?;
     Ok(lexically_normalize(&absolute))
+}
+
+fn targets_match(entry: &LockedInstructionPack, target: &Path) -> bool {
+    entry.target == target
+        || (entry.target.is_relative()
+            && normalize_target_path(&entry.target).is_ok_and(|normalized| normalized == target))
 }
 
 fn lexically_normalize(path: &Path) -> PathBuf {
