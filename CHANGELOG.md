@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.4.1...dalo-v0.5.0) (2026-07-05)
+
+
+### Features
+
+* **cli:** color terminal diagnostics ([e7c7286](https://github.com/sebastian-software/dalo/commit/e7c72866f343ca4549f98e240d9156d4d882d639))
+* **cli:** improve first-run guidance ([cbecf4d](https://github.com/sebastian-software/dalo/commit/cbecf4d2d42f718e6c8a33440f8997e175301e43))
+
+
+### Bug Fixes
+
+* **cli:** hide internal git invocation details ([b74c676](https://github.com/sebastian-software/dalo/commit/b74c67648e8b625644608c2eba7b819966f78044))
+* **git:** humanize network failures ([14c894e](https://github.com/sebastian-software/dalo/commit/14c894e87496fe3cf97cd48ce1d4664df1d57b02))
+
 ## [0.4.1](https://github.com/sebastian-software/dalo/compare/dalo-v0.4.0...dalo-v0.4.1) (2026-07-05)
 
 
