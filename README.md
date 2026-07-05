@@ -36,12 +36,22 @@ Dalo treats agent knowledge like something worth managing:
 
 Dalo currently targets Unix-like systems (Linux and macOS). Windows is not yet supported.
 
-The current release candidate is source-built:
+Install from crates.io:
 
 ```sh
-git clone https://github.com/sebastian-software/dalo.git
-cd dalo
-cargo install --path .
+cargo install dalo
+```
+
+Prebuilt Linux and macOS archives are attached to each GitHub release:
+
+```sh
+https://github.com/sebastian-software/dalo/releases
+```
+
+For an unreleased checkout:
+
+```sh
+cargo install --git https://github.com/sebastian-software/dalo.git
 ```
 
 For development:

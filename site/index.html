@@ -311,8 +311,9 @@
       <div class="quickstart-copy">
         <h2 class="section-h reveal">Running in a few minutes.</h2>
         <p class="lead reveal">
-          Dalo builds from source today (macOS and Linux). It shells out to
-          <code>git</code> for source operations, no other runtime to install.
+          Install from crates.io or grab a prebuilt archive from GitHub Releases.
+          Dalo shells out to <code>git</code> for source operations, no other runtime
+          to install.
         </p>
         <ul class="qs-points reveal">
           <li><span class="c-ok">✓</span> Single Rust binary, no daemon</li>
@@ -327,9 +328,8 @@
             <span class="tdot"></span><span class="tdot"></span><span class="tdot"></span>
             <span class="terminal-title">install &amp; first sync</span>
           </div>
-          <pre class="terminal-body"><code><span class="ln c-dim"># build and install</span>
-<span class="ln"><span class="prompt">$</span> git clone https://github.com/sebastian-software/dalo</span>
-<span class="ln"><span class="prompt">$</span> cd dalo &amp;&amp; cargo install --path .</span>
+          <pre class="terminal-body"><code><span class="ln c-dim"># install</span>
+<span class="ln"><span class="prompt">$</span> cargo install dalo</span>
 <span class="ln"> </span>
 <span class="ln c-dim"># set up the store and link agents</span>
 <span class="ln"><span class="prompt">$</span> dalo init</span>
@@ -418,7 +418,7 @@
         <li><span class="rm-tag">next</span> Instruction packs: shared conventions as managed blocks</li>
         <li><span class="rm-tag">later</span> PR-first promotion of local skills into team repos</li>
         <li><span class="rm-tag">later</span> Scheduled autosync via launchd / systemd timers</li>
-        <li><span class="rm-tag">later</span> More verified agent adapters and package distribution</li>
+        <li><span class="rm-tag">later</span> More verified agent adapters and package managers</li>
       </ul>
     </div>
   </section>
