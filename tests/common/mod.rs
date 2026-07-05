@@ -6,7 +6,9 @@ use dalo::config::UserConfig;
 use dalo::lockfile::UserLock;
 use dalo::store::{self, ApprovalRecord, StorePaths};
 use dalo::{source, target};
-use std::path::Path;
+use std::ffi::OsString;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
 
 pub fn dalo_command() -> Command {
     let mut command = Command::cargo_bin("dalo").expect("binary should build");
@@ -184,4 +186,53 @@ pub fn git_command_succeeds(repo: &Path, args: &[&str]) -> bool {
         .status()
         .expect("git should run")
         .success()
+}
+
+pub struct GitRevParseLogger {
+    pub path_env: OsString,
+    pub log: PathBuf,
+    pub real_git: String,
+}
+
+pub fn git_rev_parse_logger(temp_dir: &Path) -> GitRevParseLogger {
+    let real_git_output = std::process::Command::new("sh")
+        .args(["-c", "command -v git"])
+        .output()
+        .expect("real git should be discoverable");
+    assert!(
+        real_git_output.status.success(),
+        "real git should be discoverable"
+    );
+    let real_git = String::from_utf8(real_git_output.stdout)
+        .expect("git path should be utf8")
+        .trim()
+        .to_owned();
+
+    let bin = temp_dir.join("git-wrapper-bin");
+    std::fs::create_dir_all(&bin).expect("wrapper bin should be created");
+    let wrapper = bin.join("git");
+    std::fs::write(
+        &wrapper,
+        "#!/bin/sh\n\
+         if [ \"$1\" = \"rev-parse\" ] && [ \"$2\" = \"HEAD\" ]; then\n\
+         \tprintf '%s\\n' \"$PWD\" >> \"$DALO_GIT_REV_PARSE_LOG\"\n\
+         fi\n\
+         exec \"$DALO_REAL_GIT\" \"$@\"\n",
+    )
+    .expect("git wrapper should be written");
+    let mut permissions = std::fs::metadata(&wrapper)
+        .expect("git wrapper metadata should be readable")
+        .permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&wrapper, permissions).expect("git wrapper should be executable");
+
+    let mut path_env = bin.into_os_string();
+    path_env.push(":");
+    path_env.push(std::env::var_os("PATH").unwrap_or_default());
+
+    GitRevParseLogger {
+        path_env,
+        log: temp_dir.join("git-rev-parse.log"),
+        real_git,
+    }
 }
