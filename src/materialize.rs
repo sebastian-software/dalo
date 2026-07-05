@@ -143,7 +143,7 @@ pub fn materialize_with_degraded_sources(
             }
         }
     } else {
-        apply_plan(paths, &mut state, &operations, &desired_links)?;
+        apply_plan(paths, &mut state, &mut operations, &desired_links)?;
         store::write_state(paths, &state)?;
     }
 
@@ -380,12 +380,12 @@ fn plan_undesired_recorded(
 fn apply_plan(
     paths: &StorePaths,
     state: &mut StateFile,
-    operations: &[MaterializeOperation],
+    operations: &mut [MaterializeOperation],
     desired_links: &[DesiredLink],
 ) -> DaloResult<()> {
     let previous_owned_skills = state.owned_skills.clone();
 
-    for operation in operations {
+    for operation in operations.iter_mut() {
         match operation.kind {
             MaterializeOperationKind::Create | MaterializeOperationKind::Relink => {
                 if operation.status == MaterializeOperationStatus::Blocked {
@@ -398,7 +398,13 @@ fn apply_plan(
                     }
                     // A real file/dir appeared at the slot after planning (TOCTOU).
                     // Refuse to delete unmanaged content; skip rather than overwrite.
-                    Ok(_) => continue,
+                    Ok(_) => {
+                        operation.kind = MaterializeOperationKind::Conflict;
+                        operation.status = MaterializeOperationStatus::Blocked;
+                        operation.reason =
+                            Some("real unmanaged entry appeared at target slot".to_owned());
+                        continue;
+                    }
                     Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                     Err(error) => return Err(error.into()),
                 }
@@ -676,10 +682,18 @@ mod tests {
         };
 
         let paths = StorePaths::new(temp_dir.path().join("store"));
+        let mut state = StateFile::empty();
+        let mut operations = vec![operation];
 
-        apply_plan(&paths, &mut StateFile::empty(), &[operation], &[desired])
-            .expect("apply should succeed");
+        apply_plan(&paths, &mut state, &mut operations, &[desired]).expect("apply should succeed");
 
+        assert_eq!(operations[0].kind, MaterializeOperationKind::Conflict);
+        assert_eq!(operations[0].status, MaterializeOperationStatus::Blocked);
+        assert_eq!(
+            operations[0].reason.as_deref(),
+            Some("real unmanaged entry appeared at target slot")
+        );
+        assert!(state.owned_skills.is_empty());
         assert!(
             !fs::symlink_metadata(&link_path)
                 .expect("file should still exist")
@@ -750,9 +764,15 @@ mod tests {
             status: MaterializeOperationStatus::Applied,
             reason: Some("recorded skill is no longer desired".to_owned()),
         };
+        let mut operations = vec![operation];
 
-        apply_plan(&StorePaths::new(store_root), &mut state, &[operation], &[])
-            .expect("apply should succeed");
+        apply_plan(
+            &StorePaths::new(store_root),
+            &mut state,
+            &mut operations,
+            &[],
+        )
+        .expect("apply should succeed");
 
         assert_eq!(
             fs::read_link(&link_path).expect("foreign symlink should survive"),
