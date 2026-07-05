@@ -1,5 +1,6 @@
 //! Narrow wrapper around the system `git` command.
 
+use std::ffi::OsStr;
 use std::fs;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -10,8 +11,10 @@ use tempfile::NamedTempFile;
 
 use crate::error::{DaloError, DaloResult};
 
-const GIT_TIMEOUT: Duration = Duration::from_secs(60);
+const GIT_LOCAL_TIMEOUT: Duration = Duration::from_secs(60);
+const GIT_NETWORK_TIMEOUT: Duration = Duration::from_secs(300);
 const GIT_POLL_INTERVAL: Duration = Duration::from_millis(50);
+const GIT_TIMEOUT_ENV: &str = "DALO_GIT_TIMEOUT_SECS";
 
 /// Run `git init` in the provided directory.
 pub fn init_repo(path: &Path) -> DaloResult<()> {
@@ -24,12 +27,12 @@ pub fn clone_repo(url: &str, destination: &Path) -> DaloResult<()> {
     let destination_arg = destination.to_string_lossy().into_owned();
     // `--` terminates option parsing so a user-supplied URL that looks like a
     // flag (e.g. `--upload-pack=...`) can never be treated as a git option.
-    run_git(cwd, &["clone", "--quiet", "--", url, &destination_arg]).map(|_| ())
+    run_git_network(cwd, &["clone", "--quiet", "--", url, &destination_arg]).map(|_| ())
 }
 
 /// Update the current tracking branch through a fast-forward-only pull.
 pub fn pull_ff_only(path: &Path) -> DaloResult<()> {
-    run_git(path, &["pull", "--ff-only", "--quiet"]).map(|_| ())
+    run_git_network(path, &["pull", "--ff-only", "--quiet"]).map(|_| ())
 }
 
 /// Return whether a checkout has local changes.
@@ -51,7 +54,7 @@ pub fn rev_parse(path: &Path, revision: &str) -> DaloResult<String> {
 /// Read-only fetch of the remote's HEAD. Records it in `FETCH_HEAD` without
 /// moving the working tree.
 pub fn fetch(path: &Path) -> DaloResult<()> {
-    run_git(path, &["fetch", "--quiet", "origin", "HEAD"]).map(|_| ())
+    run_git_network(path, &["fetch", "--quiet", "origin", "HEAD"]).map(|_| ())
 }
 
 /// Check a commit out into a detached worktree for read-only inspection. The
@@ -77,7 +80,11 @@ pub fn prune_worktrees(repo: &Path) -> DaloResult<()> {
 }
 
 fn run_git(path: &Path, args: &[&str]) -> DaloResult<String> {
-    run_git_program("git", path, args, GIT_TIMEOUT)
+    run_git_program("git", path, args, git_timeout(GIT_LOCAL_TIMEOUT))
+}
+
+fn run_git_network(path: &Path, args: &[&str]) -> DaloResult<String> {
+    run_git_program("git", path, args, git_timeout(GIT_NETWORK_TIMEOUT))
 }
 
 fn run_git_program(
@@ -86,22 +93,51 @@ fn run_git_program(
     args: &[&str],
     timeout: Duration,
 ) -> DaloResult<String> {
+    run_git_program_with_options(
+        program,
+        path,
+        args,
+        timeout,
+        std::env::var_os("GIT_SSH_COMMAND"),
+        has_core_ssh_command(path),
+    )
+}
+
+fn run_git_program_with_options(
+    program: &str,
+    path: &Path,
+    args: &[&str],
+    timeout: Duration,
+    ssh_command_env: Option<impl AsRef<OsStr>>,
+    core_ssh_command_configured: bool,
+) -> DaloResult<String> {
     let stdout = NamedTempFile::new()?;
     let stderr = NamedTempFile::new()?;
-    let mut child = Command::new(program)
+    let mut command = Command::new(program);
+    command
         .args(args)
         .current_dir(path)
         .env("GIT_TERMINAL_PROMPT", "0")
-        .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout.reopen()?))
-        .stderr(Stdio::from(stderr.reopen()?))
-        .spawn()?;
+        .stderr(Stdio::from(stderr.reopen()?));
+    configure_ssh_command(
+        &mut command,
+        ssh_command_env.as_ref(),
+        core_ssh_command_configured,
+    );
+    let mut child = command.spawn()?;
 
     let start = Instant::now();
     let status = loop {
-        if let Some(status) = child.try_wait()? {
-            break status;
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {}
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(DaloError::Io(error));
+            }
         }
 
         let elapsed = start.elapsed();
@@ -135,6 +171,41 @@ fn run_git_program(
             .map_or_else(|| "signal".to_owned(), |code| code.to_string()),
         stderr: stderr_text,
     })
+}
+
+fn configure_ssh_command(
+    command: &mut Command,
+    ssh_command_env: Option<&impl AsRef<OsStr>>,
+    core_ssh_command_configured: bool,
+) {
+    if let Some(value) = ssh_command_env {
+        command.env("GIT_SSH_COMMAND", value.as_ref());
+    } else if !core_ssh_command_configured {
+        command.env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes");
+    } else {
+        command.env_remove("GIT_SSH_COMMAND");
+    }
+}
+
+fn has_core_ssh_command(path: &Path) -> bool {
+    Command::new("git")
+        .args(["config", "--get", "core.sshCommand"])
+        .current_dir(path)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+fn git_timeout(default: Duration) -> Duration {
+    std::env::var(GIT_TIMEOUT_ENV)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|seconds| *seconds > 0)
+        .map(Duration::from_secs)
+        .unwrap_or(default)
 }
 
 fn read_tempfile_lossy(file: &NamedTempFile) -> String {
@@ -190,11 +261,13 @@ mod tests {
             "#!/bin/sh\nprintf 'prompt=%s ssh=%s\\n' \"$GIT_TERMINAL_PROMPT\" \"$GIT_SSH_COMMAND\" >&2\nexit 2\n",
         );
 
-        let error = run_git_program(
+        let error = run_git_program_with_options(
             fake_git.to_str().expect("script path should be utf-8"),
             temp_dir.path(),
             &["pull"],
             Duration::from_secs(1),
+            Option::<&str>::None,
+            false,
         )
         .expect_err("fake git should fail");
 
@@ -203,6 +276,57 @@ mod tests {
         };
         assert!(stderr.contains("prompt=0"));
         assert!(stderr.contains("BatchMode=yes"));
+    }
+
+    #[test]
+    fn run_git_program_should_preserve_user_ssh_command() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let fake_git = write_executable(
+            temp_dir.path(),
+            "fake-git",
+            "#!/bin/sh\nprintf 'ssh=%s\\n' \"$GIT_SSH_COMMAND\" >&2\nexit 2\n",
+        );
+
+        let error = run_git_program_with_options(
+            fake_git.to_str().expect("script path should be utf-8"),
+            temp_dir.path(),
+            &["fetch"],
+            Duration::from_secs(1),
+            Some("ssh -i deploy-key -oBatchMode=yes"),
+            false,
+        )
+        .expect_err("fake git should fail");
+
+        let DaloError::CommandFailed { stderr, .. } = error else {
+            panic!("expected command failure");
+        };
+        assert!(stderr.contains("ssh=ssh -i deploy-key -oBatchMode=yes"));
+    }
+
+    #[test]
+    fn run_git_program_should_not_override_core_ssh_command() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let fake_git = write_executable(
+            temp_dir.path(),
+            "fake-git",
+            "#!/bin/sh\nprintf \"ssh=${GIT_SSH_COMMAND:-unset}\\n\" >&2\nexit 2\n",
+        );
+
+        let error = run_git_program_with_options(
+            fake_git.to_str().expect("script path should be utf-8"),
+            temp_dir.path(),
+            &["fetch"],
+            Duration::from_secs(1),
+            Option::<&str>::None,
+            true,
+        )
+        .expect_err("fake git should fail");
+
+        let DaloError::CommandFailed { stderr, .. } = error else {
+            panic!("expected command failure");
+        };
+        assert!(stderr.contains("ssh=unset"));
+        assert!(!stderr.contains("BatchMode=yes"));
     }
 
     #[test]

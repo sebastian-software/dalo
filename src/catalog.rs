@@ -177,7 +177,9 @@ pub fn add_catalog_source(
     if let Some(parent) = checkout.parent() {
         fs::create_dir_all(parent)?;
     }
-    git::clone_repo(url, &checkout)?;
+    git::clone_repo(url, &checkout).inspect_err(|_| {
+        let _ = fs::remove_dir_all(&checkout);
+    })?;
 
     // Pin the catalog commit and capture its inventory snapshot, then register the
     // source. On a later failure, remove the clone and the lock entry so config
