@@ -526,6 +526,7 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
                     command: "source refresh (advancing the pin)".to_owned(),
                 });
             }
+            let _lock = store::StoreLock::acquire(&paths)?;
             let report = catalog::check_catalog_drift(&paths, &args.id)?;
             if options.json {
                 print_json(&report)?;
