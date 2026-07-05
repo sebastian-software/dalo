@@ -25,10 +25,6 @@
   font-display: swap; src: url("/assets/fonts/hanken-600.woff2") format("woff2");
 }
 @font-face {
-  font-family: "Hanken Grotesk"; font-style: normal; font-weight: 700;
-  font-display: swap; src: url("/assets/fonts/hanken-700.woff2") format("woff2");
-}
-@font-face {
   font-family: "Geist Mono"; font-style: normal; font-weight: 400;
   font-display: swap; src: url("/assets/fonts/geistmono-400.woff2") format("woff2");
 }
@@ -69,7 +65,7 @@
   --term-surface: oklch(0.205 0.014 260);
   --term-line: oklch(0.30 0.016 260);
   --term-ink: oklch(0.90 0.006 250);
-  --term-dim: oklch(0.62 0.012 255);
+  --term-dim: oklch(0.76 0.012 255);
 
   --r-sm: 7px;
   --r: 11px;
@@ -288,6 +284,19 @@ section[data-scope="dark"] { background: var(--bg); color: var(--ink); }
 .hero h1 { font-size: var(--fs-h1); }
 .hero-lede { font-size: var(--fs-lead); color: var(--ink-soft); margin-top: 1.4rem; max-width: 40ch; }
 .hero-cta { display: flex; flex-wrap: wrap; gap: 0.8rem; margin-top: 2rem; }
+.hero-install { margin-top: 1rem; max-width: min(100%, 35rem); }
+.proof-badges { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+.proof-badges a {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  text-decoration: none;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  padding: 0.26rem 0.58rem;
+  background: color-mix(in oklch, var(--surface) 72%, transparent);
+}
+.proof-badges a:hover { color: var(--accent); border-color: var(--accent); }
 .hero-meta { font-size: var(--fs-sm); color: var(--ink-faint); margin-top: 1.4rem; font-family: var(--font-mono); }
 .hero-meta code { color: var(--accent-text); font-size: 0.92em; }
 
@@ -444,6 +453,8 @@ section[data-scope="dark"] { background: var(--bg); color: var(--ink); }
 }
 .copy-btn:hover { border-color: var(--accent); background: var(--accent-soft); }
 .copy-btn[data-copied="true"] { color: var(--signal); border-color: var(--signal); }
+.install-alt { color: var(--ink-soft); font-size: var(--fs-sm); margin-top: 0.85rem; }
+.install-alt a { color: var(--accent-text); font-weight: 600; text-decoration-thickness: 0.08em; text-underline-offset: 0.18em; }
 .copy-btn-terminal {
   margin-left: auto; min-height: 32px; padding: 0.35rem 0.58rem;
   color: var(--term-ink); border-color: var(--term-line);
