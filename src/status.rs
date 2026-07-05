@@ -8,7 +8,9 @@ use crate::adopt::{AdoptReport, KeepReport, RemoveOwnedReport, ResolveListReport
 use crate::catalog::{CatalogDrift, CatalogInspectReport, CatalogSelectReport};
 use crate::doctor::{DoctorReport, DoctorSeverity};
 use crate::error::DaloResult;
-use crate::instructions::{self, DiscoveredPack, InstructionPackReport, TopicOverlap};
+use crate::instructions::{
+    self, DiscoveredPack, InstructionBlockDrift, InstructionPackReport, TopicOverlap,
+};
 use crate::inventory::InventoryWarning;
 use crate::lockfile::{self, LockDrift};
 use crate::materialize::SyncReport;
@@ -38,6 +40,8 @@ pub struct StatusReport {
     pub instruction_packs: Vec<DiscoveredPack>,
     /// Declared-topic overlaps among active instruction packs (advisory).
     pub instruction_pack_overlaps: Vec<TopicOverlap>,
+    /// Active instruction blocks that are missing, malformed, or stale.
+    pub instruction_block_drifts: Vec<InstructionBlockDrift>,
 }
 
 /// User lock status derived during `status`.
@@ -150,6 +154,11 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         .cloned()
         .collect::<Vec<_>>();
     let instruction_pack_overlaps = instructions::topic_overlaps(&active_packs);
+    let instruction_block_drifts = instructions::instruction_block_drifts(
+        &paths,
+        &config.sources,
+        &previous_lock.active_instruction_packs,
+    );
 
     Ok(StatusReport {
         store: store_root.to_path_buf(),
@@ -160,6 +169,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         unmanaged_skills,
         instruction_packs,
         instruction_pack_overlaps,
+        instruction_block_drifts,
     })
 }
 
@@ -280,6 +290,20 @@ pub fn print_status_report(report: &StatusReport) {
                 overlap.packs[0],
                 overlap.packs[1],
                 overlap.topics.join(", ")
+            );
+        }
+    }
+
+    if !report.instruction_block_drifts.is_empty() {
+        println!("instruction block drift:");
+        for drift in &report.instruction_block_drifts {
+            println!(
+                "  {}:{} {} at {} ({})",
+                drift.source_id,
+                drift.pack_id,
+                instruction_block_drift_kind_label(drift.kind),
+                drift.target.display(),
+                drift.message
             );
         }
     }
@@ -513,6 +537,17 @@ fn doctor_severity_label(severity: DoctorSeverity) -> &'static str {
     }
 }
 
+fn instruction_block_drift_kind_label(
+    kind: instructions::InstructionBlockDriftKind,
+) -> &'static str {
+    match kind {
+        instructions::InstructionBlockDriftKind::Missing => "missing",
+        instructions::InstructionBlockDriftKind::Malformed => "malformed",
+        instructions::InstructionBlockDriftKind::Stale => "stale",
+        instructions::InstructionBlockDriftKind::SourceMissing => "source_missing",
+    }
+}
+
 /// Print a human-readable target detection report.
 pub fn print_target_detect_report(report: &TargetDetectReport) {
     for target in &report.targets {
@@ -568,5 +603,52 @@ mod tests {
             report.resolution.active_skills[0].source_ref,
             "local:review"
         );
+    }
+
+    #[test]
+    fn build_status_report_should_report_missing_instruction_block() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let (store_root, target) = setup_enabled_instruction_pack(temp_dir.path(), "Body v1\n");
+        fs::write(&target, "user-owned content\n").expect("target should be rewritten");
+
+        let report = build_status_report(&store_root).expect("status should build");
+
+        assert_eq!(report.instruction_block_drifts.len(), 1);
+        assert_eq!(
+            report.instruction_block_drifts[0].kind,
+            instructions::InstructionBlockDriftKind::Missing
+        );
+    }
+
+    #[test]
+    fn build_status_report_should_report_stale_instruction_block() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let (store_root, _target) = setup_enabled_instruction_pack(temp_dir.path(), "Body v1\n");
+        fs::write(
+            store_root.join("local/instructions/house-style.md"),
+            "Body v2\n",
+        )
+        .expect("pack should be updated");
+
+        let report = build_status_report(&store_root).expect("status should build");
+
+        assert_eq!(report.instruction_block_drifts.len(), 1);
+        assert_eq!(
+            report.instruction_block_drifts[0].kind,
+            instructions::InstructionBlockDriftKind::Stale
+        );
+    }
+
+    fn setup_enabled_instruction_pack(root: &Path, body: &str) -> (PathBuf, PathBuf) {
+        let store_root = root.join("store");
+        let target = root.join("AGENTS.md");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root.clone());
+        fs::write(paths.local_instructions_dir.join("house-style.md"), body)
+            .expect("pack should be written");
+        fs::write(&target, "user-owned content\n").expect("target should be seeded");
+        instructions::enable_pack(&paths, "house-style", &target, false)
+            .expect("pack should be enabled");
+        (store_root, target)
     }
 }
