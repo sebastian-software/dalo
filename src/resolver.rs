@@ -468,10 +468,26 @@ fn is_approved(candidate: &Candidate, approvals: &[ApprovalRecord]) -> bool {
 }
 
 fn approval_matches_skill(approval: &ApprovalRecord, candidate: &Candidate) -> bool {
-    approval.scope == "skill"
-        && (approval.value == candidate.skill.source_ref
-            || approval.value == candidate.skill.slot_name
-            || candidate.skill.id.as_ref() == Some(&approval.value))
+    if approval.scope != "skill" {
+        return false;
+    }
+
+    if approval.value == candidate.skill.source_ref {
+        return true;
+    }
+
+    let Some((source_id, stable_id)) = approval.value.split_once(':') else {
+        // Legacy bare slot-name or stable-ID approvals are intentionally not
+        // matched: they cannot prove which source the user approved.
+        return false;
+    };
+
+    source_id == candidate.skill.source_id
+        && candidate
+            .skill
+            .id
+            .as_deref()
+            .is_some_and(|id| id == stable_id)
 }
 
 fn approval_matches_source(approval: &ApprovalRecord, candidate: &Candidate) -> bool {
@@ -826,6 +842,87 @@ mod tests {
     }
 
     #[test]
+    fn resolve_should_not_match_bare_skill_approval() {
+        let resolution = resolve_with(
+            vec![source("company", SourceKind::Team, 10)],
+            vec![inventory("company", vec![skill("company", "review")])],
+            vec![approval("skill", "review")],
+        );
+
+        assert!(resolution.active_skills.is_empty());
+        assert_eq!(
+            resolution.pending_approval_skills[0].source_ref,
+            "company:review"
+        );
+    }
+
+    #[test]
+    fn resolve_should_not_match_bare_stable_id_approval() {
+        let resolution = resolve_with(
+            vec![source("company", SourceKind::Team, 10)],
+            vec![inventory(
+                "company",
+                vec![skill_with_id("company", "review", "shared.review")],
+            )],
+            vec![approval("skill", "shared.review")],
+        );
+
+        assert!(resolution.active_skills.is_empty());
+        assert_eq!(
+            resolution.pending_approval_skills[0].source_ref,
+            "company:review"
+        );
+    }
+
+    #[test]
+    fn resolve_should_match_source_qualified_skill_approval_only() {
+        let resolution = resolve_with(
+            vec![
+                source("new-team", SourceKind::Team, 0),
+                source("old-team", SourceKind::Team, 10),
+            ],
+            vec![
+                inventory("new-team", vec![skill("new-team", "review")]),
+                inventory("old-team", vec![skill("old-team", "review")]),
+            ],
+            vec![approval("skill", "old-team:review")],
+        );
+
+        assert_eq!(resolution.active_skills[0].source_ref, "old-team:review");
+        assert_eq!(
+            resolution.pending_approval_skills[0].source_ref,
+            "new-team:review"
+        );
+    }
+
+    #[test]
+    fn resolve_should_match_source_qualified_stable_id_approval_only() {
+        let resolution = resolve_with(
+            vec![
+                source("new-team", SourceKind::Team, 0),
+                source("old-team", SourceKind::Team, 10),
+            ],
+            vec![
+                inventory(
+                    "new-team",
+                    vec![skill_with_id("new-team", "review", "shared.review")],
+                ),
+                inventory(
+                    "old-team",
+                    vec![skill_with_id("old-team", "review", "shared.review")],
+                ),
+            ],
+            vec![approval("skill", "old-team:shared.review")],
+        );
+
+        assert_eq!(resolution.active_skills[0].source_ref, "old-team:review");
+        assert_eq!(
+            resolution.pending_approval_skills[0].source_ref,
+            "new-team:review"
+        );
+    }
+
+    #[test]
     fn resolve_should_match_author_approval_against_owners() {
         let mut team_skill = skill("company", "review");
         team_skill.owners = vec!["core-team".to_owned()];
@@ -975,6 +1072,12 @@ mod tests {
         }
     }
 
+    fn skill_with_id(source_id: &str, slot_name: &str, id: &str) -> SkillRecord {
+        let mut skill = skill(source_id, slot_name);
+        skill.id = Some(id.to_owned());
+        skill
+    }
+
     fn approval(scope: &str, value: &str) -> ApprovalRecord {
         ApprovalRecord {
             scope: scope.to_owned(),
@@ -1069,7 +1172,7 @@ mod tests {
                 "team",
                 vec![skill_req("team", "alpha", &["beta"]), skill("team", "beta")],
             )],
-            vec![approval("skill", "alpha")],
+            vec![approval("skill", "team:alpha")],
         );
 
         assert!(!active_slots(&resolution).contains(&"alpha"));
