@@ -147,7 +147,7 @@ pub enum DaloError {
     },
 
     /// A system command failed.
-    #[error("command `{program} {args}` failed in `{cwd}` with status {status}: {stderr}")]
+    #[error("command `{program}` failed with status {status}: {stderr}")]
     CommandFailed {
         /// Program name.
         program: String,
@@ -489,7 +489,7 @@ mod tests {
 
         assert_eq!(
             error.to_string(),
-            "command `git pull` failed in `/tmp/checkout` with status exit status: 1: boom"
+            "command `git` failed with status exit status: 1: boom"
         );
     }
 
