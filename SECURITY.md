@@ -8,8 +8,8 @@ Dalo is pre-1.0. Security fixes are provided for the latest released minor line 
 
 | Version | Supported |
 | --- | --- |
-| `0.3.x` | yes |
-| `< 0.3.0` | no |
+| `0.4.x` | yes |
+| `< 0.4.0` | no |
 
 If a new minor release is published, support moves to that latest minor line.
 

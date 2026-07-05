@@ -33,7 +33,7 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub json: bool,
 
-    /// Accept safe interactive prompts.
+    /// Reserved for future safe interactive prompts; currently a no-op.
     #[arg(long, global = true)]
     pub yes: bool,
 
@@ -53,7 +53,7 @@ pub struct GlobalOptions {
     pub store: PathBuf,
     /// Emit JSON.
     pub json: bool,
-    /// Accept safe prompts.
+    /// Reserved for future safe prompts.
     pub yes: bool,
     /// Plan without mutating.
     pub dry_run: bool,

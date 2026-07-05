@@ -26,7 +26,7 @@ dalo --json doctor
 | `owned_path_real_entry` | Dalo has an ownership record, but a real file or directory now exists at that path. | Run `dalo resolve remove-owned <slot>`. Dalo drops the ownership record and leaves the real entry intact. |
 | `missing_owned_symlink`, `broken_owned_symlink`, `foreign_owned_symlink` | A recorded owned symlink is missing, broken, or points outside the store. | Run `dalo resolve remove-owned <slot>`, then `dalo sync` if the skill should be linked again. |
 | `instruction_block_drift` | A managed instruction block is missing, malformed, stale, or points to a missing pack. | Re-render with `dalo instructions enable <pack> <file>`, or disable with `dalo instructions disable <pack> <file>` if no longer wanted. |
-| `selected_removed` from catalog drift | A selected catalog skill disappeared upstream. | Unselect it with `dalo source select <catalog> --unselect <skill>`, or wait for/source a catalog fix before syncing. |
+| `selected_removed` from catalog drift | A selected catalog skill disappeared upstream. | Unselect it with `dalo source select <catalog> --unselect <skill>`, or wait for a catalog fix before syncing. |
 | `source refresh (advancing the pin)` is not implemented | `dalo source refresh <id>` was run without `--check`. | Use `dalo source refresh <id> --check`. Pin advancement is a later workflow. |
 
 ## Status Codes

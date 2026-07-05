@@ -2,11 +2,11 @@
 
 Status: Superseded by `CHANGELOG.md` and `docs/milestones/README.md` for release-by-release tracking
 Last updated: 2026-07-05
-Current crate version: 0.3.0
+Current crate version: see `Cargo.toml`
 
 This document is a compact status snapshot for readers coming from the V1 RFCs. It no longer tries to duplicate every shipped command or every changelog entry. For exact release history, use the changelog. For milestone acceptance criteria, use the milestone index and individual milestone files.
 
-## Shipped Through v0.3.0
+## Shipped Through the Current Release
 
 The V1 local/team skill loop is implemented:
 
