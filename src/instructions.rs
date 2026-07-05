@@ -535,6 +535,10 @@ fn read_target(target: &Path) -> DaloResult<String> {
 }
 
 fn write_target(target: &Path, content: &str) -> DaloResult<()> {
+    let target = writable_target_path(target)?;
+    let existing_permissions = fs::metadata(&target)
+        .map(|metadata| metadata.permissions())
+        .ok();
     let parent = target
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -543,8 +547,21 @@ fn write_target(target: &Path, content: &str) -> DaloResult<()> {
     let mut temp_file = NamedTempFile::new_in(parent)?;
     temp_file.write_all(content.as_bytes())?;
     temp_file.flush()?;
-    temp_file.persist(target).map_err(|error| error.error)?;
+    temp_file.as_file().sync_all()?;
+    temp_file.persist(&target).map_err(|error| error.error)?;
+    if let Some(permissions) = existing_permissions {
+        fs::set_permissions(&target, permissions)?;
+    }
     Ok(())
+}
+
+fn writable_target_path(target: &Path) -> DaloResult<PathBuf> {
+    match fs::symlink_metadata(target) {
+        Ok(metadata) if metadata.file_type().is_symlink() => Ok(fs::canonicalize(target)?),
+        Ok(_) => Ok(target.to_path_buf()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(target.to_path_buf()),
+        Err(error) => Err(error.into()),
+    }
 }
 
 /// A discovered instruction pack (read-only inventory entry).
@@ -695,7 +712,7 @@ pub fn topic_overlaps(active: &[DiscoveredPack]) -> Vec<TopicOverlap> {
 
 #[cfg(test)]
 mod tests {
-    use std::os::unix::fs::MetadataExt;
+    use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
 
     use super::*;
     use proptest::prelude::*;
@@ -1022,6 +1039,46 @@ mod tests {
                 .expect("parent dir should be readable")
                 .count(),
             1
+        );
+    }
+
+    #[test]
+    fn write_target_should_preserve_existing_permissions() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let target = temp.path().join("AGENTS.md");
+        fs::write(&target, "old\n").expect("target should be seeded");
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o644))
+            .expect("permissions should be set");
+
+        write_target(&target, "new\n").expect("target should be written");
+
+        let mode = fs::metadata(&target)
+            .expect("target metadata should be readable")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, 0o644);
+    }
+
+    #[test]
+    fn write_target_should_write_through_symlinked_target() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let canonical_target = temp.path().join("AGENTS.md");
+        let symlink_target = temp.path().join("CLAUDE.md");
+        fs::write(&canonical_target, "old\n").expect("target should be seeded");
+        symlink(&canonical_target, &symlink_target).expect("symlink should be created");
+
+        write_target(&symlink_target, "new\n").expect("target should be written");
+
+        assert!(
+            fs::symlink_metadata(&symlink_target)
+                .expect("symlink metadata should be readable")
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(
+            fs::read_to_string(&canonical_target).expect("canonical target should be readable"),
+            "new\n"
         );
     }
 
