@@ -143,7 +143,7 @@ pub fn materialize_with_degraded_sources(
             }
         }
     } else {
-        apply_plan(&mut state, &operations, &desired_links)?;
+        apply_plan(paths, &mut state, &operations, &desired_links)?;
         store::write_state(paths, &state)?;
     }
 
@@ -214,7 +214,7 @@ fn build_plan(
                 operations.push(plan_desired_unrecorded(desired)?);
             }
             (None, Some(recorded)) => {
-                operations.push(plan_undesired_recorded(recorded, degraded_sources));
+                operations.push(plan_undesired_recorded(paths, recorded, degraded_sources));
             }
             (None, None) => {}
         }
@@ -301,6 +301,7 @@ fn plan_desired_unrecorded(desired: &DesiredLink) -> DaloResult<MaterializeOpera
 }
 
 fn plan_undesired_recorded(
+    paths: &StorePaths,
     recorded: &OwnedSkillState,
     degraded_sources: &[DegradedSource],
 ) -> MaterializeOperation {
@@ -321,12 +322,26 @@ fn plan_undesired_recorded(
     }
 
     match actual_link_state(&recorded.link_path) {
-        Ok(ActualLinkState::Symlink(_)) => MaterializeOperation {
-            kind: MaterializeOperationKind::Remove,
+        Ok(ActualLinkState::Symlink(target))
+            if is_owned_link_target(paths, &recorded.store_path, &target) =>
+        {
+            MaterializeOperation {
+                kind: MaterializeOperationKind::Remove,
+                link_path: recorded.link_path.clone(),
+                desired_path: Some(recorded.store_path.clone()),
+                status: MaterializeOperationStatus::Applied,
+                reason: Some("recorded skill is no longer desired".to_owned()),
+            }
+        }
+        Ok(ActualLinkState::Symlink(target)) => MaterializeOperation {
+            kind: MaterializeOperationKind::DropRecord,
             link_path: recorded.link_path.clone(),
-            desired_path: None,
+            desired_path: Some(recorded.store_path.clone()),
             status: MaterializeOperationStatus::Applied,
-            reason: Some("recorded skill is no longer desired".to_owned()),
+            reason: Some(format!(
+                "recorded slot now contains foreign symlink to `{}`",
+                target.display()
+            )),
         },
         Ok(ActualLinkState::Absent) => MaterializeOperation {
             kind: MaterializeOperationKind::DropRecord,
@@ -346,6 +361,7 @@ fn plan_undesired_recorded(
 }
 
 fn apply_plan(
+    paths: &StorePaths,
     state: &mut StateFile,
     operations: &[MaterializeOperation],
     desired_links: &[DesiredLink],
@@ -378,8 +394,10 @@ fn apply_plan(
                 unix_fs::symlink(desired_path, &operation.link_path)?;
             }
             MaterializeOperationKind::Remove => {
-                if fs::symlink_metadata(&operation.link_path)
-                    .is_ok_and(|metadata| metadata.file_type().is_symlink())
+                if let Some(recorded_store_path) = operation.desired_path.as_ref()
+                    && let ActualLinkState::Symlink(target) =
+                        actual_link_state(&operation.link_path)?
+                    && is_owned_link_target(paths, recorded_store_path, &target)
                 {
                     fs::remove_file(&operation.link_path)?;
                 }
@@ -425,6 +443,10 @@ fn apply_plan(
     }
 
     Ok(())
+}
+
+fn is_owned_link_target(paths: &StorePaths, recorded_store_path: &Path, target: &Path) -> bool {
+    target == recorded_store_path || target.starts_with(&paths.root)
 }
 
 fn is_degraded_source_preserve(operation: &MaterializeOperation) -> bool {
@@ -609,7 +631,9 @@ mod tests {
             store_path,
         };
 
-        apply_plan(&mut StateFile::empty(), &[operation], &[desired])
+        let paths = StorePaths::new(temp_dir.path().join("store"));
+
+        apply_plan(&paths, &mut StateFile::empty(), &[operation], &[desired])
             .expect("apply should succeed");
 
         assert!(
@@ -618,6 +642,79 @@ mod tests {
                 .file_type()
                 .is_symlink()
         );
+    }
+
+    #[test]
+    fn materialize_should_drop_record_without_removing_foreign_symlink_at_recorded_path() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let target_dir = temp_dir.path().join("target");
+        let foreign_dir = temp_dir.path().join("foreign");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        fs::create_dir_all(&target_dir).expect("target should be created");
+        fs::create_dir_all(&foreign_dir).expect("foreign dir should be created");
+        let recorded_store_dir = store_root.join("local/skills/review");
+        fs::create_dir_all(&recorded_store_dir).expect("recorded store dir should be created");
+        let link_path = target_dir.join("review");
+        unix_fs::symlink(&foreign_dir, &link_path).expect("foreign symlink should be created");
+        write_state_with_owned_skill(&store_root, &target_dir, &link_path, &recorded_store_dir);
+
+        let report = materialize(
+            &StorePaths::new(store_root.clone()),
+            &empty_resolution(),
+            false,
+        )
+        .expect("materialize should succeed");
+
+        assert_eq!(
+            report.operations[0].kind,
+            MaterializeOperationKind::DropRecord
+        );
+        assert_eq!(
+            fs::read_link(&link_path).expect("foreign symlink should survive"),
+            foreign_dir
+        );
+        let state =
+            store::read_state(&StorePaths::new(store_root)).expect("state should be readable");
+        assert!(state.owned_skills.is_empty());
+    }
+
+    #[test]
+    fn apply_plan_should_recheck_remove_target_before_unlinking() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let target_dir = temp_dir.path().join("target");
+        let foreign_dir = temp_dir.path().join("foreign");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        fs::create_dir_all(&target_dir).expect("target should be created");
+        fs::create_dir_all(&foreign_dir).expect("foreign dir should be created");
+        let recorded_store_dir = store_root.join("local/skills/review");
+        fs::create_dir_all(&recorded_store_dir).expect("recorded store dir should be created");
+        let link_path = target_dir.join("review");
+        unix_fs::symlink(&foreign_dir, &link_path).expect("foreign symlink should be created");
+        let mut state = StateFile::empty();
+        state.owned_skills = vec![OwnedSkillState {
+            target_id: "generic".to_owned(),
+            slot_name: "review".to_owned(),
+            link_path: link_path.clone(),
+            store_path: recorded_store_dir.clone(),
+        }];
+        let operation = MaterializeOperation {
+            kind: MaterializeOperationKind::Remove,
+            link_path: link_path.clone(),
+            desired_path: Some(recorded_store_dir),
+            status: MaterializeOperationStatus::Applied,
+            reason: Some("recorded skill is no longer desired".to_owned()),
+        };
+
+        apply_plan(&StorePaths::new(store_root), &mut state, &[operation], &[])
+            .expect("apply should succeed");
+
+        assert_eq!(
+            fs::read_link(&link_path).expect("foreign symlink should survive"),
+            foreign_dir
+        );
+        assert!(state.owned_skills.is_empty());
     }
 
     #[test]
@@ -708,6 +805,16 @@ mod tests {
                 path: path.to_path_buf(),
                 local_override: false,
             }],
+            pending_approval_skills: Vec::new(),
+            unlinked_skills: Vec::new(),
+            blocked_skills: Vec::new(),
+            diagnostics: Vec::new(),
+        }
+    }
+
+    fn empty_resolution() -> Resolution {
+        Resolution {
+            active_skills: Vec::new(),
             pending_approval_skills: Vec::new(),
             unlinked_skills: Vec::new(),
             blocked_skills: Vec::new(),
