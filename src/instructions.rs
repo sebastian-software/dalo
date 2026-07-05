@@ -8,6 +8,7 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::io::Write;
+use std::path::Component;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
@@ -115,21 +116,37 @@ fn find_block(content: &str, pack_id: &str) -> DaloResult<Option<(usize, usize)>
 /// not, the block is appended, separated from existing content by a blank line.
 /// Rendering the same body twice is idempotent.
 pub fn render_block(content: &str, pack_id: &str, body: &str) -> DaloResult<String> {
-    let block = render_managed_block(pack_id, body)?;
+    let line_ending = line_ending_for(content);
+    let block = render_managed_block_with_line_ending(pack_id, body, line_ending)?;
     Ok(match find_block(content, pack_id)? {
         Some((start_idx, end_idx)) => {
             format!("{}{}{}", &content[..start_idx], block, &content[end_idx..])
         }
-        None => append_block(content, &block),
+        None => append_block(content, &block, line_ending),
     })
 }
 
+#[cfg(test)]
 fn render_managed_block(pack_id: &str, body: &str) -> DaloResult<String> {
+    render_managed_block_with_line_ending(pack_id, body, "\n")
+}
+
+fn render_managed_block_with_line_ending(
+    pack_id: &str,
+    body: &str,
+    line_ending: &str,
+) -> DaloResult<String> {
     validate_body_markers(pack_id, body)?;
+    let body = normalize_line_endings(
+        body.trim_matches(|character| character == '\n' || character == '\r'),
+        line_ending,
+    );
     Ok(format!(
-        "{}\n{}\n{}",
+        "{}{}{}{}{}",
         start_marker(pack_id),
-        body.trim_matches('\n'),
+        line_ending,
+        body,
+        line_ending,
         end_marker(pack_id)
     ))
 }
@@ -184,18 +201,6 @@ fn instruction_block_drift(
             });
         }
     };
-    let expected = match render_managed_block(&entry.pack_id, &pack.body) {
-        Ok(block) => block,
-        Err(error) => {
-            return Some(InstructionBlockDrift {
-                source_id: entry.source_id.clone(),
-                pack_id: entry.pack_id.clone(),
-                target: entry.target.clone(),
-                kind: InstructionBlockDriftKind::SourceMissing,
-                message: format!("active instruction pack body is invalid: {error}"),
-            });
-        }
-    };
     let content = match fs::read_to_string(&entry.target) {
         Ok(content) => content,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -214,6 +219,22 @@ fn instruction_block_drift(
                 target: entry.target.clone(),
                 kind: InstructionBlockDriftKind::Malformed,
                 message: format!("instruction target file could not be read: {error}"),
+            });
+        }
+    };
+    let expected = match render_managed_block_with_line_ending(
+        &entry.pack_id,
+        &pack.body,
+        line_ending_for(&content),
+    ) {
+        Ok(block) => block,
+        Err(error) => {
+            return Some(InstructionBlockDrift {
+                source_id: entry.source_id.clone(),
+                pack_id: entry.pack_id.clone(),
+                target: entry.target.clone(),
+                kind: InstructionBlockDriftKind::SourceMissing,
+                message: format!("active instruction pack body is invalid: {error}"),
             });
         }
     };
@@ -260,19 +281,20 @@ fn read_pack_for_lock_entry(
     read_pack_from_dir(&source.path.join("instructions"), &entry.pack_id)
 }
 
-fn append_block(content: &str, block: &str) -> String {
+fn append_block(content: &str, block: &str, line_ending: &str) -> String {
     if content.is_empty() {
-        return format!("{block}\n");
+        return format!("{block}{line_ending}");
     }
     // Normalize the seam to exactly one blank line before the appended block.
-    let separator = if content.ends_with("\n\n") {
+    let double_line_ending = format!("{line_ending}{line_ending}");
+    let separator = if content.ends_with(&double_line_ending) {
         ""
-    } else if content.ends_with('\n') {
-        "\n"
+    } else if content.ends_with(line_ending) {
+        line_ending
     } else {
-        "\n\n"
+        return format!("{content}{line_ending}{line_ending}{block}{line_ending}");
     };
-    format!("{content}{separator}{block}\n")
+    format!("{content}{separator}{block}{line_ending}")
 }
 
 /// Remove `pack_id`'s managed block, preserving content outside it. A single
@@ -282,16 +304,70 @@ pub fn remove_block(content: &str, pack_id: &str) -> DaloResult<String> {
     let Some((start_idx, end_idx)) = find_block(content, pack_id)? else {
         return Ok(content.to_owned());
     };
+    let line_ending = line_ending_for(content);
     let before_raw = &content[..start_idx];
-    let before = before_raw.strip_suffix('\n').unwrap_or(before_raw);
+    let (before, before_had_line_ending) = strip_line_ending_suffix(before_raw, line_ending);
     let after_raw = &content[end_idx..];
-    let after = after_raw.strip_prefix('\n').unwrap_or(after_raw);
+    let (after, _) = strip_line_ending_prefix(after_raw, line_ending);
     Ok(match (before.is_empty(), after.is_empty()) {
         (true, _) => after.to_owned(),
-        (_, true) if before_raw.ends_with('\n') => format!("{before}\n"),
+        (_, true) if before_had_line_ending => format!("{before}{line_ending}"),
         (_, true) => before.to_owned(),
-        _ => format!("{before}\n{after}"),
+        _ if before.ends_with(line_ending) || after.starts_with(line_ending) => {
+            format!("{before}{after}")
+        }
+        _ => format!("{before}{line_ending}{after}"),
     })
+}
+
+fn line_ending_for(content: &str) -> &'static str {
+    let crlf_count = content.match_indices("\r\n").count();
+    let bytes = content.as_bytes();
+    let lf_count = bytes
+        .iter()
+        .enumerate()
+        .filter(|(index, byte)| {
+            **byte == b'\n' && (*index == 0 || bytes[index.saturating_sub(1)] != b'\r')
+        })
+        .count();
+    if crlf_count > lf_count { "\r\n" } else { "\n" }
+}
+
+fn normalize_line_endings(content: &str, line_ending: &str) -> String {
+    content
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .replace('\n', line_ending)
+}
+
+fn strip_line_ending_suffix<'a>(content: &'a str, line_ending: &str) -> (&'a str, bool) {
+    if let Some(stripped) = content.strip_suffix(line_ending) {
+        return (stripped, true);
+    }
+    if line_ending != "\r\n"
+        && let Some(stripped) = content.strip_suffix("\r\n")
+    {
+        return (stripped, true);
+    }
+    if let Some(stripped) = content.strip_suffix('\n') {
+        return (stripped, true);
+    }
+    (content, false)
+}
+
+fn strip_line_ending_prefix<'a>(content: &'a str, line_ending: &str) -> (&'a str, bool) {
+    if let Some(stripped) = content.strip_prefix(line_ending) {
+        return (stripped, true);
+    }
+    if line_ending != "\r\n"
+        && let Some(stripped) = content.strip_prefix("\r\n")
+    {
+        return (stripped, true);
+    }
+    if let Some(stripped) = content.strip_prefix('\n') {
+        return (stripped, true);
+    }
+    (content, false)
 }
 
 /// Whether `content` contains `pack_id`'s managed block.
@@ -351,11 +427,12 @@ pub fn enable_pack(
     target: &Path,
     dry_run: bool,
 ) -> DaloResult<InstructionPackReport> {
+    let target = normalize_target_path(target)?;
     let pack = read_local_pack(paths, pack_id)?;
-    let existing = read_target(target)?;
+    let existing = read_target(&target)?;
     let rendered = render_block(&existing, &pack.id, &pack.body)?;
     if !dry_run {
-        write_target(target, &rendered)?;
+        write_target(&target, &rendered)?;
     }
 
     let mut lock = store::read_user_lock(paths)?;
@@ -364,7 +441,7 @@ pub fn enable_pack(
             .retain(|entry| !(entry.pack_id == pack.id && entry.target == target));
         lock.active_instruction_packs.push(LockedInstructionPack {
             pack_id: pack.id.clone(),
-            target: target.to_path_buf(),
+            target: target.clone(),
             source_id: "local".to_owned(),
             commit: None,
             version: pack.version,
@@ -379,7 +456,7 @@ pub fn enable_pack(
 
     Ok(InstructionPackReport {
         pack_id: pack.id,
-        target: target.to_path_buf(),
+        target,
         action: "enabled".to_owned(),
         dry_run,
     })
@@ -392,7 +469,8 @@ pub fn disable_pack(
     target: &Path,
     dry_run: bool,
 ) -> DaloResult<InstructionPackReport> {
-    let existing = read_target(target)?;
+    let target = normalize_target_path(target)?;
+    let existing = read_target(&target)?;
     let has_block = find_block(&existing, pack_id)?.is_some();
     let mut lock = store::read_user_lock(paths)?;
     let before = lock.active_instruction_packs.len();
@@ -404,7 +482,7 @@ pub fn disable_pack(
     let action = if has_block {
         let updated = remove_block(&existing, pack_id)?;
         if !dry_run {
-            write_target(target, &updated)?;
+            write_target(&target, &updated)?;
         }
         "disabled"
     } else if has_lock_entry {
@@ -421,10 +499,31 @@ pub fn disable_pack(
 
     Ok(InstructionPackReport {
         pack_id: pack_id.to_owned(),
-        target: target.to_path_buf(),
+        target,
         action: action.to_owned(),
         dry_run,
     })
+}
+
+fn normalize_target_path(target: &Path) -> DaloResult<PathBuf> {
+    let absolute = store::absolute_path(target)?;
+    Ok(lexically_normalize(&absolute))
+}
+
+fn lexically_normalize(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+            Component::RootDir => normalized.push(component.as_os_str()),
+            Component::Normal(segment) => normalized.push(segment),
+        }
+    }
+    normalized
 }
 
 fn read_target(target: &Path) -> DaloResult<String> {
@@ -615,6 +714,17 @@ mod tests {
     }
 
     #[test]
+    fn render_block_should_preserve_crlf_line_endings() {
+        let original = "# Project\r\n\r\nNotes.\r\n";
+        let rendered =
+            render_block(original, PACK, "Use tabs.\nSecond line.").expect("render should succeed");
+
+        assert!(rendered.contains("<!-- dalo:start house-style -->\r\n"));
+        assert!(rendered.contains("Use tabs.\r\nSecond line."));
+        assert!(!rendered.replace("\r\n", "").contains('\n'));
+    }
+
+    #[test]
     fn render_block_should_only_touch_bytes_inside_markers() {
         let original = "TOP CONTENT\n\n<!-- dalo:start house-style -->\nold\n<!-- dalo:end house-style -->\n\nBOTTOM CONTENT\n";
         let updated = render_block(original, PACK, "new body").expect("render should succeed");
@@ -669,6 +779,14 @@ mod tests {
         assert!(removed.contains("ABOVE"));
         assert!(removed.contains("BELOW"));
         assert!(!removed.contains("dalo:"));
+    }
+
+    #[test]
+    fn remove_block_should_preserve_crlf_seams() {
+        let original = "ABOVE\r\n\r\n<!-- dalo:start house-style -->\r\nbody\r\n<!-- dalo:end house-style -->\r\n\r\nBELOW\r\n";
+        let removed = remove_block(original, PACK).expect("remove should succeed");
+
+        assert_eq!(removed, "ABOVE\r\n\r\nBELOW\r\n");
     }
 
     #[test]
