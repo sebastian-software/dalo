@@ -2,6 +2,7 @@
 
 use std::ffi::OsStr;
 use std::fs;
+use std::io::IsTerminal;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::thread;
@@ -25,6 +26,7 @@ pub fn init_repo(path: &Path) -> DaloResult<()> {
 pub fn clone_repo(url: &str, destination: &Path) -> DaloResult<()> {
     let cwd = destination.parent().unwrap_or_else(|| Path::new("."));
     let destination_arg = destination.to_string_lossy().into_owned();
+    print_network_progress(&format!("Cloning repository `{url}`..."));
     // `--` terminates option parsing so a user-supplied URL that looks like a
     // flag (e.g. `--upload-pack=...`) can never be treated as a git option.
     run_git_network(cwd, &["clone", "--quiet", "--", url, &destination_arg]).map(|_| ())
@@ -32,6 +34,7 @@ pub fn clone_repo(url: &str, destination: &Path) -> DaloResult<()> {
 
 /// Update the current tracking branch through a fast-forward-only pull.
 pub fn pull_ff_only(path: &Path) -> DaloResult<()> {
+    print_network_progress(&format!("Refreshing source `{}`...", path.display()));
     run_git_network(path, &["pull", "--ff-only", "--quiet"]).map(|_| ())
 }
 
@@ -54,6 +57,10 @@ pub fn rev_parse(path: &Path, revision: &str) -> DaloResult<String> {
 /// Read-only fetch of the remote's HEAD. Records it in `FETCH_HEAD` without
 /// moving the working tree.
 pub fn fetch(path: &Path) -> DaloResult<()> {
+    print_network_progress(&format!(
+        "Checking upstream drift for `{}`...",
+        path.display()
+    ));
     run_git_network(path, &["fetch", "--quiet", "origin", "HEAD"]).map(|_| ())
 }
 
@@ -149,7 +156,7 @@ fn run_git_program_with_options(
                 args: args.join(" "),
                 cwd: path.to_path_buf(),
                 status: format!("timed out after {}", format_duration(timeout)),
-                stderr: timeout_stderr(&stderr),
+                stderr: humanize_git_failure(args, &timeout_stderr(&stderr)),
             });
         }
 
@@ -169,8 +176,42 @@ fn run_git_program_with_options(
         status: status
             .code()
             .map_or_else(|| "signal".to_owned(), |code| code.to_string()),
-        stderr: stderr_text,
+        stderr: humanize_git_failure(args, &stderr_text),
     })
+}
+
+fn print_network_progress(message: &str) {
+    if std::io::stderr().is_terminal() {
+        eprintln!("{message}");
+    }
+}
+
+fn humanize_git_failure(args: &[&str], stderr: &str) -> String {
+    let raw = stderr.trim();
+    let Some(summary) = git_failure_summary(args) else {
+        return raw.to_owned();
+    };
+    if raw.is_empty() {
+        return summary;
+    }
+    format!("{summary}\n\nGit said: {raw}")
+}
+
+fn git_failure_summary(args: &[&str]) -> Option<String> {
+    match args {
+        ["clone", .., "--", url, _destination] => Some(format!(
+            "Could not clone repository `{url}`. Check the URL, network/proxy access, and repository permissions."
+        )),
+        ["pull", ..] => Some(
+            "Could not refresh this source. Check network/proxy access, repository permissions, and whether the tracking branch can fast-forward."
+                .to_owned(),
+        ),
+        ["fetch", ..] => Some(
+            "Could not check the repository for upstream changes. Check network/proxy access and repository permissions."
+                .to_owned(),
+        ),
+        _ => None,
+    }
 }
 
 fn configure_ssh_command(
@@ -351,6 +392,33 @@ mod tests {
         };
         assert!(status.contains("timed out after"));
         assert!(stderr.contains("terminal prompts are disabled"));
+    }
+
+    #[test]
+    fn humanize_git_failure_should_explain_clone_errors() {
+        let message = humanize_git_failure(
+            &[
+                "clone",
+                "--quiet",
+                "--",
+                "https://example.invalid/repo.git",
+                "/tmp/checkout",
+            ],
+            "fatal: unable to access repository",
+        );
+
+        assert!(message.contains("Could not clone repository"));
+        assert!(message.contains("https://example.invalid/repo.git"));
+        assert!(message.contains("Git said: fatal: unable to access repository"));
+    }
+
+    #[test]
+    fn humanize_git_failure_should_explain_tracking_refresh_errors() {
+        let message =
+            humanize_git_failure(&["pull", "--ff-only", "--quiet"], "fatal: not possible");
+
+        assert!(message.contains("Could not refresh this source"));
+        assert!(message.contains("Git said: fatal: not possible"));
     }
 
     #[test]
