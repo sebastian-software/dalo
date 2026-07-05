@@ -4,7 +4,10 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use crate::adopt::{AdoptReport, KeepReport, RemoveOwnedReport, ResolveListReport, UnmanagedSkill};
+use crate::adopt::{
+    AdoptReport, KeepReport, RemoveOwnedReport, ResolveListReport, TargetScanWarning,
+    UnmanagedSkill,
+};
 use crate::catalog::{CatalogDrift, CatalogInspectReport, CatalogSelectReport};
 use crate::doctor::{DoctorReport, DoctorSeverity};
 use crate::error::DaloResult;
@@ -36,6 +39,8 @@ pub struct StatusReport {
     pub lock: LockStatus,
     /// Unmanaged skills found in linked targets.
     pub unmanaged_skills: Vec<UnmanagedSkill>,
+    /// Non-fatal target directory scan warnings.
+    pub target_warnings: Vec<TargetScanWarning>,
     /// Discovered instruction packs (available and enabled).
     pub instruction_packs: Vec<DiscoveredPack>,
     /// Declared-topic overlaps among active instruction packs (advisory).
@@ -141,7 +146,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         schema_version: previous_lock.schema_version,
         drift: lockfile::compare_user_lock(&previous_lock, &live_lock),
     };
-    let unmanaged_skills = crate::adopt::discover_unmanaged_skills(&paths)?;
+    let unmanaged_scan = crate::adopt::discover_unmanaged_skill_scan(&paths)?;
 
     let instruction_packs = instructions::discover_packs(
         &paths,
@@ -166,7 +171,8 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         inventory_warnings,
         resolution,
         lock,
-        unmanaged_skills,
+        unmanaged_skills: unmanaged_scan.unmanaged_skills,
+        target_warnings: unmanaged_scan.warnings,
         instruction_packs,
         instruction_pack_overlaps,
         instruction_block_drifts,
@@ -268,6 +274,18 @@ pub fn print_status_report(report: &StatusReport) {
             println!(
                 "  {} {}: {}",
                 warning.code,
+                warning.path.display(),
+                warning.message
+            );
+        }
+    }
+
+    if !report.target_warnings.is_empty() {
+        println!("target warnings:");
+        for warning in &report.target_warnings {
+            println!(
+                "  {} {}: {}",
+                warning.code.as_str(),
                 warning.path.display(),
                 warning.message
             );
@@ -484,6 +502,18 @@ pub fn print_resolve_list_report(report: &ResolveListReport) {
                 skill.id,
                 skill.link_path.display(),
                 skill.store_path.display()
+            );
+        }
+    }
+
+    if !report.target_warnings.is_empty() {
+        println!("target warnings:");
+        for warning in &report.target_warnings {
+            println!(
+                "  {} {}: {}",
+                warning.code.as_str(),
+                warning.path.display(),
+                warning.message
             );
         }
     }
