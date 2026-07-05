@@ -21,6 +21,7 @@ Scan skills from local and team source checkouts into deterministic inventories.
 - Slot-name derivation:
   - frontmatter `name` when present and valid
   - folder name fallback
+  - valid slot names are portable lowercase ASCII path tokens: `[a-z0-9._-]`, excluding empty names, `.`/`..`, leading or trailing `.`, and Windows device basenames such as `con`, `aux`, `com1`, and `lpt1`
 - Stable source-qualified refs: `<source-id>:<slot-name>`.
 - Deterministic ordering.
 - Warnings for malformed frontmatter, invalid names, duplicate slot names within the same source, and unreadable skill directories.

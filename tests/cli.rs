@@ -642,6 +642,32 @@ fn status_json_should_report_unmanaged_target_skills() {
 }
 
 #[test]
+fn status_should_report_invalid_portable_skill_names() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    for slot in ["Review", "caf\u{e9}"] {
+        let skill_dir = store.join("local/skills").join(slot);
+        std::fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        std::fs::write(skill_dir.join("SKILL.md"), format!("# {slot}\n"))
+            .expect("skill should be written");
+    }
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("inventory warnings:"))
+        .stdout(predicate::str::contains("invalid_slot_name"))
+        .stdout(predicate::str::contains("Review"))
+        .stdout(predicate::str::contains("caf\u{e9}"));
+}
+
+#[test]
 fn status_should_report_actionable_error_for_corrupt_state() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

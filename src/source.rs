@@ -192,9 +192,10 @@ where
 /// Return whether a source ID is safe to use as a store path component.
 ///
 /// A source ID becomes a single directory below `sources/` and feeds approval
-/// records and resolver output, so the same conservative rules as slot names
-/// apply: non-empty, never the `.`/`..` traversal segments, and limited to a
-/// `[A-Za-z0-9._-]` token (no `/` path separators).
+/// records and resolver output, so it is limited to a conservative path token:
+/// non-empty, never the `.`/`..` traversal segments, and limited to
+/// `[A-Za-z0-9._-]` (no `/` path separators). Skill slot names are stricter
+/// because they are materialized into user-facing target directories.
 #[must_use]
 pub fn is_valid_source_id(value: &str) -> bool {
     if value.is_empty() || value == "." || value == ".." {
