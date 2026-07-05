@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.4.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.3.0...dalo-v0.4.0) (2026-07-05)
+
+
+### Features
+
+* ship completions and man page ([c06ea4f](https://github.com/sebastian-software/dalo/commit/c06ea4f8a040ea6d50676f54f618c63560978a24))
+
+
+### Bug Fixes
+
+* **adopt:** prefer slot selectors over cwd paths ([37df5a0](https://github.com/sebastian-software/dalo/commit/37df5a05bce902c84338b5ec4fe8c4cfce2e64ea))
+* **adopt:** replace originals through rollback backup ([9d4d2e7](https://github.com/sebastian-software/dalo/commit/9d4d2e78db7d5d61202c0997d52341ed9ad0749e))
+* **cli:** honor dry-run for mutating commands ([b1de032](https://github.com/sebastian-software/dalo/commit/b1de032430a34e879d8670433723b2d5ef1c9edf))
+* **cli:** make adopt replacement explicit ([695fa42](https://github.com/sebastian-software/dalo/commit/695fa4242f390847058342be93ef96de9432a71a))
+* define portable skill slot names ([94ce2f8](https://github.com/sebastian-software/dalo/commit/94ce2f8b54b1eb5069b2094f63acc35cdceb48ba))
+* **git:** disable prompts and time out commands ([65f5f6e](https://github.com/sebastian-software/dalo/commit/65f5f6ee29409832f7d46a851a4fdd01f0968c55))
+* harden core polish paths ([60b100c](https://github.com/sebastian-software/dalo/commit/60b100c703df726d958e5d17f56ad91b6bb2c781))
+* **instructions:** reject managed marker injection ([d3c688d](https://github.com/sebastian-software/dalo/commit/d3c688d86e5a86a5290747d1b2fef83f58afab84))
+* **instructions:** write target files atomically ([ee1a5cd](https://github.com/sebastian-software/dalo/commit/ee1a5cd2a2d678ce3a91eefc929489082de425b5))
+* **paths:** normalize store and link targets ([b435ff4](https://github.com/sebastian-software/dalo/commit/b435ff4bbf616f08b2c2a3c6e32e99666936aa13))
+* preserve instruction targets and line endings ([3085876](https://github.com/sebastian-software/dalo/commit/3085876971ce307420d09b4ed38d680719dec7cc))
+* **resolve:** forget real-entry owned records ([cf6dc58](https://github.com/sebastian-software/dalo/commit/cf6dc580e849dc3192588a8e265605ea1560d302))
+* **resolver:** block shadowed source requirements ([f25fad1](https://github.com/sebastian-software/dalo/commit/f25fad1ed7bcd13c56393836d17a2338bfa9d034))
+* **resolver:** scope skill approvals by source ([5123825](https://github.com/sebastian-software/dalo/commit/51238257cd3e9105917ef598108a992570e305c8))
+* reuse catalog snapshots during select ([0baf2d4](https://github.com/sebastian-software/dalo/commit/0baf2d48c415fa3663348549ac03e142e0d7b571))
+* reuse sync resolution for lock writing ([b1dbe2b](https://github.com/sebastian-software/dalo/commit/b1dbe2b84235d13592246fcd06797cbbc321227c))
+* **status:** report instruction block drift ([f429760](https://github.com/sebastian-software/dalo/commit/f429760438ee7e5b734b587b03b7d8db1931ee96))
+* **status:** show all pending candidates ([798f909](https://github.com/sebastian-software/dalo/commit/798f909317ec633034c2c3479c0a500851282045))
+* **store:** fsync writes and repair corrupt state ([64a5318](https://github.com/sebastian-software/dalo/commit/64a5318939cabe2cf2e95bf107437b0c19f0685a))
+* **store:** use advisory file lock ([396c580](https://github.com/sebastian-software/dalo/commit/396c580020659bc46aec667a738e0b93d60bbb83))
+* **sync:** block skipped materialize links ([6aad17c](https://github.com/sebastian-software/dalo/commit/6aad17cb7737fed7e4895f4feb5ed0adc963320a))
+* **sync:** preserve foreign recorded symlinks ([22b166b](https://github.com/sebastian-software/dalo/commit/22b166b606d4b797574b579e28c0d1350f286f82))
+* **sync:** preserve links when source scans degrade ([cbf87b4](https://github.com/sebastian-software/dalo/commit/cbf87b4a53ee49aed1affe97e2d9e05ecb837199))
+* **sync:** recover unrecorded store symlinks ([9c17b00](https://github.com/sebastian-software/dalo/commit/9c17b00ad9ed6341481b2a23e7a1ef44e9dcb8b2))
+* **sync:** respect source update policy ([5869009](https://github.com/sebastian-software/dalo/commit/5869009b1ad3fcb89bd15969ffbdc5e72bbbc0d4))
+
 ## [0.3.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.2.0...dalo-v0.3.0) (2026-06-29)
 
 
