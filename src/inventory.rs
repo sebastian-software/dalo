@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::error::DaloResult;
 
@@ -75,16 +75,13 @@ pub enum InventoryWarningCode {
     UnreadablePath,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 struct SkillFrontmatter {
     id: Option<String>,
     name: Option<String>,
     description: Option<String>,
-    #[serde(default)]
     requires: Vec<String>,
-    #[serde(default)]
     owners: Vec<String>,
-    #[serde(default)]
     tags: Vec<String>,
 }
 
@@ -251,18 +248,150 @@ fn parse_frontmatter(markdown: &str, path: &Path) -> (SkillFrontmatter, Vec<Inve
         return (SkillFrontmatter::default(), warnings);
     };
 
-    let yaml = &rest[..end_index];
-    match serde_yaml::from_str::<SkillFrontmatter>(yaml) {
+    let frontmatter = &rest[..end_index];
+    match parse_frontmatter_fields(frontmatter) {
         Ok(frontmatter) => (frontmatter, warnings),
         Err(error) => {
             warnings.push(InventoryWarning {
                 code: InventoryWarningCode::MalformedFrontmatter,
                 path: path.to_path_buf(),
-                message: error.to_string(),
+                message: error,
             });
             (SkillFrontmatter::default(), warnings)
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FrontmatterList {
+    Requires,
+    Owners,
+    Tags,
+    Ignore,
+}
+
+fn parse_frontmatter_fields(frontmatter: &str) -> Result<SkillFrontmatter, String> {
+    let mut parsed = SkillFrontmatter::default();
+    let mut active_list: Option<FrontmatterList> = None;
+
+    for line in frontmatter.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+
+        if line.starts_with(' ') || line.starts_with('\t') {
+            let Some(list) = active_list else {
+                return Err(format!("unsupported indented frontmatter line `{trimmed}`"));
+            };
+            let Some(item) = trimmed.strip_prefix("- ") else {
+                if list == FrontmatterList::Ignore {
+                    continue;
+                }
+                return Err(format!(
+                    "expected list item in frontmatter line `{trimmed}`"
+                ));
+            };
+            let value = parse_scalar(item);
+            match list {
+                FrontmatterList::Requires => parsed.requires.push(value),
+                FrontmatterList::Owners => parsed.owners.push(value),
+                FrontmatterList::Tags => parsed.tags.push(value),
+                FrontmatterList::Ignore => {}
+            }
+            continue;
+        }
+
+        active_list = None;
+        let Some((raw_key, raw_value)) = trimmed.split_once(':') else {
+            return Err(format!(
+                "expected `key: value` frontmatter line `{trimmed}`"
+            ));
+        };
+        let key = raw_key.trim();
+        let value = raw_value.trim();
+
+        match key {
+            "id" => parsed.id = non_empty_scalar(value),
+            "name" => parsed.name = non_empty_scalar(value),
+            "description" => parsed.description = non_empty_scalar(value),
+            "requires" => parse_list_value(
+                value,
+                FrontmatterList::Requires,
+                &mut parsed.requires,
+                &mut active_list,
+            )?,
+            "owners" => parse_list_value(
+                value,
+                FrontmatterList::Owners,
+                &mut parsed.owners,
+                &mut active_list,
+            )?,
+            "tags" => parse_list_value(
+                value,
+                FrontmatterList::Tags,
+                &mut parsed.tags,
+                &mut active_list,
+            )?,
+            _ => {
+                if value.is_empty() || value == "|" || value == ">" {
+                    active_list = Some(FrontmatterList::Ignore);
+                }
+            }
+        }
+    }
+
+    Ok(parsed)
+}
+
+fn parse_list_value(
+    value: &str,
+    list: FrontmatterList,
+    output: &mut Vec<String>,
+    active_list: &mut Option<FrontmatterList>,
+) -> Result<(), String> {
+    if value.is_empty() {
+        *active_list = Some(list);
+        return Ok(());
+    }
+
+    let Some(inline) = value
+        .strip_prefix('[')
+        .and_then(|rest| rest.strip_suffix(']'))
+    else {
+        return Err(format!("expected list value, got `{value}`"));
+    };
+    for item in inline.split(',') {
+        let item = parse_scalar(item.trim());
+        if !item.is_empty() {
+            output.push(item);
+        }
+    }
+    Ok(())
+}
+
+fn non_empty_scalar(value: &str) -> Option<String> {
+    let parsed = parse_scalar(value);
+    (!parsed.is_empty()).then_some(parsed)
+}
+
+fn parse_scalar(value: &str) -> String {
+    let value = value.trim();
+    if value.len() >= 2 {
+        if let Some(stripped) = value
+            .strip_prefix('"')
+            .and_then(|rest| rest.strip_suffix('"'))
+        {
+            return stripped.to_owned();
+        }
+        if let Some(stripped) = value
+            .strip_prefix('\'')
+            .and_then(|rest| rest.strip_suffix('\''))
+        {
+            return stripped.to_owned();
+        }
+    }
+    value.to_owned()
 }
 
 fn frontmatter_end_index(rest: &str) -> Option<usize> {
