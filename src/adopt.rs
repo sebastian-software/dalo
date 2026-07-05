@@ -328,7 +328,7 @@ pub fn remove_owned_skill(
     let record = state.owned_skills[index].clone();
     let status = remove_owned_link(&record.link_path, dry_run)?;
 
-    if !dry_run && status != RemoveOwnedStatus::BlockedRealEntry {
+    if !dry_run {
         state.owned_skills.remove(index);
         store::write_state(paths, &state)?;
     }

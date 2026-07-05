@@ -1001,6 +1001,67 @@ fn resolve_remove_owned_should_not_remove_real_entry() {
 }
 
 #[test]
+fn doctor_suggested_remove_owned_should_clear_real_entry_record() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_skill_and_target(&store, &target);
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    std::fs::remove_file(target.join("review")).expect("owned symlink should be removed");
+    std::fs::create_dir_all(target.join("review")).expect("real entry should be created");
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "doctor"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "\"code\": \"owned_path_real_entry\"",
+        ))
+        .stdout(predicate::str::contains(
+            "\"next_command\": \"dalo resolve remove-owned review\"",
+        ));
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "remove-owned", "review"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("blocked_real_entry"));
+
+    let output = Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "doctor"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: DoctorReportSchema =
+        serde_json::from_slice(&output).expect("doctor JSON should match the doctor schema");
+
+    assert!(
+        report
+            .findings
+            .iter()
+            .all(|finding| finding.code != "owned_path_real_entry")
+    );
+    assert!(target.join("review").is_dir());
+}
+
+#[test]
 fn sync_should_remove_owned_symlink_after_source_is_removed_from_config() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
