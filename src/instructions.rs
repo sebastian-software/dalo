@@ -7,9 +7,11 @@
 
 use std::collections::BTreeSet;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
+use tempfile::NamedTempFile;
 
 use crate::error::{DaloError, DaloResult};
 use crate::lockfile::LockedInstructionPack;
@@ -180,7 +182,7 @@ pub fn enable_pack(
     target: &Path,
 ) -> DaloResult<InstructionPackReport> {
     let pack = read_local_pack(paths, pack_id)?;
-    let existing = fs::read_to_string(target).unwrap_or_default();
+    let existing = read_target(target)?;
     let rendered = render_block(&existing, &pack.id, &pack.body)?;
     write_target(target, &rendered)?;
 
@@ -214,7 +216,7 @@ pub fn disable_pack(
     pack_id: &str,
     target: &Path,
 ) -> DaloResult<InstructionPackReport> {
-    let existing = fs::read_to_string(target).unwrap_or_default();
+    let existing = read_target(target)?;
     let action = if find_block(&existing, pack_id)?.is_some() {
         let updated = remove_block(&existing, pack_id)?;
         write_target(target, &updated)?;
@@ -238,13 +240,24 @@ pub fn disable_pack(
     })
 }
 
-fn write_target(target: &Path, content: &str) -> DaloResult<()> {
-    if let Some(parent) = target.parent()
-        && !parent.as_os_str().is_empty()
-    {
-        fs::create_dir_all(parent)?;
+fn read_target(target: &Path) -> DaloResult<String> {
+    match fs::read_to_string(target) {
+        Ok(content) => Ok(content),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(error) => Err(error.into()),
     }
-    fs::write(target, content)?;
+}
+
+fn write_target(target: &Path, content: &str) -> DaloResult<()> {
+    let parent = target
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)?;
+    let mut temp_file = NamedTempFile::new_in(parent)?;
+    temp_file.write_all(content.as_bytes())?;
+    temp_file.flush()?;
+    temp_file.persist(target).map_err(|error| error.error)?;
     Ok(())
 }
 
@@ -396,6 +409,8 @@ pub fn topic_overlaps(active: &[DiscoveredPack]) -> Vec<TopicOverlap> {
 
 #[cfg(test)]
 mod tests {
+    use std::os::unix::fs::MetadataExt;
+
     use super::*;
 
     const PACK: &str = "house-style";
@@ -544,5 +559,43 @@ mod tests {
         assert_eq!(packs[0].id, "house");
         assert!(packs[0].enabled);
         assert_eq!(packs[0].topics, vec!["x".to_owned()]);
+    }
+
+    #[test]
+    fn read_target_should_treat_missing_file_as_empty_only() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let missing = temp.path().join("AGENTS.md");
+
+        assert_eq!(
+            read_target(&missing).expect("missing target should read as empty"),
+            ""
+        );
+    }
+
+    #[test]
+    fn write_target_should_replace_file_via_temp_rename() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let target = temp.path().join("AGENTS.md");
+        fs::write(&target, "old\n").expect("target should be seeded");
+        let before_inode = fs::metadata(&target)
+            .expect("target metadata should be readable")
+            .ino();
+
+        write_target(&target, "new\n").expect("target should be written");
+
+        assert_eq!(
+            fs::read_to_string(&target).expect("target should be readable"),
+            "new\n"
+        );
+        let after_inode = fs::metadata(&target)
+            .expect("target metadata should be readable")
+            .ino();
+        assert_ne!(before_inode, after_inode);
+        assert_eq!(
+            fs::read_dir(temp.path())
+                .expect("parent dir should be readable")
+                .count(),
+            1
+        );
     }
 }

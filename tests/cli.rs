@@ -1943,6 +1943,43 @@ fn instructions_enable_should_reject_malformed_existing_block() {
 }
 
 #[test]
+fn instructions_enable_should_fail_on_non_utf8_target_without_rewriting() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target_file = temp_dir.path().join("AGENTS.md");
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::write(
+        store.join("local/instructions/house-style.md"),
+        "version: 1.0\n\nUse tabs.\n",
+    )
+    .expect("pack should be written");
+    let original = b"# Project\n\nLatin-1 byte: \x96\n";
+    std::fs::write(&target_file, original).expect("target should be written");
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "house-style"])
+        .arg(&target_file)
+        .assert()
+        .failure()
+        .code(4);
+
+    assert_eq!(
+        std::fs::read(&target_file).expect("target bytes should be readable"),
+        original
+    );
+}
+
+#[test]
 fn status_json_should_report_instruction_pack_topic_overlap() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
