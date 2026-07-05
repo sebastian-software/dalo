@@ -1,9 +1,17 @@
 //! Narrow wrapper around the system `git` command.
 
+use std::fs;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
+
+use tempfile::NamedTempFile;
 
 use crate::error::{DaloError, DaloResult};
+
+const GIT_TIMEOUT: Duration = Duration::from_secs(60);
+const GIT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 /// Run `git init` in the provided directory.
 pub fn init_repo(path: &Path) -> DaloResult<()> {
@@ -64,20 +72,166 @@ pub fn remove_worktree(repo: &Path, dest: &Path) -> DaloResult<()> {
 }
 
 fn run_git(path: &Path, args: &[&str]) -> DaloResult<String> {
-    let output = Command::new("git").args(args).current_dir(path).output()?;
+    run_git_program("git", path, args, GIT_TIMEOUT)
+}
 
-    if output.status.success() {
-        return Ok(String::from_utf8_lossy(&output.stdout).into_owned());
+fn run_git_program(
+    program: &str,
+    path: &Path,
+    args: &[&str],
+    timeout: Duration,
+) -> DaloResult<String> {
+    let stdout = NamedTempFile::new()?;
+    let stderr = NamedTempFile::new()?;
+    let mut child = Command::new(program)
+        .args(args)
+        .current_dir(path)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(stdout.reopen()?))
+        .stderr(Stdio::from(stderr.reopen()?))
+        .spawn()?;
+
+    let start = Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+
+        let elapsed = start.elapsed();
+        if elapsed >= timeout {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(DaloError::CommandFailed {
+                program: program.to_owned(),
+                args: args.join(" "),
+                cwd: path.to_path_buf(),
+                status: format!("timed out after {}", format_duration(timeout)),
+                stderr: timeout_stderr(&stderr),
+            });
+        }
+
+        thread::sleep(GIT_POLL_INTERVAL.min(timeout - elapsed));
+    };
+    let stdout_text = read_tempfile_lossy(&stdout);
+    let stderr_text = read_tempfile_lossy(&stderr).trim().to_owned();
+
+    if status.success() {
+        return Ok(stdout_text);
     }
 
     Err(DaloError::CommandFailed {
-        program: "git".to_owned(),
+        program: program.to_owned(),
         args: args.join(" "),
         cwd: path.to_path_buf(),
-        status: output
-            .status
+        status: status
             .code()
             .map_or_else(|| "signal".to_owned(), |code| code.to_string()),
-        stderr: String::from_utf8_lossy(&output.stderr).trim().to_owned(),
+        stderr: stderr_text,
     })
+}
+
+fn read_tempfile_lossy(file: &NamedTempFile) -> String {
+    fs::read(file.path())
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+        .unwrap_or_default()
+}
+
+fn timeout_stderr(stderr: &NamedTempFile) -> String {
+    let text = read_tempfile_lossy(stderr).trim().to_owned();
+    if text.is_empty() {
+        "git command timed out; terminal prompts are disabled".to_owned()
+    } else {
+        text
+    }
+}
+
+fn format_duration(duration: Duration) -> String {
+    if duration.as_millis() < 1_000 {
+        format!("{}ms", duration.as_millis())
+    } else {
+        format!("{}s", duration.as_secs())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::PathBuf;
+
+    #[test]
+    fn run_git_program_should_report_missing_binary() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+
+        let error = run_git_program(
+            "dalo-definitely-missing-git-binary",
+            temp_dir.path(),
+            &["--version"],
+            Duration::from_millis(10),
+        )
+        .expect_err("missing binary should fail");
+
+        assert!(matches!(error, DaloError::Io(_)));
+    }
+
+    #[test]
+    fn run_git_program_should_disable_interactive_prompts() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let fake_git = write_executable(
+            temp_dir.path(),
+            "fake-git",
+            "#!/bin/sh\nprintf 'prompt=%s ssh=%s\\n' \"$GIT_TERMINAL_PROMPT\" \"$GIT_SSH_COMMAND\" >&2\nexit 2\n",
+        );
+
+        let error = run_git_program(
+            fake_git.to_str().expect("script path should be utf-8"),
+            temp_dir.path(),
+            &["pull"],
+            Duration::from_secs(1),
+        )
+        .expect_err("fake git should fail");
+
+        let DaloError::CommandFailed { stderr, .. } = error else {
+            panic!("expected command failure");
+        };
+        assert!(stderr.contains("prompt=0"));
+        assert!(stderr.contains("BatchMode=yes"));
+    }
+
+    #[test]
+    fn run_git_program_should_timeout_hung_command() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let fake_git = write_executable(
+            temp_dir.path(),
+            "fake-git",
+            "#!/bin/sh\nwhile :; do :; done\n",
+        );
+
+        let error = run_git_program(
+            fake_git.to_str().expect("script path should be utf-8"),
+            temp_dir.path(),
+            &["pull"],
+            Duration::from_millis(10),
+        )
+        .expect_err("hung command should time out");
+
+        let DaloError::CommandFailed { status, stderr, .. } = error else {
+            panic!("expected command failure");
+        };
+        assert!(status.contains("timed out after"));
+        assert!(stderr.contains("terminal prompts are disabled"));
+    }
+
+    fn write_executable(dir: &Path, name: &str, body: &str) -> PathBuf {
+        let path = dir.join(name);
+        fs::write(&path, body).expect("script should be written");
+        let mut permissions = fs::metadata(&path)
+            .expect("script metadata should be readable")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&path, permissions).expect("script should be executable");
+        path
+    }
 }
