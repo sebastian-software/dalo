@@ -305,18 +305,55 @@ fn select_slot_name(
 
 fn is_valid_slot_name(value: &str) -> bool {
     // A slot name becomes a single path component under each target directory,
-    // so reject the `.`/`..` traversal segments outright. Everything else must
-    // be a conservative `[A-Za-z0-9._-]` token.
-    if value.is_empty() || value == "." || value == ".." {
+    // so keep the accepted language conservative and cross-platform: lowercase
+    // ASCII tokens only, no hidden/traversal segments, no trailing dots, and no
+    // Windows device basenames.
+    if value.is_empty()
+        || value == "."
+        || value == ".."
+        || value.starts_with('.')
+        || value.ends_with('.')
+        || is_windows_reserved_basename(value)
+    {
         return false;
     }
 
     value.chars().all(|character| {
-        character.is_ascii_alphanumeric()
+        character.is_ascii_lowercase()
+            || character.is_ascii_digit()
             || character == '-'
             || character == '_'
             || character == '.'
     })
+}
+
+fn is_windows_reserved_basename(value: &str) -> bool {
+    let basename = value.split('.').next().unwrap_or(value);
+    matches!(
+        basename,
+        "con"
+            | "prn"
+            | "aux"
+            | "nul"
+            | "com1"
+            | "com2"
+            | "com3"
+            | "com4"
+            | "com5"
+            | "com6"
+            | "com7"
+            | "com8"
+            | "com9"
+            | "lpt1"
+            | "lpt2"
+            | "lpt3"
+            | "lpt4"
+            | "lpt5"
+            | "lpt6"
+            | "lpt7"
+            | "lpt8"
+            | "lpt9"
+    )
 }
 
 fn duplicate_slot_warnings(source_id: &str, skills: &[SkillRecord]) -> Vec<InventoryWarning> {
@@ -447,6 +484,36 @@ mod tests {
     fn is_valid_slot_name_should_reject_dot_segments() {
         assert!(!is_valid_slot_name("."));
         assert!(!is_valid_slot_name(".."));
+        assert!(!is_valid_slot_name(".config"));
+        assert!(!is_valid_slot_name("review."));
+    }
+
+    #[test]
+    fn is_valid_slot_name_should_reject_non_portable_names() {
+        let invalid_names = [
+            "Review",
+            "review copy",
+            "review\ncopy",
+            "caf\u{e9}",
+            "cafe\u{301}",
+            "con",
+            "con.skill",
+            "aux",
+            "nul",
+            "com1",
+            "lpt9",
+        ];
+
+        for name in invalid_names {
+            assert!(!is_valid_slot_name(name), "{name} should be invalid");
+        }
+    }
+
+    #[test]
+    fn is_valid_slot_name_should_accept_cross_platform_tokens() {
+        for name in ["review", "release-notes.local", "copy_editing", "skill.123"] {
+            assert!(is_valid_slot_name(name), "{name} should be valid");
+        }
     }
 
     #[test]
@@ -458,6 +525,39 @@ mod tests {
         fs::create_dir_all(&skill_dir).expect("skill dir should be created");
         fs::write(skill_dir.join(SKILL_FILE), "# No Frontmatter Name\n")
             .expect("skill file should be written");
+
+        let inventory = scan_source("company", temp_dir.path()).expect("scan should succeed");
+
+        assert!(inventory.skills.is_empty());
+        assert_eq!(
+            inventory.warnings[0].code,
+            InventoryWarningCode::InvalidSlotName
+        );
+    }
+
+    #[test]
+    fn scan_source_should_skip_uppercase_folder_name() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("Review");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        fs::write(skill_dir.join(SKILL_FILE), "# Review\n").expect("skill file should be written");
+
+        let inventory = scan_source("company", temp_dir.path()).expect("scan should succeed");
+
+        assert!(inventory.skills.is_empty());
+        assert_eq!(
+            inventory.warnings[0].code,
+            InventoryWarningCode::InvalidSlotName
+        );
+        assert!(inventory.warnings[0].message.contains("Review"));
+    }
+
+    #[test]
+    fn scan_source_should_skip_unicode_folder_name() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("caf\u{e9}");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        fs::write(skill_dir.join(SKILL_FILE), "# Cafe\n").expect("skill file should be written");
 
         let inventory = scan_source("company", temp_dir.path()).expect("scan should succeed");
 
@@ -482,6 +582,26 @@ mod tests {
 
         assert!(slot_name.is_none());
         assert_eq!(warnings[0].code, InventoryWarningCode::InvalidSlotName);
+    }
+
+    #[test]
+    fn scan_source_should_fallback_when_frontmatter_name_has_case_collision_risk() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("review");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        fs::write(
+            skill_dir.join(SKILL_FILE),
+            "---\nname: Review\n---\n# Review\n",
+        )
+        .expect("skill file should be written");
+
+        let inventory = scan_source("company", temp_dir.path()).expect("scan should succeed");
+
+        assert_eq!(inventory.skills[0].slot_name, "review");
+        assert_eq!(
+            inventory.warnings[0].code,
+            InventoryWarningCode::InvalidSlotName
+        );
     }
 
     #[test]

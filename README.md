@@ -162,6 +162,8 @@ If two sources provide the same skill slot, Dalo links the highest-priority appr
 
 If a target folder already contains a real unmanaged skill with the same name, Dalo does not overwrite it. The managed skill is blocked with `blocked_by_same_name_skill`, and `status` explains what happened.
 
+Skill slots are deliberately portable path tokens. A slot comes from frontmatter `name` when valid, otherwise from the skill folder name. Valid slots use lowercase ASCII letters, digits, `.`, `_`, and `-`; they cannot be empty, `.`/`..`, start or end with `.`, use Windows device basenames such as `con` or `lpt1`, or contain uppercase, Unicode, spaces, or control characters. Invalid frontmatter names produce an inventory warning and fall back to the folder name; invalid folder names are skipped with an `invalid_slot_name` warning in `status`.
+
 The important rule is simple:
 
 > Dalo may remove or repair what it owns. It does not take ownership of user files by surprise.
