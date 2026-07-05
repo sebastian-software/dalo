@@ -71,6 +71,11 @@ pub fn remove_worktree(repo: &Path, dest: &Path) -> DaloResult<()> {
     run_git(repo, &["worktree", "remove", "--force", &dest_arg]).map(|_| ())
 }
 
+/// Prune stale Git worktree administrative records.
+pub fn prune_worktrees(repo: &Path) -> DaloResult<()> {
+    run_git(repo, &["worktree", "prune"]).map(|_| ())
+}
+
 fn run_git(path: &Path, args: &[&str]) -> DaloResult<String> {
     run_git_program("git", path, args, GIT_TIMEOUT)
 }

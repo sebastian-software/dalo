@@ -168,6 +168,11 @@ pub fn read_source_lock(store: &Path) -> SourceLock {
         .expect("source lock should be readable")
 }
 
+pub fn write_source_lock(store: &Path, lock: &SourceLock) {
+    catalog::write_source_lock(&StorePaths::new(store.to_path_buf()), lock)
+        .expect("source lock should be writable");
+}
+
 pub fn run_git(repo: &Path, args: &[&str]) {
     let status = std::process::Command::new("git")
         .args(args)

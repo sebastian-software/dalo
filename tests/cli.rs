@@ -9,7 +9,7 @@ use common::{
     create_git_skill_repo, create_unmanaged_skill, dalo_command, git_command_succeeds,
     git_rev_parse_logger, read_source_lock, read_user_lock, remove_source_update_policy, run_git,
     set_source_untrusted, setup_store_with_skill_and_target, setup_store_with_target,
-    write_local_only_config,
+    write_local_only_config, write_source_lock,
 };
 
 #[test]
@@ -2450,6 +2450,43 @@ fn catalog_select_should_reuse_inventory_snapshot_at_unchanged_pin() {
 }
 
 #[test]
+fn catalog_select_should_upsert_missing_source_lock_entry() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+
+    let mut lock = read_source_lock(&store);
+    lock.catalogs
+        .retain(|catalog| catalog.source_id != "marketing");
+    write_source_lock(&store, &lock);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "copy-editing"])
+        .assert()
+        .success();
+
+    let source_lock = read_source_lock(&store);
+    let catalog = source_lock
+        .catalog("marketing")
+        .expect("marketing catalog lock should be recreated");
+    assert_eq!(catalog.selected, ["skills/copy-editing".to_owned()]);
+    assert!(!catalog.commit.is_empty());
+    assert!(!catalog.inventory.is_empty());
+}
+
+#[test]
 fn catalog_select_should_support_path_fallback_for_duplicate_slots() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -2495,6 +2532,37 @@ fn catalog_select_should_support_path_fallback_for_duplicate_slots() {
             .selected,
         ["skills/a".to_owned()]
     );
+}
+
+#[test]
+fn catalog_refresh_check_should_require_store_lock() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+
+    let paths = store::StorePaths::new(store.clone());
+    let _lock = store::StoreLock::acquire(&paths).expect("parent should hold store lock");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "refresh", "marketing", "--check"])
+        .assert()
+        .failure()
+        .code(3)
+        .stderr(predicate::str::contains(
+            "another dalo operation is running",
+        ));
 }
 
 #[test]

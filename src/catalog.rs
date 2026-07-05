@@ -3,6 +3,7 @@
 
 use std::fs;
 use std::io::Read;
+use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -270,22 +271,38 @@ pub fn select_skills(
 
     if !dry_run {
         let mut lock = read_source_lock(paths)?;
+        let commit = git::rev_parse_head(&source_path)?;
+        let inventory = if let Some(index) = lock
+            .catalogs
+            .iter()
+            .position(|catalog| catalog.source_id == id)
+        {
+            if lock.catalogs[index].commit == commit {
+                lock.catalogs[index].inventory.clone()
+            } else {
+                catalog_inventory_from_scan(&source_path, &scan)?
+            }
+        } else {
+            catalog_inventory_from_scan(&source_path, &scan)?
+        };
         if let Some(index) = lock
             .catalogs
             .iter()
             .position(|catalog| catalog.source_id == id)
         {
-            let commit = git::rev_parse_head(&source_path)?;
-            let inventory = if lock.catalogs[index].commit == commit {
-                lock.catalogs[index].inventory.clone()
-            } else {
-                catalog_inventory_from_scan(&source_path, &scan)?
-            };
             lock.catalogs[index].selected = selected.clone();
             lock.catalogs[index].commit = commit;
             lock.catalogs[index].inventory = inventory;
-            write_source_lock(paths, &lock)?;
+        } else {
+            lock.catalogs.push(CatalogLock {
+                source_id: id.to_owned(),
+                commit,
+                selected: selected.clone(),
+                inventory,
+            });
+            lock.catalogs.sort_by(|a, b| a.source_id.cmp(&b.source_id));
         }
+        write_source_lock(paths, &lock)?;
     }
 
     Ok(CatalogSelectReport {
@@ -615,6 +632,7 @@ pub fn check_catalog_drift(paths: &StorePaths, id: &str) -> DaloResult<CatalogDr
         .clone();
 
     git::fetch(&source.path)?;
+    git::prune_worktrees(&source.path)?;
     let upstream_commit = git::rev_parse(&source.path, "FETCH_HEAD")?;
 
     let fresh = if upstream_commit == catalog_lock.commit {
@@ -625,6 +643,7 @@ pub fn check_catalog_drift(paths: &StorePaths, id: &str) -> DaloResult<CatalogDr
         git::add_detached_worktree(&source.path, &worktree, &upstream_commit)?;
         let scanned = catalog_inventory(&worktree);
         let _ = git::remove_worktree(&source.path, &worktree);
+        let _ = git::prune_worktrees(&source.path);
         scanned?
     };
 
@@ -660,20 +679,32 @@ pub fn hash_directory(skill_dir: &Path) -> DaloResult<String> {
     let mut hasher = Sha256::new();
     for file in &files {
         let relative = file.strip_prefix(skill_dir).unwrap_or(file.as_path());
-        hasher.update(relative.to_string_lossy().as_bytes());
-        hasher.update([0]);
-        let mut handle = fs::File::open(file)?;
-        let mut buffer = [0u8; 8192];
-        loop {
-            let read = handle.read(&mut buffer)?;
-            if read == 0 {
-                break;
+        hash_framed(&mut hasher, relative.as_os_str().as_bytes());
+        let metadata = fs::symlink_metadata(file)?;
+        if metadata.file_type().is_symlink() {
+            hasher.update([b'L']);
+            let target = fs::read_link(file)?;
+            hash_framed(&mut hasher, target.as_os_str().as_bytes());
+        } else {
+            hasher.update([b'F']);
+            hasher.update(metadata.len().to_le_bytes());
+            let mut handle = fs::File::open(file)?;
+            let mut buffer = [0u8; 8192];
+            loop {
+                let read = handle.read(&mut buffer)?;
+                if read == 0 {
+                    break;
+                }
+                hasher.update(&buffer[..read]);
             }
-            hasher.update(&buffer[..read]);
         }
-        hasher.update([0]);
     }
     Ok(hex_digest(&hasher.finalize()))
+}
+
+fn hash_framed(hasher: &mut Sha256, bytes: &[u8]) {
+    hasher.update((bytes.len() as u64).to_le_bytes());
+    hasher.update(bytes);
 }
 
 fn hash_metadata(skill: &SkillRecord) -> String {
@@ -701,7 +732,7 @@ fn collect_files(dir: &Path, files: &mut Vec<std::path::PathBuf>) -> DaloResult<
         let path = entry.path();
         if file_type.is_dir() {
             collect_files(&path, files)?;
-        } else if file_type.is_file() {
+        } else if file_type.is_file() || file_type.is_symlink() {
             files.push(path);
         }
     }
@@ -720,6 +751,7 @@ fn hex_digest(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::symlink;
 
     fn entry(id: Option<&str>, slot: &str, path: &str, content: &str) -> CatalogEntry {
         CatalogEntry {
@@ -781,5 +813,23 @@ mod tests {
         // known, so no new_available either.
         let outcomes = compare_catalog_inventory(&locked, &[], &fresh);
         assert!(outcomes.is_empty());
+    }
+
+    #[test]
+    fn hash_directory_should_include_symlink_targets() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("skill");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        fs::write(skill_dir.join("SKILL.md"), "# Skill\n").expect("skill file should be written");
+        fs::write(skill_dir.join("a.md"), "A\n").expect("target a should be written");
+        fs::write(skill_dir.join("b.md"), "B\n").expect("target b should be written");
+        symlink("a.md", skill_dir.join("linked.md")).expect("symlink should be created");
+
+        let first = hash_directory(&skill_dir).expect("hash should succeed");
+        fs::remove_file(skill_dir.join("linked.md")).expect("symlink should be removed");
+        symlink("b.md", skill_dir.join("linked.md")).expect("symlink should be recreated");
+        let second = hash_directory(&skill_dir).expect("hash should succeed");
+
+        assert_ne!(first, second);
     }
 }
