@@ -196,11 +196,7 @@ pub fn add_catalog_source(
         write_source_lock(paths, &lock)?;
 
         config.sources.push(source.clone());
-        config.sources.sort_by(|left, right| {
-            left.priority
-                .cmp(&right.priority)
-                .then_with(|| left.id.cmp(&right.id))
-        });
+        source::sort_sources(&mut config.sources);
         store::write_config(paths, &config)
     })();
     persist.inspect_err(|_| {
