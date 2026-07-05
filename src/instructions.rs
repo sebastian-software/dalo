@@ -599,6 +599,7 @@ mod tests {
     use std::os::unix::fs::MetadataExt;
 
     use super::*;
+    use proptest::prelude::*;
 
     const PACK: &str = "house-style";
 
@@ -622,6 +623,31 @@ mod tests {
         assert!(updated.ends_with("\n\nBOTTOM CONTENT\n"));
         assert!(updated.contains("new body"));
         assert!(!updated.contains("old"));
+    }
+
+    proptest! {
+        #[test]
+        fn render_block_should_preserve_surrounding_text_and_stay_idempotent(
+            prefix in "[A-Za-z0-9 ._\\n-]{0,80}",
+            body in "[A-Za-z0-9 ._\\n-]{0,80}",
+            suffix in "[A-Za-z0-9 ._\\n-]{0,80}",
+        ) {
+            let original = format!(
+                "{}{}\\nold body\\n{}{}",
+                prefix,
+                start_marker(PACK),
+                end_marker(PACK),
+                suffix
+            );
+
+            let rendered = render_block(&original, PACK, &body).expect("render should succeed");
+            prop_assert!(rendered.starts_with(&prefix));
+            prop_assert!(rendered.ends_with(&suffix));
+            prop_assert_eq!(
+                render_block(&rendered, PACK, &body).expect("rerender should succeed"),
+                rendered
+            );
+        }
     }
 
     #[test]

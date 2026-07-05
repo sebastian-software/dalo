@@ -398,6 +398,7 @@ impl std::fmt::Display for InventoryWarningCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn scan_source_should_find_skill_with_frontmatter() {
@@ -513,6 +514,28 @@ mod tests {
     fn is_valid_slot_name_should_accept_cross_platform_tokens() {
         for name in ["review", "release-notes.local", "copy_editing", "skill.123"] {
             assert!(is_valid_slot_name(name), "{name} should be valid");
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn valid_slot_names_should_stay_portable(value in "\\PC{0,64}") {
+            if is_valid_slot_name(&value) {
+                prop_assert!(!value.is_empty());
+                prop_assert_ne!(value.as_str(), ".");
+                prop_assert_ne!(value.as_str(), "..");
+                prop_assert!(!value.starts_with('.'));
+                prop_assert!(!value.ends_with('.'));
+                prop_assert!(!is_windows_reserved_basename(&value));
+                let portable = value.chars().all(|character| {
+                    character.is_ascii_lowercase()
+                        || character.is_ascii_digit()
+                        || character == '-'
+                        || character == '_'
+                        || character == '.'
+                });
+                prop_assert!(portable);
+            }
         }
     }
 

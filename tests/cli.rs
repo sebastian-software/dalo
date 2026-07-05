@@ -1,11 +1,19 @@
-use assert_cmd::Command;
 use dalo::store;
 use predicates::prelude::*;
 use std::os::unix::fs::PermissionsExt;
 
+mod common;
+
+use common::{
+    approve_source, create_git_catalog_repo, create_git_catalog_repo_with_duplicate_slots,
+    create_git_skill_repo, create_unmanaged_skill, dalo_command, git_command_succeeds,
+    read_source_lock, read_user_lock, remove_source_update_policy, run_git, set_source_untrusted,
+    setup_store_with_skill_and_target, setup_store_with_target, write_local_only_config,
+};
+
 #[test]
 fn help_should_list_planned_top_level_commands() {
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .arg("--help")
@@ -32,11 +40,7 @@ fn help_should_render_implemented_command_groups() {
         vec!["sync", "--help"],
         vec!["doctor", "--help"],
     ] {
-        Command::cargo_bin("dalo")
-            .expect("binary should build")
-            .args(args)
-            .assert()
-            .success();
+        dalo_command().args(args).assert().success();
     }
 }
 
@@ -44,7 +48,7 @@ fn help_should_render_implemented_command_groups() {
 fn init_dry_run_json_should_not_create_store() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -62,7 +66,7 @@ fn init_dry_run_json_should_not_create_store() {
 fn init_should_create_store_layout() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -83,7 +87,7 @@ fn init_should_create_store_layout() {
 fn init_should_use_dalo_store_environment_override() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store-from-env");
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .env("DALO_STORE", &store)
@@ -100,7 +104,7 @@ fn init_should_ignore_legacy_store_environment_override() {
     let home = temp_dir.path().join("home");
     let legacy_store = temp_dir.path().join("legacy-store");
     let legacy_store_env = ["SKILL", "MGR_STORE"].concat();
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .env("HOME", &home)
@@ -117,7 +121,7 @@ fn init_should_ignore_legacy_store_environment_override() {
 fn doctor_json_should_report_missing_store_without_creating_it() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("missing-store");
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -134,14 +138,13 @@ fn doctor_json_should_report_missing_store_without_creating_it() {
 fn doctor_json_should_report_initialized_store() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
         .assert()
         .success();
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -160,14 +163,12 @@ fn relative_store_path_should_create_absolute_owned_symlink_and_clean_doctor() {
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .current_dir(temp_dir.path())
         .args(["--store", "store", "init"])
         .assert()
         .success();
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .current_dir(temp_dir.path())
         .args(["--store", "store", "target", "link", "generic"])
         .arg(&target)
@@ -175,8 +176,7 @@ fn relative_store_path_should_create_absolute_owned_symlink_and_clean_doctor() {
         .success();
     create_unmanaged_skill(&target, "review");
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .current_dir(temp_dir.path())
         .args(["--store", "store", "adopt", "--replace", "review"])
         .assert()
@@ -189,8 +189,7 @@ fn relative_store_path_should_create_absolute_owned_symlink_and_clean_doctor() {
         store::comparable_path(&store.join("local/skills/review"))
     );
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .current_dir(temp_dir.path())
         .args(["--store", "store", "--json", "doctor"])
         .assert()
@@ -204,8 +203,7 @@ fn doctor_json_should_report_broken_owned_symlink() {
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
     setup_store_with_skill_and_target(&store, &target);
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("sync")
@@ -213,7 +211,7 @@ fn doctor_json_should_report_broken_owned_symlink() {
         .success();
     std::fs::remove_dir_all(store.join("local/skills/review"))
         .expect("local skill should be removed");
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -233,8 +231,7 @@ fn doctor_json_should_report_foreign_owned_symlink() {
     let target = temp_dir.path().join("skills");
     let foreign = temp_dir.path().join("foreign");
     setup_store_with_skill_and_target(&store, &target);
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("sync")
@@ -244,7 +241,7 @@ fn doctor_json_should_report_foreign_owned_symlink() {
     std::fs::remove_file(target.join("review")).expect("owned symlink should be removed");
     std::os::unix::fs::symlink(&foreign, target.join("review"))
         .expect("foreign symlink should be created");
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -264,7 +261,7 @@ fn doctor_json_should_report_unmanaged_same_name_blocker() {
     let target = temp_dir.path().join("skills");
     setup_store_with_skill_and_target(&store, &target);
     create_unmanaged_skill(&target, "review");
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -281,8 +278,7 @@ fn doctor_json_should_report_unmanaged_same_name_blocker() {
 fn status_json_should_report_local_skill_as_active() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
@@ -291,7 +287,7 @@ fn status_json_should_report_local_skill_as_active() {
     let skill_dir = store.join("local/skills/review");
     std::fs::create_dir_all(&skill_dir).expect("skill dir should be created");
     std::fs::write(skill_dir.join("SKILL.md"), "# Review\n").expect("skill should be written");
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -307,14 +303,13 @@ fn status_json_should_report_local_skill_as_active() {
 fn target_detect_should_report_known_targets() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
         .assert()
         .success();
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -332,14 +327,13 @@ fn target_link_generic_should_create_directory_and_update_state() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
         .assert()
         .success();
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -363,22 +357,20 @@ fn target_unlink_should_keep_target_directory() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
         .assert()
         .success();
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["target", "link", "generic"])
         .arg(&target)
         .assert()
         .success();
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -397,7 +389,7 @@ fn sync_dry_run_should_not_create_symlink() {
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
     setup_store_with_skill_and_target(&store, &target);
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -416,7 +408,7 @@ fn sync_should_create_directory_symlink() {
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
     setup_store_with_skill_and_target(&store, &target);
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -441,7 +433,7 @@ fn sync_yes_should_not_replace_unmanaged_real_directory() {
     let target = temp_dir.path().join("skills");
     setup_store_with_skill_and_target(&store, &target);
     create_unmanaged_skill(&target, "review");
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -473,8 +465,7 @@ fn sync_should_record_existing_store_symlink_after_partial_materialization() {
     std::os::unix::fs::symlink(store.join("local/skills/review"), target.join("review"))
         .expect("partial materialization symlink should be created");
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("sync")
@@ -499,14 +490,13 @@ fn sync_should_report_existing_on_second_run() {
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
     setup_store_with_skill_and_target(&store, &target);
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("sync")
         .assert()
         .success();
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -524,8 +514,7 @@ fn sync_should_write_user_lock_with_active_and_unlinked_skills() {
     let target = temp_dir.path().join("skills");
     let repo = temp_dir.path().join("team-repo");
     create_git_skill_repo(&repo);
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
@@ -535,8 +524,7 @@ fn sync_should_write_user_lock_with_active_and_unlinked_skills() {
     std::fs::create_dir_all(&local_skill_dir).expect("local skill dir should be created");
     std::fs::write(local_skill_dir.join("SKILL.md"), "# Local Team\n")
         .expect("local skill should be written");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "add", "company"])
@@ -544,8 +532,7 @@ fn sync_should_write_user_lock_with_active_and_unlinked_skills() {
         .assert()
         .success();
     approve_source(&store, "company");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["target", "link", "generic"])
@@ -553,19 +540,26 @@ fn sync_should_write_user_lock_with_active_and_unlinked_skills() {
         .assert()
         .success();
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("sync")
         .assert()
         .success();
 
-    let lock = std::fs::read_to_string(store.join("lock.toml")).expect("lock should be readable");
-    assert!(lock.contains("source_ref = \"local:team\""));
-    assert!(lock.contains("source_ref = \"company:team\""));
-    assert!(lock.contains("reason = \"shadowed\""));
-    assert!(lock.contains("status = \"applied\"") || lock.contains("status = \"existing\""));
+    let lock = read_user_lock(&store);
+    assert!(
+        lock.active_skills
+            .iter()
+            .any(|skill| skill.source_ref == "local:team")
+    );
+    assert!(lock.unlinked_skills.iter().any(|skill| {
+        skill.source_ref == "company:team" && skill.reason.as_deref() == Some("shadowed")
+    }));
+    assert!(lock.target_materializations.iter().any(|materialization| {
+        materialization.link_path.ends_with("team")
+            && ["applied", "existing"].contains(&materialization.status.as_str())
+    }));
 }
 
 #[test]
@@ -574,8 +568,7 @@ fn status_json_should_report_lock_drift_after_skill_removal() {
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
     setup_store_with_skill_and_target(&store, &target);
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("sync")
@@ -583,7 +576,7 @@ fn status_json_should_report_lock_drift_after_skill_removal() {
         .success();
     std::fs::remove_dir_all(store.join("local/skills/review"))
         .expect("local skill should be removed");
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -599,8 +592,7 @@ fn status_json_should_report_lock_drift_after_skill_removal() {
 fn status_should_fail_on_unsupported_lock_schema() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
@@ -608,7 +600,7 @@ fn status_should_fail_on_unsupported_lock_schema() {
         .success();
     std::fs::write(store.join("lock.toml"), "schema_version = 999\n")
         .expect("lock should be overwritten");
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -629,7 +621,7 @@ fn status_json_should_report_unmanaged_target_skills() {
     let target = temp_dir.path().join("skills");
     setup_store_with_target(&store, &target);
     create_unmanaged_skill(&target, "review");
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -654,8 +646,7 @@ fn status_should_report_invalid_portable_skill_names() {
             .expect("skill should be written");
     }
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("status")
@@ -671,8 +662,7 @@ fn status_should_report_invalid_portable_skill_names() {
 fn status_should_report_actionable_error_for_corrupt_state() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
@@ -680,7 +670,7 @@ fn status_should_report_actionable_error_for_corrupt_state() {
         .success();
     std::fs::write(store.join("state.toml"), "schema_version = ")
         .expect("state should be corrupted");
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -696,8 +686,7 @@ fn status_should_report_actionable_error_for_corrupt_state() {
 fn init_should_repair_corrupt_state_file() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
@@ -705,7 +694,7 @@ fn init_should_repair_corrupt_state_file() {
         .success();
     std::fs::write(store.join("state.toml"), "schema_version = ")
         .expect("state should be corrupted");
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -737,7 +726,7 @@ fn adopt_should_copy_unmanaged_skill_without_replacing_by_default() {
     let target = temp_dir.path().join("skills");
     setup_store_with_target(&store, &target);
     create_unmanaged_skill(&target, "review");
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -767,7 +756,7 @@ fn adopt_should_resolve_slot_when_cwd_contains_same_named_decoy_directory() {
     create_unmanaged_skill(&target, "review");
     std::fs::create_dir_all(project.join("review")).expect("decoy dir should be created");
     std::fs::write(project.join("review/SKILL.md"), "# Decoy\n").expect("decoy should be written");
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .current_dir(&project)
@@ -796,7 +785,7 @@ fn adopt_should_accept_explicit_relative_path_selector() {
     let target = temp_dir.path().join("skills");
     setup_store_with_target(&store, &target);
     create_unmanaged_skill(&target, "review");
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .current_dir(&target)
@@ -817,7 +806,7 @@ fn adopt_yes_should_not_replace_original_without_replace() {
     let target = temp_dir.path().join("skills");
     setup_store_with_target(&store, &target);
     create_unmanaged_skill(&target, "review");
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -843,7 +832,7 @@ fn adopt_replace_should_replace_original_with_owned_symlink_without_committing()
     let target = temp_dir.path().join("skills");
     setup_store_with_target(&store, &target);
     create_unmanaged_skill(&target, "review");
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -874,8 +863,7 @@ fn adopt_then_adopt_replace_should_complete_the_two_step_replacement() {
     create_unmanaged_skill(&target, "review");
 
     // Step 1: copy only (no --replace).
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["adopt", "review"])
@@ -884,8 +872,7 @@ fn adopt_then_adopt_replace_should_complete_the_two_step_replacement() {
         .stdout(predicate::str::contains("replacement: skipped"));
 
     // Step 2: replace, reusing the copy from step 1 (previously failed).
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["adopt", "--replace", "review"])
@@ -915,8 +902,7 @@ fn adopt_replace_should_refuse_when_local_destination_is_an_unrelated_skill() {
     // Unmanaged target skill with different content (create writes "# review\n").
     create_unmanaged_skill(&target, "review");
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["adopt", "--replace", "review"])
@@ -944,7 +930,7 @@ fn adopt_replace_should_not_replace_local_marker_skill() {
     let target = temp_dir.path().join("skills");
     setup_store_with_target(&store, &target);
     create_unmanaged_skill(&target, "review.local");
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -970,14 +956,13 @@ fn adopt_replace_should_refuse_replacement_for_kept_skill() {
     let target = temp_dir.path().join("skills");
     setup_store_with_target(&store, &target);
     create_unmanaged_skill(&target, "review");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["resolve", "keep", "review"])
         .assert()
         .success();
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -995,15 +980,13 @@ fn adopt_replace_should_keep_kept_skill_directory_as_real_entry() {
     let target = temp_dir.path().join("skills");
     setup_store_with_target(&store, &target);
     create_unmanaged_skill(&target, "review");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["resolve", "keep", "review"])
         .assert()
         .success();
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["adopt", "--replace", "review"])
@@ -1025,15 +1008,13 @@ fn adopt_replace_should_preserve_kept_skill_contents() {
     let target = temp_dir.path().join("skills");
     setup_store_with_target(&store, &target);
     create_unmanaged_skill(&target, "review");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["resolve", "keep", "review"])
         .assert()
         .success();
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["adopt", "--replace", "review"])
@@ -1054,8 +1035,7 @@ fn adopt_replace_should_preserve_original_contents_via_symlink_when_not_protecte
     let target = temp_dir.path().join("skills");
     setup_store_with_target(&store, &target);
     create_unmanaged_skill(&target, "review");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["adopt", "--replace", "review"])
@@ -1077,7 +1057,7 @@ fn adopt_should_fail_for_path_outside_materialization_dirs() {
     let outside = temp_dir.path().join("outside");
     setup_store_with_target(&store, &target);
     create_unmanaged_skill(&outside, "review");
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -1098,8 +1078,7 @@ fn adopt_should_not_touch_path_outside_materialization_dirs() {
     let outside = temp_dir.path().join("outside");
     setup_store_with_target(&store, &target);
     create_unmanaged_skill(&outside, "review");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["adopt", "--replace"])
@@ -1118,8 +1097,7 @@ fn adopted_skill_should_show_as_local_override_over_team_skill() {
     let repo = temp_dir.path().join("team-repo");
     create_git_skill_repo(&repo);
     setup_store_with_target(&store, &target);
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "add", "company"])
@@ -1128,14 +1106,13 @@ fn adopted_skill_should_show_as_local_override_over_team_skill() {
         .success();
     approve_source(&store, "company");
     create_unmanaged_skill(&target, "team");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["adopt", "team"])
         .assert()
         .success();
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -1154,7 +1131,7 @@ fn resolve_list_should_report_unmanaged_skills() {
     let target = temp_dir.path().join("skills");
     setup_store_with_target(&store, &target);
     create_unmanaged_skill(&target, "review");
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -1174,8 +1151,7 @@ fn resolve_adopt_yes_should_copy_only_until_replace_is_explicit() {
     setup_store_with_target(&store, &target);
     create_unmanaged_skill(&target, "review");
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["--yes", "resolve", "adopt", "review"])
@@ -1189,8 +1165,7 @@ fn resolve_adopt_yes_should_copy_only_until_replace_is_explicit() {
             .is_symlink()
     );
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["resolve", "adopt", "--replace", "review"])
@@ -1212,15 +1187,14 @@ fn resolve_keep_should_protect_unmanaged_skill() {
     let target = temp_dir.path().join("skills");
     setup_store_with_target(&store, &target);
     create_unmanaged_skill(&target, "review");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["resolve", "keep", "review"])
         .assert()
         .success()
         .stdout(predicate::str::contains("protected"));
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -1241,7 +1215,7 @@ fn resolve_keep_should_resolve_slot_when_cwd_contains_same_named_decoy_directory
     create_unmanaged_skill(&target, "review");
     std::fs::create_dir_all(project.join("review")).expect("decoy dir should be created");
     std::fs::write(project.join("review/SKILL.md"), "# Decoy\n").expect("decoy should be written");
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .current_dir(&project)
@@ -1274,8 +1248,7 @@ fn resolve_keep_dry_run_should_not_write_state() {
     create_unmanaged_skill(&target, "review");
     let state_before = std::fs::read(store.join("state.toml")).expect("state should be readable");
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["--dry-run", "resolve", "keep", "review"])
@@ -1296,14 +1269,13 @@ fn resolve_remove_owned_should_remove_only_recorded_symlink() {
     let target = temp_dir.path().join("skills");
     setup_store_with_target(&store, &target);
     create_unmanaged_skill(&target, "review");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["adopt", "--replace", "review"])
         .assert()
         .success();
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -1323,8 +1295,7 @@ fn resolve_remove_owned_yes_should_not_remove_real_entry() {
     let target = temp_dir.path().join("skills");
     setup_store_with_target(&store, &target);
     create_unmanaged_skill(&target, "review");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["adopt", "--replace", "review"])
@@ -1332,7 +1303,7 @@ fn resolve_remove_owned_yes_should_not_remove_real_entry() {
         .success();
     std::fs::remove_file(target.join("review")).expect("owned symlink should be removed");
     create_unmanaged_skill(&target, "review");
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -1351,8 +1322,7 @@ fn doctor_suggested_remove_owned_should_clear_real_entry_record() {
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
     setup_store_with_skill_and_target(&store, &target);
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("sync")
@@ -1361,8 +1331,7 @@ fn doctor_suggested_remove_owned_should_clear_real_entry_record() {
     std::fs::remove_file(target.join("review")).expect("owned symlink should be removed");
     std::fs::create_dir_all(target.join("review")).expect("real entry should be created");
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["--json", "doctor"])
@@ -1375,8 +1344,7 @@ fn doctor_suggested_remove_owned_should_clear_real_entry_record() {
             "\"next_command\": \"dalo resolve remove-owned review\"",
         ));
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["resolve", "remove-owned", "review"])
@@ -1384,8 +1352,7 @@ fn doctor_suggested_remove_owned_should_clear_real_entry_record() {
         .success()
         .stdout(predicate::str::contains("blocked_real_entry"));
 
-    let output = Command::cargo_bin("dalo")
-        .expect("binary should build")
+    let output = dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["--json", "doctor"])
@@ -1413,15 +1380,13 @@ fn sync_should_remove_owned_symlink_after_source_is_removed_from_config() {
     let target = temp_dir.path().join("skills");
     let repo = temp_dir.path().join("team-repo");
     create_git_skill_repo(&repo);
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
         .assert()
         .success();
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "add", "company"])
@@ -1429,16 +1394,14 @@ fn sync_should_remove_owned_symlink_after_source_is_removed_from_config() {
         .assert()
         .success();
     approve_source(&store, "company");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["target", "link", "generic"])
         .arg(&target)
         .assert()
         .success();
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("sync")
@@ -1452,8 +1415,7 @@ fn sync_should_remove_owned_symlink_after_source_is_removed_from_config() {
     );
 
     write_local_only_config(&store);
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("sync")
@@ -1469,8 +1431,7 @@ fn sync_should_preserve_owned_symlink_when_source_scan_is_degraded() {
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
     setup_store_with_skill_and_target(&store, &target);
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("sync")
@@ -1506,8 +1467,7 @@ fn sync_should_preserve_owned_symlink_when_source_scan_is_degraded() {
         false
     };
 
-    let output = Command::cargo_bin("dalo")
-        .expect("binary should build")
+    let output = dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("sync")
@@ -1548,14 +1508,13 @@ fn source_add_should_clone_team_source_into_store() {
     let store = temp_dir.path().join("store");
     let repo = temp_dir.path().join("team-repo");
     create_git_skill_repo(&repo);
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
         .assert()
         .success();
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -1575,15 +1534,13 @@ fn source_list_should_show_local_and_team_sources() {
     let store = temp_dir.path().join("store");
     let repo = temp_dir.path().join("team-repo");
     create_git_skill_repo(&repo);
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
         .assert()
         .success();
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "add", "company"])
@@ -1591,8 +1548,7 @@ fn source_list_should_show_local_and_team_sources() {
         .assert()
         .success();
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "list"])
@@ -1610,16 +1566,14 @@ fn source_add_dry_run_should_not_clone_or_write_config() {
     let store = temp_dir.path().join("store");
     let repo = temp_dir.path().join("team-repo");
     create_git_skill_repo(&repo);
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
         .assert()
         .success();
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["--dry-run", "source", "add", "company"])
@@ -1638,23 +1592,20 @@ fn source_add_should_approve_added_source() {
     let target = temp_dir.path().join("skills");
     let repo = temp_dir.path().join("team-repo");
     create_git_skill_repo(&repo);
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
         .assert()
         .success();
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["target", "link", "generic"])
         .arg(&target)
         .assert()
         .success();
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "add", "company"])
@@ -1662,8 +1613,7 @@ fn source_add_should_approve_added_source() {
         .assert()
         .success();
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("sync")
@@ -1684,22 +1634,20 @@ fn source_priority_should_update_config() {
     let store = temp_dir.path().join("store");
     let repo = temp_dir.path().join("team-repo");
     create_git_skill_repo(&repo);
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
         .assert()
         .success();
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "add", "company"])
         .arg(&repo)
         .assert()
         .success();
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -1714,16 +1662,14 @@ fn source_priority_should_update_config() {
 fn source_priority_should_refuse_to_move_local_source() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
         .assert()
         .success();
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "priority", "local", "5"])
@@ -1739,23 +1685,20 @@ fn sync_should_block_dirty_team_source() {
     let target = temp_dir.path().join("skills");
     let repo = temp_dir.path().join("team-repo");
     create_git_skill_repo(&repo);
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
         .assert()
         .success();
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "add", "company"])
         .arg(&repo)
         .assert()
         .success();
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["target", "link", "generic"])
@@ -1767,7 +1710,7 @@ fn sync_should_block_dirty_team_source() {
         "# Dirty\n",
     )
     .expect("checkout should be dirtied");
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -1789,8 +1732,7 @@ fn sync_should_not_link_unapproved_team_skill() {
     let repo = temp_dir.path().join("team-repo");
     create_git_skill_repo(&repo);
     setup_store_with_target(&store, &target);
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "add", "company"])
@@ -1798,8 +1740,7 @@ fn sync_should_not_link_unapproved_team_skill() {
         .assert()
         .success();
     set_source_untrusted(&store, "company");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("sync")
@@ -1817,8 +1758,7 @@ fn sync_should_not_refresh_team_source_without_track_policy() {
     let repo = temp_dir.path().join("team-repo");
     create_git_skill_repo(&repo);
     setup_store_with_target(&store, &target);
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "add", "company"])
@@ -1845,8 +1785,7 @@ fn sync_should_not_refresh_team_source_without_track_policy() {
         ],
     );
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("sync")
@@ -1873,8 +1812,7 @@ fn sync_should_fast_forward_tracking_team_source() {
     let repo = temp_dir.path().join("team-repo");
     create_git_skill_repo(&repo);
     setup_store_with_target(&store, &target);
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "add", "company"])
@@ -1900,8 +1838,7 @@ fn sync_should_fast_forward_tracking_team_source() {
         ],
     );
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("sync")
@@ -1928,8 +1865,7 @@ fn sync_should_fail_cleanly_on_non_fast_forward_tracking_team_source() {
     let repo = temp_dir.path().join("team-repo");
     create_git_skill_repo(&repo);
     setup_store_with_target(&store, &target);
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "add", "company"])
@@ -1974,8 +1910,7 @@ fn sync_should_fail_cleanly_on_non_fast_forward_tracking_team_source() {
         ],
     );
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("sync")
@@ -1996,8 +1931,7 @@ fn status_should_show_all_pending_approval_candidates_for_same_slot() {
     create_git_skill_repo(&repo_b);
     setup_store_with_target(&store, &target);
     for (source_id, repo) in [("team-a", &repo_a), ("team-b", &repo_b)] {
-        Command::cargo_bin("dalo")
-            .expect("binary should build")
+        dalo_command()
             .args(["--store"])
             .arg(&store)
             .args(["source", "add", source_id])
@@ -2007,8 +1941,7 @@ fn status_should_show_all_pending_approval_candidates_for_same_slot() {
         set_source_untrusted(&store, source_id);
     }
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("status")
@@ -2049,7 +1982,7 @@ fn sync_should_not_block_on_dirty_local_source() {
     // that blocks a Team source.
     std::fs::write(skill_dir.join("SKILL.md"), "# Review dirty\n")
         .expect("local skill should be dirtied");
-    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+    let mut command = dalo_command();
 
     command
         .args(["--store"])
@@ -2065,8 +1998,7 @@ fn status_json_schema_should_model_instruction_packs_and_blocked_skills() {
     let store = temp_dir.path().join("store");
     let agents = temp_dir.path().join("AGENTS.md");
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
@@ -2081,8 +2013,7 @@ fn status_json_schema_should_model_instruction_packs_and_blocked_skills() {
             body,
         )
         .expect("pack should be written");
-        Command::cargo_bin("dalo")
-            .expect("binary should build")
+        dalo_command()
             .args(["--store"])
             .arg(&store)
             .args(["instructions", "enable", pack])
@@ -2091,8 +2022,7 @@ fn status_json_schema_should_model_instruction_packs_and_blocked_skills() {
             .success();
     }
 
-    let output = Command::cargo_bin("dalo")
-        .expect("binary should build")
+    let output = dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["--json", "status"])
@@ -2141,24 +2071,21 @@ fn source_inspect_json_should_model_catalog_candidates() {
     create_git_catalog_repo(&repo);
     setup_store_with_target(&store, &target);
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "add-catalog", "marketing"])
         .arg(&repo)
         .assert()
         .success();
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "select", "marketing", "copy-editing"])
         .assert()
         .success();
 
-    let output = Command::cargo_bin("dalo")
-        .expect("binary should build")
+    let output = dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["--json", "source", "inspect", "marketing"])
@@ -2260,8 +2187,7 @@ struct DoctorFindingSchema {
 fn status_json_should_deserialize_into_status_schema_with_active_skill() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
@@ -2270,8 +2196,7 @@ fn status_json_should_deserialize_into_status_schema_with_active_skill() {
     let skill_dir = store.join("local/skills/review");
     std::fs::create_dir_all(&skill_dir).expect("skill dir should be created");
     std::fs::write(skill_dir.join("SKILL.md"), "# Review\n").expect("skill should be written");
-    let output = Command::cargo_bin("dalo")
-        .expect("binary should build")
+    let output = dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["--json", "status"])
@@ -2293,15 +2218,13 @@ fn status_json_should_deserialize_into_status_schema_with_active_skill() {
 fn status_json_should_expose_lock_schema_version_field() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
         .assert()
         .success();
-    let output = Command::cargo_bin("dalo")
-        .expect("binary should build")
+    let output = dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["--json", "status"])
@@ -2320,15 +2243,13 @@ fn status_json_should_expose_lock_schema_version_field() {
 fn doctor_json_should_deserialize_into_doctor_schema_with_store_exists_finding() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
         .assert()
         .success();
-    let output = Command::cargo_bin("dalo")
-        .expect("binary should build")
+    let output = dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["--json", "doctor"])
@@ -2348,13 +2269,6 @@ fn doctor_json_should_deserialize_into_doctor_schema_with_store_exists_finding()
     );
 }
 
-fn setup_store_with_skill_and_target(store: &std::path::Path, target: &std::path::Path) {
-    setup_store_with_target(store, target);
-    let skill_dir = store.join("local/skills/review");
-    std::fs::create_dir_all(&skill_dir).expect("skill dir should be created");
-    std::fs::write(skill_dir.join("SKILL.md"), "# Review\n").expect("skill should be written");
-}
-
 #[test]
 fn catalog_select_should_materialize_only_selected_skills() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
@@ -2364,16 +2278,14 @@ fn catalog_select_should_materialize_only_selected_skills() {
     create_git_catalog_repo(&repo);
     setup_store_with_target(&store, &target);
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "add-catalog", "marketing"])
         .arg(&repo)
         .assert()
         .success();
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "inspect", "marketing"])
@@ -2382,18 +2294,21 @@ fn catalog_select_should_materialize_only_selected_skills() {
         .stdout(predicate::str::contains("copy-editing"))
         .stdout(predicate::str::contains("launch-copy"));
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "select", "marketing", "copy-editing"])
         .assert()
         .success();
-    let source_lock =
-        std::fs::read_to_string(store.join("source-lock.toml")).expect("source lock readable");
-    assert!(source_lock.contains("selected = [\"skills/copy-editing\"]"));
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    let source_lock = read_source_lock(&store);
+    assert_eq!(
+        source_lock
+            .catalog("marketing")
+            .expect("marketing catalog should be locked")
+            .selected,
+        ["skills/copy-editing".to_owned()]
+    );
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("sync")
@@ -2418,8 +2333,7 @@ fn catalog_select_dry_run_should_not_write_config_or_source_lock() {
     let repo = temp_dir.path().join("catalog-repo");
     create_git_catalog_repo(&repo);
     setup_store_with_target(&store, &target);
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "add-catalog", "marketing"])
@@ -2430,8 +2344,7 @@ fn catalog_select_dry_run_should_not_write_config_or_source_lock() {
     let source_lock_before =
         std::fs::read(store.join("source-lock.toml")).expect("source lock readable");
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["--dry-run", "source", "select", "marketing", "copy-editing"])
@@ -2458,31 +2371,27 @@ fn catalog_select_should_support_path_fallback_for_duplicate_slots() {
     create_git_catalog_repo_with_duplicate_slots(&repo);
     setup_store_with_target(&store, &target);
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "add-catalog", "catalog"])
         .arg(&repo)
         .assert()
         .success();
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "select", "catalog", "shared"])
         .assert()
         .failure()
         .stderr(predicate::str::contains("ambiguous"));
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "select", "catalog", "skills/a"])
         .assert()
         .success();
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("sync")
@@ -2491,9 +2400,14 @@ fn catalog_select_should_support_path_fallback_for_duplicate_slots() {
 
     let linked = std::fs::read_link(target.join("shared")).expect("selected skill should link");
     assert!(linked.ends_with("sources/catalog/checkout/skills/a"));
-    let source_lock =
-        std::fs::read_to_string(store.join("source-lock.toml")).expect("source lock readable");
-    assert!(source_lock.contains("selected = [\"skills/a\"]"));
+    let source_lock = read_source_lock(&store);
+    assert_eq!(
+        source_lock
+            .catalog("catalog")
+            .expect("catalog source should be locked")
+            .selected,
+        ["skills/a".to_owned()]
+    );
 }
 
 #[test]
@@ -2505,16 +2419,14 @@ fn catalog_refresh_check_should_report_upstream_drift() {
     create_git_catalog_repo(&repo);
     setup_store_with_target(&store, &target);
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "add-catalog", "marketing"])
         .arg(&repo)
         .assert()
         .success();
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "select", "marketing", "copy-editing"])
@@ -2548,8 +2460,7 @@ fn catalog_refresh_check_should_report_upstream_drift() {
 
     // The read-only check reports the changed selection and the new offering
     // without advancing the pin.
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "refresh", "marketing", "--check"])
@@ -2563,16 +2474,14 @@ fn catalog_refresh_check_should_report_upstream_drift() {
 fn source_refresh_without_check_should_report_not_implemented() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
         .assert()
         .success();
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "refresh", "marketing"])
@@ -2590,8 +2499,7 @@ fn instructions_enable_disable_should_manage_block_idempotently() {
     let store = temp_dir.path().join("store");
     let target_file = temp_dir.path().join("AGENTS.md");
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
@@ -2607,8 +2515,7 @@ fn instructions_enable_disable_should_manage_block_idempotently() {
     std::fs::write(&target_file, "# Project\n\nUser notes.\n").expect("target should be written");
 
     let enable = || {
-        Command::cargo_bin("dalo")
-            .expect("binary should build")
+        dalo_command()
             .args(["--store"])
             .arg(&store)
             .args(["instructions", "enable", "house-style"])
@@ -2630,8 +2537,7 @@ fn instructions_enable_disable_should_manage_block_idempotently() {
     assert_eq!(after_enable, after_second);
 
     // Disabling removes exactly the block and keeps user content.
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["instructions", "disable", "house-style"])
@@ -2650,8 +2556,7 @@ fn instructions_list_should_show_active_pack() {
     let store = temp_dir.path().join("store");
     let target_file = temp_dir.path().join("AGENTS.md");
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
@@ -2662,8 +2567,7 @@ fn instructions_list_should_show_active_pack() {
         "version: 1.0\n\nUse tabs.\n",
     )
     .expect("pack should be written");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["instructions", "enable", "house-style"])
@@ -2671,8 +2575,7 @@ fn instructions_list_should_show_active_pack() {
         .assert()
         .success();
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["instructions", "list"])
@@ -2688,8 +2591,7 @@ fn instructions_enable_dry_run_should_not_write_target_or_lock() {
     let store = temp_dir.path().join("store");
     let target_file = temp_dir.path().join("AGENTS.md");
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
@@ -2704,8 +2606,7 @@ fn instructions_enable_dry_run_should_not_write_target_or_lock() {
     let target_before = std::fs::read(&target_file).expect("target should be readable");
     let lock_before = std::fs::read(store.join("lock.toml")).expect("lock should be readable");
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["--dry-run", "instructions", "enable", "house-style"])
@@ -2730,8 +2631,7 @@ fn instructions_disable_dry_run_should_not_write_target_or_lock() {
     let store = temp_dir.path().join("store");
     let target_file = temp_dir.path().join("AGENTS.md");
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
@@ -2742,8 +2642,7 @@ fn instructions_disable_dry_run_should_not_write_target_or_lock() {
         "version: 1.0\n\nUse tabs.\n",
     )
     .expect("pack should be written");
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["instructions", "enable", "house-style"])
@@ -2753,8 +2652,7 @@ fn instructions_disable_dry_run_should_not_write_target_or_lock() {
     let target_before = std::fs::read(&target_file).expect("target should be readable");
     let lock_before = std::fs::read(store.join("lock.toml")).expect("lock should be readable");
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["--dry-run", "instructions", "disable", "house-style"])
@@ -2779,8 +2677,7 @@ fn instructions_enable_should_reject_malformed_existing_block() {
     let store = temp_dir.path().join("store");
     let target_file = temp_dir.path().join("AGENTS.md");
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
@@ -2794,8 +2691,7 @@ fn instructions_enable_should_reject_malformed_existing_block() {
     let malformed = "# Project\n\n<!-- dalo:start house-style -->\nmissing end\n";
     std::fs::write(&target_file, malformed).expect("target should be written");
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["instructions", "enable", "house-style"])
@@ -2816,8 +2712,7 @@ fn instructions_enable_should_fail_on_non_utf8_target_without_rewriting() {
     let store = temp_dir.path().join("store");
     let target_file = temp_dir.path().join("AGENTS.md");
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
@@ -2831,8 +2726,7 @@ fn instructions_enable_should_fail_on_non_utf8_target_without_rewriting() {
     let original = b"# Project\n\nLatin-1 byte: \x96\n";
     std::fs::write(&target_file, original).expect("target should be written");
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["instructions", "enable", "house-style"])
@@ -2853,8 +2747,7 @@ fn status_json_should_report_instruction_pack_topic_overlap() {
     let store = temp_dir.path().join("store");
     let agents = temp_dir.path().join("AGENTS.md");
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("init")
@@ -2874,8 +2767,7 @@ fn status_json_should_report_instruction_pack_topic_overlap() {
     .expect("pack should be written");
 
     for pack in ["style", "format"] {
-        Command::cargo_bin("dalo")
-            .expect("binary should build")
+        dalo_command()
             .args(["--store"])
             .arg(&store)
             .args(["instructions", "enable", pack])
@@ -2885,8 +2777,7 @@ fn status_json_should_report_instruction_pack_topic_overlap() {
     }
 
     // status --json surfaces the advisory overlap naming both pack refs.
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["--json", "status"])
@@ -2895,189 +2786,4 @@ fn status_json_should_report_instruction_pack_topic_overlap() {
         .stdout(predicate::str::contains("instruction_pack_overlaps"))
         .stdout(predicate::str::contains("local:style"))
         .stdout(predicate::str::contains("local:format"));
-}
-
-fn setup_store_with_target(store: &std::path::Path, target: &std::path::Path) {
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
-        .args(["--store"])
-        .arg(store)
-        .arg("init")
-        .assert()
-        .success();
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
-        .args(["--store"])
-        .arg(store)
-        .args(["target", "link", "generic"])
-        .arg(target)
-        .assert()
-        .success();
-}
-
-fn create_unmanaged_skill(target: &std::path::Path, slot_name: &str) {
-    let skill_dir = target.join(slot_name);
-    std::fs::create_dir_all(&skill_dir).expect("unmanaged skill dir should be created");
-    std::fs::write(skill_dir.join("SKILL.md"), format!("# {slot_name}\n"))
-        .expect("unmanaged skill should be written");
-}
-
-fn create_git_skill_repo(repo: &std::path::Path) {
-    std::fs::create_dir_all(repo.join("skills/team")).expect("repo dirs should be created");
-    std::fs::write(repo.join("skills/team/SKILL.md"), "# Team\n").expect("skill should be written");
-    run_git(repo, &["init", "-q"]);
-    run_git(repo, &["add", "."]);
-    run_git(
-        repo,
-        &[
-            "-c",
-            "commit.gpgsign=false",
-            "-c",
-            "user.email=test@example.com",
-            "-c",
-            "user.name=Test User",
-            "commit",
-            "-m",
-            "initial",
-            "-q",
-        ],
-    );
-}
-
-fn approve_source(store: &std::path::Path, source: &str) {
-    std::fs::write(
-        store.join("approvals.toml"),
-        format!("schema_version = 1\n\n[[approvals]]\nscope = \"source\"\nvalue = \"{source}\"\n"),
-    )
-    .expect("source approval should be written");
-}
-
-fn set_source_untrusted(store: &std::path::Path, source_id: &str) {
-    let config_path = store.join("config.toml");
-    let content = std::fs::read_to_string(&config_path).expect("config should be readable");
-    let mut in_source = false;
-    let mut out = String::new();
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed == "[[sources]]" {
-            in_source = false;
-        } else if let Some(rest) = trimmed.strip_prefix("id = ") {
-            in_source = rest.trim().trim_matches('"') == source_id;
-        }
-        if in_source && trimmed == "trusted = true" {
-            out.push_str("trusted = false\n");
-        } else {
-            out.push_str(line);
-            out.push('\n');
-        }
-    }
-    std::fs::write(&config_path, out).expect("config should be written");
-}
-
-fn remove_source_update_policy(store: &std::path::Path, source_id: &str) {
-    let config_path = store.join("config.toml");
-    let content = std::fs::read_to_string(&config_path).expect("config should be readable");
-    let mut in_source = false;
-    let mut out = String::new();
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed == "[[sources]]" {
-            in_source = false;
-        } else if let Some(rest) = trimmed.strip_prefix("id = ") {
-            in_source = rest.trim().trim_matches('"') == source_id;
-        }
-        if in_source && trimmed.starts_with("update_policy = ") {
-            continue;
-        }
-        out.push_str(line);
-        out.push('\n');
-    }
-    std::fs::write(&config_path, out).expect("config should be written");
-}
-
-fn write_local_only_config(store: &std::path::Path) {
-    std::fs::write(
-        store.join("config.toml"),
-        format!(
-            "version = 1\n\n[settings]\nautosync = false\n\n[[sources]]\nid = \"local\"\nkind = \"local\"\npath = \"{}\"\npriority = 0\nenabled = true\ntrusted = true\n",
-            store.join("local").display()
-        ),
-    )
-    .expect("config should be written");
-}
-
-fn create_git_catalog_repo(repo: &std::path::Path) {
-    for slot in ["copy-editing", "launch-copy"] {
-        std::fs::create_dir_all(repo.join("skills").join(slot)).expect("repo dirs created");
-        std::fs::write(
-            repo.join("skills").join(slot).join("SKILL.md"),
-            format!("# {slot}\n"),
-        )
-        .expect("skill written");
-    }
-    run_git(repo, &["init", "-q"]);
-    run_git(repo, &["add", "."]);
-    run_git(
-        repo,
-        &[
-            "-c",
-            "commit.gpgsign=false",
-            "-c",
-            "user.email=test@example.com",
-            "-c",
-            "user.name=Test User",
-            "commit",
-            "-m",
-            "initial",
-            "-q",
-        ],
-    );
-}
-
-fn create_git_catalog_repo_with_duplicate_slots(repo: &std::path::Path) {
-    for folder in ["a", "b"] {
-        std::fs::create_dir_all(repo.join("skills").join(folder)).expect("repo dirs created");
-        std::fs::write(
-            repo.join("skills").join(folder).join("SKILL.md"),
-            "---\nname: shared\n---\n# Shared\n",
-        )
-        .expect("skill written");
-    }
-    run_git(repo, &["init", "-q"]);
-    run_git(repo, &["add", "."]);
-    run_git(
-        repo,
-        &[
-            "-c",
-            "commit.gpgsign=false",
-            "-c",
-            "user.email=test@example.com",
-            "-c",
-            "user.name=Test User",
-            "commit",
-            "-m",
-            "initial",
-            "-q",
-        ],
-    );
-}
-
-fn run_git(repo: &std::path::Path, args: &[&str]) {
-    let status = std::process::Command::new("git")
-        .args(args)
-        .current_dir(repo)
-        .status()
-        .expect("git should run");
-    assert!(status.success());
-}
-
-fn git_command_succeeds(repo: &std::path::Path, args: &[&str]) -> bool {
-    std::process::Command::new("git")
-        .args(args)
-        .current_dir(repo)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .expect("git should run")
-        .success()
 }

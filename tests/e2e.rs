@@ -1,5 +1,11 @@
-use assert_cmd::Command;
 use predicates::prelude::*;
+
+mod common;
+
+use common::{
+    add_source, approve_source, create_git_skill_repo_with_skill, create_local_skill,
+    create_unmanaged_skill_with_body, dalo_command, init_store, link_target, read_user_lock,
+};
 
 #[test]
 fn e2e_local_only_sync_quickstart() {
@@ -10,8 +16,7 @@ fn e2e_local_only_sync_quickstart() {
     link_target(&store, &target);
     create_local_skill(&store, "review", "# Review\n");
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("sync")
@@ -33,14 +38,13 @@ fn e2e_team_source_sync_from_local_git_repo() {
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
     let repo = temp_dir.path().join("team-repo");
-    create_git_skill_repo(&repo, "team", "# Team\n");
+    create_git_skill_repo_with_skill(&repo, "team", "# Team\n");
     init_store(&store);
     link_target(&store, &target);
     add_source(&store, "company", &repo);
     approve_source(&store, "company");
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("sync")
@@ -63,10 +67,9 @@ fn e2e_unmanaged_conflict_does_not_overwrite_real_folder() {
     init_store(&store);
     link_target(&store, &target);
     create_local_skill(&store, "review", "# Managed Review\n");
-    create_unmanaged_skill(&target, "review", "# Unmanaged Review\n");
+    create_unmanaged_skill_with_body(&target, "review", "# Unmanaged Review\n");
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("sync")
@@ -88,10 +91,9 @@ fn e2e_adoption_flow_copies_then_replaces_on_replace() {
     let target = temp_dir.path().join("skills");
     init_store(&store);
     link_target(&store, &target);
-    create_unmanaged_skill(&target, "review", "# Review\n");
+    create_unmanaged_skill_with_body(&target, "review", "# Review\n");
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["adopt", "--replace", "review"])
@@ -115,8 +117,8 @@ fn e2e_multi_source_shadowing_is_recorded_in_lock() {
     let target = temp_dir.path().join("skills");
     let repo_a = temp_dir.path().join("team-a");
     let repo_b = temp_dir.path().join("team-b");
-    create_git_skill_repo(&repo_a, "team", "# Team A\n");
-    create_git_skill_repo(&repo_b, "team", "# Team B\n");
+    create_git_skill_repo_with_skill(&repo_a, "team", "# Team A\n");
+    create_git_skill_repo_with_skill(&repo_b, "team", "# Team B\n");
     init_store(&store);
     link_target(&store, &target);
     add_source(&store, "a", &repo_a);
@@ -124,18 +126,22 @@ fn e2e_multi_source_shadowing_is_recorded_in_lock() {
     approve_source(&store, "a");
     approve_source(&store, "b");
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("sync")
         .assert()
         .success();
 
-    let lock = std::fs::read_to_string(store.join("lock.toml")).expect("lock should be readable");
-    assert!(lock.contains("source_ref = \"a:team\""));
-    assert!(lock.contains("source_ref = \"b:team\""));
-    assert!(lock.contains("reason = \"shadowed\""));
+    let lock = read_user_lock(&store);
+    assert!(
+        lock.active_skills
+            .iter()
+            .any(|skill| skill.source_ref == "a:team")
+    );
+    assert!(lock.unlinked_skills.iter().any(|skill| {
+        skill.source_ref == "b:team" && skill.reason.as_deref() == Some("shadowed")
+    }));
 }
 
 #[test]
@@ -144,7 +150,7 @@ fn e2e_dirty_team_source_blocks_sync() {
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
     let repo = temp_dir.path().join("team-repo");
-    create_git_skill_repo(&repo, "team", "# Team\n");
+    create_git_skill_repo_with_skill(&repo, "team", "# Team\n");
     init_store(&store);
     link_target(&store, &target);
     add_source(&store, "company", &repo);
@@ -155,8 +161,7 @@ fn e2e_dirty_team_source_blocks_sync() {
     )
     .expect("checkout should be dirtied");
 
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
+    dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("sync")
@@ -166,97 +171,4 @@ fn e2e_dirty_team_source_blocks_sync() {
         .stderr(predicate::str::contains(
             "source `company` has local changes",
         ));
-}
-
-fn init_store(store: &std::path::Path) {
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
-        .args(["--store"])
-        .arg(store)
-        .arg("init")
-        .assert()
-        .success();
-}
-
-fn link_target(store: &std::path::Path, target: &std::path::Path) {
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
-        .args(["--store"])
-        .arg(store)
-        .args(["target", "link", "generic"])
-        .arg(target)
-        .assert()
-        .success();
-}
-
-fn add_source(store: &std::path::Path, source: &str, repo: &std::path::Path) {
-    Command::cargo_bin("dalo")
-        .expect("binary should build")
-        .args(["--store"])
-        .arg(store)
-        .args(["source", "add", source])
-        .arg(repo)
-        .assert()
-        .success();
-}
-
-fn create_local_skill(store: &std::path::Path, slot_name: &str, body: &str) {
-    let skill_dir = store.join("local/skills").join(slot_name);
-    std::fs::create_dir_all(&skill_dir).expect("local skill dir should be created");
-    std::fs::write(skill_dir.join("SKILL.md"), body).expect("local skill should be written");
-}
-
-fn create_unmanaged_skill(target: &std::path::Path, slot_name: &str, body: &str) {
-    let skill_dir = target.join(slot_name);
-    std::fs::create_dir_all(&skill_dir).expect("unmanaged skill dir should be created");
-    std::fs::write(skill_dir.join("SKILL.md"), body).expect("unmanaged skill should be written");
-}
-
-fn create_git_skill_repo(repo: &std::path::Path, slot_name: &str, body: &str) {
-    let skill_dir = repo.join("skills").join(slot_name);
-    std::fs::create_dir_all(&skill_dir).expect("repo skill dir should be created");
-    std::fs::write(skill_dir.join("SKILL.md"), body).expect("repo skill should be written");
-    run_git(repo, &["init", "-q"]);
-    run_git(repo, &["add", "."]);
-    run_git(
-        repo,
-        &[
-            "-c",
-            "commit.gpgsign=false",
-            "-c",
-            "user.email=test@example.com",
-            "-c",
-            "user.name=Test User",
-            "commit",
-            "-m",
-            "initial",
-            "-q",
-        ],
-    );
-}
-
-fn approve_source(store: &std::path::Path, source: &str) {
-    let existing = std::fs::read_to_string(store.join("approvals.toml"))
-        .expect("approvals should be readable");
-    // A freshly initialized file serializes the empty list as `approvals = []`,
-    // which collides with the `[[approvals]]` array-of-tables form; drop it first.
-    let mut content = existing
-        .lines()
-        .filter(|line| line.trim() != "approvals = []")
-        .collect::<Vec<_>>()
-        .join("\n");
-    content.push_str(&format!(
-        "\n[[approvals]]\nscope = \"source\"\nvalue = \"{source}\"\n"
-    ));
-    std::fs::write(store.join("approvals.toml"), content)
-        .expect("source approval should be written");
-}
-
-fn run_git(repo: &std::path::Path, args: &[&str]) {
-    let status = std::process::Command::new("git")
-        .args(args)
-        .current_dir(repo)
-        .status()
-        .expect("git should run");
-    assert!(status.success());
 }
