@@ -2,6 +2,7 @@
 name = "dalo"
 version = "0.3.0"
 edition = "2024"
+rust-version = "1.93"
 description = "Git-backed skill management for AI agents."
 license = "MIT"
 repository = "https://github.com/sebastian-software/dalo"
