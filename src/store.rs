@@ -971,6 +971,26 @@ mod tests {
     }
 
     #[test]
+    fn read_config_should_reject_unknown_fields() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root);
+        fs::write(
+            &paths.config_file,
+            "version = 1\n\n[settings]\nautosync = false\n\n\
+             [[sources]]\nid = \"company\"\nkind = \"team\"\npath = \"a\"\npriority = 10\nenabled = true\ntrusted = true\nseleciton = []\n",
+        )
+        .expect("config should be overwritten");
+
+        let error = read_config(&paths).expect_err("unknown fields should be rejected");
+
+        assert!(matches!(error, DaloError::FileParse { .. }));
+        assert!(error.to_string().contains("unknown field"));
+        assert!(error.to_string().contains("seleciton"));
+    }
+
+    #[test]
     fn read_store_files_should_reject_truncated_toml() {
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
         let store_root = temp_dir.path().join("store");

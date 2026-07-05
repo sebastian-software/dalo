@@ -242,7 +242,7 @@ fn parse_frontmatter(markdown: &str, path: &Path) -> (SkillFrontmatter, Vec<Inve
         return (SkillFrontmatter::default(), warnings);
     };
 
-    let Some(end_index) = rest.find("\n---") else {
+    let Some(end_index) = frontmatter_end_index(rest) else {
         warnings.push(InventoryWarning {
             code: InventoryWarningCode::MalformedFrontmatter,
             path: path.to_path_buf(),
@@ -263,6 +263,21 @@ fn parse_frontmatter(markdown: &str, path: &Path) -> (SkillFrontmatter, Vec<Inve
             (SkillFrontmatter::default(), warnings)
         }
     }
+}
+
+fn frontmatter_end_index(rest: &str) -> Option<usize> {
+    let mut offset = 0;
+    for line in rest.split_inclusive('\n') {
+        let line_without_newline = line.strip_suffix('\n').unwrap_or(line);
+        let line_without_cr = line_without_newline
+            .strip_suffix('\r')
+            .unwrap_or(line_without_newline);
+        if line_without_cr == "---" {
+            return Some(offset);
+        }
+        offset += line.len();
+    }
+    None
 }
 
 /// Resolve the slot name for a skill, or `None` when the skill must be skipped.
@@ -418,6 +433,26 @@ mod tests {
         assert_eq!(skill.source_ref, "company:copy-editing");
         assert_eq!(skill.id.as_deref(), Some("team.copy-editing"));
         assert_eq!(skill.requires, ["style-guide".to_owned()]);
+        assert!(inventory.warnings.is_empty());
+    }
+
+    #[test]
+    fn scan_source_should_require_frontmatter_end_fence_line() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("workflow");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        fs::write(
+            skill_dir.join(SKILL_FILE),
+            "---\nname: workflow\nrequires:\n  - setup\nnotes: |\n  --- divider\n  ---- not a fence\nowners:\n  - team\n---\n# Workflow\n",
+        )
+        .expect("skill file should be written");
+
+        let inventory = scan_source("company", temp_dir.path()).expect("scan should succeed");
+
+        assert_eq!(inventory.skills.len(), 1);
+        let skill = &inventory.skills[0];
+        assert_eq!(skill.requires, ["setup".to_owned()]);
+        assert_eq!(skill.owners, ["team".to_owned()]);
         assert!(inventory.warnings.is_empty());
     }
 

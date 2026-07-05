@@ -11,6 +11,7 @@ pub const CONFIG_VERSION: u32 = 1;
 
 /// User-authored dalo configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct UserConfig {
     /// Persisted schema version.
     pub version: u32,
@@ -22,6 +23,7 @@ pub struct UserConfig {
 
 /// User-level settings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Settings {
     /// Whether scheduled autosync is enabled.
     pub autosync: bool,

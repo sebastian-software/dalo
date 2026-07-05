@@ -42,6 +42,7 @@ impl std::fmt::Display for SourceKind {
 
 /// Source entry in the user configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SourceConfig {
     /// Stable source ID.
     pub id: String,
@@ -94,6 +95,15 @@ pub struct SourcePriorityReport {
     pub source: SourceConfig,
     /// Whether the command ran as dry-run.
     pub dry_run: bool,
+}
+
+/// Sort source configs by precedence and then stable ID.
+pub fn sort_sources(sources: &mut [SourceConfig]) {
+    sources.sort_by(|left, right| {
+        left.priority
+            .cmp(&right.priority)
+            .then_with(|| left.id.cmp(&right.id))
+    });
 }
 
 /// Add a team source and clone it into the store.
@@ -223,11 +233,7 @@ fn finish_team_source(
     write_config: impl FnOnce(&StorePaths, &UserConfig) -> DaloResult<()>,
 ) -> DaloResult<()> {
     config.sources.push(source);
-    config.sources.sort_by(|left, right| {
-        left.priority
-            .cmp(&right.priority)
-            .then_with(|| left.id.cmp(&right.id))
-    });
+    sort_sources(&mut config.sources);
     write_config(paths, config)?;
     Ok(())
 }
@@ -236,11 +242,7 @@ fn finish_team_source(
 #[must_use = "the source list report should be rendered or inspected"]
 pub fn list_sources(paths: &StorePaths) -> DaloResult<SourceListReport> {
     let mut sources = store::read_config(paths)?.sources;
-    sources.sort_by(|left, right| {
-        left.priority
-            .cmp(&right.priority)
-            .then_with(|| left.id.cmp(&right.id))
-    });
+    sort_sources(&mut sources);
     Ok(SourceListReport { sources })
 }
 
@@ -270,11 +272,7 @@ pub fn set_source_priority(
     let source = source.clone();
 
     if !dry_run {
-        config.sources.sort_by(|left, right| {
-            left.priority
-                .cmp(&right.priority)
-                .then_with(|| left.id.cmp(&right.id))
-        });
+        sort_sources(&mut config.sources);
         store::write_config(paths, &config)?;
     }
 

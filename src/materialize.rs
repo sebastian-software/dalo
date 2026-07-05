@@ -214,7 +214,7 @@ fn build_plan(
                 operations.push(plan_desired_unrecorded(paths, desired)?);
             }
             (None, Some(recorded)) => {
-                operations.push(plan_undesired_recorded(paths, recorded, degraded_sources));
+                operations.push(plan_undesired_recorded(paths, recorded, degraded_sources)?);
             }
             (None, None) => {}
         }
@@ -327,12 +327,12 @@ fn plan_undesired_recorded(
     paths: &StorePaths,
     recorded: &OwnedSkillState,
     degraded_sources: &[DegradedSource],
-) -> MaterializeOperation {
+) -> DaloResult<MaterializeOperation> {
     if let Some(source) = degraded_sources
         .iter()
         .find(|source| recorded.store_path.starts_with(&source.path))
     {
-        return MaterializeOperation {
+        return Ok(MaterializeOperation {
             kind: MaterializeOperationKind::Conflict,
             link_path: recorded.link_path.clone(),
             desired_path: Some(recorded.store_path.clone()),
@@ -341,10 +341,10 @@ fn plan_undesired_recorded(
                 "source `{}` scan degraded; preserving recorded owned link",
                 source.id
             )),
-        };
+        });
     }
 
-    match actual_link_state(&recorded.link_path) {
+    let operation = match actual_link_state(&recorded.link_path) {
         Ok(ActualLinkState::Symlink(target))
             if is_owned_link_target(paths, &recorded.link_path, &recorded.store_path, &target) =>
         {
@@ -373,14 +373,25 @@ fn plan_undesired_recorded(
             status: MaterializeOperationStatus::Applied,
             reason: Some("recorded symlink is already absent".to_owned()),
         },
-        Ok(ActualLinkState::RealEntry) | Err(_) => MaterializeOperation {
+        Ok(ActualLinkState::RealEntry) => MaterializeOperation {
             kind: MaterializeOperationKind::DropRecord,
             link_path: recorded.link_path.clone(),
             desired_path: None,
             status: MaterializeOperationStatus::Applied,
             reason: Some("recorded slot is no longer owned".to_owned()),
         },
-    }
+        Err(error) => MaterializeOperation {
+            kind: MaterializeOperationKind::Conflict,
+            link_path: recorded.link_path.clone(),
+            desired_path: Some(recorded.store_path.clone()),
+            status: MaterializeOperationStatus::Blocked,
+            reason: Some(format!(
+                "could not inspect recorded slot `{}`: {error}",
+                recorded.link_path.display()
+            )),
+        },
+    };
+    Ok(operation)
 }
 
 fn apply_plan(
@@ -459,7 +470,7 @@ fn apply_plan(
         .collect();
     for operation in operations
         .iter()
-        .filter(|operation| is_degraded_source_preserve(operation))
+        .filter(|operation| should_preserve_recorded_operation(operation))
     {
         let Some(preserved) = previous_owned_skills
             .iter()
@@ -477,6 +488,15 @@ fn apply_plan(
     }
 
     Ok(())
+}
+
+fn should_preserve_recorded_operation(operation: &MaterializeOperation) -> bool {
+    is_degraded_source_preserve(operation)
+        || operation.reason.as_deref().is_some_and(|reason| {
+            operation.kind == MaterializeOperationKind::Conflict
+                && operation.status == MaterializeOperationStatus::Blocked
+                && reason.starts_with("could not inspect recorded slot")
+        })
 }
 
 fn link_target_matches(link_path: &Path, target: &Path, expected: &Path) -> bool {
@@ -819,6 +839,45 @@ mod tests {
         let state =
             store::read_state(&StorePaths::new(store_root)).expect("state should be readable");
         assert!(state.owned_skills.is_empty());
+    }
+
+    #[test]
+    fn materialize_should_preserve_record_on_metadata_errors() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let target_file = temp_dir.path().join("target-file");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        fs::write(&target_file, "not a directory").expect("target file should be written");
+        let link_path = target_file.join("review");
+        let recorded_store_dir = store_root.join("local/skills/review");
+        fs::create_dir_all(&recorded_store_dir).expect("recorded store dir should be created");
+        write_state_with_owned_skill(&store_root, &target_file, &link_path, &recorded_store_dir);
+
+        let report = materialize(
+            &StorePaths::new(store_root.clone()),
+            &empty_resolution(),
+            false,
+        )
+        .expect("materialize should succeed");
+
+        assert_eq!(
+            report.operations[0].kind,
+            MaterializeOperationKind::Conflict
+        );
+        assert_eq!(
+            report.operations[0].status,
+            MaterializeOperationStatus::Blocked
+        );
+        assert!(
+            report.operations[0]
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("could not inspect recorded slot"))
+        );
+        let state =
+            store::read_state(&StorePaths::new(store_root)).expect("state should be readable");
+        assert_eq!(state.owned_skills.len(), 1);
+        assert_eq!(state.owned_skills[0].link_path, link_path);
     }
 
     #[test]
