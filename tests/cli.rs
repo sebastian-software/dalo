@@ -2638,6 +2638,77 @@ fn instructions_enable_disable_should_manage_block_idempotently() {
 }
 
 #[test]
+fn instructions_disable_should_match_normalized_absolute_target() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let dir_a = temp_dir.path().join("a");
+    let dir_b = temp_dir.path().join("b");
+    std::fs::create_dir_all(&dir_a).expect("dir a should be created");
+    std::fs::create_dir_all(&dir_b).expect("dir b should be created");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::write(
+        store.join("local/instructions/house-style.md"),
+        "version: 1.0\n\nUse tabs.\n",
+    )
+    .expect("pack should be written");
+    std::fs::write(dir_a.join("AGENTS.md"), "# Project A\n").expect("target a should be written");
+
+    dalo_command()
+        .current_dir(&dir_a)
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "house-style", "AGENTS.md"])
+        .assert()
+        .success();
+    let lock = read_user_lock(&store);
+    assert_eq!(
+        lock.active_instruction_packs[0].target,
+        dir_a
+            .join("AGENTS.md")
+            .canonicalize()
+            .expect("target a should canonicalize")
+    );
+
+    dalo_command()
+        .current_dir(&dir_b)
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "disable", "house-style", "AGENTS.md"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("unchanged"));
+    let after_wrong_cwd = read_user_lock(&store);
+    assert_eq!(after_wrong_cwd.active_instruction_packs.len(), 1);
+    assert!(
+        std::fs::read_to_string(dir_a.join("AGENTS.md"))
+            .expect("target a should be readable")
+            .contains("dalo:start")
+    );
+
+    dalo_command()
+        .current_dir(&dir_a)
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "disable", "house-style", "AGENTS.md"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("disabled"));
+    let lock = read_user_lock(&store);
+    assert!(lock.active_instruction_packs.is_empty());
+    assert!(
+        !std::fs::read_to_string(dir_a.join("AGENTS.md"))
+            .expect("target a should be readable")
+            .contains("dalo:start")
+    );
+}
+
+#[test]
 fn instructions_list_should_show_active_pack() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
