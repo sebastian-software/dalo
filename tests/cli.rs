@@ -1430,6 +1430,62 @@ fn sync_should_not_link_unapproved_team_skill() {
 }
 
 #[test]
+fn sync_should_not_refresh_team_source_without_track_policy() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo(&repo);
+    setup_store_with_target(&store, &target);
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "company"])
+        .arg(&repo)
+        .assert()
+        .success();
+    remove_source_update_policy(&store, "company");
+    std::fs::write(repo.join("skills/team/SKILL.md"), "# Team v2\n")
+        .expect("upstream skill should be updated");
+    run_git(&repo, &["add", "."]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "update team",
+            "-q",
+        ],
+    );
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    assert_eq!(
+        std::fs::read_to_string(store.join("sources/company/checkout/skills/team/SKILL.md"))
+            .expect("checkout skill should be readable"),
+        "# Team\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(target.join("team/SKILL.md"))
+            .expect("materialized skill should be readable"),
+        "# Team\n"
+    );
+}
+
+#[test]
 fn status_should_show_all_pending_approval_candidates_for_same_slot() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -2351,6 +2407,27 @@ fn set_source_untrusted(store: &std::path::Path, source_id: &str) {
             out.push_str(line);
             out.push('\n');
         }
+    }
+    std::fs::write(&config_path, out).expect("config should be written");
+}
+
+fn remove_source_update_policy(store: &std::path::Path, source_id: &str) {
+    let config_path = store.join("config.toml");
+    let content = std::fs::read_to_string(&config_path).expect("config should be readable");
+    let mut in_source = false;
+    let mut out = String::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed == "[[sources]]" {
+            in_source = false;
+        } else if let Some(rest) = trimmed.strip_prefix("id = ") {
+            in_source = rest.trim().trim_matches('"') == source_id;
+        }
+        if in_source && trimmed.starts_with("update_policy = ") {
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
     }
     std::fs::write(&config_path, out).expect("config should be written");
 }
