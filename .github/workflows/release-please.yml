@@ -112,8 +112,13 @@ jobs:
           version="${TAG_NAME#v}"
           package="dalo-${version}-${TARGET}"
           mkdir -p "dist/${package}"
+          mkdir -p "dist/${package}/completions" "dist/${package}/man/man1"
           cp "target/${TARGET}/release/dalo" "dist/${package}/"
           cp README.md LICENSE "dist/${package}/"
+          cargo run --locked -- completions bash > "dist/${package}/completions/dalo.bash"
+          cargo run --locked -- completions zsh > "dist/${package}/completions/_dalo"
+          cargo run --locked -- completions fish > "dist/${package}/completions/dalo.fish"
+          cargo run --locked -- manpage > "dist/${package}/man/man1/dalo.1"
           tar -C dist -czf "dist/${package}.tar.gz" "${package}"
           (
             cd dist

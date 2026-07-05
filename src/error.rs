@@ -1,3 +1,5 @@
+//! Error types and process exit-code mapping.
+
 use std::io;
 use std::path::PathBuf;
 use std::process::ExitCode;

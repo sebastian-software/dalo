@@ -39,6 +39,9 @@ jobs:
       - name: Release build
         run: cargo build --release
 
+      - name: Documentation
+        run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
+
   msrv:
     name: MSRV
     runs-on: ubuntu-latest
