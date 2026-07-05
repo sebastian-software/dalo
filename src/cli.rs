@@ -315,32 +315,32 @@ fn run_instructions(options: &GlobalOptions, command: InstructionsCommand) -> Da
     let paths = store::StorePaths::new(options.store.clone());
     match command.command {
         InstructionsSubcommand::Enable(args) => {
-            let _lock = store::StoreLock::acquire(&paths)?;
-            let report = instructions::enable_pack(&paths, &args.pack, &args.file)?;
+            let _lock = if options.dry_run {
+                None
+            } else {
+                Some(store::StoreLock::acquire(&paths)?)
+            };
+            let report =
+                instructions::enable_pack(&paths, &args.pack, &args.file, options.dry_run)?;
             if options.json {
                 print_json(&report)?;
             } else {
-                println!(
-                    "{} pack {} -> {}",
-                    report.action,
-                    report.pack_id,
-                    report.target.display()
-                );
+                status::print_instruction_pack_report(&report);
             }
             Ok(())
         }
         InstructionsSubcommand::Disable(args) => {
-            let _lock = store::StoreLock::acquire(&paths)?;
-            let report = instructions::disable_pack(&paths, &args.pack, &args.file)?;
+            let _lock = if options.dry_run {
+                None
+            } else {
+                Some(store::StoreLock::acquire(&paths)?)
+            };
+            let report =
+                instructions::disable_pack(&paths, &args.pack, &args.file, options.dry_run)?;
             if options.json {
                 print_json(&report)?;
             } else {
-                println!(
-                    "{} pack {} -> {}",
-                    report.action,
-                    report.pack_id,
-                    report.target.display()
-                );
+                status::print_instruction_pack_report(&report);
             }
             Ok(())
         }
@@ -483,8 +483,18 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             Ok(())
         }
         SourceSubcommand::Select(args) => {
-            let _lock = store::StoreLock::acquire(&paths)?;
-            let report = catalog::select_skills(&paths, &args.id, &args.skills, args.unselect)?;
+            let _lock = if options.dry_run {
+                None
+            } else {
+                Some(store::StoreLock::acquire(&paths)?)
+            };
+            let report = catalog::select_skills(
+                &paths,
+                &args.id,
+                &args.skills,
+                args.unselect,
+                options.dry_run,
+            )?;
             if options.json {
                 print_json(&report)?;
             } else {
@@ -569,8 +579,12 @@ fn run_resolve(options: &GlobalOptions, command: ResolveCommand) -> DaloResult<(
             Ok(())
         }
         ResolveSubcommand::Keep(args) => {
-            let _lock = store::StoreLock::acquire(&paths)?;
-            let report = adopt::keep_unmanaged_skill(&paths, &args.id)?;
+            let _lock = if options.dry_run {
+                None
+            } else {
+                Some(store::StoreLock::acquire(&paths)?)
+            };
+            let report = adopt::keep_unmanaged_skill(&paths, &args.id, options.dry_run)?;
             if options.json {
                 print_json(&report)?;
             } else {

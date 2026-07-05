@@ -122,6 +122,8 @@ pub struct KeepReport {
     pub skill: UnmanagedSkill,
     /// Whether the protection already existed.
     pub existing: bool,
+    /// Whether the command ran as dry-run.
+    pub dry_run: bool,
 }
 
 /// Remove-owned report.
@@ -277,14 +279,18 @@ pub fn list_resolve_items(paths: &StorePaths) -> DaloResult<ResolveListReport> {
 }
 
 /// Mark an unmanaged skill as explicitly protected.
-pub fn keep_unmanaged_skill(paths: &StorePaths, selector: &str) -> DaloResult<KeepReport> {
+pub fn keep_unmanaged_skill(
+    paths: &StorePaths,
+    selector: &str,
+    dry_run: bool,
+) -> DaloResult<KeepReport> {
     let skill = find_unmanaged_skill(paths, selector)?;
     let mut state = store::read_state(paths)?;
     let existing = state
         .protected_skills
         .iter()
         .any(|protected| protected.path == skill.path);
-    if !existing {
+    if !existing && !dry_run {
         state.protected_skills.push(ProtectedSkillState {
             slot_name: skill.slot_name.clone(),
             path: skill.path.clone(),
@@ -295,7 +301,11 @@ pub fn keep_unmanaged_skill(paths: &StorePaths, selector: &str) -> DaloResult<Ke
         store::write_state(paths, &state)?;
     }
 
-    Ok(KeepReport { skill, existing })
+    Ok(KeepReport {
+        skill,
+        existing,
+        dry_run,
+    })
 }
 
 /// Remove a recorded dalo-owned symlink by slot, path, or generated ID.
