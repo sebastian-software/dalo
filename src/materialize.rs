@@ -236,14 +236,20 @@ fn plan_desired_recorded(
             status: MaterializeOperationStatus::Applied,
             reason: Some("recorded symlink is missing".to_owned()),
         },
-        ActualLinkState::Symlink(target) if target == desired.store_path => MaterializeOperation {
-            kind: MaterializeOperationKind::NoOp,
-            link_path: desired.link_path.clone(),
-            desired_path: Some(desired.store_path.clone()),
-            status: MaterializeOperationStatus::Existing,
-            reason: None,
-        },
-        ActualLinkState::Symlink(target) if target.starts_with(&paths.root) => {
+        ActualLinkState::Symlink(target)
+            if link_target_matches(&desired.link_path, &target, &desired.store_path) =>
+        {
+            MaterializeOperation {
+                kind: MaterializeOperationKind::NoOp,
+                link_path: desired.link_path.clone(),
+                desired_path: Some(desired.store_path.clone()),
+                status: MaterializeOperationStatus::Existing,
+                reason: None,
+            }
+        }
+        ActualLinkState::Symlink(target)
+            if is_owned_link_target(paths, &desired.link_path, &desired.store_path, &target) =>
+        {
             MaterializeOperation {
                 kind: MaterializeOperationKind::Relink,
                 link_path: desired.link_path.clone(),
@@ -285,7 +291,7 @@ fn plan_desired_unrecorded(
             reason: None,
         },
         ActualLinkState::Symlink(target)
-            if is_owned_link_target(paths, &desired.store_path, &target) =>
+            if is_owned_link_target(paths, &desired.link_path, &desired.store_path, &target) =>
         {
             MaterializeOperation {
                 kind: MaterializeOperationKind::Relink,
@@ -340,7 +346,7 @@ fn plan_undesired_recorded(
 
     match actual_link_state(&recorded.link_path) {
         Ok(ActualLinkState::Symlink(target))
-            if is_owned_link_target(paths, &recorded.store_path, &target) =>
+            if is_owned_link_target(paths, &recorded.link_path, &recorded.store_path, &target) =>
         {
             MaterializeOperation {
                 kind: MaterializeOperationKind::Remove,
@@ -420,7 +426,12 @@ fn apply_plan(
                 if let Some(recorded_store_path) = operation.desired_path.as_ref()
                     && let ActualLinkState::Symlink(target) =
                         actual_link_state(&operation.link_path)?
-                    && is_owned_link_target(paths, recorded_store_path, &target)
+                    && is_owned_link_target(
+                        paths,
+                        &operation.link_path,
+                        recorded_store_path,
+                        &target,
+                    )
                 {
                     fs::remove_file(&operation.link_path)?;
                 }
@@ -468,8 +479,22 @@ fn apply_plan(
     Ok(())
 }
 
-fn is_owned_link_target(paths: &StorePaths, recorded_store_path: &Path, target: &Path) -> bool {
-    target == recorded_store_path || target.starts_with(&paths.root)
+fn link_target_matches(link_path: &Path, target: &Path, expected: &Path) -> bool {
+    store::comparable_path(&store::resolve_link_target(link_path, target))
+        == store::comparable_path(expected)
+}
+
+fn is_owned_link_target(
+    paths: &StorePaths,
+    link_path: &Path,
+    recorded_store_path: &Path,
+    target: &Path,
+) -> bool {
+    link_target_matches(link_path, target, recorded_store_path)
+        || store::path_is_same_or_descendant(
+            &store::resolve_link_target(link_path, target),
+            &paths.root,
+        )
 }
 
 fn is_degraded_source_preserve(operation: &MaterializeOperation) -> bool {
@@ -657,6 +682,32 @@ mod tests {
 
         let report =
             materialize(&paths, &resolution, false).expect("second materialize should succeed");
+
+        assert_eq!(report.operations[0].kind, MaterializeOperationKind::NoOp);
+    }
+
+    #[test]
+    fn materialize_should_accept_owned_symlink_to_store_equivalent_path() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let store_alias = temp_dir.path().join("store-alias");
+        let target_dir = temp_dir.path().join("target");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        fs::create_dir_all(&target_dir).expect("target should be created");
+        let skill_dir = store_root.join("local/skills/review");
+        fs::create_dir_all(&skill_dir).expect("skill should be created");
+        unix_fs::symlink(&store_root, &store_alias).expect("store alias should be created");
+        let link_path = target_dir.join("review");
+        unix_fs::symlink(store_alias.join("local/skills/review"), &link_path)
+            .expect("owned symlink should be created");
+        write_state_with_owned_skill(&store_root, &target_dir, &link_path, &skill_dir);
+
+        let report = materialize(
+            &StorePaths::new(store_root),
+            &resolution_with_skill("review", &skill_dir),
+            false,
+        )
+        .expect("materialize should succeed");
 
         assert_eq!(report.operations[0].kind, MaterializeOperationKind::NoOp);
     }

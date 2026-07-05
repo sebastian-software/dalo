@@ -372,7 +372,12 @@ fn check_owned_symlinks(paths: &StorePaths, state: &StateFile, findings: &mut Ve
         match fs::symlink_metadata(&owned.link_path) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
                 match fs::read_link(&owned.link_path) {
-                    Ok(target) if !target.starts_with(&paths.root) => {
+                    Ok(target)
+                        if !store::path_is_same_or_descendant(
+                            &store::resolve_link_target(&owned.link_path, &target),
+                            &paths.root,
+                        ) =>
+                    {
                         findings.push(finding_error(
                             DoctorCode::ForeignOwnedSymlink,
                             format!(
@@ -383,7 +388,9 @@ fn check_owned_symlinks(paths: &StorePaths, state: &StateFile, findings: &mut Ve
                             Some(format!("dalo resolve remove-owned {}", owned.slot_name)),
                         ));
                     }
-                    Ok(target) if !target.exists() => {
+                    Ok(target)
+                        if !store::resolve_link_target(&owned.link_path, &target).exists() =>
+                    {
                         findings.push(finding_error(
                             DoctorCode::BrokenOwnedSymlink,
                             format!(
@@ -763,6 +770,38 @@ mod tests {
                 .findings
                 .iter()
                 .any(|finding| finding.code == DoctorCode::BrokenOwnedSymlink)
+        );
+    }
+
+    #[test]
+    fn run_doctor_should_accept_owned_symlink_to_store_equivalent_path() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store = temp_dir.path().join("store");
+        let store_alias = temp_dir.path().join("store-alias");
+        let target = temp_dir.path().join("target");
+        store::init_store(store.clone(), false).expect("init should succeed");
+        fs::create_dir_all(&target).expect("target should be created");
+        let store_skill = store.join("local/skills/review");
+        fs::create_dir_all(&store_skill).expect("skill should be created");
+        std::os::unix::fs::symlink(&store, &store_alias).expect("store alias should be created");
+        let link = target.join("review");
+        std::os::unix::fs::symlink(store_alias.join("local/skills/review"), &link)
+            .expect("owned symlink should be created");
+        write_state(&store, &target, &link, &store_skill);
+
+        let report = run_doctor(&store);
+
+        assert!(
+            !report
+                .findings
+                .iter()
+                .any(|finding| finding.code == DoctorCode::ForeignOwnedSymlink)
+        );
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|finding| finding.code == DoctorCode::OwnedSymlinkOk)
         );
     }
 

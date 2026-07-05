@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::env;
+use std::ffi::OsString;
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::{Seek, SeekFrom, Write};
@@ -285,7 +286,72 @@ pub fn resolve_store_path(explicit: Option<&Path>) -> DaloResult<PathBuf> {
         home_dir()?.join(DEFAULT_STORE_DIR)
     };
 
-    expand_user_path(&candidate)
+    absolute_path(&expand_user_path(&candidate)?)
+}
+
+/// Resolve a possibly relative path to an absolute path without requiring the
+/// final path to exist.
+pub fn absolute_path(path: &Path) -> DaloResult<PathBuf> {
+    if let Ok(canonical) = path.canonicalize() {
+        return Ok(canonical);
+    }
+    if path.is_absolute() {
+        return Ok(path.to_path_buf());
+    }
+    Ok(env::current_dir()?.join(path))
+}
+
+/// Resolve a symlink target using the same rules the OS uses for links.
+#[must_use]
+pub fn resolve_link_target(link_path: &Path, target: &Path) -> PathBuf {
+    if target.is_absolute() {
+        return target.to_path_buf();
+    }
+    link_path
+        .parent()
+        .map_or_else(|| target.to_path_buf(), |parent| parent.join(target))
+}
+
+/// Normalize a path for identity/prefix comparisons, canonicalizing the longest
+/// existing prefix and preserving any missing tail.
+#[must_use]
+pub fn comparable_path(path: &Path) -> PathBuf {
+    if let Ok(canonical) = path.canonicalize() {
+        return canonical;
+    }
+
+    let mut candidate = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        env::current_dir()
+            .map(|cwd| cwd.join(path))
+            .unwrap_or_else(|_| path.to_path_buf())
+    };
+    let mut tail = Vec::<OsString>::new();
+    loop {
+        if let Ok(canonical) = candidate.canonicalize() {
+            let mut comparable = canonical;
+            for component in tail.iter().rev() {
+                comparable.push(component);
+            }
+            return comparable;
+        }
+        let Some(name) = candidate.file_name().map(|name| name.to_os_string()) else {
+            return candidate;
+        };
+        tail.push(name);
+        if !candidate.pop() {
+            return path.to_path_buf();
+        }
+    }
+}
+
+/// Whether `path` is equal to or below `root`, after comparable normalization.
+#[must_use]
+pub fn path_is_same_or_descendant(path: &Path, root: &Path) -> bool {
+    let path = comparable_path(path);
+    let root = comparable_path(root);
+    path == root || path.starts_with(root)
 }
 
 /// Initialize the dalo store.
@@ -643,13 +709,11 @@ fn validate_store_path(path: &Path) -> DaloResult<()> {
 
 /// Expand a leading `~` in a user-provided path.
 pub fn expand_user_path(path: &Path) -> DaloResult<PathBuf> {
-    let path_string = path.to_string_lossy();
-
-    if path_string == "~" {
+    if path == Path::new("~") {
         return home_dir();
     }
 
-    if let Some(rest) = path_string.strip_prefix("~/") {
+    if let Ok(rest) = path.strip_prefix("~") {
         return Ok(home_dir()?.join(rest));
     }
 
@@ -841,6 +905,18 @@ mod tests {
             init_store(PathBuf::new(), false).expect_err("init should reject an empty path");
 
         assert!(matches!(error, DaloError::InvalidStorePath { .. }));
+    }
+
+    #[test]
+    fn expand_user_path_should_not_lossily_rewrite_non_utf8_paths() {
+        use std::os::unix::ffi::OsStringExt;
+
+        let non_utf8 = PathBuf::from(OsString::from_vec(vec![0xff, b's', b't', b'o', b'r', b'e']));
+
+        assert_eq!(
+            expand_user_path(&non_utf8).expect("path should pass through"),
+            non_utf8
+        );
     }
 
     #[test]

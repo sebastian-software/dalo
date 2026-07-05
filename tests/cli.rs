@@ -1,4 +1,5 @@
 use assert_cmd::Command;
+use dalo::store;
 use predicates::prelude::*;
 use std::os::unix::fs::PermissionsExt;
 
@@ -151,6 +152,50 @@ fn doctor_json_should_report_initialized_store() {
         .stdout(predicate::str::contains("\"code\": \"store_exists\""))
         .stdout(predicate::str::contains("\"code\": \"config_ok\""))
         .stdout(predicate::str::contains("\"code\": \"lock_ok\""));
+}
+
+#[test]
+fn relative_store_path_should_create_absolute_owned_symlink_and_clean_doctor() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .current_dir(temp_dir.path())
+        .args(["--store", "store", "init"])
+        .assert()
+        .success();
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .current_dir(temp_dir.path())
+        .args(["--store", "store", "target", "link", "generic"])
+        .arg(&target)
+        .assert()
+        .success();
+    create_unmanaged_skill(&target, "review");
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .current_dir(temp_dir.path())
+        .args(["--store", "store", "--yes", "adopt", "review"])
+        .assert()
+        .success();
+
+    let link_target = std::fs::read_link(target.join("review")).expect("link should be readable");
+    assert!(link_target.is_absolute());
+    assert_eq!(
+        store::comparable_path(&link_target),
+        store::comparable_path(&store.join("local/skills/review"))
+    );
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .current_dir(temp_dir.path())
+        .args(["--store", "store", "--json", "doctor"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"code\": \"foreign_owned_symlink\"").not());
 }
 
 #[test]
