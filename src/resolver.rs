@@ -618,10 +618,11 @@ fn requirement_status(
         Some(skill) if skill.id.is_some() && skill.id == required.id => {
             RequirementStatus::Satisfied
         }
-        // The slot is filled by a different skill. A requirement that named a stable
-        // ID is not satisfied by a non-equivalent winner; one that named a slot is.
+        // The slot is filled by a different skill. A requirement that named the
+        // exact source ref or stable ID is not satisfied by a non-equivalent
+        // winner; one that named only a slot is.
         Some(_) => {
-            if required.id.as_deref() == Some(requirement) {
+            if requirement == required.source_ref || required.id.as_deref() == Some(requirement) {
                 RequirementStatus::Block(ClosureBlockReason::ShadowedNotSatisfied)
             } else {
                 RequirementStatus::Satisfied
@@ -1180,6 +1181,44 @@ mod tests {
             resolution.blocked_skills[0].reason,
             ClosureBlockReason::PendingApproval
         );
+    }
+
+    #[test]
+    fn resolve_should_block_source_qualified_requirement_when_shadowed() {
+        let mut team = source("team", SourceKind::Team, 5);
+        team.trusted = true;
+        let resolution = resolve_with(
+            vec![catalog("cat", 10, &["alpha"]), team],
+            vec![
+                inventory(
+                    "cat",
+                    vec![
+                        skill_req("cat", "alpha", &["cat:beta"]),
+                        skill("cat", "beta"),
+                    ],
+                ),
+                inventory("team", vec![skill("team", "beta")]),
+            ],
+            Vec::new(),
+        );
+
+        assert!(
+            !resolution
+                .active_skills
+                .iter()
+                .any(|skill| skill.source_ref == "cat:alpha")
+        );
+        assert!(
+            resolution
+                .active_skills
+                .iter()
+                .any(|skill| skill.source_ref == "team:beta")
+        );
+        assert_eq!(
+            resolution.blocked_skills[0].reason,
+            ClosureBlockReason::ShadowedNotSatisfied
+        );
+        assert_eq!(resolution.blocked_skills[0].requirement, "cat:beta");
     }
 
     #[test]
