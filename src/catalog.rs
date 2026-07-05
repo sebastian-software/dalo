@@ -16,7 +16,8 @@ use crate::source::{self, SourceConfig, SourceKind};
 use crate::store::{self, StorePaths};
 
 /// Current persisted source-lock schema version.
-pub const SOURCE_LOCK_SCHEMA_VERSION: u32 = 1;
+pub const SOURCE_LOCK_SCHEMA_VERSION: u32 = 2;
+const MIN_SUPPORTED_SOURCE_LOCK_SCHEMA_VERSION: u32 = 1;
 
 /// Source lock: pinned catalog commits, selections, and inventory snapshots.
 ///
@@ -279,7 +280,9 @@ pub fn select_skills(
             .iter()
             .position(|catalog| catalog.source_id == id)
         {
-            if lock.catalogs[index].commit == commit {
+            if lock.schema_version == SOURCE_LOCK_SCHEMA_VERSION
+                && lock.catalogs[index].commit == commit
+            {
                 lock.catalogs[index].inventory.clone()
             } else {
                 catalog_inventory_from_scan(&source_path, &scan)?
@@ -304,6 +307,7 @@ pub fn select_skills(
             });
             lock.catalogs.sort_by(|a, b| a.source_id.cmp(&b.source_id));
         }
+        lock.schema_version = SOURCE_LOCK_SCHEMA_VERSION;
         write_source_lock(paths, &lock)?;
     }
 
@@ -338,7 +342,9 @@ pub fn read_source_lock(paths: &StorePaths) -> DaloResult<SourceLock> {
         path: paths.source_lock_file.clone(),
         reason: error.to_string(),
     })?;
-    if lock.schema_version != SOURCE_LOCK_SCHEMA_VERSION {
+    if !(MIN_SUPPORTED_SOURCE_LOCK_SCHEMA_VERSION..=SOURCE_LOCK_SCHEMA_VERSION)
+        .contains(&lock.schema_version)
+    {
         return Err(DaloError::UnsupportedSchema {
             path: paths.source_lock_file.clone(),
             version: lock.schema_version,
@@ -625,13 +631,26 @@ pub fn compare_catalog_inventory(
 /// config, the lock, or the resolved set.
 pub fn check_catalog_drift(paths: &StorePaths, id: &str) -> DaloResult<CatalogDrift> {
     let source = catalog_source(paths, id)?;
-    let lock = read_source_lock(paths)?;
-    let catalog_lock = lock
+    let mut lock = read_source_lock(paths)?;
+    let mut catalog_lock = lock
         .catalog(id)
         .ok_or_else(|| DaloError::UnknownSource {
             source_id: id.to_owned(),
         })?
         .clone();
+
+    if lock.schema_version != SOURCE_LOCK_SCHEMA_VERSION {
+        catalog_lock.inventory = catalog_inventory_at_commit(&source.path, &catalog_lock.commit)?;
+        if let Some(stored) = lock
+            .catalogs
+            .iter_mut()
+            .find(|catalog| catalog.source_id == id)
+        {
+            stored.inventory = catalog_lock.inventory.clone();
+        }
+        lock.schema_version = SOURCE_LOCK_SCHEMA_VERSION;
+        write_source_lock(paths, &lock)?;
+    }
 
     git::fetch(&source.path)?;
     git::prune_worktrees(&source.path)?;
@@ -656,6 +675,16 @@ pub fn check_catalog_drift(paths: &StorePaths, id: &str) -> DaloResult<CatalogDr
         upstream_commit,
         outcomes,
     })
+}
+
+fn catalog_inventory_at_commit(source_path: &Path, commit: &str) -> DaloResult<Vec<CatalogEntry>> {
+    let temp = tempfile::tempdir()?;
+    let worktree = temp.path().join("pinned");
+    git::add_detached_worktree(source_path, &worktree, commit)?;
+    let scanned = catalog_inventory(&worktree);
+    let _ = git::remove_worktree(source_path, &worktree);
+    let _ = git::prune_worktrees(source_path);
+    scanned
 }
 
 fn same_entry(a: &CatalogEntry, b: &CatalogEntry) -> bool {

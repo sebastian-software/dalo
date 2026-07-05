@@ -1,3 +1,4 @@
+use dalo::catalog::SOURCE_LOCK_SCHEMA_VERSION;
 use dalo::lockfile::LockedInstructionPack;
 use dalo::store;
 use predicates::prelude::*;
@@ -2813,6 +2814,58 @@ fn catalog_refresh_check_should_report_upstream_drift() {
         .success()
         .stdout(predicate::str::contains("selected_changed"))
         .stdout(predicate::str::contains("new_available"));
+}
+
+#[test]
+fn source_refresh_check_should_rehash_legacy_source_lock_without_phantom_drift() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "copy-editing"])
+        .assert()
+        .success();
+    let mut lock = read_source_lock(&store);
+    lock.schema_version = 1;
+    let catalog = lock
+        .catalogs
+        .iter_mut()
+        .find(|catalog| catalog.source_id == "marketing")
+        .expect("marketing catalog should be locked");
+    catalog.inventory[0].content_hash = "legacy-v1-hash".to_owned();
+    write_source_lock(&store, &lock);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "refresh", "marketing", "--check"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("selected_changed").not());
+
+    let migrated = read_source_lock(&store);
+    assert_eq!(migrated.schema_version, SOURCE_LOCK_SCHEMA_VERSION);
+    assert_ne!(
+        migrated
+            .catalog("marketing")
+            .expect("marketing catalog should stay locked")
+            .inventory[0]
+            .content_hash,
+        "legacy-v1-hash"
+    );
 }
 
 #[test]
