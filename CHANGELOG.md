@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.4.1](https://github.com/sebastian-software/dalo/compare/dalo-v0.4.0...dalo-v0.4.1) (2026-07-05)
+
+
+### Bug Fixes
+
+* **catalog:** rehash legacy source locks ([b1a5a7b](https://github.com/sebastian-software/dalo/commit/b1a5a7b9972f55822e09688e65795397e49020f4))
+* **git:** harden clone and ssh handling ([cb51533](https://github.com/sebastian-software/dalo/commit/cb5153365784154af4bc60a97b1b960c077b4ba2))
+* **init:** acquire store lock before repair ([194390d](https://github.com/sebastian-software/dalo/commit/194390d8d519daae2271a7778209ee8f59578f03))
+* **instructions:** handle legacy relative targets ([97b9a76](https://github.com/sebastian-software/dalo/commit/97b9a760a0e7b760463b7098209b09bfb9ebed17))
+* **instructions:** preserve target links and modes ([bc817b5](https://github.com/sebastian-software/dalo/commit/bc817b5d175afa7a2b292b5ef7f8c8d88f4c6e65))
+* **inventory:** remove serde_yaml frontmatter parsing ([ac630f9](https://github.com/sebastian-software/dalo/commit/ac630f9b0b875fb76c92b02ef962935d14c2ec08))
+* **recovery:** polish repair edge cases ([b26dd67](https://github.com/sebastian-software/dalo/commit/b26dd67c4432885434110483b88a561a34a6a974))
+* **sync:** preserve links on partial source scans ([66eea6f](https://github.com/sebastian-software/dalo/commit/66eea6ff097a39d2d98b6823e9a28565450d6f99))
+* **upgrade:** preserve legacy approval and slot states ([eb48ebc](https://github.com/sebastian-software/dalo/commit/eb48ebc5ef59dc1a90ee7a45913c5e348b1e2ba3))
+
 ## [0.4.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.3.0...dalo-v0.4.0) (2026-07-05)
 
 
