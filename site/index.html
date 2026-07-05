@@ -70,7 +70,7 @@
   <section class="hero" data-scope="dark">
     <div class="wrap hero-grid">
       <div class="hero-copy">
-        <p class="kicker reveal"><span class="dot"></span> Rust CLI · macOS &amp; Linux · v0.1.0-rc</p>
+        <p class="kicker reveal"><span class="dot"></span> Rust CLI · macOS &amp; Linux · v0.3.0</p>
         <h1 class="reveal">Bring order to the skills your AI agents run.</h1>
         <p class="hero-lede reveal">
           Skills are turning into team knowledge: how you review code, write release
@@ -96,7 +96,7 @@
           </div>
           <pre class="terminal-body"><code><span class="ln"><span class="prompt">$</span> dalo sync</span>
 <span class="ln c-dim">  refresh   company        clean · fast-forward</span>
-<span class="ln"><span class="c-ok">  link      </span>review         <span class="c-dim">→ ~/.codex/skills/review</span></span>
+<span class="ln"><span class="c-ok">  link      </span>review         <span class="c-dim">→ ~/.agents/skills/review</span></span>
 <span class="ln"><span class="c-ok">  link      </span>release-notes  <span class="c-dim">→ ~/.claude/skills/release-notes</span></span>
 <span class="ln"><span class="c-warn">  shadow    </span>copy-editing   <span class="c-dim">company over oss</span></span>
 <span class="ln"><span class="c-block">  block     </span>deploy         <span class="c-dim">slot held by unmanaged skill</span></span>
@@ -150,7 +150,7 @@
   <!-- ───────────────────────── WHAT CHANGES ───────────────────────── -->
   <section class="band band-tint" id="changes">
     <div class="wrap">
-      <h2 class="section-h reveal">Three things Dalo gives you.</h2>
+      <h2 class="section-h reveal">What Dalo gives you today.</h2>
       <div class="feature-rows">
 
         <article class="feature-row reveal">
@@ -215,6 +215,47 @@
           </div>
         </article>
 
+        <article class="feature-row feature-row-flip reveal">
+          <div class="feature-text">
+            <span class="feature-index">04</span>
+            <h3>Selective catalogs</h3>
+            <p>
+              Public skill repositories are often catalogs, not one-skill packages.
+              Add a catalog source, inspect its inventory, select only the skills you
+              want, and keep the selection pinned with read-only drift checks.
+            </p>
+          </div>
+          <div class="feature-aside">
+            <div class="store-card">
+              <span class="store-path">catalog flow</span>
+              <ul class="store-tree">
+                <li><span class="c-accent">inspect</span> <span class="c-dim">40 offered skills</span></li>
+                <li><span class="c-accent">select</span> <span class="c-dim">3 team-approved skills</span></li>
+                <li><span class="c-accent">check</span> <span class="c-dim">upstream drift before changing pins</span></li>
+              </ul>
+            </div>
+          </div>
+        </article>
+
+        <article class="feature-row reveal">
+          <div class="feature-text">
+            <span class="feature-index">05</span>
+            <h3>Managed instruction packs</h3>
+            <p>
+              Shared conventions can live as versioned Markdown packs. Dalo renders
+              them into explicit managed blocks, preserves everything outside those
+              markers, and warns when active packs declare overlapping topics.
+            </p>
+          </div>
+          <div class="feature-aside">
+            <div class="guard-card">
+              <div class="guard-line"><svg class="ic-shield" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0 1 2.6v4.8C1 11.5 4 14.8 8 16c4-1.2 7-4.5 7-8.6V2.6L8 0Zm-1 11L4 8l1.2-1.2L7 8.6l3.8-3.8L12 6l-5 5Z"/></svg> instruction blocks are versioned</div>
+              <div class="guard-line"><svg class="ic-shield" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0 1 2.6v4.8C1 11.5 4 14.8 8 16c4-1.2 7-4.5 7-8.6V2.6L8 0Zm-1 11L4 8l1.2-1.2L7 8.6l3.8-3.8L12 6l-5 5Z"/></svg> unmarked text is preserved</div>
+              <div class="guard-line"><svg class="ic-shield" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0 1 2.6v4.8C1 11.5 4 14.8 8 16c4-1.2 7-4.5 7-8.6V2.6L8 0Zm-1 11L4 8l1.2-1.2L7 8.6l3.8-3.8L12 6l-5 5Z"/></svg> topic overlaps are visible</div>
+            </div>
+          </div>
+        </article>
+
       </div>
     </div>
   </section>
@@ -256,7 +297,7 @@
         <div class="pipe-stage">
           <div class="pipe-targets">
             <span class="pipe-kicker">Targets</span>
-            <span class="pipe-target">~/.codex/skills</span>
+            <span class="pipe-target">~/.agents/skills</span>
             <span class="pipe-target">~/.claude/skills</span>
             <span class="pipe-target">~/.hermes/skills</span>
           </div>
@@ -390,13 +431,13 @@
           Dalo syncs the resolved set into normal skill directories. Your agents keep
           reading the same paths. They never know Dalo is there.
         </p>
-        <p class="targets-note reveal">When several agents share one directory, Dalo de-duplicates the path and links each slot once.</p>
+        <p class="targets-note reveal">Codex and OpenClaw both default to <code>~/.agents/skills</code>, so Dalo de-duplicates the shared directory and links each slot once.</p>
       </div>
 
       <ul class="target-list reveal">
-        <li class="target"><span class="target-name">Codex</span><code class="target-path">~/.codex/skills</code><span class="badge badge-ok">supported</span></li>
+        <li class="target"><span class="target-name">Codex</span><code class="target-path">~/.agents/skills</code><span class="badge badge-ok">supported</span></li>
         <li class="target"><span class="target-name">Claude Code</span><code class="target-path">~/.claude/skills</code><span class="badge badge-ok">supported</span></li>
-        <li class="target"><span class="target-name">OpenClaw</span><code class="target-path">~/.openclaw/skills</code><span class="badge badge-ok">supported</span></li>
+        <li class="target"><span class="target-name">OpenClaw</span><code class="target-path">~/.agents/skills</code><span class="badge badge-ok">supported</span></li>
         <li class="target"><span class="target-name">Hermes</span><code class="target-path">~/.hermes/skills</code><span class="badge badge-ok">supported</span></li>
         <li class="target"><span class="target-name">Generic folder</span><code class="target-path">any path you choose</code><span class="badge badge-ok">supported</span></li>
         <li class="target target-exp"><span class="target-name">Cursor · OpenCode</span><code class="target-path">unverified</code><span class="badge badge-exp">experimental</span></li>
@@ -409,15 +450,14 @@
     <div class="wrap">
       <h2 class="section-h reveal">Early, and honest about it.</h2>
       <p class="lead reveal">
-        Dalo is a v0.1 release candidate. The core loop (local and team sources,
-        deterministic resolution, safe sync, adoption, and diagnostics) works today.
-        Here's what's intentionally deferred to later releases.
+        Dalo is v0.3.0. The V1 and V1.1 surfaces work today: local, team, and catalog
+        sources; deterministic resolution; safe sync; adoption; diagnostics; and
+        instruction packs. Here's what's intentionally deferred to later releases.
       </p>
       <ul class="roadmap-list reveal">
-        <li><span class="rm-tag">next</span> Catalog sources: pick specific skills from a multi-skill repo</li>
-        <li><span class="rm-tag">next</span> Instruction packs: shared conventions as managed blocks</li>
         <li><span class="rm-tag">later</span> PR-first promotion of local skills into team repos</li>
         <li><span class="rm-tag">later</span> Scheduled autosync via launchd / systemd timers</li>
+        <li><span class="rm-tag">later</span> Lock-advancing source refresh and catalog pin PRs</li>
         <li><span class="rm-tag">later</span> More verified agent adapters and package managers</li>
       </ul>
     </div>
