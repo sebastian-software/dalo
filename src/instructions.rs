@@ -663,6 +663,55 @@ mod tests {
     }
 
     #[test]
+    fn render_block_should_reject_duplicate_start_markers() {
+        let malformed = format!(
+            "# Header\n\n{}\nold\n{}\nsecond\n{}\n",
+            start_marker(PACK),
+            start_marker(PACK),
+            end_marker(PACK)
+        );
+
+        let error = render_block(&malformed, PACK, "Body.").expect_err("render should fail");
+
+        assert!(matches!(error, DaloError::MalformedInstructionBlock { .. }));
+    }
+
+    #[test]
+    fn render_block_should_reject_end_before_start() {
+        let malformed = format!(
+            "# Header\n\n{}\nold\n{}\n",
+            end_marker(PACK),
+            start_marker(PACK)
+        );
+
+        let error = render_block(&malformed, PACK, "Body.").expect_err("render should fail");
+
+        assert!(matches!(error, DaloError::MalformedInstructionBlock { .. }));
+    }
+
+    #[test]
+    fn render_block_should_replace_user_edits_inside_managed_block() {
+        let rendered = render_block("# Header\n", PACK, "Original body.")
+            .expect("initial render should succeed");
+        let edited = rendered.replace("Original body.", "User edit inside block.");
+
+        let updated =
+            render_block(&edited, PACK, "Original body.").expect("rerender should succeed");
+
+        assert_eq!(updated, rendered);
+        assert!(!updated.contains("User edit inside block."));
+    }
+
+    #[test]
+    fn render_block_should_handle_existing_block_at_eof_without_trailing_newline() {
+        let content = format!("{}\nOld body\n{}", start_marker(PACK), end_marker(PACK));
+
+        let updated = render_block(&content, PACK, "New body").expect("render should succeed");
+
+        assert_eq!(updated, render_managed_block(PACK, "New body").unwrap());
+    }
+
+    #[test]
     fn render_block_should_reject_same_id_marker_in_body() {
         let body = format!("Do not emit this marker:\n{}\n", end_marker(PACK));
 

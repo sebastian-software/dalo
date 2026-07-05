@@ -224,6 +224,32 @@ mod tests {
         assert!(stderr.contains("terminal prompts are disabled"));
     }
 
+    #[test]
+    fn clone_repo_should_treat_dash_prefixed_url_as_repository_path() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let repo = temp_dir.path().join("--upload-pack=touch-owned");
+        let destination = temp_dir.path().join("checkout");
+        fs::create_dir_all(&repo).expect("repo dir should be created");
+        run_git_program(
+            "git",
+            &repo,
+            &["init", "-q", "--bare"],
+            Duration::from_secs(5),
+        )
+        .expect("bare repo should be initialized");
+
+        clone_repo(
+            repo.file_name()
+                .expect("repo should have file name")
+                .to_str()
+                .expect("repo name should be utf-8"),
+            &destination,
+        )
+        .expect("dash-prefixed repo path should clone after -- separator");
+
+        assert!(destination.join(".git").is_dir());
+    }
+
     fn write_executable(dir: &Path, name: &str, body: &str) -> PathBuf {
         let path = dir.join(name);
         fs::write(&path, body).expect("script should be written");

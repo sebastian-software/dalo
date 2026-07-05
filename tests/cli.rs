@@ -465,6 +465,35 @@ fn sync_yes_should_not_replace_unmanaged_real_directory() {
 }
 
 #[test]
+fn sync_should_record_existing_store_symlink_after_partial_materialization() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_skill_and_target(&store, &target);
+    std::os::unix::fs::symlink(store.join("local/skills/review"), target.join("review"))
+        .expect("partial materialization symlink should be created");
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    let state =
+        store::read_state(&store::StorePaths::new(store)).expect("state should be readable");
+    assert_eq!(state.owned_skills.len(), 1);
+    assert_eq!(state.owned_skills[0].slot_name, "review");
+    assert!(
+        std::fs::symlink_metadata(target.join("review"))
+            .expect("review should remain a symlink")
+            .file_type()
+            .is_symlink()
+    );
+}
+
+#[test]
 fn sync_should_report_existing_on_second_run() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -1515,6 +1544,41 @@ fn source_add_should_clone_team_source_into_store() {
 }
 
 #[test]
+fn source_list_should_show_local_and_team_sources() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo(&repo);
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "company"])
+        .arg(&repo)
+        .assert()
+        .success();
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("local"))
+        .stdout(predicate::str::contains("company"))
+        .stdout(predicate::str::contains("priority=0"))
+        .stdout(predicate::str::contains("priority=10"));
+}
+
+#[test]
 fn source_add_dry_run_should_not_clone_or_write_config() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -1773,6 +1837,126 @@ fn sync_should_not_refresh_team_source_without_track_policy() {
             .expect("materialized skill should be readable"),
         "# Team\n"
     );
+}
+
+#[test]
+fn sync_should_fast_forward_tracking_team_source() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo(&repo);
+    setup_store_with_target(&store, &target);
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "company"])
+        .arg(&repo)
+        .assert()
+        .success();
+    std::fs::write(repo.join("skills/team/SKILL.md"), "# Team v2\n")
+        .expect("upstream skill should be updated");
+    run_git(&repo, &["add", "."]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "update team",
+            "-q",
+        ],
+    );
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    assert_eq!(
+        std::fs::read_to_string(store.join("sources/company/checkout/skills/team/SKILL.md"))
+            .expect("checkout skill should be readable"),
+        "# Team v2\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(target.join("team/SKILL.md"))
+            .expect("materialized skill should be readable"),
+        "# Team v2\n"
+    );
+}
+
+#[test]
+fn sync_should_fail_cleanly_on_non_fast_forward_tracking_team_source() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo(&repo);
+    setup_store_with_target(&store, &target);
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "company"])
+        .arg(&repo)
+        .assert()
+        .success();
+    let checkout = store.join("sources/company/checkout");
+    std::fs::write(checkout.join("skills/team/SKILL.md"), "# Team local\n")
+        .expect("checkout skill should be updated");
+    run_git(&checkout, &["add", "."]);
+    run_git(
+        &checkout,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "local divergence",
+            "-q",
+        ],
+    );
+    std::fs::write(repo.join("skills/team/SKILL.md"), "# Team remote\n")
+        .expect("upstream skill should be updated");
+    run_git(&repo, &["add", "."]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "remote divergence",
+            "-q",
+        ],
+    );
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .failure()
+        .code(4)
+        .stderr(predicate::str::contains("git pull --ff-only --quiet"));
 }
 
 #[test]
@@ -2350,6 +2534,31 @@ fn catalog_refresh_check_should_report_upstream_drift() {
 }
 
 #[test]
+fn source_refresh_without_check_should_report_not_implemented() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "refresh", "marketing"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains(
+            "source refresh (advancing the pin)",
+        ));
+}
+
+#[test]
 fn instructions_enable_disable_should_manage_block_idempotently() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -2407,6 +2616,44 @@ fn instructions_enable_disable_should_manage_block_idempotently() {
     assert!(after_disable.contains("# Project"));
     assert!(after_disable.contains("User notes."));
     assert!(!after_disable.contains("dalo:start"));
+}
+
+#[test]
+fn instructions_list_should_show_active_pack() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target_file = temp_dir.path().join("AGENTS.md");
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::write(
+        store.join("local/instructions/house-style.md"),
+        "version: 1.0\n\nUse tabs.\n",
+    )
+    .expect("pack should be written");
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "house-style"])
+        .arg(&target_file)
+        .assert()
+        .success();
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("house-style"))
+        .stdout(predicate::str::contains("AGENTS.md"));
 }
 
 #[test]
