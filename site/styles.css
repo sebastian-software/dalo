@@ -245,6 +245,7 @@ section[data-scope="dark"] { background: var(--bg); color: var(--ink); }
 .hero-lede { font-size: var(--fs-lead); color: var(--ink-soft); margin-top: 1.4rem; max-width: 40ch; }
 .hero-cta { display: flex; flex-wrap: wrap; gap: 0.8rem; margin-top: 2rem; }
 .hero-meta { font-size: var(--fs-sm); color: var(--ink-faint); margin-top: 1.4rem; font-family: var(--font-mono); }
+.hero-meta code { color: var(--accent-text); font-size: 0.92em; }
 
 /* ---------- Terminal ---------- */
 .terminal {
@@ -396,6 +397,22 @@ section[data-scope="dark"] { background: var(--bg); color: var(--ink); }
 .badge-ok { color: var(--signal); background: var(--signal-soft); }
 .badge-exp { color: var(--ink-faint); background: var(--surface-2); }
 
+/* ---------- Objection handling ---------- */
+.objection-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem;
+  margin-top: clamp(2rem, 1rem + 3vw, 3.2rem);
+}
+.objection-card {
+  border: 1px solid var(--line); border-radius: var(--r-lg);
+  background: var(--surface); padding: 1.3rem; min-width: 0;
+}
+.objection-kicker {
+  display: inline-flex; margin-bottom: 0.85rem;
+  font-family: var(--font-mono); font-size: var(--fs-mono); color: var(--accent-text);
+}
+.objection-card h3 { font-size: 1.12rem; margin-bottom: 0.55rem; }
+.objection-card p { color: var(--ink-soft); font-size: var(--fs-sm); }
+
 /* ---------- Roadmap ---------- */
 .roadmap-list { list-style: none; padding: 0; margin-top: clamp(2rem, 1rem + 2vw, 2.6rem); display: grid; gap: 0.6rem; max-width: 56rem; }
 .roadmap-list li { display: flex; align-items: center; gap: 1rem; padding: 0.9rem 1.1rem; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); font-size: var(--fs-sm); color: var(--ink); }
@@ -439,6 +456,7 @@ section[data-scope="dark"] { background: var(--bg); color: var(--ink); }
   .hero-grid { grid-template-columns: 1fr; }
   .hero-demo { max-width: 38rem; }
   .why-grid, .quickstart-grid, .targets-grid { grid-template-columns: 1fr; }
+  .objection-grid { grid-template-columns: repeat(2, 1fr); }
   .why-lead, .targets-lead { position: static; }
   .feature-row, .feature-row-flip { grid-template-columns: 1fr; gap: 1.4rem; }
   .feature-row-flip .feature-text { order: 0; }
@@ -455,6 +473,7 @@ section[data-scope="dark"] { background: var(--bg); color: var(--ink); }
   .footer-base { flex-direction: column; gap: 0.5rem; align-items: flex-start; }
 }
 @media (max-width: 560px) {
+  .objection-grid { grid-template-columns: 1fr; }
   .target { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem 0.8rem; }
   .target-name { flex: 1 1 auto; }
   .target-path { order: 3; flex-basis: 100%; }
