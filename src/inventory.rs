@@ -163,8 +163,28 @@ fn find_skill_dirs(
         };
 
         for entry in entries {
-            let entry = entry?;
-            let file_type = entry.file_type()?;
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error) => {
+                    warnings.push(InventoryWarning {
+                        code: InventoryWarningCode::UnreadablePath,
+                        path: dir.clone(),
+                        message: error.to_string(),
+                    });
+                    continue;
+                }
+            };
+            let file_type = match entry.file_type() {
+                Ok(file_type) => file_type,
+                Err(error) => {
+                    warnings.push(InventoryWarning {
+                        code: InventoryWarningCode::UnreadablePath,
+                        path: entry.path(),
+                        message: error.to_string(),
+                    });
+                    continue;
+                }
+            };
             if file_type.is_dir() {
                 pending.push(entry.path());
             }

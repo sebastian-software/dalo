@@ -1,5 +1,6 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
+use std::os::unix::fs::PermissionsExt;
 
 #[test]
 fn help_should_list_planned_top_level_commands() {
@@ -1030,6 +1031,85 @@ fn sync_should_remove_owned_symlink_after_source_is_removed_from_config() {
         .success();
 
     assert!(!target.join("team").exists());
+}
+
+#[test]
+fn sync_should_preserve_owned_symlink_when_source_scan_is_degraded() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_skill_and_target(&store, &target);
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    assert!(
+        std::fs::symlink_metadata(target.join("review"))
+            .expect("review link should exist")
+            .file_type()
+            .is_symlink()
+    );
+
+    let local_source = store.join("local");
+    let original_mode = std::fs::metadata(&local_source)
+        .expect("local source metadata should be readable")
+        .permissions()
+        .mode()
+        & 0o777;
+    std::fs::set_permissions(&local_source, std::fs::Permissions::from_mode(0o000))
+        .expect("local source permissions should be changed");
+
+    let renamed_source = store.join("local-unavailable");
+    let used_rename_fallback = if std::fs::read_dir(&local_source).is_ok() {
+        std::fs::set_permissions(
+            &local_source,
+            std::fs::Permissions::from_mode(original_mode),
+        )
+        .expect("local source permissions should be restored before fallback");
+        std::fs::rename(&local_source, &renamed_source)
+            .expect("local source should be renamed for root-safe fallback");
+        true
+    } else {
+        false
+    };
+
+    let output = Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("scan degraded"))
+        .get_output()
+        .stdout
+        .clone();
+
+    if used_rename_fallback {
+        std::fs::rename(&renamed_source, &local_source)
+            .expect("local source should be restored after fallback");
+    } else {
+        std::fs::set_permissions(
+            &local_source,
+            std::fs::Permissions::from_mode(original_mode),
+        )
+        .expect("local source permissions should be restored");
+    }
+
+    assert!(
+        String::from_utf8(output)
+            .expect("sync output should be utf8")
+            .contains("preserving recorded owned link")
+    );
+    assert!(
+        std::fs::symlink_metadata(target.join("review"))
+            .expect("review link should survive degraded sync")
+            .file_type()
+            .is_symlink()
+    );
 }
 
 #[test]

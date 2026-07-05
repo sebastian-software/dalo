@@ -11,6 +11,15 @@ use crate::error::DaloResult;
 use crate::resolver::Resolution;
 use crate::store::{self, OwnedSkillState, StateFile, StorePaths};
 
+/// Enabled source whose live scan was degraded during sync.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DegradedSource {
+    /// Source ID.
+    pub id: String,
+    /// Source root path.
+    pub path: PathBuf,
+}
+
 /// Sync and materialization report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SyncReport {
@@ -111,9 +120,19 @@ pub fn materialize(
     resolution: &Resolution,
     dry_run: bool,
 ) -> DaloResult<SyncReport> {
+    materialize_with_degraded_sources(paths, resolution, dry_run, &[])
+}
+
+/// Materialize resolved skills while preserving records from degraded sources.
+pub fn materialize_with_degraded_sources(
+    paths: &StorePaths,
+    resolution: &Resolution,
+    dry_run: bool,
+    degraded_sources: &[DegradedSource],
+) -> DaloResult<SyncReport> {
     let mut state = store::read_state(paths)?;
     let desired_links = desired_links(&state, resolution);
-    let mut operations = build_plan(paths, &state, &desired_links)?;
+    let mut operations = build_plan(paths, &state, &desired_links, degraded_sources)?;
 
     if dry_run {
         for operation in &mut operations {
@@ -165,6 +184,7 @@ fn build_plan(
     paths: &StorePaths,
     state: &StateFile,
     desired_links: &[DesiredLink],
+    degraded_sources: &[DegradedSource],
 ) -> DaloResult<Vec<MaterializeOperation>> {
     let desired_by_link = desired_links
         .iter()
@@ -194,7 +214,7 @@ fn build_plan(
                 operations.push(plan_desired_unrecorded(desired)?);
             }
             (None, Some(recorded)) => {
-                operations.push(plan_undesired_recorded(recorded));
+                operations.push(plan_undesired_recorded(recorded, degraded_sources));
             }
             (None, None) => {}
         }
@@ -280,7 +300,26 @@ fn plan_desired_unrecorded(desired: &DesiredLink) -> DaloResult<MaterializeOpera
     Ok(operation)
 }
 
-fn plan_undesired_recorded(recorded: &OwnedSkillState) -> MaterializeOperation {
+fn plan_undesired_recorded(
+    recorded: &OwnedSkillState,
+    degraded_sources: &[DegradedSource],
+) -> MaterializeOperation {
+    if let Some(source) = degraded_sources
+        .iter()
+        .find(|source| recorded.store_path.starts_with(&source.path))
+    {
+        return MaterializeOperation {
+            kind: MaterializeOperationKind::Conflict,
+            link_path: recorded.link_path.clone(),
+            desired_path: Some(recorded.store_path.clone()),
+            status: MaterializeOperationStatus::Blocked,
+            reason: Some(format!(
+                "source `{}` scan degraded; preserving recorded owned link",
+                source.id
+            )),
+        };
+    }
+
     match actual_link_state(&recorded.link_path) {
         Ok(ActualLinkState::Symlink(_)) => MaterializeOperation {
             kind: MaterializeOperationKind::Remove,
@@ -311,6 +350,8 @@ fn apply_plan(
     operations: &[MaterializeOperation],
     desired_links: &[DesiredLink],
 ) -> DaloResult<()> {
+    let previous_owned_skills = state.owned_skills.clone();
+
     for operation in operations {
         match operation.kind {
             MaterializeOperationKind::Create | MaterializeOperationKind::Relink => {
@@ -364,8 +405,35 @@ fn apply_plan(
             store_path: desired.store_path.clone(),
         })
         .collect();
+    for operation in operations
+        .iter()
+        .filter(|operation| is_degraded_source_preserve(operation))
+    {
+        let Some(preserved) = previous_owned_skills
+            .iter()
+            .find(|record| record.link_path == operation.link_path)
+        else {
+            continue;
+        };
+        if !state
+            .owned_skills
+            .iter()
+            .any(|record| record.link_path == preserved.link_path)
+        {
+            state.owned_skills.push(preserved.clone());
+        }
+    }
 
     Ok(())
+}
+
+fn is_degraded_source_preserve(operation: &MaterializeOperation) -> bool {
+    operation.kind == MaterializeOperationKind::Conflict
+        && operation.status == MaterializeOperationStatus::Blocked
+        && operation
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("scan degraded"))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

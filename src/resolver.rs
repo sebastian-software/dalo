@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use serde::Serialize;
 
 use crate::config::UserConfig;
-use crate::inventory::{self, SkillRecord, SourceInventory};
+use crate::inventory::{self, InventoryWarningCode, SkillRecord, SourceInventory};
 use crate::source::{SourceConfig, SourceKind};
 use crate::store::ApprovalRecord;
 
@@ -226,7 +226,17 @@ fn scan_enabled_source(source: &SourceConfig) -> Result<SourceInventory, String>
     if !source.path.exists() {
         return Err("source path does not exist".to_owned());
     }
-    inventory::scan_source(&source.id, &source.path).map_err(|error| error.to_string())
+    let inventory =
+        inventory::scan_source(&source.id, &source.path).map_err(|error| error.to_string())?;
+    if inventory.skills.is_empty()
+        && inventory.warnings.iter().any(|warning| {
+            warning.code == InventoryWarningCode::UnreadablePath && warning.path == source.path
+        })
+    {
+        return Err("source root could not be scanned".to_owned());
+    }
+
+    Ok(inventory)
 }
 
 /// Resolve active sources and inventories into a deterministic skill set.
