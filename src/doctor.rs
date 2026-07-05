@@ -513,6 +513,15 @@ fn check_resolution(
     let resolution = resolver::resolve_from_config(config, approval_records).resolution;
 
     if approvals.is_some() {
+        for diagnostic in &resolution.diagnostics {
+            if diagnostic.code == resolver::ResolutionDiagnosticCode::LegacyBareApproval {
+                findings.push(finding_warning(
+                    DoctorCode::PendingApproval,
+                    diagnostic.message.clone(),
+                    Some("dalo status".to_owned()),
+                ));
+            }
+        }
         for skill in &resolution.pending_approval_skills {
             findings.push(finding_warning(
                 DoctorCode::PendingApproval,
