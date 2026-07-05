@@ -24,6 +24,11 @@ assert_cmd = "2"
 predicates = "3"
 proptest = "1.11.0"
 
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/dalo-v{ version }/{ name }-{ version }-{ target }.tar.gz"
+pkg-fmt = "tgz"
+bin-dir = "{ name }-{ version }-{ target }/{ bin }{ binary-ext }"
+
 [lints.rust]
 future-incompatible = "warn"
 nonstandard-style = "deny"

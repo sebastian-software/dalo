@@ -174,15 +174,16 @@ dalo --dry-run source select public review-helper
 
 JSON output shape: `CatalogSelectReport`.
 
-### `dalo source refresh <id> --check`
+### `dalo source refresh <id>`
 
-Fetch a catalog source and compare the upstream inventory with the pinned inventory snapshot. This is read-only for pins and selections. Advancing the pin is not implemented yet, so `--check` is currently required.
+Fetch a catalog source and compare the upstream inventory with the pinned inventory snapshot. This is read-only for pins and selections. `--check` is still accepted for compatibility. Advancing the pin is not implemented yet.
 
 Examples:
 
 ```sh
+dalo source refresh public
 dalo source refresh public --check
-dalo --json source refresh public --check
+dalo --json source refresh public
 ```
 
 JSON output shape: `CatalogDrift`.
@@ -346,7 +347,7 @@ dalo completions bash > dalo.bash
 dalo completions fish > dalo.fish
 ```
 
-This command is hidden from `dalo --help`, but it is supported for release packaging and local shell setup.
+Release archives include generated completions. This command is also available for Cargo installs and local shell setup.
 
 ### `dalo manpage`
 
@@ -358,7 +359,7 @@ Example:
 dalo manpage > dalo.1
 ```
 
-This command is hidden from `dalo --help`, but release archives include the generated man page.
+Release archives include the generated man page. This command is also available for Cargo installs and local documentation setup.
 
 ## Exit Codes
 
@@ -375,7 +376,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 
 ## JSON Output Shapes
 
-`--json` prints one JSON value to stdout. Path fields serialize as strings. Enum fields serialize as `snake_case` unless noted. Commands that mutate and support `--dry-run` include a `dry_run` boolean in their report.
+`--json` prints one JSON value to stdout on success. Runtime errors are printed to stderr as `{"error":{"code":"...","message":"..."}}` and keep the same exit code as text output. Path fields serialize as strings. Enum fields serialize as `snake_case` unless noted. Commands that mutate and support `--dry-run` include a `dry_run` boolean in their report.
 
 | Command | Shape | Important fields |
 | --- | --- | --- |
@@ -389,7 +390,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `source priority` | `SourcePriorityReport` | `source`, `dry_run` |
 | `source inspect` | `CatalogInspectReport` | `source_id`, `candidates[]` |
 | `source select` | `CatalogSelectReport` | `source_id`, `selected[]`, `dry_run` |
-| `source refresh --check` | `CatalogDrift` | `source_id`, `pinned_commit`, `upstream_commit`, `outcomes[]` |
+| `source refresh` | `CatalogDrift` | `source_id`, `pinned_commit`, `upstream_commit`, `outcomes[]` |
 | `status` | `StatusReport` | `store`, `sources[]`, `inventory_warnings[]`, `resolution`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]` |
 | `sync` | `SyncReport` | `store`, `dry_run`, `operations[]` |
 | `adopt` / `resolve adopt` | `AdoptReport` | `slot_name`, `source_path`, `local_path`, `copy`, `replacement` |

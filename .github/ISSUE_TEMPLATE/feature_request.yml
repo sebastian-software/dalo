@@ -1,0 +1,41 @@
+name: Feature request
+description: Propose a new Dalo capability, target, install channel, or docs improvement.
+title: "Feature: "
+labels: []
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user workflow is blocked or awkward today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should Dalo do differently?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Mention any simpler workaround or reason this should not be built.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - CLI
+        - Safety
+        - Docs
+        - Website
+        - Distribution
+        - Agent target
+        - Other
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation idea
+      description: How could this be tested or verified?
