@@ -2395,6 +2395,61 @@ fn catalog_select_dry_run_should_not_write_config_or_source_lock() {
 }
 
 #[test]
+fn catalog_select_should_reuse_inventory_snapshot_at_unchanged_pin() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "copy-editing"])
+        .assert()
+        .success();
+    let lock_before = read_source_lock(&store);
+    let inventory_before = lock_before
+        .catalog("marketing")
+        .expect("marketing catalog should be locked")
+        .inventory
+        .clone();
+
+    std::fs::write(
+        store.join("sources/marketing/checkout/skills/copy-editing/NOTES.md"),
+        "uncommitted local checkout content\n",
+    )
+    .expect("supporting file should be written");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "launch-copy"])
+        .assert()
+        .success();
+    let lock_after = read_source_lock(&store);
+    let catalog_after = lock_after
+        .catalog("marketing")
+        .expect("marketing catalog should remain locked");
+
+    assert_eq!(catalog_after.inventory, inventory_before);
+    assert_eq!(
+        catalog_after.selected,
+        [
+            "skills/copy-editing".to_owned(),
+            "skills/launch-copy".to_owned()
+        ]
+    );
+}
+
+#[test]
 fn catalog_select_should_support_path_fallback_for_duplicate_slots() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

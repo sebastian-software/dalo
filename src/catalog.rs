@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 
 use crate::error::{DaloError, DaloResult};
 use crate::git;
-use crate::inventory::{self, SkillRecord};
+use crate::inventory::{self, SkillRecord, SourceInventory};
 use crate::source::{self, SourceConfig, SourceKind};
 use crate::store::{self, StorePaths};
 
@@ -220,7 +220,8 @@ pub fn add_catalog_source(
 pub fn inspect_catalog(paths: &StorePaths, id: &str) -> DaloResult<CatalogInspectReport> {
     let source = catalog_source(paths, id)?;
     let selected = selection_set(&source.selection);
-    let mut candidates = catalog_candidates(&source.path)?;
+    let scan = scan_catalog(&source.path)?;
+    let mut candidates = catalog_candidates_from_scan(&source.path, &scan);
     for candidate in &mut candidates {
         candidate.selected = candidate_is_selected(candidate, &selected);
     }
@@ -241,7 +242,8 @@ pub fn select_skills(
     dry_run: bool,
 ) -> DaloResult<CatalogSelectReport> {
     let source_path = catalog_source(paths, id)?.path;
-    let candidates = catalog_candidates(&source_path)?;
+    let scan = scan_catalog(&source_path)?;
+    let candidates = catalog_candidates_from_scan(&source_path, &scan);
     let mut resolved = Vec::with_capacity(refs.len());
     for reference in refs {
         resolved.push(resolve_candidate_reference(id, &candidates, reference)?);
@@ -272,14 +274,20 @@ pub fn select_skills(
 
     if !dry_run {
         let mut lock = read_source_lock(paths)?;
-        if let Some(catalog) = lock
+        if let Some(index) = lock
             .catalogs
-            .iter_mut()
-            .find(|catalog| catalog.source_id == id)
+            .iter()
+            .position(|catalog| catalog.source_id == id)
         {
-            catalog.selected = selected.clone();
-            catalog.commit = git::rev_parse_head(&source_path)?;
-            catalog.inventory = catalog_inventory(&source_path)?;
+            let commit = git::rev_parse_head(&source_path)?;
+            let inventory = if lock.catalogs[index].commit == commit {
+                lock.catalogs[index].inventory.clone()
+            } else {
+                catalog_inventory_from_scan(&source_path, &scan)?
+            };
+            lock.catalogs[index].selected = selected.clone();
+            lock.catalogs[index].commit = commit;
+            lock.catalogs[index].inventory = inventory;
             write_source_lock(paths, &lock)?;
         }
     }
@@ -332,7 +340,18 @@ pub fn write_source_lock(paths: &StorePaths, lock: &SourceLock) -> DaloResult<()
 
 /// Build the inventory snapshot for a catalog checkout (used for the lock).
 pub fn catalog_inventory(checkout: &Path) -> DaloResult<Vec<CatalogEntry>> {
-    let inventory = inventory::scan_source("catalog", checkout)?;
+    let inventory = scan_catalog(checkout)?;
+    catalog_inventory_from_scan(checkout, &inventory)
+}
+
+fn scan_catalog(checkout: &Path) -> DaloResult<SourceInventory> {
+    inventory::scan_source("catalog", checkout)
+}
+
+fn catalog_inventory_from_scan(
+    checkout: &Path,
+    inventory: &SourceInventory,
+) -> DaloResult<Vec<CatalogEntry>> {
     let mut entries = Vec::with_capacity(inventory.skills.len());
     for skill in &inventory.skills {
         entries.push(CatalogEntry {
@@ -348,8 +367,10 @@ pub fn catalog_inventory(checkout: &Path) -> DaloResult<Vec<CatalogEntry>> {
     Ok(entries)
 }
 
-fn catalog_candidates(checkout: &Path) -> DaloResult<Vec<CatalogCandidate>> {
-    let inventory = inventory::scan_source("catalog", checkout)?;
+fn catalog_candidates_from_scan(
+    checkout: &Path,
+    inventory: &SourceInventory,
+) -> Vec<CatalogCandidate> {
     let mut candidates = inventory
         .skills
         .iter()
@@ -363,7 +384,7 @@ fn catalog_candidates(checkout: &Path) -> DaloResult<Vec<CatalogCandidate>> {
         })
         .collect::<Vec<_>>();
     candidates.sort_by(|a, b| a.slot_name.cmp(&b.slot_name).then(a.path.cmp(&b.path)));
-    Ok(candidates)
+    candidates
 }
 
 fn catalog_source(paths: &StorePaths, id: &str) -> DaloResult<SourceConfig> {
