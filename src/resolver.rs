@@ -328,7 +328,7 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
             .iter()
             .position(|candidate| is_approved(candidate, &input.approvals))
         else {
-            if let Some(candidate) = group.first() {
+            for candidate in &group {
                 pending_approval_skills.push(candidate.skill.clone());
                 diagnostics.push(ResolutionDiagnostic {
                     code: ResolutionDiagnosticCode::PendingApproval,
@@ -959,6 +959,29 @@ mod tests {
             resolution.pending_approval_skills[0].source_ref,
             "company:review"
         );
+    }
+
+    #[test]
+    fn resolve_should_list_all_unapproved_same_slot_skills_in_pending_approval() {
+        let resolution = resolve_with(
+            vec![
+                source("team-a", SourceKind::Team, 10),
+                source("team-b", SourceKind::Team, 20),
+            ],
+            vec![
+                inventory("team-a", vec![skill("team-a", "review")]),
+                inventory("team-b", vec![skill("team-b", "review")]),
+            ],
+            Vec::new(),
+        );
+        let pending = resolution
+            .pending_approval_skills
+            .iter()
+            .map(|skill| skill.source_ref.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(resolution.active_skills.is_empty());
+        assert_eq!(pending, vec!["team-a:review", "team-b:review"]);
     }
 
     #[test]
