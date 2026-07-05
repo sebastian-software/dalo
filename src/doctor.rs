@@ -3,7 +3,9 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
@@ -14,6 +16,9 @@ use crate::instructions;
 use crate::resolver;
 use crate::source::SourceKind;
 use crate::store::{self, ApprovalsFile, StateFile, StorePaths};
+
+const COMMAND_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
+const COMMAND_CHECK_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 /// Doctor report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -531,12 +536,37 @@ fn check_resolution(paths: &StorePaths, config: &UserConfig, findings: &mut Vec<
 }
 
 fn command_succeeds(program: &str, args: &[&str]) -> bool {
-    Command::new(program)
+    command_succeeds_with_timeout(program, args, COMMAND_CHECK_TIMEOUT)
+}
+
+fn command_succeeds_with_timeout(program: &str, args: &[&str], timeout: Duration) -> bool {
+    let Ok(mut child) = Command::new(program)
         .args(args)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    else {
+        return false;
+    };
+    let start = Instant::now();
+
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return status.success(),
+            Ok(None) => {}
+            Err(_) => return false,
+        }
+
+        let elapsed = start.elapsed();
+        if elapsed >= timeout {
+            let _ = child.kill();
+            let _ = child.wait();
+            return false;
+        }
+
+        thread::sleep(COMMAND_CHECK_POLL_INTERVAL.min(timeout - elapsed));
+    }
 }
 
 fn looks_cloud_synced(path: &Path) -> bool {
@@ -660,6 +690,7 @@ impl std::fmt::Display for DoctorCode {
 mod tests {
     use super::*;
     use crate::store::{MaterializationDirState, OwnedSkillState, TargetState};
+    use std::os::unix::fs::PermissionsExt;
 
     #[test]
     fn run_doctor_should_report_missing_store_without_creating_it() {
@@ -697,6 +728,24 @@ mod tests {
                 .iter()
                 .any(|finding| finding.code == DoctorCode::BrokenOwnedSymlink)
         );
+    }
+
+    #[test]
+    fn command_succeeds_with_timeout_should_stop_hung_command() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let command = temp_dir.path().join("hang");
+        fs::write(&command, "#!/bin/sh\nwhile :; do :; done\n").expect("script should be written");
+        let mut permissions = fs::metadata(&command)
+            .expect("script metadata should be readable")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&command, permissions).expect("script should be executable");
+
+        assert!(!command_succeeds_with_timeout(
+            command.to_str().expect("script path should be utf-8"),
+            &[],
+            Duration::from_millis(10),
+        ));
     }
 
     #[test]
