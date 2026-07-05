@@ -215,6 +215,13 @@ pub fn link_target(
     let path = target_path(entry, path_override)?;
     let existed_before = path.exists();
 
+    let paths = StorePaths::new(store_root.to_path_buf());
+    let mut state = if dry_run {
+        None
+    } else {
+        Some(store::read_state(&paths)?)
+    };
+
     if !existed_before && !dry_run {
         fs::create_dir_all(&path)?;
     }
@@ -223,10 +230,11 @@ pub fn link_target(
     let status = if dry_run {
         TargetLinkStatus::Planned
     } else {
-        let paths = StorePaths::new(store_root.to_path_buf());
-        let mut state = store::read_state(&paths)?;
-        let status = upsert_target_state(&mut state, entry.id, &path, &canonical_path);
-        store::write_state(&paths, &state)?;
+        let state = state
+            .as_mut()
+            .expect("state is loaded before non-dry-run target link");
+        let status = upsert_target_state(state, entry.id, &path, &canonical_path);
+        store::write_state(&paths, state)?;
         status
     };
 
@@ -247,12 +255,17 @@ pub fn unlink_target(
 ) -> DaloResult<TargetUnlinkReport> {
     registry_entry(target_id)?;
 
+    let paths = StorePaths::new(store_root.to_path_buf());
+    let mut state = store::read_state(&paths)?;
+    let original_len = state.targets.len();
+    let linked = state.targets.iter().any(|target| target.id == target_id);
     let status = if dry_run {
-        TargetUnlinkStatus::Planned
+        if linked {
+            TargetUnlinkStatus::Planned
+        } else {
+            TargetUnlinkStatus::Missing
+        }
     } else {
-        let paths = StorePaths::new(store_root.to_path_buf());
-        let mut state = store::read_state(&paths)?;
-        let original_len = state.targets.len();
         state.targets.retain(|target| target.id != target_id);
         state.rebuild_materialization_dirs();
         store::write_state(&paths, &state)?;
@@ -442,6 +455,31 @@ mod tests {
             .expect("real link should succeed");
 
         assert_eq!(planned.canonical_path, applied.canonical_path);
+    }
+
+    #[test]
+    fn link_target_should_read_store_before_creating_target_dir() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("missing-store");
+        let target = temp_dir.path().join("skills");
+
+        let error = link_target(&store_root, "codex", Some(&target), false)
+            .expect_err("link should require an initialized store");
+
+        assert!(matches!(error, DaloError::StoreNotInitialized { .. }));
+        assert!(!target.exists());
+    }
+
+    #[test]
+    fn unlink_target_dry_run_should_report_missing_for_unlinked_target() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+
+        let report =
+            unlink_target(&store_root, "codex", true).expect("dry-run unlink should inspect state");
+
+        assert_eq!(report.status, TargetUnlinkStatus::Missing);
     }
 
     #[test]

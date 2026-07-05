@@ -385,6 +385,43 @@ fn target_unlink_should_keep_target_directory() {
 }
 
 #[test]
+fn target_unlink_dry_run_should_report_missing_when_not_linked() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--dry-run", "target", "unlink", "generic"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("missing target generic"));
+}
+
+#[test]
+fn target_link_should_not_create_directory_when_store_is_missing() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("missing-store");
+    let target = temp_dir.path().join("skills");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "link", "generic"])
+        .arg(&target)
+        .assert()
+        .failure();
+
+    assert!(!target.exists());
+}
+
+#[test]
 fn sync_dry_run_should_not_create_symlink() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -621,7 +658,7 @@ fn status_json_should_report_lock_drift_after_skill_removal() {
 }
 
 #[test]
-fn status_should_fail_on_unsupported_lock_schema() {
+fn status_should_fail_on_unsupported_lock_schema_version() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     dalo_command()
@@ -641,9 +678,8 @@ fn status_should_fail_on_unsupported_lock_schema() {
         .assert()
         .failure()
         .code(1)
-        .stderr(predicate::str::contains(
-            "unsupported lock schema version 999",
-        ));
+        .stderr(predicate::str::contains("unsupported schema version 999"))
+        .stderr(predicate::str::contains("lock.toml"));
 }
 
 #[test]
@@ -1173,6 +1209,46 @@ fn resolve_list_should_report_unmanaged_skills() {
         .success()
         .stdout(predicate::str::contains("unmanaged skills:"))
         .stdout(predicate::str::contains("review"));
+}
+
+#[test]
+fn status_and_resolve_list_should_warn_on_unreadable_target_paths() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let unreadable = temp_dir.path().join("not-a-dir");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    std::fs::write(&unreadable, "not a directory\n").expect("unreadable path should be written");
+    let paths = store::StorePaths::new(store.clone());
+    let mut state = store::read_state(&paths).expect("state should be readable");
+    state
+        .materialization_dirs
+        .push(store::MaterializationDirState {
+            path: unreadable.clone(),
+            logical_targets: vec!["other".to_owned()],
+        });
+    store::write_state(&paths, &state).expect("state should be writable");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"target_warnings\""))
+        .stdout(predicate::str::contains("unreadable_target_dir"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("target warnings:"))
+        .stdout(predicate::str::contains("unreadable_target_dir"))
+        .stdout(predicate::str::contains(
+            unreadable.to_string_lossy().as_ref(),
+        ));
 }
 
 #[test]

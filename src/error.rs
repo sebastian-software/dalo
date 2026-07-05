@@ -41,10 +41,6 @@ pub enum DaloError {
     #[error(transparent)]
     Json(#[from] serde_json::Error),
 
-    /// TOML deserialization failed.
-    #[error(transparent)]
-    TomlDeserialize(#[from] toml::de::Error),
-
     /// The store has not been initialized yet.
     #[error("dalo store is not initialized at `{path}`; run `dalo init` first")]
     StoreNotInitialized {
@@ -124,19 +120,6 @@ pub enum DaloError {
     StoreLocked {
         /// Lock file path.
         path: PathBuf,
-    },
-
-    /// The persisted user lock uses an unsupported schema version.
-    #[error(
-        "unsupported lock schema version {version} in `{path}`; this dalo supports version {supported}"
-    )]
-    UnsupportedLockSchema {
-        /// Lock file path.
-        path: PathBuf,
-        /// Persisted version.
-        version: u32,
-        /// Supported version.
-        supported: u32,
     },
 
     /// A persisted store file uses an unsupported schema version.
@@ -233,12 +216,10 @@ impl DaloError {
             | Self::UnknownSource { .. }
             | Self::SkillNotFound { .. }
             | Self::AdoptionDestinationExists { .. }
-            | Self::UnsupportedLockSchema { .. }
             | Self::UnsupportedSchema { .. }
             | Self::FileParse { .. }
             | Self::CorruptState { .. }
-            | Self::LocalSourcePriorityFixed { .. }
-            | Self::TomlDeserialize(_) => DaloExitCode::ExpectedFailure,
+            | Self::LocalSourcePriorityFixed { .. } => DaloExitCode::ExpectedFailure,
             Self::DirtySource { .. }
             | Self::StoreLocked { .. }
             | Self::MalformedInstructionBlock { .. } => DaloExitCode::UnsafeState,
@@ -258,8 +239,6 @@ pub enum DaloExitCode {
     Success = 0,
     /// Expected actionable failure.
     ExpectedFailure = 1,
-    /// Invalid CLI usage.
-    Usage = 2,
     /// Unsafe state blocked the operation.
     UnsafeState = 3,
     /// Dependency or environment problem.
@@ -446,20 +425,6 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_lock_schema_should_render_versions() {
-        let error = err::<()>(Err(DaloError::UnsupportedLockSchema {
-            path: PathBuf::from("/tmp/store/lock.toml"),
-            version: 999,
-            supported: 1,
-        }));
-
-        assert_eq!(
-            error.to_string(),
-            "unsupported lock schema version 999 in `/tmp/store/lock.toml`; this dalo supports version 1"
-        );
-    }
-
-    #[test]
     fn unsupported_schema_should_render_versions_and_use_expected_failure() {
         let error = DaloError::UnsupportedSchema {
             path: PathBuf::from("/tmp/store/state.toml"),
@@ -517,7 +482,7 @@ mod tests {
             DaloError::AdoptionDestinationExists {
                 path: PathBuf::from("/tmp/local/review"),
             },
-            DaloError::UnsupportedLockSchema {
+            DaloError::UnsupportedSchema {
                 path: PathBuf::from("/tmp/store/lock.toml"),
                 version: 999,
                 supported: 1,

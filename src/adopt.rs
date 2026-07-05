@@ -99,8 +99,48 @@ impl AdoptReplacementStatus {
 pub struct ResolveListReport {
     /// Unmanaged skills in linked targets.
     pub unmanaged_skills: Vec<UnmanagedSkill>,
+    /// Non-fatal target directory scan warnings.
+    pub target_warnings: Vec<TargetScanWarning>,
     /// Recorded owned symlinks.
     pub owned_skills: Vec<OwnedSkillSummary>,
+}
+
+/// Unmanaged target scan result.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UnmanagedSkillScan {
+    /// Unmanaged skills in linked targets.
+    pub unmanaged_skills: Vec<UnmanagedSkill>,
+    /// Non-fatal target directory scan warnings.
+    pub warnings: Vec<TargetScanWarning>,
+}
+
+/// Non-fatal target scan warning.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TargetScanWarning {
+    /// Warning code.
+    pub code: TargetScanWarningCode,
+    /// Path related to the warning.
+    pub path: PathBuf,
+    /// Human-readable message.
+    pub message: String,
+}
+
+/// Target scan warning code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TargetScanWarningCode {
+    /// A materialization directory or child entry could not be read.
+    UnreadableTargetDir,
+}
+
+impl TargetScanWarningCode {
+    /// Text label.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::UnreadableTargetDir => "unreadable_target_dir",
+        }
+    }
 }
 
 /// Recorded owned symlink summary.
@@ -167,6 +207,11 @@ impl RemoveOwnedStatus {
 
 /// Discover unmanaged skills in configured target directories.
 pub fn discover_unmanaged_skills(paths: &StorePaths) -> DaloResult<Vec<UnmanagedSkill>> {
+    Ok(discover_unmanaged_skill_scan(paths)?.unmanaged_skills)
+}
+
+/// Discover unmanaged skills and non-fatal target scan warnings.
+pub fn discover_unmanaged_skill_scan(paths: &StorePaths) -> DaloResult<UnmanagedSkillScan> {
     let state = store::read_state(paths)?;
     let owned_paths = state
         .owned_skills
@@ -179,16 +224,38 @@ pub fn discover_unmanaged_skills(paths: &StorePaths) -> DaloResult<Vec<Unmanaged
         .map(|skill| skill.path.clone())
         .collect::<BTreeSet<_>>();
     let mut found = Vec::new();
+    let mut warnings = Vec::new();
 
     for dir in &state.materialization_dirs {
-        if !dir.path.is_dir() {
+        if !dir.path.exists() {
             continue;
         }
 
-        for entry in fs::read_dir(&dir.path)? {
-            let entry = entry?;
+        let entries = match fs::read_dir(&dir.path) {
+            Ok(entries) => entries,
+            Err(error) => {
+                warnings.push(unreadable_target_warning(&dir.path, error));
+                continue;
+            }
+        };
+
+        for entry in entries {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error) => {
+                    warnings.push(unreadable_target_warning(&dir.path, error));
+                    continue;
+                }
+            };
             let path = entry.path();
-            if owned_paths.contains(&path) || entry.file_type()?.is_symlink() {
+            let file_type = match entry.file_type() {
+                Ok(file_type) => file_type,
+                Err(error) => {
+                    warnings.push(unreadable_target_warning(&path, error));
+                    continue;
+                }
+            };
+            if owned_paths.contains(&path) || file_type.is_symlink() {
                 continue;
             }
             if !path.join(SKILL_FILE).is_file() {
@@ -210,7 +277,11 @@ pub fn discover_unmanaged_skills(paths: &StorePaths) -> DaloResult<Vec<Unmanaged
         }
     }
 
-    Ok(assign_unmanaged_ids(found))
+    warnings.sort_by(|left, right| left.path.cmp(&right.path));
+    Ok(UnmanagedSkillScan {
+        unmanaged_skills: assign_unmanaged_ids(found),
+        warnings,
+    })
 }
 
 /// Adopt an unmanaged skill into the local source.
@@ -273,8 +344,10 @@ pub fn list_resolve_items(paths: &StorePaths) -> DaloResult<ResolveListReport> {
         .collect::<Vec<_>>();
     owned_skills.sort_by(|left, right| left.id.cmp(&right.id));
 
+    let scan = discover_unmanaged_skill_scan(paths)?;
     Ok(ResolveListReport {
-        unmanaged_skills: discover_unmanaged_skills(paths)?,
+        unmanaged_skills: scan.unmanaged_skills,
+        target_warnings: scan.warnings,
         owned_skills,
     })
 }
@@ -398,6 +471,14 @@ fn assign_unmanaged_ids(mut skills: Vec<UnmanagedSkill>) -> Vec<UnmanagedSkill> 
             .then_with(|| left.path.cmp(&right.path))
     });
     skills
+}
+
+fn unreadable_target_warning(path: &Path, error: std::io::Error) -> TargetScanWarning {
+    TargetScanWarning {
+        code: TargetScanWarningCode::UnreadableTargetDir,
+        path: path.to_path_buf(),
+        message: format!("target path could not be read: {error}"),
+    }
 }
 
 fn replace_with_owned_symlink(
@@ -638,6 +719,63 @@ mod tests {
             .expect("unmanaged discovery should succeed");
 
         assert_eq!(skills[0].slot_name, "review");
+    }
+
+    #[test]
+    fn discover_unmanaged_skill_scan_should_warn_on_unreadable_target_paths() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let target = temp_dir.path().join("target");
+        let unreadable = temp_dir.path().join("not-a-dir");
+        let unmanaged = target.join("review");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        fs::create_dir_all(&unmanaged).expect("unmanaged dir should be created");
+        fs::write(unmanaged.join(SKILL_FILE), "# Review\n").expect("skill should be written");
+        fs::write(&unreadable, "not a directory\n").expect("unreadable path should be written");
+        write_state(&store_root, &target, &target.join("unused"));
+        let paths = StorePaths::new(store_root);
+        let mut state = store::read_state(&paths).expect("state should be readable");
+        state.materialization_dirs.push(MaterializationDirState {
+            path: unreadable.clone(),
+            logical_targets: vec!["other".to_owned()],
+        });
+        store::write_state(&paths, &state).expect("state should be writable");
+
+        let scan = discover_unmanaged_skill_scan(&paths).expect("scan should be non-fatal");
+
+        assert_eq!(scan.unmanaged_skills[0].slot_name, "review");
+        assert_eq!(scan.warnings.len(), 1);
+        assert_eq!(
+            scan.warnings[0].code,
+            TargetScanWarningCode::UnreadableTargetDir
+        );
+        assert_eq!(scan.warnings[0].path, unreadable);
+    }
+
+    #[test]
+    fn adopt_skill_should_ignore_unrelated_unreadable_target_paths() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let target = temp_dir.path().join("target");
+        let unreadable = temp_dir.path().join("not-a-dir");
+        let unmanaged = target.join("review");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        fs::create_dir_all(&unmanaged).expect("unmanaged dir should be created");
+        fs::write(unmanaged.join(SKILL_FILE), "# Review\n").expect("skill should be written");
+        fs::write(&unreadable, "not a directory\n").expect("unreadable path should be written");
+        write_state(&store_root, &target, &target.join("unused"));
+        let paths = StorePaths::new(store_root.clone());
+        let mut state = store::read_state(&paths).expect("state should be readable");
+        state.materialization_dirs.push(MaterializationDirState {
+            path: unreadable,
+            logical_targets: vec!["other".to_owned()],
+        });
+        store::write_state(&paths, &state).expect("state should be writable");
+
+        let report = adopt_skill(&paths, "review", false, false).expect("adopt should succeed");
+
+        assert_eq!(report.slot_name, "review");
+        assert!(store_root.join("local/skills/review/SKILL.md").is_file());
     }
 
     #[test]

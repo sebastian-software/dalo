@@ -96,6 +96,10 @@ pub enum DoctorCode {
     LockOk,
     /// Lock cannot be parsed.
     LockInvalid,
+    /// Approvals file parses.
+    ApprovalsOk,
+    /// Approvals file cannot be parsed.
+    ApprovalsInvalid,
     /// Git executable is available.
     GitAvailable,
     /// Git executable is missing.
@@ -130,6 +134,8 @@ pub enum DoctorCode {
     ForeignOwnedSymlink,
     /// Unmanaged target skill blocks the same managed slot.
     UnmanagedSameNameBlocker,
+    /// A linked target directory could not be scanned for unmanaged skills.
+    UnreadableTargetDirectory,
     /// Source is clean.
     SourceClean,
     /// Source has local changes.
@@ -157,6 +163,7 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
     let config = read_config(&paths, &mut findings);
     let state = read_state(&paths, &mut findings);
     let lock_ok = read_lock(&paths, &mut findings);
+    let approvals = read_approvals(&paths, &mut findings);
 
     if paths.local_dir.join(".git").is_dir() {
         findings.push(ok(
@@ -181,7 +188,7 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
     }
 
     if let (Some(config), Some(_), true) = (config.as_ref(), state.as_ref(), lock_ok) {
-        check_resolution(&paths, config, &mut findings);
+        check_resolution(&paths, config, approvals.as_ref(), &mut findings);
     }
 
     findings.sort_by(|left, right| {
@@ -313,6 +320,23 @@ fn read_lock(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) -> bool {
                 Some("dalo sync".to_owned()),
             ));
             false
+        }
+    }
+}
+
+fn read_approvals(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) -> Option<ApprovalsFile> {
+    match store::read_approvals(paths) {
+        Ok(approvals) => {
+            findings.push(ok(DoctorCode::ApprovalsOk, "approvals parse"));
+            Some(approvals)
+        }
+        Err(error) => {
+            findings.push(finding_error(
+                DoctorCode::ApprovalsInvalid,
+                format!("approvals could not be read: {error}"),
+                Some("dalo init".to_owned()),
+            ));
+            None
         }
     }
 }
@@ -477,16 +501,25 @@ fn check_sources(config: &UserConfig, findings: &mut Vec<DoctorFinding>) {
     }
 }
 
-fn check_resolution(paths: &StorePaths, config: &UserConfig, findings: &mut Vec<DoctorFinding>) {
-    let approvals = store::read_approvals(paths).unwrap_or_else(|_| ApprovalsFile::empty());
-    let resolution = resolver::resolve_from_config(config, approvals.approvals).resolution;
+fn check_resolution(
+    paths: &StorePaths,
+    config: &UserConfig,
+    approvals: Option<&ApprovalsFile>,
+    findings: &mut Vec<DoctorFinding>,
+) {
+    let approval_records = approvals
+        .map(|approvals| approvals.approvals.clone())
+        .unwrap_or_default();
+    let resolution = resolver::resolve_from_config(config, approval_records).resolution;
 
-    for skill in &resolution.pending_approval_skills {
-        findings.push(finding_warning(
-            DoctorCode::PendingApproval,
-            format!("skill `{}` is pending approval", skill.source_ref),
-            Some("dalo status".to_owned()),
-        ));
+    if approvals.is_some() {
+        for skill in &resolution.pending_approval_skills {
+            findings.push(finding_warning(
+                DoctorCode::PendingApproval,
+                format!("skill `{}` is pending approval", skill.source_ref),
+                Some("dalo status".to_owned()),
+            ));
+        }
     }
 
     for blocked in &resolution.blocked_skills {
@@ -549,8 +582,19 @@ fn check_resolution(paths: &StorePaths, config: &UserConfig, findings: &mut Vec<
         .iter()
         .map(|skill| (skill.slot_name.as_str(), skill.source_ref.as_str()))
         .collect::<BTreeMap<_, _>>();
-    if let Ok(unmanaged_skills) = adopt::discover_unmanaged_skills(paths) {
-        for unmanaged in unmanaged_skills {
+    if let Ok(unmanaged_scan) = adopt::discover_unmanaged_skill_scan(paths) {
+        for warning in unmanaged_scan.warnings {
+            findings.push(finding_warning(
+                DoctorCode::UnreadableTargetDirectory,
+                format!(
+                    "target path `{}` could not be scanned: {}",
+                    warning.path.display(),
+                    warning.message
+                ),
+                None,
+            ));
+        }
+        for unmanaged in unmanaged_scan.unmanaged_skills {
             if let Some(source_ref) = active_slots.get(unmanaged.slot_name.as_str()) {
                 findings.push(finding_error(
                     DoctorCode::UnmanagedSameNameBlocker,
@@ -685,6 +729,8 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::StateInvalid => "state_invalid",
         DoctorCode::LockOk => "lock_ok",
         DoctorCode::LockInvalid => "lock_invalid",
+        DoctorCode::ApprovalsOk => "approvals_ok",
+        DoctorCode::ApprovalsInvalid => "approvals_invalid",
         DoctorCode::GitAvailable => "git_available",
         DoctorCode::GitMissing => "git_missing",
         DoctorCode::GhAvailable => "gh_available",
@@ -702,6 +748,7 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::OwnedPathRealEntry => "owned_path_real_entry",
         DoctorCode::ForeignOwnedSymlink => "foreign_owned_symlink",
         DoctorCode::UnmanagedSameNameBlocker => "unmanaged_same_name_blocker",
+        DoctorCode::UnreadableTargetDirectory => "unreadable_target_directory",
         DoctorCode::SourceClean => "source_clean",
         DoctorCode::DirtySource => "dirty_source",
         DoctorCode::PendingApproval => "pending_approval",
@@ -856,6 +903,34 @@ mod tests {
     }
 
     #[test]
+    fn run_doctor_should_report_invalid_approvals_without_pending_warnings() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store = temp_dir.path().join("store");
+        let team_repo = temp_dir.path().join("team-repo");
+        store::init_store(store.clone(), false).expect("init should succeed");
+        create_git_skill_repo(&team_repo);
+        write_config_with_team_source(&store, &team_repo, false);
+        fs::write(
+            StorePaths::new(store.clone()).approvals_file,
+            "schema_version = ",
+        )
+        .expect("approvals should be corrupted");
+
+        let report = run_doctor(&store);
+
+        assert!(report.findings.iter().any(|finding| {
+            finding.code == DoctorCode::ApprovalsInvalid
+                && finding.severity == DoctorSeverity::Error
+        }));
+        assert!(
+            !report
+                .findings
+                .iter()
+                .any(|finding| finding.code == DoctorCode::PendingApproval)
+        );
+    }
+
+    #[test]
     fn check_sources_should_rate_dirty_team_source_as_error() {
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
         let store = temp_dir.path().join("store");
@@ -927,6 +1002,56 @@ mod tests {
             ],
         );
         fs::write(repo.join("README.md"), "dirty\n").expect("repo should be dirtied");
+    }
+
+    fn create_git_skill_repo(repo: &Path) {
+        fs::create_dir_all(repo.join("skills/review")).expect("repo skill dir should be created");
+        fs::write(repo.join("skills/review/SKILL.md"), "# Review\n")
+            .expect("skill should be written");
+        run_git(repo, &["init", "-q"]);
+        run_git(repo, &["add", "."]);
+        run_git(
+            repo,
+            &[
+                "-c",
+                "commit.gpgsign=false",
+                "-c",
+                "user.email=test@example.com",
+                "-c",
+                "user.name=Test User",
+                "commit",
+                "-m",
+                "initial",
+                "-q",
+            ],
+        );
+    }
+
+    fn write_config_with_team_source(store: &Path, team_repo: &Path, trusted: bool) {
+        use crate::config::{Settings, UserConfig};
+        use crate::source::{SourceConfig, SourceKind};
+
+        let paths = StorePaths::new(store.to_path_buf());
+        let config = UserConfig {
+            version: crate::config::CONFIG_VERSION,
+            settings: Settings {
+                autosync: false,
+                sync_interval: None,
+            },
+            sources: vec![SourceConfig {
+                id: "team".to_owned(),
+                kind: SourceKind::Team,
+                path: team_repo.to_path_buf(),
+                priority: 10,
+                enabled: true,
+                trusted,
+                url: None,
+                branch: None,
+                update_policy: None,
+                selection: Vec::new(),
+            }],
+        };
+        store::write_config(&paths, &config).expect("config should be written");
     }
 
     fn write_config_with_dirty_sources(store: &Path, team_repo: &Path, local_repo: Option<&Path>) {
