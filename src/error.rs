@@ -176,6 +176,17 @@ pub enum DaloError {
         reason: String,
     },
 
+    /// The state file exists but could not be parsed and can be regenerated.
+    #[error(
+        "could not parse state file `{path}`: {reason}; run `dalo init` to back it up and regenerate an empty state file"
+    )]
+    CorruptState {
+        /// State file path.
+        path: PathBuf,
+        /// Parser error message.
+        reason: String,
+    },
+
     /// A catalog command targeted a source that is not a catalog source.
     #[error("source `{source_id}` is not a catalog source")]
     NotACatalogSource {
@@ -225,6 +236,7 @@ impl DaloError {
             | Self::UnsupportedLockSchema { .. }
             | Self::UnsupportedSchema { .. }
             | Self::FileParse { .. }
+            | Self::CorruptState { .. }
             | Self::LocalSourcePriorityFixed { .. }
             | Self::TomlDeserialize(_) => DaloExitCode::ExpectedFailure,
             Self::DirtySource { .. }

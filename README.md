@@ -244,6 +244,8 @@ Newly active skills require local approval unless covered by a trusted source, a
 
 Dirty team edits block sync for the affected source or skill. The guided answer is promotion, stash, local override, or discard. The default is no data loss.
 
+If `state.toml` is truncated or corrupt, commands report `dalo init` as the recovery path. `dalo init` backs up the corrupt file as `state.toml.corrupt-*` and regenerates an empty state file; relink targets afterward if needed.
+
 ## Compared with local installers
 
 Single-user skill installers are useful. They are good at putting a skill onto one machine.

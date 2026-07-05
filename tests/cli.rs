@@ -613,6 +613,69 @@ fn status_json_should_report_unmanaged_target_skills() {
 }
 
 #[test]
+fn status_should_report_actionable_error_for_corrupt_state() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::write(store.join("state.toml"), "schema_version = ")
+        .expect("state should be corrupted");
+    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .arg("status")
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("run `dalo init`"));
+}
+
+#[test]
+fn init_should_repair_corrupt_state_file() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::write(store.join("state.toml"), "schema_version = ")
+        .expect("state should be corrupted");
+    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("repaired"))
+        .stdout(predicate::str::contains("state.toml"));
+
+    assert!(
+        std::fs::read_dir(&store)
+            .expect("store dir should be readable")
+            .filter_map(Result::ok)
+            .any(|entry| entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with("state.toml.corrupt-"))
+    );
+    let state =
+        store::read_state(&store::StorePaths::new(store)).expect("state should be repaired");
+    assert!(state.targets.is_empty());
+}
+
+#[test]
 fn adopt_should_copy_unmanaged_skill_without_replacing_by_default() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
