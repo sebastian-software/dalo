@@ -1,5 +1,6 @@
 //! Command-line parser and handlers.
 
+use std::fs;
 use std::io;
 use std::path::PathBuf;
 
@@ -417,6 +418,13 @@ fn run_instructions(options: &GlobalOptions, command: InstructionsCommand) -> Da
 }
 
 fn run_init(options: &GlobalOptions) -> DaloResult<()> {
+    let paths = store::StorePaths::new(options.store.clone());
+    let _lock = if options.dry_run {
+        None
+    } else {
+        fs::create_dir_all(&paths.root)?;
+        Some(store::StoreLock::acquire(&paths)?)
+    };
     let report = store::init_store(options.store.clone(), options.dry_run)?;
 
     if options.json {

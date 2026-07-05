@@ -105,6 +105,26 @@ fn init_should_create_store_layout() {
 }
 
 #[test]
+fn init_should_require_store_lock() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    std::fs::create_dir_all(&store).expect("store root should be created");
+    let paths = store::StorePaths::new(store.clone());
+    let _lock = store::StoreLock::acquire(&paths).expect("parent should hold store lock");
+    let mut command = dalo_command();
+
+    command
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "another dalo operation is running",
+        ));
+}
+
+#[test]
 fn init_should_use_dalo_store_environment_override() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store-from-env");
