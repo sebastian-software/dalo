@@ -545,7 +545,7 @@ where
     if let Err(error) = write_state(paths, &state) {
         return Err(rollback_replacement(&skill.path, &backup_path, error));
     }
-    fs::remove_dir_all(&backup_path)?;
+    let _ = fs::remove_dir_all(&backup_path);
 
     Ok(AdoptReplacementStatus::Replaced)
 }
@@ -568,8 +568,9 @@ fn adopting_backup_path(path: &Path) -> DaloResult<PathBuf> {
         return Err(DaloError::Io(io::Error::new(
             io::ErrorKind::AlreadyExists,
             format!(
-                "adoption backup path `{}` already exists",
-                candidate.display()
+                "adoption backup path `{}` already exists; restore it to `{}` or remove it before retrying",
+                candidate.display(),
+                path.display()
             ),
         )));
     }
@@ -899,6 +900,22 @@ mod tests {
                 .contains("also failed to restore original")
         );
         assert!(backup_path.exists());
+    }
+
+    #[test]
+    fn adopting_backup_path_should_name_recovery_for_leftover_backup() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let link_path = temp_dir.path().join("review");
+        let backup_path = temp_dir.path().join("review.dalo-adopting");
+        fs::create_dir_all(&backup_path).expect("backup path should be created");
+
+        let error =
+            adopting_backup_path(&link_path).expect_err("existing backup should block retry");
+
+        let message = error.to_string();
+        assert!(message.contains("restore it"));
+        assert!(message.contains("remove it before retrying"));
+        assert!(message.contains(&link_path.display().to_string()));
     }
 
     #[test]

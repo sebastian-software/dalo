@@ -411,6 +411,18 @@ fn apply_plan(
                 match fs::symlink_metadata(&operation.link_path) {
                     // Only ever unlink a symlink we are about to replace.
                     Ok(metadata) if metadata.file_type().is_symlink() => {
+                        let Some(desired_path) = operation.desired_path.as_ref() else {
+                            continue;
+                        };
+                        let target = fs::read_link(&operation.link_path)?;
+                        if !is_owned_link_target(paths, &operation.link_path, desired_path, &target)
+                        {
+                            operation.kind = MaterializeOperationKind::Conflict;
+                            operation.status = MaterializeOperationStatus::Blocked;
+                            operation.reason =
+                                Some("foreign symlink appeared at target slot".to_owned());
+                            continue;
+                        }
                         fs::remove_file(&operation.link_path)?;
                     }
                     // A real file/dir appeared at the slot after planning (TOCTOU).
@@ -922,6 +934,45 @@ mod tests {
             foreign_dir
         );
         assert!(state.owned_skills.is_empty());
+    }
+
+    #[test]
+    fn apply_plan_should_recheck_relink_target_before_unlinking() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let target_dir = temp_dir.path().join("target");
+        let foreign_dir = temp_dir.path().join("foreign");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        fs::create_dir_all(&target_dir).expect("target should be created");
+        fs::create_dir_all(&foreign_dir).expect("foreign dir should be created");
+        let desired_store_dir = store_root.join("local/skills/review");
+        fs::create_dir_all(&desired_store_dir).expect("desired store dir should be created");
+        let link_path = target_dir.join("review");
+        unix_fs::symlink(&foreign_dir, &link_path).expect("foreign symlink should be created");
+        let mut state = StateFile::empty();
+        let operation = MaterializeOperation {
+            kind: MaterializeOperationKind::Relink,
+            link_path: link_path.clone(),
+            desired_path: Some(desired_store_dir),
+            status: MaterializeOperationStatus::Applied,
+            reason: Some("owned symlink points elsewhere".to_owned()),
+        };
+        let mut operations = vec![operation];
+
+        apply_plan(
+            &StorePaths::new(store_root),
+            &mut state,
+            &mut operations,
+            &[],
+        )
+        .expect("apply should succeed");
+
+        assert_eq!(operations[0].kind, MaterializeOperationKind::Conflict);
+        assert_eq!(operations[0].status, MaterializeOperationStatus::Blocked);
+        assert_eq!(
+            fs::read_link(&link_path).expect("foreign symlink should survive"),
+            foreign_dir
+        );
     }
 
     #[test]

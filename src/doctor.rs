@@ -334,7 +334,7 @@ fn read_approvals(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) -> Opti
             findings.push(finding_error(
                 DoctorCode::ApprovalsInvalid,
                 format!("approvals could not be read: {error}"),
-                Some("dalo init".to_owned()),
+                Some("inspect or restore approvals.toml".to_owned()),
             ));
             None
         }
@@ -930,6 +930,7 @@ mod tests {
         assert!(report.findings.iter().any(|finding| {
             finding.code == DoctorCode::ApprovalsInvalid
                 && finding.severity == DoctorSeverity::Error
+                && finding.next_command.as_deref() == Some("inspect or restore approvals.toml")
         }));
         assert!(
             !report
