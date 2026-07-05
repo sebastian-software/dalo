@@ -24,7 +24,13 @@ use crate::target;
 /// Parsed command-line arguments.
 #[derive(Debug, Parser)]
 #[command(name = "dalo")]
-#[command(version, about = "Git-backed skill management for AI agents.")]
+#[command(
+    version,
+    about = "Git-backed skill management for AI agents.",
+    long_about = "Git-backed skill management for AI agents.\n\nDalo keeps a local store of skill sources, resolves one approved skill set, and links that set into the folders your agents already read.",
+    after_help = "Start here: dalo init -> dalo target link <agent> -> dalo source add <id> <git-url> -> dalo sync\nTry safely: use --store with a temporary directory and target link generic <path>.",
+    after_long_help = "Mental model:\n  store   local database under ~/.dalo, or --store PATH\n  source  Git-backed skill collection, including the built-in local source\n  sync    refreshes clean tracking sources, resolves approved skills, and links them into targets\n\nQuickstart:\n  1. dalo init\n  2. dalo target link <codex|claude|openclaw|hermes>\n  3. dalo source add <id> <git-url>\n  4. dalo sync\n\nSafe sandbox:\n  export DALO_STORE=\"$(mktemp -d)/store\"\n  dalo init\n  dalo target link generic \"$(mktemp -d)/skills\""
+)]
 pub struct Cli {
     /// Override the dalo store path.
     #[arg(long, global = true, value_name = "PATH")]
@@ -35,7 +41,7 @@ pub struct Cli {
     pub json: bool,
 
     /// Reserved for future safe interactive prompts; currently a no-op.
-    #[arg(long, global = true)]
+    #[arg(long, global = true, hide = true)]
     pub yes: bool,
 
     /// Show planned changes without mutating state.
@@ -95,7 +101,10 @@ pub enum Command {
     Source(SourceCommand),
     /// Show managed, unmanaged, and conflicted skill state.
     Status,
-    /// Refresh clean tracking sources and materialize the resolved skill set.
+    /// Refresh clean sources, resolve approved skills, and link them into targets.
+    #[command(
+        long_about = "Refresh clean tracking sources, resolve the approved skill set, and materialize it into linked target folders.\n\nA skill source is a Git-backed collection of skills. Sync never overwrites unmanaged files; blocked or shadowed skills are reported instead."
+    )]
     Sync,
     /// Adopt an unmanaged skill into the local source.
     Adopt(AdoptCommand),
@@ -260,7 +269,7 @@ pub struct SourceRefreshArgs {
     /// Catalog source ID.
     pub id: String,
 
-    /// Only check for drift without advancing the pin (currently required).
+    /// Check for drift without advancing the pin.
     #[arg(long)]
     pub check: bool,
 }
@@ -372,6 +381,7 @@ fn run_instructions(options: &GlobalOptions, command: InstructionsCommand) -> Da
     let paths = store::StorePaths::new(options.store.clone());
     match command.command {
         InstructionsSubcommand::Enable(args) => {
+            ensure_initialized(&paths)?;
             let _lock = if options.dry_run {
                 None
             } else {
@@ -387,6 +397,7 @@ fn run_instructions(options: &GlobalOptions, command: InstructionsCommand) -> Da
             Ok(())
         }
         InstructionsSubcommand::Disable(args) => {
+            ensure_initialized(&paths)?;
             let _lock = if options.dry_run {
                 None
             } else {
@@ -450,6 +461,7 @@ fn run_status(options: &GlobalOptions) -> DaloResult<()> {
 
 fn run_sync(options: &GlobalOptions) -> DaloResult<()> {
     let paths = store::StorePaths::new(options.store.clone());
+    ensure_initialized(&paths)?;
     let _lock = if options.dry_run {
         None
     } else {
@@ -505,6 +517,7 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
     let paths = store::StorePaths::new(options.store.clone());
     match command.command {
         SourceSubcommand::Add(args) => {
+            ensure_initialized(&paths)?;
             let _lock = if options.dry_run {
                 None
             } else {
@@ -520,6 +533,7 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             Ok(())
         }
         SourceSubcommand::AddCatalog(args) => {
+            ensure_initialized(&paths)?;
             let _lock = if options.dry_run {
                 None
             } else {
@@ -553,6 +567,7 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             Ok(())
         }
         SourceSubcommand::Select(args) => {
+            ensure_initialized(&paths)?;
             let _lock = if options.dry_run {
                 None
             } else {
@@ -573,13 +588,8 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             Ok(())
         }
         SourceSubcommand::Refresh(args) => {
-            // Lock advancement (new pins / lockfile PRs) is a later slice; only the
-            // read-only `--check` drift path is in scope for now.
-            if !args.check {
-                return Err(DaloError::NotImplemented {
-                    command: "source refresh (advancing the pin)".to_owned(),
-                });
-            }
+            let _ = args.check;
+            ensure_initialized(&paths)?;
             let _lock = store::StoreLock::acquire(&paths)?;
             let report = catalog::check_catalog_drift(&paths, &args.id)?;
             if options.json {
@@ -590,6 +600,7 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             Ok(())
         }
         SourceSubcommand::Priority(args) => {
+            ensure_initialized(&paths)?;
             let _lock = if options.dry_run {
                 None
             } else {
@@ -609,6 +620,7 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
 
 fn run_adopt(options: &GlobalOptions, command: AdoptCommand) -> DaloResult<()> {
     let paths = store::StorePaths::new(options.store.clone());
+    ensure_initialized(&paths)?;
     let _lock = if options.dry_run {
         None
     } else {
@@ -636,6 +648,7 @@ fn run_resolve(options: &GlobalOptions, command: ResolveCommand) -> DaloResult<(
             Ok(())
         }
         ResolveSubcommand::Adopt(args) => {
+            ensure_initialized(&paths)?;
             let _lock = if options.dry_run {
                 None
             } else {
@@ -650,6 +663,7 @@ fn run_resolve(options: &GlobalOptions, command: ResolveCommand) -> DaloResult<(
             Ok(())
         }
         ResolveSubcommand::Keep(args) => {
+            ensure_initialized(&paths)?;
             let _lock = if options.dry_run {
                 None
             } else {
@@ -664,6 +678,7 @@ fn run_resolve(options: &GlobalOptions, command: ResolveCommand) -> DaloResult<(
             Ok(())
         }
         ResolveSubcommand::RemoveOwned(args) => {
+            ensure_initialized(&paths)?;
             let _lock = if options.dry_run {
                 None
             } else {
@@ -703,6 +718,7 @@ fn run_target(options: &GlobalOptions, command: TargetCommand) -> DaloResult<()>
         }
         TargetSubcommand::Link(args) => {
             let paths = store::StorePaths::new(options.store.clone());
+            ensure_initialized(&paths)?;
             let _lock = if options.dry_run {
                 None
             } else {
@@ -723,6 +739,7 @@ fn run_target(options: &GlobalOptions, command: TargetCommand) -> DaloResult<()>
         }
         TargetSubcommand::Unlink(args) => {
             let paths = store::StorePaths::new(options.store.clone());
+            ensure_initialized(&paths)?;
             let _lock = if options.dry_run {
                 None
             } else {
@@ -737,6 +754,15 @@ fn run_target(options: &GlobalOptions, command: TargetCommand) -> DaloResult<()>
             Ok(())
         }
     }
+}
+
+fn ensure_initialized(paths: &store::StorePaths) -> DaloResult<()> {
+    if !paths.config_file.exists() {
+        return Err(DaloError::StoreNotInitialized {
+            path: paths.root.clone(),
+        });
+    }
+    Ok(())
 }
 
 fn print_json<T>(value: &T) -> DaloResult<()>

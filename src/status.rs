@@ -15,7 +15,7 @@ use crate::instructions::{
     self, DiscoveredPack, InstructionBlockDrift, InstructionPackReport, TopicOverlap,
 };
 use crate::inventory::InventoryWarning;
-use crate::lockfile::{self, LockDrift};
+use crate::lockfile::{self, LockDrift, LockDriftCode};
 use crate::materialize::SyncReport;
 use crate::resolver::{self, Resolution};
 use crate::source::{
@@ -141,10 +141,12 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
 
     let resolution = live.resolution;
     let live_lock = lockfile::build_user_lock(&config.sources, &resolution, None);
+    let mut drift = lockfile::compare_user_lock(&previous_lock, &live_lock);
+    suppress_initial_local_source_drift(&previous_lock, &mut drift);
     let lock = LockStatus {
         path: paths.lock_file.clone(),
         schema_version: previous_lock.schema_version,
-        drift: lockfile::compare_user_lock(&previous_lock, &live_lock),
+        drift,
     };
     let unmanaged_scan = crate::adopt::discover_unmanaged_skill_scan(&paths)?;
 
@@ -179,6 +181,22 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
     })
 }
 
+fn suppress_initial_local_source_drift(
+    previous_lock: &lockfile::UserLock,
+    drift: &mut Vec<LockDrift>,
+) {
+    if previous_lock.sources.is_empty()
+        && previous_lock.active_skills.is_empty()
+        && previous_lock.pending_approval_skills.is_empty()
+        && previous_lock.unlinked_skills.is_empty()
+        && previous_lock.target_materializations.is_empty()
+    {
+        drift.retain(|entry| {
+            !(entry.code == LockDriftCode::SourceAdded && entry.subject == "local")
+        });
+    }
+}
+
 /// Print a human-readable init report.
 pub fn print_init_report(report: &InitReport) {
     println!("dalo store: {}", report.store.display());
@@ -191,36 +209,50 @@ pub fn print_init_report(report: &InitReport) {
             operation.path.display()
         );
     }
+    println!();
+    println!("Store ready.");
+    println!("Next steps:");
+    println!("  1. dalo target link <codex|claude|openclaw|hermes>");
+    println!("  2. dalo source add <id> <git-url>");
+    println!("  3. dalo sync");
 }
 
 /// Print a human-readable status report.
 pub fn print_status_report(report: &StatusReport) {
     println!("dalo store: {}", report.store.display());
     println!("sources:");
-    for source in &report.sources {
-        let state = if source.enabled {
-            "enabled"
-        } else {
-            "disabled"
-        };
-        let error = source
-            .error
-            .as_ref()
-            .map_or(String::new(), |error| format!(" ({error})"));
-        println!(
-            "  {:<12} {:<5} priority={:<4} skills={:<3} {}{}",
-            source.id, source.kind, source.priority, source.skill_count, state, error
-        );
+    if report.sources.is_empty() {
+        println!("  none");
+    } else {
+        for source in &report.sources {
+            let state = if source.enabled {
+                "enabled"
+            } else {
+                "disabled"
+            };
+            let error = source
+                .error
+                .as_ref()
+                .map_or(String::new(), |error| format!(" ({error})"));
+            println!(
+                "  {:<12} {:<5} priority={:<4} skills={:<3} {}{}",
+                source.id, source.kind, source.priority, source.skill_count, state, error
+            );
+        }
     }
 
     println!("active skills:");
-    for skill in &report.resolution.active_skills {
-        let marker = if skill.local_override {
-            " local_override"
-        } else {
-            ""
-        };
-        println!("  {} -> {}{}", skill.slot_name, skill.source_ref, marker);
+    if report.resolution.active_skills.is_empty() {
+        println!("  none");
+    } else {
+        for skill in &report.resolution.active_skills {
+            let marker = if skill.local_override {
+                " local_override"
+            } else {
+                ""
+            };
+            println!("  {} -> {}{}", skill.slot_name, skill.source_ref, marker);
+        }
     }
 
     if !report.resolution.pending_approval_skills.is_empty() {
@@ -341,6 +373,10 @@ pub fn print_status_report(report: &StatusReport) {
 /// Print a human-readable sync report.
 pub fn print_sync_report(report: &SyncReport) {
     println!("dalo store: {}", report.store.display());
+    if report.operations.is_empty() {
+        println!("nothing to sync: 0 skills materialized; store is up to date");
+        return;
+    }
     for operation in &report.operations {
         let desired = operation
             .desired_path
@@ -373,6 +409,10 @@ pub fn print_source_add_report(report: &SourceAddReport) {
 
 /// Print a human-readable source list report.
 pub fn print_source_list_report(report: &SourceListReport) {
+    if report.sources.is_empty() {
+        println!("no sources configured");
+        return;
+    }
     for source in &report.sources {
         println!(
             "{:<12} {:<5} priority={:<4} enabled={} {}",
@@ -497,6 +537,14 @@ pub fn print_adopt_report(report: &AdoptReport) {
 
 /// Print a human-readable resolve list report.
 pub fn print_resolve_list_report(report: &ResolveListReport) {
+    if report.unmanaged_skills.is_empty()
+        && report.owned_skills.is_empty()
+        && report.target_warnings.is_empty()
+    {
+        println!("no blockers, unmanaged skills, or owned symlinks found");
+        return;
+    }
+
     if !report.unmanaged_skills.is_empty() {
         println!("unmanaged skills:");
         for skill in &report.unmanaged_skills {

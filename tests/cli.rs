@@ -29,7 +29,10 @@ fn help_should_list_planned_top_level_commands() {
         .stdout(predicate::str::contains("sync"))
         .stdout(predicate::str::contains("adopt"))
         .stdout(predicate::str::contains("resolve"))
-        .stdout(predicate::str::contains("doctor"));
+        .stdout(predicate::str::contains("doctor"))
+        .stdout(predicate::str::contains("Mental model:"))
+        .stdout(predicate::str::contains("Quickstart:"))
+        .stdout(predicate::str::contains("--yes").not());
 }
 
 #[test]
@@ -97,13 +100,56 @@ fn init_should_create_store_layout() {
         .arg("init")
         .assert()
         .success()
-        .stdout(predicate::str::contains("created"));
+        .stdout(predicate::str::contains("created"))
+        .stdout(predicate::str::contains("Store ready."))
+        .stdout(predicate::str::contains("dalo target link"));
 
     assert!(store.join("config.toml").is_file());
     assert!(store.join("lock.toml").is_file());
     assert!(store.join("state.toml").is_file());
     assert!(store.join("approvals.toml").is_file());
     assert!(store.join("local/.git").is_dir());
+}
+
+#[test]
+fn mutating_commands_should_point_to_init_before_locking_missing_store() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("missing-store");
+
+    for args in [
+        vec!["sync"],
+        vec!["source", "add", "team", "https://example.com/team.git"],
+        vec!["target", "link", "generic", "skills"],
+        vec!["adopt", "review"],
+    ] {
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .args(args)
+            .assert()
+            .failure()
+            .code(1)
+            .stderr(predicate::str::contains("run `dalo init` first"))
+            .stderr(predicate::str::contains("No such file or directory").not());
+    }
+}
+
+#[test]
+fn json_errors_should_render_machine_readable_stderr() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("missing-store");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("\"error\""))
+        .stderr(predicate::str::contains("\"code\": \"expected_failure\""))
+        .stderr(predicate::str::contains("run `dalo init` first"))
+        .stderr(predicate::str::contains("error:").not());
 }
 
 #[test]
@@ -585,6 +631,48 @@ fn sync_should_report_existing_on_second_run() {
         .assert()
         .success()
         .stdout(predicate::str::contains("existing"));
+}
+
+#[test]
+fn sync_should_report_empty_noop_after_init() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("nothing to sync"));
+}
+
+#[test]
+fn fresh_status_should_not_report_local_source_lock_drift() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("active skills:"))
+        .stdout(predicate::str::contains("  none"))
+        .stdout(predicate::str::contains("lock drift:").not());
 }
 
 #[test]
@@ -2869,13 +2957,19 @@ fn source_refresh_check_should_rehash_legacy_source_lock_without_phantom_drift()
 }
 
 #[test]
-fn source_refresh_without_check_should_report_not_implemented() {
+fn source_refresh_without_check_should_run_read_only_drift_check() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+
     dalo_command()
         .args(["--store"])
         .arg(&store)
-        .arg("init")
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
         .assert()
         .success();
 
@@ -2884,11 +2978,8 @@ fn source_refresh_without_check_should_report_not_implemented() {
         .arg(&store)
         .args(["source", "refresh", "marketing"])
         .assert()
-        .failure()
-        .code(1)
-        .stderr(predicate::str::contains(
-            "source refresh (advancing the pin)",
-        ));
+        .success()
+        .stdout(predicate::str::contains("catalog marketing: up to date"));
 }
 
 #[test]
