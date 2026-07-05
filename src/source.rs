@@ -267,13 +267,15 @@ pub fn set_source_priority(
 }
 
 /// Refresh clean tracking team sources before sync.
+///
+/// Missing or unknown update policies are treated as pinned and are not pulled.
 pub fn refresh_tracking_team_sources(paths: &StorePaths) -> DaloResult<()> {
     let config = store::read_config(paths)?;
-    for source in config
-        .sources
-        .iter()
-        .filter(|source| source.enabled && source.kind == SourceKind::Team)
-    {
+    for source in config.sources.iter().filter(|source| {
+        source.enabled
+            && source.kind == SourceKind::Team
+            && source.update_policy.as_deref() == Some("track")
+    }) {
         if git::is_dirty(&source.path)? {
             return Err(DaloError::DirtySource {
                 source_id: source.id.clone(),
