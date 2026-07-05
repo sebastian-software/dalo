@@ -211,7 +211,7 @@ fn build_plan(
                 operations.push(plan_desired_recorded(paths, desired)?);
             }
             (Some(desired), None) => {
-                operations.push(plan_desired_unrecorded(desired)?);
+                operations.push(plan_desired_unrecorded(paths, desired)?);
             }
             (None, Some(recorded)) => {
                 operations.push(plan_undesired_recorded(paths, recorded, degraded_sources));
@@ -271,7 +271,10 @@ fn plan_desired_recorded(
     Ok(operation)
 }
 
-fn plan_desired_unrecorded(desired: &DesiredLink) -> DaloResult<MaterializeOperation> {
+fn plan_desired_unrecorded(
+    paths: &StorePaths,
+    desired: &DesiredLink,
+) -> DaloResult<MaterializeOperation> {
     let actual = actual_link_state(&desired.link_path)?;
     let operation = match actual {
         ActualLinkState::Absent => MaterializeOperation {
@@ -281,6 +284,20 @@ fn plan_desired_unrecorded(desired: &DesiredLink) -> DaloResult<MaterializeOpera
             status: MaterializeOperationStatus::Applied,
             reason: None,
         },
+        ActualLinkState::Symlink(target)
+            if is_owned_link_target(paths, &desired.store_path, &target) =>
+        {
+            MaterializeOperation {
+                kind: MaterializeOperationKind::Relink,
+                link_path: desired.link_path.clone(),
+                desired_path: Some(desired.store_path.clone()),
+                status: MaterializeOperationStatus::Applied,
+                reason: Some(format!(
+                    "unrecorded owned symlink points to `{}`",
+                    target.display()
+                )),
+            }
+        }
         ActualLinkState::Symlink(target) => MaterializeOperation {
             kind: MaterializeOperationKind::Conflict,
             link_path: desired.link_path.clone(),
@@ -589,6 +606,33 @@ mod tests {
         .expect("materialize should succeed");
 
         assert_eq!(report.operations[0].kind, MaterializeOperationKind::Relink);
+    }
+
+    #[test]
+    fn materialize_should_relink_unrecorded_store_symlink() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let target_dir = temp_dir.path().join("target");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        fs::create_dir_all(&target_dir).expect("target should be created");
+        let skill_dir = store_root.join("local/skills/review");
+        fs::create_dir_all(&skill_dir).expect("skill should be created");
+        let link_path = target_dir.join("review");
+        unix_fs::symlink(&skill_dir, &link_path).expect("unrecorded store symlink should exist");
+        write_state_with_target(&store_root, &target_dir);
+        let paths = StorePaths::new(store_root);
+
+        let report = materialize(&paths, &resolution_with_skill("review", &skill_dir), false)
+            .expect("materialize should succeed");
+
+        assert_eq!(report.operations[0].kind, MaterializeOperationKind::Relink);
+        let state = store::read_state(&paths).expect("state should be readable");
+        assert_eq!(state.owned_skills.len(), 1);
+        assert_eq!(state.owned_skills[0].link_path, link_path);
+        assert_eq!(
+            fs::read_link(&state.owned_skills[0].link_path).expect("link should be readable"),
+            skill_dir
+        );
     }
 
     #[test]
