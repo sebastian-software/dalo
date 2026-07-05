@@ -1,69 +1,60 @@
-# V1 Implementation Status
+# Dalo Implementation Status Snapshot
 
-Status: Current as of 2026-06-24  
-Scope: RFC 0001, RFC 0002, RFC 0003 implementation review  
+Status: Superseded by `CHANGELOG.md` and `docs/milestones/README.md` for release-by-release tracking
+Last updated: 2026-07-05
+Current crate version: 0.3.0
 
-This document records what the first V1 release candidate implements, what remains deferred, and where implementation intentionally differs from the RFC wording.
+This document is a compact status snapshot for readers coming from the V1 RFCs. It no longer tries to duplicate every shipped command or every changelog entry. For exact release history, use the changelog. For milestone acceptance criteria, use the milestone index and individual milestone files.
 
-## Implemented in V1
+## Shipped Through v0.3.0
 
-- Rust 2024 CLI/library package with stable toolchain.
+The V1 local/team skill loop is implemented:
+
+- Rust 2024 CLI/library package.
 - Store initialization under a configurable store path.
-- TOML config, state, approvals, and resolved user lock.
+- TOML config, state, approvals, source lock, and resolved user lock.
 - Local private source as a Git repository.
-- Team Git sources cloned into the store.
-- `git` CLI wrapper for clone, fast-forward pull, dirty checks, and commit identity.
+- Team Git sources cloned into the store, with clean tracking refresh and dirty-source blocking.
 - `target detect`, `target link`, and `target unlink`.
-- Supported target registry for Codex, Claude Code, OpenClaw, Hermes, and generic folders.
-- Experimental placeholders for Cursor and OpenCode.
-- Inventory scanning for `SKILL.md` skill directories.
-- Frontmatter parsing for name, id, description, owners, tags, and requires.
-- Deterministic resolver for local/team sources.
-- Approval gating by skill, source, author, and org.
-- Shadowing reported as `unlinked`.
-- Local override reporting.
-- Directory-level symlink materialization.
-- Owned symlink removal for no-longer-desired skills.
-- Dirty team source blocking during `sync`.
-- Resolved user lock writing after sync.
-- Lock drift reporting during `status`.
-- Unmanaged target skill discovery.
-- Copy-first adoption into the local source.
-- Optional `--replace` replacement of adopted target folders with owned symlinks.
-- `.local` and explicitly kept unmanaged skill protection.
-- Minimal `resolve list`, `resolve adopt`, `resolve keep`, and `resolve remove-owned`.
-- `doctor` diagnostics with text and JSON output.
-- Read-only diagnostics for store, config, state, lock, Git, GitHub CLI readiness, targets, symlinks, dirty sources, pending approvals, and unmanaged blockers.
-- End-to-end local fixtures that do not require network access.
-- CI workflow for Linux and macOS.
+- Supported directory targets for Codex, Claude Code, OpenClaw, Hermes, and generic folders; Cursor and OpenCode remain experimental placeholders.
+- Inventory scanning for portable `SKILL.md` skill directories.
+- Frontmatter parsing for `id`, `name`, `description`, `owners`, `tags`, and `requires`.
+- Deterministic resolver with priority, approvals, shadowing, local override reporting, and required-closure checks.
+- Directory-level symlink materialization that only removes dalo-owned links.
+- `status`, `sync`, `adopt`, minimal `resolve` helpers, and `doctor` diagnostics.
+- Linux/macOS CI, MSRV checks, dependency audit, and coverage summary.
 
-## Deferred
+The V1.1 catalog and instruction-pack layer is also implemented:
+
+- Catalog sources via `source add-catalog`, `source inspect`, and `source select`.
+- Source locks for pinned catalog commits, selected skills, and inventory snapshots.
+- Read-only catalog drift reporting through `source refresh --check`.
+- Same-catalog required-closure expansion with approval and linkability preflight.
+- Instruction packs rendered into isolated managed blocks through `instructions enable` and removed through `instructions disable`.
+- Instruction pack discovery, `instructions list`, and topic-overlap warnings in `status` and `doctor`.
+
+Distribution work is wired for the next tagged release:
+
+- Root MIT `LICENSE`.
+- Release workflow publishes to crates.io when release-please creates a release, assuming `CARGO_REGISTRY_TOKEN` is configured.
+- Release workflow attaches Linux and macOS archives plus SHA-256 checksum files to GitHub releases.
+
+## Still Planned
 
 - External sources declared by trusted sources.
-- Catalog source selection and catalog locks.
-- Catalog drift reporting.
-- Same-catalog required-closure expansion.
-- Dependency preflight for `requires`.
-- Instruction pack discovery and managed block rendering.
+- Lock-advancing `source refresh` that opens lockfile PRs or updates pins.
 - Scheduled autosync installation.
-- `source refresh` lockfile PRs.
 - Full interactive resolve assistant.
 - Rename/adapt flows for conflicts.
 - Full PR-first `promote`.
-- GitHub PR creation through `gh`.
-- GitLab, Forgejo, and other forge adapters.
-- Homebrew tap, Cargo publish, and homepage.
+- Forge adapters beyond GitHub.
+- More verified target adapters beyond the current supported set.
+- Homebrew tap and other package-manager integrations.
 - Windows support.
 
-## Intentional Deviations
+## Intentional Deviations From Early RFC Text
 
-- The store lock uses a create-new `.lock` file with retry behavior rather than OS advisory `flock`. This keeps V1 portable and testable, but stale lock takeover is deferred.
-- Scheduled sync behavior is not implemented yet, so scheduled lock semantics remain deferred.
-- `sync` currently materializes safe slots and reports blocked materialization operations instead of making every target conflict a run-level failure.
-- `gh` is checked by `doctor`, but no V1 command creates PRs yet because `promote` is deferred.
-- Instruction-related modules from RFC 0002 are not present in V1 because instruction packs moved to V1.1.
-- Source removal is not yet a CLI command; orphan cleanup behavior is covered by config/source disappearance and owned symlink reconciliation.
-
-## Versioning Decision
-
-The first releasable build should be tagged as `v0.1.0-rc.1`. The crate version remains `0.1.0` until the first non-RC V1 tag. The RC is intended for local team testing, not package registry publication.
+- Native include/import support for instruction files is not the baseline because it is not portable across agents. Dalo uses explicit managed blocks instead.
+- Cross-source `requires` are checked and reported, but are not auto-installed across source boundaries.
+- Catalog drift checking is read-only. Advancing a catalog pin remains a later source-maintenance flow.
+- `gh` is checked by `doctor`, but no shipped command creates PRs yet because `promote` remains planned.
