@@ -1430,6 +1430,40 @@ fn sync_should_not_link_unapproved_team_skill() {
 }
 
 #[test]
+fn status_should_show_all_pending_approval_candidates_for_same_slot() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo_a = temp_dir.path().join("team-a-repo");
+    let repo_b = temp_dir.path().join("team-b-repo");
+    create_git_skill_repo(&repo_a);
+    create_git_skill_repo(&repo_b);
+    setup_store_with_target(&store, &target);
+    for (source_id, repo) in [("team-a", &repo_a), ("team-b", &repo_b)] {
+        Command::cargo_bin("dalo")
+            .expect("binary should build")
+            .args(["--store"])
+            .arg(&store)
+            .args(["source", "add", source_id])
+            .arg(repo)
+            .assert()
+            .success();
+        set_source_untrusted(&store, source_id);
+    }
+
+    Command::cargo_bin("dalo")
+        .expect("binary should build")
+        .args(["--store"])
+        .arg(&store)
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("pending approval:"))
+        .stdout(predicate::str::contains("team -> team-a:team"))
+        .stdout(predicate::str::contains("team -> team-b:team"));
+}
+
+#[test]
 fn sync_should_not_block_on_dirty_local_source() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
