@@ -55,9 +55,9 @@ Validated on 2026-06-24.
 - Added unmanaged skill discovery for linked target directories.
 - `status` reports unmanaged target skills and whether they are protected.
 - Added `dalo adopt <slot-or-path>` with copy-first adoption into the local source.
-- Adoption only replaces the original target folder when `--yes` is passed.
+- Adoption only replaces the original target folder when `--replace` is passed.
 - `.local` marker skills and explicitly kept skills are protected from replacement.
-- `--yes` replacement records an owned symlink but does not create Git commits.
+- `--replace` records an owned symlink but does not create Git commits.
 - Adopted local skills participate in resolution immediately and show as local overrides over team skills.
 - Added `resolve list`, `resolve adopt`, `resolve keep`, and `resolve remove-owned`.
 - `resolve remove-owned` removes only recorded dalo-owned symlinks and blocks on real entries.

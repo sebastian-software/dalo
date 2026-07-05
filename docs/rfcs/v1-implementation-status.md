@@ -29,7 +29,7 @@ This document records what the first V1 release candidate implements, what remai
 - Lock drift reporting during `status`.
 - Unmanaged target skill discovery.
 - Copy-first adoption into the local source.
-- Optional `--yes` replacement of adopted target folders with owned symlinks.
+- Optional `--replace` replacement of adopted target folders with owned symlinks.
 - `.local` and explicitly kept unmanaged skill protection.
 - Minimal `resolve list`, `resolve adopt`, `resolve keep`, and `resolve remove-owned`.
 - `doctor` diagnostics with text and JSON output.

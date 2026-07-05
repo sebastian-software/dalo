@@ -82,7 +82,7 @@ fn e2e_unmanaged_conflict_does_not_overwrite_real_folder() {
 }
 
 #[test]
-fn e2e_adoption_flow_copies_then_replaces_on_yes() {
+fn e2e_adoption_flow_copies_then_replaces_on_replace() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
@@ -94,7 +94,7 @@ fn e2e_adoption_flow_copies_then_replaces_on_yes() {
         .expect("binary should build")
         .args(["--store"])
         .arg(&store)
-        .args(["--yes", "adopt", "review"])
+        .args(["adopt", "--replace", "review"])
         .assert()
         .success()
         .stdout(predicate::str::contains("replacement: replaced"));

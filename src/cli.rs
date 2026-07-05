@@ -250,6 +250,10 @@ pub struct SourceRefreshArgs {
 pub struct AdoptCommand {
     /// Skill slot name or path to adopt.
     pub skill: String,
+
+    /// Replace the original unmanaged folder with an owned symlink after copying.
+    #[arg(long)]
+    pub replace: bool,
 }
 
 /// `resolve` command group.
@@ -266,11 +270,22 @@ pub enum ResolveSubcommand {
     /// List known blockers and repairable states.
     List,
     /// Adopt the referenced unmanaged skill.
-    Adopt(ResolveIdArg),
+    Adopt(ResolveAdoptArgs),
     /// Keep and protect the referenced unmanaged entry.
     Keep(ResolveIdArg),
     /// Remove an owned symlink by recorded ID.
     RemoveOwned(ResolveIdArg),
+}
+
+/// Arguments for `resolve adopt`.
+#[derive(Debug, Args)]
+pub struct ResolveAdoptArgs {
+    /// Diagnostic or state item ID.
+    pub id: String,
+
+    /// Replace the original unmanaged folder with an owned symlink after copying.
+    #[arg(long)]
+    pub replace: bool,
 }
 
 /// Resolver item ID argument.
@@ -543,7 +558,7 @@ fn run_adopt(options: &GlobalOptions, command: AdoptCommand) -> DaloResult<()> {
     } else {
         Some(store::StoreLock::acquire(&paths)?)
     };
-    let report = adopt::adopt_skill(&paths, &command.skill, options.yes, options.dry_run)?;
+    let report = adopt::adopt_skill(&paths, &command.skill, command.replace, options.dry_run)?;
     if options.json {
         print_json(&report)?;
     } else {
@@ -570,7 +585,7 @@ fn run_resolve(options: &GlobalOptions, command: ResolveCommand) -> DaloResult<(
             } else {
                 Some(store::StoreLock::acquire(&paths)?)
             };
-            let report = adopt::adopt_skill(&paths, &args.id, options.yes, options.dry_run)?;
+            let report = adopt::adopt_skill(&paths, &args.id, args.replace, options.dry_run)?;
             if options.json {
                 print_json(&report)?;
             } else {

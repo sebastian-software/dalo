@@ -133,7 +133,7 @@ dalo status
 dalo adopt release-notes.local
 ```
 
-The first step copies the skill into the local source. Replacing the original folder with a symlink is a separate confirmation. Committing the adopted skill is also explicit; `--yes` never means "commit this for me".
+The first step copies the skill into the local source. Replacing the original folder with a symlink is a separate explicit action via `dalo adopt --replace <skill>` or `dalo resolve adopt --replace <id>`. `--yes` only accepts prompts; it does not enable replacement or commit adopted work.
 
 Promotion is intentionally deferred. The planned flow is PR-first and will use normal `git` plus an authenticated `gh` CLI. If GitHub auth is missing, Dalo should fail loudly instead of inventing a weaker fallback.
 
