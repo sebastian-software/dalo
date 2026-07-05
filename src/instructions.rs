@@ -417,8 +417,9 @@ pub fn read_local_pack(paths: &StorePaths, pack_id: &str) -> DaloResult<Instruct
 
 fn read_pack_from_dir(dir: &Path, pack_id: &str) -> DaloResult<InstructionPack> {
     let path = dir.join(format!("{pack_id}.md"));
-    let body = fs::read_to_string(&path).map_err(|_| DaloError::SkillNotFound {
-        skill: format!("instruction-pack:{pack_id}"),
+    let body = fs::read_to_string(&path).map_err(|_| DaloError::InstructionPackNotFound {
+        pack_id: pack_id.to_owned(),
+        path: path.clone(),
     })?;
     Ok(InstructionPack {
         id: pack_id.to_owned(),

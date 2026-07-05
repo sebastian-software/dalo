@@ -110,6 +110,15 @@ pub enum DaloError {
         skill: String,
     },
 
+    /// A requested local instruction pack could not be found.
+    #[error("instruction pack `{pack_id}` was not found; create `{path}` before enabling it")]
+    InstructionPackNotFound {
+        /// Requested pack ID.
+        pack_id: String,
+        /// Expected local pack file.
+        path: PathBuf,
+    },
+
     /// A local skill destination already exists.
     #[error("local skill destination `{path}` already exists; dalo will not overwrite it")]
     AdoptionDestinationExists {
@@ -217,6 +226,7 @@ impl DaloError {
             | Self::AmbiguousSkillReference { .. }
             | Self::UnknownSource { .. }
             | Self::SkillNotFound { .. }
+            | Self::InstructionPackNotFound { .. }
             | Self::AdoptionDestinationExists { .. }
             | Self::UnsupportedSchema { .. }
             | Self::FileParse { .. }
@@ -250,6 +260,19 @@ pub enum DaloExitCode {
 impl From<DaloExitCode> for ExitCode {
     fn from(code: DaloExitCode) -> Self {
         Self::from(code as u8)
+    }
+}
+
+impl DaloExitCode {
+    /// Machine-readable exit-code label.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Success => "success",
+            Self::ExpectedFailure => "expected_failure",
+            Self::UnsafeState => "unsafe_state",
+            Self::EnvironmentProblem => "environment_problem",
+        }
     }
 }
 
@@ -403,6 +426,19 @@ mod tests {
     }
 
     #[test]
+    fn instruction_pack_not_found_should_render_expected_path() {
+        let error = err::<()>(Err(DaloError::InstructionPackNotFound {
+            pack_id: "house-style".to_owned(),
+            path: PathBuf::from("/tmp/store/local/instructions/house-style.md"),
+        }));
+
+        assert_eq!(
+            error.to_string(),
+            "instruction pack `house-style` was not found; create `/tmp/store/local/instructions/house-style.md` before enabling it"
+        );
+    }
+
+    #[test]
     fn adoption_destination_exists_should_render_path() {
         let error = err::<()>(Err(DaloError::AdoptionDestinationExists {
             path: PathBuf::from("/tmp/local/review"),
@@ -480,6 +516,10 @@ mod tests {
             },
             DaloError::SkillNotFound {
                 skill: "review".to_owned(),
+            },
+            DaloError::InstructionPackNotFound {
+                pack_id: "house-style".to_owned(),
+                path: PathBuf::from("/tmp/store/local/instructions/house-style.md"),
             },
             DaloError::AdoptionDestinationExists {
                 path: PathBuf::from("/tmp/local/review"),
