@@ -151,16 +151,14 @@ Promotion is intentionally deferred. The planned flow is PR-first and will use n
 
 ## Sources
 
-Dalo is multi-source by default. V1 implements local and team sources.
+Dalo is multi-source by default.
 
-| Source kind | Purpose | Version behavior |
-| --- | --- | --- |
-| Local | Private user skills and instruction packs | Local Git repository in the store |
-| Team | Shared team skills and conventions | Usually tracks a branch during `sync` |
-| External | Git source declared by another trusted source | Pinned through source locks |
-| Catalog | Multi-skill repository used as an offer surface | Selected skills are pinned and tracked |
-
-V1 ships local and team sources. V1.1 adds catalog sources (multi-skill repositories used as offer surfaces); external sources remain a later product layer.
+| Source kind | Status | Purpose | Version behavior |
+| --- | --- | --- | --- |
+| Local | shipped | Private user skills and instruction packs | Local Git repository in the store |
+| Team | shipped | Shared team skills and conventions | Usually tracks a branch during `sync` |
+| Catalog | shipped | Multi-skill repository used as an offer surface | Selected skills are pinned and tracked |
+| External | planned | Git source declared by another trusted source | Will be pinned through source locks |
 
 The everyday command is `sync`: refresh clean tracking team sources, resolve the final skill set, and materialize it into configured targets.
 
@@ -330,13 +328,15 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo run -- --help
 ```
 
-The current implementation has the Rust project scaffold, CLI shell, store layout, TOML schemas, `dalo init`, target detect/link/unlink, team source add/list/priority, deterministic skill inventory scanning, resolver, approval gating, `dalo status`, `dalo sync` symlink materialization, clean team source refresh, dirty-source blocking, a coarse store lock, resolved user-lock writing, status lock-drift reporting, unmanaged skill discovery, copy-first adoption, minimal resolve helpers, and `dalo doctor` diagnostics in place. The V1 release-candidate scope is tracked in [the implementation plan](docs/milestones/README.md).
+For detailed implementation history, use the [changelog](CHANGELOG.md) and [milestone index](docs/milestones/README.md). Those documents are the source of truth for shipped surfaces and release history.
 
 ## Project status
 
-Dalo is currently a V1 release candidate.
+Dalo is currently `v0.3.0` in `Cargo.toml`.
 
-The implemented V1 loop covers local/team sources, target linking, safe sync, lock drift, adoption, minimal resolve helpers, and doctor diagnostics. Catalogs, instruction packs, autosync, promotion, and package distribution are deferred.
+The V1 and V1.1 surfaces are implemented: local/team/catalog sources, target linking, safe sync, lock drift, adoption, minimal resolve helpers, doctor diagnostics, catalog selection/drift/required-closure handling, and instruction packs with managed blocks and topic-overlap warnings.
+
+Later work includes scheduled autosync installation, lock-advancing `source refresh`, full PR-first promotion, additional verified agent adapters, forge adapters beyond GitHub, and Windows support.
 
 ## Design docs
 
@@ -344,6 +344,8 @@ The implemented V1 loop covers local/team sources, target linking, safe sync, lo
 - [RFC 0001: Dalo vision](docs/rfcs/0001-dalo-vision.md)
 - [RFC 0002: Technical architecture](docs/rfcs/0002-technical-architecture.md)
 - [RFC 0003: Resolution engine](docs/rfcs/0003-resolution-engine.md)
-- [V1 implementation status](docs/rfcs/v1-implementation-status.md)
+- [Implementation status snapshot](docs/rfcs/v1-implementation-status.md)
+- [v0.3.0 release notes](docs/releases/v0.3.0.md)
+- [v0.2.0 release notes](docs/releases/v0.2.0.md)
 - [v0.1.0-rc.1 release notes](docs/releases/v0.1.0-rc.1.md)
 - [ADR 0001: Project language](docs/adr/0001-project-language.md)
