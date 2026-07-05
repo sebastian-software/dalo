@@ -23,6 +23,7 @@ use crate::source::{
 };
 use crate::store::{self, InitReport, StorePaths};
 use crate::target::{TargetDetectReport, TargetLinkReport, TargetUnlinkReport};
+use crate::term;
 
 /// Full status report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -607,9 +608,12 @@ pub fn print_doctor_report(report: &DoctorReport) {
             .next_command
             .as_ref()
             .map_or(String::new(), |command| format!(" next={command}"));
+        let severity = doctor_severity_label(finding.severity);
+        let severity_padding = " ".repeat(7usize.saturating_sub(severity.len()));
         println!(
-            "{:<7} {}: {}{}",
-            doctor_severity_label(finding.severity),
+            "{}{} {}: {}{}",
+            term::doctor_severity(severity),
+            severity_padding,
             finding.code,
             finding.message,
             next
