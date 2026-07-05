@@ -2,6 +2,7 @@ use std::process::ExitCode;
 
 use dalo::cli::{Cli, run_cli};
 use dalo::error::{DaloError, DaloExitCode};
+use dalo::term;
 use serde::Serialize;
 
 fn main() -> ExitCode {
@@ -12,7 +13,7 @@ fn main() -> ExitCode {
             if json_requested() {
                 print_json_error(&error, code);
             } else {
-                eprintln!("error: {error}");
+                eprintln!("{}: {error}", term::error_label("error"));
             }
             code.into()
         }

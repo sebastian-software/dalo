@@ -29,5 +29,6 @@ pub mod source;
 pub mod status;
 pub mod store;
 pub mod target;
+pub mod term;
 
 pub use error::{DaloError, DaloResult};
