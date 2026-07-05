@@ -403,7 +403,7 @@ Common status values:
 
 Doctor severities are `error`, `warning`, `info`, and `ok`.
 
-Resolution diagnostics use these codes when present in `status.resolution.diagnostics`: `pending_approval`, `local_override`, `shadowed`, `required_expanded`, and `required_blocked`.
+Resolution diagnostics use these codes when present in `status.resolution.diagnostics`: `pending_approval`, `local_override`, `shadowed`, `required_expanded`, `cross_source_require`, and `required_blocked`. For recovery steps, see [Troubleshooting and FAQ](troubleshooting.md).
 
 ## Store Layout
 

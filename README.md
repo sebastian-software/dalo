@@ -341,6 +341,8 @@ Later work includes scheduled autosync installation, lock-advancing `source refr
 ## Design docs
 
 - [User reference](docs/reference.md)
+- [Troubleshooting and FAQ](docs/troubleshooting.md)
+- [Uninstall guide](docs/uninstall.md)
 - [Implementation milestones](docs/milestones/README.md)
 - [RFC 0001: Dalo vision](docs/rfcs/0001-dalo-vision.md)
 - [RFC 0002: Technical architecture](docs/rfcs/0002-technical-architecture.md)
