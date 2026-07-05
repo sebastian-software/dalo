@@ -53,6 +53,7 @@
       <a href="#workflow">Workflow</a>
       <a href="#quickstart">Quickstart</a>
       <a href="#targets">Targets</a>
+      <a href="#compare">Compare</a>
     </nav>
 
     <div class="header-actions">
@@ -71,12 +72,11 @@
     <div class="wrap hero-grid">
       <div class="hero-copy">
         <p class="kicker reveal"><span class="dot"></span> Rust CLI · macOS &amp; Linux · v0.3.0</p>
-        <h1 class="reveal">Bring order to the skills your AI agents run.</h1>
+        <h1 class="reveal">Your team's agent skills, versioned like code.</h1>
         <p class="hero-lede reveal">
-          Skills are turning into team knowledge: how you review code, write release
-          notes, investigate incidents. Dalo keeps them in Git, resolves them
-          deterministically across your local and team sources, and links the final
-          set into the folders your agents already read.
+          Dalo is the missing layer between "I found a useful skill" and "our agents
+          can rely on this." Keep local experiments and team skills in Git, resolve
+          one approved set, and link it into the folders your agents already read.
         </p>
         <div class="hero-cta reveal">
           <a class="btn btn-accent" href="#quickstart">
@@ -85,10 +85,10 @@
           </a>
           <a class="btn btn-quiet" href="https://github.com/sebastian-software/dalo" rel="noopener">View on GitHub</a>
         </div>
-        <p class="hero-meta reveal">Open source under MIT. No daemon, no network required, single binary.</p>
+        <p class="hero-meta reveal">MIT-licensed. Single binary, no daemon; just <code>git</code> on your PATH.</p>
       </div>
 
-      <div class="hero-demo reveal" aria-hidden="false">
+      <div class="hero-demo reveal">
         <div class="terminal">
           <div class="terminal-bar">
             <span class="tdot"></span><span class="tdot"></span><span class="tdot"></span>
@@ -350,7 +350,7 @@
   <section class="band band-dark" id="quickstart" data-scope="dark">
     <div class="wrap quickstart-grid">
       <div class="quickstart-copy">
-        <h2 class="section-h reveal">Running in a few minutes.</h2>
+        <h2 class="section-h reveal">Up and running in minutes.</h2>
         <p class="lead reveal">
           Install from crates.io or grab a prebuilt archive from GitHub Releases.
           Dalo shells out to <code>git</code> for source operations, no other runtime
@@ -445,6 +445,41 @@
     </div>
   </section>
 
+  <!-- ───────────────────────── COMPARE ───────────────────────── -->
+  <section class="band" id="compare">
+    <div class="wrap">
+      <h2 class="section-h reveal">Why not just install skills directly?</h2>
+      <p class="lead reveal">
+        Single-user installers are useful for trying a skill. Dalo starts where that
+        flow gets awkward for teams: review, provenance, version drift, and safe
+        rollout across several agent folders.
+      </p>
+
+      <div class="objection-grid reveal">
+        <article class="objection-card">
+          <span class="objection-kicker">One-off installer</span>
+          <h3>Good for one machine.</h3>
+          <p>Weak once a team needs review, shared versions, and the same result on every laptop.</p>
+        </article>
+        <article class="objection-card">
+          <span class="objection-kicker">Dotfile repo</span>
+          <h3>Too broad for agent skills.</h3>
+          <p>Great for personal setup, risky when skill rollout can overwrite unrelated environment files.</p>
+        </article>
+        <article class="objection-card">
+          <span class="objection-kicker">Git submodule</span>
+          <h3>Pins a repo, not a selection.</h3>
+          <p>Useful for one external source, awkward for catalogs where you only want three skills out of forty.</p>
+        </article>
+        <article class="objection-card">
+          <span class="objection-kicker">Copy-paste</span>
+          <h3>Fast until nobody knows what changed.</h3>
+          <p>No drift detection, no provenance, and no clean path from local experiment to team standard.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
   <!-- ───────────────────────── ROADMAP ───────────────────────── -->
   <section class="band" id="roadmap">
     <div class="wrap">
@@ -503,6 +538,7 @@
         <a href="#how">How it works</a>
         <a href="#quickstart">Quickstart</a>
         <a href="#targets">Targets</a>
+        <a href="#compare">Compare</a>
         <a href="#roadmap">Roadmap</a>
       </div>
       <div class="footer-col">
@@ -521,7 +557,7 @@
   </div>
   <div class="wrap footer-base">
     <span>© 2026 Sebastian Software · Dalo</span>
-    <span class="footer-os">macOS · Linux</span>
+    <span class="footer-os">No tracking, no cookies · macOS · Linux</span>
   </div>
 </footer>
 
