@@ -2,6 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
+use std::io;
 use std::os::unix::fs as unix_fs;
 use std::path::{Path, PathBuf};
 
@@ -407,15 +408,20 @@ fn replace_with_owned_symlink(
         return Ok(AdoptReplacementStatus::Planned);
     }
 
-    // The skill was already copied into the local source, so its content is safe.
-    // Remove the original folder and link it; if linking fails, restore the
-    // original from the copy so we never leave a deleted folder with no symlink.
-    fs::remove_dir_all(&skill.path)?;
+    let backup_path = adopting_backup_path(&skill.path)?;
+    fs::rename(&skill.path, &backup_path)?;
+
     if let Err(error) = unix_fs::symlink(local_path, &skill.path) {
-        let _ = copy_dir(local_path, &skill.path);
-        return Err(error.into());
+        return Err(rollback_replacement(
+            &skill.path,
+            &backup_path,
+            error.into(),
+        ));
     }
-    let mut state = store::read_state(paths)?;
+    let mut state = match store::read_state(paths) {
+        Ok(state) => state,
+        Err(error) => return Err(rollback_replacement(&skill.path, &backup_path, error)),
+    };
     state.owned_skills.push(OwnedSkillState {
         target_id: skill
             .target_ids
@@ -431,9 +437,68 @@ fn replace_with_owned_symlink(
             .cmp(&right.link_path)
             .then_with(|| left.store_path.cmp(&right.store_path))
     });
-    store::write_state(paths, &state)?;
+    if let Err(error) = store::write_state(paths, &state) {
+        return Err(rollback_replacement(&skill.path, &backup_path, error));
+    }
+    fs::remove_dir_all(&backup_path)?;
 
     Ok(AdoptReplacementStatus::Replaced)
+}
+
+fn adopting_backup_path(path: &Path) -> DaloResult<PathBuf> {
+    let parent = path.parent().ok_or_else(|| {
+        DaloError::Io(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("adopt path `{}` has no parent", path.display()),
+        ))
+    })?;
+    let name = path.file_name().ok_or_else(|| {
+        DaloError::Io(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("adopt path `{}` has no file name", path.display()),
+        ))
+    })?;
+    let candidate = parent.join(format!("{}.dalo-adopting", name.to_string_lossy()));
+    if candidate.exists() {
+        return Err(DaloError::Io(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            format!(
+                "adoption backup path `{}` already exists",
+                candidate.display()
+            ),
+        )));
+    }
+    Ok(candidate)
+}
+
+fn rollback_replacement(
+    link_path: &Path,
+    backup_path: &Path,
+    original_error: DaloError,
+) -> DaloError {
+    match restore_replacement_backup(link_path, backup_path) {
+        Ok(()) => original_error,
+        Err(restore_error) => DaloError::Io(io::Error::other(format!(
+            "{original_error}; also failed to restore original from `{}`: {restore_error}",
+            backup_path.display()
+        ))),
+    }
+}
+
+fn restore_replacement_backup(link_path: &Path, backup_path: &Path) -> DaloResult<()> {
+    match fs::symlink_metadata(link_path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => fs::remove_file(link_path)?,
+        Ok(_) => {
+            return Err(DaloError::Io(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!("replacement path `{}` is occupied", link_path.display()),
+            )));
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+    fs::rename(backup_path, link_path)?;
+    Ok(())
 }
 
 fn remove_owned_link(path: &Path, dry_run: bool) -> DaloResult<RemoveOwnedStatus> {
@@ -523,6 +588,7 @@ fn owned_id(skill: &OwnedSkillState) -> String {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::os::unix::fs::PermissionsExt;
 
     use super::*;
     use crate::store::{MaterializationDirState, StateFile, TargetState};
@@ -572,6 +638,114 @@ mod tests {
                 .file_type()
                 .is_symlink()
         );
+        assert!(!target.join("review.dalo-adopting").exists());
+    }
+
+    #[test]
+    fn replace_with_owned_symlink_should_restore_original_when_state_read_fails() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("missing-store");
+        let target = temp_dir.path().join("target");
+        let unmanaged = target.join("review");
+        let local_path = temp_dir.path().join("local-review");
+        fs::create_dir_all(&unmanaged).expect("unmanaged dir should be created");
+        fs::write(unmanaged.join(SKILL_FILE), "# Review\n").expect("skill should be written");
+        fs::create_dir_all(&local_path).expect("local dir should be created");
+        fs::write(local_path.join(SKILL_FILE), "# Review\n")
+            .expect("local skill should be written");
+        let skill = UnmanagedSkill {
+            id: "review".to_owned(),
+            slot_name: "review".to_owned(),
+            path: unmanaged.clone(),
+            target_ids: vec!["generic".to_owned()],
+            protected: false,
+        };
+
+        let error =
+            replace_with_owned_symlink(&StorePaths::new(store_root), &skill, &local_path, false)
+                .expect_err("missing state should fail replacement");
+
+        assert!(matches!(error, DaloError::StoreNotInitialized { .. }));
+        assert!(unmanaged.join(SKILL_FILE).is_file());
+        assert!(
+            !fs::symlink_metadata(&unmanaged)
+                .expect("original should be restored")
+                .file_type()
+                .is_symlink()
+        );
+        assert!(!target.join("review.dalo-adopting").exists());
+    }
+
+    #[test]
+    fn replace_with_owned_symlink_should_restore_original_when_state_write_fails() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let target = temp_dir.path().join("target");
+        let unmanaged = target.join("review");
+        let local_path = temp_dir.path().join("local-review");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        fs::create_dir_all(&unmanaged).expect("unmanaged dir should be created");
+        fs::write(unmanaged.join(SKILL_FILE), "# Review\n").expect("skill should be written");
+        fs::create_dir_all(&local_path).expect("local dir should be created");
+        fs::write(local_path.join(SKILL_FILE), "# Review\n")
+            .expect("local skill should be written");
+        write_state(&store_root, &target, &target.join("unused"));
+        let skill = UnmanagedSkill {
+            id: "review".to_owned(),
+            slot_name: "review".to_owned(),
+            path: unmanaged.clone(),
+            target_ids: vec!["generic".to_owned()],
+            protected: false,
+        };
+        let original_permissions = fs::metadata(&store_root)
+            .expect("store root metadata should be readable")
+            .permissions();
+        let mut read_only_permissions = original_permissions.clone();
+        read_only_permissions.set_mode(0o500);
+        fs::set_permissions(&store_root, read_only_permissions)
+            .expect("store root should be made read-only");
+
+        let result = replace_with_owned_symlink(
+            &StorePaths::new(store_root.clone()),
+            &skill,
+            &local_path,
+            false,
+        );
+
+        fs::set_permissions(&store_root, original_permissions)
+            .expect("store root permissions should be restored");
+        let error = result.expect_err("read-only store should fail state write");
+        assert!(matches!(error, DaloError::Io(_)));
+        assert!(unmanaged.join(SKILL_FILE).is_file());
+        assert!(
+            !fs::symlink_metadata(&unmanaged)
+                .expect("original should be restored")
+                .file_type()
+                .is_symlink()
+        );
+        assert!(!target.join("review.dalo-adopting").exists());
+    }
+
+    #[test]
+    fn rollback_replacement_should_surface_restore_failure() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let link_path = temp_dir.path().join("review");
+        let backup_path = temp_dir.path().join("review.dalo-adopting");
+        fs::create_dir_all(&link_path).expect("occupied link path should be created");
+        fs::create_dir_all(&backup_path).expect("backup path should be created");
+
+        let error = rollback_replacement(
+            &link_path,
+            &backup_path,
+            DaloError::Io(io::Error::other("symlink failed")),
+        );
+
+        assert!(
+            error
+                .to_string()
+                .contains("also failed to restore original")
+        );
+        assert!(backup_path.exists());
     }
 
     #[test]
