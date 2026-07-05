@@ -341,20 +341,25 @@ pub fn remove_owned_skill(
 }
 
 fn find_unmanaged_skill(paths: &StorePaths, selector: &str) -> DaloResult<UnmanagedSkill> {
-    let selector_path = PathBuf::from(selector);
-    if selector_path.exists() {
-        return unmanaged_from_path(paths, &selector_path);
+    let skills = discover_unmanaged_skills(paths)?;
+    if let Some(skill) = skills
+        .iter()
+        .find(|skill| skill.id == selector || skill.slot_name == selector)
+    {
+        return Ok(skill.clone());
     }
 
-    discover_unmanaged_skills(paths)?
-        .into_iter()
-        .find(|skill| skill.id == selector || skill.slot_name == selector)
-        .ok_or_else(|| DaloError::SkillNotFound {
-            skill: selector.to_owned(),
-        })
+    let selector_path = PathBuf::from(selector);
+    if selector_path.exists() {
+        return unmanaged_from_path(skills, &selector_path);
+    }
+
+    Err(DaloError::SkillNotFound {
+        skill: selector.to_owned(),
+    })
 }
 
-fn unmanaged_from_path(paths: &StorePaths, path: &Path) -> DaloResult<UnmanagedSkill> {
+fn unmanaged_from_path(skills: Vec<UnmanagedSkill>, path: &Path) -> DaloResult<UnmanagedSkill> {
     // Candidate paths come from `entry.path()` and are absolute, but the selector
     // may be relative (`./skills/review`), carry a trailing slash, or route
     // through a symlinked component. Compare on the canonical form so those still
@@ -362,7 +367,7 @@ fn unmanaged_from_path(paths: &StorePaths, path: &Path) -> DaloResult<UnmanagedS
     // Only skills discovered inside a materialization dir are considered, so the
     // directory boundary that `discover_unmanaged_skills` enforces still holds.
     let target = canonical_or_self(path);
-    discover_unmanaged_skills(paths)?
+    skills
         .into_iter()
         .find(|skill| canonical_or_self(&skill.path) == target)
         .ok_or_else(|| DaloError::SkillNotFound {

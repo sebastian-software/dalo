@@ -610,6 +610,59 @@ fn adopt_should_copy_unmanaged_skill_without_replacing_by_default() {
 }
 
 #[test]
+fn adopt_should_resolve_slot_when_cwd_contains_same_named_decoy_directory() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let project = temp_dir.path().join("project");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    std::fs::create_dir_all(project.join("review")).expect("decoy dir should be created");
+    std::fs::write(project.join("review/SKILL.md"), "# Decoy\n").expect("decoy should be written");
+    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+
+    command
+        .current_dir(&project)
+        .args(["--store"])
+        .arg(&store)
+        .args(["adopt", "review"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("copied"));
+
+    assert_eq!(
+        std::fs::read_to_string(store.join("local/skills/review/SKILL.md"))
+            .expect("adopted skill should be readable"),
+        "# review\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(project.join("review/SKILL.md")).expect("decoy should be readable"),
+        "# Decoy\n"
+    );
+}
+
+#[test]
+fn adopt_should_accept_explicit_relative_path_selector() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+
+    command
+        .current_dir(&target)
+        .args(["--store"])
+        .arg(&store)
+        .args(["adopt", "./review"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("copied"));
+
+    assert!(store.join("local/skills/review/SKILL.md").is_file());
+}
+
+#[test]
 fn adopt_yes_should_replace_original_with_owned_symlink_without_committing() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -963,6 +1016,40 @@ fn resolve_keep_should_protect_unmanaged_skill() {
         .assert()
         .success()
         .stdout(predicate::str::contains("\"protected\": true"));
+}
+
+#[test]
+fn resolve_keep_should_resolve_slot_when_cwd_contains_same_named_decoy_directory() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let project = temp_dir.path().join("project");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    std::fs::create_dir_all(project.join("review")).expect("decoy dir should be created");
+    std::fs::write(project.join("review/SKILL.md"), "# Decoy\n").expect("decoy should be written");
+    let mut command = Command::cargo_bin("dalo").expect("binary should build");
+
+    command
+        .current_dir(&project)
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "keep", "review"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("protected"));
+
+    let state =
+        store::read_state(&store::StorePaths::new(store)).expect("state should be readable");
+    assert_eq!(state.protected_skills.len(), 1);
+    assert_eq!(
+        store::comparable_path(&state.protected_skills[0].path),
+        store::comparable_path(&target.join("review"))
+    );
+    assert_ne!(
+        store::comparable_path(&state.protected_skills[0].path),
+        store::comparable_path(&project.join("review"))
+    );
 }
 
 #[test]
