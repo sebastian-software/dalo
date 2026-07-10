@@ -2397,7 +2397,6 @@ fn source_inspect_json_should_model_catalog_candidates() {
         .args(["source", "select", "marketing", "copy-editing"])
         .assert()
         .success();
-
     let output = dalo_command()
         .args(["--store"])
         .arg(&store)
@@ -2621,6 +2620,9 @@ fn catalog_select_should_materialize_only_selected_skills() {
             .selected,
         ["skills/copy-editing".to_owned()]
     );
+    // Selecting a catalog skill does not grant it execution approval. That is
+    // a separate, explicit trust decision by the local user.
+    approve_source(&store, "marketing");
     dalo_command()
         .args(["--store"])
         .arg(&store)
@@ -2636,6 +2638,47 @@ fn catalog_select_should_materialize_only_selected_skills() {
             .is_symlink()
     );
     assert!(!target.join("launch-copy").exists());
+}
+
+#[test]
+fn catalog_selection_should_stay_pending_until_explicitly_approved() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "copy-editing"])
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    assert!(!target.join("copy-editing").exists());
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("pending approval"))
+        .stdout(predicate::str::contains("marketing:copy-editing"));
 }
 
 #[test]
