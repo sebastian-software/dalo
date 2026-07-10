@@ -25,6 +25,13 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
    curl -fsSL https://dalo.sh/install.sh | sh
    ```
 
+   Or, when the user manages command-line tools with mise, install the GitHub
+   release through its ubi backend:
+
+   ```sh
+   mise use -g ubi:sebastian-software/dalo
+   ```
+
    If the user wants a custom location, set `DALO_INSTALL_DIR`:
 
    ```sh

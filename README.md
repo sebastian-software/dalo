@@ -82,6 +82,14 @@ Install with Cargo Binstall:
 cargo binstall dalo
 ```
 
+Install with mise's ubi backend:
+
+```sh
+mise use -g ubi:sebastian-software/dalo
+```
+
+`ubi` downloads the matching GitHub release artifact and keeps it managed by mise.
+
 Install from crates.io with Cargo. This requires Rust 1.93 or newer:
 
 ```sh
