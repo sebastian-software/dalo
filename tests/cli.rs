@@ -813,6 +813,34 @@ fn status_should_fail_on_unsupported_lock_schema_version() {
 }
 
 #[test]
+fn sync_should_fail_closed_on_invalid_lock_without_overwriting_it() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    let invalid_lock = "schema_version = ";
+    std::fs::write(store.join("lock.toml"), invalid_lock).expect("lock should be corrupted");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("could not parse"));
+
+    assert_eq!(
+        std::fs::read_to_string(store.join("lock.toml")).expect("lock should remain readable"),
+        invalid_lock
+    );
+}
+
+#[test]
 fn status_json_should_report_unmanaged_target_skills() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

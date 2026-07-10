@@ -467,6 +467,14 @@ fn run_sync(options: &GlobalOptions) -> DaloResult<()> {
     } else {
         Some(store::StoreLock::acquire(&paths)?)
     };
+    // Read the existing lock before mutating sources or targets. A malformed or
+    // newer lock is recovery data, not an empty baseline we are allowed to
+    // overwrite after a successful materialization pass.
+    let previous = if options.dry_run {
+        None
+    } else {
+        Some(store::read_user_lock(&paths)?)
+    };
     let config = store::read_config(&paths)?;
     if !options.dry_run {
         source::refresh_tracking_team_sources_from_config(&config)?;
@@ -495,12 +503,12 @@ fn run_sync(options: &GlobalOptions) -> DaloResult<()> {
         &degraded_sources,
     )?;
     if !options.dry_run {
-        let previous =
-            store::read_user_lock(&paths).unwrap_or_else(|_| lockfile::UserLock::empty());
         let mut lock = lockfile::build_user_lock(&config.sources, &live.resolution, Some(&report));
         // Instruction packs are owned by the `instructions` command; preserve them
         // across a sync instead of dropping them.
-        lock.active_instruction_packs = previous.active_instruction_packs;
+        lock.active_instruction_packs = previous
+            .expect("non-dry-run sync reads the user lock before materializing")
+            .active_instruction_packs;
         store::write_user_lock(&paths, &lock)?;
     }
 
