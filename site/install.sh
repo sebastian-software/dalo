@@ -4,7 +4,8 @@ set -eu
 repo="sebastian-software/dalo"
 base_url="https://github.com/${repo}"
 install_dir="${DALO_INSTALL_DIR:-$HOME/.local/bin}"
-tmp_dir="${TMPDIR:-/tmp}/dalo-install.$$"
+umask 077
+tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/dalo-install.XXXXXX")"
 
 cleanup() {
   rm -rf "$tmp_dir"
@@ -70,7 +71,7 @@ esac
 
 package="dalo-${version}-${target}"
 archive="${package}.tar.gz"
-mkdir -p "$tmp_dir" "$install_dir"
+mkdir -p "$install_dir"
 
 echo "Installing dalo ${version} for ${target}"
 curl -fL "${base_url}/releases/download/${tag}/${archive}" -o "${tmp_dir}/${archive}"
