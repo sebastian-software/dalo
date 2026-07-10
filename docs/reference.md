@@ -531,7 +531,7 @@ value = "team:review-helper"
 
 [[approvals]]
 scope = "author"
-value = "platform-team"
+value = "team:platform-team"
 ```
 
 Approval scopes:
@@ -540,8 +540,8 @@ Approval scopes:
 | --- | --- | --- |
 | `skill` | `<source-id>:<slot>` or `<source-id>:<stable-id>` | One skill from one source. Bare slot names and bare stable IDs do not match. |
 | `source` | `<source-id>` | Every skill from that source. |
-| `author` | Owner string | Any skill whose `owners` frontmatter contains that string. |
-| `org` | Owner string | Same matching behavior as `author`; the scope is a policy label. |
+| `author` | `<source-id>:<owner>` | Skills from that source whose `owners` frontmatter contains that owner. |
+| `org` | `<source-id>:<owner>` | Same matching behavior as `author`; the scope is a policy label. |
 
 Local skills and skills from `trusted = true` sources are approved automatically. Non-interactive commands can use existing approvals but never create new approvals.
 

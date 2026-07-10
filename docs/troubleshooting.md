@@ -19,7 +19,7 @@ dalo --json doctor
 | Symptom or code | What happened | Recovery |
 | --- | --- | --- |
 | `blocked_by_same_name_skill`, `unmanaged_same_name_blocker`, sync `blocked` with `real unmanaged entry exists at target slot` | A real folder already occupies the target slot Dalo wanted to link. | Keep it with `dalo resolve keep <id>`, adopt it with `dalo adopt <id>`, or adopt and replace it with `dalo adopt <id> --replace`. |
-| `pending_approval` | A skill would become active, but no approval rule covers it. | Review the skill, then add a source/skill/owner approval in `approvals.toml`, or set the source `trusted = true` if the whole source is trusted. Run `dalo status` again. |
+| `pending_approval` | A skill would become active, but no approval rule covers it. | Review the skill, then add a source/skill/owner approval in `approvals.toml` (owner approvals use `<source-id>:<owner>`), or set the source `trusted = true` if the whole source is trusted. Run `dalo status` again. |
 | `dirty_source` | A Git-backed source has local edits. Team sources block refresh when dirty. | Commit, stash, discard, or promote the edits outside Dalo. Then run `dalo sync`. |
 | `lock drift` | Live resolution differs from the last `lock.toml`. | Run `dalo status` to inspect the drift, then `dalo sync` when the change is expected. |
 | `StoreLocked`, error text `another dalo operation is running` | Another Dalo command currently owns `.lock`, or a stale lock file remains. | Wait for the other command. If no Dalo process is running, inspect and remove the stale `.lock` file in the store. |

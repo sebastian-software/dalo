@@ -544,11 +544,22 @@ fn approval_matches_source(approval: &ApprovalRecord, candidate: &Candidate) -> 
 }
 
 fn approval_matches_owner(approval: &ApprovalRecord, candidate: &Candidate) -> bool {
-    matches!(approval.scope.as_str(), "author" | "org")
+    if !matches!(approval.scope.as_str(), "author" | "org") {
+        return false;
+    }
+
+    // Owners are declared in source-controlled frontmatter. Scope broad owner
+    // approvals to the source the user reviewed so a different source cannot
+    // claim the same owner string and inherit that approval.
+    let Some((source_id, owner)) = approval.value.split_once(':') else {
+        return false;
+    };
+
+    source_id == candidate.skill.source_id
         && candidate
             .owners
             .iter()
-            .any(|owner| owner == &approval.value)
+            .any(|candidate_owner| candidate_owner == owner)
 }
 
 /// Stable snake_case label for a resolver diagnostic code.
@@ -1019,16 +1030,42 @@ mod tests {
     }
 
     #[test]
-    fn resolve_should_match_author_approval_against_owners() {
+    fn resolve_should_match_source_qualified_author_approval_against_owners() {
         let mut team_skill = skill("company", "review");
         team_skill.owners = vec!["core-team".to_owned()];
         let resolution = resolve_with(
             vec![source("company", SourceKind::Team, 10)],
             vec![inventory("company", vec![team_skill])],
-            vec![approval("author", "core-team")],
+            vec![approval("author", "company:core-team")],
         );
 
         assert_eq!(resolution.active_skills[0].source_ref, "company:review");
+    }
+
+    #[test]
+    fn resolve_should_not_apply_owner_approval_to_another_source() {
+        let mut approved_source_skill = skill("reviewed", "review");
+        approved_source_skill.owners = vec!["core-team".to_owned()];
+        let mut spoofed_source_skill = skill("unreviewed", "review");
+        spoofed_source_skill.owners = vec!["core-team".to_owned()];
+
+        let resolution = resolve_with(
+            vec![
+                source("unreviewed", SourceKind::Team, 0),
+                source("reviewed", SourceKind::Team, 10),
+            ],
+            vec![
+                inventory("unreviewed", vec![spoofed_source_skill]),
+                inventory("reviewed", vec![approved_source_skill]),
+            ],
+            vec![approval("org", "reviewed:core-team")],
+        );
+
+        assert_eq!(resolution.active_skills[0].source_ref, "reviewed:review");
+        assert_eq!(
+            resolution.pending_approval_skills[0].source_ref,
+            "unreviewed:review"
+        );
     }
 
     #[test]
