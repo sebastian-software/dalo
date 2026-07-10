@@ -160,6 +160,7 @@ where
             reason: "must be non-empty, not `.`/`..`, and only contain `[A-Za-z0-9._-]`".to_owned(),
         });
     }
+    git::validate_remote_url(url)?;
 
     let mut config = store::read_config(paths)?;
     if config.sources.iter().any(|source| source.id == id) {
@@ -401,6 +402,27 @@ mod tests {
                 .next()
                 .is_none()
         );
+    }
+
+    #[test]
+    fn add_team_source_should_reject_url_userinfo_before_cloning_or_persisting() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root);
+
+        let error = add_team_source(
+            &paths,
+            "company",
+            "https://octo:token-value@example.invalid/repo.git",
+            false,
+        )
+        .expect_err("credential-bearing URL should be rejected");
+
+        assert!(matches!(error, DaloError::UnsafeRemoteUrl));
+        assert!(!paths.sources_dir.join("company").exists());
+        let config = store::read_config(&paths).expect("config should remain readable");
+        assert!(!config.sources.iter().any(|source| source.id == "company"));
     }
 
     #[test]

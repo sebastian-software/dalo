@@ -505,7 +505,7 @@ Fields:
 | `sources[].priority` | Lower numbers win. |
 | `sources[].enabled` | Disabled sources are skipped by resolution. |
 | `sources[].trusted` | Trusted sources are approved automatically. User-added catalog sources always start untrusted. |
-| `sources[].url` | Git URL for team/catalog sources. |
+| `sources[].url` | Git URL for team/catalog sources. URLs with embedded credentials are rejected; use SSH or a credential helper. |
 | `sources[].branch` | Optional branch label. |
 | `sources[].update_policy` | Usually `track` for team sources and `pin` for catalog sources. |
 | `sources[].selection` | Catalog selections by stable ID, source ref, path, or slot name. Empty for local/team sources. |

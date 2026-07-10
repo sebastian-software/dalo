@@ -26,10 +26,22 @@ pub fn init_repo(path: &Path) -> DaloResult<()> {
 pub fn clone_repo(url: &str, destination: &Path) -> DaloResult<()> {
     let cwd = destination.parent().unwrap_or_else(|| Path::new("."));
     let destination_arg = destination.to_string_lossy().into_owned();
-    print_network_progress(&format!("Cloning repository `{url}`..."));
+    print_network_progress(&format!(
+        "Cloning repository `{}`...",
+        redact_url_userinfo(url)
+    ));
     // `--` terminates option parsing so a user-supplied URL that looks like a
     // flag (e.g. `--upload-pack=...`) can never be treated as a git option.
     run_git_network(cwd, &["clone", "--quiet", "--", url, &destination_arg]).map(|_| ())
+}
+
+/// Reject Git URLs that embed userinfo so credentials never reach config files,
+/// command displays, or Git's remote configuration.
+pub fn validate_remote_url(url: &str) -> DaloResult<()> {
+    if url_has_userinfo(url) {
+        return Err(DaloError::UnsafeRemoteUrl);
+    }
+    Ok(())
 }
 
 /// Update the current tracking branch through a fast-forward-only pull.
@@ -153,7 +165,7 @@ fn run_git_program_with_options(
             let _ = child.wait();
             return Err(DaloError::CommandFailed {
                 program: program.to_owned(),
-                args: args.join(" "),
+                args: display_git_args(args),
                 cwd: path.to_path_buf(),
                 status: format!("timed out after {}", format_duration(timeout)),
                 stderr: humanize_git_failure(args, &timeout_stderr(&stderr)),
@@ -171,7 +183,7 @@ fn run_git_program_with_options(
 
     Err(DaloError::CommandFailed {
         program: program.to_owned(),
-        args: args.join(" "),
+        args: display_git_args(args),
         cwd: path.to_path_buf(),
         status: status
             .code()
@@ -187,7 +199,7 @@ fn print_network_progress(message: &str) {
 }
 
 fn humanize_git_failure(args: &[&str], stderr: &str) -> String {
-    let raw = stderr.trim();
+    let raw = redact_urls_in_text(stderr.trim());
     let Some(summary) = git_failure_summary(args) else {
         return raw.to_owned();
     };
@@ -200,7 +212,8 @@ fn humanize_git_failure(args: &[&str], stderr: &str) -> String {
 fn git_failure_summary(args: &[&str]) -> Option<String> {
     match args {
         ["clone", .., "--", url, _destination] => Some(format!(
-            "Could not clone repository `{url}`. Check the URL, network/proxy access, and repository permissions."
+            "Could not clone repository `{}`. Check the URL, network/proxy access, and repository permissions.",
+            redact_url_userinfo(url)
         )),
         ["pull", ..] => Some(
             "Could not refresh this source. Check network/proxy access, repository permissions, and whether the tracking branch can fast-forward."
@@ -212,6 +225,51 @@ fn git_failure_summary(args: &[&str]) -> Option<String> {
         ),
         _ => None,
     }
+}
+
+fn display_git_args(args: &[&str]) -> String {
+    args.iter()
+        .map(|arg| redact_url_userinfo(arg))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn url_has_userinfo(url: &str) -> bool {
+    let Some(scheme_end) = url.find("://") else {
+        return false;
+    };
+    let authority = &url[scheme_end + 3..];
+    let authority_end = authority
+        .find(|character: char| matches!(character, '/' | '?' | '#'))
+        .unwrap_or(authority.len());
+    authority[..authority_end].contains('@')
+}
+
+fn redact_url_userinfo(url: &str) -> String {
+    let Some(scheme_end) = url.find("://") else {
+        return url.to_owned();
+    };
+    let authority_start = scheme_end + 3;
+    let authority = &url[authority_start..];
+    let authority_end = authority
+        .find(|character: char| matches!(character, '/' | '?' | '#'))
+        .unwrap_or(authority.len());
+    let Some(userinfo_end) = authority[..authority_end].rfind('@') else {
+        return url.to_owned();
+    };
+
+    format!(
+        "{}***@{}",
+        &url[..authority_start],
+        &authority[userinfo_end + 1..]
+    )
+}
+
+fn redact_urls_in_text(text: &str) -> String {
+    text.split_whitespace()
+        .map(redact_url_userinfo)
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn configure_ssh_command(
@@ -410,6 +468,27 @@ mod tests {
         assert!(message.contains("Could not clone repository"));
         assert!(message.contains("https://example.invalid/repo.git"));
         assert!(message.contains("Git said: fatal: unable to access repository"));
+    }
+
+    #[test]
+    fn humanize_git_failure_should_redact_url_userinfo() {
+        let secret_url = "https://octo:token-value@example.invalid/repo.git";
+        let message = humanize_git_failure(
+            &["clone", "--quiet", "--", secret_url, "/tmp/checkout"],
+            &format!("fatal: unable to access '{secret_url}': denied"),
+        );
+
+        assert!(message.contains("https://***@example.invalid/repo.git"));
+        assert!(!message.contains("token-value"));
+    }
+
+    #[test]
+    fn validate_remote_url_should_reject_userinfo() {
+        assert!(matches!(
+            validate_remote_url("https://octo:token-value@example.invalid/repo.git"),
+            Err(DaloError::UnsafeRemoteUrl)
+        ));
+        assert!(validate_remote_url("git@github.com:sebastian-software/dalo.git").is_ok());
     }
 
     #[test]

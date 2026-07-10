@@ -80,6 +80,10 @@ pub enum DaloError {
         reason: String,
     },
 
+    /// A Git URL embeds credentials that would otherwise leak into state or logs.
+    #[error("Git URL contains userinfo; use an SSH URL or a credential helper instead")]
+    UnsafeRemoteUrl,
+
     /// A source ID does not exist.
     #[error("unknown source `{source_id}`")]
     UnknownSource {
@@ -222,6 +226,7 @@ impl DaloError {
             | Self::TargetPathRequired { .. }
             | Self::SourceAlreadyExists { .. }
             | Self::InvalidSourceId { .. }
+            | Self::UnsafeRemoteUrl
             | Self::NotACatalogSource { .. }
             | Self::AmbiguousSkillReference { .. }
             | Self::UnknownSource { .. }
