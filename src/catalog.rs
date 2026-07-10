@@ -751,11 +751,11 @@ pub fn hash_directory(skill_dir: &Path) -> DaloResult<String> {
         hash_framed(&mut hasher, relative.as_os_str().as_bytes());
         let metadata = fs::symlink_metadata(file)?;
         if metadata.file_type().is_symlink() {
-            hasher.update([b'L']);
+            hasher.update(*b"L");
             let target = fs::read_link(file)?;
             hash_framed(&mut hasher, target.as_os_str().as_bytes());
         } else {
-            hasher.update([b'F']);
+            hasher.update(*b"F");
             hasher.update(metadata.len().to_le_bytes());
             let mut handle = fs::File::open(file)?;
             let mut buffer = [0u8; 8192];
