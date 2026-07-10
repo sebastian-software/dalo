@@ -1,0 +1,21 @@
+{
+  "name": "dalo",
+  "version": "0.0.0-development",
+  "description": "Cross-platform npm launcher for Dalo",
+  "license": "MIT",
+  "repository": "github:sebastian-software/dalo",
+  "bin": {
+    "dalo": "bin/dalo.js"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test"
+  }
+}
