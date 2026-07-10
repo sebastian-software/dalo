@@ -55,6 +55,7 @@ latest_tag() {
 
 need curl
 need tar
+need cosign
 target="${DALO_TARGET:-$(detect_target)}"
 tag="${DALO_VERSION:-$(latest_tag)}"
 
@@ -76,10 +77,15 @@ mkdir -p "$install_dir"
 echo "Installing dalo ${version} for ${target}"
 curl -fL "${base_url}/releases/download/${tag}/${archive}" -o "${tmp_dir}/${archive}"
 curl -fL "${base_url}/releases/download/${tag}/${archive}.sha256" -o "${tmp_dir}/${archive}.sha256"
+curl -fL "${base_url}/releases/download/${tag}/${archive}.sigstore.json" -o "${tmp_dir}/${archive}.sigstore.json"
 
 (
   cd "$tmp_dir"
   sha_check "${archive}.sha256"
+  cosign verify-blob "$archive" \
+    --bundle "${archive}.sigstore.json" \
+    --certificate-identity "https://github.com/sebastian-software/dalo/.github/workflows/release-please.yml@refs/heads/main" \
+    --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
   tar xzf "$archive"
 )
 
