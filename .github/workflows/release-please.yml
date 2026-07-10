@@ -47,6 +47,42 @@ jobs:
           test -n "$CARGO_REGISTRY_TOKEN"
           cargo publish --locked
 
+  publish-npm:
+    name: Publish npm wrapper
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish npm wrapper
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          test -n "$NODE_AUTH_TOKEN"
+          case "$TAG_NAME" in
+            dalo-v*) version="${TAG_NAME#dalo-v}" ;;
+            v*) version="${TAG_NAME#v}" ;;
+            *) echo "::error::unexpected release tag '${TAG_NAME}'"; exit 1 ;;
+          esac
+          cd npm
+          npm version "$version" --no-git-tag-version
+          npm publish --access public
+
   release-artifacts:
     name: Build ${{ matrix.target }}
     needs: release-please
