@@ -13,7 +13,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 
-use crate::config::UserConfig;
+use crate::config::{CONFIG_VERSION, UserConfig};
 use crate::error::{DaloError, DaloResult};
 use crate::git;
 use crate::lockfile::{USER_LOCK_SCHEMA_VERSION, UserLock};
@@ -81,6 +81,7 @@ impl StorePaths {
 
 /// Internal materialization state.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StateFile {
     /// Persisted schema version.
     pub schema_version: u32,
@@ -98,6 +99,7 @@ pub struct StateFile {
 
 /// Configured target state.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TargetState {
     /// Logical target ID.
     pub id: String,
@@ -111,6 +113,7 @@ pub struct TargetState {
 
 /// One physical materialization directory shared by one or more logical targets.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MaterializationDirState {
     /// Canonical physical directory.
     pub path: PathBuf,
@@ -120,6 +123,7 @@ pub struct MaterializationDirState {
 
 /// Recorded owned skill symlink.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct OwnedSkillState {
     /// Target ID.
     pub target_id: String,
@@ -133,6 +137,7 @@ pub struct OwnedSkillState {
 
 /// Explicitly protected unmanaged skill.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ProtectedSkillState {
     /// Skill slot name.
     pub slot_name: String,
@@ -179,6 +184,7 @@ impl StateFile {
 
 /// Local approval state.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ApprovalsFile {
     /// Persisted schema version.
     pub schema_version: u32,
@@ -188,6 +194,7 @@ pub struct ApprovalsFile {
 
 /// One local approval record.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ApprovalRecord {
     /// Approval scope, such as `skill`, `source`, `author`, or `org`.
     pub scope: String,
@@ -441,6 +448,13 @@ pub fn read_config(paths: &StorePaths) -> DaloResult<UserConfig> {
 
     let content = fs::read_to_string(&paths.config_file)?;
     let config: UserConfig = parse_store_toml(&paths.config_file, &content)?;
+    if config.version != CONFIG_VERSION {
+        return Err(DaloError::UnsupportedSchema {
+            path: paths.config_file.clone(),
+            version: config.version,
+            supported: CONFIG_VERSION,
+        });
+    }
     ensure_unique_source_ids(&paths.config_file, &config)?;
     Ok(config)
 }
@@ -1083,6 +1097,22 @@ mod tests {
         let error = read_approvals(&paths).expect_err("read should reject the unsupported schema");
 
         assert!(matches!(error, DaloError::UnsupportedSchema { .. }));
+    }
+
+    #[test]
+    fn read_config_should_reject_unsupported_schema_version() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let root = temp_dir.path().join("store");
+        init_store(root.clone(), false).expect("store should initialize");
+        let paths = StorePaths::new(root);
+        let mut config = read_config(&paths).expect("config should be readable");
+        config.version = 999;
+        write_config(&paths, &config).expect("config should be writable");
+
+        assert!(matches!(
+            read_config(&paths),
+            Err(DaloError::UnsupportedSchema { version: 999, .. })
+        ));
     }
 
     #[test]

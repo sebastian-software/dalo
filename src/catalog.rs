@@ -24,6 +24,7 @@ const MIN_SUPPORTED_SOURCE_LOCK_SCHEMA_VERSION: u32 = 1;
 /// Persisted as `source-lock.toml`. The inventory snapshot is what catalog drift
 /// detection compares a freshly fetched inventory against.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SourceLock {
     /// Persisted schema version.
     pub schema_version: u32,
@@ -34,6 +35,7 @@ pub struct SourceLock {
 
 /// One pinned catalog source.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CatalogLock {
     /// Catalog source ID.
     pub source_id: String,
@@ -49,6 +51,7 @@ pub struct CatalogLock {
 
 /// One catalog inventory entry captured in the source lock.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CatalogEntry {
     /// Stable frontmatter ID when present.
     #[serde(skip_serializing_if = "Option::is_none")]

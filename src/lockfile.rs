@@ -15,6 +15,7 @@ pub const USER_LOCK_SCHEMA_VERSION: u32 = 1;
 
 /// Resolved user lock.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct UserLock {
     /// Persisted schema version.
     pub schema_version: u32,
@@ -40,6 +41,7 @@ pub struct UserLock {
 
 /// Source identity captured in the user lock.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LockedSource {
     /// Source ID.
     pub id: String,
@@ -54,6 +56,7 @@ pub struct LockedSource {
 
 /// Skill identity captured in the user lock.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LockedSkill {
     /// Source-qualified ref.
     pub source_ref: String,
@@ -73,6 +76,7 @@ pub struct LockedSkill {
 
 /// One materialized target slot captured in the user lock.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LockedTargetMaterialization {
     /// Target slot path.
     pub link_path: PathBuf,
@@ -90,6 +94,7 @@ pub struct LockedTargetMaterialization {
 
 /// One active instruction pack captured in the user lock.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LockedInstructionPack {
     /// Pack ID.
     pub pack_id: String,
