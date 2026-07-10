@@ -2791,7 +2791,23 @@ fn catalog_select_should_reuse_inventory_snapshot_at_unchanged_pin() {
         .catalog("marketing")
         .expect("marketing catalog should remain locked");
 
-    assert_eq!(catalog_after.inventory, inventory_before);
+    let before_copy = inventory_before
+        .iter()
+        .find(|entry| entry.slot_name == "copy-editing")
+        .expect("selected entry should be present");
+    let after_copy = catalog_after
+        .inventory
+        .iter()
+        .find(|entry| entry.slot_name == "copy-editing")
+        .expect("selected entry should be present");
+    assert_eq!(after_copy.content_hash, before_copy.content_hash);
+    assert!(
+        catalog_after
+            .inventory
+            .iter()
+            .find(|entry| entry.slot_name == "launch-copy")
+            .is_some_and(|entry| !entry.content_hash.is_empty())
+    );
     assert_eq!(
         catalog_after.selected,
         [

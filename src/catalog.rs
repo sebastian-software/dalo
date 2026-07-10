@@ -193,7 +193,7 @@ pub fn add_catalog_source(
     // never references a missing checkout.
     let persist = (|| -> DaloResult<()> {
         let commit = git::rev_parse_head(&checkout)?;
-        let inventory = catalog_inventory(&checkout)?;
+        let inventory = catalog_inventory(&checkout, &[])?;
         let mut lock = read_source_lock(paths)?;
         lock.catalogs.retain(|c| c.source_id != id);
         lock.catalogs.push(CatalogLock {
@@ -289,12 +289,14 @@ pub fn select_skills(
             if lock.schema_version == SOURCE_LOCK_SCHEMA_VERSION
                 && lock.catalogs[index].commit == commit
             {
-                lock.catalogs[index].inventory.clone()
+                let mut inventory = lock.catalogs[index].inventory.clone();
+                hydrate_selected_content_hashes(&mut inventory, &source_path, &scan, &selected)?;
+                inventory
             } else {
-                catalog_inventory_from_scan(&source_path, &scan)?
+                catalog_inventory_from_scan(&source_path, &scan, &selected)?
             }
         } else {
-            catalog_inventory_from_scan(&source_path, &scan)?
+            catalog_inventory_from_scan(&source_path, &scan, &selected)?
         };
         if let Some(index) = lock
             .catalogs
@@ -366,9 +368,9 @@ pub fn write_source_lock(paths: &StorePaths, lock: &SourceLock) -> DaloResult<()
 }
 
 /// Build the inventory snapshot for a catalog checkout (used for the lock).
-pub fn catalog_inventory(checkout: &Path) -> DaloResult<Vec<CatalogEntry>> {
+pub fn catalog_inventory(checkout: &Path, selection: &[String]) -> DaloResult<Vec<CatalogEntry>> {
     let inventory = scan_catalog(checkout)?;
-    catalog_inventory_from_scan(checkout, &inventory)
+    catalog_inventory_from_scan(checkout, &inventory, selection)
 }
 
 fn scan_catalog(checkout: &Path) -> DaloResult<SourceInventory> {
@@ -378,6 +380,7 @@ fn scan_catalog(checkout: &Path) -> DaloResult<SourceInventory> {
 fn catalog_inventory_from_scan(
     checkout: &Path,
     inventory: &SourceInventory,
+    selection: &[String],
 ) -> DaloResult<Vec<CatalogEntry>> {
     let mut entries = Vec::with_capacity(inventory.skills.len());
     for skill in &inventory.skills {
@@ -385,13 +388,37 @@ fn catalog_inventory_from_scan(
             id: skill.id.clone(),
             slot_name: skill.slot_name.clone(),
             path: relative_path(checkout, &skill.path),
-            content_hash: hash_directory(&skill.path)?,
+            content_hash: skill_is_selected(skill, selection, checkout)
+                .then(|| hash_directory(&skill.path))
+                .transpose()?
+                .unwrap_or_default(),
             metadata_hash: hash_metadata(skill),
             requires: skill.requires.clone(),
         });
     }
     entries.sort_by(|a, b| a.slot_name.cmp(&b.slot_name).then(a.path.cmp(&b.path)));
     Ok(entries)
+}
+
+fn hydrate_selected_content_hashes(
+    entries: &mut [CatalogEntry],
+    checkout: &Path,
+    inventory: &SourceInventory,
+    selection: &[String],
+) -> DaloResult<()> {
+    for entry in entries {
+        let Some(skill) = inventory
+            .skills
+            .iter()
+            .find(|skill| relative_path(checkout, &skill.path) == entry.path)
+        else {
+            continue;
+        };
+        if skill_is_selected(skill, selection, checkout) && entry.content_hash.is_empty() {
+            entry.content_hash = hash_directory(&skill.path)?;
+        }
+    }
+    Ok(())
 }
 
 fn catalog_candidates_from_scan(
@@ -646,7 +673,8 @@ pub fn check_catalog_drift(paths: &StorePaths, id: &str) -> DaloResult<CatalogDr
         .clone();
 
     if lock.schema_version != SOURCE_LOCK_SCHEMA_VERSION {
-        catalog_lock.inventory = catalog_inventory_at_commit(&source.path, &catalog_lock.commit)?;
+        catalog_lock.inventory =
+            catalog_inventory_at_commit(&source.path, &catalog_lock.commit, &source.selection)?;
         if let Some(stored) = lock
             .catalogs
             .iter_mut()
@@ -668,7 +696,7 @@ pub fn check_catalog_drift(paths: &StorePaths, id: &str) -> DaloResult<CatalogDr
         let temp = tempfile::tempdir()?;
         let worktree = temp.path().join("upstream");
         git::add_detached_worktree(&source.path, &worktree, &upstream_commit)?;
-        let scanned = catalog_inventory(&worktree);
+        let scanned = catalog_inventory(&worktree, &source.selection);
         let _ = git::remove_worktree(&source.path, &worktree);
         let _ = git::prune_worktrees(&source.path);
         scanned?
@@ -683,11 +711,15 @@ pub fn check_catalog_drift(paths: &StorePaths, id: &str) -> DaloResult<CatalogDr
     })
 }
 
-fn catalog_inventory_at_commit(source_path: &Path, commit: &str) -> DaloResult<Vec<CatalogEntry>> {
+fn catalog_inventory_at_commit(
+    source_path: &Path,
+    commit: &str,
+    selection: &[String],
+) -> DaloResult<Vec<CatalogEntry>> {
     let temp = tempfile::tempdir()?;
     let worktree = temp.path().join("pinned");
     git::add_detached_worktree(source_path, &worktree, commit)?;
-    let scanned = catalog_inventory(&worktree);
+    let scanned = catalog_inventory(&worktree, selection);
     let _ = git::remove_worktree(source_path, &worktree);
     let _ = git::prune_worktrees(source_path);
     scanned
