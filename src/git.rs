@@ -14,7 +14,9 @@ use crate::error::{DaloError, DaloResult};
 
 const GIT_LOCAL_TIMEOUT: Duration = Duration::from_secs(60);
 const GIT_NETWORK_TIMEOUT: Duration = Duration::from_secs(300);
-const GIT_POLL_INTERVAL: Duration = Duration::from_millis(50);
+// Most local Git commands finish well below 50 ms. Poll at 1 ms so process
+// collection does not impose a fixed latency floor on every command.
+const GIT_POLL_INTERVAL: Duration = Duration::from_millis(1);
 const GIT_TIMEOUT_ENV: &str = "DALO_GIT_TIMEOUT_SECS";
 
 /// Run `git init` in the provided directory.
@@ -450,6 +452,11 @@ mod tests {
         };
         assert!(status.contains("timed out after"));
         assert!(stderr.contains("terminal prompts are disabled"));
+    }
+
+    #[test]
+    fn git_poll_interval_should_not_add_a_50ms_latency_floor() {
+        assert!(GIT_POLL_INTERVAL < Duration::from_millis(50));
     }
 
     #[test]
