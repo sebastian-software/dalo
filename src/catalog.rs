@@ -164,7 +164,9 @@ pub fn add_catalog_source(
         // Catalog sources start with an empty selection: their skills are offers,
         // not wholesale dependencies, so nothing materializes until `source select`.
         enabled: true,
-        trusted: true,
+        // A catalog is an offer of third-party skills. Selecting a skill chooses
+        // it for resolution, but does not approve its code to materialize.
+        trusted: false,
         url: Some(url.to_owned()),
         branch: None,
         update_policy: Some("pin".to_owned()),

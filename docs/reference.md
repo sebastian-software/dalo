@@ -504,7 +504,7 @@ Fields:
 | `sources[].path` | Local filesystem path for the source root or checkout. |
 | `sources[].priority` | Lower numbers win. |
 | `sources[].enabled` | Disabled sources are skipped by resolution. |
-| `sources[].trusted` | Trusted sources are approved automatically. |
+| `sources[].trusted` | Trusted sources are approved automatically. User-added catalog sources always start untrusted. |
 | `sources[].url` | Git URL for team/catalog sources. |
 | `sources[].branch` | Optional branch label. |
 | `sources[].update_policy` | Usually `track` for team sources and `pin` for catalog sources. |
