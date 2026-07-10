@@ -133,6 +133,7 @@ pub fn add_catalog_source(
             reason: "must be non-empty, not `.`/`..`, and only contain `[A-Za-z0-9._-]`".to_owned(),
         });
     }
+    git::validate_remote_url(url)?;
 
     let mut config = store::read_config(paths)?;
     if config.sources.iter().any(|source| source.id == id) {
