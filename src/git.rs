@@ -201,7 +201,7 @@ fn print_network_progress(message: &str) {
 fn humanize_git_failure(args: &[&str], stderr: &str) -> String {
     let raw = redact_urls_in_text(stderr.trim());
     let Some(summary) = git_failure_summary(args) else {
-        return raw.to_owned();
+        return raw;
     };
     if raw.is_empty() {
         return summary;
@@ -240,7 +240,7 @@ fn url_has_userinfo(url: &str) -> bool {
     };
     let authority = &url[scheme_end + 3..];
     let authority_end = authority
-        .find(|character: char| matches!(character, '/' | '?' | '#'))
+        .find(|character: char| ['/', '?', '#'].contains(&character))
         .unwrap_or(authority.len());
     authority[..authority_end].contains('@')
 }
@@ -252,7 +252,7 @@ fn redact_url_userinfo(url: &str) -> String {
     let authority_start = scheme_end + 3;
     let authority = &url[authority_start..];
     let authority_end = authority
-        .find(|character: char| matches!(character, '/' | '?' | '#'))
+        .find(|character: char| ['/', '?', '#'].contains(&character))
         .unwrap_or(authority.len());
     let Some(userinfo_end) = authority[..authority_end].rfind('@') else {
         return url.to_owned();
