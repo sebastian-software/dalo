@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.6.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.5.0...dalo-v0.6.0) (2026-07-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* require explicit approval for catalog skills
+
+### Features
+
+* **npm:** add the cross-platform dalo wrapper package ([500475f](https://github.com/sebastian-software/dalo/commit/500475fd29303f7970357d4d1c8680bb0fc19b53))
+
+
+### Bug Fixes
+
+* **catalog:** support newer clippy byte-string lint ([ac7848a](https://github.com/sebastian-software/dalo/commit/ac7848a18a247a5c3c7d7513652a3cd3bc1dbdd7))
+* **cli:** update repair guidance for verified ownership ([bf7ba47](https://github.com/sebastian-software/dalo/commit/bf7ba47351eecc6e6756057579a1eb8c36ef798b))
+* **git:** keep URL redaction lint-clean ([06c8767](https://github.com/sebastian-software/dalo/commit/06c87679eb0f1fdb4b6c9a946f7ed974a1688043))
+* **git:** redact credentials from remote URLs ([779bac5](https://github.com/sebastian-software/dalo/commit/779bac5b1206270befea1b29e14d9a1a7d6c52ed))
+* **installer:** create a private temporary directory ([f26f5e0](https://github.com/sebastian-software/dalo/commit/f26f5e03aa25b0de077ff711709de6d7e1576e5f))
+* **lock:** fail closed on unreadable user locks ([11efa81](https://github.com/sebastian-software/dalo/commit/11efa81293fd3e14f47e71e73d6cb638ca5e7300))
+* require explicit approval for catalog skills ([098805c](https://github.com/sebastian-software/dalo/commit/098805c2e7566015e1342e34a41121f958e994dd))
+* **resolve:** remove only verified owned symlinks ([fc68b3a](https://github.com/sebastian-software/dalo/commit/fc68b3aed89e86c28aedf383ae1faaeb8ac21d75))
+* **schema:** validate persisted schemas consistently ([43315e9](https://github.com/sebastian-software/dalo/commit/43315e9c5bf9b61d10299f478713cae0a0f69d5f))
+* **security:** scope owner approvals to source provenance ([1f93cc6](https://github.com/sebastian-software/dalo/commit/1f93cc685a78371db3114bf45140edbedd38cf18))
+* **state:** make instruction-pack writes recoverable ([23d92ae](https://github.com/sebastian-software/dalo/commit/23d92aec9aa2d0dcc32d7cf255ecfcdc747c3632))
+
+
+### Performance Improvements
+
+* **catalog:** hash selected catalog content lazily ([11a5c5b](https://github.com/sebastian-software/dalo/commit/11a5c5bc284497468c1cf724f0b5e1ed59b36ba1))
+* **git:** remove the polling floor for short commands ([99c86bc](https://github.com/sebastian-software/dalo/commit/99c86bc25725cd2cf0e37d51f577cf2d2225d8fc))
+
 ## [0.5.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.4.1...dalo-v0.5.0) (2026-07-05)
 
 
