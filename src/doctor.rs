@@ -15,7 +15,7 @@ use crate::git;
 use crate::instructions;
 use crate::resolver;
 use crate::source::SourceKind;
-use crate::store::{self, ApprovalsFile, StateFile, StorePaths};
+use crate::store::{self, ApprovalsFile, OwnedSkillState, StateFile, StorePaths};
 
 const COMMAND_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
 const COMMAND_CHECK_POLL_INTERVAL: Duration = Duration::from_millis(50);
@@ -409,7 +409,10 @@ fn check_owned_symlinks(paths: &StorePaths, state: &StateFile, findings: &mut Ve
                                 owned.link_path.display(),
                                 target.display()
                             ),
-                            Some(format!("dalo resolve remove-owned {}", owned.slot_name)),
+                            Some(format!(
+                                "dalo resolve remove-owned {}",
+                                owned_selector(owned)
+                            )),
                         ));
                     }
                     Ok(target)
@@ -422,7 +425,10 @@ fn check_owned_symlinks(paths: &StorePaths, state: &StateFile, findings: &mut Ve
                                 owned.link_path.display(),
                                 target.display()
                             ),
-                            Some(format!("dalo resolve remove-owned {}", owned.slot_name)),
+                            Some(format!(
+                                "dalo resolve remove-owned {}",
+                                owned_selector(owned)
+                            )),
                         ));
                     }
                     Ok(_) => findings.push(ok(
@@ -435,7 +441,10 @@ fn check_owned_symlinks(paths: &StorePaths, state: &StateFile, findings: &mut Ve
                             "owned symlink `{}` could not be read: {error}",
                             owned.link_path.display()
                         ),
-                        Some(format!("dalo resolve remove-owned {}", owned.slot_name)),
+                        Some(format!(
+                            "dalo resolve remove-owned {}",
+                            owned_selector(owned)
+                        )),
                     )),
                 }
             }
@@ -445,7 +454,10 @@ fn check_owned_symlinks(paths: &StorePaths, state: &StateFile, findings: &mut Ve
                     "recorded owned path `{}` is a real entry, not a symlink",
                     owned.link_path.display()
                 ),
-                Some(format!("dalo resolve remove-owned {}", owned.slot_name)),
+                Some(format!(
+                    "dalo resolve remove-owned {}",
+                    owned_selector(owned)
+                )),
             )),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 findings.push(finding_warning(
@@ -454,7 +466,10 @@ fn check_owned_symlinks(paths: &StorePaths, state: &StateFile, findings: &mut Ve
                         "recorded owned symlink `{}` is missing",
                         owned.link_path.display()
                     ),
-                    Some(format!("dalo resolve remove-owned {}", owned.slot_name)),
+                    Some(format!(
+                        "dalo resolve remove-owned {}",
+                        owned_selector(owned)
+                    )),
                 ));
             }
             Err(error) => findings.push(finding_error(
@@ -463,10 +478,17 @@ fn check_owned_symlinks(paths: &StorePaths, state: &StateFile, findings: &mut Ve
                     "recorded owned symlink `{}` could not be inspected: {error}",
                     owned.link_path.display()
                 ),
-                Some(format!("dalo resolve remove-owned {}", owned.slot_name)),
+                Some(format!(
+                    "dalo resolve remove-owned {}",
+                    owned_selector(owned)
+                )),
             )),
         }
     }
+}
+
+fn owned_selector(owned: &OwnedSkillState) -> String {
+    format!("{}:{}", owned.target_id, owned.slot_name)
 }
 
 fn check_sources(config: &UserConfig, findings: &mut Vec<DoctorFinding>) {

@@ -1607,13 +1607,13 @@ fn doctor_suggested_remove_owned_should_clear_real_entry_record() {
             "\"code\": \"owned_path_real_entry\"",
         ))
         .stdout(predicate::str::contains(
-            "\"next_command\": \"dalo resolve remove-owned review\"",
+            "\"next_command\": \"dalo resolve remove-owned generic:review\"",
         ));
 
     dalo_command()
         .args(["--store"])
         .arg(&store)
-        .args(["resolve", "remove-owned", "review"])
+        .args(["resolve", "remove-owned", "generic:review"])
         .assert()
         .success()
         .stdout(predicate::str::contains("blocked_real_entry"));
@@ -2883,6 +2883,7 @@ fn catalog_select_should_support_path_fallback_for_duplicate_slots() {
         .args(["source", "select", "catalog", "skills/a"])
         .assert()
         .success();
+    approve_source(&store, "catalog");
     dalo_command()
         .args(["--store"])
         .arg(&store)
