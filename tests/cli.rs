@@ -1546,7 +1546,7 @@ fn resolve_remove_owned_should_remove_only_recorded_symlink() {
     command
         .args(["--store"])
         .arg(&store)
-        .args(["resolve", "remove-owned", "review"])
+        .args(["resolve", "remove-owned", "generic:review"])
         .assert()
         .success()
         .stdout(predicate::str::contains("removed"));
@@ -1574,7 +1574,7 @@ fn resolve_remove_owned_yes_should_not_remove_real_entry() {
     command
         .args(["--store"])
         .arg(&store)
-        .args(["--yes", "resolve", "remove-owned", "review"])
+        .args(["--yes", "resolve", "remove-owned", "generic:review"])
         .assert()
         .success()
         .stdout(predicate::str::contains("blocked_real_entry"));

@@ -190,6 +190,8 @@ pub enum RemoveOwnedStatus {
     DroppedMissing,
     /// A real entry exists at the recorded path, so nothing was removed.
     BlockedRealEntry,
+    /// A different symlink occupies the path, so only the stale state record was dropped.
+    DroppedForeignSymlink,
 }
 
 impl RemoveOwnedStatus {
@@ -201,6 +203,7 @@ impl RemoveOwnedStatus {
             Self::Removed => "removed",
             Self::DroppedMissing => "dropped_missing",
             Self::BlockedRealEntry => "blocked_real_entry",
+            Self::DroppedForeignSymlink => "dropped_foreign_symlink",
         }
     }
 }
@@ -382,27 +385,30 @@ pub fn keep_unmanaged_skill(
     })
 }
 
-/// Remove a recorded dalo-owned symlink by slot, path, or generated ID.
+/// Remove a recorded dalo-owned symlink by its unambiguous generated ID.
 pub fn remove_owned_skill(
     paths: &StorePaths,
     selector: &str,
     dry_run: bool,
 ) -> DaloResult<RemoveOwnedReport> {
     let mut state = store::read_state(paths)?;
-    let Some(index) = state.owned_skills.iter().position(|skill| {
-        skill.slot_name == selector
-            || skill.link_path.to_string_lossy() == selector
-            || owned_id(skill) == selector
-    }) else {
+    let matches = state
+        .owned_skills
+        .iter()
+        .enumerate()
+        .filter(|(_, skill)| owned_id(skill) == selector)
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    let [index] = matches.as_slice() else {
         return Err(DaloError::SkillNotFound {
             skill: selector.to_owned(),
         });
     };
-    let record = state.owned_skills[index].clone();
-    let status = remove_owned_link(&record.link_path, dry_run)?;
+    let record = state.owned_skills[*index].clone();
+    let status = remove_owned_link(&record, dry_run)?;
 
     if !dry_run {
-        state.owned_skills.remove(index);
+        state.owned_skills.remove(*index);
         store::write_state(paths, &state)?;
     }
 
@@ -607,13 +613,16 @@ fn restore_replacement_backup(link_path: &Path, backup_path: &Path) -> DaloResul
     Ok(())
 }
 
-fn remove_owned_link(path: &Path, dry_run: bool) -> DaloResult<RemoveOwnedStatus> {
-    match fs::symlink_metadata(path) {
+fn remove_owned_link(record: &OwnedSkillState, dry_run: bool) -> DaloResult<RemoveOwnedStatus> {
+    match fs::symlink_metadata(&record.link_path) {
         Ok(metadata) if metadata.file_type().is_symlink() => {
+            if fs::read_link(&record.link_path)? != record.store_path {
+                return Ok(RemoveOwnedStatus::DroppedForeignSymlink);
+            }
             if dry_run {
                 Ok(RemoveOwnedStatus::Planned)
             } else {
-                fs::remove_file(path)?;
+                fs::remove_file(&record.link_path)?;
                 Ok(RemoveOwnedStatus::Removed)
             }
         }
