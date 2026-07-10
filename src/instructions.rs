@@ -437,14 +437,23 @@ pub fn enable_pack(
     target: &Path,
     dry_run: bool,
 ) -> DaloResult<InstructionPackReport> {
+    enable_pack_with_lock_writer(paths, pack_id, target, dry_run, store::write_user_lock)
+}
+
+fn enable_pack_with_lock_writer<F>(
+    paths: &StorePaths,
+    pack_id: &str,
+    target: &Path,
+    dry_run: bool,
+    write_lock: F,
+) -> DaloResult<InstructionPackReport>
+where
+    F: FnOnce(&StorePaths, &crate::lockfile::UserLock) -> DaloResult<()>,
+{
     let target = normalize_target_path(target)?;
     let pack = read_local_pack(paths, pack_id)?;
     let existing = read_target(&target)?;
     let rendered = render_block(&existing, &pack.id, &pack.body)?;
-    if !dry_run {
-        write_target(&target, &rendered)?;
-    }
-
     let mut lock = store::read_user_lock(paths)?;
     if !dry_run {
         lock.active_instruction_packs
@@ -461,7 +470,12 @@ pub fn enable_pack(
                 .cmp(&right.pack_id)
                 .then(left.target.cmp(&right.target))
         });
-        store::write_user_lock(paths, &lock)?;
+        let snapshot = target_snapshot(&target)?;
+        write_target(&target, &rendered)?;
+        if let Err(error) = write_lock(paths, &lock) {
+            let _ = restore_target(snapshot);
+            return Err(error);
+        }
     }
 
     Ok(InstructionPackReport {
@@ -479,6 +493,19 @@ pub fn disable_pack(
     target: &Path,
     dry_run: bool,
 ) -> DaloResult<InstructionPackReport> {
+    disable_pack_with_lock_writer(paths, pack_id, target, dry_run, store::write_user_lock)
+}
+
+fn disable_pack_with_lock_writer<F>(
+    paths: &StorePaths,
+    pack_id: &str,
+    target: &Path,
+    dry_run: bool,
+    write_lock: F,
+) -> DaloResult<InstructionPackReport>
+where
+    F: FnOnce(&StorePaths, &crate::lockfile::UserLock) -> DaloResult<()>,
+{
     let target = normalize_target_path(target)?;
     let existing = read_target(&target)?;
     let has_block = find_block(&existing, pack_id)?.is_some();
@@ -489,13 +516,10 @@ pub fn disable_pack(
         .iter()
         .any(|entry| entry.pack_id == pack_id && targets_match(entry, &target));
 
-    let action = if has_block {
-        let updated = remove_block(&existing, pack_id)?;
-        if !dry_run {
-            write_target(&target, &updated)?;
-        }
-        "disabled"
-    } else if has_lock_entry {
+    let updated = has_block
+        .then(|| remove_block(&existing, pack_id))
+        .transpose()?;
+    let action = if has_block || has_lock_entry {
         "disabled"
     } else {
         "unchanged"
@@ -503,8 +527,19 @@ pub fn disable_pack(
 
     lock.active_instruction_packs
         .retain(|entry| !(entry.pack_id == pack_id && targets_match(entry, &target)));
-    if !dry_run && lock.active_instruction_packs.len() != before {
-        store::write_user_lock(paths, &lock)?;
+    if !dry_run {
+        if let Some(updated) = updated {
+            let snapshot = target_snapshot(&target)?;
+            write_target(&target, &updated)?;
+            if lock.active_instruction_packs.len() != before
+                && let Err(error) = write_lock(paths, &lock)
+            {
+                let _ = restore_target(snapshot);
+                return Err(error);
+            }
+        } else if lock.active_instruction_packs.len() != before {
+            write_lock(paths, &lock)?;
+        }
     }
 
     Ok(InstructionPackReport {
@@ -524,6 +559,11 @@ fn targets_match(entry: &LockedInstructionPack, target: &Path) -> bool {
     entry.target == target
         || (entry.target.is_relative()
             && normalize_target_path(&entry.target).is_ok_and(|normalized| normalized == target))
+        || (entry.target.is_absolute()
+            && fs::canonicalize(&entry.target)
+                .ok()
+                .zip(fs::canonicalize(target).ok())
+                .is_some_and(|(left, right)| left == right))
 }
 
 fn lexically_normalize(path: &Path) -> PathBuf {
@@ -547,6 +587,39 @@ fn read_target(target: &Path) -> DaloResult<String> {
         Ok(content) => Ok(content),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
         Err(error) => Err(error.into()),
+    }
+}
+
+#[derive(Debug)]
+struct TargetSnapshot {
+    target: PathBuf,
+    content: Option<String>,
+}
+
+fn target_snapshot(target: &Path) -> DaloResult<TargetSnapshot> {
+    let target = writable_target_path(target)?;
+    match fs::read_to_string(&target) {
+        Ok(content) => Ok(TargetSnapshot {
+            target,
+            content: Some(content),
+        }),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(TargetSnapshot {
+            target,
+            content: None,
+        }),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn restore_target(snapshot: TargetSnapshot) -> DaloResult<()> {
+    if let Some(content) = snapshot.content {
+        write_target(&snapshot.target, &content)
+    } else {
+        match fs::remove_file(snapshot.target) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error.into()),
+        }
     }
 }
 
@@ -932,6 +1005,69 @@ mod tests {
         );
         let lock = store::read_user_lock(&paths).expect("lock should be readable");
         assert!(lock.active_instruction_packs.is_empty());
+    }
+
+    #[test]
+    fn enable_pack_should_restore_target_when_lock_write_fails() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp.path().join("store");
+        let target = temp.path().join("AGENTS.md");
+        store::init_store(store_root.clone(), false).expect("store should be initialized");
+        let paths = StorePaths::new(store_root);
+        fs::write(
+            paths.local_instructions_dir.join(format!("{PACK}.md")),
+            "Body\n",
+        )
+        .expect("pack should be written");
+        fs::write(&target, "user-owned content\n").expect("target should be seeded");
+
+        let error = enable_pack_with_lock_writer(&paths, PACK, &target, false, |_, _| {
+            Err(DaloError::Io(std::io::Error::other("lock write failed")))
+        })
+        .expect_err("lock write failure should fail enable");
+
+        assert!(matches!(error, DaloError::Io(_)));
+        assert_eq!(
+            fs::read_to_string(&target).expect("target should be readable"),
+            "user-owned content\n"
+        );
+        assert!(
+            store::read_user_lock(&paths)
+                .expect("lock should be readable")
+                .active_instruction_packs
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn disable_pack_should_restore_target_when_lock_write_fails() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp.path().join("store");
+        let target = temp.path().join("AGENTS.md");
+        store::init_store(store_root.clone(), false).expect("store should be initialized");
+        let paths = StorePaths::new(store_root);
+        fs::write(
+            paths.local_instructions_dir.join(format!("{PACK}.md")),
+            "Body\n",
+        )
+        .expect("pack should be written");
+        enable_pack(&paths, PACK, &target, false).expect("pack should enable");
+        let before = fs::read_to_string(&target).expect("target should be readable");
+
+        let error = disable_pack_with_lock_writer(&paths, PACK, &target, false, |_, _| {
+            Err(DaloError::Io(std::io::Error::other("lock write failed")))
+        })
+        .expect_err("lock write failure should fail disable");
+
+        assert!(matches!(error, DaloError::Io(_)));
+        assert_eq!(fs::read_to_string(&target).unwrap(), before);
+        assert_eq!(
+            store::read_user_lock(&paths)
+                .expect("lock should be readable")
+                .active_instruction_packs
+                .len(),
+            1
+        );
     }
 
     #[test]
