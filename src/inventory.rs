@@ -258,7 +258,7 @@ fn parse_frontmatter(
     };
 
     let frontmatter = &rest[..end_index];
-    match serde_yaml::from_str(frontmatter) {
+    match yaml_serde::from_str(frontmatter) {
         Ok(frontmatter) => (Some(frontmatter), warnings),
         Err(error) => {
             warnings.push(InventoryWarning {
@@ -461,6 +461,59 @@ mod tests {
             inventory.skills[0].description.as_deref(),
             Some("A valid folded YAML description.")
         );
+    }
+
+    #[test]
+    fn scan_source_should_parse_yaml_description_scalar_styles() {
+        let cases = [
+            ("literal", "|", "First line.\nSecond line.\n"),
+            ("folded", ">", "First line. Second line.\n"),
+            ("stripped", ">-", "First line. Second line."),
+        ];
+
+        for (name, style, expected) in cases {
+            let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+            let skill_dir = temp_dir.path().join(name);
+            fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+            fs::write(
+                skill_dir.join(SKILL_FILE),
+                format!(
+                    "---\nname: {name}\ndescription: {style}\n  First line.\n  Second line.\n---\n# Skill\n"
+                ),
+            )
+            .expect("skill file should be written");
+
+            let inventory = scan_source("team", temp_dir.path()).expect("scan should succeed");
+
+            assert_eq!(inventory.skills[0].description.as_deref(), Some(expected));
+            assert!(inventory.warnings.is_empty());
+        }
+    }
+
+    #[test]
+    fn scan_source_should_parse_plain_and_quoted_description_scalars() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        for (name, description) in [("plain", "Plain text"), ("quoted", "\"Quoted text\"")] {
+            let skill_dir = temp_dir.path().join(name);
+            fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+            fs::write(
+                skill_dir.join(SKILL_FILE),
+                format!("---\nname: {name}\ndescription: {description}\n---\n# Skill\n"),
+            )
+            .expect("skill file should be written");
+        }
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should succeed");
+
+        assert_eq!(
+            inventory.skills[0].description.as_deref(),
+            Some("Plain text")
+        );
+        assert_eq!(
+            inventory.skills[1].description.as_deref(),
+            Some("Quoted text")
+        );
+        assert!(inventory.warnings.is_empty());
     }
 
     #[test]
