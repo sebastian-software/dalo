@@ -22,6 +22,8 @@ grep -q 'id="quickstart-cast"' "$root/site/index.html"
 grep -q 'AsciinemaPlayer.create' "$root/site/main.js"
 grep -q 'dalo-quickstart.cast' "$root/README.md"
 grep -q 'DALO_VERSION' "$root/site/install.md"
+grep -q 'DALO_LINUX_LIBC' "$root/npm/README.md"
+! grep -q 'One-time bootstrap publish' "$root/npm/README.md"
 
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/dalo-docs-test.XXXXXX")"
 
