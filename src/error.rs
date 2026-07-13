@@ -77,6 +77,15 @@ pub enum DaloError {
         source_id: String,
     },
 
+    /// An unconfigured source checkout needs an explicit recovery decision.
+    #[error("source checkout already exists at `{path}`; {reason}")]
+    SourceCheckoutExists {
+        /// Existing checkout path.
+        path: PathBuf,
+        /// Actionable recovery guidance.
+        reason: String,
+    },
+
     /// A source ID is not a valid path component.
     #[error("invalid source id `{id}`: {reason}")]
     InvalidSourceId {
@@ -257,6 +266,7 @@ impl DaloError {
             | Self::UnknownTarget { .. }
             | Self::TargetPathRequired { .. }
             | Self::SourceAlreadyExists { .. }
+            | Self::SourceCheckoutExists { .. }
             | Self::InvalidSourceId { .. }
             | Self::UnsafeRemoteUrl
             | Self::NotACatalogSource { .. }
@@ -561,6 +571,10 @@ mod tests {
             },
             DaloError::SourceAlreadyExists {
                 source_id: "company".to_owned(),
+            },
+            DaloError::SourceCheckoutExists {
+                path: PathBuf::from("/tmp/store/sources/company/checkout"),
+                reason: "move or remove it before retrying".to_owned(),
             },
             DaloError::UnknownSource {
                 source_id: "company".to_owned(),

@@ -146,12 +146,6 @@ pub fn add_catalog_source(
     }
 
     let checkout = paths.sources_dir.join(id).join("checkout");
-    if checkout.exists() {
-        return Err(DaloError::InvalidStorePath {
-            path: checkout,
-            reason: "source checkout path already exists".to_owned(),
-        });
-    }
 
     let priority = config
         .sources
@@ -181,12 +175,7 @@ pub fn add_catalog_source(
         return Ok(source);
     }
 
-    if let Some(parent) = checkout.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    git::clone_repo(url, &checkout).inspect_err(|_| {
-        let _ = fs::remove_dir_all(&checkout);
-    })?;
+    source::clone_source_checkout(url, &checkout)?;
 
     // Pin the catalog commit and capture its inventory snapshot, then register the
     // source. On a later failure, remove the clone and the lock entry so config
@@ -211,6 +200,9 @@ pub fn add_catalog_source(
     })();
     persist.inspect_err(|_| {
         let _ = fs::remove_dir_all(&checkout);
+        if let Some(parent) = checkout.parent() {
+            let _ = fs::remove_dir(parent);
+        }
         if let Ok(mut lock) = read_source_lock(paths) {
             lock.catalogs.retain(|c| c.source_id != id);
             let _ = write_source_lock(paths, &lock);

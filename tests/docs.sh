@@ -51,7 +51,10 @@ cargo build --quiet
 dalo="$root/target/debug/dalo"
 "$dalo" --store "$store" init
 "$dalo" --store "$store" target link generic "$target"
-"$dalo" --store "$store" source add project "$source"
+(
+  cd "$source"
+  "$dalo" --store "$store" source add project .
+)
 "$dalo" --store "$store" sync
 "$dalo" --store "$store" status --check --json > /dev/null
 "$dalo" --store "$store" doctor --check --json > /dev/null

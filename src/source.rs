@@ -1,6 +1,6 @@
 //! Source definitions and source operations.
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -8,6 +8,7 @@ use crate::catalog::{self, SourceLock};
 use crate::config::UserConfig;
 use crate::error::{DaloError, DaloResult};
 use crate::git;
+use crate::materialize::MaterializeOperationKind;
 use crate::store::{self, ApprovalsFile, StorePaths};
 
 /// Source kind supported by the V1 config schema.
@@ -142,11 +143,24 @@ pub struct SourceRemoveReport {
     /// Whether a catalog lock entry was removed.
     pub removed_catalog_lock: bool,
     /// Owned target links reconciled during removal.
-    pub reconciled_links: Vec<PathBuf>,
+    pub reconciled_links: Vec<SourceRemoveLink>,
+    /// Previously active skills deactivated by removing this source.
+    pub deactivated_skills: Vec<String>,
+    /// Non-fatal checkout cleanup failures after metadata committed.
+    pub cleanup_warnings: Vec<String>,
     /// Durable store artifacts that the removal updates or cleans up.
     pub affected_paths: Vec<PathBuf>,
     /// Whether the command ran as dry-run.
     pub dry_run: bool,
+}
+
+/// One owned target link reconciled while removing a source.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SourceRemoveLink {
+    /// Materialization action applied to the link.
+    pub kind: MaterializeOperationKind,
+    /// Target link path.
+    pub path: PathBuf,
 }
 
 /// Validate and prepare every durable artifact for source removal.
@@ -204,7 +218,12 @@ pub fn plan_remove_source(
         paths.state_file.clone(),
     ];
     if !keep_checkout {
-        affected_paths.push(source.path.clone());
+        affected_paths.push(
+            source
+                .path
+                .parent()
+                .map_or_else(|| source.path.clone(), Path::to_path_buf),
+        );
     }
 
     Ok(SourceRemovalPlan {
@@ -221,6 +240,8 @@ pub fn plan_remove_source(
             removed_approvals,
             removed_catalog_lock,
             reconciled_links: Vec::new(),
+            deactivated_skills: Vec::new(),
+            cleanup_warnings: Vec::new(),
             affected_paths,
             dry_run,
         },
@@ -247,6 +268,57 @@ pub fn add_team_source(
     dry_run: bool,
 ) -> DaloResult<SourceAddReport> {
     add_team_source_with_config_writer(paths, id, url, dry_run, store::write_config)
+}
+
+/// Resolve a local source location against the caller's working directory.
+///
+/// Git URL and SCP-style remote syntax is kept verbatim. Everything else that
+/// is relative is made absolute before `git clone` changes its working
+/// directory to the store checkout parent.
+#[must_use]
+pub fn resolve_source_location(location: &str, cwd: &Path) -> String {
+    let path = Path::new(location);
+    if path.is_absolute() || looks_like_remote_location(location) {
+        location.to_owned()
+    } else {
+        normalize_local_path(&cwd.join(path))
+            .to_string_lossy()
+            .into_owned()
+    }
+}
+
+fn normalize_local_path(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+            Component::RootDir => normalized.push(Path::new("/")),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if normalized.file_name().is_some() {
+                    normalized.pop();
+                } else if !normalized.has_root() {
+                    normalized.push("..");
+                }
+            }
+            Component::Normal(part) => normalized.push(part),
+        }
+    }
+    normalized
+}
+
+fn looks_like_remote_location(location: &str) -> bool {
+    if location.contains("://") {
+        return true;
+    }
+    let Some(colon) = location.find(':') else {
+        return false;
+    };
+    colon > 0
+        && !location[..colon].contains('/')
+        && location
+            .get(colon + 1..)
+            .is_some_and(|suffix| !suffix.is_empty())
 }
 
 fn add_team_source_with_config_writer<F>(
@@ -327,45 +399,94 @@ where
         });
     }
 
-    // Legacy interrupted clones were written directly to `checkout`. Only remove
-    // an obviously incomplete directory: a Git checkout may contain uncommitted
-    // or locally committed user work after config repair, so leave it untouched
-    // and require an explicit recovery decision.
-    if checkout.exists() {
-        if checkout.join(".git").exists() {
-            return Err(DaloError::InvalidStorePath {
-                path: checkout,
-                reason: "unconfigured Git checkout exists; restore its source config or move/remove it before retrying".to_owned(),
-            });
-        }
-        std::fs::remove_dir_all(&checkout)?;
-    }
-    let temporary_checkout =
-        checkout.with_file_name(format!(".checkout-tmp-{}", std::process::id()));
-    if temporary_checkout.exists() {
-        std::fs::remove_dir_all(&temporary_checkout)?;
-    }
-    if let Some(parent) = checkout.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    clone_repo(url, &temporary_checkout).inspect_err(|_| {
-        let _ = std::fs::remove_dir_all(&temporary_checkout);
-    })?;
-    std::fs::rename(&temporary_checkout, &checkout).inspect_err(|_| {
-        let _ = std::fs::remove_dir_all(&temporary_checkout);
-    })?;
+    clone_source_checkout_with(url, &checkout, clone_repo)?;
 
     // From here on the checkout exists on disk. If persisting the source fails,
     // remove the clone so a later `source add` does not trip over an orphaned
-    // checkout that is absent from config (InvalidStorePath).
+    // checkout that is absent from config.
     finish_team_source(paths, &mut config, source.clone(), write_config).inspect_err(|_| {
         let _ = std::fs::remove_dir_all(&checkout);
+        remove_empty_source_dir(&checkout);
     })?;
 
     Ok(SourceAddReport {
         source,
         dry_run: false,
     })
+}
+
+/// Clone a source through a temporary sibling and atomically publish it.
+///
+/// The caller must hold the store lock. Interrupted-clone directories are safe
+/// to remove because no configured source ever points at them.
+pub fn clone_source_checkout(url: &str, checkout: &Path) -> DaloResult<()> {
+    clone_source_checkout_with(url, checkout, git::clone_repo)
+}
+
+fn clone_source_checkout_with<C>(url: &str, checkout: &Path, clone_repo: C) -> DaloResult<()>
+where
+    C: FnOnce(&str, &Path) -> DaloResult<()>,
+{
+    // Legacy interrupted clones were written directly to `checkout`. Only
+    // remove an obviously incomplete directory. A Git checkout can contain
+    // user work, so it always requires an explicit recovery decision.
+    if checkout.exists() {
+        if checkout.join(".git").exists() {
+            return Err(DaloError::SourceCheckoutExists {
+                path: checkout.to_path_buf(),
+                reason: "restore its source config or move/remove the checkout before retrying"
+                    .to_owned(),
+            });
+        }
+        std::fs::remove_dir_all(checkout)?;
+    }
+
+    let Some(parent) = checkout.parent() else {
+        return Err(DaloError::InvalidStorePath {
+            path: checkout.to_path_buf(),
+            reason: "source checkout has no parent directory".to_owned(),
+        });
+    };
+    std::fs::create_dir_all(parent)?;
+    remove_interrupted_clone_dirs(parent)?;
+
+    let temporary_checkout =
+        checkout.with_file_name(format!(".checkout-tmp-{}", std::process::id()));
+    clone_repo(url, &temporary_checkout).inspect_err(|_| {
+        let _ = std::fs::remove_dir_all(&temporary_checkout);
+        remove_empty_source_dir(checkout);
+    })?;
+    std::fs::rename(&temporary_checkout, checkout).inspect_err(|_| {
+        let _ = std::fs::remove_dir_all(&temporary_checkout);
+        remove_empty_source_dir(checkout);
+    })?;
+    Ok(())
+}
+
+fn remove_interrupted_clone_dirs(parent: &Path) -> DaloResult<()> {
+    for entry in std::fs::read_dir(parent)? {
+        let entry = entry?;
+        if !entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".checkout-tmp-")
+        {
+            continue;
+        }
+        let metadata = std::fs::symlink_metadata(entry.path())?;
+        if metadata.file_type().is_dir() && !metadata.file_type().is_symlink() {
+            std::fs::remove_dir_all(entry.path())?;
+        } else {
+            std::fs::remove_file(entry.path())?;
+        }
+    }
+    Ok(())
+}
+
+fn remove_empty_source_dir(checkout: &Path) {
+    if let Some(parent) = checkout.parent() {
+        let _ = std::fs::remove_dir(parent);
+    }
 }
 
 /// Return whether a source ID is safe to use as a store path component.
@@ -713,9 +834,48 @@ mod tests {
         )
         .expect_err("unconfigured Git checkout should require explicit recovery");
 
-        assert!(matches!(error, DaloError::InvalidStorePath { .. }));
+        assert!(matches!(error, DaloError::SourceCheckoutExists { .. }));
         assert!(checkout.join("LOCAL").is_file());
         assert!(error.to_string().contains("restore its source config"));
+    }
+
+    #[test]
+    fn resolve_source_location_should_absolutize_local_paths_and_preserve_remotes() {
+        let cwd = Path::new("/workspace/project");
+
+        assert_eq!(resolve_source_location(".", cwd), "/workspace/project");
+        assert_eq!(
+            resolve_source_location("../skills", cwd),
+            "/workspace/skills"
+        );
+        assert_eq!(
+            resolve_source_location("https://example.invalid/repo.git", cwd),
+            "https://example.invalid/repo.git"
+        );
+        assert_eq!(
+            resolve_source_location("git@example.invalid:org/repo.git", cwd),
+            "git@example.invalid:org/repo.git"
+        );
+    }
+
+    #[test]
+    fn clone_source_checkout_should_sweep_interrupted_clone_dirs() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let repo = temp_dir.path().join("team-repo");
+        create_git_repo(&repo);
+        let source_dir = temp_dir.path().join("store/sources/company");
+        let checkout = source_dir.join("checkout");
+        for name in [".checkout-tmp-111", ".checkout-tmp-222"] {
+            std::fs::create_dir_all(source_dir.join(name))
+                .expect("interrupted clone dir should be created");
+        }
+
+        clone_source_checkout(&repo.to_string_lossy(), &checkout)
+            .expect("source clone should succeed");
+
+        assert!(checkout.join(".git").is_dir());
+        assert!(!source_dir.join(".checkout-tmp-111").exists());
+        assert!(!source_dir.join(".checkout-tmp-222").exists());
     }
 
     #[test]

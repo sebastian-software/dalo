@@ -519,25 +519,42 @@ pub fn print_source_add_report(report: &SourceAddReport) {
 
 /// Print a source removal report.
 pub fn print_source_remove_report(report: &SourceRemoveReport) {
-    let checkout = if report.kept_checkout {
-        "retained"
-    } else {
-        "removed"
-    };
     let verb = if report.dry_run {
         "would remove"
     } else {
         "removed"
     };
     println!("{verb} source {}", report.source_id);
-    println!("  checkout: {checkout} {}", report.checkout_path.display());
+    if report.kept_checkout {
+        println!(
+            "  checkout: retained {} (move or remove it before re-adding source `{}`)",
+            report.checkout_path.display(),
+            report.source_id
+        );
+    } else if report.cleanup_warnings.is_empty() {
+        println!("  checkout: removed {}", report.checkout_path.display());
+    } else {
+        println!(
+            "  checkout: cleanup incomplete {}",
+            report.checkout_path.display()
+        );
+    }
     println!("  approvals removed: {}", report.removed_approvals);
     println!("  catalog lock removed: {}", report.removed_catalog_lock);
+    if !report.deactivated_skills.is_empty() {
+        println!("  deactivated skills:");
+        for skill in &report.deactivated_skills {
+            println!("    {skill}");
+        }
+    }
     if !report.reconciled_links.is_empty() {
         println!("  reconciled links:");
         for link in &report.reconciled_links {
-            println!("    {}", link.display());
+            println!("    {:<11} {}", link.kind.as_str(), link.path.display());
         }
+    }
+    for warning in &report.cleanup_warnings {
+        println!("  warning: {warning}");
     }
     println!("  affected artifacts:");
     for path in &report.affected_paths {
