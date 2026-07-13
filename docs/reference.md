@@ -188,6 +188,9 @@ dalo --json source refresh public
 
 JSON output shape: `CatalogDrift`.
 
+With `--check`, the command exits with code 1 when a selected skill changed,
+moved, or was removed upstream. New unselected offerings remain informational.
+
 ### `dalo status`
 
 Show source scans, active skills, pending approvals, unlinked skills, user-lock drift, unmanaged target skills, instruction packs, topic overlaps, and instruction block drift.
@@ -196,10 +199,15 @@ Examples:
 
 ```sh
 dalo status
+dalo status --check
 dalo --json status
 ```
 
 JSON output shape: `StatusReport`.
+
+`--check` exits with code 1 for unresolved source scans, inventory warnings,
+pending approvals, blocked required closure, lock drift, unmanaged blockers, or
+instruction-block drift. It keeps the full report on stdout for JSON consumers.
 
 ### `dalo sync`
 
@@ -291,10 +299,34 @@ Examples:
 
 ```sh
 dalo doctor
+dalo doctor --check
 dalo --json doctor
 ```
 
 JSON output shape: `DoctorReport`.
+
+`--check` exits with code 1 when the report contains an error finding. Warnings
+remain report-only so CI can choose its own warning policy.
+
+### `dalo approve`
+
+Grant, list, and revoke approval records without editing `approvals.toml`.
+Every skill, author, and organization value is source-qualified, so an approval
+cannot accidentally apply to a different source with the same name.
+
+```sh
+dalo approve list
+dalo approve skill public:review-helper
+dalo approve source team
+dalo approve author public:maintainers
+dalo approve org public:example-org
+dalo approve revoke skill public:review-helper
+```
+
+Approval writes support `--dry-run` and `--json`. A pending skill shown by
+`status` can be approved narrowly with `dalo approve skill <source:skill>`.
+
+JSON output shapes: `ApprovalsFile` for `list`; `ApprovalReport` for mutations.
 
 ### `dalo instructions enable <pack> <file>`
 
@@ -544,6 +576,10 @@ Approval scopes:
 | `org` | `<source-id>:<owner>` | Same matching behavior as `author`; the scope is a policy label. |
 
 Local skills and skills from `trusted = true` sources are approved automatically. Non-interactive commands can use existing approvals but never create new approvals.
+
+Prefer `dalo approve` for all approval changes. The TOML format remains
+documented for auditability and recovery, but does not need to be edited for
+normal approval workflows.
 
 ## `lock.toml`
 

@@ -4,9 +4,9 @@ Dalo's JSON output and exit codes are intended for automation.
 
 Useful checks:
 
-- `dalo status --json` reports resolution, lock drift, unmanaged target skills, and instruction pack drift.
-- `dalo doctor --json` reports store, target, Git, lockfile, and instruction health.
-- `dalo source refresh <catalog>` checks a catalog source for upstream drift without advancing the pin.
+- `dalo status --check --json` reports resolution and fails when the state needs review.
+- `dalo doctor --check --json` reports health and fails on error findings.
+- `dalo source refresh <catalog> --check` checks catalog drift without advancing the pin and fails for changed, moved, or removed selected skills.
 
 ## Example GitHub Actions job
 
@@ -29,10 +29,10 @@ jobs:
         run: cargo install dalo
 
       - name: Check dalo status
-        run: dalo status --json > dalo-status.json
+        run: dalo status --check --json > dalo-status.json
 
       - name: Check dalo health
-        run: dalo doctor --json > dalo-doctor.json
+        run: dalo doctor --check --json > dalo-doctor.json
 ```
 
 ## Exit codes
@@ -51,7 +51,7 @@ Treat `1` as a user-actionable configuration or drift problem, `3` as a safety s
 For catalog sources, use the read-only refresh check:
 
 ```sh
-dalo source refresh company-catalog
+dalo source refresh company-catalog --check
 ```
 
-The command reports new available skills, selected skill changes, moved or removed selections, and changed requirements without changing the source lock.
+The command reports new available skills, selected skill changes, moved or removed selections, and changed requirements without changing the source lock. New unselected skills remain informational; any selected-skill drift exits with code 1 for review.

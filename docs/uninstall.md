@@ -69,13 +69,35 @@ Adopted skills live in the local source under the store. Back up anything in `lo
 
 ## 5. Uninstall the Binary
 
+If installed through npm:
+
+```sh
+npm uninstall --global dalo
+rm -rf ~/.cache/dalo
+```
+
+`npx dalo` does not install a global launcher, but it uses the same cache; remove
+`~/.cache/dalo` if you no longer want the downloaded release binary.
+
 If installed through Cargo:
 
 ```sh
 cargo uninstall dalo
 ```
 
-If installed from a GitHub release archive, remove the copied `dalo` binary from wherever you placed it on `PATH`.
+Cargo Binstall uses Cargo's installation directory as well; use the same
+`cargo uninstall dalo` command after confirming it refers to the Dalo binary.
+
+If managed by mise's ubi backend:
+
+```sh
+mise uninstall -g ubi:sebastian-software/dalo
+```
+
+If installed with the hosted installer or from a GitHub release archive, remove
+the copied `dalo` binary from wherever you placed it on `PATH` (by default,
+`~/.local/bin/dalo`). The hosted installer always verifies checksums; manual
+archives should be checksum-verified before installation as shown in the README.
 
 ## 6. Final Check
 

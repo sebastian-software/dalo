@@ -90,6 +90,22 @@ auto-detection in unusual environments.
 
 Set `DALO_INSTALL_DIR` to choose another binary directory.
 
+Use Dalo through Node.js (Node 20 or newer):
+
+```sh
+npx dalo --version
+```
+
+Or install the small npm launcher globally:
+
+```sh
+npm install --global dalo
+```
+
+The launcher downloads the matching signed release archive on first use,
+verifies its SHA-256 checksum, and caches the executable in `~/.cache/dalo`.
+Remove that directory to force a fresh download.
+
 Ask your agent to install it:
 
 ```text
@@ -119,7 +135,8 @@ cargo install dalo
 Manual archive install:
 
 ```sh
-version=0.4.1
+# Copy the current version from GitHub Releases before running these commands.
+version=<release-version>
 target=x86_64-apple-darwin # or x86_64-unknown-linux-gnu, aarch64-apple-darwin, aarch64-unknown-linux-gnu
 curl -LO "https://github.com/sebastian-software/dalo/releases/download/dalo-v${version}/dalo-${version}-${target}.tar.gz"
 curl -LO "https://github.com/sebastian-software/dalo/releases/download/dalo-v${version}/dalo-${version}-${target}.tar.gz.sha256"
@@ -152,9 +169,15 @@ Place those files in the completion and manpage directories used by your shell o
 ### Upgrading
 
 - Installer: rerun `curl -fsSL https://dalo.sh/install.sh | sh`.
+- npm: rerun `npm install --global dalo`; `npx dalo` always uses the requested package version.
 - Cargo Binstall: rerun `cargo binstall dalo`.
+- mise/ubi: rerun `mise use -g ubi:sebastian-software/dalo`.
 - Cargo: rerun `cargo install dalo`.
 - Manual archive: repeat the download/verify/extract/install steps with the new version from [GitHub Releases](https://github.com/sebastian-software/dalo/releases).
+
+To remove Dalo, use the matching package manager (`npm uninstall --global dalo`,
+`cargo uninstall dalo`, or remove the installer/archive binary) and follow the
+[uninstall guide](docs/uninstall.md) for the managed store and cache.
 
 For development:
 
@@ -453,6 +476,7 @@ Later work includes scheduled autosync installation, lock-advancing `source refr
 - [RFC 0002: Technical architecture](docs/rfcs/0002-technical-architecture.md)
 - [RFC 0003: Resolution engine](docs/rfcs/0003-resolution-engine.md)
 - [Implementation status snapshot](docs/rfcs/v1-implementation-status.md)
+- [v0.6.0 release notes](docs/releases/v0.6.0.md)
 - [v0.4.1 release notes](docs/releases/v0.4.1.md)
 - [v0.4.0 release notes](docs/releases/v0.4.0.md)
 - [v0.3.0 release notes](docs/releases/v0.3.0.md)

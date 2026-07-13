@@ -112,6 +112,80 @@ fn init_should_create_store_layout() {
 }
 
 #[test]
+fn approve_cli_should_grant_list_revoke_and_dry_run() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "source", "local"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("granted source local"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("source local"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--dry-run", "approve", "source", "local"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("unchanged source local"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "revoke", "source", "local"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("revoked source local"));
+}
+
+#[test]
+fn doctor_check_should_keep_json_report_and_fail_for_errors() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("missing-store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "doctor", "--check"])
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(predicate::str::contains("\"errors\":"))
+        .stderr(predicate::str::contains("check failed"));
+}
+
+#[test]
+fn status_check_should_succeed_for_a_clean_store() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["status", "--check"])
+        .assert()
+        .success();
+}
+
+#[test]
 fn mutating_commands_should_point_to_init_before_locking_missing_store() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("missing-store");
@@ -2989,7 +3063,8 @@ fn catalog_refresh_check_should_report_upstream_drift() {
         .arg(&store)
         .args(["source", "refresh", "marketing", "--check"])
         .assert()
-        .success()
+        .failure()
+        .code(1)
         .stdout(predicate::str::contains("selected_changed"))
         .stdout(predicate::str::contains("new_available"));
 }

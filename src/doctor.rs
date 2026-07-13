@@ -548,7 +548,7 @@ fn check_resolution(
             findings.push(finding_warning(
                 DoctorCode::PendingApproval,
                 format!("skill `{}` is pending approval", skill.source_ref),
-                Some("dalo status".to_owned()),
+                Some(format!("dalo approve skill {}", skill.source_ref)),
             ));
         }
     }

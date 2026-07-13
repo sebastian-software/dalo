@@ -8,6 +8,7 @@ use crate::adopt::{
     AdoptReport, KeepReport, RemoveOwnedReport, ResolveListReport, TargetScanWarning,
     UnmanagedSkill,
 };
+use crate::approval::ApprovalReport;
 use crate::catalog::{CatalogDrift, CatalogInspectReport, CatalogSelectReport};
 use crate::doctor::{DoctorReport, DoctorSeverity};
 use crate::error::DaloResult;
@@ -21,7 +22,7 @@ use crate::resolver::{self, Resolution};
 use crate::source::{
     SourceAddReport, SourceConfig, SourceKind, SourceListReport, SourcePriorityReport,
 };
-use crate::store::{self, InitReport, StorePaths};
+use crate::store::{self, ApprovalsFile, InitReport, StorePaths};
 use crate::target::{TargetDetectReport, TargetLinkReport, TargetUnlinkReport};
 use crate::term;
 
@@ -218,6 +219,27 @@ pub fn print_init_report(report: &InitReport) {
     println!("  3. dalo sync");
 }
 
+/// Print local approval records.
+pub fn print_approval_list(report: &ApprovalsFile) {
+    if report.approvals.is_empty() {
+        println!("no approvals recorded");
+        return;
+    }
+    for approval in &report.approvals {
+        println!("{} {}", approval.scope, approval.value);
+    }
+}
+
+/// Print one approval mutation result.
+pub fn print_approval_report(report: &ApprovalReport) {
+    let verb = if report.dry_run && report.action != "unchanged" {
+        "planned"
+    } else {
+        report.action.as_str()
+    };
+    println!("{verb} {} {}", report.scope, report.value);
+}
+
 /// Print a human-readable status report.
 pub fn print_status_report(report: &StatusReport) {
     println!("dalo store: {}", report.store.display());
@@ -259,7 +281,10 @@ pub fn print_status_report(report: &StatusReport) {
     if !report.resolution.pending_approval_skills.is_empty() {
         println!("pending approval:");
         for skill in &report.resolution.pending_approval_skills {
-            println!("  {} -> {}", skill.slot_name, skill.source_ref);
+            println!(
+                "  {} -> {} (run: dalo approve skill {})",
+                skill.slot_name, skill.source_ref, skill.source_ref
+            );
         }
     }
 
