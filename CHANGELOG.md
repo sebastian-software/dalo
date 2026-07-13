@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.7.1](https://github.com/sebastian-software/dalo/compare/dalo-v0.7.0...dalo-v0.7.1) (2026-07-13)
+
+
+### Bug Fixes
+
+* **deps:** update rust crate clap_mangen to 0.3 ([40fdb3d](https://github.com/sebastian-software/dalo/commit/40fdb3db2704a764dcf1a73b75642bc1a2b14432))
+* **deps:** update rust crate sha2 to 0.11 ([906da18](https://github.com/sebastian-software/dalo/commit/906da188c81d07b2a4b6229ee09fd65cacd1d460))
+* **deps:** update sigstore/cosign-installer action to v4.1.2 ([09fa5ad](https://github.com/sebastian-software/dalo/commit/09fa5ad5bdb8ff0c567d5c57281061e4cd990f4b))
+* harden sync recovery paths ([c0bad4a](https://github.com/sebastian-software/dalo/commit/c0bad4a8034b8569fe1c0c095b5922f4498b6eef))
+* preserve recovery state on sync failure ([30aa383](https://github.com/sebastian-software/dalo/commit/30aa383edd2b25b7226c9b7fd5531fb7255b8b3d))
+
 ## [0.7.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.6.1...dalo-v0.7.0) (2026-07-13)
 
 
