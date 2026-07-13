@@ -453,57 +453,63 @@ pub fn print_sync_report(report: &SyncReport) {
             );
         } else if report.resolution.pending_approval_skills.is_empty()
             && report.resolution.blocked_skills.is_empty()
-            && report.resolution.diagnostics.is_empty()
+            && !report
+                .resolution
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code.requires_review())
             && report.degraded_sources.is_empty()
         {
             println!("nothing to sync: 0 skills materialized; store is up to date");
         } else {
             println!("nothing materialized: resolution is incomplete");
-            for skill in &report.resolution.pending_approval_skills {
-                println!(
-                    "  pending approval: {} (run: dalo approve skill {})",
-                    skill.source_ref, skill.source_ref
-                );
-            }
-            for blocked in &report.resolution.blocked_skills {
-                println!(
-                    "  blocked: {} requires {}",
-                    blocked.skill.source_ref, blocked.requirement
-                );
-            }
-            for source in &report.degraded_sources {
-                println!("  degraded source: {} ({})", source.id, source.reason);
-            }
-            for diagnostic in &report.resolution.diagnostics {
-                println!(
-                    "  diagnostic: {}: {}",
-                    resolver::diagnostic_code_name(diagnostic.code),
-                    diagnostic.message
-                );
-            }
         }
-        return;
+    } else {
+        for operation in &report.operations {
+            let desired = operation
+                .desired_path
+                .as_ref()
+                .map_or(String::new(), |path| format!(" -> {}", path.display()));
+            let reason = operation
+                .reason
+                .as_ref()
+                .map_or(String::new(), |reason| format!(" ({reason})"));
+            println!(
+                "{:<8} {:<10} {}{}{}",
+                operation.status.as_str(),
+                operation.kind.as_str(),
+                operation.link_path.display(),
+                desired,
+                reason
+            );
+        }
     }
-    for operation in &report.operations {
-        let desired = operation
-            .desired_path
-            .as_ref()
-            .map_or(String::new(), |path| format!(" -> {}", path.display()));
-        let reason = operation
-            .reason
-            .as_ref()
-            .map_or(String::new(), |reason| format!(" ({reason})"));
+    let prefix = if report.operations.is_empty() {
+        "  "
+    } else {
+        ""
+    };
+    for skill in &report.resolution.pending_approval_skills {
         println!(
-            "{:<8} {:<10} {}{}{}",
-            operation.status.as_str(),
-            operation.kind.as_str(),
-            operation.link_path.display(),
-            desired,
-            reason
+            "{prefix}pending approval: {} (run: dalo approve skill {})",
+            skill.source_ref, skill.source_ref
+        );
+    }
+    for blocked in &report.resolution.blocked_skills {
+        println!(
+            "{prefix}blocked: {} requires {}",
+            blocked.skill.source_ref, blocked.requirement
         );
     }
     for source in &report.degraded_sources {
-        println!("degraded source: {} ({})", source.id, source.reason);
+        println!("{prefix}degraded source: {} ({})", source.id, source.reason);
+    }
+    for diagnostic in &report.resolution.diagnostics {
+        println!(
+            "{prefix}diagnostic: {}: {}",
+            resolver::diagnostic_code_name(diagnostic.code),
+            diagnostic.message
+        );
     }
 }
 

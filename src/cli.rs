@@ -575,6 +575,11 @@ fn status_requires_review(report: &status::StatusReport) -> bool {
         || report.sources.iter().any(|source| source.error.is_some())
         || !report.resolution.pending_approval_skills.is_empty()
         || !report.resolution.blocked_skills.is_empty()
+        || report
+            .resolution
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code.requires_review())
         || !report.lock.drift.is_empty()
         || (report.targets.is_empty() && !report.resolution.active_skills.is_empty())
         || !report.unmanaged_skills.is_empty()
@@ -627,10 +632,10 @@ fn run_sync(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
         status::print_sync_report(&report);
     }
 
-    if args.check && sync_requires_review(&report) {
-        return Err(DaloError::CheckFailed {
-            reason: "sync reports blocked, incomplete, or unmaterialized state".to_owned(),
-        });
+    if args.check
+        && let Some(reason) = sync_review_reason(&report)
+    {
+        return Err(DaloError::CheckFailed { reason });
     }
 
     Ok(())
@@ -709,16 +714,121 @@ where
     ))))
 }
 
-fn sync_requires_review(report: &materialize::SyncReport) -> bool {
-    (report.linked_targets == 0 && !report.resolution.active_skills.is_empty())
-        || !report.resolution.pending_approval_skills.is_empty()
-        || !report.resolution.blocked_skills.is_empty()
-        || !report.resolution.diagnostics.is_empty()
-        || !report.degraded_sources.is_empty()
-        || report
-            .operations
-            .iter()
-            .any(|operation| operation.status == materialize::MaterializeOperationStatus::Blocked)
+fn sync_review_reason(report: &materialize::SyncReport) -> Option<String> {
+    let mut reasons = Vec::new();
+
+    if report.linked_targets == 0 && !report.resolution.active_skills.is_empty() {
+        let count = report.resolution.active_skills.len();
+        reasons.push(format!(
+            "{count} active skill{} but no linked targets",
+            if count == 1 { "" } else { "s" }
+        ));
+    }
+
+    let pending = &report.resolution.pending_approval_skills;
+    if !pending.is_empty() {
+        reasons.push(format!(
+            "{} pending approval{} ({})",
+            pending.len(),
+            if pending.len() == 1 { "" } else { "s" },
+            pending
+                .iter()
+                .map(|skill| skill.source_ref.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+
+    let blocked_skills = &report.resolution.blocked_skills;
+    if !blocked_skills.is_empty() {
+        reasons.push(format!(
+            "{} blocked skill{} ({})",
+            blocked_skills.len(),
+            if blocked_skills.len() == 1 { "" } else { "s" },
+            blocked_skills
+                .iter()
+                .map(|blocked| blocked.skill.source_ref.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+
+    let actionable_diagnostics = report
+        .resolution
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.code.requires_review())
+        .filter(|diagnostic| {
+            (pending.is_empty()
+                || diagnostic.code != resolver::ResolutionDiagnosticCode::PendingApproval)
+                && (blocked_skills.is_empty()
+                    || diagnostic.code != resolver::ResolutionDiagnosticCode::RequiredBlocked)
+        })
+        .collect::<Vec<_>>();
+    if !actionable_diagnostics.is_empty() {
+        reasons.push(format!(
+            "{} actionable diagnostic{} ({})",
+            actionable_diagnostics.len(),
+            if actionable_diagnostics.len() == 1 {
+                ""
+            } else {
+                "s"
+            },
+            actionable_diagnostics
+                .iter()
+                .map(|diagnostic| diagnostic.source_ref.as_deref().map_or_else(
+                    || resolver::diagnostic_code_name(diagnostic.code).to_owned(),
+                    |source_ref| format!(
+                        "{}:{source_ref}",
+                        resolver::diagnostic_code_name(diagnostic.code)
+                    )
+                ))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+
+    if !report.degraded_sources.is_empty() {
+        reasons.push(format!(
+            "{} degraded source{} ({})",
+            report.degraded_sources.len(),
+            if report.degraded_sources.len() == 1 {
+                ""
+            } else {
+                "s"
+            },
+            report
+                .degraded_sources
+                .iter()
+                .map(|source| source.id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+
+    let blocked_operations = report
+        .operations
+        .iter()
+        .filter(|operation| operation.status == materialize::MaterializeOperationStatus::Blocked)
+        .collect::<Vec<_>>();
+    if !blocked_operations.is_empty() {
+        reasons.push(format!(
+            "{} blocked operation{} ({})",
+            blocked_operations.len(),
+            if blocked_operations.len() == 1 {
+                ""
+            } else {
+                "s"
+            },
+            blocked_operations
+                .iter()
+                .map(|operation| operation.link_path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+
+    (!reasons.is_empty()).then(|| reasons.join(", "))
 }
 
 fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()> {
