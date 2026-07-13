@@ -93,13 +93,13 @@ Set `DALO_INSTALL_DIR` to choose another binary directory.
 Use Dalo through Node.js (Node 20 or newer):
 
 ```sh
-npx dalo --version
+npx getdalo --version
 ```
 
 Or install the small npm launcher globally:
 
 ```sh
-npm install --global dalo
+npm install --global getdalo
 ```
 
 The launcher downloads the matching signed release archive on first use,
@@ -169,13 +169,13 @@ Place those files in the completion and manpage directories used by your shell o
 ### Upgrading
 
 - Installer: rerun `curl -fsSL https://dalo.sh/install.sh | sh`.
-- npm: rerun `npm install --global dalo`; `npx dalo` always uses the requested package version.
+- npm: rerun `npm install --global getdalo`; `npx getdalo` always uses the requested package version.
 - Cargo Binstall: rerun `cargo binstall dalo`.
 - mise/ubi: rerun `mise use -g ubi:sebastian-software/dalo`.
 - Cargo: rerun `cargo install dalo`.
 - Manual archive: repeat the download/verify/extract/install steps with the new version from [GitHub Releases](https://github.com/sebastian-software/dalo/releases).
 
-To remove Dalo, use the matching package manager (`npm uninstall --global dalo`,
+To remove Dalo, use the matching package manager (`npm uninstall --global getdalo`,
 `cargo uninstall dalo`, or remove the installer/archive binary) and follow the
 [uninstall guide](docs/uninstall.md) for the managed store and cache.
 
