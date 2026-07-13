@@ -27,13 +27,16 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
    curl -fsSL https://dalo.sh/install.sh | sh
    ```
 
-   For environments that require Sigstore provenance verification, first
-   install [Cosign](https://docs.sigstore.dev/cosign/system_config/installation/)
-   and use strict verification:
+   For environments that require strict Sigstore provenance verification and
+   have Homebrew available, install Cosign and make verification mandatory:
 
    ```sh
+   brew install cosign
    curl -fsSL https://dalo.sh/install.sh | DALO_VERIFY=required sh
    ```
+
+   Without Homebrew, follow the official
+   [Cosign installation guide](https://docs.sigstore.dev/cosign/system_config/installation/).
 
    Or, when the user manages command-line tools with mise, install the GitHub
    release through its ubi backend:
