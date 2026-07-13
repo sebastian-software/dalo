@@ -31,7 +31,7 @@ printf '{}\n' > "${fixture_dir}/${package}.tar.gz.sigstore.json"
 make_path() {
   path_dir="$1"
   mkdir -p "$path_dir"
-  for command_name in cp head install mkdir mktemp rm sed shasum sha256sum tar uname; do
+  for command_name in cp gzip head install mkdir mktemp rm sed shasum sha256sum tar uname; do
     command_path="$(command -v "$command_name" 2>/dev/null || true)"
     if [ -n "$command_path" ]; then
       ln -s "$command_path" "${path_dir}/${command_name}"
