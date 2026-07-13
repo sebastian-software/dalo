@@ -271,6 +271,8 @@ pub enum SourceSubcommand {
     Select(SourceSelectArgs),
     /// Check a catalog source for upstream drift (read-only).
     Refresh(SourceRefreshArgs),
+    /// Remove a team or catalog source and reconcile its owned links.
+    Remove(SourceRemoveArgs),
 }
 
 /// Arguments for `source add`.
@@ -324,6 +326,16 @@ pub struct SourceRefreshArgs {
     /// Check for drift without advancing the pin.
     #[arg(long)]
     pub check: bool,
+}
+
+/// Arguments for `source remove`.
+#[derive(Debug, Args)]
+pub struct SourceRemoveArgs {
+    /// Team or catalog source ID.
+    pub id: String,
+    /// Retain the Git checkout after removing all Dalo state for the source.
+    #[arg(long)]
+    pub keep_checkout: bool,
 }
 
 /// Arguments for `adopt`.
@@ -699,6 +711,7 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             }
             Ok(())
         }
+        SourceSubcommand::Remove(args) => run_source_remove(options, &paths, args),
         SourceSubcommand::Priority(args) => {
             ensure_initialized(&paths)?;
             let _lock = if options.dry_run {
@@ -716,6 +729,208 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             Ok(())
         }
     }
+}
+
+fn run_source_remove(
+    options: &GlobalOptions,
+    paths: &store::StorePaths,
+    args: SourceRemoveArgs,
+) -> DaloResult<()> {
+    ensure_initialized(paths)?;
+    let _lock = if options.dry_run {
+        None
+    } else {
+        Some(store::StoreLock::acquire(paths)?)
+    };
+    let mut plan =
+        source::plan_remove_source(paths, &args.id, args.keep_checkout, options.dry_run)?;
+    if options.dry_run {
+        let live = resolver::resolve_from_config(&plan.config, plan.approvals.approvals.clone());
+        let (materialization, _) = materialize::materialize_with_degraded_sources_rollback(
+            paths,
+            &live.resolution,
+            true,
+            &[],
+        )?;
+        plan.report.reconciled_links = materialization
+            .operations
+            .iter()
+            .filter(|operation| {
+                matches!(
+                    operation.kind,
+                    materialize::MaterializeOperationKind::Create
+                        | materialize::MaterializeOperationKind::Relink
+                        | materialize::MaterializeOperationKind::Remove
+                        | materialize::MaterializeOperationKind::DropRecord
+                )
+            })
+            .map(|operation| operation.link_path.clone())
+            .collect();
+        if options.json {
+            print_json(&plan.report)?;
+        } else {
+            status::print_source_remove_report(&plan.report);
+        }
+        return Ok(());
+    }
+
+    let previous_user_lock = store::read_user_lock(paths)?;
+    let live = resolver::resolve_from_config(&plan.config, plan.approvals.approvals.clone());
+    let (materialization, rollback) = materialize::materialize_with_degraded_sources_rollback(
+        paths,
+        &live.resolution,
+        false,
+        &[],
+    )?;
+    plan.report.reconciled_links = materialization
+        .operations
+        .iter()
+        .filter(|operation| {
+            matches!(
+                operation.kind,
+                materialize::MaterializeOperationKind::Create
+                    | materialize::MaterializeOperationKind::Relink
+                    | materialize::MaterializeOperationKind::Remove
+                    | materialize::MaterializeOperationKind::DropRecord
+            )
+        })
+        .map(|operation| operation.link_path.clone())
+        .collect();
+    let mut user_lock = lockfile::build_user_lock(
+        &plan.config.sources,
+        &live.resolution,
+        Some(&materialization),
+    );
+    user_lock.active_instruction_packs = previous_user_lock.active_instruction_packs.clone();
+
+    let staged_checkout = if args.keep_checkout || !plan.report.checkout_path.exists() {
+        None
+    } else {
+        let staged = plan
+            .report
+            .checkout_path
+            .with_file_name("checkout.dalo-removing");
+        if staged.exists() {
+            return rollback_remove(
+                paths,
+                &plan,
+                &previous_user_lock,
+                rollback,
+                None,
+                DaloError::InvalidStorePath {
+                    path: staged,
+                    reason: "stale source-removal staging path exists; inspect it before retrying"
+                        .to_owned(),
+                },
+            );
+        }
+        Some(staged)
+    };
+
+    let commit = (|| -> DaloResult<()> {
+        if let Some(staged) = &staged_checkout {
+            source_remove_boundary("stage_checkout")?;
+            std::fs::rename(&plan.report.checkout_path, staged)?;
+        }
+        source_remove_boundary("config")?;
+        store::write_config(paths, &plan.config)?;
+        source_remove_boundary("source_lock")?;
+        catalog::write_source_lock(paths, &plan.source_lock)?;
+        source_remove_boundary("approvals")?;
+        store::write_approvals(paths, &plan.approvals)?;
+        source_remove_boundary("user_lock")?;
+        store::write_user_lock(paths, &user_lock)?;
+        Ok(())
+    })();
+    if let Err(error) = commit {
+        return rollback_remove(
+            paths,
+            &plan,
+            &previous_user_lock,
+            rollback,
+            staged_checkout.as_deref(),
+            error,
+        );
+    }
+    if let Some(staged) = staged_checkout {
+        let cleanup = (|| -> DaloResult<()> {
+            source_remove_boundary("checkout_cleanup")?;
+            std::fs::remove_dir_all(&staged)?;
+            Ok(())
+        })();
+        if let Err(error) = cleanup {
+            return rollback_remove(
+                paths,
+                &plan,
+                &previous_user_lock,
+                rollback,
+                Some(&staged),
+                error,
+            );
+        }
+    }
+
+    if options.json {
+        print_json(&plan.report)?;
+    } else {
+        status::print_source_remove_report(&plan.report);
+    }
+    Ok(())
+}
+
+fn rollback_remove(
+    paths: &store::StorePaths,
+    plan: &source::SourceRemovalPlan,
+    original_user_lock: &lockfile::UserLock,
+    rollback: Option<materialize::MaterializationRollback>,
+    staged_checkout: Option<&std::path::Path>,
+    error: DaloError,
+) -> DaloResult<()> {
+    let mut rollback_errors = Vec::new();
+    if let Some(staged) = staged_checkout
+        && staged.exists()
+        && let Err(restore_error) = std::fs::rename(staged, &plan.report.checkout_path)
+    {
+        rollback_errors.push(restore_error.to_string());
+    }
+    if let Err(restore_error) = store::write_config(paths, &plan.original_config) {
+        rollback_errors.push(restore_error.to_string());
+    }
+    if let Err(restore_error) = catalog::write_source_lock(paths, &plan.original_source_lock) {
+        rollback_errors.push(restore_error.to_string());
+    }
+    if let Err(restore_error) = store::write_approvals(paths, &plan.original_approvals) {
+        rollback_errors.push(restore_error.to_string());
+    }
+    if let Err(restore_error) = store::write_user_lock(paths, original_user_lock) {
+        rollback_errors.push(restore_error.to_string());
+    }
+    if let Some(rollback) = rollback
+        && let Err(restore_error) = rollback.restore(paths)
+    {
+        rollback_errors.push(restore_error.to_string());
+    }
+    if rollback_errors.is_empty() {
+        Err(error)
+    } else {
+        Err(DaloError::Io(std::io::Error::other(format!(
+            "{error}; additionally failed to roll back source removal: {}",
+            rollback_errors.join("; ")
+        ))))
+    }
+}
+
+/// Trigger a named source-removal failpoint for integration tests.
+///
+/// The hook exists solely to exercise every transaction boundary. It is inert
+/// unless the test-only environment variable names the exact boundary.
+fn source_remove_boundary(boundary: &str) -> DaloResult<()> {
+    if std::env::var("DALO_SOURCE_REMOVE_FAIL_AT").ok().as_deref() == Some(boundary) {
+        return Err(DaloError::CheckFailed {
+            reason: format!("injected source-removal failure at {boundary}"),
+        });
+    }
+    Ok(())
 }
 
 fn run_adopt(options: &GlobalOptions, command: AdoptCommand) -> DaloResult<()> {

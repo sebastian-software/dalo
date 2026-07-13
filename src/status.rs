@@ -21,6 +21,7 @@ use crate::materialize::SyncReport;
 use crate::resolver::{self, Resolution};
 use crate::source::{
     SourceAddReport, SourceConfig, SourceKind, SourceListReport, SourcePriorityReport,
+    SourceRemoveReport,
 };
 use crate::store::{self, ApprovalsFile, InitReport, StorePaths};
 use crate::target::{TargetDetectReport, TargetLinkReport, TargetUnlinkReport};
@@ -451,6 +452,34 @@ pub fn print_source_add_report(report: &SourceAddReport) {
         report.source.id,
         report.source.path.display()
     );
+}
+
+/// Print a source removal report.
+pub fn print_source_remove_report(report: &SourceRemoveReport) {
+    let checkout = if report.kept_checkout {
+        "retained"
+    } else {
+        "removed"
+    };
+    let verb = if report.dry_run {
+        "would remove"
+    } else {
+        "removed"
+    };
+    println!("{verb} source {}", report.source_id);
+    println!("  checkout: {checkout} {}", report.checkout_path.display());
+    println!("  approvals removed: {}", report.removed_approvals);
+    println!("  catalog lock removed: {}", report.removed_catalog_lock);
+    if !report.reconciled_links.is_empty() {
+        println!("  reconciled links:");
+        for link in &report.reconciled_links {
+            println!("    {}", link.display());
+        }
+    }
+    println!("  affected artifacts:");
+    for path in &report.affected_paths {
+        println!("    {}", path.display());
+    }
 }
 
 /// Print a human-readable source list report.
