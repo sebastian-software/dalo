@@ -56,7 +56,7 @@ EOF
 
 git -C "$TEAM_REPO" init
 git -C "$TEAM_REPO" add .
-git -C "$TEAM_REPO" -c user.email=test@example.com -c user.name='Test User' commit -m initial
+git -C "$TEAM_REPO" -c commit.gpgSign=false -c user.email=test@example.com -c user.name='Test User' commit -m initial
 
 dalo source add company "$TEAM_REPO"
 dalo source list
@@ -84,7 +84,7 @@ EOF
 
 git -C "$CATALOG_REPO" init
 git -C "$CATALOG_REPO" add .
-git -C "$CATALOG_REPO" -c user.email=test@example.com -c user.name='Test User' commit -m initial
+git -C "$CATALOG_REPO" -c commit.gpgSign=false -c user.email=test@example.com -c user.name='Test User' commit -m initial
 
 dalo source add-catalog public "$CATALOG_REPO"
 dalo source inspect public
