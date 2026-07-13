@@ -194,7 +194,7 @@ fn find_skill_dirs(
                     path: entry.path(),
                     message: "skipped symlink to keep the source scan bounded".to_owned(),
                 });
-            } else if file_type.is_dir() && !entry.file_name().to_string_lossy().starts_with('.') {
+            } else if file_type.is_dir() && !is_adoption_staging_dir_name(&entry.file_name()) {
                 pending.push(entry.path());
             }
         }
@@ -202,6 +202,15 @@ fn find_skill_dirs(
 
     found.sort();
     Ok(found)
+}
+
+fn is_adoption_staging_dir_name(name: &std::ffi::OsStr) -> bool {
+    let name = name.to_string_lossy();
+    let Some(rest) = name.strip_prefix('.') else {
+        return false;
+    };
+    rest.rsplit_once(".dalo-adopting-")
+        .is_some_and(|(skill_name, suffix)| !skill_name.is_empty() && !suffix.is_empty())
 }
 
 fn scan_skill(
@@ -304,7 +313,8 @@ fn parse_frontmatter(
 // tree. This is intentionally a small lexical guard, not a second YAML parser;
 // quoted scalars and comments cannot introduce structural nesting.
 fn frontmatter_flow_depth_exceeds(frontmatter: &str, limit: usize) -> bool {
-    let mut chars = frontmatter.chars().peekable();
+    let structural_frontmatter = frontmatter_without_block_scalar_bodies(frontmatter);
+    let mut chars = structural_frontmatter.chars().peekable();
     let mut depth = 0_usize;
     let mut in_single_quote = false;
     let mut in_double_quote = false;
@@ -360,6 +370,60 @@ fn frontmatter_flow_depth_exceeds(frontmatter: &str, limit: usize) -> bool {
     }
 
     false
+}
+
+fn frontmatter_without_block_scalar_bodies(frontmatter: &str) -> String {
+    let mut structural = String::with_capacity(frontmatter.len());
+    let mut block_scalar_indent = None;
+
+    for line in frontmatter.split_inclusive('\n') {
+        let content = line.strip_suffix('\n').unwrap_or(line);
+        let content = content.strip_suffix('\r').unwrap_or(content);
+        let trimmed = content.trim_start_matches(' ');
+        let indent = content.len() - trimmed.len();
+
+        if let Some(header_indent) = block_scalar_indent {
+            if trimmed.is_empty() || indent > header_indent {
+                if line.ends_with('\n') {
+                    structural.push('\n');
+                }
+                continue;
+            }
+            block_scalar_indent = None;
+        }
+
+        structural.push_str(line);
+        if is_block_scalar_header(trimmed) {
+            block_scalar_indent = Some(indent);
+        }
+    }
+
+    structural
+}
+
+fn is_block_scalar_header(line: &str) -> bool {
+    if line.starts_with('#') {
+        return false;
+    }
+    let Some((_, value)) = line.split_once(':') else {
+        return false;
+    };
+    let value = value.trim_start();
+    let Some(indicator) = value.chars().next() else {
+        return false;
+    };
+    if !matches!(indicator, '|' | '>') {
+        return false;
+    }
+    value[indicator.len_utf8()..]
+        .split('#')
+        .next()
+        .is_some_and(|suffix| {
+            suffix
+                .trim()
+                .chars()
+                .all(|character| matches!(character, '+' | '-' | '1'..='9'))
+        })
 }
 
 fn frontmatter_end_index(rest: &str) -> Option<usize> {
@@ -677,6 +741,25 @@ mod tests {
     }
 
     #[test]
+    fn scan_source_should_allow_skills_in_hidden_directories() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let source_root = temp_dir.path().join("checkout");
+        let skill_dir = source_root.join("tools/.review");
+        fs::create_dir_all(&skill_dir).expect("hidden skill dir should be created");
+        fs::write(
+            skill_dir.join(SKILL_FILE),
+            "---\nname: review\n---\n# Review\n",
+        )
+        .expect("skill file should be written");
+
+        let inventory = scan_source("team", &source_root).expect("scan should succeed");
+
+        assert_eq!(inventory.skills.len(), 1);
+        assert_eq!(inventory.skills[0].path, skill_dir);
+        assert!(inventory.warnings.is_empty());
+    }
+
+    #[test]
     fn scan_source_should_skip_malformed_frontmatter() {
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
         let skill_dir = temp_dir.path().join("app");
@@ -760,6 +843,30 @@ mod tests {
             &frontmatter,
             MAX_FRONTMATTER_FLOW_DEPTH
         ));
+    }
+
+    #[test]
+    fn scan_source_should_allow_flow_delimiters_in_block_scalar_text() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("block-scalar");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        let delimiters = "[".repeat(MAX_FRONTMATTER_FLOW_DEPTH + 1);
+        fs::write(
+            skill_dir.join(SKILL_FILE),
+            format!(
+                "---\nname: block-scalar\ndescription: |-\n  {delimiters}\n---\n# Block Scalar\n"
+            ),
+        )
+        .expect("skill file should be written");
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should succeed");
+
+        assert_eq!(inventory.skills.len(), 1);
+        assert_eq!(
+            inventory.skills[0].description.as_deref(),
+            Some(delimiters.as_str())
+        );
+        assert!(inventory.warnings.is_empty());
     }
 
     #[test]
