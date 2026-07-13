@@ -4,14 +4,9 @@ Dalo clones Git repositories, reads skill metadata, writes lock/config files, an
 
 ## Supported Versions
 
-Dalo is pre-1.0. Security fixes are provided for the latest released minor line and for `main`.
-
-| Version | Supported |
-| --- | --- |
-| `0.4.x` | yes |
-| `< 0.4.0` | no |
-
-If a new minor release is published, support moves to that latest minor line.
+Dalo is pre-1.0. Security fixes are provided for the latest released minor line
+and for `main`. When a new minor release is published, support moves to that
+new line; older minor lines are no longer supported.
 
 ## Reporting a Vulnerability
 

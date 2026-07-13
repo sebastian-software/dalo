@@ -15,6 +15,12 @@ grep -q 'git -C "\$TEAM_REPO" -c commit.gpgSign=false' "$root/docs/getting-start
 grep -q 'git -C "\$CATALOG_REPO" -c commit.gpgSign=false' "$root/docs/getting-started.md"
 grep -q 'dalo target link generic "\$RUNNER_TEMP/dalo-skills"' "$root/docs/ci.md"
 grep -q 'sh tests/docs.sh' "$root/CONTRIBUTING.md"
+grep -q 'latest released minor line' "$root/SECURITY.md"
+! grep -q '| `0\.4\.x`' "$root/SECURITY.md"
+grep -q '__DALO_LASTMOD__' "$root/site/sitemap.xml"
+grep -q 'asciinema-player' "$root/site/index.html"
+grep -q 'dalo-quickstart.cast' "$root/README.md"
+grep -q 'DALO_VERSION' "$root/site/install.md"
 
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/dalo-docs-test.XXXXXX")"
 

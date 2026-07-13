@@ -13,6 +13,9 @@ Codex, Claude Code, OpenClaw, Hermes, and folder-based agents can keep reading n
 
 Website: **[dalo.sh](https://dalo.sh)**
 
+Watch the [20-second quickstart demo](https://dalo.sh/#quickstart), or download
+the [asciicast recording](https://dalo.sh/assets/dalo-quickstart.cast).
+
 ## Documentation
 
 User docs:

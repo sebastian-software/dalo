@@ -39,8 +39,11 @@ jobs:
         run: |
           version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)"
           test -n "$version"
+          lastmod="$(date -u +%F)"
           grep -R "__DALO_VERSION__" -n site
+          grep -q "__DALO_LASTMOD__" site/sitemap.xml
           find site -type f -name "*.html" -exec sed -i "s/__DALO_VERSION__/${version}/g" {} +
+          sed -i "s/__DALO_LASTMOD__/${lastmod}/g" site/sitemap.xml
 
       - name: Upload static site
         uses: actions/upload-pages-artifact@v5

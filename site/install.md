@@ -60,6 +60,13 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
    curl -fsSL https://dalo.sh/install.sh | DALO_INSTALL_DIR="$HOME/.local/bin" sh
    ```
 
+   Installer environment variables:
+
+   - `DALO_VERSION` selects a release. Use `dalo-v0.6.1`, `v0.6.1`, or `0.6.1`.
+   - `DALO_INSTALL_DIR` changes the binary destination (default: `~/.local/bin`).
+   - `DALO_VERIFY=required` requires Sigstore provenance verification; `auto` is the default.
+   - `DALO_LINUX_LIBC=gnu|musl` and `DALO_TARGET` override platform detection when needed.
+
 3. Ensure the install directory is on `PATH` for this session:
 
    ```sh
@@ -112,5 +119,6 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
 - Dalo shells out to `git` for source operations, so `git` must be on `PATH`.
 - Windows is not supported yet. Recommend WSL for Windows users.
 - If the installer cannot resolve a release or checksum, stop and show the error instead of downloading from an unofficial mirror.
+- If the install directory is not on `PATH`, the installer prints the exact export command for the current shell.
 - To remove a cached npm binary, delete `~/.cache/dalo`; uninstall a global
   launcher with `npm uninstall --global getdalo`.
