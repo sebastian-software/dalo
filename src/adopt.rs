@@ -400,9 +400,11 @@ pub fn remove_owned_skill(
         .map(|(index, _)| index)
         .collect::<Vec<_>>();
     let [index] = matches.as_slice() else {
-        return Err(DaloError::SkillNotFound {
-            skill: selector.to_owned(),
-        });
+        return Err(DaloError::skill_not_found(
+            selector,
+            state.owned_skills.iter().map(owned_id).collect(),
+            "dalo resolve list",
+        ));
     };
     let record = state.owned_skills[*index].clone();
     let status = remove_owned_link(&record, dry_run)?;
@@ -433,9 +435,11 @@ fn find_unmanaged_skill(paths: &StorePaths, selector: &str) -> DaloResult<Unmana
         return unmanaged_from_path(skills, &selector_path);
     }
 
-    Err(DaloError::SkillNotFound {
-        skill: selector.to_owned(),
-    })
+    Err(DaloError::skill_not_found(
+        selector,
+        skills.iter().map(|skill| skill.id.clone()).collect(),
+        "dalo resolve list",
+    ))
 }
 
 fn unmanaged_from_path(skills: Vec<UnmanagedSkill>, path: &Path) -> DaloResult<UnmanagedSkill> {
@@ -446,11 +450,16 @@ fn unmanaged_from_path(skills: Vec<UnmanagedSkill>, path: &Path) -> DaloResult<U
     // Only skills discovered inside a materialization dir are considered, so the
     // directory boundary that `discover_unmanaged_skills` enforces still holds.
     let target = canonical_or_self(path);
+    let known_skills = skills.iter().map(|skill| skill.id.clone()).collect();
     skills
         .into_iter()
         .find(|skill| canonical_or_self(&skill.path) == target)
-        .ok_or_else(|| DaloError::SkillNotFound {
-            skill: path.display().to_string(),
+        .ok_or_else(|| {
+            DaloError::skill_not_found(
+                path.display().to_string(),
+                known_skills,
+                "dalo resolve list",
+            )
         })
 }
 

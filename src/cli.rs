@@ -106,7 +106,7 @@ pub enum Command {
     #[command(
         long_about = "Refresh clean tracking sources, resolve the approved skill set, and materialize it into linked target folders.\n\nA skill source is a Git-backed collection of skills. Sync never overwrites unmanaged files; blocked or shadowed skills are reported instead."
     )]
-    Sync,
+    Sync(CheckArgs),
     /// Adopt an unmanaged skill into the local source.
     Adopt(AdoptCommand),
     /// Run explicit safe repair helpers.
@@ -118,7 +118,6 @@ pub enum Command {
     /// Manage instruction packs rendered into instruction files.
     Instructions(InstructionsCommand),
     /// Generate shell completions.
-    #[command(hide = true)]
     Completions(CompletionsCommand),
     /// Generate a man page.
     #[command(hide = true)]
@@ -405,19 +404,28 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
     };
 
     match command {
-        Command::Completions(command) => return run_completions(command),
-        Command::Manpage => return run_manpage(),
+        Command::Completions(command) => {
+            warn_noop_dry_run(dry_run, json);
+            return run_completions(command);
+        }
+        Command::Manpage => {
+            warn_noop_dry_run(dry_run, json);
+            return run_manpage();
+        }
         _ => {}
     }
 
     let options = GlobalOptions::resolve(store.as_deref(), json, yes, dry_run)?;
+    if command_ignores_dry_run(&command) {
+        warn_noop_dry_run(options.dry_run, options.json);
+    }
 
     match command {
         Command::Init => run_init(&options),
         Command::Target(command) => run_target(&options, command),
         Command::Source(command) => run_source(&options, command),
         Command::Status(args) => run_status(&options, args),
-        Command::Sync => run_sync(&options),
+        Command::Sync(args) => run_sync(&options, args),
         Command::Adopt(command) => run_adopt(&options, command),
         Command::Resolve(command) => run_resolve(&options, command),
         Command::Doctor(args) => run_doctor(&options, args),
@@ -427,6 +435,32 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
             unreachable!("handled before store resolution")
         }
     }
+}
+
+fn warn_noop_dry_run(dry_run: bool, json: bool) {
+    if dry_run && !json {
+        eprintln!("note: --dry-run has no effect for this read-only command");
+    }
+}
+
+fn command_ignores_dry_run(command: &Command) -> bool {
+    matches!(
+        command,
+        Command::Target(TargetCommand {
+            command: TargetSubcommand::Detect
+        }) | Command::Source(SourceCommand {
+            command: SourceSubcommand::List
+                | SourceSubcommand::Inspect(_)
+                | SourceSubcommand::Refresh(_)
+        }) | Command::Status(_)
+            | Command::Doctor(_)
+            | Command::Approve(ApproveCommand {
+                command: ApproveSubcommand::List
+            })
+            | Command::Instructions(InstructionsCommand {
+                command: InstructionsSubcommand::List
+            })
+    )
 }
 
 fn run_completions(command: CompletionsCommand) -> DaloResult<()> {
@@ -513,6 +547,12 @@ fn run_init(options: &GlobalOptions) -> DaloResult<()> {
 }
 
 fn run_status(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
+    let paths = store::StorePaths::new(options.store.clone());
+    let _lock = if args.check && paths.config_file.exists() {
+        Some(store::StoreLock::acquire(&paths)?)
+    } else {
+        None
+    };
     let report = status::build_status_report(&options.store)?;
 
     if options.json {
@@ -536,11 +576,12 @@ fn status_requires_review(report: &status::StatusReport) -> bool {
         || !report.resolution.pending_approval_skills.is_empty()
         || !report.resolution.blocked_skills.is_empty()
         || !report.lock.drift.is_empty()
+        || (report.targets.is_empty() && !report.resolution.active_skills.is_empty())
         || !report.unmanaged_skills.is_empty()
         || !report.instruction_block_drifts.is_empty()
 }
 
-fn run_sync(options: &GlobalOptions) -> DaloResult<()> {
+fn run_sync(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
     let paths = store::StorePaths::new(options.store.clone());
     ensure_initialized(&paths)?;
     let _lock = if options.dry_run {
@@ -612,7 +653,25 @@ fn run_sync(options: &GlobalOptions) -> DaloResult<()> {
         status::print_sync_report(&report);
     }
 
+    if args.check && sync_requires_review(&report) {
+        return Err(DaloError::CheckFailed {
+            reason: "sync reports blocked, incomplete, or unmaterialized state".to_owned(),
+        });
+    }
+
     Ok(())
+}
+
+fn sync_requires_review(report: &materialize::SyncReport) -> bool {
+    (report.linked_targets == 0 && !report.resolution.active_skills.is_empty())
+        || !report.resolution.pending_approval_skills.is_empty()
+        || !report.resolution.blocked_skills.is_empty()
+        || !report.resolution.diagnostics.is_empty()
+        || !report.degraded_sources.is_empty()
+        || report
+            .operations
+            .iter()
+            .any(|operation| operation.status == materialize::MaterializeOperationStatus::Blocked)
 }
 
 fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()> {
@@ -1011,6 +1070,12 @@ fn run_resolve(options: &GlobalOptions, command: ResolveCommand) -> DaloResult<(
 }
 
 fn run_doctor(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
+    let paths = store::StorePaths::new(options.store.clone());
+    let _lock = if args.check && paths.root.exists() {
+        Some(store::StoreLock::acquire(&paths)?)
+    } else {
+        None
+    };
     let report = doctor::run_doctor(&options.store);
     if options.json {
         print_json(&report)?;

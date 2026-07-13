@@ -29,6 +29,8 @@ pub struct SyncReport {
     pub store: PathBuf,
     /// Whether the command ran as dry-run.
     pub dry_run: bool,
+    /// Number of enabled logical targets available for materialization.
+    pub linked_targets: usize,
     /// Planned and applied operations.
     pub operations: Vec<MaterializeOperation>,
     /// Resolution used to build this plan, including pending and blocked skills.
@@ -188,6 +190,7 @@ pub fn materialize_with_degraded_sources_rollback(
         SyncReport {
             store: paths.root.clone(),
             dry_run,
+            linked_targets: state.targets.iter().filter(|target| target.enabled).count(),
             operations,
             resolution: resolution.clone(),
             degraded_sources: degraded_sources.to_vec(),

@@ -186,6 +186,94 @@ fn status_check_should_succeed_for_a_clean_store() {
 }
 
 #[test]
+fn status_and_sync_should_explain_missing_targets_for_active_skills() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::create_dir_all(store.join("local/skills/review"))
+        .expect("local skill directory should be created");
+    std::fs::write(store.join("local/skills/review/SKILL.md"), "# Review\n")
+        .expect("local skill should be written");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("targets:"))
+        .stdout(predicate::str::contains("none linked"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["status", "--check"])
+        .assert()
+        .failure()
+        .code(1);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "1 skills resolved but no targets are linked",
+        ));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["sync", "--check"])
+        .assert()
+        .failure()
+        .code(1);
+}
+
+#[test]
+fn source_errors_should_list_known_source_ids() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "inspect", "missing"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("known sources: local"));
+}
+
+#[test]
+fn dry_run_should_note_when_status_is_read_only() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--dry-run", "--store"])
+        .arg(&store)
+        .arg("status")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("--dry-run has no effect"));
+}
+
+#[test]
 fn mutating_commands_should_point_to_init_before_locking_missing_store() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("missing-store");
@@ -541,7 +629,8 @@ fn target_unlink_should_keep_target_directory() {
         .args(["target", "unlink", "generic"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("unlinked target generic"));
+        .stdout(predicate::str::contains("unlinked target generic"))
+        .stdout(predicate::str::contains("run `dalo sync` to remove them"));
 
     assert!(target.is_dir());
 }
@@ -633,6 +722,16 @@ fn sync_yes_should_not_replace_unmanaged_real_directory() {
     let target = temp_dir.path().join("skills");
     setup_store_with_skill_and_target(&store, &target);
     create_unmanaged_skill(&target, "review");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["sync", "--check"])
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(predicate::str::contains("conflict"));
+
     let mut command = dalo_command();
 
     command

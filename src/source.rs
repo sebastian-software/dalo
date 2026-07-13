@@ -151,8 +151,15 @@ pub fn plan_remove_source(
         .iter()
         .find(|source| source.id == id)
         .cloned()
-        .ok_or_else(|| DaloError::UnknownSource {
-            source_id: id.to_owned(),
+        .ok_or_else(|| {
+            DaloError::unknown_source(
+                id,
+                original_config
+                    .sources
+                    .iter()
+                    .map(|candidate| candidate.id.clone())
+                    .collect(),
+            )
         })?;
     if source.kind == SourceKind::Local {
         return Err(DaloError::InvalidSourceId {
@@ -394,9 +401,14 @@ pub fn set_source_priority(
 ) -> DaloResult<SourcePriorityReport> {
     let mut config = store::read_config(paths)?;
     let Some(source) = config.sources.iter_mut().find(|source| source.id == id) else {
-        return Err(DaloError::UnknownSource {
-            source_id: id.to_owned(),
-        });
+        return Err(DaloError::unknown_source(
+            id,
+            config
+                .sources
+                .iter()
+                .map(|candidate| candidate.id.clone())
+                .collect(),
+        ));
     };
     // The local source is the guaranteed override (priority 0); refuse to move it,
     // otherwise a team skill could shadow a locally adapted one.

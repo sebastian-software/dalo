@@ -283,9 +283,10 @@ fn read_pack_for_lock_entry(
     }
 
     let Some(source) = sources.iter().find(|source| source.id == entry.source_id) else {
-        return Err(DaloError::UnknownSource {
-            source_id: entry.source_id.clone(),
-        });
+        return Err(DaloError::unknown_source(
+            entry.source_id.clone(),
+            sources.iter().map(|source| source.id.clone()).collect(),
+        ));
     };
     read_pack_from_dir(&source.path.join("instructions"), &entry.pack_id)
 }

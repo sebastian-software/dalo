@@ -91,10 +91,12 @@ pub enum DaloError {
     UnsafeRemoteUrl,
 
     /// A source ID does not exist.
-    #[error("unknown source `{source_id}`")]
+    #[error("unknown source `{source_id}`{hint}")]
     UnknownSource {
         /// Source ID.
         source_id: String,
+        /// Known IDs or a recovery command when available.
+        hint: String,
     },
 
     /// A source has local changes that block the operation.
@@ -114,10 +116,12 @@ pub enum DaloError {
     },
 
     /// A requested skill could not be found.
-    #[error("skill `{skill}` was not found")]
+    #[error("skill `{skill}` was not found{hint}")]
     SkillNotFound {
         /// Skill slot, ID, or path.
         skill: String,
+        /// Known IDs or a recovery command when available.
+        hint: String,
     },
 
     /// A requested local instruction pack could not be found.
@@ -222,6 +226,28 @@ pub enum DaloError {
 }
 
 impl DaloError {
+    /// Build an unknown-source error with concise recovery guidance.
+    #[must_use]
+    pub fn unknown_source(source_id: impl Into<String>, known_sources: Vec<String>) -> Self {
+        Self::UnknownSource {
+            source_id: source_id.into(),
+            hint: known_ids_hint("sources", known_sources, "dalo source list"),
+        }
+    }
+
+    /// Build an unknown-skill error with concise recovery guidance.
+    #[must_use]
+    pub fn skill_not_found(
+        skill: impl Into<String>,
+        known_skills: Vec<String>,
+        next_command: impl AsRef<str>,
+    ) -> Self {
+        Self::SkillNotFound {
+            skill: skill.into(),
+            hint: known_ids_hint("skills", known_skills, next_command.as_ref()),
+        }
+    }
+
     /// Exit code for this error.
     #[must_use]
     pub fn exit_code(&self) -> DaloExitCode {
@@ -252,6 +278,18 @@ impl DaloError {
             Self::TomlSerialize(_) | Self::Json(_) => DaloExitCode::ExpectedFailure,
             Self::Io(_) => DaloExitCode::EnvironmentProblem,
         }
+    }
+}
+
+fn known_ids_hint(label: &str, mut ids: Vec<String>, next_command: &str) -> String {
+    ids.sort();
+    ids.dedup();
+    if ids.is_empty() {
+        format!("; run `{next_command}`")
+    } else if ids.len() <= 6 {
+        format!("; known {label}: {}", ids.join(", "))
+    } else {
+        format!("; run `{next_command}`")
     }
 }
 
@@ -410,6 +448,7 @@ mod tests {
     fn unknown_source_should_render_source_id() {
         let error = err::<()>(Err(DaloError::UnknownSource {
             source_id: "company".to_owned(),
+            hint: String::new(),
         }));
 
         assert_eq!(error.to_string(), "unknown source `company`");
@@ -431,6 +470,7 @@ mod tests {
     fn skill_not_found_should_render_selector() {
         let error = err::<()>(Err(DaloError::SkillNotFound {
             skill: "review".to_owned(),
+            hint: String::new(),
         }));
 
         assert_eq!(error.to_string(), "skill `review` was not found");
@@ -524,9 +564,11 @@ mod tests {
             },
             DaloError::UnknownSource {
                 source_id: "company".to_owned(),
+                hint: String::new(),
             },
             DaloError::SkillNotFound {
                 skill: "review".to_owned(),
+                hint: String::new(),
             },
             DaloError::InstructionPackNotFound {
                 pack_id: "house-style".to_owned(),
