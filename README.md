@@ -230,6 +230,21 @@ dalo source list
 dalo sync
 ```
 
+To try a real public catalog without creating your own repository, use
+[Sebastian's skill catalog](https://github.com/sebastian-software/skills.sebastian-software.com):
+
+```sh
+dalo source add-catalog sebastian https://github.com/sebastian-software/skills.sebastian-software.com.git
+dalo source inspect sebastian
+dalo source select sebastian github-pr-auto-review
+dalo approve skill sebastian:github-pr-auto-review
+dalo sync
+```
+
+Catalog skills are intentionally pending until you approve them. The explicit
+approval in this example is the narrowest possible rule: one selected skill
+from one source.
+
 ## The model
 
 Dalo separates source, resolution, and installation.
@@ -308,7 +323,7 @@ The important rule is simple:
 
 ## Public skill catalogs
 
-Some of the most useful public repositories are not one-skill packages. They are catalogs: one Git repository with many skills inside, often with informal relationships between them.
+Some of the most useful public repositories are not one-skill packages. They are catalogs: one Git repository with many skills inside, often with informal relationships between them. For a real catalog to explore, see [Sebastian's skill catalog](https://github.com/sebastian-software/skills.sebastian-software.com).
 
 Dalo treats those repositories as offer surfaces (V1.1). Add one with `source add-catalog <id> <url>`, list its skills with `source inspect <id>`, and choose what you want with `source select <id> <skill...>`.
 
