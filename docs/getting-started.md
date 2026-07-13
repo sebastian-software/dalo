@@ -63,6 +63,17 @@ dalo sync
 
 A source is a Git-backed collection of skills. Source priority decides conflicts: lower priority wins. A slot is the portable skill name Dalo links into target folders.
 
+If a catalog skill is pending review, `status` prints the exact narrow approval
+command. After reviewing it, grant only that skill:
+
+```sh
+dalo approve skill public:review-helper
+dalo sync
+```
+
+Use `dalo approve list` to inspect local trust rules. Broader `source`, `author`,
+and `org` approvals are available when that is the intended policy.
+
 ## 5. Move from sandbox to a real agent
 
 Unset the sandbox variables when you are ready to use your real store and agent folder:

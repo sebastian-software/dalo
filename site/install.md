@@ -45,6 +45,15 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
    mise use -g ubi:sebastian-software/dalo
    ```
 
+   When the user manages CLI tools through Node.js 20 or newer, the npm launcher
+   is also supported. It verifies release checksums and caches the downloaded
+   binary under `~/.cache/dalo`:
+
+   ```sh
+   npx dalo --version
+   # or: npm install --global dalo
+   ```
+
    If the user wants a custom location, set `DALO_INSTALL_DIR`:
 
    ```sh
@@ -103,3 +112,5 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
 - Dalo shells out to `git` for source operations, so `git` must be on `PATH`.
 - Windows is not supported yet. Recommend WSL for Windows users.
 - If the installer cannot resolve a release or checksum, stop and show the error instead of downloading from an unofficial mirror.
+- To remove a cached npm binary, delete `~/.cache/dalo`; uninstall a global
+  launcher with `npm uninstall --global dalo`.

@@ -14,6 +14,7 @@ compile_error!(
 );
 
 pub mod adopt;
+pub mod approval;
 pub mod catalog;
 pub mod cli;
 pub mod config;

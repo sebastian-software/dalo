@@ -9,6 +9,7 @@ use clap_complete::{Shell, generate};
 use clap_mangen::Man;
 
 use crate::adopt;
+use crate::approval;
 use crate::catalog;
 use crate::doctor;
 use crate::error::{DaloError, DaloResult};
@@ -100,7 +101,7 @@ pub enum Command {
     /// Manage skill sources.
     Source(SourceCommand),
     /// Show managed, unmanaged, and conflicted skill state.
-    Status,
+    Status(CheckArgs),
     /// Refresh clean sources, resolve approved skills, and link them into targets.
     #[command(
         long_about = "Refresh clean tracking sources, resolve the approved skill set, and materialize it into linked target folders.\n\nA skill source is a Git-backed collection of skills. Sync never overwrites unmanaged files; blocked or shadowed skills are reported instead."
@@ -111,7 +112,9 @@ pub enum Command {
     /// Run explicit safe repair helpers.
     Resolve(ResolveCommand),
     /// Diagnose store, target, Git, and lockfile health.
-    Doctor,
+    Doctor(CheckArgs),
+    /// Grant, list, and revoke source-qualified skill approvals.
+    Approve(ApproveCommand),
     /// Manage instruction packs rendered into instruction files.
     Instructions(InstructionsCommand),
     /// Generate shell completions.
@@ -156,6 +159,55 @@ pub struct InstructionsFileArgs {
 
     /// Target instruction file to render into.
     pub file: PathBuf,
+}
+
+/// Optional automation check behavior for report commands.
+#[derive(Debug, Args)]
+pub struct CheckArgs {
+    /// Exit non-zero when the report contains a state requiring review.
+    #[arg(long)]
+    pub check: bool,
+}
+
+/// `approve` command group.
+#[derive(Debug, Args)]
+pub struct ApproveCommand {
+    /// Approval subcommand.
+    #[command(subcommand)]
+    pub command: ApproveSubcommand,
+}
+
+/// Approval lifecycle subcommands.
+#[derive(Debug, Subcommand)]
+pub enum ApproveSubcommand {
+    /// List local approval records.
+    List,
+    /// Approve one source-qualified skill.
+    Skill(ApprovalValueArgs),
+    /// Trust every skill from one configured source.
+    Source(ApprovalValueArgs),
+    /// Trust skills owned by one source-qualified author.
+    Author(ApprovalValueArgs),
+    /// Trust skills owned by one source-qualified organization.
+    Org(ApprovalValueArgs),
+    /// Revoke one exact source-qualified approval.
+    Revoke(ApprovalRevokeArgs),
+}
+
+/// One approval value.
+#[derive(Debug, Args)]
+pub struct ApprovalValueArgs {
+    /// Source-qualified approval value.
+    pub value: String,
+}
+
+/// One approval to revoke.
+#[derive(Debug, Args)]
+pub struct ApprovalRevokeArgs {
+    /// Approval scope: skill, source, author, or org.
+    pub scope: String,
+    /// Source-qualified approval value.
+    pub value: String,
 }
 
 /// `target` command group.
@@ -352,11 +404,12 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         Command::Init => run_init(&options),
         Command::Target(command) => run_target(&options, command),
         Command::Source(command) => run_source(&options, command),
-        Command::Status => run_status(&options),
+        Command::Status(args) => run_status(&options, args),
         Command::Sync => run_sync(&options),
         Command::Adopt(command) => run_adopt(&options, command),
         Command::Resolve(command) => run_resolve(&options, command),
-        Command::Doctor => run_doctor(&options),
+        Command::Doctor(args) => run_doctor(&options, args),
+        Command::Approve(command) => run_approve(&options, command),
         Command::Instructions(command) => run_instructions(&options, command),
         Command::Completions(_) | Command::Manpage => {
             unreachable!("handled before store resolution")
@@ -447,7 +500,7 @@ fn run_init(options: &GlobalOptions) -> DaloResult<()> {
     Ok(())
 }
 
-fn run_status(options: &GlobalOptions) -> DaloResult<()> {
+fn run_status(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
     let report = status::build_status_report(&options.store)?;
 
     if options.json {
@@ -456,7 +509,23 @@ fn run_status(options: &GlobalOptions) -> DaloResult<()> {
         status::print_status_report(&report);
     }
 
+    if args.check && status_requires_review(&report) {
+        return Err(DaloError::CheckFailed {
+            reason: "status reports unresolved drift, pending approvals, or blocked state"
+                .to_owned(),
+        });
+    }
     Ok(())
+}
+
+fn status_requires_review(report: &status::StatusReport) -> bool {
+    !report.inventory_warnings.is_empty()
+        || report.sources.iter().any(|source| source.error.is_some())
+        || !report.resolution.pending_approval_skills.is_empty()
+        || !report.resolution.blocked_skills.is_empty()
+        || !report.lock.drift.is_empty()
+        || !report.unmanaged_skills.is_empty()
+        || !report.instruction_block_drifts.is_empty()
 }
 
 fn run_sync(options: &GlobalOptions) -> DaloResult<()> {
@@ -609,7 +678,6 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             Ok(())
         }
         SourceSubcommand::Refresh(args) => {
-            let _ = args.check;
             ensure_initialized(&paths)?;
             let _lock = store::StoreLock::acquire(&paths)?;
             let report = catalog::check_catalog_drift(&paths, &args.id)?;
@@ -617,6 +685,17 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
                 print_json(&report)?;
             } else {
                 status::print_catalog_drift_report(&report);
+            }
+            if args.check
+                && report
+                    .outcomes
+                    .iter()
+                    .any(|outcome| outcome.code != catalog::DriftCode::NewAvailable)
+            {
+                return Err(DaloError::CheckFailed {
+                    reason: "selected catalog skills changed, moved, or were removed upstream"
+                        .to_owned(),
+                });
             }
             Ok(())
         }
@@ -716,14 +795,72 @@ fn run_resolve(options: &GlobalOptions, command: ResolveCommand) -> DaloResult<(
     }
 }
 
-fn run_doctor(options: &GlobalOptions) -> DaloResult<()> {
+fn run_doctor(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
     let report = doctor::run_doctor(&options.store);
     if options.json {
         print_json(&report)?;
     } else {
         status::print_doctor_report(&report);
     }
+    if args.check && report.summary.errors > 0 {
+        return Err(DaloError::CheckFailed {
+            reason: format!("doctor found {} error findings", report.summary.errors),
+        });
+    }
     Ok(())
+}
+
+fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<()> {
+    let paths = store::StorePaths::new(options.store.clone());
+    ensure_initialized(&paths)?;
+    let _lock = if options.dry_run {
+        None
+    } else {
+        Some(store::StoreLock::acquire(&paths)?)
+    };
+    match command.command {
+        ApproveSubcommand::List => {
+            let report = approval::list(&paths)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                status::print_approval_list(&report);
+            }
+        }
+        ApproveSubcommand::Skill(args) => print_approval_result(
+            options,
+            approval::grant(&paths, "skill", &args.value, options.dry_run)?,
+        )?,
+        ApproveSubcommand::Source(args) => print_approval_result(
+            options,
+            approval::grant(&paths, "source", &args.value, options.dry_run)?,
+        )?,
+        ApproveSubcommand::Author(args) => print_approval_result(
+            options,
+            approval::grant(&paths, "author", &args.value, options.dry_run)?,
+        )?,
+        ApproveSubcommand::Org(args) => print_approval_result(
+            options,
+            approval::grant(&paths, "org", &args.value, options.dry_run)?,
+        )?,
+        ApproveSubcommand::Revoke(args) => print_approval_result(
+            options,
+            approval::revoke(&paths, &args.scope, &args.value, options.dry_run)?,
+        )?,
+    }
+    Ok(())
+}
+
+fn print_approval_result(
+    options: &GlobalOptions,
+    report: approval::ApprovalReport,
+) -> DaloResult<()> {
+    if options.json {
+        print_json(&report)
+    } else {
+        status::print_approval_report(&report);
+        Ok(())
+    }
 }
 
 fn run_target(options: &GlobalOptions, command: TargetCommand) -> DaloResult<()> {

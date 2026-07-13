@@ -34,7 +34,7 @@ jobs:
         run: cargo test
 
       - name: Installer test
-        run: sh tests/install.sh
+        run: sh tests/install.sh && sh tests/docs.sh
 
       - name: npm wrapper test
         uses: actions/setup-node@v6

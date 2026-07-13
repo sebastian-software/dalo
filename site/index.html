@@ -397,7 +397,7 @@
       <div class="quickstart-copy">
         <h2 class="section-h reveal">Up and running in minutes.</h2>
         <p class="lead reveal">
-          Install with the hosted script, Cargo Binstall, Cargo, or a prebuilt archive from
+          Install with the hosted script, <code>npx dalo</code>, Cargo Binstall, Cargo, or a prebuilt archive from
           <a href="https://github.com/sebastian-software/dalo/releases" rel="noopener">GitHub Releases</a>.
           Dalo shells out to <code>git</code> for source operations; there is no daemon.
         </p>
@@ -409,7 +409,7 @@
           </button>
         </div>
         <p class="install-alt reveal">
-          Prefer Rust tooling? <a href="https://crates.io/crates/dalo" rel="noopener">crates.io</a> supports <code>cargo binstall dalo</code> and <code>cargo install dalo</code>.
+          Prefer Node? Run <code>npx dalo --version</code> or <code>npm install --global dalo</code>. Prefer Rust tooling? <a href="https://crates.io/crates/dalo" rel="noopener">crates.io</a> supports <code>cargo binstall dalo</code> and <code>cargo install dalo</code>.
         </p>
         <ul class="qs-points reveal">
           <li><span class="c-ok">✓</span> Single Rust binary, no daemon</li>
@@ -457,7 +457,7 @@
         </div>
         <div class="safe-item reveal">
           <h3>Approval gating</h3>
-          <p>A newly active skill stays pending until you approve it: by skill, source, author, or org. Scheduled syncs apply existing approvals but never grant new ones.</p>
+          <p>A newly active skill stays pending until you approve it: by skill, source, author, or org. Run <code>dalo approve skill source:skill</code> for the narrowest rule. Scheduled syncs apply existing approvals but never grant new ones.</p>
         </div>
         <div class="safe-item reveal">
           <h3>Visible conflicts</h3>

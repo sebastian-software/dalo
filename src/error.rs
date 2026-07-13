@@ -12,6 +12,12 @@ pub type DaloResult<T> = Result<T, DaloError>;
 /// Errors returned by dalo library operations.
 #[derive(Debug, Error)]
 pub enum DaloError {
+    /// An explicit automation check found a state requiring review.
+    #[error("check failed: {reason}")]
+    CheckFailed {
+        /// Human-readable summary of the state that needs attention.
+        reason: String,
+    },
     /// A planned command exists in the CLI but has not been implemented yet.
     #[error("command `{command}` is not implemented yet")]
     NotImplemented {
@@ -220,7 +226,7 @@ impl DaloError {
     #[must_use]
     pub fn exit_code(&self) -> DaloExitCode {
         match self {
-            Self::NotImplemented { .. } => DaloExitCode::ExpectedFailure,
+            Self::CheckFailed { .. } | Self::NotImplemented { .. } => DaloExitCode::ExpectedFailure,
             Self::StoreNotInitialized { .. }
             | Self::UnknownTarget { .. }
             | Self::TargetPathRequired { .. }

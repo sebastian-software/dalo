@@ -19,7 +19,7 @@ dalo --json doctor
 | Symptom or code | What happened | Recovery |
 | --- | --- | --- |
 | `blocked_by_same_name_skill`, `unmanaged_same_name_blocker`, sync `blocked` with `real unmanaged entry exists at target slot` | A real folder already occupies the target slot Dalo wanted to link. | Keep it with `dalo resolve keep <id>`, adopt it with `dalo adopt <id>`, or adopt and replace it with `dalo adopt <id> --replace`. |
-| `pending_approval` | A skill would become active, but no approval rule covers it. | Review the skill, then add a source/skill/owner approval in `approvals.toml` (owner approvals use `<source-id>:<owner>`), or set the source `trusted = true` if the whole source is trusted. Run `dalo status` again. |
+| `pending_approval` | A skill would become active, but no approval rule covers it. | Review the skill, then run `dalo approve skill <source-id>:<skill>` (or grant a reviewed source/author/org scope), or set the source `trusted = true` if the whole source is trusted. Run `dalo status` again. |
 | `dirty_source` | A Git-backed source has local edits. Team sources block refresh when dirty. | Commit, stash, discard, or promote the edits outside Dalo. Then run `dalo sync`. |
 | `lock drift` | Live resolution differs from the last `lock.toml`. | Run `dalo status` to inspect the drift, then `dalo sync` when the change is expected. |
 | `StoreLocked`, error text `another dalo operation is running` | Another Dalo command currently owns `.lock`, or a stale lock file remains. | Wait for the other command. If no Dalo process is running, inspect and remove the stale `.lock` file in the store. |
@@ -37,7 +37,7 @@ These appear in `status.resolution.diagnostics` and in related text output.
 
 | Code | What it means | Recovery |
 | --- | --- | --- |
-| `pending_approval` | A would-be winner is held until locally approved. | Add an approval in `approvals.toml`, trust the source, or leave it pending. |
+| `pending_approval` | A would-be winner is held until locally approved. | Run `dalo approve skill <source-id>:<skill>`, trust the source, or leave it pending. |
 | `local_override` | A local skill wins over another managed source for the same slot. | No action required if intentional. Rename/remove the local skill if the team/catalog skill should win. |
 | `shadowed` | A lower-priority managed skill lost to another managed skill with the same slot. | No action required if expected. Adjust source priorities or rename one skill if the loser should be active. |
 | `required_expanded` | A selected catalog skill pulled in a same-catalog dependency through `requires`. | No action required if the dependency is expected. Review the dependency before syncing. |
@@ -164,7 +164,13 @@ Dalo treats real folders in target directories as user/project content. Use `dal
 
 ### How do I approve a pending skill?
 
-Edit `approvals.toml` and add a `skill`, `source`, `author`, or `org` record. The exact schema is in [the user reference](reference.md#approvalstoml). Rerun `dalo status` before syncing.
+Review the reported source-qualified skill, then run:
+
+```sh
+dalo approve skill <source-id>:<skill>
+```
+
+Use `dalo approve list` to inspect existing rules and [the user reference](reference.md#dalo-approve) for broader source, author, and organization scopes. Rerun `dalo status` before syncing.
 
 ### How do I recover from a dirty team source?
 
