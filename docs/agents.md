@@ -81,11 +81,18 @@ ls -la ~/.hermes/skills
 
 ## Cursor and OpenCode
 
-Cursor and OpenCode are currently unverified targets. Use a generic target only after you know the folder the agent reads:
+Cursor and OpenCode have experimental built-in target IDs, but neither has a
+verified default path. Until their behavior is verified, use a generic target
+after you know the folder the agent reads:
 
 ```sh
 dalo target link generic /path/to/agent/skills
 dalo sync
 ```
+
+You may instead use `dalo target link cursor <path>` or
+`dalo target link opencode <path>` to record the experimental target ID. All
+three forms require an explicit path; `generic` is recommended until the adapter
+is verified.
 
 Open an issue with the expected skill path and a short verification transcript if you can confirm either target.

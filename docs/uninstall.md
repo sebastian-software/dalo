@@ -77,7 +77,8 @@ rm -rf ~/.cache/dalo
 ```
 
 `npx getdalo` does not install a global launcher, but it uses the same cache; remove
-`~/.cache/dalo` if you no longer want the downloaded release binary.
+`~/.cache/dalo` if you no longer want the downloaded release binary. If you set
+`DALO_CACHE_DIR`, remove that directory instead.
 
 If installed through Cargo:
 

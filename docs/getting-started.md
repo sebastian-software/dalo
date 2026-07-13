@@ -1,15 +1,17 @@
 # Getting Started
 
-This guide walks through Dalo's core loop without touching your real agent folders first.
+This guide walks through Dalo's core loop without touching your real agent folders
+first. Install Dalo first (see the [README installation instructions](../README.md#install)),
+make sure `git` is on `PATH`, and use Linux or macOS.
 
 ## 1. Create a sandbox store
 
 ```sh
 export DALO_STORE="$(mktemp -d)/store"
-export DALO_TARGET="$(mktemp -d)/skills"
+target_dir="$(mktemp -d)/skills"
 
 dalo init
-dalo target link generic "$DALO_TARGET"
+dalo target link generic "$target_dir"
 ```
 
 The store is Dalo's local database. It contains source checkouts, the local source, lockfiles, approvals, and target state.
@@ -34,7 +36,7 @@ The local source is private to your machine. It is useful for experiments and ov
 ```sh
 dalo status
 dalo sync
-ls -la "$DALO_TARGET"
+ls -la "$target_dir"
 ```
 
 `sync` refreshes clean tracking sources, resolves one approved skill set, and links that set into configured targets. Dalo links directories it owns and refuses to overwrite unmanaged files.
@@ -63,8 +65,36 @@ dalo sync
 
 A source is a Git-backed collection of skills. Source priority decides conflicts: lower priority wins. A slot is the portable skill name Dalo links into target folders.
 
-If a catalog skill is pending review, `status` prints the exact narrow approval
-command. After reviewing it, grant only that skill:
+Team sources are trusted by default, so their skills can sync immediately. Use
+a catalog source when you want to review and approve individual skills.
+
+## 5. Try a catalog source
+
+This local catalog demonstrates the selection and approval flow without network
+access:
+
+```sh
+CATALOG_REPO="$(mktemp -d)/catalog-skills"
+mkdir -p "$CATALOG_REPO/skills/review-helper"
+cat > "$CATALOG_REPO/skills/review-helper/SKILL.md" <<'EOF'
+# Review Helper
+
+Check behavioral regressions before style nits.
+EOF
+
+git -C "$CATALOG_REPO" init
+git -C "$CATALOG_REPO" add .
+git -C "$CATALOG_REPO" -c user.email=test@example.com -c user.name='Test User' commit -m initial
+
+dalo source add-catalog public "$CATALOG_REPO"
+dalo source inspect public
+dalo source select public review-helper
+dalo status
+```
+
+Catalog skills are untrusted by default. After reviewing the pending skill,
+`status` prints the exact narrow approval command. Grant only that skill, then
+sync it:
 
 ```sh
 dalo approve skill public:review-helper
@@ -74,12 +104,12 @@ dalo sync
 Use `dalo approve list` to inspect local trust rules. Broader `source`, `author`,
 and `org` approvals are available when that is the intended policy.
 
-## 5. Move from sandbox to a real agent
+## 6. Move from sandbox to a real agent
 
 Unset the sandbox variables when you are ready to use your real store and agent folder:
 
 ```sh
-unset DALO_STORE DALO_TARGET
+unset DALO_STORE
 dalo init
 dalo target detect
 ```
@@ -101,7 +131,7 @@ dalo sync
 dalo doctor
 ```
 
-## 6. Adopt a local skill
+## 7. Adopt a local skill
 
 If an agent created a useful unmanaged skill directly in its folder, inspect it first:
 

@@ -323,7 +323,7 @@ pub struct SourceRefreshArgs {
     /// Catalog source ID.
     pub id: String,
 
-    /// Check for drift without advancing the pin.
+    /// Exit non-zero when selected skills drifted upstream.
     #[arg(long)]
     pub check: bool,
 }
