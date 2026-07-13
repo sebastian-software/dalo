@@ -2071,6 +2071,42 @@ fn source_add_should_resolve_relative_locations_from_the_callers_working_directo
 }
 
 #[test]
+fn source_add_should_prefer_an_existing_local_colon_path_over_scp_syntax() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let repo = temp_dir.path().join("team:skills");
+    create_git_skill_repo(&repo);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    dalo_command()
+        .current_dir(temp_dir.path())
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "company", "team:skills"])
+        .assert()
+        .success();
+
+    let config =
+        store::read_config(&store::StorePaths::new(store)).expect("config should be readable");
+    let source = config
+        .sources
+        .iter()
+        .find(|source| source.id == "company")
+        .expect("company source should exist");
+    assert_eq!(
+        std::fs::canonicalize(source.url.as_ref().expect("source URL should exist"))
+            .expect("stored local source should resolve"),
+        std::fs::canonicalize(&repo).expect("fixture repo should resolve")
+    );
+    assert!(source.path.join(".git").is_dir());
+}
+
+#[test]
 fn source_add_catalog_should_replace_interrupted_non_git_checkout_debris() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

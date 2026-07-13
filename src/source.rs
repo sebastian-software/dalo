@@ -272,19 +272,23 @@ pub fn add_team_source(
 
 /// Resolve a local source location against the caller's working directory.
 ///
-/// Git URL and SCP-style remote syntax is kept verbatim. Everything else that
-/// is relative is made absolute before `git clone` changes its working
-/// directory to the store checkout parent.
+/// Git URL and SCP-style remote syntax is kept verbatim unless it names an
+/// existing local path. Everything else that is relative is made absolute
+/// before `git clone` changes its working directory to the store checkout
+/// parent.
 #[must_use]
 pub fn resolve_source_location(location: &str, cwd: &Path) -> String {
     let path = Path::new(location);
-    if path.is_absolute() || looks_like_remote_location(location) {
-        location.to_owned()
-    } else {
-        normalize_local_path(&cwd.join(path))
-            .to_string_lossy()
-            .into_owned()
+    if path.is_absolute() {
+        return location.to_owned();
     }
+
+    let local_path = normalize_local_path(&cwd.join(path));
+    if looks_like_remote_location(location) && !local_path.exists() {
+        return location.to_owned();
+    }
+
+    local_path.to_string_lossy().into_owned()
 }
 
 fn normalize_local_path(path: &Path) -> PathBuf {
@@ -841,19 +845,26 @@ mod tests {
 
     #[test]
     fn resolve_source_location_should_absolutize_local_paths_and_preserve_remotes() {
-        let cwd = Path::new("/workspace/project");
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let cwd = temp_dir.path().join("project");
+        let colon_path = cwd.join("team:skills");
+        std::fs::create_dir_all(&colon_path).expect("local colon path should be created");
 
-        assert_eq!(resolve_source_location(".", cwd), "/workspace/project");
+        assert_eq!(resolve_source_location(".", &cwd), cwd.to_string_lossy());
         assert_eq!(
-            resolve_source_location("../skills", cwd),
-            "/workspace/skills"
+            resolve_source_location("../skills", &cwd),
+            temp_dir.path().join("skills").to_string_lossy()
         );
         assert_eq!(
-            resolve_source_location("https://example.invalid/repo.git", cwd),
+            resolve_source_location("team:skills", &cwd),
+            colon_path.to_string_lossy()
+        );
+        assert_eq!(
+            resolve_source_location("https://example.invalid/repo.git", &cwd),
             "https://example.invalid/repo.git"
         );
         assert_eq!(
-            resolve_source_location("git@example.invalid:org/repo.git", cwd),
+            resolve_source_location("git@example.invalid:org/repo.git", &cwd),
             "git@example.invalid:org/repo.git"
         );
     }
