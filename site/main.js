@@ -99,4 +99,14 @@ document.documentElement.classList.add("js");
       if (menu) menu.removeAttribute("open");
     });
   });
+
+  var castTarget = document.getElementById("quickstart-cast");
+  if (castTarget && window.AsciinemaPlayer) {
+    window.AsciinemaPlayer.create("/assets/dalo-quickstart.cast", castTarget, {
+      cols: 80,
+      rows: 15,
+      theme: "asciinema",
+      preload: true
+    });
+  }
 })();
