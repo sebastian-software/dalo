@@ -31,17 +31,23 @@
   <link rel="preload" href="/assets/fonts/hanken-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="/assets/fonts/geistmono-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/asciinema-player@3.8.0/dist/bundle/asciinema-player.css" />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "Dalo",
     "url": "https://dalo.sh/",
-    "codeRepository": "https://github.com/sebastian-software/dalo",
-    "license": "https://github.com/sebastian-software/dalo/blob/main/LICENSE",
+    "description": "Git-backed skill management for AI agents: resolve approved skills deterministically and link them into local agent folders.",
+    "sameAs": "https://github.com/sebastian-software/dalo",
     "softwareVersion": "__DALO_VERSION__",
     "applicationCategory": "DeveloperApplication",
-    "operatingSystem": "macOS, Linux"
+    "operatingSystem": "macOS, Linux",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    }
   }
   </script>
 </head>
@@ -140,13 +146,9 @@
             <span class="terminal-title">~/work · dalo sync</span>
           </div>
           <pre class="terminal-body"><code><span class="ln"><span class="prompt">$</span> dalo sync</span>
-<span class="ln c-dim">  refresh   company        clean · fast-forward</span>
-<span class="ln"><span class="c-ok">  link      </span>review         <span class="c-dim">→ ~/.agents/skills/review</span></span>
-<span class="ln"><span class="c-ok">  link      </span>release-notes  <span class="c-dim">→ ~/.claude/skills/release-notes</span></span>
-<span class="ln"><span class="c-warn">  shadow    </span>copy-editing   <span class="c-dim">company over oss</span></span>
-<span class="ln"><span class="c-block">  block     </span>deploy         <span class="c-dim">slot held by unmanaged skill</span></span>
-<span class="ln"> </span>
-<span class="ln c-strong">  2 linked · 1 shadowed · 1 blocked · 0 overwritten</span></code></pre>
+<span class="ln c-dim">dalo store: ~/.dalo</span>
+<span class="ln"><span class="c-ok">applied  create</span>   ~/.agents/skills/review</span>
+<span class="ln c-dim">  -&gt; ~/.dalo/local/skills/review</span></code></pre>
         </div>
       </div>
     </div>
@@ -411,6 +413,7 @@
         <p class="install-alt reveal">
           Prefer Node? Run <code>npx getdalo --version</code> or <code>npm install --global getdalo</code>. Prefer Rust tooling? <a href="https://crates.io/crates/dalo" rel="noopener">crates.io</a> supports <code>cargo binstall dalo</code> and <code>cargo install dalo</code>.
         </p>
+        <p class="install-alt reveal">Installing through an AI agent? Point it to <a href="/install.md">dalo.sh/install.md</a>.</p>
         <ul class="qs-points reveal">
           <li><span class="c-ok">✓</span> Single Rust binary, no daemon</li>
           <li><span class="c-ok">✓</span> Local-only, no network needed to try it</li>
@@ -439,7 +442,10 @@
 <span class="ln"><span class="prompt">$</span> printf '# Review\n' &gt; "$DALO_STORE/local/skills/review/SKILL.md"</span>
 <span class="ln"><span class="prompt">$</span> dalo sync</span></code></pre>
         </div>
-        <p class="copy-hint">Prefer a dry run first? Every command takes <code>--dry-run</code>.</p>
+        <div class="cast-demo">
+          <asciinema-player src="/assets/dalo-quickstart.cast" cols="80" rows="15" theme="asciinema" preload="true" aria-label="Twenty-second Dalo quickstart terminal recording"></asciinema-player>
+        </div>
+        <p class="copy-hint">Watch the 20-second quickstart above, or <a href="/assets/dalo-quickstart.cast">download the asciicast</a>. Prefer a dry run first? Every command takes <code>--dry-run</code>.</p>
       </div>
     </div>
   </section>
@@ -457,7 +463,7 @@
         </div>
         <div class="safe-item reveal">
           <h3>Approval gating</h3>
-          <p>A newly active skill stays pending until you approve it: by skill, source, author, or org. Run <code>dalo approve skill source:skill</code> for the narrowest rule. Scheduled syncs apply existing approvals but never grant new ones.</p>
+          <p>A newly active skill stays pending until you approve it: by skill, source, author, or org. Run <code>dalo approve skill source:skill</code> for the narrowest rule. Non-interactive syncs you schedule, for example with cron, apply existing approvals but never grant new ones.</p>
         </div>
         <div class="safe-item reveal">
           <h3>Visible conflicts</h3>
@@ -624,6 +630,7 @@
   </div>
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/asciinema-player@3.8.0/dist/bundle/asciinema-player.min.js" defer></script>
 <script src="/main.js" defer></script>
 </body>
 </html>

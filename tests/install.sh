@@ -63,6 +63,7 @@ auto_output="${test_root}/auto-output"
 run_install "$auto_path" "${test_root}/auto-bin" "$auto_output"
 test -x "${test_root}/auto-bin/dalo"
 grep -q 'cosign not found; verifying the SHA-256 checksum only' "$auto_output"
+grep -q 'is not on PATH' "$auto_output"
 
 cosign_path="${test_root}/cosign-path"
 make_path "$cosign_path"
@@ -75,6 +76,20 @@ test -x "${test_root}/cosign-bin/dalo"
 grep -q -- '--certificate-identity' "${test_root}/cosign.log"
 grep -q -- '--certificate-oidc-issuer' "${test_root}/cosign.log"
 
+missing_bundle_output="${test_root}/missing-bundle-output"
+run_install "$cosign_path" "${test_root}/missing-bundle-bin" "$missing_bundle_output" \
+  DALO_FAKE_MISSING_BUNDLE=1
+test -x "${test_root}/missing-bundle-bin/dalo"
+grep -q 'no Sigstore bundle for dalo-v9.8.7; falling back to checksum-only verification' "$missing_bundle_output"
+
+required_bundle_output="${test_root}/required-bundle-output"
+if run_install "$cosign_path" "${test_root}/required-bundle-bin" "$required_bundle_output" \
+  DALO_VERIFY=required DALO_FAKE_MISSING_BUNDLE=1; then
+  echo "expected DALO_VERIFY=required to fail without a Sigstore bundle" >&2
+  exit 1
+fi
+grep -q 'no Sigstore bundle for dalo-v9.8.7; DALO_VERIFY=required cannot continue' "$required_bundle_output"
+
 required_output="${test_root}/required-output"
 if run_install "$auto_path" "${test_root}/required-bin" "$required_output" DALO_VERIFY=required; then
   echo "expected DALO_VERIFY=required to fail without cosign" >&2
@@ -82,5 +97,28 @@ if run_install "$auto_path" "${test_root}/required-bin" "$required_output" DALO_
 fi
 grep -q 'cosign is required when DALO_VERIFY=required' "$required_output"
 test ! -e "${test_root}/required-bin/dalo"
+
+version_output="${test_root}/version-output"
+run_install "$auto_path" "${test_root}/version-bin" "$version_output" DALO_VERSION=v9.8.7
+test -x "${test_root}/version-bin/dalo"
+grep -q 'Installing dalo 9.8.7' "$version_output"
+
+plain_version_output="${test_root}/plain-version-output"
+run_install "$auto_path" "${test_root}/plain-version-bin" "$plain_version_output" DALO_VERSION=9.8.7
+test -x "${test_root}/plain-version-bin/dalo"
+
+latest_fallback_output="${test_root}/latest-fallback-output"
+run_install "$auto_path" "${test_root}/latest-fallback-bin" "$latest_fallback_output" \
+  DALO_VERSION= DALO_FAKE_LATEST_API_FAIL=1
+test -x "${test_root}/latest-fallback-bin/dalo"
+grep -q 'Installing dalo 9.8.7' "$latest_fallback_output"
+
+shadow_path="${test_root}/shadow-path"
+make_path "$shadow_path"
+printf '#!/bin/sh\necho stale dalo\n' > "${shadow_path}/dalo"
+chmod +x "${shadow_path}/dalo"
+shadow_output="${test_root}/shadow-output"
+run_install "$shadow_path" "${test_root}/shadow-bin" "$shadow_output"
+grep -q 'shadows the newly installed' "$shadow_output"
 
 echo "installer tests passed"
