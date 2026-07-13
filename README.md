@@ -72,12 +72,17 @@ The installer downloads the matching release archive, always verifies its
 `.sha256`, installs `dalo` into `~/.local/bin` by default, and installs
 completions/man page files when the standard directories already exist. When
 [`cosign`](https://docs.sigstore.dev/cosign/system_config/installation/) is on
-`PATH`, it also verifies the archive's Sigstore provenance. Set
-`DALO_VERIFY=required` when provenance verification must be mandatory:
+`PATH`, it also verifies the archive's Sigstore provenance. For strict
+provenance verification, install Cosign with Homebrew and make verification
+mandatory:
 
 ```sh
+brew install cosign
 curl -fsSL https://dalo.sh/install.sh | DALO_VERIFY=required sh
 ```
+
+For systems without Homebrew, follow the official
+[Cosign installation guide](https://docs.sigstore.dev/cosign/system_config/installation/).
 
 Set `DALO_INSTALL_DIR` to choose another binary directory.
 
