@@ -68,7 +68,18 @@ Install with the hosted script:
 curl -fsSL https://dalo.sh/install.sh | sh
 ```
 
-The installer downloads the matching release archive, verifies its `.sha256` and Sigstore bundle, installs `dalo` into `~/.local/bin` by default, and installs completions/man page files when the standard directories already exist. It requires [Cosign](https://docs.sigstore.dev/cosign/system_config/installation/) for keyless provenance verification. Set `DALO_INSTALL_DIR` to choose another binary directory.
+The installer downloads the matching release archive, always verifies its
+`.sha256`, installs `dalo` into `~/.local/bin` by default, and installs
+completions/man page files when the standard directories already exist. When
+[`cosign`](https://docs.sigstore.dev/cosign/system_config/installation/) is on
+`PATH`, it also verifies the archive's Sigstore provenance. Set
+`DALO_VERIFY=required` when provenance verification must be mandatory:
+
+```sh
+curl -fsSL https://dalo.sh/install.sh | DALO_VERIFY=required sh
+```
+
+Set `DALO_INSTALL_DIR` to choose another binary directory.
 
 Ask your agent to install it:
 

@@ -4,6 +4,7 @@ set -eu
 repo="sebastian-software/dalo"
 base_url="https://github.com/${repo}"
 install_dir="${DALO_INSTALL_DIR:-$HOME/.local/bin}"
+verify_mode="${DALO_VERIFY:-auto}"
 umask 077
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/dalo-install.XXXXXX")"
 
@@ -53,9 +54,22 @@ latest_tag() {
     head -n 1
 }
 
+case "$verify_mode" in
+  auto | required) ;;
+  *)
+    echo "dalo installer: invalid DALO_VERIFY value: $verify_mode" >&2
+    echo "Supported values: auto, required." >&2
+    exit 1
+    ;;
+esac
+
 need curl
 need tar
-need cosign
+if [ "$verify_mode" = "required" ] && ! command -v cosign >/dev/null 2>&1; then
+  echo "dalo installer: cosign is required when DALO_VERIFY=required" >&2
+  echo "Install cosign from https://docs.sigstore.dev/cosign/system_config/installation/ and retry." >&2
+  exit 1
+fi
 target="${DALO_TARGET:-$(detect_target)}"
 tag="${DALO_VERSION:-$(latest_tag)}"
 
@@ -77,15 +91,24 @@ mkdir -p "$install_dir"
 echo "Installing dalo ${version} for ${target}"
 curl -fL "${base_url}/releases/download/${tag}/${archive}" -o "${tmp_dir}/${archive}"
 curl -fL "${base_url}/releases/download/${tag}/${archive}.sha256" -o "${tmp_dir}/${archive}.sha256"
-curl -fL "${base_url}/releases/download/${tag}/${archive}.sigstore.json" -o "${tmp_dir}/${archive}.sigstore.json"
+
+if command -v cosign >/dev/null 2>&1; then
+  curl -fL "${base_url}/releases/download/${tag}/${archive}.sigstore.json" \
+    -o "${tmp_dir}/${archive}.sigstore.json"
+else
+  echo "dalo installer: cosign not found; verifying the SHA-256 checksum only" >&2
+  echo "dalo installer: use DALO_VERIFY=required to require Sigstore provenance verification" >&2
+fi
 
 (
   cd "$tmp_dir"
   sha_check "${archive}.sha256"
-  cosign verify-blob "$archive" \
-    --bundle "${archive}.sigstore.json" \
-    --certificate-identity "https://github.com/sebastian-software/dalo/.github/workflows/release-please.yml@refs/heads/main" \
-    --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+  if command -v cosign >/dev/null 2>&1; then
+    cosign verify-blob "$archive" \
+      --bundle "${archive}.sigstore.json" \
+      --certificate-identity "https://github.com/sebastian-software/dalo/.github/workflows/release-please.yml@refs/heads/main" \
+      --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+  fi
   tar xzf "$archive"
 )
 
