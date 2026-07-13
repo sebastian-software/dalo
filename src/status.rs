@@ -34,6 +34,8 @@ pub struct StatusReport {
     pub store: PathBuf,
     /// Source scan summaries.
     pub sources: Vec<SourceStatus>,
+    /// Configured materialization targets.
+    pub targets: Vec<TargetStatus>,
     /// Inventory warnings.
     pub inventory_warnings: Vec<InventoryWarning>,
     /// Resolution output.
@@ -84,6 +86,19 @@ pub struct SourceStatus {
     pub error: Option<String>,
 }
 
+/// One configured target shown by `status`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TargetStatus {
+    /// Logical target ID.
+    pub id: String,
+    /// Target directory.
+    pub path: PathBuf,
+    /// Whether the target is enabled for materialization.
+    pub linked: bool,
+    /// Whether the target directory exists.
+    pub exists: bool,
+}
+
 /// Build the current status report.
 #[must_use = "the status report should be rendered or inspected"]
 pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
@@ -91,6 +106,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
     let config = store::read_config(&paths)?;
     let approvals = store::read_approvals(&paths)?;
     let previous_lock = store::read_user_lock(&paths)?;
+    let state = store::read_state(&paths)?;
 
     // The shared pipeline scans every enabled source once and resolves it; we
     // reuse its per-source scan outcomes here for the status detail instead of
@@ -142,6 +158,18 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
     });
     inventory_warnings.sort_by(|left, right| left.path.cmp(&right.path));
 
+    let mut targets = state
+        .targets
+        .iter()
+        .map(|target| TargetStatus {
+            id: target.id.clone(),
+            path: target.path.clone(),
+            linked: target.enabled,
+            exists: target.path.exists(),
+        })
+        .collect::<Vec<_>>();
+    targets.sort_by(|left, right| left.id.cmp(&right.id));
+
     let resolution = live.resolution;
     let live_lock = lockfile::build_user_lock(&config.sources, &resolution, None);
     let mut drift = lockfile::compare_user_lock(&previous_lock, &live_lock);
@@ -173,6 +201,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
     Ok(StatusReport {
         store: store_root.to_path_buf(),
         sources,
+        targets,
         inventory_warnings,
         resolution,
         lock,
@@ -262,6 +291,22 @@ pub fn print_status_report(report: &StatusReport) {
                 "  {:<12} {:<5} priority={:<4} skills={:<3} {}{}",
                 source.id, source.kind, source.priority, source.skill_count, state, error
             );
+        }
+    }
+
+    println!("targets:");
+    if report.targets.is_empty() {
+        println!("  none linked (run: dalo target link <codex|claude|openclaw|hermes>)");
+    } else {
+        for target in &report.targets {
+            let state = if !target.linked {
+                "unlinked"
+            } else if target.exists {
+                "linked"
+            } else {
+                "missing"
+            };
+            println!("  {:<12} {:<7} {}", target.id, state, target.path.display());
         }
     }
 
@@ -401,7 +446,12 @@ pub fn print_status_report(report: &StatusReport) {
 pub fn print_sync_report(report: &SyncReport) {
     println!("dalo store: {}", report.store.display());
     if report.operations.is_empty() {
-        if report.resolution.pending_approval_skills.is_empty()
+        if report.linked_targets == 0 && !report.resolution.active_skills.is_empty() {
+            println!(
+                "nothing materialized: {} skills resolved but no targets are linked; run `dalo target link <codex|claude|openclaw|hermes>`",
+                report.resolution.active_skills.len()
+            );
+        } else if report.resolution.pending_approval_skills.is_empty()
             && report.resolution.blocked_skills.is_empty()
             && report.resolution.diagnostics.is_empty()
             && report.degraded_sources.is_empty()
@@ -410,7 +460,10 @@ pub fn print_sync_report(report: &SyncReport) {
         } else {
             println!("nothing materialized: resolution is incomplete");
             for skill in &report.resolution.pending_approval_skills {
-                println!("  pending approval: {}", skill.source_ref);
+                println!(
+                    "  pending approval: {} (run: dalo approve skill {})",
+                    skill.source_ref, skill.source_ref
+                );
             }
             for blocked in &report.resolution.blocked_skills {
                 println!(
@@ -420,6 +473,13 @@ pub fn print_sync_report(report: &SyncReport) {
             }
             for source in &report.degraded_sources {
                 println!("  degraded source: {} ({})", source.id, source.reason);
+            }
+            for diagnostic in &report.resolution.diagnostics {
+                println!(
+                    "  diagnostic: {}: {}",
+                    resolver::diagnostic_code_name(diagnostic.code),
+                    diagnostic.message
+                );
             }
         }
         return;
@@ -747,6 +807,9 @@ pub fn print_target_link_report(report: &TargetLinkReport) {
 /// Print a human-readable target unlink report.
 pub fn print_target_unlink_report(report: &TargetUnlinkReport) {
     println!("{} target {}", report.status.as_str(), report.target_id);
+    if report.status == crate::target::TargetUnlinkStatus::Unlinked {
+        println!("note: owned symlinks remain; run `dalo sync` to remove them");
+    }
 }
 
 #[cfg(test)]

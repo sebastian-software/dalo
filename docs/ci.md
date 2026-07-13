@@ -54,6 +54,7 @@ store and generic target keep the check isolated from any runner state.
 | --- | --- |
 | 0 | Success |
 | 1 | Expected actionable failure |
+| 2 | Usage error from invalid arguments or flags; emitted as plain text even with `--json` |
 | 3 | Unsafe state blocked the operation |
 | 4 | Dependency or environment problem |
 

@@ -261,13 +261,16 @@ pub fn select_skills(
     let original_lock = read_source_lock(paths)?;
     let mut lock = original_lock.clone();
     let mut config = store::read_config(paths)?;
+    let known_sources = config
+        .sources
+        .iter()
+        .map(|candidate| candidate.id.clone())
+        .collect();
     let source = config
         .sources
         .iter_mut()
         .find(|source| source.id == id)
-        .ok_or_else(|| DaloError::UnknownSource {
-            source_id: id.to_owned(),
-        })?;
+        .ok_or_else(|| DaloError::unknown_source(id, known_sources))?;
     for candidate in &resolved {
         source
             .selection
@@ -451,13 +454,16 @@ fn catalog_candidates_from_scan(
 
 fn catalog_source(paths: &StorePaths, id: &str) -> DaloResult<SourceConfig> {
     let config = store::read_config(paths)?;
+    let known_sources = config
+        .sources
+        .iter()
+        .map(|candidate| candidate.id.clone())
+        .collect();
     let source = config
         .sources
         .into_iter()
         .find(|source| source.id == id)
-        .ok_or_else(|| DaloError::UnknownSource {
-            source_id: id.to_owned(),
-        })?;
+        .ok_or_else(|| DaloError::unknown_source(id, known_sources))?;
     if source.kind != SourceKind::Catalog {
         return Err(DaloError::NotACatalogSource {
             source_id: id.to_owned(),
@@ -493,9 +499,11 @@ fn resolve_candidate_reference(
         .cloned()
         .collect::<Vec<_>>();
     match matches.as_slice() {
-        [] => Err(DaloError::SkillNotFound {
-            skill: format!("{source_id}:{reference}"),
-        }),
+        [] => Err(DaloError::skill_not_found(
+            format!("{source_id}:{reference}"),
+            candidates.iter().map(candidate_display).collect(),
+            format!("dalo source inspect {source_id}"),
+        )),
         [candidate] => Ok(candidate.clone()),
         _ => Err(DaloError::AmbiguousSkillReference {
             reference: reference.to_owned(),
@@ -675,9 +683,7 @@ pub fn check_catalog_drift(paths: &StorePaths, id: &str) -> DaloResult<CatalogDr
     let mut lock = read_source_lock(paths)?;
     let mut catalog_lock = lock
         .catalog(id)
-        .ok_or_else(|| DaloError::UnknownSource {
-            source_id: id.to_owned(),
-        })?
+        .ok_or_else(|| DaloError::unknown_source(id, Vec::new()))?
         .clone();
 
     if lock.schema_version != SOURCE_LOCK_SCHEMA_VERSION {

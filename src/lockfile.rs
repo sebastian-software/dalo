@@ -432,6 +432,7 @@ mod tests {
         let report = SyncReport {
             store: PathBuf::from("/store"),
             dry_run: false,
+            linked_targets: 1,
             operations: vec![operation("/target/b"), operation("/target/a")],
             resolution: resolution.clone(),
             degraded_sources: Vec::new(),

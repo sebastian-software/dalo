@@ -108,16 +108,31 @@ fn canonical_skill(paths: &StorePaths, value: &str) -> DaloResult<String> {
         .sources
         .iter()
         .find(|source| source.id == source_id)
-        .ok_or_else(|| DaloError::UnknownSource {
-            source_id: source_id.to_owned(),
+        .ok_or_else(|| {
+            DaloError::unknown_source(
+                source_id,
+                config
+                    .sources
+                    .iter()
+                    .map(|candidate| candidate.id.clone())
+                    .collect(),
+            )
         })?;
     let inventory = inventory::scan_source(source_id, &source.path)?;
     let skill = inventory
         .skills
         .iter()
         .find(|skill| skill.slot_name == selector || skill.id.as_deref() == Some(selector))
-        .ok_or_else(|| DaloError::SkillNotFound {
-            skill: value.to_owned(),
+        .ok_or_else(|| {
+            DaloError::skill_not_found(
+                value,
+                inventory
+                    .skills
+                    .iter()
+                    .map(|candidate| candidate.source_ref.clone())
+                    .collect(),
+                format!("dalo source inspect {source_id}"),
+            )
         })?;
     Ok(skill.source_ref.clone())
 }
@@ -130,9 +145,14 @@ fn source_exists(paths: &StorePaths, source_id: &str) -> DaloResult<()> {
     {
         Ok(())
     } else {
-        Err(DaloError::UnknownSource {
-            source_id: source_id.to_owned(),
-        })
+        Err(DaloError::unknown_source(
+            source_id,
+            store::read_config(paths)?
+                .sources
+                .into_iter()
+                .map(|source| source.id)
+                .collect(),
+        ))
     }
 }
 

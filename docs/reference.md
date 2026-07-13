@@ -12,6 +12,18 @@ Dalo chooses the store path in this order:
 
 Relative store paths are resolved against the current working directory. `~` is expanded when used at the start of a path.
 
+## Environment Variables
+
+| Variable | Purpose |
+| --- | --- |
+| `DALO_STORE` | Override the default store path; `--store` takes precedence. |
+| `DALO_GIT_TIMEOUT_SECS` | Positive timeout in seconds for every Git subprocess. Invalid or zero values use the built-in defaults. |
+| `NO_COLOR` | Disable ANSI color output when set. |
+
+For installation variables, see the [README installation section](../README.md#install)
+and the [npm launcher README](../npm/README.md): `DALO_VERIFY`,
+`DALO_LINUX_LIBC`, `DALO_INSTALL_DIR`, `DALO_VERSION`, and `DALO_CACHE_DIR`.
+
 ## Global Flags
 
 Global flags can be placed before or after the command.
@@ -219,7 +231,9 @@ checkouts, or targets.
 
 ### `dalo status`
 
-Show source scans, active skills, pending approvals, unlinked skills, user-lock drift, unmanaged target skills, instruction packs, topic overlaps, and instruction block drift.
+Show source scans, linked targets, active skills, pending approvals, unlinked skills,
+user-lock drift, unmanaged target skills, instruction packs, topic overlaps, and
+instruction block drift.
 
 Examples:
 
@@ -232,8 +246,9 @@ dalo --json status
 JSON output shape: `StatusReport`.
 
 `--check` exits with code 1 for unresolved source scans, inventory warnings,
-pending approvals, blocked required closure, lock drift, unmanaged blockers, or
-instruction-block drift. It keeps the full report on stdout for JSON consumers.
+pending approvals, blocked required closure, missing targets for active skills,
+lock drift, unmanaged blockers, or instruction-block drift. It keeps the full
+report on stdout for JSON consumers.
 
 ### `dalo sync`
 
@@ -243,11 +258,16 @@ Examples:
 
 ```sh
 dalo sync
+dalo sync --check
 dalo --dry-run sync
 dalo --json sync
 ```
 
 JSON output shape: `SyncReport`.
+
+`sync --check` still renders the report, then exits with code 1 when materialization
+is blocked or incomplete, including pending approvals, resolution diagnostics,
+degraded sources, blocked operations, or active skills without linked targets.
 
 ### `dalo adopt <skill> [--replace]`
 
@@ -427,6 +447,7 @@ Dalo uses a small scripting contract:
 | --- | --- | --- |
 | `0` | success | Command completed. |
 | `1` | expected failure | User-actionable input/state problem, such as unknown source, unknown target, unsupported schema, parse error, pending not-implemented command, or adoption destination already existing. |
+| `2` | usage error | Invalid arguments or flags from Clap. This output is plain text even with `--json`. |
 | `3` | unsafe state | Dalo refused to mutate because the state needs human attention, such as a dirty source, active store lock, or malformed instruction block. |
 | `4` | environment problem | Dependency, path, Git, filesystem, or external command problem. |
 
@@ -449,8 +470,10 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `source inspect` | `CatalogInspectReport` | `source_id`, `candidates[]` |
 | `source select` | `CatalogSelectReport` | `source_id`, `selected[]`, `dry_run` |
 | `source refresh` | `CatalogDrift` | `source_id`, `pinned_commit`, `upstream_commit`, `outcomes[]` |
-| `status` | `StatusReport` | `store`, `sources[]`, `inventory_warnings[]`, `resolution`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]` |
-| `sync` | `SyncReport` | `store`, `dry_run`, `operations[]` |
+| `status` | `StatusReport` | `store`, `sources[]`, `targets[]`, `inventory_warnings[]`, `resolution`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]` |
+| `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, `operations[]` |
+| `approve list` | `ApprovalsFile` | `schema_version`, `approvals[]` |
+| `approve skill` / `source` / `author` / `org` / `revoke` | `ApprovalReport` | `scope`, `value`, `action`, `dry_run` |
 | `adopt` / `resolve adopt` | `AdoptReport` | `slot_name`, `source_path`, `local_path`, `copy`, `replacement` |
 | `resolve list` | `ResolveListReport` | `unmanaged_skills[]`, `target_warnings[]`, `owned_skills[]` |
 | `resolve keep` | `KeepReport` | `skill`, `existing`, `dry_run` |
