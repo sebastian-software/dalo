@@ -215,7 +215,8 @@ only links it owns, then removes the source from `config.toml`, its catalog lock
 entry (when present), and approvals qualified with that source ID. The source
 checkout is removed after the durable store state is committed. Use
 `--keep-checkout` to retain it for manual inspection. The built-in `local`
-source cannot be removed.
+source cannot be removed. A retained checkout must be moved or removed before
+the same source ID can be added again.
 
 Examples:
 
@@ -225,9 +226,10 @@ dalo source remove public
 dalo source remove public --keep-checkout
 ```
 
-The dry-run JSON `SourceRemoveReport` lists the store artifacts and owned target
-links that would be affected. It does not modify config, locks, approvals,
-checkouts, or targets.
+Both dry-run and real `--json` output use `SourceRemoveReport`. It lists
+deactivated skills, the operation kind for every reconciled owned link, and any
+non-fatal checkout cleanup warnings. Dry-run does not modify config, locks,
+approvals, checkouts, or targets.
 
 ### `dalo status`
 
@@ -470,6 +472,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `source inspect` | `CatalogInspectReport` | `source_id`, `candidates[]` |
 | `source select` | `CatalogSelectReport` | `source_id`, `selected[]`, `dry_run` |
 | `source refresh` | `CatalogDrift` | `source_id`, `pinned_commit`, `upstream_commit`, `outcomes[]` |
+| `source remove` | `SourceRemoveReport` | `source_id`, `checkout_path`, `kept_checkout`, `removed_approvals`, `removed_catalog_lock`, `reconciled_links[]`, `deactivated_skills[]`, `cleanup_warnings[]`, `affected_paths[]`, `dry_run` |
 | `status` | `StatusReport` | `store`, `sources[]`, `targets[]`, `inventory_warnings[]`, `resolution`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]` |
 | `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, `operations[]` |
 | `approve list` | `ApprovalsFile` | `schema_version`, `approvals[]` |

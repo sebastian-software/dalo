@@ -1,6 +1,6 @@
 //! Diagnostics for store, target, Git, and lockfile health.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -140,6 +140,8 @@ pub enum DoctorCode {
     SourceClean,
     /// Source has local changes.
     DirtySource,
+    /// Store contains checkout or staging content not owned by config.
+    SourceStoreDebris,
     /// A skill is pending approval.
     PendingApproval,
     /// A skill is blocked because its required closure is not linkable.
@@ -185,6 +187,7 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
 
     if let Some(config) = config.as_ref() {
         check_sources(config, &mut findings);
+        check_source_store_debris(&paths, config, &mut findings);
     }
 
     if let (Some(config), Some(_), true) = (config.as_ref(), state.as_ref(), lock_ok) {
@@ -523,6 +526,53 @@ fn check_sources(config: &UserConfig, findings: &mut Vec<DoctorFinding>) {
     }
 }
 
+fn check_source_store_debris(
+    paths: &StorePaths,
+    config: &UserConfig,
+    findings: &mut Vec<DoctorFinding>,
+) {
+    let configured = config
+        .sources
+        .iter()
+        .filter(|source| source.kind != SourceKind::Local)
+        .map(|source| source.id.as_str())
+        .collect::<BTreeSet<_>>();
+    let Ok(source_dirs) = fs::read_dir(&paths.sources_dir) else {
+        return;
+    };
+
+    for entry in source_dirs.flatten() {
+        let source_id = entry.file_name().to_string_lossy().into_owned();
+        let path = entry.path();
+        if !configured.contains(source_id.as_str()) {
+            findings.push(finding_warning(
+                DoctorCode::SourceStoreDebris,
+                format!("unconfigured source content exists at `{}`", path.display()),
+                Some(format!("inspect or remove {}", path.display())),
+            ));
+            continue;
+        }
+
+        let Ok(children) = fs::read_dir(&path) else {
+            continue;
+        };
+        for child in children.flatten() {
+            let name = child.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with(".checkout-tmp-") || name == "checkout.dalo-removing" {
+                findings.push(finding_warning(
+                    DoctorCode::SourceStoreDebris,
+                    format!(
+                        "interrupted source-operation debris exists at `{}`",
+                        child.path().display()
+                    ),
+                    Some(format!("inspect or remove {}", child.path().display())),
+                ));
+            }
+        }
+    }
+}
+
 fn check_resolution(
     paths: &StorePaths,
     config: &UserConfig,
@@ -782,6 +832,7 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::UnreadableTargetDirectory => "unreadable_target_directory",
         DoctorCode::SourceClean => "source_clean",
         DoctorCode::DirtySource => "dirty_source",
+        DoctorCode::SourceStoreDebris => "source_store_debris",
         DoctorCode::PendingApproval => "pending_approval",
         DoctorCode::RequiredClosureBlocked => "required_closure_blocked",
         DoctorCode::InstructionPackTopicOverlap => "instruction_pack_topic_overlap",
@@ -997,6 +1048,25 @@ mod tests {
             finding.code == DoctorCode::DirtySource
                 && finding.severity == DoctorSeverity::Warning
                 && finding.message.contains("`workspace`")
+        }));
+    }
+
+    #[test]
+    fn doctor_should_report_unconfigured_source_operation_debris() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store = temp_dir.path().join("store");
+        store::init_store(store.clone(), false).expect("init should succeed");
+        let debris = store.join("sources/orphan/checkout.dalo-removing");
+        fs::create_dir_all(&debris).expect("source debris should be created");
+
+        let report = run_doctor(&store);
+
+        assert!(report.findings.iter().any(|finding| {
+            finding.code == DoctorCode::SourceStoreDebris
+                && finding.severity == DoctorSeverity::Warning
+                && finding
+                    .message
+                    .contains(debris.parent().unwrap().to_string_lossy().as_ref())
         }));
     }
 

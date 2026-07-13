@@ -8,10 +8,10 @@ mod common;
 
 use common::{
     approve_source, create_git_catalog_repo, create_git_catalog_repo_with_duplicate_slots,
-    create_git_skill_repo, create_unmanaged_skill, dalo_command, git_command_succeeds,
-    git_rev_parse_logger, read_source_lock, read_user_lock, remove_source_update_policy, run_git,
-    set_source_untrusted, setup_store_with_skill_and_target, setup_store_with_target,
-    write_local_only_config, write_source_lock,
+    create_git_skill_repo, create_git_skill_repo_with_skill, create_unmanaged_skill, dalo_command,
+    git_command_succeeds, git_rev_parse_logger, read_source_lock, read_user_lock,
+    remove_source_update_policy, run_git, set_source_untrusted, setup_store_with_skill_and_target,
+    setup_store_with_target, write_local_only_config, write_source_lock,
 };
 
 #[test]
@@ -2035,6 +2035,72 @@ fn source_add_should_clone_team_source_into_store() {
 }
 
 #[test]
+fn source_add_should_resolve_relative_locations_from_the_callers_working_directory() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo(&repo);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    dalo_command()
+        .current_dir(&repo)
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "company", "."])
+        .assert()
+        .success();
+
+    let config =
+        store::read_config(&store::StorePaths::new(store)).expect("config should be readable");
+    let source = config
+        .sources
+        .iter()
+        .find(|source| source.id == "company")
+        .expect("company source should exist");
+    assert_eq!(
+        std::fs::canonicalize(source.url.as_ref().expect("source URL should exist"))
+            .expect("stored local source should resolve"),
+        std::fs::canonicalize(&repo).expect("fixture repo should resolve")
+    );
+    assert!(source.path.join(".git").is_dir());
+}
+
+#[test]
+fn source_add_catalog_should_replace_interrupted_non_git_checkout_debris() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    let checkout = store.join("sources/public/checkout");
+    std::fs::create_dir_all(&checkout).expect("partial checkout should be created");
+    std::fs::write(checkout.join("PARTIAL"), "interrupted clone")
+        .expect("partial marker should be written");
+
+    dalo_command()
+        .current_dir(&repo)
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "public"])
+        .arg(".")
+        .assert()
+        .success();
+
+    assert!(checkout.join(".git").is_dir());
+    assert!(!checkout.join("PARTIAL").exists());
+}
+
+#[test]
 fn source_list_should_show_local_and_team_sources() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -2176,7 +2242,10 @@ fn source_remove_should_reconcile_team_links_and_remove_source_state() {
         .assert()
         .success()
         .stdout(predicate::str::contains("removed source company"))
-        .stdout(predicate::str::contains("approvals removed: 1"));
+        .stdout(predicate::str::contains("approvals removed: 1"))
+        .stdout(predicate::str::contains("deactivated skills:"))
+        .stdout(predicate::str::contains("company:team"))
+        .stdout(predicate::str::contains("remove"));
 
     let paths = store::StorePaths::new(store.clone());
     let config = store::read_config(&paths).expect("config should be readable");
@@ -2190,7 +2259,7 @@ fn source_remove_should_reconcile_team_links_and_remove_source_state() {
             .all(|approval| approval.value != "company" && !approval.value.starts_with("company:"))
     );
     assert!(lock.sources.iter().all(|source| source.id != "company"));
-    assert!(!store.join("sources/company/checkout").exists());
+    assert!(!store.join("sources/company").exists());
     assert!(std::fs::symlink_metadata(target.join("team")).is_err());
 }
 
@@ -2225,6 +2294,8 @@ fn source_remove_dry_run_should_list_affected_team_artifacts_without_writing() {
         .success()
         .stdout(predicate::str::contains("\"dry_run\": true"))
         .stdout(predicate::str::contains("\"affected_paths\""))
+        .stdout(predicate::str::contains("\"kind\": \"remove\""))
+        .stdout(predicate::str::contains("\"deactivated_skills\""))
         .stdout(predicate::str::contains(
             target.join("team").to_string_lossy().as_ref(),
         ));
@@ -2237,15 +2308,8 @@ fn source_remove_dry_run_should_list_affected_team_artifacts_without_writing() {
 }
 
 #[test]
-fn source_remove_failure_injection_should_restore_a_recoverable_old_state() {
-    for boundary in [
-        "stage_checkout",
-        "config",
-        "source_lock",
-        "approvals",
-        "user_lock",
-        "checkout_cleanup",
-    ] {
+fn source_remove_metadata_failure_should_restore_the_old_state() {
+    for boundary in ["config", "source_lock", "approvals", "user_lock"] {
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
         let store = temp_dir.path().join("store");
         let target = temp_dir.path().join("skills");
@@ -2313,6 +2377,200 @@ fn source_remove_failure_injection_should_restore_a_recoverable_old_state() {
             "{boundary} should restore the owned link"
         );
     }
+}
+
+#[test]
+fn source_remove_cleanup_failure_should_keep_committed_metadata_and_report_a_warning() {
+    for boundary in ["stage_checkout", "checkout_cleanup"] {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store = temp_dir.path().join("store");
+        let target = temp_dir.path().join("skills");
+        let repo = temp_dir.path().join("team-repo");
+        create_git_skill_repo(&repo);
+        setup_store_with_target(&store, &target);
+
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .args(["source", "add", "company"])
+            .arg(&repo)
+            .assert()
+            .success();
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .arg("sync")
+            .assert()
+            .success();
+
+        dalo_command()
+            .env("DALO_SOURCE_REMOVE_FAIL_AT", boundary)
+            .args(["--store"])
+            .arg(&store)
+            .args(["source", "remove", "company"])
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("checkout: cleanup incomplete"))
+            .stdout(predicate::str::contains(format!(
+                "injected source-removal failure at {boundary}"
+            )));
+
+        let paths = store::StorePaths::new(store.clone());
+        let config = store::read_config(&paths).expect("config should be readable");
+        assert!(config.sources.iter().all(|source| source.id != "company"));
+        assert!(
+            read_user_lock(&store)
+                .sources
+                .iter()
+                .all(|source| source.id != "company")
+        );
+        assert!(std::fs::symlink_metadata(target.join("team")).is_err());
+        if boundary == "stage_checkout" {
+            assert!(store.join("sources/company/checkout").is_dir());
+        } else {
+            assert!(
+                store
+                    .join("sources/company/checkout.dalo-removing")
+                    .is_dir()
+            );
+        }
+    }
+}
+
+#[test]
+fn source_remove_should_preserve_links_owned_by_an_unrelated_degraded_source() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let alpha_repo = temp_dir.path().join("alpha-repo");
+    let beta_repo = temp_dir.path().join("beta-repo");
+    create_git_skill_repo_with_skill(&alpha_repo, "alpha", "# Alpha\n");
+    create_git_skill_repo_with_skill(&beta_repo, "beta", "# Beta\n");
+    setup_store_with_target(&store, &target);
+
+    for (id, repo) in [("alpha", &alpha_repo), ("beta", &beta_repo)] {
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .args(["source", "add", id])
+            .arg(repo)
+            .assert()
+            .success();
+    }
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    let beta_checkout = store.join("sources/beta/checkout");
+    let beta_offline = store.join("sources/beta/checkout-offline");
+    std::fs::rename(&beta_checkout, &beta_offline)
+        .expect("beta checkout should become unavailable");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "remove", "alpha"])
+        .assert()
+        .success();
+
+    assert!(std::fs::symlink_metadata(target.join("alpha")).is_err());
+    assert!(
+        std::fs::symlink_metadata(target.join("beta"))
+            .expect("beta link should be preserved")
+            .file_type()
+            .is_symlink()
+    );
+    let state =
+        store::read_state(&store::StorePaths::new(store)).expect("state should be readable");
+    assert!(
+        state
+            .owned_skills
+            .iter()
+            .any(|owned| owned.slot_name == "beta")
+    );
+}
+
+#[test]
+fn source_remove_should_sweep_a_legacy_staging_orphan() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo(&repo);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "company"])
+        .arg(&repo)
+        .assert()
+        .success();
+    std::fs::rename(
+        store.join("sources/company/checkout"),
+        store.join("sources/company/checkout.dalo-removing"),
+    )
+    .expect("legacy staging orphan should be created");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "remove", "company"])
+        .assert()
+        .success();
+
+    assert!(!store.join("sources/company").exists());
+}
+
+#[test]
+fn source_remove_keep_checkout_should_explain_and_return_an_actionable_readd_error() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let team_repo = temp_dir.path().join("team-repo");
+    let catalog_repo = temp_dir.path().join("catalog-repo");
+    create_git_skill_repo(&team_repo);
+    create_git_catalog_repo(&catalog_repo);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "company"])
+        .arg(&team_repo)
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "remove", "company", "--keep-checkout"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "move or remove it before re-adding source `company`",
+        ));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "company"])
+        .arg(&catalog_repo)
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("source checkout already exists"))
+        .stderr(predicate::str::contains(
+            "restore its source config or move/remove the checkout before retrying",
+        ));
+    assert!(store.join("sources/company/checkout/.git").is_dir());
 }
 
 #[test]

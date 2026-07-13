@@ -605,6 +605,41 @@ fn run_sync(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
     };
     let approvals = store::read_approvals(&paths)?;
     let live = resolver::resolve_from_config(&config, approvals.approvals);
+    let degraded_sources = collect_degraded_sources(&live, refresh_failures);
+    let (report, rollback) = materialize::materialize_with_degraded_sources_rollback(
+        &paths,
+        &live.resolution,
+        options.dry_run,
+        &degraded_sources,
+    )?;
+    if !options.dry_run {
+        let previous = previous.expect("non-dry-run sync reads the user lock before materializing");
+        let mut lock = lockfile::build_user_lock(&config.sources, &live.resolution, Some(&report));
+        // Instruction packs are owned by the `instructions` command; preserve them
+        // across a sync instead of dropping them.
+        lock.active_instruction_packs = previous.active_instruction_packs.clone();
+        write_sync_lock_with_rollback(&paths, &previous, &lock, rollback, store::write_user_lock)?;
+    }
+
+    if options.json {
+        print_json(&report)?;
+    } else {
+        status::print_sync_report(&report);
+    }
+
+    if args.check && sync_requires_review(&report) {
+        return Err(DaloError::CheckFailed {
+            reason: "sync reports blocked, incomplete, or unmaterialized state".to_owned(),
+        });
+    }
+
+    Ok(())
+}
+
+fn collect_degraded_sources(
+    live: &resolver::LiveResolution,
+    refresh_failures: Vec<source::TrackingSourceRefreshFailure>,
+) -> Vec<materialize::DegradedSource> {
     let mut degraded_sources = live
         .scans
         .iter()
@@ -639,34 +674,7 @@ fn run_sync(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
         }
     }
     degraded_sources.sort_by(|left, right| left.id.cmp(&right.id));
-    let (report, rollback) = materialize::materialize_with_degraded_sources_rollback(
-        &paths,
-        &live.resolution,
-        options.dry_run,
-        &degraded_sources,
-    )?;
-    if !options.dry_run {
-        let previous = previous.expect("non-dry-run sync reads the user lock before materializing");
-        let mut lock = lockfile::build_user_lock(&config.sources, &live.resolution, Some(&report));
-        // Instruction packs are owned by the `instructions` command; preserve them
-        // across a sync instead of dropping them.
-        lock.active_instruction_packs = previous.active_instruction_packs.clone();
-        write_sync_lock_with_rollback(&paths, &previous, &lock, rollback, store::write_user_lock)?;
-    }
-
-    if options.json {
-        print_json(&report)?;
-    } else {
-        status::print_sync_report(&report);
-    }
-
-    if args.check && sync_requires_review(&report) {
-        return Err(DaloError::CheckFailed {
-            reason: "sync reports blocked, incomplete, or unmaterialized state".to_owned(),
-        });
-    }
-
-    Ok(())
+    degraded_sources
 }
 
 fn write_sync_lock_with_rollback<F>(
@@ -723,8 +731,9 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             } else {
                 Some(store::StoreLock::acquire(&paths)?)
             };
-            let report =
-                source::add_team_source(&paths, &args.id, &args.location, options.dry_run)?;
+            let location =
+                source::resolve_source_location(&args.location, &std::env::current_dir()?);
+            let report = source::add_team_source(&paths, &args.id, &location, options.dry_run)?;
             if options.json {
                 print_json(&report)?;
             } else {
@@ -739,8 +748,9 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             } else {
                 Some(store::StoreLock::acquire(&paths)?)
             };
-            let source =
-                catalog::add_catalog_source(&paths, &args.id, &args.location, options.dry_run)?;
+            let location =
+                source::resolve_source_location(&args.location, &std::env::current_dir()?);
+            let source = catalog::add_catalog_source(&paths, &args.id, &location, options.dry_run)?;
             if options.json {
                 print_json(&source)?;
             } else {
@@ -842,28 +852,18 @@ fn run_source_remove(
     };
     let mut plan =
         source::plan_remove_source(paths, &args.id, args.keep_checkout, options.dry_run)?;
+    let previous_user_lock = store::read_user_lock(paths)?;
+    let live = resolver::resolve_from_config(&plan.config, plan.approvals.approvals.clone());
+    let degraded_sources = collect_degraded_sources(&live, Vec::new());
+    let (materialization, rollback) = materialize::materialize_with_degraded_sources_rollback(
+        paths,
+        &live.resolution,
+        options.dry_run,
+        &degraded_sources,
+    )?;
+    populate_source_remove_report(&mut plan.report, &materialization, &previous_user_lock);
+
     if options.dry_run {
-        let live = resolver::resolve_from_config(&plan.config, plan.approvals.approvals.clone());
-        let (materialization, _) = materialize::materialize_with_degraded_sources_rollback(
-            paths,
-            &live.resolution,
-            true,
-            &[],
-        )?;
-        plan.report.reconciled_links = materialization
-            .operations
-            .iter()
-            .filter(|operation| {
-                matches!(
-                    operation.kind,
-                    materialize::MaterializeOperationKind::Create
-                        | materialize::MaterializeOperationKind::Relink
-                        | materialize::MaterializeOperationKind::Remove
-                        | materialize::MaterializeOperationKind::DropRecord
-                )
-            })
-            .map(|operation| operation.link_path.clone())
-            .collect();
         if options.json {
             print_json(&plan.report)?;
         } else {
@@ -872,28 +872,6 @@ fn run_source_remove(
         return Ok(());
     }
 
-    let previous_user_lock = store::read_user_lock(paths)?;
-    let live = resolver::resolve_from_config(&plan.config, plan.approvals.approvals.clone());
-    let (materialization, rollback) = materialize::materialize_with_degraded_sources_rollback(
-        paths,
-        &live.resolution,
-        false,
-        &[],
-    )?;
-    plan.report.reconciled_links = materialization
-        .operations
-        .iter()
-        .filter(|operation| {
-            matches!(
-                operation.kind,
-                materialize::MaterializeOperationKind::Create
-                    | materialize::MaterializeOperationKind::Relink
-                    | materialize::MaterializeOperationKind::Remove
-                    | materialize::MaterializeOperationKind::DropRecord
-            )
-        })
-        .map(|operation| operation.link_path.clone())
-        .collect();
     let mut user_lock = lockfile::build_user_lock(
         &plan.config.sources,
         &live.resolution,
@@ -901,35 +879,7 @@ fn run_source_remove(
     );
     user_lock.active_instruction_packs = previous_user_lock.active_instruction_packs.clone();
 
-    let staged_checkout = if args.keep_checkout || !plan.report.checkout_path.exists() {
-        None
-    } else {
-        let staged = plan
-            .report
-            .checkout_path
-            .with_file_name("checkout.dalo-removing");
-        if staged.exists() {
-            return rollback_remove(
-                paths,
-                &plan,
-                &previous_user_lock,
-                rollback,
-                None,
-                DaloError::InvalidStorePath {
-                    path: staged,
-                    reason: "stale source-removal staging path exists; inspect it before retrying"
-                        .to_owned(),
-                },
-            );
-        }
-        Some(staged)
-    };
-
     let commit = (|| -> DaloResult<()> {
-        if let Some(staged) = &staged_checkout {
-            source_remove_boundary("stage_checkout")?;
-            std::fs::rename(&plan.report.checkout_path, staged)?;
-        }
         source_remove_boundary("config")?;
         store::write_config(paths, &plan.config)?;
         source_remove_boundary("source_lock")?;
@@ -941,31 +891,19 @@ fn run_source_remove(
         Ok(())
     })();
     if let Err(error) = commit {
-        return rollback_remove(
-            paths,
-            &plan,
-            &previous_user_lock,
-            rollback,
-            staged_checkout.as_deref(),
-            error,
-        );
+        return rollback_remove(paths, &plan, &previous_user_lock, rollback, error);
     }
-    if let Some(staged) = staged_checkout {
-        let cleanup = (|| -> DaloResult<()> {
-            source_remove_boundary("checkout_cleanup")?;
-            std::fs::remove_dir_all(&staged)?;
-            Ok(())
-        })();
-        if let Err(error) = cleanup {
-            return rollback_remove(
-                paths,
-                &plan,
-                &previous_user_lock,
-                rollback,
-                Some(&staged),
-                error,
-            );
-        }
+
+    // Metadata and materialization are committed. Checkout deletion is garbage
+    // collection from this point forward: failures are visible but must never
+    // restore metadata that points at a partially deleted checkout.
+    if !args.keep_checkout
+        && let Err(error) = cleanup_removed_source_checkout(&plan.report.checkout_path)
+    {
+        plan.report.cleanup_warnings.push(format!(
+            "checkout cleanup incomplete for `{}`: {error}",
+            plan.report.checkout_path.display()
+        ));
     }
 
     if options.json {
@@ -976,21 +914,68 @@ fn run_source_remove(
     Ok(())
 }
 
+fn populate_source_remove_report(
+    report: &mut source::SourceRemoveReport,
+    materialization: &materialize::SyncReport,
+    previous_user_lock: &lockfile::UserLock,
+) {
+    report.reconciled_links = materialization
+        .operations
+        .iter()
+        .filter(|operation| {
+            matches!(
+                operation.kind,
+                materialize::MaterializeOperationKind::Create
+                    | materialize::MaterializeOperationKind::Relink
+                    | materialize::MaterializeOperationKind::Remove
+                    | materialize::MaterializeOperationKind::DropRecord
+            )
+        })
+        .map(|operation| source::SourceRemoveLink {
+            kind: operation.kind,
+            path: operation.link_path.clone(),
+        })
+        .collect();
+    report.deactivated_skills = previous_user_lock
+        .active_skills
+        .iter()
+        .filter(|skill| skill.source_id == report.source_id)
+        .map(|skill| skill.source_ref.clone())
+        .collect();
+    report.deactivated_skills.sort();
+    report.deactivated_skills.dedup();
+}
+
+fn cleanup_removed_source_checkout(checkout: &std::path::Path) -> DaloResult<()> {
+    source_remove_boundary("stage_checkout")?;
+    let source_dir = checkout
+        .parent()
+        .ok_or_else(|| DaloError::InvalidStorePath {
+            path: checkout.to_path_buf(),
+            reason: "source checkout has no parent directory".to_owned(),
+        })?;
+    let staged = checkout.with_file_name("checkout.dalo-removing");
+    if staged.exists() {
+        std::fs::remove_dir_all(&staged)?;
+    }
+    if checkout.exists() {
+        std::fs::rename(checkout, &staged)?;
+    }
+    source_remove_boundary("checkout_cleanup")?;
+    if source_dir.exists() {
+        std::fs::remove_dir_all(source_dir)?;
+    }
+    Ok(())
+}
+
 fn rollback_remove(
     paths: &store::StorePaths,
     plan: &source::SourceRemovalPlan,
     original_user_lock: &lockfile::UserLock,
     rollback: Option<materialize::MaterializationRollback>,
-    staged_checkout: Option<&std::path::Path>,
     error: DaloError,
 ) -> DaloResult<()> {
     let mut rollback_errors = Vec::new();
-    if let Some(staged) = staged_checkout
-        && staged.exists()
-        && let Err(restore_error) = std::fs::rename(staged, &plan.report.checkout_path)
-    {
-        rollback_errors.push(restore_error.to_string());
-    }
     if let Err(restore_error) = store::write_config(paths, &plan.original_config) {
         rollback_errors.push(restore_error.to_string());
     }
