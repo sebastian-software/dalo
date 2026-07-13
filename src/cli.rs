@@ -514,12 +514,12 @@ fn run_sync(options: &GlobalOptions) -> DaloResult<()> {
             .expect("non-dry-run sync reads the user lock before materializing")
             .active_instruction_packs;
         if let Err(error) = store::write_user_lock(&paths, &lock) {
-            if let Some(rollback) = rollback {
-                if let Err(rollback_error) = rollback.restore(&paths) {
-                    return Err(DaloError::Io(std::io::Error::other(format!(
-                        "{error}; additionally failed to roll back sync: {rollback_error}"
-                    ))));
-                }
+            if let Some(rollback) = rollback
+                && let Err(rollback_error) = rollback.restore(&paths)
+            {
+                return Err(DaloError::Io(std::io::Error::other(format!(
+                    "{error}; additionally failed to roll back sync: {rollback_error}"
+                ))));
             }
             return Err(error);
         }
