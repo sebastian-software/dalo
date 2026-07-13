@@ -302,6 +302,9 @@ pub fn adopt_skill(
 ) -> DaloResult<AdoptReport> {
     let skill = find_unmanaged_skill(paths, selector)?;
     let local_path = paths.local_skills_dir.join(&skill.slot_name);
+    if !dry_run {
+        remove_interrupted_adoption_dirs(&local_path)?;
+    }
 
     let copy = if local_path.exists() {
         // A local copy already exists. A plain `adopt` must never clobber it.
@@ -699,6 +702,32 @@ where
     Ok(())
 }
 
+fn remove_interrupted_adoption_dirs(destination: &Path) -> DaloResult<()> {
+    let parent = destination.parent().ok_or_else(|| {
+        DaloError::Io(io::Error::other(format!(
+            "cannot clean interrupted adoption directories without a parent for {}",
+            destination.display()
+        )))
+    })?;
+    let skill_name = destination
+        .file_name()
+        .unwrap_or_else(|| std::ffi::OsStr::new("skill"));
+    let prefix = format!(".{}.dalo-adopting-", skill_name.to_string_lossy());
+    for entry in fs::read_dir(parent)? {
+        let entry = entry?;
+        if !entry.file_name().to_string_lossy().starts_with(&prefix) {
+            continue;
+        }
+        let metadata = fs::symlink_metadata(entry.path())?;
+        if metadata.file_type().is_dir() && !metadata.file_type().is_symlink() {
+            fs::remove_dir_all(entry.path())?;
+        } else {
+            fs::remove_file(entry.path())?;
+        }
+    }
+    Ok(())
+}
+
 fn copy_dir_contents<F>(source: &Path, destination: &Path, copy_file: &mut F) -> DaloResult<()>
 where
     F: FnMut(&Path, &Path) -> io::Result<u64>,
@@ -892,6 +921,29 @@ mod tests {
 
         assert!(error.to_string().contains("injected copy failure"));
         assert!(!destination.exists());
+    }
+
+    #[test]
+    fn adopt_skill_should_sweep_interrupted_adoption_dirs() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let target = temp_dir.path().join("target");
+        let unmanaged = target.join("review");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        fs::create_dir_all(&unmanaged).expect("unmanaged dir should be created");
+        fs::write(unmanaged.join(SKILL_FILE), "# Review\n").expect("skill file should be written");
+        write_state(&store_root, &target, &target.join("unused"));
+        let stale = store_root.join("local/skills/.review.dalo-adopting-interrupted");
+        fs::create_dir_all(&stale).expect("stale adoption dir should be created");
+        fs::write(stale.join(SKILL_FILE), "partial\n")
+            .expect("partial skill file should be written");
+
+        let report = adopt_skill(&StorePaths::new(store_root.clone()), "review", false, false)
+            .expect("adopt should succeed");
+
+        assert_eq!(report.copy, AdoptCopyStatus::Copied);
+        assert!(store_root.join("local/skills/review/SKILL.md").is_file());
+        assert!(!stale.exists());
     }
 
     #[test]

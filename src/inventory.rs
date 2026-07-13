@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use crate::error::DaloResult;
 
 const SKILL_FILE: &str = "SKILL.md";
+const MAX_FRONTMATTER_BYTES: usize = 64 * 1024;
+const MAX_FRONTMATTER_FLOW_DEPTH: usize = 64;
 
 /// Inventory for one source checkout.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -186,15 +188,14 @@ fn find_skill_dirs(
                     continue;
                 }
             };
-            if file_type.is_dir() {
-                pending.push(entry.path());
-            } else if file_type.is_symlink() && entry.path().is_dir() {
+            if file_type.is_symlink() {
                 warnings.push(InventoryWarning {
                     code: InventoryWarningCode::SkippedSymlink,
                     path: entry.path(),
-                    message: "skipped symlinked directory to keep the source scan bounded"
-                        .to_owned(),
+                    message: "skipped symlink to keep the source scan bounded".to_owned(),
                 });
+            } else if file_type.is_dir() && !entry.file_name().to_string_lossy().starts_with('.') {
+                pending.push(entry.path());
             }
         }
     }
@@ -268,6 +269,24 @@ fn parse_frontmatter(
     };
 
     let frontmatter = &rest[..end_index];
+    if frontmatter.len() > MAX_FRONTMATTER_BYTES {
+        warnings.push(InventoryWarning {
+            code: InventoryWarningCode::MalformedFrontmatter,
+            path: path.to_path_buf(),
+            message: format!("frontmatter exceeds the {MAX_FRONTMATTER_BYTES}-byte safety limit"),
+        });
+        return (None, warnings);
+    }
+    if frontmatter_flow_depth_exceeds(frontmatter, MAX_FRONTMATTER_FLOW_DEPTH) {
+        warnings.push(InventoryWarning {
+            code: InventoryWarningCode::MalformedFrontmatter,
+            path: path.to_path_buf(),
+            message: format!(
+                "frontmatter flow nesting exceeds the {MAX_FRONTMATTER_FLOW_DEPTH}-level safety limit"
+            ),
+        });
+        return (None, warnings);
+    }
     match yaml_serde::from_str(frontmatter) {
         Ok(frontmatter) => (Some(frontmatter), warnings),
         Err(error) => {
@@ -279,6 +298,68 @@ fn parse_frontmatter(
             (None, warnings)
         }
     }
+}
+
+// Reject pathological flow collections before `yaml_serde` builds its event
+// tree. This is intentionally a small lexical guard, not a second YAML parser;
+// quoted scalars and comments cannot introduce structural nesting.
+fn frontmatter_flow_depth_exceeds(frontmatter: &str, limit: usize) -> bool {
+    let mut chars = frontmatter.chars().peekable();
+    let mut depth = 0_usize;
+    let mut in_single_quote = false;
+    let mut in_double_quote = false;
+    let mut escaped = false;
+    let mut in_comment = false;
+    let mut previous = None;
+
+    while let Some(character) = chars.next() {
+        if in_comment {
+            if character == '\n' {
+                in_comment = false;
+            }
+            previous = Some(character);
+            continue;
+        }
+        if in_single_quote {
+            if character == '\'' {
+                if chars.peek() == Some(&'\'') {
+                    chars.next();
+                } else {
+                    in_single_quote = false;
+                }
+            }
+            previous = Some(character);
+            continue;
+        }
+        if in_double_quote {
+            if escaped {
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == '"' {
+                in_double_quote = false;
+            }
+            previous = Some(character);
+            continue;
+        }
+
+        match character {
+            '#' if previous.is_none_or(char::is_whitespace) => in_comment = true,
+            '\'' => in_single_quote = true,
+            '"' => in_double_quote = true,
+            '[' | '{' => {
+                depth += 1;
+                if depth > limit {
+                    return true;
+                }
+            }
+            ']' | '}' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+        previous = Some(character);
+    }
+
+    false
 }
 
 fn frontmatter_end_index(rest: &str) -> Option<usize> {
@@ -553,6 +634,49 @@ mod tests {
     }
 
     #[test]
+    fn scan_source_should_warn_when_a_skill_symlink_is_broken() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let source_root = temp_dir.path().join("checkout");
+        fs::create_dir_all(&source_root).expect("source root should be created");
+        std::os::unix::fs::symlink(
+            temp_dir.path().join("missing-review"),
+            source_root.join("review"),
+        )
+        .expect("broken skill symlink should be created");
+
+        let inventory = scan_source("team", &source_root).expect("scan should succeed");
+
+        assert!(inventory.skills.is_empty());
+        assert_eq!(inventory.warnings.len(), 1);
+        assert_eq!(
+            inventory.warnings[0].code,
+            InventoryWarningCode::SkippedSymlink
+        );
+        assert_eq!(inventory.warnings[0].path, source_root.join("review"));
+    }
+
+    #[test]
+    fn scan_source_should_ignore_hidden_adoption_debris() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let source_root = temp_dir.path().join("checkout");
+        for directory in ["review", ".review.dalo-adopting-interrupted"] {
+            let skill_dir = source_root.join(directory);
+            fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+            fs::write(
+                skill_dir.join(SKILL_FILE),
+                "---\nname: review\n---\n# Review\n",
+            )
+            .expect("skill file should be written");
+        }
+
+        let inventory = scan_source("local", &source_root).expect("scan should succeed");
+
+        assert_eq!(inventory.skills.len(), 1);
+        assert_eq!(inventory.skills[0].path, source_root.join("review"));
+        assert!(inventory.warnings.is_empty());
+    }
+
+    #[test]
     fn scan_source_should_skip_malformed_frontmatter() {
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
         let skill_dir = temp_dir.path().join("app");
@@ -570,6 +694,72 @@ mod tests {
             inventory.warnings[0].code,
             InventoryWarningCode::MalformedFrontmatter
         );
+    }
+
+    #[test]
+    fn scan_source_should_reject_oversized_frontmatter_before_parsing() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("oversized");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        fs::write(
+            skill_dir.join(SKILL_FILE),
+            format!(
+                "---\nname: oversized\ndescription: {}\n---\n# Oversized\n",
+                "x".repeat(MAX_FRONTMATTER_BYTES)
+            ),
+        )
+        .expect("skill file should be written");
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should succeed");
+
+        assert!(inventory.skills.is_empty());
+        assert_eq!(
+            inventory.warnings[0].code,
+            InventoryWarningCode::MalformedFrontmatter
+        );
+        assert!(inventory.warnings[0].message.contains("byte safety limit"));
+    }
+
+    #[test]
+    fn scan_source_should_reject_deep_flow_nesting_before_parsing() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("nested");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        let nesting = MAX_FRONTMATTER_FLOW_DEPTH + 1;
+        fs::write(
+            skill_dir.join(SKILL_FILE),
+            format!(
+                "---\nname: nested\ntags: {}value{}\n---\n# Nested\n",
+                "[".repeat(nesting),
+                "]".repeat(nesting)
+            ),
+        )
+        .expect("skill file should be written");
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should succeed");
+
+        assert!(inventory.skills.is_empty());
+        assert_eq!(
+            inventory.warnings[0].code,
+            InventoryWarningCode::MalformedFrontmatter
+        );
+        assert!(
+            inventory.warnings[0]
+                .message
+                .contains("flow nesting exceeds")
+        );
+    }
+
+    #[test]
+    fn frontmatter_flow_depth_guard_should_ignore_quotes_and_comments() {
+        let delimiters = "[".repeat(MAX_FRONTMATTER_FLOW_DEPTH + 1);
+        let frontmatter =
+            format!("description: \"{delimiters}\"\nowner: '{delimiters}'\n# {delimiters}\n");
+
+        assert!(!frontmatter_flow_depth_exceeds(
+            &frontmatter,
+            MAX_FRONTMATTER_FLOW_DEPTH
+        ));
     }
 
     #[test]
