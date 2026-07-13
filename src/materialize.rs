@@ -168,10 +168,14 @@ pub fn materialize_with_degraded_sources_rollback(
     let mut state = store::read_state(paths)?;
     let desired_links = desired_links(&state, resolution);
     let mut operations = build_plan(paths, &state, &desired_links, degraded_sources)?;
-    let rollback = (!dry_run).then(|| MaterializationRollback {
-        state: state.clone(),
-        links: snapshot_links(&operations),
-    });
+    let rollback = if dry_run {
+        None
+    } else {
+        Some(MaterializationRollback {
+            state: state.clone(),
+            links: snapshot_links(&operations)?,
+        })
+    };
 
     if dry_run {
         for operation in &mut operations {
@@ -248,34 +252,39 @@ impl MaterializationRollback {
     }
 }
 
-fn snapshot_links(operations: &[MaterializeOperation]) -> Vec<LinkSnapshot> {
-    operations
-        .iter()
-        .filter(|operation| {
-            !matches!(
-                operation.status,
-                MaterializeOperationStatus::Blocked | MaterializeOperationStatus::Existing
-            )
-        })
-        .filter_map(
-            |operation| match fs::symlink_metadata(&operation.link_path) {
-                Ok(metadata) if metadata.file_type().is_symlink() => {
-                    fs::read_link(&operation.link_path)
-                        .ok()
-                        .map(|target| LinkSnapshot {
-                            path: operation.link_path.clone(),
-                            target: Some(target),
-                        })
-                }
-                Ok(_) => None,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Some(LinkSnapshot {
-                    path: operation.link_path.clone(),
-                    target: None,
-                }),
-                Err(_) => None,
-            },
+fn snapshot_links(operations: &[MaterializeOperation]) -> DaloResult<Vec<LinkSnapshot>> {
+    let mut snapshots = Vec::new();
+    for operation in operations.iter().filter(|operation| {
+        matches!(
+            operation.kind,
+            MaterializeOperationKind::Create
+                | MaterializeOperationKind::Relink
+                | MaterializeOperationKind::Remove
+        ) && !matches!(
+            operation.status,
+            MaterializeOperationStatus::Blocked | MaterializeOperationStatus::Existing
         )
-        .collect()
+    }) {
+        let target = match fs::symlink_metadata(&operation.link_path) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                Some(fs::read_link(&operation.link_path)?)
+            }
+            Ok(_) => {
+                return Err(std::io::Error::other(format!(
+                    "cannot snapshot non-symlink materialization path {}",
+                    operation.link_path.display()
+                ))
+                .into());
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error.into()),
+        };
+        snapshots.push(LinkSnapshot {
+            path: operation.link_path.clone(),
+            target,
+        });
+    }
+    Ok(snapshots)
 }
 
 fn desired_links(state: &StateFile, resolution: &Resolution) -> Vec<DesiredLink> {
@@ -957,6 +966,25 @@ mod tests {
                 .owned_skills
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn snapshot_links_should_fail_before_apply_when_a_path_cannot_be_inspected() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let parent = temp_dir.path().join("not-a-directory");
+        fs::write(&parent, "file").expect("parent file should be written");
+        let operations = vec![MaterializeOperation {
+            kind: MaterializeOperationKind::Create,
+            link_path: parent.join("review"),
+            desired_path: Some(PathBuf::from("/store/review")),
+            status: MaterializeOperationStatus::Applied,
+            reason: None,
+        }];
+
+        let error = snapshot_links(&operations)
+            .expect_err("an unreadable rollback path must prevent apply");
+
+        assert!(!error.to_string().is_empty());
     }
 
     #[test]

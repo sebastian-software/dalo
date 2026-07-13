@@ -327,10 +327,17 @@ where
         });
     }
 
-    // A checkout not referenced by config can only be debris from an interrupted
-    // add in an older Dalo version. It is inside Dalo's owned source directory,
-    // so remove it before retrying instead of permanently wedging `source add`.
+    // Legacy interrupted clones were written directly to `checkout`. Only remove
+    // an obviously incomplete directory: a Git checkout may contain uncommitted
+    // or locally committed user work after config repair, so leave it untouched
+    // and require an explicit recovery decision.
     if checkout.exists() {
+        if checkout.join(".git").exists() {
+            return Err(DaloError::InvalidStorePath {
+                path: checkout,
+                reason: "unconfigured Git checkout exists; restore its source config or move/remove it before retrying".to_owned(),
+            });
+        }
         std::fs::remove_dir_all(&checkout)?;
     }
     let temporary_checkout =
@@ -683,6 +690,32 @@ mod tests {
 
         assert!(report.source.path.join(".git").is_dir());
         assert!(!report.source.path.join("PARTIAL").exists());
+    }
+
+    #[test]
+    fn add_team_source_should_not_remove_an_unconfigured_git_checkout() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root);
+        let checkout = paths.sources_dir.join("company").join("checkout");
+        std::fs::create_dir_all(checkout.join(".git")).expect("git checkout should be created");
+        std::fs::write(checkout.join("LOCAL"), "keep this work")
+            .expect("local work marker should be written");
+
+        let error = add_team_source_with_config_writer_and_cloner(
+            &paths,
+            "company",
+            "https://example.invalid/company.git",
+            false,
+            store::write_config,
+            |_, _| panic!("a preserved checkout must not be replaced"),
+        )
+        .expect_err("unconfigured Git checkout should require explicit recovery");
+
+        assert!(matches!(error, DaloError::InvalidStorePath { .. }));
+        assert!(checkout.join("LOCAL").is_file());
+        assert!(error.to_string().contains("restore its source config"));
     }
 
     #[test]

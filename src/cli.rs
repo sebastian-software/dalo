@@ -646,22 +646,12 @@ fn run_sync(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
         &degraded_sources,
     )?;
     if !options.dry_run {
+        let previous = previous.expect("non-dry-run sync reads the user lock before materializing");
         let mut lock = lockfile::build_user_lock(&config.sources, &live.resolution, Some(&report));
         // Instruction packs are owned by the `instructions` command; preserve them
         // across a sync instead of dropping them.
-        lock.active_instruction_packs = previous
-            .expect("non-dry-run sync reads the user lock before materializing")
-            .active_instruction_packs;
-        if let Err(error) = store::write_user_lock(&paths, &lock) {
-            if let Some(rollback) = rollback
-                && let Err(rollback_error) = rollback.restore(&paths)
-            {
-                return Err(DaloError::Io(std::io::Error::other(format!(
-                    "{error}; additionally failed to roll back sync: {rollback_error}"
-                ))));
-            }
-            return Err(error);
-        }
+        lock.active_instruction_packs = previous.active_instruction_packs.clone();
+        write_sync_lock_with_rollback(&paths, &previous, &lock, rollback, store::write_user_lock)?;
     }
 
     if options.json {
@@ -677,6 +667,38 @@ fn run_sync(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
     }
 
     Ok(())
+}
+
+fn write_sync_lock_with_rollback<F>(
+    paths: &store::StorePaths,
+    previous: &lockfile::UserLock,
+    next: &lockfile::UserLock,
+    rollback: Option<materialize::MaterializationRollback>,
+    mut write_lock: F,
+) -> DaloResult<()>
+where
+    F: FnMut(&store::StorePaths, &lockfile::UserLock) -> DaloResult<()>,
+{
+    let Err(error) = write_lock(paths, next) else {
+        return Ok(());
+    };
+
+    let mut recovery_errors = Vec::new();
+    if let Some(rollback) = rollback
+        && let Err(rollback_error) = rollback.restore(paths)
+    {
+        recovery_errors.push(format!("roll back sync: {rollback_error}"));
+    }
+    if let Err(lock_error) = write_lock(paths, previous) {
+        recovery_errors.push(format!("restore previous lock: {lock_error}"));
+    }
+    if recovery_errors.is_empty() {
+        return Err(error);
+    }
+    Err(DaloError::Io(std::io::Error::other(format!(
+        "{error}; additionally failed to {}",
+        recovery_errors.join("; ")
+    ))))
 }
 
 fn sync_requires_review(report: &materialize::SyncReport) -> bool {
@@ -1231,6 +1253,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
+
     use super::*;
 
     #[test]
@@ -1244,5 +1268,46 @@ mod tests {
         };
 
         assert!(run_cli(cli).is_ok());
+    }
+
+    #[test]
+    fn sync_lock_failure_should_restore_the_previous_lock() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = store::StorePaths::new(store_root);
+        let previous = lockfile::UserLock {
+            schema_version: lockfile::USER_LOCK_SCHEMA_VERSION,
+            active_instruction_packs: vec![lockfile::LockedInstructionPack {
+                source_id: "local".to_owned(),
+                pack_id: "old".to_owned(),
+                target: PathBuf::from("/tmp/old"),
+                commit: None,
+                version: Some("1".to_owned()),
+            }],
+            ..lockfile::UserLock::default()
+        };
+        let next = lockfile::UserLock {
+            schema_version: lockfile::USER_LOCK_SCHEMA_VERSION,
+            ..lockfile::UserLock::default()
+        };
+        store::write_user_lock(&paths, &previous).expect("previous lock should be written");
+        let writes = Cell::new(0);
+
+        let error = write_sync_lock_with_rollback(&paths, &previous, &next, None, |paths, lock| {
+            if writes.get() == 0 {
+                writes.set(1);
+                store::write_user_lock(paths, lock)?;
+                return Err(DaloError::Io(std::io::Error::other("late lock failure")));
+            }
+            store::write_user_lock(paths, lock)
+        })
+        .expect_err("late lock failure should restore the previous lock");
+
+        assert!(error.to_string().contains("late lock failure"));
+        assert_eq!(
+            store::read_user_lock(&paths).expect("previous lock should be restored"),
+            previous
+        );
     }
 }
