@@ -182,8 +182,28 @@ pub fn materialize_with_degraded_sources_rollback(
             }
         }
     } else {
-        apply_plan(paths, &mut state, &mut operations, &desired_links)?;
-        store::write_state(paths, &state)?;
+        if let Err(error) = apply_plan(paths, &mut state, &mut operations, &desired_links) {
+            if let Some(rollback) = rollback
+                && let Err(rollback_error) = rollback.restore(paths)
+            {
+                return Err(std::io::Error::other(format!(
+                    "{error}; additionally failed to roll back sync: {rollback_error}"
+                ))
+                .into());
+            }
+            return Err(error);
+        }
+        if let Err(error) = store::write_state(paths, &state) {
+            if let Some(rollback) = rollback
+                && let Err(rollback_error) = rollback.restore(paths)
+            {
+                return Err(std::io::Error::other(format!(
+                    "{error}; additionally failed to roll back sync: {rollback_error}"
+                ))
+                .into());
+            }
+            return Err(error);
+        }
     }
 
     Ok((
@@ -880,6 +900,57 @@ mod tests {
             .expect("rollback should succeed");
 
         assert!(!target_dir.join("review").exists());
+        assert!(
+            store::read_state(&paths)
+                .expect("state should be readable")
+                .owned_skills
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn materialize_should_roll_back_links_when_apply_fails_midway() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let first_target = temp_dir.path().join("a-target");
+        let failing_target = temp_dir.path().join("z-target");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        fs::create_dir_all(&first_target).expect("first target should be created");
+        fs::write(&failing_target, "not a directory").expect("failing target should be written");
+        let skill_dir = store_root.join("local/skills/review");
+        fs::create_dir_all(&skill_dir).expect("skill should be created");
+        let paths = StorePaths::new(store_root);
+        let mut state = store::read_state(&paths).expect("state should be readable");
+        state.targets = vec![
+            TargetState {
+                id: "first".to_owned(),
+                path: first_target.clone(),
+                canonical_path: first_target.clone(),
+                enabled: true,
+            },
+            TargetState {
+                id: "failing".to_owned(),
+                path: failing_target.clone(),
+                canonical_path: failing_target.clone(),
+                enabled: true,
+            },
+        ];
+        state.materialization_dirs = vec![
+            MaterializationDirState {
+                path: first_target.clone(),
+                logical_targets: vec!["first".to_owned()],
+            },
+            MaterializationDirState {
+                path: failing_target,
+                logical_targets: vec!["failing".to_owned()],
+            },
+        ];
+        store::write_state(&paths, &state).expect("state should be written");
+
+        let _error = materialize(&paths, &resolution_with_skill("review", &skill_dir), false)
+            .expect_err("second target should fail during apply");
+
+        assert!(!first_target.join("review").exists());
         assert!(
             store::read_state(&paths)
                 .expect("state should be readable")

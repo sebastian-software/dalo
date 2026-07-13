@@ -598,12 +598,14 @@ fn run_sync(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
         Some(store::read_user_lock(&paths)?)
     };
     let config = store::read_config(&paths)?;
-    if !options.dry_run {
-        source::refresh_tracking_team_sources_from_config(&config)?;
-    }
+    let refresh_failures = if options.dry_run {
+        Vec::new()
+    } else {
+        source::refresh_tracking_team_sources_from_config(&config)?
+    };
     let approvals = store::read_approvals(&paths)?;
     let live = resolver::resolve_from_config(&config, approvals.approvals);
-    let degraded_sources = live
+    let mut degraded_sources = live
         .scans
         .iter()
         .filter(|scan| {
@@ -622,6 +624,21 @@ fn run_sync(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
                 .unwrap_or_else(|| "inventory warnings make removals unsafe".to_owned()),
         })
         .collect::<Vec<_>>();
+    for failure in refresh_failures {
+        if let Some(existing) = degraded_sources
+            .iter_mut()
+            .find(|source| source.id == failure.id)
+        {
+            existing.reason = format!("{}; {}", existing.reason, failure.reason);
+        } else {
+            degraded_sources.push(materialize::DegradedSource {
+                id: failure.id,
+                path: failure.path,
+                reason: failure.reason,
+            });
+        }
+    }
+    degraded_sources.sort_by(|left, right| left.id.cmp(&right.id));
     let (report, rollback) = materialize::materialize_with_degraded_sources_rollback(
         &paths,
         &live.resolution,

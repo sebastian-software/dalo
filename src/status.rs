@@ -502,6 +502,9 @@ pub fn print_sync_report(report: &SyncReport) {
             reason
         );
     }
+    for source in &report.degraded_sources {
+        println!("degraded source: {} ({})", source.id, source.reason);
+    }
 }
 
 /// Print a human-readable source add report.
@@ -668,6 +671,9 @@ pub fn print_adopt_report(report: &AdoptReport) {
         report.local_path.display()
     );
     println!("replacement: {}", report.replacement.as_str());
+    if let Some(next_step) = report.next_step.as_deref() {
+        println!("note: {next_step}");
+    }
 }
 
 /// Print a human-readable resolve list report.
@@ -723,6 +729,9 @@ pub fn print_keep_report(report: &KeepReport) {
         "protected"
     };
     println!("{status} {}", report.skill.path.display());
+    if let Some(warning) = report.warning.as_deref() {
+        println!("warning: {warning}");
+    }
 }
 
 /// Print a human-readable remove-owned report.

@@ -41,6 +41,9 @@ pub struct AdoptReport {
     pub copy: AdoptCopyStatus,
     /// Optional replacement status.
     pub replacement: AdoptReplacementStatus,
+    /// Action needed when the original unmanaged skill remains at the same slot.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_step: Option<String>,
 }
 
 /// Copy status for adoption.
@@ -165,6 +168,9 @@ pub struct KeepReport {
     pub existing: bool,
     /// Whether the command ran as dry-run.
     pub dry_run: bool,
+    /// Warning when a managed local skill still targets the protected slot.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
 }
 
 /// Remove-owned report.
@@ -324,6 +330,12 @@ pub fn adopt_skill(
     };
 
     Ok(AdoptReport {
+        next_step: (!replace_original).then(|| {
+            format!(
+                "the original remains at this slot; run `dalo adopt {} --replace` or remove it before the next sync",
+                skill.id
+            )
+        }),
         slot_name: skill.slot_name,
         source_path: skill.path,
         local_path,
@@ -378,10 +390,22 @@ pub fn keep_unmanaged_skill(
         store::write_state(paths, &state)?;
     }
 
+    let local_copy = paths
+        .local_skills_dir
+        .join(&skill.slot_name)
+        .join(SKILL_FILE);
+    let warning = local_copy.is_file().then(|| {
+        format!(
+            "a local managed skill also targets this slot; protection preserves the conflict until you run `dalo resolve adopt {} --replace` or remove the original",
+            skill.id
+        )
+    });
+
     Ok(KeepReport {
         skill,
         existing,
         dry_run,
+        warning,
     })
 }
 
@@ -648,18 +672,49 @@ fn remove_owned_link(record: &OwnedSkillState, dry_run: bool) -> DaloResult<Remo
 }
 
 fn copy_dir(source: &Path, destination: &Path) -> DaloResult<()> {
-    fs::create_dir_all(destination)?;
+    copy_dir_with(source, destination, |source, destination| {
+        fs::copy(source, destination)
+    })
+}
+
+fn copy_dir_with<F>(source: &Path, destination: &Path, mut copy_file: F) -> DaloResult<()>
+where
+    F: FnMut(&Path, &Path) -> io::Result<u64>,
+{
+    let parent = destination.parent().ok_or_else(|| {
+        DaloError::Io(io::Error::other(format!(
+            "cannot create an adoption copy without a parent for {}",
+            destination.display()
+        )))
+    })?;
+    fs::create_dir_all(parent)?;
+    let name = destination
+        .file_name()
+        .unwrap_or_else(|| std::ffi::OsStr::new("skill"));
+    let temporary = tempfile::Builder::new()
+        .prefix(&format!(".{}.dalo-adopting-", name.to_string_lossy()))
+        .tempdir_in(parent)?;
+    copy_dir_contents(source, temporary.path(), &mut copy_file)?;
+    fs::rename(temporary.path(), destination)?;
+    Ok(())
+}
+
+fn copy_dir_contents<F>(source: &Path, destination: &Path, copy_file: &mut F) -> DaloResult<()>
+where
+    F: FnMut(&Path, &Path) -> io::Result<u64>,
+{
     for entry in fs::read_dir(source)? {
         let entry = entry?;
         let source_path = entry.path();
         let destination_path = destination.join(entry.file_name());
         let file_type = entry.file_type()?;
         if file_type.is_dir() {
-            copy_dir(&source_path, &destination_path)?;
+            fs::create_dir(&destination_path)?;
+            copy_dir_contents(&source_path, &destination_path, copy_file)?;
         } else if file_type.is_symlink() {
             unix_fs::symlink(fs::read_link(&source_path)?, destination_path)?;
         } else {
-            fs::copy(source_path, destination_path)?;
+            copy_file(&source_path, &destination_path)?;
         }
     }
     Ok(())
@@ -820,6 +875,23 @@ mod tests {
                 .is_symlink()
         );
         assert!(!target.join("review.dalo-adopting").exists());
+    }
+
+    #[test]
+    fn copy_dir_should_not_leave_a_partial_destination_when_copying_fails() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let source = temp_dir.path().join("source");
+        let destination = temp_dir.path().join("local/review");
+        fs::create_dir_all(&source).expect("source should be created");
+        fs::write(source.join(SKILL_FILE), "# Review\n").expect("skill file should be written");
+
+        let error = copy_dir_with(&source, &destination, |_, _| {
+            Err(io::Error::other("injected copy failure"))
+        })
+        .expect_err("injected copy failure should abort adoption");
+
+        assert!(error.to_string().contains("injected copy failure"));
+        assert!(!destination.exists());
     }
 
     #[test]

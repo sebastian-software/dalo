@@ -1,6 +1,6 @@
 //! Source definitions and source operations.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -80,6 +80,17 @@ pub struct SourceAddReport {
     pub source: SourceConfig,
     /// Whether the command ran as dry-run.
     pub dry_run: bool,
+}
+
+/// Tracking source that could not be refreshed during sync.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrackingSourceRefreshFailure {
+    /// Configured source ID.
+    pub id: String,
+    /// Local checkout path.
+    pub path: PathBuf,
+    /// Actionable refresh failure detail.
+    pub reason: String,
 }
 
 /// Source list report.
@@ -289,13 +300,6 @@ where
     }
 
     let checkout = paths.sources_dir.join(id).join("checkout");
-    if checkout.exists() {
-        return Err(DaloError::InvalidStorePath {
-            path: checkout,
-            reason: "source checkout path already exists".to_owned(),
-        });
-    }
-
     let priority = config
         .sources
         .iter()
@@ -323,11 +327,25 @@ where
         });
     }
 
+    // A checkout not referenced by config can only be debris from an interrupted
+    // add in an older Dalo version. It is inside Dalo's owned source directory,
+    // so remove it before retrying instead of permanently wedging `source add`.
+    if checkout.exists() {
+        std::fs::remove_dir_all(&checkout)?;
+    }
+    let temporary_checkout =
+        checkout.with_file_name(format!(".checkout-tmp-{}", std::process::id()));
+    if temporary_checkout.exists() {
+        std::fs::remove_dir_all(&temporary_checkout)?;
+    }
     if let Some(parent) = checkout.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    clone_repo(url, &checkout).inspect_err(|_| {
-        let _ = std::fs::remove_dir_all(&checkout);
+    clone_repo(url, &temporary_checkout).inspect_err(|_| {
+        let _ = std::fs::remove_dir_all(&temporary_checkout);
+    })?;
+    std::fs::rename(&temporary_checkout, &checkout).inspect_err(|_| {
+        let _ = std::fs::remove_dir_all(&temporary_checkout);
     })?;
 
     // From here on the checkout exists on disk. If persisting the source fails,
@@ -431,7 +449,9 @@ pub fn set_source_priority(
 /// Refresh clean tracking team sources before sync.
 ///
 /// Missing or unknown update policies are treated as pinned and are not pulled.
-pub fn refresh_tracking_team_sources(paths: &StorePaths) -> DaloResult<()> {
+pub fn refresh_tracking_team_sources(
+    paths: &StorePaths,
+) -> DaloResult<Vec<TrackingSourceRefreshFailure>> {
     let config = store::read_config(paths)?;
     refresh_tracking_team_sources_from_config(&config)
 }
@@ -439,21 +459,53 @@ pub fn refresh_tracking_team_sources(paths: &StorePaths) -> DaloResult<()> {
 /// Refresh clean tracking team sources from an already-read config.
 ///
 /// Missing or unknown update policies are treated as pinned and are not pulled.
-pub fn refresh_tracking_team_sources_from_config(config: &UserConfig) -> DaloResult<()> {
+pub fn refresh_tracking_team_sources_from_config(
+    config: &UserConfig,
+) -> DaloResult<Vec<TrackingSourceRefreshFailure>> {
+    refresh_tracking_team_sources_with(config, git::is_dirty, git::pull_ff_only)
+}
+
+fn refresh_tracking_team_sources_with<D, P>(
+    config: &UserConfig,
+    mut is_dirty: D,
+    mut pull_ff_only: P,
+) -> DaloResult<Vec<TrackingSourceRefreshFailure>>
+where
+    D: FnMut(&Path) -> DaloResult<bool>,
+    P: FnMut(&Path) -> DaloResult<()>,
+{
+    let mut failures = Vec::new();
     for source in config.sources.iter().filter(|source| {
         source.enabled
             && source.kind == SourceKind::Team
             && source.update_policy.as_deref() == Some("track")
     }) {
-        if git::is_dirty(&source.path)? {
-            return Err(DaloError::DirtySource {
-                source_id: source.id.clone(),
+        match is_dirty(&source.path) {
+            Ok(true) => {
+                return Err(DaloError::DirtySource {
+                    source_id: source.id.clone(),
+                });
+            }
+            Ok(false) => {}
+            Err(error) => {
+                failures.push(TrackingSourceRefreshFailure {
+                    id: source.id.clone(),
+                    path: source.path.clone(),
+                    reason: format!("could not inspect tracking checkout: {error}"),
+                });
+                continue;
+            }
+        }
+        if let Err(error) = pull_ff_only(&source.path) {
+            failures.push(TrackingSourceRefreshFailure {
+                id: source.id.clone(),
+                path: source.path.clone(),
+                reason: format!("could not refresh tracking source: {error}"),
             });
         }
-        git::pull_ff_only(&source.path)?;
     }
 
-    Ok(())
+    Ok(failures)
 }
 
 #[cfg(test)]
@@ -611,6 +663,90 @@ mod tests {
         assert!(!checkout.exists());
         let config = store::read_config(&paths).expect("config should remain readable");
         assert!(!config.sources.iter().any(|source| source.id == "company"));
+    }
+
+    #[test]
+    fn add_team_source_should_replace_an_orphaned_legacy_checkout() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let repo = temp_dir.path().join("team-repo");
+        create_git_repo(&repo);
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root);
+        let checkout = paths.sources_dir.join("company").join("checkout");
+        std::fs::create_dir_all(&checkout).expect("legacy checkout should be created");
+        std::fs::write(checkout.join("PARTIAL"), "interrupted clone")
+            .expect("legacy marker should be written");
+
+        let report = add_team_source(&paths, "company", &repo.to_string_lossy(), false)
+            .expect("orphaned checkout should not block a retry");
+
+        assert!(report.source.path.join(".git").is_dir());
+        assert!(!report.source.path.join("PARTIAL").exists());
+    }
+
+    #[test]
+    fn refresh_tracking_sources_should_degrade_pull_failures_but_keep_going() {
+        let source_path = PathBuf::from("/store/sources/company/checkout");
+        let config = UserConfig {
+            version: 1,
+            settings: crate::config::Settings {
+                autosync: false,
+                sync_interval: None,
+            },
+            sources: vec![SourceConfig {
+                id: "company".to_owned(),
+                kind: SourceKind::Team,
+                path: source_path.clone(),
+                priority: 10,
+                enabled: true,
+                trusted: true,
+                url: Some("https://example.invalid/company.git".to_owned()),
+                branch: None,
+                update_policy: Some("track".to_owned()),
+                selection: Vec::new(),
+            }],
+        };
+
+        let failures = refresh_tracking_team_sources_with(
+            &config,
+            |_| Ok(false),
+            |_| Err(DaloError::Io(std::io::Error::other("network unavailable"))),
+        )
+        .expect("an unavailable remote should be represented as a degraded source");
+
+        assert_eq!(failures.len(), 1);
+        assert_eq!(failures[0].id, "company");
+        assert_eq!(failures[0].path, source_path);
+        assert!(failures[0].reason.contains("network unavailable"));
+    }
+
+    #[test]
+    fn refresh_tracking_sources_should_still_stop_for_a_dirty_checkout() {
+        let config = UserConfig {
+            version: 1,
+            settings: crate::config::Settings {
+                autosync: false,
+                sync_interval: None,
+            },
+            sources: vec![SourceConfig {
+                id: "company".to_owned(),
+                kind: SourceKind::Team,
+                path: PathBuf::from("/store/sources/company/checkout"),
+                priority: 10,
+                enabled: true,
+                trusted: true,
+                url: Some("https://example.invalid/company.git".to_owned()),
+                branch: None,
+                update_policy: Some("track".to_owned()),
+                selection: Vec::new(),
+            }],
+        };
+
+        let error = refresh_tracking_team_sources_with(&config, |_| Ok(true), |_| Ok(()))
+            .expect_err("dirty checkouts must still block sync");
+
+        assert!(matches!(error, DaloError::DirtySource { .. }));
     }
 
     #[test]

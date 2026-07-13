@@ -241,7 +241,9 @@ pub fn inventory_degrades_source_for_removal(inventory: &SourceInventory) -> boo
     inventory.warnings.iter().any(|warning| {
         matches!(
             warning.code,
-            InventoryWarningCode::UnreadablePath | InventoryWarningCode::InvalidSlotName
+            InventoryWarningCode::UnreadablePath
+                | InventoryWarningCode::InvalidSlotName
+                | InventoryWarningCode::SkippedSymlink
         )
     })
 }
