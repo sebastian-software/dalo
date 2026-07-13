@@ -108,7 +108,9 @@ JSON output shape: `SourceAddReport`.
 
 ### `dalo source add-catalog <id> <git-url>`
 
-Add a trusted catalog source, clone it into `sources/<id>/checkout`, and configure it with `update_policy = "pin"`. Catalog skills are offers; nothing from a catalog becomes active until selected.
+Add an untrusted catalog source, clone it into `sources/<id>/checkout`, and
+configure it with `update_policy = "pin"`. Catalog skills are offers; nothing
+from a catalog becomes active until selected and approved.
 
 Examples:
 
@@ -176,7 +178,10 @@ JSON output shape: `CatalogSelectReport`.
 
 ### `dalo source refresh <id>`
 
-Fetch a catalog source and compare the upstream inventory with the pinned inventory snapshot. This is read-only for pins and selections. `--check` is still accepted for compatibility. Advancing the pin is not implemented yet.
+Fetch a catalog source and compare the upstream inventory with the pinned
+inventory snapshot. This is read-only for pins and selections. `--check` exits
+non-zero when selected skills drifted upstream. Advancing the pin is not
+implemented yet.
 
 Examples:
 
@@ -703,7 +708,11 @@ If `name` is absent, the directory name is the slot name. Duplicate slot names w
 
 ## Instruction Packs
 
-Instruction packs are Markdown files in `local/instructions/<id>.md` or `<source>/instructions/<id>.md`. Pack IDs use the same safe token rule as source IDs: letters, digits, `.`, `_`, and `-`, excluding `.` and `..`.
+Instruction packs are Markdown files in `local/instructions/<id>.md` or
+`<source>/instructions/<id>.md`. Dalo discovers both locations, but
+`instructions enable` currently reads only local packs; source packs are
+discovery-only. Pack IDs use the same safe token rule as source IDs: letters,
+digits, `.`, `_`, and `-`, excluding `.` and `..`.
 
 Dalo currently reads optional leading metadata lines from the first five lines:
 

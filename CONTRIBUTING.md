@@ -13,16 +13,21 @@ Useful project references:
 
 ## Development Setup
 
-Install the Rust toolchain used by the project, then run:
+Install the Rust toolchain used by the project and Node.js 24, then run the
+checks that CI runs on every supported OS:
 
 ```sh
 cargo fmt --check
 cargo test
+sh tests/install.sh
+sh tests/docs.sh
+(cd npm && npm test)
 cargo clippy --all-targets --all-features -- -D warnings
-cargo run -- --help
+cargo build --release
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
 ```
 
-CI also runs:
+The MSRV, dependency-audit, and coverage jobs additionally run:
 
 ```sh
 cargo build --release
@@ -36,6 +41,12 @@ Use `git diff --check` before opening a PR to catch whitespace issues.
 ## Testing Expectations
 
 Run the narrowest useful validation while developing, then run the relevant full checks before opening a PR.
+
+For a fast command-level loop, run a focused integration test such as:
+
+```sh
+cargo test --test cli -- source_refresh
+```
 
 - Code formatting changes should pass `cargo fmt --check`.
 - Behavior changes should pass `cargo test`.

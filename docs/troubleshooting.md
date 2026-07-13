@@ -23,11 +23,11 @@ dalo --json doctor
 | `dirty_source` | A Git-backed source has local edits. Team sources block refresh when dirty. | Commit, stash, discard, or promote the edits outside Dalo. Then run `dalo sync`. |
 | `lock drift` | Live resolution differs from the last `lock.toml`. | Run `dalo status` to inspect the drift, then `dalo sync` when the change is expected. |
 | `StoreLocked`, error text `another dalo operation is running` | Another Dalo command currently owns `.lock`, or a stale lock file remains. | Wait for the other command. If no Dalo process is running, inspect and remove the stale `.lock` file in the store. |
-| `owned_path_real_entry` | Dalo has an ownership record, but a real file or directory now exists at that path. | Run `dalo resolve remove-owned <slot>`. Dalo drops the ownership record and leaves the real entry intact. |
-| `missing_owned_symlink`, `broken_owned_symlink`, `foreign_owned_symlink` | A recorded owned symlink is missing, broken, or points outside the store. | Run `dalo resolve remove-owned <slot>`, then `dalo sync` if the skill should be linked again. |
+| `owned_path_real_entry` | Dalo has an ownership record, but a real file or directory now exists at that path. | Run `dalo resolve remove-owned <id>`. Dalo drops the ownership record and leaves the real entry intact. |
+| `missing_owned_symlink`, `broken_owned_symlink`, `foreign_owned_symlink` | A recorded owned symlink is missing, broken, or points outside the store. | Run `dalo resolve remove-owned <id>`, then `dalo sync` if the skill should be linked again. |
 | `instruction_block_drift` | A managed instruction block is missing, malformed, stale, or points to a missing pack. | Re-render with `dalo instructions enable <pack> <file>`, or disable with `dalo instructions disable <pack> <file>` if no longer wanted. |
 | `selected_removed` from catalog drift | A selected catalog skill disappeared upstream. | Unselect it with `dalo source select <catalog> --unselect <skill>`, or wait for a catalog fix before syncing. |
-| `source refresh (advancing the pin)` is not implemented | `dalo source refresh <id>` was run without `--check`. | Use `dalo source refresh <id> --check`. Pin advancement is a later workflow. |
+| catalog drift | A catalog's upstream inventory differs from its pinned snapshot. | Run `dalo source refresh <id>` to inspect it. Add `--check` when scripts should fail for changed, moved, or removed selected skills. Pin advancement is a later workflow. |
 
 ## Status Codes
 
@@ -143,10 +143,10 @@ Doctor includes `ok` and `info` codes as well as warnings/errors. Codes not list
 | `local_git_missing` | error | Run `dalo init` to restore the local source Git repository. |
 | `target_missing` | warning | Recreate the directory or run `dalo target link <target> [path]`. |
 | `cloud_synced_target` | warning | Prefer a non-cloud-synced target path if sync software interferes with symlinks. |
-| `foreign_owned_symlink` | error | Run `dalo resolve remove-owned <slot>`. |
-| `broken_owned_symlink` | error | Run `dalo resolve remove-owned <slot>`, then `dalo sync` if it should be recreated. |
-| `owned_path_real_entry` | error | Run `dalo resolve remove-owned <slot>`; the real entry stays in place. |
-| `missing_owned_symlink` | warning | Run `dalo resolve remove-owned <slot>`, then `dalo sync` if needed. |
+| `foreign_owned_symlink` | error | Run `dalo resolve remove-owned <id>`. |
+| `broken_owned_symlink` | error | Run `dalo resolve remove-owned <id>`, then `dalo sync` if it should be recreated. |
+| `owned_path_real_entry` | error | Run `dalo resolve remove-owned <id>`; the real entry stays in place. |
+| `missing_owned_symlink` | warning | Run `dalo resolve remove-owned <id>`, then `dalo sync` if needed. |
 | `dirty_source` | error for team/catalog, warning for local | Commit, stash, discard, or intentionally keep local work before syncing. |
 | `pending_approval` | warning | Add the needed approval or leave the skill pending. |
 | `required_closure_blocked` | error | Resolve the closure block reason shown in the message. |

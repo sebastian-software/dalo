@@ -6,7 +6,7 @@ Useful checks:
 
 - `dalo status --check --json` reports resolution and fails when the state needs review.
 - `dalo doctor --check --json` reports health and fails on error findings.
-- `dalo source refresh <catalog> --check` checks catalog drift without advancing the pin and fails for changed, moved, or removed selected skills.
+- `dalo source refresh <catalog> --check` checks catalog drift read-only and fails for changed, moved, or removed selected skills.
 
 ## Example GitHub Actions job
 
@@ -22,11 +22,20 @@ on:
 jobs:
   dalo:
     runs-on: ubuntu-latest
+    env:
+      DALO_STORE: ${{ runner.temp }}/dalo-store
     steps:
       - uses: actions/checkout@v7
 
       - name: Install dalo
         run: cargo install dalo
+
+      - name: Configure a temporary Dalo store
+        run: |
+          dalo init
+          dalo target link generic "$RUNNER_TEMP/dalo-skills"
+          dalo source add project .
+          dalo sync
 
       - name: Check dalo status
         run: dalo status --check --json > dalo-status.json
@@ -34,6 +43,10 @@ jobs:
       - name: Check dalo health
         run: dalo doctor --check --json > dalo-doctor.json
 ```
+
+The checkout in this example is a local Git source. Replace `.` with the path
+or URL of the skill repository that the workflow should validate. The temporary
+store and generic target keep the check isolated from any runner state.
 
 ## Exit codes
 
@@ -48,7 +61,8 @@ Treat `1` as a user-actionable configuration or drift problem, `3` as a safety s
 
 ## Catalog drift
 
-For catalog sources, use the read-only refresh check:
+For catalog sources, use the read-only refresh check. `--check` changes only
+the exit status; neither form advances the catalog pin:
 
 ```sh
 dalo source refresh company-catalog --check
