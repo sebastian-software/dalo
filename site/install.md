@@ -50,8 +50,8 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
    binary under `~/.cache/dalo`:
 
    ```sh
-   npx dalo --version
-   # or: npm install --global dalo
+   npx getdalo --version
+   # or: npm install --global getdalo
    ```
 
    If the user wants a custom location, set `DALO_INSTALL_DIR`:
@@ -113,4 +113,4 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
 - Windows is not supported yet. Recommend WSL for Windows users.
 - If the installer cannot resolve a release or checksum, stop and show the error instead of downloading from an unofficial mirror.
 - To remove a cached npm binary, delete `~/.cache/dalo`; uninstall a global
-  launcher with `npm uninstall --global dalo`.
+  launcher with `npm uninstall --global getdalo`.
