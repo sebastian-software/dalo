@@ -494,9 +494,13 @@ fn run_sync(options: &GlobalOptions) -> DaloResult<()> {
         .map(|scan| materialize::DegradedSource {
             id: scan.source.id.clone(),
             path: scan.source.path.clone(),
+            reason: scan
+                .error
+                .clone()
+                .unwrap_or_else(|| "inventory warnings make removals unsafe".to_owned()),
         })
         .collect::<Vec<_>>();
-    let report = materialize::materialize_with_degraded_sources(
+    let (report, rollback) = materialize::materialize_with_degraded_sources_rollback(
         &paths,
         &live.resolution,
         options.dry_run,
@@ -509,7 +513,16 @@ fn run_sync(options: &GlobalOptions) -> DaloResult<()> {
         lock.active_instruction_packs = previous
             .expect("non-dry-run sync reads the user lock before materializing")
             .active_instruction_packs;
-        store::write_user_lock(&paths, &lock)?;
+        if let Err(error) = store::write_user_lock(&paths, &lock) {
+            if let Some(rollback) = rollback {
+                if let Err(rollback_error) = rollback.restore(&paths) {
+                    return Err(DaloError::Io(std::io::Error::other(format!(
+                        "{error}; additionally failed to roll back sync: {rollback_error}"
+                    ))));
+                }
+            }
+            return Err(error);
+        }
     }
 
     if options.json {

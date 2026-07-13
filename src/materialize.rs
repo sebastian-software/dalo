@@ -12,12 +12,14 @@ use crate::resolver::Resolution;
 use crate::store::{self, OwnedSkillState, StateFile, StorePaths};
 
 /// Enabled source whose live scan was degraded during sync.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DegradedSource {
     /// Source ID.
     pub id: String,
     /// Source root path.
     pub path: PathBuf,
+    /// Why this source could not be treated as a complete inventory.
+    pub reason: String,
 }
 
 /// Sync and materialization report.
@@ -29,6 +31,24 @@ pub struct SyncReport {
     pub dry_run: bool,
     /// Planned and applied operations.
     pub operations: Vec<MaterializeOperation>,
+    /// Resolution used to build this plan, including pending and blocked skills.
+    pub resolution: Resolution,
+    /// Sources whose scan was incomplete, so stale links were preserved.
+    pub degraded_sources: Vec<DegradedSource>,
+}
+
+/// In-memory rollback data for a materialization pass that has not yet committed
+/// its companion user lock.
+#[derive(Debug)]
+pub struct MaterializationRollback {
+    state: StateFile,
+    links: Vec<LinkSnapshot>,
+}
+
+#[derive(Debug)]
+struct LinkSnapshot {
+    path: PathBuf,
+    target: Option<PathBuf>,
 }
 
 /// One materialization operation.
@@ -130,9 +150,26 @@ pub fn materialize_with_degraded_sources(
     dry_run: bool,
     degraded_sources: &[DegradedSource],
 ) -> DaloResult<SyncReport> {
+    let (report, _) =
+        materialize_with_degraded_sources_rollback(paths, resolution, dry_run, degraded_sources)?;
+    Ok(report)
+}
+
+/// Materialize while retaining rollback data until the caller commits related
+/// durable artifacts such as the user lock.
+pub fn materialize_with_degraded_sources_rollback(
+    paths: &StorePaths,
+    resolution: &Resolution,
+    dry_run: bool,
+    degraded_sources: &[DegradedSource],
+) -> DaloResult<(SyncReport, Option<MaterializationRollback>)> {
     let mut state = store::read_state(paths)?;
     let desired_links = desired_links(&state, resolution);
     let mut operations = build_plan(paths, &state, &desired_links, degraded_sources)?;
+    let rollback = (!dry_run).then(|| MaterializationRollback {
+        state: state.clone(),
+        links: snapshot_links(&operations),
+    });
 
     if dry_run {
         for operation in &mut operations {
@@ -147,11 +184,75 @@ pub fn materialize_with_degraded_sources(
         store::write_state(paths, &state)?;
     }
 
-    Ok(SyncReport {
-        store: paths.root.clone(),
-        dry_run,
-        operations,
-    })
+    Ok((
+        SyncReport {
+            store: paths.root.clone(),
+            dry_run,
+            operations,
+            resolution: resolution.clone(),
+            degraded_sources: degraded_sources.to_vec(),
+        },
+        rollback,
+    ))
+}
+
+impl MaterializationRollback {
+    /// Restore owned links and state after a later command-level commit fails.
+    pub fn restore(self, paths: &StorePaths) -> DaloResult<()> {
+        for snapshot in self.links {
+            match fs::symlink_metadata(&snapshot.path) {
+                Ok(metadata) if metadata.file_type().is_symlink() => {
+                    fs::remove_file(&snapshot.path)?
+                }
+                Ok(_) => {
+                    return Err(std::io::Error::other(format!(
+                        "cannot roll back {}; it was replaced with a non-symlink entry",
+                        snapshot.path.display()
+                    ))
+                    .into());
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+            if let Some(target) = snapshot.target {
+                if let Some(parent) = snapshot.path.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                unix_fs::symlink(target, snapshot.path)?;
+            }
+        }
+        store::write_state(paths, &self.state)
+    }
+}
+
+fn snapshot_links(operations: &[MaterializeOperation]) -> Vec<LinkSnapshot> {
+    operations
+        .iter()
+        .filter(|operation| {
+            !matches!(
+                operation.status,
+                MaterializeOperationStatus::Blocked | MaterializeOperationStatus::Existing
+            )
+        })
+        .filter_map(
+            |operation| match fs::symlink_metadata(&operation.link_path) {
+                Ok(metadata) if metadata.file_type().is_symlink() => {
+                    fs::read_link(&operation.link_path)
+                        .ok()
+                        .map(|target| LinkSnapshot {
+                            path: operation.link_path.clone(),
+                            target: Some(target),
+                        })
+                }
+                Ok(_) => None,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Some(LinkSnapshot {
+                    path: operation.link_path.clone(),
+                    target: None,
+                }),
+                Err(_) => None,
+            },
+        )
+        .collect()
 }
 
 fn desired_links(state: &StateFile, resolution: &Resolution) -> Vec<DesiredLink> {
@@ -749,6 +850,39 @@ mod tests {
             materialize(&paths, &resolution, false).expect("second materialize should succeed");
 
         assert_eq!(report.operations[0].kind, MaterializeOperationKind::NoOp);
+    }
+
+    #[test]
+    fn materialize_rollback_should_restore_links_and_state() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let target_dir = temp_dir.path().join("target");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        fs::create_dir_all(&target_dir).expect("target should be created");
+        let skill_dir = store_root.join("local/skills/review");
+        fs::create_dir_all(&skill_dir).expect("skill should be created");
+        write_state_with_target(&store_root, &target_dir);
+        let paths = StorePaths::new(store_root);
+
+        let (_, rollback) = materialize_with_degraded_sources_rollback(
+            &paths,
+            &resolution_with_skill("review", &skill_dir),
+            false,
+            &[],
+        )
+        .expect("materialize should succeed");
+        rollback
+            .expect("non-dry-run materialization should be reversible")
+            .restore(&paths)
+            .expect("rollback should succeed");
+
+        assert!(!target_dir.join("review").exists());
+        assert!(
+            store::read_state(&paths)
+                .expect("state should be readable")
+                .owned_skills
+                .is_empty()
+        );
     }
 
     #[test]

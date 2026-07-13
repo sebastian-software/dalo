@@ -15,6 +15,9 @@ const execFileAsync = promisify(execFile);
 test('maps supported Node platforms to release targets', () => {
   assert.equal(targetFor('darwin', 'arm64'), 'aarch64-apple-darwin');
   assert.equal(targetFor('linux', 'x64'), 'x86_64-unknown-linux-gnu');
+  assert.equal(targetFor('linux', 'x64', 'musl'), 'x86_64-unknown-linux-musl');
+  assert.equal(targetFor('linux', 'arm64', 'musl'), 'aarch64-unknown-linux-musl');
+  assert.throws(() => targetFor('linux', 'x64', 'other'), /supported values are gnu and musl/);
   assert.throws(() => targetFor('win32', 'x64'), /unsupported platform/);
 });
 
@@ -55,6 +58,42 @@ test('downloads, verifies, extracts, and caches a matching release archive', asy
     const binary = await ensureBinary({ tag: `dalo-v${version}`, target, cacheRoot });
     assert.equal(await fs.readFile(binary, 'utf8'), '#!/bin/sh\necho dalo\n');
     assert.equal(await ensureBinary({ tag: `dalo-v${version}`, target, cacheRoot }), binary);
+  } finally {
+    global.fetch = originalFetch;
+    if (originalBaseUrl === undefined) delete process.env.DALO_RELEASE_BASE_URL;
+    else process.env.DALO_RELEASE_BASE_URL = originalBaseUrl;
+    await fs.rm(temp, { recursive: true, force: true });
+  }
+});
+
+test('repairs a truncated or non-executable cache entry', async () => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'dalo-npm-test-'));
+  const target = 'x86_64-unknown-linux-gnu';
+  const version = '0.6.0';
+  const packageName = `dalo-${version}-${target}`;
+  const packageDir = path.join(temp, packageName);
+  const cacheRoot = path.join(temp, 'cache');
+  const archive = path.join(temp, `${packageName}.tar.gz`);
+  const originalFetch = global.fetch;
+  const originalBaseUrl = process.env.DALO_RELEASE_BASE_URL;
+  try {
+    await fs.mkdir(packageDir);
+    await fs.writeFile(path.join(packageDir, 'dalo'), '#!/bin/sh\necho dalo\n', { mode: 0o755 });
+    await execFileAsync('tar', ['-C', temp, '-czf', archive, packageName]);
+    const archiveBytes = await fs.readFile(archive);
+    const checksum = createHash('sha256').update(archiveBytes).digest('hex');
+    const binary = path.join(cacheRoot, version, target, 'dalo');
+    await fs.mkdir(path.dirname(binary), { recursive: true });
+    await fs.writeFile(binary, 'partial', { mode: 0o644 });
+    process.env.DALO_RELEASE_BASE_URL = 'https://releases.example.test';
+    global.fetch = async (url) => new Response(
+      url.endsWith('.sha256') ? `${checksum}  ${path.basename(archive)}\n` : archiveBytes,
+      { status: 200 }
+    );
+    const repaired = await ensureBinary({ tag: `dalo-v${version}`, target, cacheRoot });
+    assert.equal(repaired, binary);
+    assert.ok((await fs.stat(binary)).mode & 0o100);
+    assert.ok((await fs.stat(binary)).size >= 1024 || (await fs.readFile(binary, 'utf8')).startsWith('#!'));
   } finally {
     global.fetch = originalFetch;
     if (originalBaseUrl === undefined) delete process.env.DALO_RELEASE_BASE_URL;

@@ -26,14 +26,31 @@ detect_target() {
   case "$os:$arch" in
     Darwin:x86_64) echo "x86_64-apple-darwin" ;;
     Darwin:arm64) echo "aarch64-apple-darwin" ;;
-    Linux:x86_64) echo "${DALO_LINUX_LIBC:-x86_64-unknown-linux-gnu}" ;;
-    Linux:aarch64 | Linux:arm64) echo "${DALO_LINUX_LIBC:-aarch64-unknown-linux-gnu}" ;;
+    Linux:x86_64) echo "x86_64-unknown-linux-$(detect_linux_libc)" ;;
+    Linux:aarch64 | Linux:arm64) echo "aarch64-unknown-linux-$(detect_linux_libc)" ;;
     *)
       echo "dalo installer: unsupported platform: $os $arch" >&2
       echo "Supported targets: x86_64/aarch64 Linux and macOS." >&2
       exit 1
       ;;
   esac
+}
+
+detect_linux_libc() {
+  libc="${DALO_LINUX_LIBC:-}"
+  if [ -n "$libc" ]; then
+    case "$libc" in
+      gnu | musl) echo "$libc"; return ;;
+      *) echo "dalo installer: invalid DALO_LINUX_LIBC value: $libc (use gnu or musl)" >&2; exit 1 ;;
+    esac
+  fi
+  if command -v ldd >/dev/null 2>&1 && ldd --version 2>&1 | grep -qi musl; then
+    echo musl
+  elif ls /lib/ld-musl-*.so.1 >/dev/null 2>&1; then
+    echo musl
+  else
+    echo gnu
+  fi
 }
 
 sha_check() {

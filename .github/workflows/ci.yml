@@ -36,6 +36,14 @@ jobs:
       - name: Installer test
         run: sh tests/install.sh
 
+      - name: npm wrapper test
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: npm test
+        run: cd npm && npm test
+
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
