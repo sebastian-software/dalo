@@ -11,6 +11,8 @@ grep -q 'dalo approve skill' "$root/docs/troubleshooting.md"
 grep -q 'dalo approve skill' "$root/docs/getting-started.md"
 grep -q 'dalo approve skill' "$root/site/index.html"
 grep -q 'dalo source add-catalog public' "$root/docs/getting-started.md"
+grep -q 'git -C "\$TEAM_REPO" -c commit.gpgSign=false' "$root/docs/getting-started.md"
+grep -q 'git -C "\$CATALOG_REPO" -c commit.gpgSign=false' "$root/docs/getting-started.md"
 grep -q 'dalo target link generic "\$RUNNER_TEMP/dalo-skills"' "$root/docs/ci.md"
 grep -q 'sh tests/docs.sh' "$root/CONTRIBUTING.md"
 
