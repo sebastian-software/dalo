@@ -72,11 +72,11 @@ Adopted skills live in the local source under the store. Back up anything in `lo
 If installed through npm:
 
 ```sh
-npm uninstall --global dalo
+npm uninstall --global getdalo
 rm -rf ~/.cache/dalo
 ```
 
-`npx dalo` does not install a global launcher, but it uses the same cache; remove
+`npx getdalo` does not install a global launcher, but it uses the same cache; remove
 `~/.cache/dalo` if you no longer want the downloaded release binary.
 
 If installed through Cargo:
