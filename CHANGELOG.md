@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.1](https://github.com/sebastian-software/dalo/compare/dalo-v0.6.0...dalo-v0.6.1) (2026-07-13)
+
+
+### Bug Fixes
+
+* **installer:** make cosign optional ([a950484](https://github.com/sebastian-software/dalo/commit/a9504847d818a1e46d4e520fcb3de1b11666a6b7))
+* **release:** use organization release token ([6e98eab](https://github.com/sebastian-software/dalo/commit/6e98eab6e9e0ebed26e03435b173934548659d31))
+
 ## [0.6.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.5.0...dalo-v0.6.0) (2026-07-10)
 
 
