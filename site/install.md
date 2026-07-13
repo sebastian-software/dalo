@@ -8,7 +8,8 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
 - Do not modify shell startup files automatically.
 - Do not touch real agent skill folders until the user confirms which agent target to link.
 - Prefer the official installer at `https://dalo.sh/install.sh`.
-- Require `cosign` before using the installer; it verifies the release's Sigstore bundle and GitHub Actions identity.
+- The installer always verifies the release checksum and additionally verifies
+  Sigstore provenance when `cosign` is available.
 - Verify the installed binary with `dalo --version` and `dalo doctor`.
 
 ## Steps
@@ -22,10 +23,16 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
 
 2. Install the latest release:
 
-   First install [Cosign](https://docs.sigstore.dev/cosign/system_config/installation/) if it is not already available, then run:
-
    ```sh
    curl -fsSL https://dalo.sh/install.sh | sh
+   ```
+
+   For environments that require Sigstore provenance verification, first
+   install [Cosign](https://docs.sigstore.dev/cosign/system_config/installation/)
+   and use strict verification:
+
+   ```sh
+   curl -fsSL https://dalo.sh/install.sh | DALO_VERIFY=required sh
    ```
 
    Or, when the user manages command-line tools with mise, install the GitHub

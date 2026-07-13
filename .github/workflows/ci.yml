@@ -33,6 +33,9 @@ jobs:
       - name: Test
         run: cargo test
 
+      - name: Installer test
+        run: sh tests/install.sh
+
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
