@@ -73,7 +73,8 @@ cosign_output="${test_root}/cosign-output"
 run_install "$cosign_path" "${test_root}/cosign-bin" "$cosign_output" \
   DALO_COSIGN_LOG="${test_root}/cosign.log"
 test -x "${test_root}/cosign-bin/dalo"
-grep -q -- '--certificate-identity' "${test_root}/cosign.log"
+grep -q -- '--certificate-identity-regexp' "${test_root}/cosign.log"
+grep -Fq -- 'workflows/(release-please|publish)\.yml@refs/heads/main' "${test_root}/cosign.log"
 grep -q -- '--certificate-oidc-issuer' "${test_root}/cosign.log"
 
 missing_bundle_output="${test_root}/missing-bundle-output"

@@ -141,7 +141,7 @@ fi
   if [ "$verify_bundle" -eq 1 ]; then
     cosign verify-blob "$archive" \
       --bundle "${archive}.sigstore.json" \
-      --certificate-identity "https://github.com/sebastian-software/dalo/.github/workflows/release-please.yml@refs/heads/main" \
+      --certificate-identity-regexp '^https://github\.com/sebastian-software/dalo/\.github/workflows/(release-please|publish)\.yml@refs/heads/main$' \
       --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
   fi
   tar xzf "$archive"
