@@ -55,6 +55,9 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      # npm exchanges this GitHub Actions OIDC token for a short-lived publish
+      # credential. No NPM_TOKEN is required or consumed.
+      id-token: write
     steps:
       - name: Checkout release tag
         uses: actions/checkout@v7
@@ -66,14 +69,13 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
+          package-manager-cache: false
 
       - name: Publish npm wrapper
         shell: bash
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
         run: |
-          test -n "$NODE_AUTH_TOKEN"
           case "$TAG_NAME" in
             dalo-v*) version="${TAG_NAME#dalo-v}" ;;
             v*) version="${TAG_NAME#v}" ;;

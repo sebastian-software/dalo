@@ -1,9 +1,12 @@
 {
   "name": "dalo",
-  "version": "0.0.0-development",
+  "version": "0.6.1",
   "description": "Cross-platform npm launcher for Dalo",
   "license": "MIT",
-  "repository": "github:sebastian-software/dalo",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sebastian-software/dalo.git"
+  },
   "bin": {
     "dalo": "bin/dalo.js"
   },
@@ -14,6 +17,10 @@
   ],
   "engines": {
     "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
     "test": "node --test"
