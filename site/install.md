@@ -107,7 +107,19 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
    dalo target link generic /path/to/skills
    ```
 
-8. Run a final health check:
+8. Optionally try a real public catalog. This selects one skill from
+   [Sebastian's skill catalog](https://github.com/sebastian-software/skills.sebastian-software.com),
+   then asks for the narrowest explicit approval before it can be linked:
+
+   ```sh
+   dalo source add-catalog sebastian https://github.com/sebastian-software/skills.sebastian-software.com.git
+   dalo source inspect sebastian
+   dalo source select sebastian github-pr-auto-review
+   dalo approve skill sebastian:github-pr-auto-review
+   dalo sync
+   ```
+
+9. Run a final health check:
 
    ```sh
    dalo status
