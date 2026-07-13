@@ -77,8 +77,12 @@ grep -q -- '--certificate-identity' "${test_root}/cosign.log"
 grep -q -- '--certificate-oidc-issuer' "${test_root}/cosign.log"
 
 missing_bundle_output="${test_root}/missing-bundle-output"
-run_install "$cosign_path" "${test_root}/missing-bundle-bin" "$missing_bundle_output" \
-  DALO_FAKE_MISSING_BUNDLE=1
+if ! run_install "$cosign_path" "${test_root}/missing-bundle-bin" "$missing_bundle_output" \
+  DALO_FAKE_MISSING_BUNDLE=1; then
+  echo "auto-mode missing-bundle install failed:" >&2
+  sed -n '1,120p' "$missing_bundle_output" >&2
+  exit 1
+fi
 test -x "${test_root}/missing-bundle-bin/dalo"
 grep -q 'no Sigstore bundle for dalo-v9.8.7; falling back to checksum-only verification' "$missing_bundle_output"
 

@@ -44,7 +44,9 @@ if [ -z "$output" ] || [ -z "$url" ]; then
 fi
 
 asset="${url##*/}"
-if [ "${DALO_FAKE_MISSING_BUNDLE:-}" = "1" ] && [ "$asset" = *.sigstore.json ]; then
-  exit 22
+if [ "${DALO_FAKE_MISSING_BUNDLE:-}" = "1" ]; then
+  case "$asset" in
+    *.sigstore.json) exit 22 ;;
+  esac
 fi
 cp "${DALO_INSTALLER_FIXTURES}/${asset}" "$output"
