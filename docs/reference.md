@@ -191,6 +191,27 @@ JSON output shape: `CatalogDrift`.
 With `--check`, the command exits with code 1 when a selected skill changed,
 moved, or was removed upstream. New unselected offerings remain informational.
 
+### `dalo source remove <id>`
+
+Remove a team or catalog source as one coordinated change. Dalo first reconciles
+only links it owns, then removes the source from `config.toml`, its catalog lock
+entry (when present), and approvals qualified with that source ID. The source
+checkout is removed after the durable store state is committed. Use
+`--keep-checkout` to retain it for manual inspection. The built-in `local`
+source cannot be removed.
+
+Examples:
+
+```sh
+dalo --dry-run --json source remove platform
+dalo source remove public
+dalo source remove public --keep-checkout
+```
+
+The dry-run JSON `SourceRemoveReport` lists the store artifacts and owned target
+links that would be affected. It does not modify config, locks, approvals,
+checkouts, or targets.
+
 ### `dalo status`
 
 Show source scans, active skills, pending approvals, unlinked skills, user-lock drift, unmanaged target skills, instruction packs, topic overlaps, and instruction block drift.

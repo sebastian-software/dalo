@@ -4,10 +4,11 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::catalog::{self, SourceLock};
 use crate::config::UserConfig;
 use crate::error::{DaloError, DaloResult};
 use crate::git;
-use crate::store::{self, StorePaths};
+use crate::store::{self, ApprovalsFile, StorePaths};
 
 /// Source kind supported by the V1 config schema.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -95,6 +96,117 @@ pub struct SourcePriorityReport {
     pub source: SourceConfig,
     /// Whether the command ran as dry-run.
     pub dry_run: bool,
+}
+
+/// All validated data needed to remove one non-local source safely.
+#[derive(Debug, Clone)]
+pub struct SourceRemovalPlan {
+    /// Configuration before removal.
+    pub original_config: UserConfig,
+    /// Catalog lock before removal.
+    pub original_source_lock: SourceLock,
+    /// Approval records before removal.
+    pub original_approvals: ApprovalsFile,
+    /// Configuration after removal.
+    pub config: UserConfig,
+    /// Catalog lock after removal.
+    pub source_lock: SourceLock,
+    /// Approval records after removal.
+    pub approvals: ApprovalsFile,
+    /// User-facing report before materialized links are added.
+    pub report: SourceRemoveReport,
+}
+
+/// Result of removing a source.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SourceRemoveReport {
+    /// Removed source ID.
+    pub source_id: String,
+    /// Checkout path associated with the source.
+    pub checkout_path: PathBuf,
+    /// Whether the checkout was retained at the user's request.
+    pub kept_checkout: bool,
+    /// Number of source-scoped approval records removed.
+    pub removed_approvals: usize,
+    /// Whether a catalog lock entry was removed.
+    pub removed_catalog_lock: bool,
+    /// Owned target links reconciled during removal.
+    pub reconciled_links: Vec<PathBuf>,
+    /// Durable store artifacts that the removal updates or cleans up.
+    pub affected_paths: Vec<PathBuf>,
+    /// Whether the command ran as dry-run.
+    pub dry_run: bool,
+}
+
+/// Validate and prepare every durable artifact for source removal.
+pub fn plan_remove_source(
+    paths: &StorePaths,
+    id: &str,
+    keep_checkout: bool,
+    dry_run: bool,
+) -> DaloResult<SourceRemovalPlan> {
+    let original_config = store::read_config(paths)?;
+    let source = original_config
+        .sources
+        .iter()
+        .find(|source| source.id == id)
+        .cloned()
+        .ok_or_else(|| DaloError::UnknownSource {
+            source_id: id.to_owned(),
+        })?;
+    if source.kind == SourceKind::Local {
+        return Err(DaloError::InvalidSourceId {
+            id: id.to_owned(),
+            reason: "the built-in local source cannot be removed".to_owned(),
+        });
+    }
+    let original_source_lock = catalog::read_source_lock(paths)?;
+    let original_approvals = store::read_approvals(paths)?;
+    let mut config = original_config.clone();
+    config.sources.retain(|candidate| candidate.id != id);
+    sort_sources(&mut config.sources);
+    let mut source_lock = original_source_lock.clone();
+    let before_catalogs = source_lock.catalogs.len();
+    source_lock.catalogs.retain(|entry| entry.source_id != id);
+    let removed_catalog_lock = source_lock.catalogs.len() != before_catalogs;
+    let mut approvals = original_approvals.clone();
+    let source_prefix = format!("{id}:");
+    let before_approvals = approvals.approvals.len();
+    approvals.approvals.retain(|approval| {
+        !(approval.value.starts_with(&source_prefix)
+            || approval.scope == "source" && approval.value == id)
+    });
+    let removed_approvals = before_approvals - approvals.approvals.len();
+
+    let mut affected_paths = vec![
+        paths.config_file.clone(),
+        paths.source_lock_file.clone(),
+        paths.approvals_file.clone(),
+        paths.lock_file.clone(),
+        paths.state_file.clone(),
+    ];
+    if !keep_checkout {
+        affected_paths.push(source.path.clone());
+    }
+
+    Ok(SourceRemovalPlan {
+        original_config,
+        original_source_lock,
+        original_approvals,
+        config,
+        source_lock,
+        approvals,
+        report: SourceRemoveReport {
+            source_id: id.to_owned(),
+            checkout_path: source.path,
+            kept_checkout: keep_checkout,
+            removed_approvals,
+            removed_catalog_lock,
+            reconciled_links: Vec::new(),
+            affected_paths,
+            dry_run,
+        },
+    })
 }
 
 /// Sort source configs by precedence and then stable ID.
