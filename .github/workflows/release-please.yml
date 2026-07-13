@@ -49,7 +49,7 @@ jobs:
 
   publish-npm:
     name: Publish npm wrapper
-    needs: release-please
+    needs: [release-please, release-artifacts]
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -81,6 +81,9 @@ jobs:
           esac
           cd npm
           npm version "$version" --no-git-tag-version
+          npm test
+          npm pack --dry-run
+          DALO_VERSION="$TAG_NAME" node -e "require('./lib/release').ensureBinary().then(binary => require('node:child_process').execFileSync(binary, ['--version'], { stdio: 'inherit' }))"
           npm publish --access public
 
   release-artifacts:

@@ -255,6 +255,11 @@ pub fn select_skills(
         resolved.push(resolve_candidate_reference(id, &candidates, reference)?);
     }
 
+    // Validate and snapshot every durable input before changing either config or
+    // the catalog lock. This keeps a malformed lock from becoming a partial
+    // selection update and gives us a rollback baseline for a later config write.
+    let original_lock = read_source_lock(paths)?;
+    let mut lock = original_lock.clone();
     let mut config = store::read_config(paths)?;
     let source = config
         .sources
@@ -275,11 +280,6 @@ pub fn select_skills(
     source.selection.dedup();
     let selected = source.selection.clone();
     if !dry_run {
-        store::write_config(paths, &config)?;
-    }
-
-    if !dry_run {
-        let mut lock = read_source_lock(paths)?;
         let commit = git::rev_parse_head(&source_path)?;
         let inventory = if let Some(index) = lock
             .catalogs
@@ -317,6 +317,14 @@ pub fn select_skills(
         }
         lock.schema_version = SOURCE_LOCK_SCHEMA_VERSION;
         write_source_lock(paths, &lock)?;
+        if let Err(error) = store::write_config(paths, &config) {
+            if let Err(rollback) = write_source_lock(paths, &original_lock) {
+                return Err(DaloError::Io(std::io::Error::other(format!(
+                    "{error}; additionally failed to roll back source lock: {rollback}"
+                ))));
+            }
+            return Err(error);
+        }
     }
 
     Ok(CatalogSelectReport {

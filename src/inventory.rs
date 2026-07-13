@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::DaloResult;
 
@@ -75,7 +75,8 @@ pub enum InventoryWarningCode {
     UnreadablePath,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 struct SkillFrontmatter {
     id: Option<String>,
     name: Option<String>,
@@ -199,6 +200,11 @@ fn scan_skill(
     let skill_file = skill_dir.join(SKILL_FILE);
     let skill_markdown = fs::read_to_string(&skill_file)?;
     let (frontmatter, mut warnings) = parse_frontmatter(&skill_markdown, &skill_file);
+    let Some(frontmatter) = frontmatter else {
+        // Metadata participates in stable identity, approvals, and required
+        // closure. Never silently activate a skill after losing those fields.
+        return Ok((None, warnings));
+    };
     let folder_name = skill_dir
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
@@ -228,7 +234,10 @@ fn scan_skill(
     ))
 }
 
-fn parse_frontmatter(markdown: &str, path: &Path) -> (SkillFrontmatter, Vec<InventoryWarning>) {
+fn parse_frontmatter(
+    markdown: &str,
+    path: &Path,
+) -> (Option<SkillFrontmatter>, Vec<InventoryWarning>) {
     let mut warnings = Vec::new();
     // Accept both LF and CRLF after the opening `---` fence so skills authored
     // on Windows parse the same as Unix ones.
@@ -236,7 +245,7 @@ fn parse_frontmatter(markdown: &str, path: &Path) -> (SkillFrontmatter, Vec<Inve
         .strip_prefix("---\n")
         .or_else(|| markdown.strip_prefix("---\r\n"));
     let Some(rest) = opened else {
-        return (SkillFrontmatter::default(), warnings);
+        return (Some(SkillFrontmatter::default()), warnings);
     };
 
     let Some(end_index) = frontmatter_end_index(rest) else {
@@ -245,153 +254,21 @@ fn parse_frontmatter(markdown: &str, path: &Path) -> (SkillFrontmatter, Vec<Inve
             path: path.to_path_buf(),
             message: "frontmatter start marker has no matching end marker".to_owned(),
         });
-        return (SkillFrontmatter::default(), warnings);
+        return (None, warnings);
     };
 
     let frontmatter = &rest[..end_index];
-    match parse_frontmatter_fields(frontmatter) {
-        Ok(frontmatter) => (frontmatter, warnings),
+    match serde_yaml::from_str(frontmatter) {
+        Ok(frontmatter) => (Some(frontmatter), warnings),
         Err(error) => {
             warnings.push(InventoryWarning {
                 code: InventoryWarningCode::MalformedFrontmatter,
                 path: path.to_path_buf(),
-                message: error,
+                message: error.to_string(),
             });
-            (SkillFrontmatter::default(), warnings)
+            (None, warnings)
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FrontmatterList {
-    Requires,
-    Owners,
-    Tags,
-    Ignore,
-}
-
-fn parse_frontmatter_fields(frontmatter: &str) -> Result<SkillFrontmatter, String> {
-    let mut parsed = SkillFrontmatter::default();
-    let mut active_list: Option<FrontmatterList> = None;
-
-    for line in frontmatter.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-
-        if line.starts_with(' ') || line.starts_with('\t') {
-            let Some(list) = active_list else {
-                return Err(format!("unsupported indented frontmatter line `{trimmed}`"));
-            };
-            let Some(item) = trimmed.strip_prefix("- ") else {
-                if list == FrontmatterList::Ignore {
-                    continue;
-                }
-                return Err(format!(
-                    "expected list item in frontmatter line `{trimmed}`"
-                ));
-            };
-            let value = parse_scalar(item);
-            match list {
-                FrontmatterList::Requires => parsed.requires.push(value),
-                FrontmatterList::Owners => parsed.owners.push(value),
-                FrontmatterList::Tags => parsed.tags.push(value),
-                FrontmatterList::Ignore => {}
-            }
-            continue;
-        }
-
-        active_list = None;
-        let Some((raw_key, raw_value)) = trimmed.split_once(':') else {
-            return Err(format!(
-                "expected `key: value` frontmatter line `{trimmed}`"
-            ));
-        };
-        let key = raw_key.trim();
-        let value = raw_value.trim();
-
-        match key {
-            "id" => parsed.id = non_empty_scalar(value),
-            "name" => parsed.name = non_empty_scalar(value),
-            "description" => parsed.description = non_empty_scalar(value),
-            "requires" => parse_list_value(
-                value,
-                FrontmatterList::Requires,
-                &mut parsed.requires,
-                &mut active_list,
-            )?,
-            "owners" => parse_list_value(
-                value,
-                FrontmatterList::Owners,
-                &mut parsed.owners,
-                &mut active_list,
-            )?,
-            "tags" => parse_list_value(
-                value,
-                FrontmatterList::Tags,
-                &mut parsed.tags,
-                &mut active_list,
-            )?,
-            _ => {
-                if value.is_empty() || value == "|" || value == ">" {
-                    active_list = Some(FrontmatterList::Ignore);
-                }
-            }
-        }
-    }
-
-    Ok(parsed)
-}
-
-fn parse_list_value(
-    value: &str,
-    list: FrontmatterList,
-    output: &mut Vec<String>,
-    active_list: &mut Option<FrontmatterList>,
-) -> Result<(), String> {
-    if value.is_empty() {
-        *active_list = Some(list);
-        return Ok(());
-    }
-
-    let Some(inline) = value
-        .strip_prefix('[')
-        .and_then(|rest| rest.strip_suffix(']'))
-    else {
-        return Err(format!("expected list value, got `{value}`"));
-    };
-    for item in inline.split(',') {
-        let item = parse_scalar(item.trim());
-        if !item.is_empty() {
-            output.push(item);
-        }
-    }
-    Ok(())
-}
-
-fn non_empty_scalar(value: &str) -> Option<String> {
-    let parsed = parse_scalar(value);
-    (!parsed.is_empty()).then_some(parsed)
-}
-
-fn parse_scalar(value: &str) -> String {
-    let value = value.trim();
-    if value.len() >= 2 {
-        if let Some(stripped) = value
-            .strip_prefix('"')
-            .and_then(|rest| rest.strip_suffix('"'))
-        {
-            return stripped.to_owned();
-        }
-        if let Some(stripped) = value
-            .strip_prefix('\'')
-            .and_then(|rest| rest.strip_suffix('\''))
-        {
-            return stripped.to_owned();
-        }
-    }
-    value.to_owned()
 }
 
 fn frontmatter_end_index(rest: &str) -> Option<usize> {
@@ -563,6 +440,47 @@ mod tests {
         assert_eq!(skill.id.as_deref(), Some("team.copy-editing"));
         assert_eq!(skill.requires, ["style-guide".to_owned()]);
         assert!(inventory.warnings.is_empty());
+    }
+
+    #[test]
+    fn scan_source_should_parse_yaml_frontmatter_and_preserve_dependencies() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("app");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        fs::write(
+            skill_dir.join(SKILL_FILE),
+            "---\nid: example.app\nname: app\ndescription: >-\n  A valid folded YAML description.\nrequires: [missing-base]\nowners:\n  - \"team docs\"\nextra:\n  nested: accepted\n---\n# App\n",
+        )
+        .expect("skill file should be written");
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should succeed");
+
+        assert_eq!(inventory.skills[0].id.as_deref(), Some("example.app"));
+        assert_eq!(inventory.skills[0].requires, ["missing-base"]);
+        assert_eq!(
+            inventory.skills[0].description.as_deref(),
+            Some("A valid folded YAML description.")
+        );
+    }
+
+    #[test]
+    fn scan_source_should_skip_malformed_frontmatter() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("app");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        fs::write(
+            skill_dir.join(SKILL_FILE),
+            "---\nname: [unterminated\n---\n# App\n",
+        )
+        .expect("skill file should be written");
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should succeed");
+
+        assert!(inventory.skills.is_empty());
+        assert_eq!(
+            inventory.warnings[0].code,
+            InventoryWarningCode::MalformedFrontmatter
+        );
     }
 
     #[test]

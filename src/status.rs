@@ -375,7 +375,27 @@ pub fn print_status_report(report: &StatusReport) {
 pub fn print_sync_report(report: &SyncReport) {
     println!("dalo store: {}", report.store.display());
     if report.operations.is_empty() {
-        println!("nothing to sync: 0 skills materialized; store is up to date");
+        if report.resolution.pending_approval_skills.is_empty()
+            && report.resolution.blocked_skills.is_empty()
+            && report.resolution.diagnostics.is_empty()
+            && report.degraded_sources.is_empty()
+        {
+            println!("nothing to sync: 0 skills materialized; store is up to date");
+        } else {
+            println!("nothing materialized: resolution is incomplete");
+            for skill in &report.resolution.pending_approval_skills {
+                println!("  pending approval: {}", skill.source_ref);
+            }
+            for blocked in &report.resolution.blocked_skills {
+                println!(
+                    "  blocked: {} requires {}",
+                    blocked.skill.source_ref, blocked.requirement
+                );
+            }
+            for source in &report.degraded_sources {
+                println!("  degraded source: {} ({})", source.id, source.reason);
+            }
+        }
         return;
     }
     for operation in &report.operations {

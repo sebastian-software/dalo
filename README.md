@@ -84,6 +84,10 @@ curl -fsSL https://dalo.sh/install.sh | DALO_VERIFY=required sh
 For systems without Homebrew, follow the official
 [Cosign installation guide](https://docs.sigstore.dev/cosign/system_config/installation/).
 
+On Linux, the installer and npm wrapper automatically choose the GNU or musl
+archive. Set `DALO_LINUX_LIBC=gnu` or `DALO_LINUX_LIBC=musl` only to override
+auto-detection in unusual environments.
+
 Set `DALO_INSTALL_DIR` to choose another binary directory.
 
 Ask your agent to install it:

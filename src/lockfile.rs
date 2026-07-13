@@ -433,6 +433,8 @@ mod tests {
             store: PathBuf::from("/store"),
             dry_run: false,
             operations: vec![operation("/target/b"), operation("/target/a")],
+            resolution: resolution.clone(),
+            degraded_sources: Vec::new(),
         };
 
         let lock = build_user_lock(&[], &resolution, Some(&report));
