@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.7.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.6.1...dalo-v0.7.0) (2026-07-13)
+
+
+### Features
+
+* add transactional source removal ([fa3dc6c](https://github.com/sebastian-software/dalo/commit/fa3dc6c5238951d3bf7730a21f39fd867205c801))
+* improve approvals and CI checks ([6828288](https://github.com/sebastian-software/dalo/commit/6828288ccc15d406c189eaee7b497d9e527692d3))
+* improve CLI status automation ([51a0012](https://github.com/sebastian-software/dalo/commit/51a0012a1e8885dd84b54432cff8af3c7a29df49))
+
+
+### Bug Fixes
+
+* address open bug reports ([2fdca9c](https://github.com/sebastian-software/dalo/commit/2fdca9c2233aae245ddd51a89bd3921bf81c45e9))
+* harden site onboarding ([fe62253](https://github.com/sebastian-software/dalo/commit/fe62253fb9d255c526a90fd005a088490ad39928))
+* initialize quickstart player ([8ee4fad](https://github.com/sebastian-software/dalo/commit/8ee4fad39c064d51299969e239d65923bffa7cfb))
+* **inventory:** parse frontmatter with yaml_serde ([8776551](https://github.com/sebastian-software/dalo/commit/8776551110886c54fbfd09d000fc66f68b0be68d))
+* publish npm package with trusted publishing ([92a53da](https://github.com/sebastian-software/dalo/commit/92a53da0f3e6b094ab0b1b9989d5c4fcd0a1fb96))
+* rename npm launcher to getdalo ([77f80e1](https://github.com/sebastian-software/dalo/commit/77f80e1fab6e91d548e9e73f0e3256890c285daa))
+* satisfy clippy rollback check ([14b85f1](https://github.com/sebastian-software/dalo/commit/14b85f1a3a9761155fd35fd731501362e74396dd))
+
 ## [0.6.1](https://github.com/sebastian-software/dalo/compare/dalo-v0.6.0...dalo-v0.6.1) (2026-07-13)
 
 
