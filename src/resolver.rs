@@ -172,6 +172,20 @@ pub enum ResolutionDiagnosticCode {
     LegacyBareApproval,
 }
 
+impl ResolutionDiagnosticCode {
+    /// Whether automation should fail until this diagnostic is addressed.
+    #[must_use]
+    pub const fn requires_review(self) -> bool {
+        matches!(
+            self,
+            Self::PendingApproval
+                | Self::CrossSourceRequire
+                | Self::RequiredBlocked
+                | Self::LegacyBareApproval
+        )
+    }
+}
+
 #[derive(Debug, Clone)]
 struct Candidate {
     skill: ResolvedSkill,
@@ -833,6 +847,25 @@ mod tests {
     use super::*;
     use crate::inventory::{InventoryWarning, InventoryWarningCode, SkillRecord, SourceInventory};
     use proptest::prelude::*;
+
+    #[test]
+    fn diagnostic_review_classification_should_separate_information_from_action() {
+        for code in [
+            ResolutionDiagnosticCode::LocalOverride,
+            ResolutionDiagnosticCode::Shadowed,
+            ResolutionDiagnosticCode::RequiredExpanded,
+        ] {
+            assert!(!code.requires_review());
+        }
+        for code in [
+            ResolutionDiagnosticCode::PendingApproval,
+            ResolutionDiagnosticCode::CrossSourceRequire,
+            ResolutionDiagnosticCode::RequiredBlocked,
+            ResolutionDiagnosticCode::LegacyBareApproval,
+        ] {
+            assert!(code.requires_review());
+        }
+    }
 
     #[test]
     fn inventory_degrades_source_for_subtree_unreadable_warning() {

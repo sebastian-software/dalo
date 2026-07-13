@@ -230,7 +230,10 @@ fn status_and_sync_should_explain_missing_targets_for_active_skills() {
         .args(["sync", "--check"])
         .assert()
         .failure()
-        .code(1);
+        .code(1)
+        .stderr(predicate::str::contains(
+            "check failed: 1 active skill but no linked targets",
+        ));
 }
 
 #[test]
@@ -716,6 +719,39 @@ fn sync_should_create_directory_symlink() {
 }
 
 #[test]
+fn sync_check_should_allow_informational_local_override_diagnostics() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    setup_store_with_skill_and_target(&store, &target);
+    create_git_skill_repo_with_skill(&repo, "review", "# Team Review\n");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "company"])
+        .arg(&repo)
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["sync", "--check"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("applied"))
+        .stdout(predicate::str::contains("diagnostic: local_override"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["status", "--check"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("local_override"));
+}
+
+#[test]
 fn sync_yes_should_not_replace_unmanaged_real_directory() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -730,7 +766,8 @@ fn sync_yes_should_not_replace_unmanaged_real_directory() {
         .assert()
         .failure()
         .code(1)
-        .stdout(predicate::str::contains("conflict"));
+        .stdout(predicate::str::contains("conflict"))
+        .stderr(predicate::str::contains("1 blocked operation ("));
 
     let mut command = dalo_command();
 
@@ -3473,6 +3510,50 @@ fn catalog_selection_should_stay_pending_until_explicitly_approved() {
         .success()
         .stdout(predicate::str::contains("pending approval"))
         .stdout(predicate::str::contains("marketing:copy-editing"));
+}
+
+#[test]
+fn sync_should_print_pending_approval_beside_existing_operations_and_name_check_reason() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_skill_and_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "copy-editing"])
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["sync", "--check"])
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(predicate::str::contains("existing"))
+        .stdout(predicate::str::contains(
+            "pending approval: marketing:copy-editing",
+        ))
+        .stderr(predicate::str::contains(
+            "check failed: 1 pending approval (marketing:copy-editing)",
+        ));
 }
 
 #[test]
