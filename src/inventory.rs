@@ -73,6 +73,9 @@ pub enum InventoryWarningCode {
     DuplicateSlotName,
     /// A skill path could not be read.
     UnreadablePath,
+    /// A symlinked directory was skipped to avoid traversing outside the source
+    /// or looping through a cycle.
+    SkippedSymlink,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -185,6 +188,13 @@ fn find_skill_dirs(
             };
             if file_type.is_dir() {
                 pending.push(entry.path());
+            } else if file_type.is_symlink() && entry.path().is_dir() {
+                warnings.push(InventoryWarning {
+                    code: InventoryWarningCode::SkippedSymlink,
+                    path: entry.path(),
+                    message: "skipped symlinked directory to keep the source scan bounded"
+                        .to_owned(),
+                });
             }
         }
     }
@@ -407,6 +417,7 @@ fn warning_code_name(code: InventoryWarningCode) -> &'static str {
         InventoryWarningCode::InvalidSlotName => "invalid_slot_name",
         InventoryWarningCode::DuplicateSlotName => "duplicate_slot_name",
         InventoryWarningCode::UnreadablePath => "unreadable_path",
+        InventoryWarningCode::SkippedSymlink => "skipped_symlink",
     }
 }
 
@@ -514,6 +525,31 @@ mod tests {
             Some("Quoted text")
         );
         assert!(inventory.warnings.is_empty());
+    }
+
+    #[test]
+    fn scan_source_should_warn_when_a_skill_directory_is_symlinked() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let source_root = temp_dir.path().join("checkout");
+        let shared_skill = temp_dir.path().join("shared-review");
+        fs::create_dir_all(&source_root).expect("source root should be created");
+        fs::create_dir_all(&shared_skill).expect("shared skill should be created");
+        fs::write(
+            shared_skill.join(SKILL_FILE),
+            "---\nname: review\n---\n# Review\n",
+        )
+        .expect("skill file should be written");
+        std::os::unix::fs::symlink(&shared_skill, source_root.join("review"))
+            .expect("skill directory should be linked");
+
+        let inventory = scan_source("team", &source_root).expect("scan should succeed");
+
+        assert!(inventory.skills.is_empty());
+        assert_eq!(inventory.warnings.len(), 1);
+        assert_eq!(
+            inventory.warnings[0].code,
+            InventoryWarningCode::SkippedSymlink
+        );
     }
 
     #[test]

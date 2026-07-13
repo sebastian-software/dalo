@@ -1134,7 +1134,10 @@ fn adopt_should_copy_unmanaged_skill_without_replacing_by_default() {
         .assert()
         .success()
         .stdout(predicate::str::contains("copied"))
-        .stdout(predicate::str::contains("replacement: skipped"));
+        .stdout(predicate::str::contains("replacement: skipped"))
+        .stdout(predicate::str::contains(
+            "run `dalo adopt review --replace`",
+        ));
 
     assert!(store.join("local/skills/review/SKILL.md").is_file());
     assert!(
@@ -1642,6 +1645,32 @@ fn resolve_keep_should_protect_unmanaged_skill() {
         .assert()
         .success()
         .stdout(predicate::str::contains("\"protected\": true"));
+}
+
+#[test]
+fn resolve_keep_should_warn_when_an_adopted_skill_still_targets_the_slot() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["adopt", "review"])
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "keep", "review"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "a local managed skill also targets this slot",
+        ));
 }
 
 #[test]
@@ -2598,7 +2627,7 @@ fn sync_should_fast_forward_tracking_team_source() {
 }
 
 #[test]
-fn sync_should_fail_cleanly_on_non_fast_forward_tracking_team_source() {
+fn sync_should_degrade_non_fast_forward_tracking_team_source() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
@@ -2655,11 +2684,18 @@ fn sync_should_fail_cleanly_on_non_fast_forward_tracking_team_source() {
         .arg(&store)
         .arg("sync")
         .assert()
+        .success()
+        .stdout(predicate::str::contains("degraded source: company"))
+        .stdout(predicate::str::contains("fast-forward"));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["sync", "--check"])
+        .assert()
         .failure()
-        .code(4)
-        .stderr(predicate::str::contains("Could not refresh this source"))
-        .stderr(predicate::str::contains("fast-forward"))
-        .stderr(predicate::str::contains("Git said:"));
+        .code(1)
+        .stdout(predicate::str::contains("degraded source: company"));
 }
 
 #[test]
