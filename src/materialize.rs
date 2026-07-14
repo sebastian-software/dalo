@@ -1,5 +1,7 @@
 //! Materialization planning and symlink reconciliation.
 
+#[cfg(test)]
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::os::unix::fs as unix_fs;
@@ -13,6 +15,11 @@ use crate::resolver::{
     ResolvedSkill, closure_block_reason_name,
 };
 use crate::store::{self, OwnedSkillState, StateFile, StorePaths};
+
+#[cfg(test)]
+thread_local! {
+    static TEST_APPLY_FAILURE_PATH: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+}
 
 /// Enabled source whose live scan was degraded during sync.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -901,6 +908,11 @@ fn apply_plan(
 }
 
 fn apply_operation(paths: &StorePaths, operation: &mut MaterializeOperation) -> DaloResult<()> {
+    #[cfg(test)]
+    if should_fail_apply_for_test(&operation.link_path) {
+        return Err(std::io::Error::other("injected apply failure").into());
+    }
+
     match operation.kind {
         MaterializeOperationKind::Create | MaterializeOperationKind::Relink => {
             if operation.status == MaterializeOperationStatus::Blocked {
@@ -956,6 +968,19 @@ fn apply_operation(paths: &StorePaths, operation: &mut MaterializeOperation) -> 
         | MaterializeOperationKind::NoOp => {}
     }
     Ok(())
+}
+
+#[cfg(test)]
+fn should_fail_apply_for_test(link_path: &Path) -> bool {
+    TEST_APPLY_FAILURE_PATH.with(|failure_path| {
+        let mut failure_path = failure_path.borrow_mut();
+        if failure_path.as_deref() == Some(link_path) {
+            failure_path.take();
+            true
+        } else {
+            false
+        }
+    })
 }
 
 fn should_preserve_recorded_operation(operation: &MaterializeOperation) -> bool {
@@ -1050,7 +1075,6 @@ fn actual_link_state(link_path: &Path) -> DaloResult<ActualLinkState> {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::os::unix::fs::PermissionsExt;
 
     use super::*;
     use crate::resolver::{Resolution, ResolvedSkill};
@@ -1424,8 +1448,6 @@ mod tests {
         store::init_store(store_root.clone(), false).expect("init should succeed");
         fs::create_dir_all(&first_target).expect("first target should be created");
         fs::create_dir_all(&failing_target).expect("failing target should be created");
-        fs::set_permissions(&failing_target, fs::Permissions::from_mode(0o555))
-            .expect("failing target should be read-only");
         let skill_dir = store_root.join("local/skills/review");
         fs::create_dir_all(&skill_dir).expect("skill should be created");
         let paths = StorePaths::new(store_root);
@@ -1459,6 +1481,9 @@ mod tests {
             },
         ];
         store::write_state(&paths, &state).expect("state should be written");
+        TEST_APPLY_FAILURE_PATH.with(|failure_path| {
+            *failure_path.borrow_mut() = Some(failing_target.join("review"));
+        });
 
         let error = materialize(&paths, &resolution_with_skill("review", &skill_dir), false)
             .expect_err("second target should fail during apply");
@@ -1473,8 +1498,6 @@ mod tests {
             error.to_string().contains("changes were rolled back"),
             "{error}"
         );
-        fs::set_permissions(&failing_target, fs::Permissions::from_mode(0o755))
-            .expect("failing target permissions should be restored");
         assert!(!first_target.join("review").exists());
         assert!(
             store::read_state(&paths)
