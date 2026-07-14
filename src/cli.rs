@@ -22,6 +22,7 @@ use crate::source;
 use crate::status;
 use crate::store;
 use crate::target;
+use crate::update;
 
 /// Parsed command-line arguments.
 #[derive(Debug, Parser)]
@@ -564,7 +565,7 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         warn_noop_dry_run(options.dry_run, options.json);
     }
 
-    match command {
+    let result = match command {
         Command::Init => run_init(&options),
         Command::Target(command) => run_target(&options, command),
         Command::Source(command) => run_source(&options, command),
@@ -579,7 +580,13 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         Command::Completions(_) | Command::Manpage => {
             unreachable!("handled before store resolution")
         }
+    };
+
+    if result.is_ok() && !options.json {
+        update::maybe_print_notice();
     }
+
+    result
 }
 
 fn warn_noop_dry_run(dry_run: bool, json: bool) {

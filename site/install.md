@@ -47,10 +47,10 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
    [Cosign installation guide](https://docs.sigstore.dev/cosign/system_config/installation/).
 
    Or, when the user manages command-line tools with mise, install the GitHub
-   release through its ubi backend:
+   release through its GitHub Releases backend:
 
    ```sh
-   mise use -g ubi:sebastian-software/dalo
+   mise use -g github:sebastian-software/dalo
    ```
 
    When the user manages CLI tools through Node.js 20 or newer, the npm launcher

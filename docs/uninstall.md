@@ -95,16 +95,21 @@ cargo uninstall dalo
 Cargo Binstall uses Cargo's installation directory as well; use the same
 `cargo uninstall dalo` command after confirming it refers to the Dalo binary.
 
-If managed by mise's ubi backend:
+If managed by mise's GitHub Releases backend:
 
 ```sh
-mise uninstall -g ubi:sebastian-software/dalo
+mise uninstall -g github:sebastian-software/dalo
 ```
+
+Older installations that still use the deprecated ubi backend can be removed
+with `mise uninstall -g ubi:sebastian-software/dalo`.
 
 If installed with the hosted installer or from a GitHub release archive, remove
 the copied `dalo` binary from wherever you placed it on `PATH` (by default,
 `~/.local/bin/dalo`). The hosted installer always verifies checksums; manual
 archives should be checksum-verified before installation as shown in the README.
+Also remove the adjacent `.dalo-install-channel` receipt when it was created by
+the hosted installer.
 
 ## 6. Final Check
 

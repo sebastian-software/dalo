@@ -18,6 +18,8 @@ Relative store paths are resolved against the current working directory. `~` is 
 | --- | --- |
 | `DALO_STORE` | Override the default store path; `--store` takes precedence. |
 | `DALO_GIT_TIMEOUT_SECS` | Positive timeout in seconds for every Git subprocess. Invalid or zero values use the built-in defaults. |
+| `DALO_OFFLINE` | Disable passive update checks when set to a truthy value. |
+| `DALO_UPDATE_CHECK` | Set to `never` to disable passive update checks. |
 | `NO_COLOR` | Disable ANSI color output when set. |
 
 For installation variables, see the [README installation section](../README.md#installation)
@@ -37,6 +39,20 @@ Global flags can be placed before or after the command.
 | `--dry-run` | Plan supported mutating operations without writing files, cloning, linking, or changing locks. Read-only commands ignore it. |
 | `-h`, `--help` | Print command help. |
 | `-V`, `--version` | Print the installed version. |
+
+## Update Notices
+
+After a successful interactive command, Dalo checks for a newer GitHub release
+at most once per 24 hours. The cached check uses a one-second network timeout and
+never changes the command's exit status. Checks are skipped for `--json`, CI,
+`DALO_OFFLINE=1`, and `DALO_UPDATE_CHECK=never`.
+
+Dalo never modifies its own executable. If the installed version is outdated,
+the notice recommends an upgrade command for Homebrew, npm/npx, mise, Cargo, or
+the hosted installer. Launchers may set `DALO_INSTALL_CHANNEL` so the Rust binary
+can preserve their installation context. Unknown installation methods receive a
+link to the installation guide instead of a guessed command. Each newer version
+is announced only once per user cache.
 
 ## Command Reference
 

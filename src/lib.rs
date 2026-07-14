@@ -32,5 +32,6 @@ pub mod status;
 pub mod store;
 pub mod target;
 pub mod term;
+pub mod update;
 
 pub use error::{DaloError, DaloResult};

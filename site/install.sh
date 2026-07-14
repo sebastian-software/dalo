@@ -148,6 +148,7 @@ fi
 )
 
 install -m 0755 "${tmp_dir}/${package}/dalo" "${install_dir}/dalo"
+printf '%s\n' standalone > "${install_dir}/.dalo-install-channel"
 
 if [ -d "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions" ]; then
   install -m 0644 "${tmp_dir}/${package}/completions/dalo.bash" \
