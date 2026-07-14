@@ -86,7 +86,8 @@ document.documentElement.classList.add("js");
     var platform = navigator.userAgentData && navigator.userAgentData.platform
       ? navigator.userAgentData.platform
       : navigator.platform || "";
-    var mobileApple = /iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+    var mobileApple = /iPhone|iPad|iPod/i.test(navigator.userAgent || "")
+      || (platform === "MacIntel" && navigator.maxTouchPoints > 1);
     return /Mac/i.test(platform) && !mobileApple ? "homebrew" : "standalone";
   }
 
@@ -99,7 +100,7 @@ document.documentElement.classList.add("js");
     document.querySelectorAll("[data-install-method]").forEach(function (button) {
       button.setAttribute("aria-pressed", button.dataset.installMethod === method ? "true" : "false");
     });
-    document.querySelectorAll("[data-copy-target]").forEach(function (button) {
+    document.querySelectorAll("[data-install-picker] [data-copy-target]").forEach(function (button) {
       setCopyState(button, false);
     });
   }

@@ -600,7 +600,7 @@ section[data-scope="dark"] { background: var(--bg); color: var(--ink); }
 @media (max-width: 420px) {
   .hero-cta { flex-direction: column; align-items: stretch; }
   .hero-cta .btn { justify-content: center; }
-  .install-methods { display: flex; border-radius: var(--r); }
+  .install-methods:not([hidden]) { display: flex; border-radius: var(--r); }
   .install-method { flex: 1 1 50%; justify-content: center; padding-inline: 0.5rem; }
   .install-method span { display: none; }
 }
