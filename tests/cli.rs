@@ -226,6 +226,63 @@ fn audit_agent_auto_should_prefer_an_enforceable_no_tool_provider() {
 }
 
 #[test]
+fn audit_agent_opencode_should_attach_snapshot_with_all_tools_denied() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let skill = temp_dir.path().join("review-helper");
+    let bin = temp_dir.path().join("bin");
+    std::fs::create_dir_all(&skill).expect("skill directory should be created");
+    std::fs::create_dir_all(&bin).expect("bin directory should be created");
+    std::fs::write(skill.join("SKILL.md"), "Summarize a pull request.\n")
+        .expect("skill should be written");
+    let fake_opencode = bin.join("opencode");
+    std::fs::write(
+        &fake_opencode,
+        r#"#!/bin/sh
+case " $* " in
+  *" --file "*) ;;
+  *) exit 8 ;;
+esac
+config=
+while IFS= read -r line || [ -n "$line" ]; do config="${config}${line}"; done < "$OPENCODE_CONFIG"
+case "$config" in
+  *'"read":"deny"'*'"external_directory":"deny"'*) ;;
+  *) exit 9 ;;
+esac
+printf '%s\n' '{"summary":"No suspicious behavior found.","findings":[],"expected_capabilities":["filesystem-read"],"expected_actions":["Read attached snapshot"],"undeclared_behaviors":[]}'
+"#,
+    )
+    .expect("fake opencode should be written");
+    let mut permissions = std::fs::metadata(&fake_opencode)
+        .expect("metadata should be readable")
+        .permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&fake_opencode, permissions)
+        .expect("fake opencode should be executable");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    dalo_command()
+        .env("PATH", &bin)
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "audit"])
+        .arg(&skill)
+        .args(["--agent", "opencode"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains(
+            "sending a bounded skill snapshot to opencode with reviewer tools disabled",
+        ))
+        .stdout(predicate::str::contains("\"provider\": \"opencode\""))
+        .stdout(predicate::str::contains("\"isolation\": \"no_tools\""));
+}
+
+#[test]
 fn help_should_explain_complex_command_values_and_examples() {
     dalo_command()
         .args(["source", "add-catalog", "--help"])
