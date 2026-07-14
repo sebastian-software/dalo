@@ -107,13 +107,14 @@ dalo sync
 `source add`, `source select`, and `approve skill` run deterministic local
 preflight checks. `sync` repeats them against the exact content about to be
 linked and blocks unaccepted `high` or `critical` findings. To accept a known
-risk for one exact content hash, provide a reason:
+risk for one exact content hash and finding set, provide a reason:
 
 ```sh
 dalo audit public:review-helper --accept-risk "reviewed pinned upstream installer"
 ```
 
-Changing any file changes the hash and invalidates that acceptance.
+Changing any file, adding findings, or upgrading an audit or review engine
+invalidates that acceptance.
 
 Use `dalo approve list` to inspect local trust rules. Broader `source`, `author`,
 and `org` approvals are available when that is the intended policy.

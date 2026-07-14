@@ -266,7 +266,8 @@ Refresh clean tracking team sources, resolve the desired skill set, materialize 
 Before materialization, Dalo audits the exact content hash of every active
 skill. Unaccepted `high` or `critical` findings stop the command before any
 links are changed. A previously recorded risk acceptance is reused only while
-the complete directory hash remains unchanged.
+the complete directory hash, audit-engine versions, coverage, and finding set
+remain unchanged.
 
 Tracking team updates are fetched and audited in a detached worktree below
 `sources/.audit-staging/` before the live checkout fast-forwards. Existing
@@ -440,8 +441,10 @@ dalo audit public:review-helper \
 
 Reports live below `audits/` and are keyed by the complete skill directory
 hash. Cached agent results additionally require the same provider and Dalo
-review-prompt version. No-finding results are best-effort observations, not a
-security certification.
+review-prompt version. Risk acceptance is bound to the engine versions,
+coverage, and exact deterministic and semantic findings, so newly discovered
+risks require a new decision even when the skill bytes did not change.
+No-finding results are best-effort observations, not a security certification.
 
 JSON output shape: `AuditReport`.
 
