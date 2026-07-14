@@ -8,9 +8,24 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { promisify } = require('node:util');
-const { ensureBinary, expectedChecksum, targetFor, versionFromTag } = require('../lib/release');
+const { version: packageVersion } = require('../package.json');
+const {
+  ensureBinary,
+  expectedChecksum,
+  formatLauncherError,
+  normalizeTag,
+  targetFor,
+  versionFromTag
+} = require('../lib/release');
 
 const execFileAsync = promisify(execFile);
+
+async function writeCachedBinary(cacheRoot, version, target) {
+  const binary = path.join(cacheRoot, version, target, 'dalo');
+  await fs.mkdir(path.dirname(binary), { recursive: true });
+  await fs.writeFile(binary, Buffer.alloc(2048, version), { mode: 0o755 });
+  return binary;
+}
 
 test('maps supported Node platforms to release targets', () => {
   assert.equal(targetFor('darwin', 'arm64'), 'aarch64-apple-darwin');
@@ -24,8 +39,96 @@ test('maps supported Node platforms to release targets', () => {
 test('parses release tags and checksum files strictly', () => {
   assert.equal(versionFromTag('dalo-v0.6.0'), '0.6.0');
   assert.equal(versionFromTag('v0.6.0'), '0.6.0');
-  assert.equal(expectedChecksum('a'.repeat(64) + '  dalo.tar.gz\n'), 'a'.repeat(64));
-  assert.throws(() => expectedChecksum('not-a-checksum\n'), /malformed/);
+  assert.equal(normalizeTag('0.6.0'), 'dalo-v0.6.0');
+  assert.equal(normalizeTag('v0.6.0'), 'dalo-v0.6.0');
+  assert.equal(normalizeTag('latest'), 'latest');
+  assert.throws(() => normalizeTag('release-0.6'), /use X\.Y\.Z/);
+  const checksums = `${'a'.repeat(64)}  other.tar.gz\n${'b'.repeat(64)} *dalo.tar.gz\n`;
+  assert.equal(expectedChecksum(checksums, 'dalo.tar.gz'), 'b'.repeat(64));
+  assert.throws(() => expectedChecksum(checksums, 'missing.tar.gz'), /no entry/);
+  assert.throws(() => expectedChecksum('not-a-checksum\n', 'dalo.tar.gz'), /malformed/);
+});
+
+test('uses the npm package version from a warm cache without network access', async () => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'dalo-npm-test-'));
+  const cacheRoot = path.join(temp, 'cache');
+  const target = 'x86_64-unknown-linux-gnu';
+  const originalFetch = global.fetch;
+  const originalVersion = process.env.DALO_VERSION;
+  try {
+    const binary = await writeCachedBinary(cacheRoot, packageVersion, target);
+    delete process.env.DALO_VERSION;
+    global.fetch = async () => {
+      throw new Error('network should not be used for a warm package-version cache');
+    };
+
+    assert.equal(await ensureBinary({ target, cacheRoot }), binary);
+  } finally {
+    global.fetch = originalFetch;
+    if (originalVersion === undefined) delete process.env.DALO_VERSION;
+    else process.env.DALO_VERSION = originalVersion;
+    await fs.rm(temp, { recursive: true, force: true });
+  }
+});
+
+test('falls back to the newest cached binary when an explicit latest lookup fails', async () => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'dalo-npm-test-'));
+  const cacheRoot = path.join(temp, 'cache');
+  const target = 'x86_64-unknown-linux-gnu';
+  const originalFetch = global.fetch;
+  const originalEmitWarning = process.emitWarning;
+  const warnings = [];
+  try {
+    await writeCachedBinary(cacheRoot, '0.9.0', target);
+    const newest = await writeCachedBinary(cacheRoot, '0.10.0', target);
+    global.fetch = async (_url, options) => {
+      assert.ok(options.signal instanceof AbortSignal);
+      throw new TypeError('fetch failed', { cause: new Error('getaddrinfo ENOTFOUND api.github.com') });
+    };
+    process.emitWarning = (warning, options) => warnings.push({ warning, options });
+
+    assert.equal(await ensureBinary({ tag: ' latest ', target, cacheRoot }), newest);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0].warning, /using cached version 0\.10\.0/);
+    assert.equal(warnings[0].options.code, 'DALO_CACHE_FALLBACK');
+  } finally {
+    global.fetch = originalFetch;
+    process.emitWarning = originalEmitWarning;
+    await fs.rm(temp, { recursive: true, force: true });
+  }
+});
+
+test('reports available cache versions when an exact download fails', async () => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'dalo-npm-test-'));
+  const cacheRoot = path.join(temp, 'cache');
+  const target = 'x86_64-unknown-linux-gnu';
+  const originalFetch = global.fetch;
+  try {
+    await writeCachedBinary(cacheRoot, '0.7.0', target);
+    global.fetch = async () => {
+      throw new TypeError('fetch failed', { cause: new Error('network unreachable') });
+    };
+
+    await assert.rejects(
+      ensureBinary({ tag: '0.8.0', target, cacheRoot }),
+      /usable cached versions for x86_64-unknown-linux-gnu: 0\.7\.0/
+    );
+  } finally {
+    global.fetch = originalFetch;
+    await fs.rm(temp, { recursive: true, force: true });
+  }
+});
+
+test('formats network causes and an actionable version hint', () => {
+  const error = new TypeError('fetch failed', {
+    cause: new Error('getaddrinfo ENOTFOUND api.github.com')
+  });
+
+  const message = formatLauncherError(error);
+
+  assert.match(message, /fetch failed: getaddrinfo ENOTFOUND api\.github\.com/);
+  assert.match(message, /DALO_VERSION to X\.Y\.Z/);
+  assert.match(message, /DALO_VERSION=latest/);
 });
 
 test('downloads, verifies, extracts, and caches a matching release archive', async () => {
@@ -45,7 +148,8 @@ test('downloads, verifies, extracts, and caches a matching release archive', asy
     const archiveBytes = await fs.readFile(archive);
     const checksum = createHash('sha256').update(archiveBytes).digest('hex');
     process.env.DALO_RELEASE_BASE_URL = 'https://releases.example.test';
-    global.fetch = async (url) => {
+    global.fetch = async (url, options) => {
+      assert.ok(options.signal instanceof AbortSignal);
       if (url.endsWith('.sha256')) {
         return new Response(`${checksum}  ${path.basename(archive)}\n`, { status: 200 });
       }
@@ -55,9 +159,9 @@ test('downloads, verifies, extracts, and caches a matching release archive', asy
       return new Response('', { status: 404 });
     };
 
-    const binary = await ensureBinary({ tag: `dalo-v${version}`, target, cacheRoot });
+    const binary = await ensureBinary({ tag: version, target, cacheRoot });
     assert.equal(await fs.readFile(binary, 'utf8'), '#!/bin/sh\necho dalo\n');
-    assert.equal(await ensureBinary({ tag: `dalo-v${version}`, target, cacheRoot }), binary);
+    assert.equal(await ensureBinary({ tag: `v${version}`, target, cacheRoot }), binary);
   } finally {
     global.fetch = originalFetch;
     if (originalBaseUrl === undefined) delete process.env.DALO_RELEASE_BASE_URL;
