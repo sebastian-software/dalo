@@ -8,7 +8,10 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::error::DaloResult;
-use crate::resolver::Resolution;
+use crate::resolver::{
+    BlockedSkill, ClosureBlockReason, Resolution, ResolutionDiagnostic, ResolutionDiagnosticCode,
+    ResolvedSkill, closure_block_reason_name,
+};
 use crate::store::{self, OwnedSkillState, StateFile, StorePaths};
 
 /// Enabled source whose live scan was degraded during sync.
@@ -166,8 +169,13 @@ pub fn materialize_with_degraded_sources_rollback(
     degraded_sources: &[DegradedSource],
 ) -> DaloResult<(SyncReport, Option<MaterializationRollback>)> {
     let mut state = store::read_state(paths)?;
-    let desired_links = desired_links(&state, resolution);
-    let mut operations = build_plan(paths, &state, &desired_links, degraded_sources)?;
+    let mut resolution = resolution.clone();
+    let mut links = desired_links(&state, &resolution);
+    let mut operations = build_plan(paths, &state, &links, degraded_sources)?;
+    while block_link_time_dependents(&mut resolution, &links, &operations) {
+        links = desired_links(&state, &resolution);
+        operations = build_plan(paths, &state, &links, degraded_sources)?;
+    }
     let rollback = if dry_run {
         None
     } else {
@@ -186,16 +194,37 @@ pub fn materialize_with_degraded_sources_rollback(
             }
         }
     } else {
-        if let Err(error) = apply_plan(paths, &mut state, &mut operations, &desired_links) {
-            if let Some(rollback) = rollback
-                && let Err(rollback_error) = rollback.restore(paths)
-            {
-                return Err(std::io::Error::other(format!(
-                    "{error}; additionally failed to roll back sync: {rollback_error}"
-                ))
-                .into());
+        loop {
+            if let Err(error) = apply_plan(paths, &mut state, &mut operations, &links) {
+                if let Some(rollback) = rollback
+                    && let Err(rollback_error) = rollback.restore(paths)
+                {
+                    return Err(std::io::Error::other(format!(
+                        "{error}; additionally failed to roll back sync: {rollback_error}"
+                    ))
+                    .into());
+                }
+                return Err(error);
             }
-            return Err(error);
+
+            if !block_link_time_dependents(&mut resolution, &links, &operations) {
+                break;
+            }
+            links = desired_links(&state, &resolution);
+            operations = match build_plan(paths, &state, &links, degraded_sources) {
+                Ok(operations) => operations,
+                Err(error) => {
+                    if let Some(rollback) = rollback
+                        && let Err(rollback_error) = rollback.restore(paths)
+                    {
+                        return Err(std::io::Error::other(format!(
+                            "{error}; additionally failed to roll back sync: {rollback_error}"
+                        ))
+                        .into());
+                    }
+                    return Err(error);
+                }
+            };
         }
         if let Err(error) = store::write_state(paths, &state) {
             if let Some(rollback) = rollback
@@ -216,7 +245,7 @@ pub fn materialize_with_degraded_sources_rollback(
             dry_run,
             linked_targets: state.targets.iter().filter(|target| target.enabled).count(),
             operations,
-            resolution: resolution.clone(),
+            resolution,
             degraded_sources: degraded_sources.to_vec(),
         },
         rollback,
@@ -254,17 +283,19 @@ impl MaterializationRollback {
 
 fn snapshot_links(operations: &[MaterializeOperation]) -> DaloResult<Vec<LinkSnapshot>> {
     let mut snapshots = Vec::new();
+    let mut seen = BTreeSet::new();
     for operation in operations.iter().filter(|operation| {
         matches!(
             operation.kind,
             MaterializeOperationKind::Create
                 | MaterializeOperationKind::Relink
                 | MaterializeOperationKind::Remove
-        ) && !matches!(
-            operation.status,
-            MaterializeOperationStatus::Blocked | MaterializeOperationStatus::Existing
-        )
+                | MaterializeOperationKind::NoOp
+        ) && operation.status != MaterializeOperationStatus::Blocked
     }) {
+        if !seen.insert(operation.link_path.clone()) {
+            continue;
+        }
         let target = match fs::symlink_metadata(&operation.link_path) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
                 Some(fs::read_link(&operation.link_path)?)
@@ -285,6 +316,102 @@ fn snapshot_links(operations: &[MaterializeOperation]) -> DaloResult<Vec<LinkSna
         });
     }
     Ok(snapshots)
+}
+
+fn block_link_time_dependents(
+    resolution: &mut Resolution,
+    desired_links: &[DesiredLink],
+    operations: &[MaterializeOperation],
+) -> bool {
+    let direct_blocked = operations
+        .iter()
+        .filter(|operation| operation.status == MaterializeOperationStatus::Blocked)
+        .filter_map(|operation| {
+            desired_links
+                .iter()
+                .find(|desired| desired.link_path == operation.link_path)
+        })
+        .filter_map(|desired| {
+            resolution.active_skills.iter().find(|skill| {
+                skill.slot_name == desired.slot_name && skill.path == desired.store_path
+            })
+        })
+        .map(|skill| skill.source_ref.clone())
+        .collect::<BTreeSet<_>>();
+
+    if direct_blocked.is_empty() {
+        return false;
+    }
+
+    let all_skills = resolution.active_skills.clone();
+    let mut unavailable = direct_blocked.clone();
+    let mut new_blocks = Vec::new();
+
+    while let Some((index, requirement, reason)) = resolution
+        .active_skills
+        .iter()
+        .enumerate()
+        .find_map(|(index, dependent)| {
+            dependent.requires.iter().find_map(|requirement| {
+                let required = all_skills.iter().find(|candidate| {
+                    candidate.source_id == dependent.source_id
+                        && requirement_matches_skill(requirement, candidate)
+                })?;
+                if dependent.source_ref == required.source_ref
+                    || !unavailable.contains(&required.source_ref)
+                {
+                    return None;
+                }
+                let reason = if direct_blocked.contains(&required.source_ref) {
+                    ClosureBlockReason::SameNameBlocked
+                } else {
+                    ClosureBlockReason::Unlinked
+                };
+                Some((index, requirement.clone(), reason))
+            })
+        })
+    {
+        let skill = resolution.active_skills.remove(index);
+        unavailable.insert(skill.source_ref.clone());
+        new_blocks.push(BlockedSkill {
+            skill,
+            requirement,
+            reason,
+        });
+    }
+
+    if new_blocks.is_empty() {
+        return false;
+    }
+
+    for block in new_blocks {
+        resolution.diagnostics.push(ResolutionDiagnostic {
+            code: ResolutionDiagnosticCode::RequiredBlocked,
+            message: format!(
+                "skill `{}` is blocked: requirement `{}` is {}",
+                block.skill.source_ref,
+                block.requirement,
+                closure_block_reason_name(block.reason)
+            ),
+            source_ref: Some(block.skill.source_ref.clone()),
+        });
+        resolution.blocked_skills.push(block);
+    }
+    resolution
+        .blocked_skills
+        .sort_by(|left, right| left.skill.source_ref.cmp(&right.skill.source_ref));
+    resolution.diagnostics.sort_by(|left, right| {
+        left.source_ref
+            .cmp(&right.source_ref)
+            .then_with(|| left.message.cmp(&right.message))
+    });
+    true
+}
+
+fn requirement_matches_skill(requirement: &str, skill: &ResolvedSkill) -> bool {
+    skill.slot_name == requirement
+        || skill.source_ref == requirement
+        || skill.id.as_deref() == Some(requirement)
 }
 
 fn desired_links(state: &StateFile, resolution: &Resolution) -> Vec<DesiredLink> {
@@ -747,6 +874,75 @@ mod tests {
             report.operations[0].kind,
             MaterializeOperationKind::Conflict
         );
+    }
+
+    #[test]
+    fn materialize_should_block_dependent_when_requirement_has_target_conflict() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let target_dir = temp_dir.path().join("target");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        fs::create_dir_all(target_dir.join("beta")).expect("unmanaged dir should be created");
+        let alpha_dir = store_root.join("team/skills/alpha");
+        let beta_dir = store_root.join("team/skills/beta");
+        fs::create_dir_all(&alpha_dir).expect("alpha should be created");
+        fs::create_dir_all(&beta_dir).expect("beta should be created");
+        write_state_with_target(&store_root, &target_dir);
+
+        let report = materialize(
+            &StorePaths::new(store_root),
+            &resolution_with_required_pair(&alpha_dir, &beta_dir),
+            false,
+        )
+        .expect("materialize should succeed");
+
+        assert!(!target_dir.join("alpha").exists());
+        assert!(target_dir.join("beta").is_dir());
+        assert_eq!(report.resolution.active_skills.len(), 1);
+        assert_eq!(
+            report.resolution.active_skills[0].source_ref,
+            "company:beta"
+        );
+        assert_eq!(report.resolution.blocked_skills.len(), 1);
+        assert_eq!(
+            report.resolution.blocked_skills[0].skill.source_ref,
+            "company:alpha"
+        );
+        assert_eq!(
+            report.resolution.blocked_skills[0].reason,
+            ClosureBlockReason::SameNameBlocked
+        );
+    }
+
+    #[test]
+    fn materialize_should_remove_existing_dependent_when_requirement_becomes_blocked() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let target_dir = temp_dir.path().join("target");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        fs::create_dir_all(&target_dir).expect("target should be created");
+        let alpha_dir = store_root.join("team/skills/alpha");
+        let beta_dir = store_root.join("team/skills/beta");
+        fs::create_dir_all(&alpha_dir).expect("alpha should be created");
+        fs::create_dir_all(&beta_dir).expect("beta should be created");
+        write_state_with_target(&store_root, &target_dir);
+        let paths = StorePaths::new(store_root);
+        let resolution = resolution_with_required_pair(&alpha_dir, &beta_dir);
+        materialize(&paths, &resolution, false).expect("first materialize should succeed");
+        fs::remove_file(target_dir.join("beta")).expect("beta link should be removed");
+        fs::create_dir(target_dir.join("beta")).expect("unmanaged beta should be created");
+
+        let report =
+            materialize(&paths, &resolution, false).expect("second materialize should succeed");
+
+        assert!(fs::symlink_metadata(target_dir.join("alpha")).is_err());
+        assert!(report.operations.iter().any(|operation| {
+            operation.link_path == target_dir.join("alpha")
+                && operation.kind == MaterializeOperationKind::Remove
+        }));
+        assert_eq!(report.resolution.blocked_skills.len(), 1);
+        let state = store::read_state(&paths).expect("state should be readable");
+        assert!(state.owned_skills.is_empty());
     }
 
     #[test]
@@ -1298,7 +1494,41 @@ mod tests {
                 source_priority: 0,
                 path: path.to_path_buf(),
                 local_override: false,
+                requires: Vec::new(),
             }],
+            pending_approval_skills: Vec::new(),
+            unlinked_skills: Vec::new(),
+            blocked_skills: Vec::new(),
+            diagnostics: Vec::new(),
+        }
+    }
+
+    fn resolution_with_required_pair(alpha_path: &Path, beta_path: &Path) -> Resolution {
+        Resolution {
+            active_skills: vec![
+                ResolvedSkill {
+                    source_ref: "company:alpha".to_owned(),
+                    slot_name: "alpha".to_owned(),
+                    id: None,
+                    source_id: "company".to_owned(),
+                    source_kind: SourceKind::Team,
+                    source_priority: 10,
+                    path: alpha_path.to_path_buf(),
+                    local_override: false,
+                    requires: vec!["beta".to_owned()],
+                },
+                ResolvedSkill {
+                    source_ref: "company:beta".to_owned(),
+                    slot_name: "beta".to_owned(),
+                    id: None,
+                    source_id: "company".to_owned(),
+                    source_kind: SourceKind::Team,
+                    source_priority: 10,
+                    path: beta_path.to_path_buf(),
+                    local_override: false,
+                    requires: Vec::new(),
+                },
+            ],
             pending_approval_skills: Vec::new(),
             unlinked_skills: Vec::new(),
             blocked_skills: Vec::new(),

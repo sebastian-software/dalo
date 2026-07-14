@@ -71,6 +71,21 @@ pub fn create_git_skill_repo_with_skill(repo: &Path, slot_name: &str, body: &str
     init_git_repo(repo);
 }
 
+pub fn create_git_skill_repo_with_required_pair(repo: &Path) {
+    for (slot_name, body) in [
+        (
+            "alpha",
+            "---\nname: alpha\nrequires:\n  - beta\n---\n# Alpha\n",
+        ),
+        ("beta", "---\nname: beta\n---\n# Beta\n"),
+    ] {
+        let skill_dir = repo.join("skills").join(slot_name);
+        std::fs::create_dir_all(&skill_dir).expect("repo skill dir should be created");
+        std::fs::write(skill_dir.join("SKILL.md"), body).expect("repo skill should be written");
+    }
+    init_git_repo(repo);
+}
+
 pub fn create_git_catalog_repo(repo: &Path) {
     for slot in ["copy-editing", "launch-copy"] {
         let skill_dir = repo.join("skills").join(slot);

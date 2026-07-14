@@ -8,10 +8,11 @@ mod common;
 
 use common::{
     approve_source, create_git_catalog_repo, create_git_catalog_repo_with_duplicate_slots,
-    create_git_skill_repo, create_git_skill_repo_with_skill, create_unmanaged_skill, dalo_command,
-    git_command_succeeds, git_rev_parse_logger, read_source_lock, read_user_lock,
-    remove_source_update_policy, run_git, set_source_untrusted, setup_store_with_skill_and_target,
-    setup_store_with_target, write_local_only_config, write_source_lock,
+    create_git_skill_repo, create_git_skill_repo_with_required_pair,
+    create_git_skill_repo_with_skill, create_unmanaged_skill, dalo_command, git_command_succeeds,
+    git_rev_parse_logger, read_source_lock, read_user_lock, remove_source_update_policy, run_git,
+    set_source_untrusted, setup_store_with_skill_and_target, setup_store_with_target,
+    write_local_only_config, write_source_lock,
 };
 
 #[test]
@@ -830,6 +831,46 @@ fn sync_yes_should_not_replace_unmanaged_real_directory() {
             .expect("unmanaged content should remain"),
         "# review\n"
     );
+}
+
+#[test]
+fn sync_should_not_link_dependent_when_required_slot_is_blocked() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo_with_required_pair(&repo);
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "beta");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "company"])
+        .arg(&repo)
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "blocked: company:alpha requires beta",
+        ))
+        .stdout(predicate::str::contains("diagnostic: required_blocked"));
+
+    assert!(!target.join("alpha").exists());
+    assert!(target.join("beta").is_dir());
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["sync", "--check"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("1 blocked skill (company:alpha)"));
 }
 
 #[test]
