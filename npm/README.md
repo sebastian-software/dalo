@@ -27,20 +27,24 @@ dalo --help
 - macOS or Linux on x86_64 or ARM64
 - `tar` on `PATH` to unpack the official release archive
 
-The first invocation needs network access to GitHub Releases. Later
-invocations use the cached binary until you select another version or clear the
-cache.
+The first invocation of a `getdalo` package version needs network access to
+GitHub Releases. Later invocations use that version's cached binary without a
+GitHub API call. Each launcher version defaults to its matching Dalo release,
+so runs are reproducible and a warm cache works offline.
 
 ## Configuration
 
 | Variable | Purpose |
 | --- | --- |
-| `DALO_VERSION` | Pin an exact GitHub release tag, for example `dalo-v0.7.0`. |
+| `DALO_VERSION` | Override the package version with `0.7.0`, `v0.7.0`, or `dalo-v0.7.0`. Use `latest` for an explicit GitHub update lookup; if that lookup fails, the newest usable cached version is used with a warning. |
 | `DALO_CACHE_DIR` | Override the executable cache location (default: `~/.cache/dalo`). |
 | `DALO_LINUX_LIBC` | Override Linux libc detection with `gnu` or `musl`. |
 
 To force a fresh download, remove the selected version from `~/.cache/dalo` or
 set `DALO_CACHE_DIR` to an empty directory.
+
+Release metadata and archive downloads time out after 30 seconds. Network
+errors include their underlying cause and a hint for selecting an exact version.
 
 ## Security
 

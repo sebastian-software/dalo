@@ -2,7 +2,7 @@
 
 'use strict';
 
-const { ensureBinary } = require('../lib/release');
+const { ensureBinary, formatLauncherError } = require('../lib/release');
 const { spawn } = require('node:child_process');
 
 async function main() {
@@ -18,6 +18,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(`dalo: ${error.message}`);
+  console.error(`dalo: ${formatLauncherError(error)}`);
   process.exitCode = 1;
 });
