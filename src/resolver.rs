@@ -78,6 +78,9 @@ pub struct ResolvedSkill {
     pub path: PathBuf,
     /// Whether this is a local override over another source.
     pub local_override: bool,
+    /// Same-source requirements retained for link-time closure checks.
+    #[serde(skip)]
+    pub requires: Vec<String>,
 }
 
 /// Unlinked managed skill.
@@ -303,6 +306,7 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
                     source_priority: source.priority,
                     path: skill.path.clone(),
                     local_override: false,
+                    requires: skill.requires.clone(),
                 },
                 owners: skill.owners.clone(),
                 trusted: source.trusted,
