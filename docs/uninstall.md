@@ -69,6 +69,12 @@ Adopted skills live in the local source under the store. Back up anything in `lo
 
 ## 5. Uninstall the Binary
 
+If installed through Homebrew:
+
+```sh
+brew uninstall dalo
+```
+
 If installed through npm:
 
 ```sh

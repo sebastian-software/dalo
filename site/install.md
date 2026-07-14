@@ -7,7 +7,9 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
 - Only install on macOS or Linux.
 - Do not modify shell startup files automatically.
 - Do not touch real agent skill folders until the user confirms which agent target to link.
-- Prefer the official installer at `https://dalo.sh/install.sh`.
+- On macOS with Homebrew, prefer the official
+  `sebastian-software/tap/dalo` formula.
+- Otherwise, prefer the official installer at `https://dalo.sh/install.sh`.
 - The installer always verifies the release checksum and additionally verifies
   Sigstore provenance when `cosign` is available.
 - Verify the installed binary with `dalo --version` and `dalo doctor`.
@@ -21,7 +23,13 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
    uname -m
    ```
 
-2. Install the latest release:
+2. Install the latest release. On macOS with Homebrew:
+
+   ```sh
+   brew install sebastian-software/tap/dalo
+   ```
+
+   Otherwise, use the hosted installer:
 
    ```sh
    curl -fsSL https://dalo.sh/install.sh | sh

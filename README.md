@@ -44,6 +44,10 @@ Dalo gives that knowledge a lifecycle:
 Install Dalo on macOS or Linux:
 
 ```sh
+# macOS with Homebrew
+brew install sebastian-software/tap/dalo
+
+# macOS or Linux with the hosted installer
 curl -fsSL https://dalo.sh/install.sh | sh
 ```
 
@@ -237,6 +241,9 @@ SHA-256 checksum, and caches the executable in `~/.cache/dalo`.
 ### Package managers
 
 ```sh
+# Homebrew (macOS)
+brew install sebastian-software/tap/dalo
+
 # Cargo Binstall
 cargo binstall dalo
 
