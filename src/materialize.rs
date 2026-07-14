@@ -85,6 +85,8 @@ pub enum MaterializeOperationKind {
     DropRecord,
     /// Conflict that must not be applied.
     Conflict,
+    /// Protected unmanaged entry intentionally kept at the target slot.
+    Keep,
     /// No action needed.
     NoOp,
 }
@@ -99,6 +101,7 @@ impl MaterializeOperationKind {
             Self::Remove => "remove",
             Self::DropRecord => "drop_record",
             Self::Conflict => "conflict",
+            Self::Keep => "keep",
             Self::NoOp => "noop",
         }
     }
@@ -173,6 +176,7 @@ pub fn materialize_with_degraded_sources_rollback(
     let all_skills = resolution.active_skills.clone();
     let all_links = desired_links(&state, &resolution);
     let mut suppressed_links = BTreeSet::new();
+    let mut protected_suppressed_links = BTreeSet::new();
     let mut links = all_links.clone();
     let mut operations = build_plan(paths, &state, &links, degraded_sources)?;
     while block_link_time_dependents(
@@ -181,6 +185,7 @@ pub fn materialize_with_degraded_sources_rollback(
         &all_links,
         &operations,
         &mut suppressed_links,
+        &mut protected_suppressed_links,
     ) {
         links = desired_links(&state, &resolution)
             .into_iter()
@@ -225,6 +230,7 @@ pub fn materialize_with_degraded_sources_rollback(
                 &all_links,
                 &operations,
                 &mut suppressed_links,
+                &mut protected_suppressed_links,
             ) {
                 break;
             }
@@ -259,6 +265,8 @@ pub fn materialize_with_degraded_sources_rollback(
             return Err(error);
         }
     }
+
+    append_protected_closure_operations(&mut operations, &all_links, &protected_suppressed_links);
 
     Ok((
         SyncReport {
@@ -345,6 +353,7 @@ fn block_link_time_dependents(
     all_links: &[DesiredLink],
     operations: &[MaterializeOperation],
     suppressed_links: &mut BTreeSet<PathBuf>,
+    protected_suppressed_links: &mut BTreeSet<PathBuf>,
 ) -> bool {
     let direct_blocked = operations
         .iter()
@@ -363,12 +372,34 @@ fn block_link_time_dependents(
                 .map(|skill| (link_scope(desired), skill.source_ref.clone()))
         })
         .collect::<BTreeSet<_>>();
+    let direct_protected = operations
+        .iter()
+        .filter(|operation| operation.kind == MaterializeOperationKind::Keep)
+        .filter_map(|operation| {
+            all_links
+                .iter()
+                .find(|desired| desired.link_path == operation.link_path)
+        })
+        .filter_map(|desired| {
+            all_skills
+                .iter()
+                .find(|skill| {
+                    skill.slot_name == desired.slot_name && skill.path == desired.store_path
+                })
+                .map(|skill| (link_scope(desired), skill.source_ref.clone()))
+        })
+        .collect::<BTreeSet<_>>();
+    let direct_unavailable = direct_blocked
+        .union(&direct_protected)
+        .cloned()
+        .collect::<BTreeSet<_>>();
 
-    if direct_blocked.is_empty() {
+    if direct_unavailable.is_empty() {
         return false;
     }
 
-    let mut unavailable = direct_blocked.clone();
+    let mut unavailable = direct_unavailable;
+    let mut protected_unavailable = direct_protected;
     for desired in all_links
         .iter()
         .filter(|desired| suppressed_links.contains(&desired.link_path))
@@ -377,7 +408,11 @@ fn block_link_time_dependents(
             .iter()
             .find(|skill| skill.slot_name == desired.slot_name && skill.path == desired.store_path)
         {
-            unavailable.insert((link_scope(desired), skill.source_ref.clone()));
+            let key = (link_scope(desired), skill.source_ref.clone());
+            unavailable.insert(key.clone());
+            if protected_suppressed_links.contains(&desired.link_path) {
+                protected_unavailable.insert(key);
+            }
         }
     }
 
@@ -395,7 +430,7 @@ fn block_link_time_dependents(
                 continue;
             };
             let scope = link_scope(desired);
-            let Some((requirement, required_ref, reason)) =
+            let Some((requirement, required_ref, reason, protected_chain)) =
                 dependent.requires.iter().find_map(|requirement| {
                     let required = all_skills.iter().find(|candidate| {
                         candidate.source_id == dependent.source_id
@@ -412,17 +447,28 @@ fn block_link_time_dependents(
                     } else {
                         ClosureBlockReason::Unlinked
                     };
-                    Some((requirement.clone(), required.source_ref.clone(), reason))
+                    let protected_chain = protected_unavailable.contains(&required_key);
+                    Some((
+                        requirement.clone(),
+                        required.source_ref.clone(),
+                        reason,
+                        protected_chain,
+                    ))
                 })
             else {
                 continue;
             };
 
             suppressed_links.insert(desired.link_path.clone());
-            unavailable.insert((scope.clone(), dependent.source_ref.clone()));
+            let dependent_key = (scope.clone(), dependent.source_ref.clone());
+            unavailable.insert(dependent_key.clone());
+            if protected_chain {
+                protected_unavailable.insert(dependent_key);
+                protected_suppressed_links.insert(desired.link_path.clone());
+            }
             block_causes.insert(
                 (scope, dependent.source_ref.clone()),
-                (requirement, required_ref, reason),
+                (requirement, required_ref, reason, protected_chain),
             );
             pass_changed = true;
             links_changed = true;
@@ -452,8 +498,11 @@ fn block_link_time_dependents(
         }
         let cause = skill_links
             .iter()
-            .find_map(|desired| block_causes.get(&(link_scope(desired), skill.source_ref.clone())));
-        let Some((requirement, _, reason)) = cause.cloned() else {
+            .filter_map(|desired| {
+                block_causes.get(&(link_scope(desired), skill.source_ref.clone()))
+            })
+            .find(|(_, _, _, protected_chain)| !protected_chain);
+        let Some((requirement, _, reason, _)) = cause.cloned() else {
             index += 1;
             continue;
         };
@@ -491,6 +540,30 @@ fn block_link_time_dependents(
             .then_with(|| left.message.cmp(&right.message))
     });
     true
+}
+
+fn append_protected_closure_operations(
+    operations: &mut Vec<MaterializeOperation>,
+    all_links: &[DesiredLink],
+    protected_suppressed_links: &BTreeSet<PathBuf>,
+) {
+    let existing_paths = operations
+        .iter()
+        .map(|operation| operation.link_path.clone())
+        .collect::<BTreeSet<_>>();
+    for desired in all_links.iter().filter(|desired| {
+        protected_suppressed_links.contains(&desired.link_path)
+            && !existing_paths.contains(&desired.link_path)
+    }) {
+        operations.push(MaterializeOperation {
+            kind: MaterializeOperationKind::Keep,
+            link_path: desired.link_path.clone(),
+            desired_path: Some(desired.store_path.clone()),
+            status: MaterializeOperationStatus::Existing,
+            reason: Some("required closure kept because a required slot is protected".to_owned()),
+        });
+    }
+    operations.sort_by(|left, right| left.link_path.cmp(&right.link_path));
 }
 
 fn link_scope(desired: &DesiredLink) -> PathBuf {
@@ -560,10 +633,18 @@ fn build_plan(
             recorded_by_link.get(&link_path),
         ) {
             (Some(desired), Some(_)) => {
-                operations.push(plan_desired_recorded(paths, desired)?);
+                operations.push(plan_desired_recorded(
+                    paths,
+                    desired,
+                    desired_is_protected(state, desired),
+                )?);
             }
             (Some(desired), None) => {
-                operations.push(plan_desired_unrecorded(paths, desired)?);
+                operations.push(plan_desired_unrecorded(
+                    paths,
+                    desired,
+                    desired_is_protected(state, desired),
+                )?);
             }
             (None, Some(recorded)) => {
                 operations.push(plan_undesired_recorded(paths, recorded, degraded_sources)?);
@@ -578,6 +659,7 @@ fn build_plan(
 fn plan_desired_recorded(
     paths: &StorePaths,
     desired: &DesiredLink,
+    protected: bool,
 ) -> DaloResult<MaterializeOperation> {
     let actual = actual_link_state(&desired.link_path)?;
     let operation = match actual {
@@ -617,6 +699,13 @@ fn plan_desired_recorded(
             status: MaterializeOperationStatus::Blocked,
             reason: Some(format!("foreign symlink points to `{}`", target.display())),
         },
+        ActualLinkState::RealEntry if protected => MaterializeOperation {
+            kind: MaterializeOperationKind::Keep,
+            link_path: desired.link_path.clone(),
+            desired_path: Some(desired.store_path.clone()),
+            status: MaterializeOperationStatus::Existing,
+            reason: Some("protected unmanaged entry kept".to_owned()),
+        },
         ActualLinkState::RealEntry => MaterializeOperation {
             kind: MaterializeOperationKind::Conflict,
             link_path: desired.link_path.clone(),
@@ -632,6 +721,7 @@ fn plan_desired_recorded(
 fn plan_desired_unrecorded(
     paths: &StorePaths,
     desired: &DesiredLink,
+    protected: bool,
 ) -> DaloResult<MaterializeOperation> {
     let actual = actual_link_state(&desired.link_path)?;
     let operation = match actual {
@@ -662,6 +752,13 @@ fn plan_desired_unrecorded(
             desired_path: Some(desired.store_path.clone()),
             status: MaterializeOperationStatus::Blocked,
             reason: Some(format!("foreign symlink points to `{}`", target.display())),
+        },
+        ActualLinkState::RealEntry if protected => MaterializeOperation {
+            kind: MaterializeOperationKind::Keep,
+            link_path: desired.link_path.clone(),
+            desired_path: Some(desired.store_path.clone()),
+            status: MaterializeOperationStatus::Existing,
+            reason: Some("protected unmanaged entry kept".to_owned()),
         },
         ActualLinkState::RealEntry => MaterializeOperation {
             kind: MaterializeOperationKind::Conflict,
@@ -813,6 +910,7 @@ fn apply_plan(
             }
             MaterializeOperationKind::DropRecord
             | MaterializeOperationKind::Conflict
+            | MaterializeOperationKind::Keep
             | MaterializeOperationKind::NoOp => {}
         }
     }
@@ -822,7 +920,10 @@ fn apply_plan(
         .filter(|desired| {
             !operations.iter().any(|operation| {
                 operation.link_path == desired.link_path
-                    && operation.kind == MaterializeOperationKind::Conflict
+                    && matches!(
+                        operation.kind,
+                        MaterializeOperationKind::Conflict | MaterializeOperationKind::Keep
+                    )
             })
         })
         .map(|desired| OwnedSkillState {
@@ -861,6 +962,24 @@ fn should_preserve_recorded_operation(operation: &MaterializeOperation) -> bool 
                 && operation.status == MaterializeOperationStatus::Blocked
                 && reason.starts_with("could not inspect recorded slot")
         })
+}
+
+fn desired_is_protected(state: &StateFile, desired: &DesiredLink) -> bool {
+    let Some(scope) = desired.link_path.parent() else {
+        return false;
+    };
+    let Some(dir) = state
+        .materialization_dirs
+        .iter()
+        .find(|dir| dir.path == scope)
+    else {
+        return false;
+    };
+    state.protected_skills.iter().any(|protected| {
+        protected.slot_name == desired.slot_name
+            && (dir.logical_targets.contains(&protected.target_id)
+                || protected.path.as_ref() == Some(&desired.link_path))
+    })
 }
 
 fn link_target_matches(link_path: &Path, target: &Path, expected: &Path) -> bool {

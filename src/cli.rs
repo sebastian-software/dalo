@@ -365,6 +365,8 @@ pub enum ResolveSubcommand {
     Adopt(ResolveAdoptArgs),
     /// Keep and protect the referenced unmanaged entry.
     Keep(ResolveIdArg),
+    /// Remove protection from a target slot.
+    Unkeep(ResolveIdArg),
     /// Remove an owned symlink by recorded ID.
     RemoveOwned(ResolveIdArg),
 }
@@ -582,7 +584,7 @@ fn status_requires_review(report: &status::StatusReport) -> bool {
             .any(|diagnostic| diagnostic.code.requires_review())
         || !report.lock.drift.is_empty()
         || (report.targets.is_empty() && !report.resolution.active_skills.is_empty())
-        || !report.unmanaged_skills.is_empty()
+        || report.unmanaged_skills.iter().any(|skill| !skill.protected)
         || !report.instruction_block_drifts.is_empty()
 }
 
@@ -1182,6 +1184,21 @@ fn run_resolve(options: &GlobalOptions, command: ResolveCommand) -> DaloResult<(
                 print_json(&report)?;
             } else {
                 status::print_keep_report(&report);
+            }
+            Ok(())
+        }
+        ResolveSubcommand::Unkeep(args) => {
+            ensure_initialized(&paths)?;
+            let _lock = if options.dry_run {
+                None
+            } else {
+                Some(store::StoreLock::acquire(&paths)?)
+            };
+            let report = adopt::unkeep_skill(&paths, &args.id, options.dry_run)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                status::print_unkeep_report(&report);
             }
             Ok(())
         }

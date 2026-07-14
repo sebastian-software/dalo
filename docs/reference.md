@@ -315,7 +315,7 @@ JSON output shape: `AdoptReport`.
 
 ### `dalo resolve keep <id>`
 
-Protect an unmanaged target skill so Dalo reports it as intentionally unmanaged and does not suggest replacement.
+Protect an unmanaged target skill so Dalo reports it as intentionally unmanaged. Protection is stored by logical target and slot, follows later target-path updates, and turns the sync conflict into a non-failing `keep` operation. An explicit `resolve adopt --replace` remains an override.
 
 Examples:
 
@@ -325,6 +325,19 @@ dalo --dry-run resolve keep review-helper
 ```
 
 JSON output shape: `KeepReport`.
+
+### `dalo resolve unkeep <target>:<slot>`
+
+Remove protection from one target slot. A bare slot name removes matching protection across targets.
+
+Examples:
+
+```sh
+dalo resolve unkeep claude:review-helper
+dalo --dry-run resolve unkeep review-helper
+```
+
+JSON output shape: `UnkeepReport`.
 
 ### `dalo resolve remove-owned <id>`
 
@@ -480,6 +493,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `adopt` / `resolve adopt` | `AdoptReport` | `slot_name`, `source_path`, `local_path`, `copy`, `replacement` |
 | `resolve list` | `ResolveListReport` | `unmanaged_skills[]`, `target_warnings[]`, `owned_skills[]` |
 | `resolve keep` | `KeepReport` | `skill`, `existing`, `dry_run` |
+| `resolve unkeep` | `UnkeepReport` | `selector`, `removed[]`, `dry_run` |
 | `resolve remove-owned` | `RemoveOwnedReport` | `id`, `link_path`, `status` |
 | `doctor` | `DoctorReport` | `store`, `findings[]`, `summary` |
 | `instructions enable` / `disable` | `InstructionPackReport` | `pack_id`, `target`, `action`, `dry_run` |
@@ -492,7 +506,7 @@ Common status values:
 | `TargetSupport` | `supported`, `experimental` |
 | `TargetLinkStatus` | `planned`, `linked`, `updated`, `existing` |
 | `TargetUnlinkStatus` | `planned`, `unlinked`, `missing` |
-| `MaterializeOperationKind` | `create`, `relink`, `remove`, `drop_record`, `conflict`, `noop` |
+| `MaterializeOperationKind` | `create`, `relink`, `remove`, `drop_record`, `conflict`, `keep`, `noop` |
 | `MaterializeOperationStatus` | `planned`, `applied`, `existing`, `blocked` |
 | `AdoptCopyStatus` | `planned`, `copied`, `existing` |
 | `AdoptReplacementStatus` | `planned`, `replaced`, `skipped`, `protected` |
@@ -672,7 +686,9 @@ Top-level fields:
 | `targets[]` | Logical target links with `id`, `path`, `canonical_path`, and `enabled`. |
 | `materialization_dirs[]` | Canonical physical directories and the logical target IDs sharing each directory. |
 | `owned_skills[]` | Symlinks Dalo owns: `target_id`, `slot_name`, `link_path`, `store_path`. |
-| `protected_skills[]` | Unmanaged skills kept by the user: `slot_name`, `path`. |
+| `protected_skills[]` | Unmanaged target slots kept by the user: `target_id`, `slot_name`. Legacy path-based entries migrate on read. |
+
+Unknown fields in this internal state model are ignored for downgrade safety after additive changes. Breaking changes still require a schema-version bump. User-authored configuration remains strict.
 
 ## `source-lock.toml`
 

@@ -1220,7 +1220,14 @@ fn init_should_repair_corrupt_state_file() {
         .assert()
         .success()
         .stdout(predicate::str::contains("repaired"))
-        .stdout(predicate::str::contains("state.toml"));
+        .stdout(predicate::str::contains("state.toml"))
+        .stdout(predicate::str::contains(
+            "WARNING: state.toml was unreadable and was reset to empty state",
+        ))
+        .stdout(predicate::str::contains(
+            "Restore target registrations, owned links, and protected slots before syncing",
+        ))
+        .stdout(predicate::str::contains("Store ready.").not());
 
     assert!(
         std::fs::read_dir(&store)
@@ -1470,7 +1477,7 @@ fn adopt_replace_should_not_replace_local_marker_skill() {
 }
 
 #[test]
-fn adopt_replace_should_refuse_replacement_for_kept_skill() {
+fn adopt_replace_should_override_protection_for_kept_skill() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
@@ -1490,11 +1497,21 @@ fn adopt_replace_should_refuse_replacement_for_kept_skill() {
         .args(["adopt", "--replace", "review"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("replacement: protected"));
+        .stdout(predicate::str::contains("replacement: replaced"));
+
+    assert!(
+        std::fs::symlink_metadata(target.join("review"))
+            .expect("replacement should exist")
+            .file_type()
+            .is_symlink()
+    );
+    let state =
+        store::read_state(&store::StorePaths::new(store)).expect("state should remain readable");
+    assert!(state.protected_skills.is_empty());
 }
 
 #[test]
-fn adopt_replace_should_keep_kept_skill_directory_as_real_entry() {
+fn adopt_replace_should_link_kept_skill_after_explicit_override() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
@@ -1514,8 +1531,8 @@ fn adopt_replace_should_keep_kept_skill_directory_as_real_entry() {
         .success();
 
     assert!(
-        !std::fs::symlink_metadata(target.join("review"))
-            .expect("kept skill should remain")
+        std::fs::symlink_metadata(target.join("review"))
+            .expect("adopted skill should remain")
             .file_type()
             .is_symlink()
     );
@@ -1766,6 +1783,177 @@ fn resolve_keep_should_protect_unmanaged_skill() {
 }
 
 #[test]
+fn protected_skill_should_be_kept_without_failing_sync_or_status_check() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    let local = store.join("local/skills/review");
+    std::fs::create_dir_all(&local).expect("local skill dir should be created");
+    std::fs::write(local.join("SKILL.md"), "# Managed review\n")
+        .expect("local skill should be written");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "keep", "review"])
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["sync", "--check"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("keep"))
+        .stdout(predicate::str::contains("protected unmanaged entry kept"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["status", "--check"])
+        .assert()
+        .success();
+}
+
+#[test]
+fn protected_requirement_should_keep_dependent_unlinked_without_failing_check() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo_with_required_pair(&repo);
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "beta");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "company"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "keep", "beta"])
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["sync", "--check"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            target.join("alpha").to_string_lossy(),
+        ))
+        .stdout(predicate::str::contains(
+            "required closure kept because a required slot is protected",
+        ));
+
+    assert!(!target.join("alpha").exists());
+    assert!(target.join("beta").is_dir());
+}
+
+#[test]
+fn resolve_unkeep_should_restore_normal_conflict_handling() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    let local = store.join("local/skills/review");
+    std::fs::create_dir_all(&local).expect("local skill dir should be created");
+    std::fs::write(local.join("SKILL.md"), "# Managed review\n")
+        .expect("local skill should be written");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "keep", "review"])
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "unkeep", "generic:review"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("unprotected generic:review"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["sync", "--check"])
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(predicate::str::contains("conflict"));
+}
+
+#[test]
+fn protection_should_follow_target_id_when_directory_moves() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let moved = temp_dir.path().join("skills-moved");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "keep", "review"])
+        .assert()
+        .success();
+    std::fs::rename(&target, &moved).expect("target directory should move");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "link", "generic"])
+        .arg(&moved)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            moved.join("review").to_string_lossy(),
+        ))
+        .stdout(predicate::str::contains("protected"));
+}
+
+#[test]
+fn doctor_should_report_stale_protection_records() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "keep", "review"])
+        .assert()
+        .success();
+    std::fs::remove_dir_all(&target).expect("target should be removed");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "doctor"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"stale_protected_skill\""))
+        .stdout(predicate::str::contains(
+            "dalo resolve unkeep generic:review",
+        ));
+}
+
+#[test]
 fn resolve_keep_should_warn_when_an_adopted_skill_still_targets_the_slot() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -1815,14 +2003,9 @@ fn resolve_keep_should_resolve_slot_when_cwd_contains_same_named_decoy_directory
     let state =
         store::read_state(&store::StorePaths::new(store)).expect("state should be readable");
     assert_eq!(state.protected_skills.len(), 1);
-    assert_eq!(
-        store::comparable_path(&state.protected_skills[0].path),
-        store::comparable_path(&target.join("review"))
-    );
-    assert_ne!(
-        store::comparable_path(&state.protected_skills[0].path),
-        store::comparable_path(&project.join("review"))
-    );
+    assert_eq!(state.protected_skills[0].target_id, "generic");
+    assert_eq!(state.protected_skills[0].slot_name, "review");
+    assert!(state.protected_skills[0].path.is_none());
 }
 
 #[test]
