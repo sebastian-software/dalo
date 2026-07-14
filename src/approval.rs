@@ -90,7 +90,7 @@ fn canonical_value(paths: &StorePaths, scope: &str, value: &str) -> DaloResult<S
         }
         "skill" => canonical_skill(paths, value),
         "author" | "org" => {
-            let (source, owner) = source_qualified(value)?;
+            let (source, owner) = source_qualified_owner(scope, value)?;
             source_exists(paths, source)?;
             if owner.trim().is_empty() {
                 return invalid("approval owner must not be empty");
@@ -102,7 +102,13 @@ fn canonical_value(paths: &StorePaths, scope: &str, value: &str) -> DaloResult<S
 }
 
 fn canonical_skill(paths: &StorePaths, value: &str) -> DaloResult<String> {
-    let (source_id, selector) = source_qualified(value)?;
+    let (source_id, selector) = value
+        .split_once(':')
+        .filter(|(source, skill)| !source.is_empty() && !skill.is_empty())
+        .ok_or_else(|| DaloError::CheckFailed {
+            reason: "skill approval values must use `<source>:<slot>`, for example `catalog:review-helper`"
+                .to_owned(),
+        })?;
     let config = store::read_config(paths)?;
     let source = config
         .sources
@@ -156,13 +162,19 @@ fn source_exists(paths: &StorePaths, source_id: &str) -> DaloResult<()> {
     }
 }
 
-fn source_qualified(value: &str) -> DaloResult<(&str, &str)> {
+fn source_qualified_owner<'a>(scope: &str, value: &'a str) -> DaloResult<(&'a str, &'a str)> {
     value
         .split_once(':')
         .filter(|(source, value)| !source.is_empty() && !value.is_empty())
         .ok_or_else(|| DaloError::CheckFailed {
-            reason: "approval values must be source-qualified, for example `catalog:skill`"
-                .to_owned(),
+            reason: format!(
+                "{scope} approval values must use `<source>:<owner>`, for example `catalog:{}`",
+                if scope == "author" {
+                    "maintainers"
+                } else {
+                    "example-org"
+                }
+            ),
         })
 }
 
