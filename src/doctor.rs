@@ -11,6 +11,7 @@ use serde::Serialize;
 
 use crate::adopt;
 use crate::config::UserConfig;
+use crate::error::shell_quote_path;
 use crate::git;
 use crate::instructions;
 use crate::resolver;
@@ -286,7 +287,7 @@ fn read_config(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) -> Option<
             findings.push(finding_error(
                 DoctorCode::ConfigInvalid,
                 format!("config could not be read: {error}"),
-                Some(format!("$EDITOR {}", paths.config_file.display())),
+                Some(format!("$EDITOR {}", shell_quote_path(&paths.config_file))),
             ));
             None
         }
@@ -519,7 +520,10 @@ fn check_sources(config: &UserConfig, findings: &mut Vec<DoctorFinding>) {
                             source.path.display()
                         )
                     },
-                    next_command: Some(format!("git -C {} status", source.path.display())),
+                    next_command: Some(format!(
+                        "git -C {} status",
+                        shell_quote_path(&source.path)
+                    )),
                 });
             }
             Ok(false) => findings.push(ok(
@@ -895,7 +899,7 @@ mod tests {
     #[test]
     fn run_doctor_should_point_invalid_config_to_the_editor() {
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
-        let store = temp_dir.path().join("store");
+        let store = temp_dir.path().join("store with $(shell)");
         store::init_store(store.clone(), false).expect("init should succeed");
         let config_file = store.join("config.toml");
         fs::write(&config_file, "version = ").expect("config should be corrupted");
@@ -910,7 +914,7 @@ mod tests {
         assert!(finding.message.contains("line 1"));
         assert_eq!(
             finding.next_command.as_deref(),
-            Some(format!("$EDITOR {}", config_file.display()).as_str())
+            Some(format!("$EDITOR '{}'", config_file.display()).as_str())
         );
     }
 
@@ -1052,7 +1056,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
         let store = temp_dir.path().join("store");
         store::init_store(store.clone(), false).expect("init should succeed");
-        let team_repo = temp_dir.path().join("team-repo");
+        let team_repo = temp_dir.path().join("team repo $(shell)");
         create_dirty_git_repo(&team_repo);
         write_config_with_dirty_sources(&store, &team_repo, None);
 
@@ -1063,7 +1067,7 @@ mod tests {
                 && finding.severity == DoctorSeverity::Error
                 && finding.message.contains("`team`")
                 && finding.next_command.as_deref()
-                    == Some(format!("git -C {} status", team_repo.display()).as_str())
+                    == Some(format!("git -C '{}' status", team_repo.display()).as_str())
         }));
     }
 
@@ -1073,7 +1077,7 @@ mod tests {
         let store = temp_dir.path().join("store");
         store::init_store(store.clone(), false).expect("init should succeed");
         let team_repo = temp_dir.path().join("team-repo");
-        let local_repo = temp_dir.path().join("local-repo");
+        let local_repo = temp_dir.path().join("local repo; echo unsafe");
         create_dirty_git_repo(&team_repo);
         create_dirty_git_repo(&local_repo);
         write_config_with_dirty_sources(&store, &team_repo, Some(&local_repo));
@@ -1086,7 +1090,7 @@ mod tests {
                 && finding.message.contains("`workspace`")
                 && finding.message.contains("adopted skills must be committed")
                 && finding.next_command.as_deref()
-                    == Some(format!("git -C {} status", local_repo.display()).as_str())
+                    == Some(format!("git -C '{}' status", local_repo.display()).as_str())
         }));
     }
 

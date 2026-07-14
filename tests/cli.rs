@@ -123,6 +123,8 @@ fn init_should_warn_when_existing_store_files_are_invalid() {
         .success();
     std::fs::write(store.join("config.toml"), "version = ").expect("config should be corrupted");
     std::fs::write(store.join("lock.toml"), "schema_version = ").expect("lock should be corrupted");
+    std::fs::write(store.join("approvals.toml"), "schema_version = ")
+        .expect("approvals should be corrupted");
 
     dalo_command()
         .args(["--store"])
@@ -136,6 +138,9 @@ fn init_should_warn_when_existing_store_files_are_invalid() {
         ))
         .stdout(predicate::str::contains(
             store.join("lock.toml").to_string_lossy(),
+        ))
+        .stdout(predicate::str::contains(
+            store.join("approvals.toml").to_string_lossy(),
         ))
         .stdout(predicate::str::contains("Store ready.").not());
 }
@@ -324,7 +329,7 @@ fn mutating_commands_should_point_to_init_before_locking_missing_store() {
             .failure()
             .code(1)
             .stderr(predicate::str::contains(format!(
-                "run `dalo --store {} init` first",
+                "run `dalo --store '{}' init` first",
                 store.display()
             )))
             .stderr(predicate::str::contains("No such file or directory").not());
@@ -346,7 +351,7 @@ fn json_errors_should_render_machine_readable_stderr() {
         .stderr(predicate::str::contains("\"error\""))
         .stderr(predicate::str::contains("\"code\": \"expected_failure\""))
         .stderr(predicate::str::contains(format!(
-            "run `dalo --store {} init` first",
+            "run `dalo --store '{}' init` first",
             store.display()
         )))
         .stderr(predicate::str::contains("error:").not());
@@ -2862,7 +2867,7 @@ fn sync_should_block_dirty_team_source() {
             "source `company` has local changes",
         ))
         .stderr(predicate::str::contains(format!(
-            "git -C {} status",
+            "git -C '{}' status",
             checkout.display()
         )));
 }
