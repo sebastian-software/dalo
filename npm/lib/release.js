@@ -77,6 +77,8 @@ function normalizeTag(value) {
 }
 
 function releaseBaseUrl() {
+  // Internal test seam. Redirecting the trusted release origin is not a
+  // supported launcher configuration and is intentionally undocumented.
   return process.env.DALO_RELEASE_BASE_URL || `https://github.com/${REPOSITORY}/releases/download`;
 }
 

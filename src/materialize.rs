@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use crate::error::DaloResult;
+use crate::error::{DaloError, DaloResult};
 use crate::resolver::{
     BlockedSkill, ClosureBlockReason, Resolution, ResolutionDiagnostic, ResolutionDiagnosticCode,
     ResolvedSkill, closure_block_reason_name,
@@ -213,15 +213,7 @@ pub fn materialize_with_degraded_sources_rollback(
     } else {
         loop {
             if let Err(error) = apply_plan(paths, &mut state, &mut operations, &links) {
-                if let Some(rollback) = rollback
-                    && let Err(rollback_error) = rollback.restore(paths)
-                {
-                    return Err(std::io::Error::other(format!(
-                        "{error}; additionally failed to roll back sync: {rollback_error}"
-                    ))
-                    .into());
-                }
-                return Err(error);
+                return Err(rollback_materialization_failure(paths, rollback, error));
             }
 
             if !block_link_time_dependents(
@@ -852,66 +844,14 @@ fn apply_plan(
     let previous_owned_skills = state.owned_skills.clone();
 
     for operation in operations.iter_mut() {
-        match operation.kind {
-            MaterializeOperationKind::Create | MaterializeOperationKind::Relink => {
-                if operation.status == MaterializeOperationStatus::Blocked {
-                    continue;
-                }
-                match fs::symlink_metadata(&operation.link_path) {
-                    // Only ever unlink a symlink we are about to replace.
-                    Ok(metadata) if metadata.file_type().is_symlink() => {
-                        let Some(desired_path) = operation.desired_path.as_ref() else {
-                            continue;
-                        };
-                        let target = fs::read_link(&operation.link_path)?;
-                        if !is_owned_link_target(paths, &operation.link_path, desired_path, &target)
-                        {
-                            operation.kind = MaterializeOperationKind::Conflict;
-                            operation.status = MaterializeOperationStatus::Blocked;
-                            operation.reason =
-                                Some("foreign symlink appeared at target slot".to_owned());
-                            continue;
-                        }
-                        fs::remove_file(&operation.link_path)?;
-                    }
-                    // A real file/dir appeared at the slot after planning (TOCTOU).
-                    // Refuse to delete unmanaged content; skip rather than overwrite.
-                    Ok(_) => {
-                        operation.kind = MaterializeOperationKind::Conflict;
-                        operation.status = MaterializeOperationStatus::Blocked;
-                        operation.reason =
-                            Some("real unmanaged entry appeared at target slot".to_owned());
-                        continue;
-                    }
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                    Err(error) => return Err(error.into()),
-                }
-                if let Some(parent) = operation.link_path.parent() {
-                    fs::create_dir_all(parent)?;
-                }
-                let Some(desired_path) = operation.desired_path.as_ref() else {
-                    continue;
-                };
-                unix_fs::symlink(desired_path, &operation.link_path)?;
-            }
-            MaterializeOperationKind::Remove => {
-                if let Some(recorded_store_path) = operation.desired_path.as_ref()
-                    && let ActualLinkState::Symlink(target) =
-                        actual_link_state(&operation.link_path)?
-                    && is_owned_link_target(
-                        paths,
-                        &operation.link_path,
-                        recorded_store_path,
-                        &target,
-                    )
-                {
-                    fs::remove_file(&operation.link_path)?;
-                }
-            }
-            MaterializeOperationKind::DropRecord
-            | MaterializeOperationKind::Conflict
-            | MaterializeOperationKind::Keep
-            | MaterializeOperationKind::NoOp => {}
+        let kind = operation.kind;
+        if let Err(error) = apply_operation(paths, operation) {
+            return Err(std::io::Error::other(format!(
+                "failed to apply {} operation at `{}`: {error}",
+                kind.as_str(),
+                operation.link_path.display()
+            ))
+            .into());
         }
     }
 
@@ -960,6 +900,64 @@ fn apply_plan(
     Ok(())
 }
 
+fn apply_operation(paths: &StorePaths, operation: &mut MaterializeOperation) -> DaloResult<()> {
+    match operation.kind {
+        MaterializeOperationKind::Create | MaterializeOperationKind::Relink => {
+            if operation.status == MaterializeOperationStatus::Blocked {
+                return Ok(());
+            }
+            match fs::symlink_metadata(&operation.link_path) {
+                // Only ever unlink a symlink we are about to replace.
+                Ok(metadata) if metadata.file_type().is_symlink() => {
+                    let Some(desired_path) = operation.desired_path.as_ref() else {
+                        return Ok(());
+                    };
+                    let target = fs::read_link(&operation.link_path)?;
+                    if !is_owned_link_target(paths, &operation.link_path, desired_path, &target) {
+                        operation.kind = MaterializeOperationKind::Conflict;
+                        operation.status = MaterializeOperationStatus::Blocked;
+                        operation.reason =
+                            Some("foreign symlink appeared at target slot".to_owned());
+                        return Ok(());
+                    }
+                    fs::remove_file(&operation.link_path)?;
+                }
+                // A real file/dir appeared at the slot after planning (TOCTOU).
+                // Refuse to delete unmanaged content; skip rather than overwrite.
+                Ok(_) => {
+                    operation.kind = MaterializeOperationKind::Conflict;
+                    operation.status = MaterializeOperationStatus::Blocked;
+                    operation.reason =
+                        Some("real unmanaged entry appeared at target slot".to_owned());
+                    return Ok(());
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+            if let Some(parent) = operation.link_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            let Some(desired_path) = operation.desired_path.as_ref() else {
+                return Ok(());
+            };
+            unix_fs::symlink(desired_path, &operation.link_path)?;
+        }
+        MaterializeOperationKind::Remove => {
+            if let Some(recorded_store_path) = operation.desired_path.as_ref()
+                && let ActualLinkState::Symlink(target) = actual_link_state(&operation.link_path)?
+                && is_owned_link_target(paths, &operation.link_path, recorded_store_path, &target)
+            {
+                fs::remove_file(&operation.link_path)?;
+            }
+        }
+        MaterializeOperationKind::DropRecord
+        | MaterializeOperationKind::Conflict
+        | MaterializeOperationKind::Keep
+        | MaterializeOperationKind::NoOp => {}
+    }
+    Ok(())
+}
+
 fn should_preserve_recorded_operation(operation: &MaterializeOperation) -> bool {
     is_degraded_source_preserve(operation)
         || operation.reason.as_deref().is_some_and(|reason| {
@@ -985,6 +983,23 @@ fn desired_is_protected(state: &StateFile, desired: &DesiredLink) -> bool {
             && (dir.logical_targets.contains(&protected.target_id)
                 || protected.path.as_ref() == Some(&desired.link_path))
     })
+}
+
+fn rollback_materialization_failure(
+    paths: &StorePaths,
+    rollback: Option<MaterializationRollback>,
+    error: DaloError,
+) -> DaloError {
+    let Some(rollback) = rollback else {
+        return error;
+    };
+    match rollback.restore(paths) {
+        Ok(()) => std::io::Error::other(format!("{error}; changes were rolled back")).into(),
+        Err(rollback_error) => std::io::Error::other(format!(
+            "{error}; additionally failed to roll back sync: {rollback_error}"
+        ))
+        .into(),
+    }
 }
 
 fn link_target_matches(link_path: &Path, target: &Path, expected: &Path) -> bool {
@@ -1035,6 +1050,7 @@ fn actual_link_state(link_path: &Path) -> DaloResult<ActualLinkState> {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::os::unix::fs::PermissionsExt;
 
     use super::*;
     use crate::resolver::{Resolution, ResolvedSkill};
@@ -1407,7 +1423,9 @@ mod tests {
         let failing_target = temp_dir.path().join("z-target");
         store::init_store(store_root.clone(), false).expect("init should succeed");
         fs::create_dir_all(&first_target).expect("first target should be created");
-        fs::write(&failing_target, "not a directory").expect("failing target should be written");
+        fs::create_dir_all(&failing_target).expect("failing target should be created");
+        fs::set_permissions(&failing_target, fs::Permissions::from_mode(0o555))
+            .expect("failing target should be read-only");
         let skill_dir = store_root.join("local/skills/review");
         fs::create_dir_all(&skill_dir).expect("skill should be created");
         let paths = StorePaths::new(store_root);
@@ -1435,16 +1453,28 @@ mod tests {
                 extra: Default::default(),
             },
             MaterializationDirState {
-                path: failing_target,
+                path: failing_target.clone(),
                 logical_targets: vec!["failing".to_owned()],
                 extra: Default::default(),
             },
         ];
         store::write_state(&paths, &state).expect("state should be written");
 
-        let _error = materialize(&paths, &resolution_with_skill("review", &skill_dir), false)
+        let error = materialize(&paths, &resolution_with_skill("review", &skill_dir), false)
             .expect_err("second target should fail during apply");
 
+        assert!(
+            error
+                .to_string()
+                .contains(&failing_target.join("review").display().to_string()),
+            "{error}"
+        );
+        assert!(
+            error.to_string().contains("changes were rolled back"),
+            "{error}"
+        );
+        fs::set_permissions(&failing_target, fs::Permissions::from_mode(0o755))
+            .expect("failing target permissions should be restored");
         assert!(!first_target.join("review").exists());
         assert!(
             store::read_state(&paths)

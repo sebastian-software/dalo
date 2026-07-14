@@ -20,9 +20,10 @@ Relative store paths are resolved against the current working directory. `~` is 
 | `DALO_GIT_TIMEOUT_SECS` | Positive timeout in seconds for every Git subprocess. Invalid or zero values use the built-in defaults. |
 | `NO_COLOR` | Disable ANSI color output when set. |
 
-For installation variables, see the [README installation section](../README.md#install)
+For installation variables, see the [README installation section](../README.md#installation)
 and the [npm launcher README](../npm/README.md): `DALO_VERIFY`,
-`DALO_LINUX_LIBC`, `DALO_INSTALL_DIR`, `DALO_VERSION`, and `DALO_CACHE_DIR`.
+`DALO_LINUX_LIBC`, `DALO_TARGET`, `DALO_INSTALL_DIR`, `DALO_VERSION`, and
+`DALO_CACHE_DIR`.
 
 ## Global Flags
 
@@ -271,6 +272,20 @@ JSON output shape: `SyncReport`.
 is blocked or incomplete, including pending approvals, resolution diagnostics,
 degraded sources, blocked operations, or active skills without linked targets.
 
+An enabled source is **degraded** when Dalo cannot safely scan it, for example
+because its checkout is missing or unreadable, a tracking refresh failed, or
+inventory warnings make removals ambiguous. Dalo preserves recorded owned links
+from that source instead of treating the incomplete scan as a deletion. A normal
+`sync` can still apply unrelated safe work and exits successfully; `sync --check`
+exits with code 1 until the source is healthy. Restore or re-clone the checkout,
+or remove the source with `dalo source remove <id>`. Do not adopt or delete the
+preserved target link as if it were an unmanaged conflict.
+
+Lock drift for local and team sources is commit-based. Uncommitted working-tree
+edits do not change the recorded commit, and materialized symlinks expose those
+live edits directly. Catalog selections are the source kind with content and
+metadata fingerprints for upstream drift checks.
+
 ### `dalo adopt <skill> [--replace]`
 
 Copy an unmanaged target skill into `local/skills/<slot>`. With `--replace`, Dalo replaces the original unmanaged directory with an owned symlink after copying. Without `--replace`, the original directory remains untouched.
@@ -461,7 +476,7 @@ Dalo uses a small scripting contract:
 | Code | Name | Meaning |
 | --- | --- | --- |
 | `0` | success | Command completed. |
-| `1` | expected failure | User-actionable input/state problem, such as unknown source, unknown target, unsupported schema, parse error, pending not-implemented command, or adoption destination already existing. |
+| `1` | expected failure | User-actionable input/state problem, such as unknown source, unknown target, unsupported schema, parse error, a failed explicit check, or adoption destination already existing. |
 | `2` | usage error | Invalid arguments or flags from Clap. This output is plain text even with `--json`. |
 | `3` | unsafe state | Dalo refused to mutate because the state needs human attention, such as a dirty source, active store lock, or malformed instruction block. |
 | `4` | environment problem | Dependency, path, Git, filesystem, or external command problem. |

@@ -1,7 +1,7 @@
 # Getting Started
 
 This guide walks through Dalo's core loop without touching your real agent folders
-first. Install Dalo first (see the [README installation instructions](../README.md#install)),
+first. Install Dalo first (see the [README installation instructions](../README.md#installation)),
 make sure `git` is on `PATH`, and use Linux or macOS.
 
 ## 1. Create a sandbox store
