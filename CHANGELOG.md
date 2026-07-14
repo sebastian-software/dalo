@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.7.2](https://github.com/sebastian-software/dalo/compare/dalo-v0.7.1...dalo-v0.7.2) (2026-07-14)
+
+
+### Bug Fixes
+
+* **deps:** update googleapis/release-please-action action to v5 ([bebd02f](https://github.com/sebastian-software/dalo/commit/bebd02ffd59499c3b00294ded737e99d27303a34))
+* harden inventory scanning ([befecb0](https://github.com/sebastian-software/dalo/commit/befecb04dd9554649a6c0048494cd6375cb661ca))
+* harden source lifecycle recovery ([2ac9b1f](https://github.com/sebastian-software/dalo/commit/2ac9b1f2b6ff047953f6e45870a4241a7fec7002))
+* make recovery hints actionable ([7eb5bea](https://github.com/sebastian-software/dalo/commit/7eb5beaeb58b27e2efb5b92024e1925e08251f53))
+* prefer existing local source paths ([9227751](https://github.com/sebastian-software/dalo/commit/9227751335fe0f6667347a183737051d00ab23c0))
+* preserve valid inventory paths ([a3c558a](https://github.com/sebastian-software/dalo/commit/a3c558a44ee02a81f47edc61d6fa9cd50130b44d))
+* quote recovery paths safely ([4e9ce40](https://github.com/sebastian-software/dalo/commit/4e9ce40dfaba08343000274322d8aadc963c1abe))
+* surface actionable sync diagnostics ([45f270e](https://github.com/sebastian-software/dalo/commit/45f270e5d9851802c87bfb80d880b82b74684bc1))
+
 ## [0.7.1](https://github.com/sebastian-software/dalo/compare/dalo-v0.7.0...dalo-v0.7.1) (2026-07-13)
 
 
