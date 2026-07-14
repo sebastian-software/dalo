@@ -931,6 +931,11 @@ fn apply_plan(
             slot_name: desired.slot_name.clone(),
             link_path: desired.link_path.clone(),
             store_path: desired.store_path.clone(),
+            extra: previous_owned_skills
+                .iter()
+                .find(|record| record.link_path == desired.link_path)
+                .map(|record| record.extra.clone())
+                .unwrap_or_default(),
         })
         .collect();
     for operation in operations
@@ -1177,22 +1182,26 @@ mod tests {
                 path: blocked_target.clone(),
                 canonical_path: blocked_target.clone(),
                 enabled: true,
+                extra: Default::default(),
             },
             TargetState {
                 id: "clean".to_owned(),
                 path: clean_target.clone(),
                 canonical_path: clean_target.clone(),
                 enabled: true,
+                extra: Default::default(),
             },
         ];
         state.materialization_dirs = vec![
             MaterializationDirState {
                 path: blocked_target.clone(),
                 logical_targets: vec!["blocked".to_owned()],
+                extra: Default::default(),
             },
             MaterializationDirState {
                 path: clean_target.clone(),
                 logical_targets: vec!["clean".to_owned()],
+                extra: Default::default(),
             },
         ];
         store::write_state(&paths, &state).expect("state should be written");
@@ -1409,22 +1418,26 @@ mod tests {
                 path: first_target.clone(),
                 canonical_path: first_target.clone(),
                 enabled: true,
+                extra: Default::default(),
             },
             TargetState {
                 id: "failing".to_owned(),
                 path: failing_target.clone(),
                 canonical_path: failing_target.clone(),
                 enabled: true,
+                extra: Default::default(),
             },
         ];
         state.materialization_dirs = vec![
             MaterializationDirState {
                 path: first_target.clone(),
                 logical_targets: vec!["first".to_owned()],
+                extra: Default::default(),
             },
             MaterializationDirState {
                 path: failing_target,
                 logical_targets: vec!["failing".to_owned()],
+                extra: Default::default(),
             },
         ];
         store::write_state(&paths, &state).expect("state should be written");
@@ -1620,6 +1633,7 @@ mod tests {
             slot_name: "review".to_owned(),
             link_path: link_path.clone(),
             store_path: recorded_store_dir.clone(),
+            extra: Default::default(),
         }];
         let operation = MaterializeOperation {
             kind: MaterializeOperationKind::Remove,
@@ -1695,20 +1709,24 @@ mod tests {
                     path: shared.clone(),
                     canonical_path: shared.clone(),
                     enabled: true,
+                    extra: Default::default(),
                 },
                 TargetState {
                     id: "codex".to_owned(),
                     path: shared.clone(),
                     canonical_path: shared.clone(),
                     enabled: true,
+                    extra: Default::default(),
                 },
             ],
             materialization_dirs: vec![MaterializationDirState {
                 path: shared,
                 logical_targets: vec!["codex".to_owned(), "openclaw".to_owned()],
+                extra: Default::default(),
             }],
             owned_skills: Vec::new(),
             protected_skills: Vec::new(),
+            extra: Default::default(),
         };
         let resolution = resolution_with_skill("review", Path::new("/store/review"));
 
@@ -1725,10 +1743,12 @@ mod tests {
             path: target_dir.to_path_buf(),
             canonical_path: target_dir.to_path_buf(),
             enabled: true,
+            extra: Default::default(),
         }];
         state.materialization_dirs = vec![MaterializationDirState {
             path: target_dir.to_path_buf(),
             logical_targets: vec!["generic".to_owned()],
+            extra: Default::default(),
         }];
         store::write_state(&paths, &state).expect("state should be written");
     }
@@ -1746,16 +1766,19 @@ mod tests {
             path: target_dir.to_path_buf(),
             canonical_path: target_dir.to_path_buf(),
             enabled: true,
+            extra: Default::default(),
         }];
         state.materialization_dirs = vec![MaterializationDirState {
             path: target_dir.to_path_buf(),
             logical_targets: vec!["generic".to_owned()],
+            extra: Default::default(),
         }];
         state.owned_skills = vec![OwnedSkillState {
             target_id: "generic".to_owned(),
             slot_name: "review".to_owned(),
             link_path: link_path.to_path_buf(),
             store_path: store_path.to_path_buf(),
+            extra: Default::default(),
         }];
         store::write_state(&paths, &state).expect("state should be written");
     }

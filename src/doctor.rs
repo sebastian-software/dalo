@@ -1305,16 +1305,19 @@ mod tests {
             path: target.to_path_buf(),
             canonical_path: target.to_path_buf(),
             enabled: true,
+            extra: Default::default(),
         }];
         state.materialization_dirs = vec![MaterializationDirState {
             path: target.to_path_buf(),
             logical_targets: vec!["generic".to_owned()],
+            extra: Default::default(),
         }];
         state.owned_skills = vec![OwnedSkillState {
             target_id: "generic".to_owned(),
             slot_name: "review".to_owned(),
             link_path: link.to_path_buf(),
             store_path: store_path.to_path_buf(),
+            extra: Default::default(),
         }];
         store::write_state(&paths, &state).expect("state should be written");
     }
