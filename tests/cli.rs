@@ -4328,6 +4328,66 @@ fn source_refresh_check_should_rehash_supported_source_locks_without_phantom_dri
 }
 
 #[test]
+fn source_refresh_check_should_migrate_every_catalog_before_bumping_global_schema() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let first_repo = temp_dir.path().join("first-catalog");
+    let second_repo = temp_dir.path().join("second-catalog");
+    create_git_catalog_repo(&first_repo);
+    create_git_catalog_repo(&second_repo);
+    setup_store_with_target(&store, &target);
+    for (source, repo) in [("first", &first_repo), ("second", &second_repo)] {
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .args(["source", "add-catalog", source])
+            .arg(repo)
+            .assert()
+            .success();
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .args(["source", "select", source, "copy-editing"])
+            .assert()
+            .success();
+    }
+    let mut lock = read_source_lock(&store);
+    lock.schema_version = 2;
+    for catalog in &mut lock.catalogs {
+        catalog
+            .inventory
+            .iter_mut()
+            .find(|entry| entry.slot_name == "copy-editing")
+            .expect("selected entry should be locked")
+            .content_hash = format!("legacy-{}-hash", catalog.source_id);
+    }
+    write_source_lock(&store, &lock);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "refresh", "first", "--check"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("selected_changed").not());
+
+    let migrated = read_source_lock(&store);
+    assert_eq!(migrated.schema_version, SOURCE_LOCK_SCHEMA_VERSION);
+    for catalog in &migrated.catalogs {
+        assert_ne!(
+            catalog
+                .inventory
+                .iter()
+                .find(|entry| entry.slot_name == "copy-editing")
+                .expect("selected entry should remain locked")
+                .content_hash,
+            format!("legacy-{}-hash", catalog.source_id)
+        );
+    }
+}
+
+#[test]
 fn source_refresh_without_check_should_run_read_only_drift_check() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

@@ -276,6 +276,7 @@ pub fn select_skills(
     source.selection.dedup();
     let selected = source.selection.clone();
     if !dry_run {
+        migrate_source_lock_inventories(&mut lock, &config.sources)?;
         let commit = git::rev_parse_head(&source_path)?;
         let inventory = if let Some(index) = lock
             .catalogs
@@ -447,15 +448,18 @@ fn catalog_candidates_from_scan(
 
 fn catalog_source(paths: &StorePaths, id: &str) -> DaloResult<SourceConfig> {
     let config = store::read_config(paths)?;
-    let known_sources = config
-        .sources
+    catalog_source_from_config(&config.sources, id)
+}
+
+fn catalog_source_from_config(sources: &[SourceConfig], id: &str) -> DaloResult<SourceConfig> {
+    let known_sources = sources
         .iter()
         .map(|candidate| candidate.id.clone())
         .collect();
-    let source = config
-        .sources
-        .into_iter()
+    let source = sources
+        .iter()
         .find(|source| source.id == id)
+        .cloned()
         .ok_or_else(|| DaloError::unknown_source(id, known_sources))?;
     if source.kind != SourceKind::Catalog {
         return Err(DaloError::NotACatalogSource {
@@ -671,29 +675,22 @@ pub fn compare_catalog_inventory(
 }
 
 /// Read-only drift check: fetch the catalog's upstream ref and compare a fresh
-/// inventory against the pinned snapshot. Does not advance the pin or change
-/// config, the lock, or the resolved set.
+/// inventory against the pinned snapshot. Does not advance pins or change config
+/// or the resolved set; supported legacy locks are rehashed at their existing
+/// pins before comparison.
 pub fn check_catalog_drift(paths: &StorePaths, id: &str) -> DaloResult<CatalogDrift> {
-    let source = catalog_source(paths, id)?;
+    let config = store::read_config(paths)?;
+    let source = catalog_source_from_config(&config.sources, id)?;
     let mut lock = read_source_lock(paths)?;
-    let mut catalog_lock = lock
+
+    if lock.schema_version != SOURCE_LOCK_SCHEMA_VERSION {
+        migrate_source_lock_inventories(&mut lock, &config.sources)?;
+        write_source_lock(paths, &lock)?;
+    }
+    let catalog_lock = lock
         .catalog(id)
         .ok_or_else(|| DaloError::unknown_source(id, Vec::new()))?
         .clone();
-
-    if lock.schema_version != SOURCE_LOCK_SCHEMA_VERSION {
-        catalog_lock.inventory =
-            catalog_inventory_at_commit(&source.path, &catalog_lock.commit, &source.selection)?;
-        if let Some(stored) = lock
-            .catalogs
-            .iter_mut()
-            .find(|catalog| catalog.source_id == id)
-        {
-            stored.inventory = catalog_lock.inventory.clone();
-        }
-        lock.schema_version = SOURCE_LOCK_SCHEMA_VERSION;
-        write_source_lock(paths, &lock)?;
-    }
 
     git::fetch(&source.path)?;
     git::prune_worktrees(&source.path)?;
@@ -732,6 +729,34 @@ fn catalog_inventory_at_commit(
     let _ = git::remove_worktree(source_path, &worktree);
     let _ = git::prune_worktrees(source_path);
     scanned
+}
+
+fn migrate_source_lock_inventories(
+    lock: &mut SourceLock,
+    sources: &[SourceConfig],
+) -> DaloResult<()> {
+    if lock.schema_version == SOURCE_LOCK_SCHEMA_VERSION {
+        return Ok(());
+    }
+    let known_sources = sources
+        .iter()
+        .map(|source| source.id.clone())
+        .collect::<Vec<_>>();
+    for catalog in &mut lock.catalogs {
+        let source = sources
+            .iter()
+            .find(|source| source.id == catalog.source_id)
+            .ok_or_else(|| DaloError::unknown_source(&catalog.source_id, known_sources.clone()))?;
+        if source.kind != SourceKind::Catalog {
+            return Err(DaloError::NotACatalogSource {
+                source_id: source.id.clone(),
+            });
+        }
+        catalog.inventory =
+            catalog_inventory_at_commit(&source.path, &catalog.commit, &source.selection)?;
+    }
+    lock.schema_version = SOURCE_LOCK_SCHEMA_VERSION;
+    Ok(())
 }
 
 fn same_entry(a: &CatalogEntry, b: &CatalogEntry) -> bool {
