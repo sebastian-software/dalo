@@ -178,6 +178,17 @@ pub enum DaloError {
         supported: u32,
     },
 
+    /// Additive metadata from a newer binary cannot be merged losslessly.
+    #[error(
+        "cannot merge additive state field `{field}` for materialization directory `{path}` because previous target records contain conflicting values; use a newer dalo version or keep the targets on separate paths"
+    )]
+    StateMetadataConflict {
+        /// Materialization directory whose records would be combined.
+        path: PathBuf,
+        /// Opaque additive field with conflicting values.
+        field: String,
+    },
+
     /// A system command failed.
     #[error("command `{program}` failed with status {status}: {stderr}")]
     CommandFailed {
@@ -296,6 +307,7 @@ impl DaloError {
             | Self::LocalSourcePriorityFixed { .. } => DaloExitCode::ExpectedFailure,
             Self::DirtySource { .. }
             | Self::StoreLocked { .. }
+            | Self::StateMetadataConflict { .. }
             | Self::MalformedInstructionBlock { .. } => DaloExitCode::UnsafeState,
             Self::StorePath { .. } | Self::InvalidStorePath { .. } | Self::CommandFailed { .. } => {
                 DaloExitCode::EnvironmentProblem
