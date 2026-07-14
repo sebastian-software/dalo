@@ -222,10 +222,6 @@ pub fn link_target(
         Some(store::read_state(&paths)?)
     };
 
-    if !existed_before && !dry_run {
-        fs::create_dir_all(&path)?;
-    }
-
     let canonical_path = canonicalize_target_path(&path);
     let status = if dry_run {
         TargetLinkStatus::Planned
@@ -234,7 +230,18 @@ pub fn link_target(
             .as_mut()
             .expect("state is loaded before non-dry-run target link");
         let status = upsert_target_state(state, entry.id, &path, &canonical_path)?;
-        store::write_state(&paths, state)?;
+        if !existed_before {
+            fs::create_dir_all(&path)?;
+        }
+        if let Err(error) = store::write_state(&paths, state) {
+            if !existed_before {
+                // Only remove the leaf when it is still empty. This avoids
+                // leaving a phantom target directory without risking content
+                // that appeared concurrently.
+                let _ = fs::remove_dir(&path);
+            }
+            return Err(error);
+        }
         status
     };
 
@@ -267,7 +274,7 @@ pub fn unlink_target(
         }
     } else {
         state.targets.retain(|target| target.id != target_id);
-        state.rebuild_materialization_dirs()?;
+        state.rebuild_materialization_dirs_for_removal()?;
         store::write_state(&paths, &state)?;
 
         if state.targets.len() == original_len {
@@ -472,6 +479,56 @@ mod tests {
     }
 
     #[test]
+    fn link_target_should_not_create_directory_when_metadata_merge_fails() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let shared_target = temp_dir.path().join("shared-skills");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root.clone());
+        let state = conflicting_future_directory_state(temp_dir.path(), &shared_target);
+        store::write_state(&paths, &state).expect("conflicting future state should be written");
+
+        let error = link_target(&store_root, "codex", Some(&shared_target), false)
+            .expect_err("lossy metadata merge should block link");
+
+        assert!(matches!(error, DaloError::StateMetadataConflict { .. }));
+        assert!(!shared_target.exists());
+        assert_eq!(
+            store::read_state(&paths).expect("state should remain readable"),
+            state
+        );
+    }
+
+    #[test]
+    fn unlink_target_should_drop_unrelated_conflicting_directory_metadata() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let shared_target = temp_dir.path().join("shared-skills");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root.clone());
+        let state = conflicting_future_directory_state(temp_dir.path(), &shared_target);
+        store::write_state(&paths, &state).expect("conflicting future state should be written");
+
+        let report = unlink_target(&store_root, "codex", false)
+            .expect("unrelated metadata must not wedge target removal");
+        let updated = store::read_state(&paths).expect("updated state should be readable");
+
+        assert_eq!(report.status, TargetUnlinkStatus::Unlinked);
+        assert!(updated.targets.iter().all(|target| target.id != "codex"));
+        assert_eq!(updated.materialization_dirs.len(), 1);
+        assert_eq!(updated.materialization_dirs[0].path, shared_target);
+        assert_eq!(
+            updated.materialization_dirs[0].logical_targets,
+            ["claude".to_owned(), "openclaw".to_owned()]
+        );
+        assert!(
+            !updated.materialization_dirs[0]
+                .extra
+                .contains_key("future_directory_field")
+        );
+    }
+
+    #[test]
     fn unlink_target_dry_run_should_report_missing_for_unlinked_target() {
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
         let store_root = temp_dir.path().join("store");
@@ -496,5 +553,56 @@ mod tests {
             error.to_string(),
             "target `generic` requires an explicit path"
         );
+    }
+
+    fn conflicting_future_directory_state(root: &Path, shared_target: &Path) -> StateFile {
+        let mut state = StateFile::empty();
+        state.targets = vec![
+            TargetState {
+                id: "codex".to_owned(),
+                path: root.join("old-codex"),
+                canonical_path: root.join("old-codex"),
+                enabled: true,
+                extra: Default::default(),
+            },
+            TargetState {
+                id: "claude".to_owned(),
+                path: root.join("old-claude"),
+                canonical_path: root.join("old-claude"),
+                enabled: true,
+                extra: Default::default(),
+            },
+            TargetState {
+                id: "openclaw".to_owned(),
+                path: root.join("old-openclaw"),
+                canonical_path: root.join("old-openclaw"),
+                enabled: true,
+                extra: Default::default(),
+            },
+        ];
+        state
+            .rebuild_materialization_dirs()
+            .expect("initial directories should rebuild");
+        for (target_id, value) in [("claude", "claude value"), ("openclaw", "openclaw value")] {
+            state
+                .materialization_dirs
+                .iter_mut()
+                .find(|directory| directory.logical_targets == [target_id.to_owned()])
+                .expect("target directory should exist")
+                .extra
+                .insert(
+                    "future_directory_field".to_owned(),
+                    toml::Value::String(value.to_owned()),
+                );
+        }
+        for target in state
+            .targets
+            .iter_mut()
+            .filter(|target| target.id != "codex")
+        {
+            target.path = shared_target.to_path_buf();
+            target.canonical_path = shared_target.to_path_buf();
+        }
+        state
     }
 }

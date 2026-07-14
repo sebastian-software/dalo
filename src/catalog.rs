@@ -125,6 +125,8 @@ pub struct CatalogSelectReport {
     pub dry_run: bool,
     /// Deterministic preflight reports for the skills named by this operation.
     pub audits: Vec<AuditReport>,
+    /// Legacy sibling catalogs that could not be migrated during this operation.
+    pub migration_warnings: Vec<String>,
 }
 
 /// Add a catalog source and clone it into the store.
@@ -296,8 +298,9 @@ pub fn select_skills(
     source.selection.sort();
     source.selection.dedup();
     let selected = source.selection.clone();
+    let mut migration_warnings = Vec::new();
     if !dry_run {
-        migrate_source_lock_inventories(&mut lock, &config.sources)?;
+        migration_warnings = migrate_source_lock_inventories(&mut lock, &config.sources, Some(id))?;
         let commit = git::rev_parse_head(&source_path)?;
         let inventory = if let Some(index) = lock
             .catalogs
@@ -333,7 +336,6 @@ pub fn select_skills(
             });
             lock.catalogs.sort_by(|a, b| a.source_id.cmp(&b.source_id));
         }
-        lock.schema_version = SOURCE_LOCK_SCHEMA_VERSION;
         write_source_lock(paths, &lock)?;
         if let Err(error) = store::write_config(paths, &config) {
             if let Err(rollback) = write_source_lock(paths, &original_lock) {
@@ -350,6 +352,7 @@ pub fn select_skills(
         selected,
         dry_run,
         audits,
+        migration_warnings,
     })
 }
 
@@ -610,6 +613,8 @@ pub struct CatalogDrift {
     pub upstream_commit: String,
     /// Classified drift outcomes.
     pub outcomes: Vec<DriftEntry>,
+    /// Legacy sibling catalogs that could not be migrated during this check.
+    pub migration_warnings: Vec<String>,
 }
 
 /// Compare a pinned inventory snapshot against a fresh inventory and classify the
@@ -705,10 +710,13 @@ pub fn check_catalog_drift(paths: &StorePaths, id: &str) -> DaloResult<CatalogDr
     let source = catalog_source_from_config(&config.sources, id)?;
     let mut lock = read_source_lock(paths)?;
 
-    if lock.schema_version != SOURCE_LOCK_SCHEMA_VERSION {
-        migrate_source_lock_inventories(&mut lock, &config.sources)?;
+    let migration_warnings = if lock.schema_version != SOURCE_LOCK_SCHEMA_VERSION {
+        let warnings = migrate_source_lock_inventories(&mut lock, &config.sources, Some(id))?;
         write_source_lock(paths, &lock)?;
-    }
+        warnings
+    } else {
+        Vec::new()
+    };
     let catalog_lock = lock
         .catalog(id)
         .ok_or_else(|| DaloError::unknown_source(id, Vec::new()))?
@@ -736,6 +744,7 @@ pub fn check_catalog_drift(paths: &StorePaths, id: &str) -> DaloResult<CatalogDr
         pinned_commit: catalog_lock.commit,
         upstream_commit,
         outcomes,
+        migration_warnings,
     })
 }
 
@@ -756,29 +765,52 @@ fn catalog_inventory_at_commit(
 fn migrate_source_lock_inventories(
     lock: &mut SourceLock,
     sources: &[SourceConfig],
-) -> DaloResult<()> {
+    required_source_id: Option<&str>,
+) -> DaloResult<Vec<String>> {
     if lock.schema_version == SOURCE_LOCK_SCHEMA_VERSION {
-        return Ok(());
+        return Ok(Vec::new());
     }
-    let known_sources = sources
-        .iter()
-        .map(|source| source.id.clone())
-        .collect::<Vec<_>>();
-    for catalog in &mut lock.catalogs {
-        let source = sources
-            .iter()
-            .find(|source| source.id == catalog.source_id)
-            .ok_or_else(|| DaloError::unknown_source(&catalog.source_id, known_sources.clone()))?;
+    let mut complete = true;
+    let mut warnings = Vec::new();
+    let mut migrated = Vec::with_capacity(lock.catalogs.len());
+    for mut catalog in std::mem::take(&mut lock.catalogs) {
+        let Some(source) = sources.iter().find(|source| source.id == catalog.source_id) else {
+            warnings.push(format!(
+                "dropped legacy lock entry for unconfigured catalog `{}`",
+                catalog.source_id
+            ));
+            continue;
+        };
         if source.kind != SourceKind::Catalog {
-            return Err(DaloError::NotACatalogSource {
-                source_id: source.id.clone(),
-            });
+            warnings.push(format!(
+                "dropped legacy lock entry `{}` because it is no longer a catalog source",
+                source.id
+            ));
+            continue;
         }
-        catalog.inventory =
-            catalog_inventory_at_commit(&source.path, &catalog.commit, &source.selection)?;
+        match catalog_inventory_at_commit(&source.path, &catalog.commit, &source.selection) {
+            Ok(inventory) => catalog.inventory = inventory,
+            Err(error) if required_source_id == Some(source.id.as_str()) => {
+                return Err(DaloError::CatalogMigrationFailed {
+                    source_id: source.id.clone(),
+                    reason: error.to_string(),
+                });
+            }
+            Err(error) => {
+                complete = false;
+                warnings.push(format!(
+                    "skipped legacy inventory migration for catalog `{}`: {error}",
+                    source.id
+                ));
+            }
+        }
+        migrated.push(catalog);
     }
-    lock.schema_version = SOURCE_LOCK_SCHEMA_VERSION;
-    Ok(())
+    lock.catalogs = migrated;
+    if complete {
+        lock.schema_version = SOURCE_LOCK_SCHEMA_VERSION;
+    }
+    Ok(warnings)
 }
 
 fn same_entry(a: &CatalogEntry, b: &CatalogEntry) -> bool {

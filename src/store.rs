@@ -1,6 +1,6 @@
 //! Store path resolution and managed state layout.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::ffi::OsString;
 use std::fs;
@@ -185,6 +185,20 @@ impl StateFile {
     /// several targets gets a deterministic representative. The rebuild is
     /// rejected if opaque metadata from two previous directories conflicts.
     pub fn rebuild_materialization_dirs(&mut self) -> DaloResult<()> {
+        self.rebuild_materialization_dirs_with_conflict_policy(true)
+    }
+
+    /// Rebuild after removing a logical target. Removal must remain available
+    /// even when unrelated future metadata cannot be merged losslessly, so
+    /// conflicting opaque fields are dropped instead of wedging the unlink.
+    pub(crate) fn rebuild_materialization_dirs_for_removal(&mut self) -> DaloResult<()> {
+        self.rebuild_materialization_dirs_with_conflict_policy(false)
+    }
+
+    fn rebuild_materialization_dirs_with_conflict_policy(
+        &mut self,
+        reject_conflicts: bool,
+    ) -> DaloResult<()> {
         let mut grouped: BTreeMap<PathBuf, Vec<String>> = BTreeMap::new();
         for target in self.targets.iter().filter(|target| target.enabled) {
             grouped
@@ -196,6 +210,7 @@ impl StateFile {
         for (path, mut logical_targets) in grouped {
             logical_targets.sort();
             let mut extra = BTreeMap::new();
+            let mut conflicting_fields = BTreeSet::new();
             for previous in self.materialization_dirs.iter().filter(|previous| {
                 previous.path == path
                     || previous
@@ -204,12 +219,19 @@ impl StateFile {
                         .any(|target| logical_targets.contains(target))
             }) {
                 for (key, value) in &previous.extra {
+                    if conflicting_fields.contains(key) {
+                        continue;
+                    }
                     if let Some(existing) = extra.get(key) {
                         if existing != value {
-                            return Err(DaloError::StateMetadataConflict {
-                                path,
-                                field: key.clone(),
-                            });
+                            if reject_conflicts {
+                                return Err(DaloError::StateMetadataConflict {
+                                    path,
+                                    field: key.clone(),
+                                });
+                            }
+                            extra.remove(key);
+                            conflicting_fields.insert(key.clone());
                         }
                     } else {
                         extra.insert(key.clone(), value.clone());

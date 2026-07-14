@@ -599,8 +599,8 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `source list` | `SourceListReport` | `sources[]` |
 | `source priority` | `SourcePriorityReport` | `source`, `dry_run` |
 | `source inspect` | `CatalogInspectReport` | `source_id`, `candidates[]` |
-| `source select` | `CatalogSelectReport` | `source_id`, `selected[]`, `dry_run`, `audits[]` for skills named by the operation |
-| `source refresh` | `CatalogDrift` | `source_id`, `pinned_commit`, `upstream_commit`, `outcomes[]` |
+| `source select` | `CatalogSelectReport` | `source_id`, `selected[]`, `dry_run`, `audits[]` for skills named by the operation, `migration_warnings[]` for degraded legacy sibling catalogs |
+| `source refresh` | `CatalogDrift` | `source_id`, `pinned_commit`, `upstream_commit`, `outcomes[]`, `migration_warnings[]` for degraded legacy sibling catalogs |
 | `source remove` | `SourceRemoveReport` | `source_id`, `checkout_path`, `kept_checkout`, `removed_approvals`, `removed_catalog_lock`, `reconciled_links[]`, `deactivated_skills[]`, `cleanup_warnings[]`, `affected_paths[]`, `dry_run` |
 | `status` | `StatusReport` | `store`, `sources[]`, `targets[]`, `inventory_warnings[]`, `resolution`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]` |
 | `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, `operations[]` |
