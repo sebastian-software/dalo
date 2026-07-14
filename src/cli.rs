@@ -4,12 +4,13 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 
-use clap::{Args, CommandFactory, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{Shell, generate};
 use clap_mangen::Man;
 
 use crate::adopt;
 use crate::approval;
+use crate::audit;
 use crate::catalog;
 use crate::doctor;
 use crate::error::{DaloError, DaloResult};
@@ -119,6 +120,11 @@ pub enum Command {
     Resolve(ResolveCommand),
     /// Diagnose store, target, Git, and lockfile health.
     Doctor(CheckArgs),
+    /// Inspect a skill with deterministic checks and an optional isolated AI reviewer.
+    #[command(
+        after_help = "Examples:\n  dalo audit public:review-helper\n  dalo audit ./my-skill --agent auto\n  dalo audit public:review-helper --agent codex --check\n  dalo audit public:review-helper --accept-risk 'reviewed upstream installer'"
+    )]
+    Audit(AuditCommand),
     /// Grant, list, and revoke scoped approval records.
     #[command(
         after_help = "Examples:\n  dalo approve list\n  dalo approve skill public:review-helper\n  dalo approve source team\n  dalo approve author public:maintainers\n  dalo approve org public:example-org\n  dalo approve revoke skill public:review-helper"
@@ -208,6 +214,68 @@ pub struct SkillApprovalArgs {
     /// Skill in `<source>:<slot>` format, for example `public:review-helper`.
     #[arg(value_name = "VALUE")]
     pub value: String,
+
+    /// Run an isolated semantic review; this may send skill contents to its provider.
+    #[arg(long, value_enum, default_value_t = AuditAgentArg::None)]
+    pub agent: AuditAgentArg,
+
+    /// Ignore a compatible cached semantic review.
+    #[arg(long)]
+    pub refresh_audit: bool,
+
+    /// Accept blocking findings for this exact content hash with a reason.
+    #[arg(long, value_name = "REASON")]
+    pub accept_risk: Option<String>,
+}
+
+/// Arguments for `audit`.
+#[derive(Debug, Args)]
+pub struct AuditCommand {
+    /// Existing skill path or source-qualified `<source>:<skill>` reference.
+    pub target: String,
+
+    /// Semantic reviewer; this may send skill contents to its configured provider.
+    #[arg(long, value_enum, default_value_t = AuditAgentArg::None)]
+    pub agent: AuditAgentArg,
+
+    /// Ignore a compatible cached semantic review.
+    #[arg(long)]
+    pub refresh: bool,
+
+    /// Exit non-zero when unaccepted high or critical findings exist.
+    #[arg(long)]
+    pub check: bool,
+
+    /// Accept blocking findings for this exact content hash with a reason.
+    #[arg(long, value_name = "REASON")]
+    pub accept_risk: Option<String>,
+}
+
+/// Agent provider selection exposed by audit-related commands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum AuditAgentArg {
+    /// Deterministic local analysis only.
+    None,
+    /// First available provider with enforceable no-tool mode (Claude or OpenCode).
+    Auto,
+    /// OpenAI Codex CLI.
+    Codex,
+    /// Anthropic Claude Code CLI.
+    Claude,
+    /// OpenCode CLI.
+    Opencode,
+}
+
+impl From<AuditAgentArg> for audit::AgentSelection {
+    fn from(value: AuditAgentArg) -> Self {
+        match value {
+            AuditAgentArg::None => Self::None,
+            AuditAgentArg::Auto => Self::Auto,
+            AuditAgentArg::Codex => Self::Provider(audit::AgentProvider::Codex),
+            AuditAgentArg::Claude => Self::Provider(audit::AgentProvider::Claude),
+            AuditAgentArg::Opencode => Self::Provider(audit::AgentProvider::Opencode),
+        }
+    }
 }
 
 /// One source approval value.
@@ -396,6 +464,18 @@ pub struct AdoptCommand {
     /// Replace the original unmanaged folder with an owned symlink after copying.
     #[arg(long)]
     pub replace: bool,
+
+    /// Run a semantic review; this may send skill contents to its provider.
+    #[arg(long, value_enum, default_value_t = AuditAgentArg::None)]
+    pub agent: AuditAgentArg,
+
+    /// Ignore a compatible cached semantic review.
+    #[arg(long)]
+    pub refresh_audit: bool,
+
+    /// Accept blocking findings for this exact content hash with a reason.
+    #[arg(long, value_name = "REASON")]
+    pub accept_risk: Option<String>,
 }
 
 /// `resolve` command group.
@@ -430,6 +510,18 @@ pub struct ResolveAdoptArgs {
     /// Replace the original unmanaged folder with an owned symlink after copying.
     #[arg(long)]
     pub replace: bool,
+
+    /// Run a semantic review; this may send skill contents to its provider.
+    #[arg(long, value_enum, default_value_t = AuditAgentArg::None)]
+    pub agent: AuditAgentArg,
+
+    /// Ignore a compatible cached semantic review.
+    #[arg(long)]
+    pub refresh_audit: bool,
+
+    /// Accept blocking findings for this exact content hash with a reason.
+    #[arg(long, value_name = "REASON")]
+    pub accept_risk: Option<String>,
 }
 
 /// Resolver item ID argument.
@@ -481,6 +573,7 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         Command::Adopt(command) => run_adopt(&options, command),
         Command::Resolve(command) => run_resolve(&options, command),
         Command::Doctor(args) => run_doctor(&options, args),
+        Command::Audit(command) => run_audit(&options, command),
         Command::Approve(command) => run_approve(&options, command),
         Command::Instructions(command) => run_instructions(&options, command),
         Command::Completions(_) | Command::Manpage => {
@@ -658,10 +751,21 @@ fn run_sync(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
     let refresh_failures = if options.dry_run {
         Vec::new()
     } else {
-        source::refresh_tracking_team_sources_from_config(&config)?
+        source::refresh_tracking_team_sources_from_config(&paths, &config)?
     };
     let approvals = store::read_approvals(&paths)?;
     let live = resolver::resolve_from_config(&config, approvals.approvals);
+    let blocking_audits = audit_active_skills(&paths, &live.resolution, options.dry_run)?;
+    if !blocking_audits.is_empty() {
+        return Err(DaloError::AuditBlocked {
+            reason: format!(
+                "security audit blocked {} skill{} ({}); inspect with `dalo audit <source:skill>` or record an explicit `--accept-risk` reason",
+                blocking_audits.len(),
+                if blocking_audits.len() == 1 { "" } else { "s" },
+                blocking_audits.join(", ")
+            ),
+        });
+    }
     let degraded_sources = collect_degraded_sources(&live, refresh_failures);
     let (report, rollback) = materialize::materialize_with_degraded_sources_rollback(
         &paths,
@@ -691,6 +795,29 @@ fn run_sync(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
     }
 
     Ok(())
+}
+
+fn audit_active_skills(
+    paths: &store::StorePaths,
+    resolution: &resolver::Resolution,
+    dry_run: bool,
+) -> DaloResult<Vec<String>> {
+    let mut blocked = Vec::new();
+    for skill in &resolution.active_skills {
+        let report = audit::audit_skill(
+            paths,
+            &skill.source_ref,
+            &skill.path,
+            &audit::AuditOptions {
+                persist: !dry_run,
+                ..audit::AuditOptions::default()
+            },
+        )?;
+        if report.is_blocking() {
+            blocked.push(skill.source_ref.clone());
+        }
+    }
+    Ok(blocked)
 }
 
 fn collect_degraded_sources(
@@ -1116,6 +1243,7 @@ fn cleanup_removed_source_checkout(checkout: &std::path::Path) -> DaloResult<()>
             path: checkout.to_path_buf(),
             reason: "source checkout has no parent directory".to_owned(),
         })?;
+    cleanup_staged_source_audits(checkout, source_dir)?;
     let staged = checkout.with_file_name("checkout.dalo-removing");
     if staged.exists() {
         std::fs::remove_dir_all(&staged)?;
@@ -1127,6 +1255,36 @@ fn cleanup_removed_source_checkout(checkout: &std::path::Path) -> DaloResult<()>
     if source_dir.exists() {
         std::fs::remove_dir_all(source_dir)?;
     }
+    Ok(())
+}
+
+fn cleanup_staged_source_audits(
+    checkout: &std::path::Path,
+    source_dir: &std::path::Path,
+) -> DaloResult<()> {
+    let Some(source_id) = source_dir.file_name() else {
+        return Ok(());
+    };
+    let Some(sources_dir) = source_dir.parent() else {
+        return Ok(());
+    };
+    let staging_root = sources_dir.join(".audit-staging");
+    let Ok(entries) = std::fs::read_dir(&staging_root) else {
+        return Ok(());
+    };
+    let prefix = format!("{}-", source_id.to_string_lossy());
+    for entry in entries {
+        let entry = entry?;
+        if !entry.file_name().to_string_lossy().starts_with(&prefix) {
+            continue;
+        }
+        let path = entry.path();
+        if crate::git::remove_worktree(checkout, &path).is_err() {
+            std::fs::remove_dir_all(path)?;
+        }
+    }
+    crate::git::prune_worktrees(checkout)?;
+    let _ = std::fs::remove_dir(staging_root);
     Ok(())
 }
 
@@ -1186,13 +1344,15 @@ fn run_adopt(options: &GlobalOptions, command: AdoptCommand) -> DaloResult<()> {
     } else {
         Some(store::StoreLock::acquire(&paths)?)
     };
-    let report = adopt::adopt_skill(&paths, &command.skill, command.replace, options.dry_run)?;
-    if options.json {
-        print_json(&report)?;
-    } else {
-        status::print_adopt_report(&report);
-    }
-    Ok(())
+    run_adopt_with_audit(
+        options,
+        &paths,
+        &command.skill,
+        command.replace,
+        command.agent,
+        command.refresh_audit,
+        command.accept_risk,
+    )
 }
 
 fn run_resolve(options: &GlobalOptions, command: ResolveCommand) -> DaloResult<()> {
@@ -1214,13 +1374,15 @@ fn run_resolve(options: &GlobalOptions, command: ResolveCommand) -> DaloResult<(
             } else {
                 Some(store::StoreLock::acquire(&paths)?)
             };
-            let report = adopt::adopt_skill(&paths, &args.id, args.replace, options.dry_run)?;
-            if options.json {
-                print_json(&report)?;
-            } else {
-                status::print_adopt_report(&report);
-            }
-            Ok(())
+            run_adopt_with_audit(
+                options,
+                &paths,
+                &args.id,
+                args.replace,
+                args.agent,
+                args.refresh_audit,
+                args.accept_risk,
+            )
         }
         ResolveSubcommand::Keep(args) => {
             ensure_initialized(&paths)?;
@@ -1291,6 +1453,41 @@ fn run_doctor(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
     Ok(())
 }
 
+fn run_audit(options: &GlobalOptions, command: AuditCommand) -> DaloResult<()> {
+    let paths = store::StorePaths::new(options.store.clone());
+    ensure_initialized(&paths)?;
+    let _lock = if options.dry_run {
+        None
+    } else {
+        Some(store::StoreLock::acquire(&paths)?)
+    };
+    let agent = prepare_agent_review(command.agent)?;
+    let report = audit::audit_target(
+        &paths,
+        &command.target,
+        &audit::AuditOptions {
+            agent,
+            refresh: command.refresh,
+            persist: !options.dry_run,
+            accept_risk: command.accept_risk,
+        },
+    )?;
+    if options.json {
+        print_json(&report)?;
+    } else {
+        status::print_audit_report(&report);
+    }
+    if command.check && report.is_blocking() {
+        return Err(DaloError::CheckFailed {
+            reason: format!(
+                "security audit for `{}` contains unaccepted high or critical findings",
+                report.source_ref
+            ),
+        });
+    }
+    Ok(())
+}
+
 fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<()> {
     let paths = store::StorePaths::new(options.store.clone());
     ensure_initialized(&paths)?;
@@ -1308,10 +1505,43 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
                 status::print_approval_list(&report);
             }
         }
-        ApproveSubcommand::Skill(args) => print_approval_result(
-            options,
-            approval::grant(&paths, "skill", &args.value, options.dry_run)?,
-        )?,
+        ApproveSubcommand::Skill(args) => {
+            let canonical = approval::canonical_skill(&paths, &args.value)?;
+            let agent = prepare_agent_review(args.agent)?;
+            let audit_report = audit::audit_target(
+                &paths,
+                &canonical,
+                &audit::AuditOptions {
+                    agent,
+                    refresh: args.refresh_audit,
+                    persist: !options.dry_run,
+                    accept_risk: args.accept_risk,
+                },
+            )?;
+            if audit_report.is_blocking() {
+                if options.json {
+                    print_json(&audit_report)?;
+                } else {
+                    status::print_audit_report(&audit_report);
+                }
+                return Err(DaloError::CheckFailed {
+                    reason: format!(
+                        "security audit blocked approval of `{}`; inspect the findings or rerun with `--accept-risk <reason>`",
+                        audit_report.source_ref
+                    ),
+                });
+            }
+            let approval_report = approval::grant(&paths, "skill", &args.value, options.dry_run)?;
+            if options.json {
+                print_json(&SkillApprovalOutcome {
+                    audit: audit_report,
+                    approval: approval_report,
+                })?;
+            } else {
+                status::print_audit_report(&audit_report);
+                status::print_approval_report(&approval_report);
+            }
+        }
         ApproveSubcommand::Source(args) => print_approval_result(
             options,
             approval::grant(&paths, "source", &args.value, options.dry_run)?,
@@ -1330,6 +1560,82 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
         )?,
     }
     Ok(())
+}
+
+#[derive(serde::Serialize)]
+struct SkillApprovalOutcome {
+    audit: audit::AuditReport,
+    approval: approval::ApprovalReport,
+}
+
+#[derive(serde::Serialize)]
+struct AdoptAuditOutcome {
+    audit: audit::AuditReport,
+    adoption: adopt::AdoptReport,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_adopt_with_audit(
+    options: &GlobalOptions,
+    paths: &store::StorePaths,
+    selector: &str,
+    replace: bool,
+    agent: AuditAgentArg,
+    refresh: bool,
+    accept_risk: Option<String>,
+) -> DaloResult<()> {
+    let unmanaged = adopt::find_unmanaged_skill(paths, selector)?;
+    let agent = prepare_agent_review(agent)?;
+    let audit_report = audit::audit_skill(
+        paths,
+        &format!("unmanaged:{}", unmanaged.slot_name),
+        &unmanaged.path,
+        &audit::AuditOptions {
+            agent,
+            refresh,
+            persist: !options.dry_run,
+            accept_risk,
+        },
+    )?;
+    if audit_report.is_blocking() {
+        if options.json {
+            print_json(&audit_report)?;
+        } else {
+            status::print_audit_report(&audit_report);
+        }
+        return Err(DaloError::AuditBlocked {
+            reason: format!(
+                "refusing to adopt `{selector}` until its findings are reviewed or accepted with `--accept-risk <reason>`"
+            ),
+        });
+    }
+    let adoption = adopt::adopt_skill(paths, selector, replace, options.dry_run)?;
+    if options.json {
+        print_json(&AdoptAuditOutcome {
+            audit: audit_report,
+            adoption,
+        })?;
+    } else {
+        status::print_audit_report(&audit_report);
+        status::print_adopt_report(&adoption);
+    }
+    Ok(())
+}
+
+fn prepare_agent_review(agent: AuditAgentArg) -> DaloResult<audit::AgentSelection> {
+    let selection = audit::resolve_agent_selection(agent.into())?;
+    if let audit::AgentSelection::Provider(provider) = selection {
+        match provider {
+            audit::AgentProvider::Codex => eprintln!(
+                "warning: sending a bounded skill snapshot to Codex; its network-disabled read-only sandbox shell remains available to the reviewer"
+            ),
+            audit::AgentProvider::Claude | audit::AgentProvider::Opencode => eprintln!(
+                "note: sending a bounded skill snapshot to {} with reviewer tools disabled",
+                provider.as_str()
+            ),
+        }
+    }
+    Ok(selection)
 }
 
 fn print_approval_result(

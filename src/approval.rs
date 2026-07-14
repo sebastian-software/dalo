@@ -101,7 +101,8 @@ fn canonical_value(paths: &StorePaths, scope: &str, value: &str) -> DaloResult<S
     }
 }
 
-fn canonical_skill(paths: &StorePaths, value: &str) -> DaloResult<String> {
+/// Resolve a source-qualified slot or stable ID to its canonical skill ref.
+pub fn canonical_skill(paths: &StorePaths, value: &str) -> DaloResult<String> {
     let (source_id, selector) = value
         .split_once(':')
         .filter(|(source, skill)| !source.is_empty() && !skill.is_empty())

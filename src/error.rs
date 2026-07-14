@@ -19,6 +19,12 @@ pub enum DaloError {
         /// Human-readable summary of the state that needs attention.
         reason: String,
     },
+    /// A pre-materialization security audit found an unaccepted blocking risk.
+    #[error("security audit blocked operation: {reason}")]
+    AuditBlocked {
+        /// Evidence-backed summary and recovery guidance.
+        reason: String,
+    },
     /// A planned command exists in the CLI but has not been implemented yet.
     #[error("command `{command}` is not implemented yet")]
     NotImplemented {
@@ -204,6 +210,24 @@ pub enum DaloError {
         stderr: String,
     },
 
+    /// A requested AI-agent reviewer is not installed or discoverable.
+    #[error("agent reviewer `{requested}` is unavailable: {reason}")]
+    AgentUnavailable {
+        /// Requested provider or automatic selection.
+        requested: String,
+        /// Discovery failure detail.
+        reason: String,
+    },
+
+    /// An installed AI-agent reviewer failed to return a valid assessment.
+    #[error("agent reviewer `{provider}` failed: {reason}")]
+    AgentReviewFailed {
+        /// Provider CLI that failed.
+        provider: String,
+        /// Execution or output-validation detail.
+        reason: String,
+    },
+
     /// A store file exists but could not be parsed.
     #[error("could not parse `{path}`: {reason}")]
     FileParse {
@@ -287,7 +311,9 @@ impl DaloError {
     #[must_use]
     pub fn exit_code(&self) -> DaloExitCode {
         match self {
-            Self::CheckFailed { .. } | Self::NotImplemented { .. } => DaloExitCode::ExpectedFailure,
+            Self::CheckFailed { .. } | Self::AuditBlocked { .. } | Self::NotImplemented { .. } => {
+                DaloExitCode::ExpectedFailure
+            }
             Self::StoreNotInitialized { .. }
             | Self::UnknownTarget { .. }
             | Self::TargetPathRequired { .. }
@@ -309,9 +335,11 @@ impl DaloError {
             | Self::StoreLocked { .. }
             | Self::StateMetadataConflict { .. }
             | Self::MalformedInstructionBlock { .. } => DaloExitCode::UnsafeState,
-            Self::StorePath { .. } | Self::InvalidStorePath { .. } | Self::CommandFailed { .. } => {
-                DaloExitCode::EnvironmentProblem
-            }
+            Self::StorePath { .. }
+            | Self::InvalidStorePath { .. }
+            | Self::CommandFailed { .. }
+            | Self::AgentUnavailable { .. }
+            | Self::AgentReviewFailed { .. } => DaloExitCode::EnvironmentProblem,
             Self::TomlSerialize(_) | Self::Json(_) => DaloExitCode::ExpectedFailure,
             Self::Io(_) => DaloExitCode::EnvironmentProblem,
         }

@@ -10,6 +10,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::audit::{self, AuditReport};
 use crate::error::{DaloError, DaloResult};
 use crate::git;
 use crate::inventory::{self, SkillRecord, SourceInventory};
@@ -122,6 +123,8 @@ pub struct CatalogSelectReport {
     pub selected: Vec<String>,
     /// Whether the command ran as dry-run.
     pub dry_run: bool,
+    /// Deterministic preflight reports for the skills named by this operation.
+    pub audits: Vec<AuditReport>,
 }
 
 /// Add a catalog source and clone it into the store.
@@ -247,6 +250,24 @@ pub fn select_skills(
     for reference in refs {
         resolved.push(resolve_candidate_reference(id, &candidates, reference)?);
     }
+    let audits = if unselect {
+        Vec::new()
+    } else {
+        resolved
+            .iter()
+            .map(|candidate| {
+                audit::audit_skill(
+                    paths,
+                    &format!("{id}:{}", candidate.slot_name),
+                    &source_path.join(&candidate.path),
+                    &audit::AuditOptions {
+                        persist: !dry_run,
+                        ..audit::AuditOptions::default()
+                    },
+                )
+            })
+            .collect::<DaloResult<Vec<_>>>()?
+    };
 
     // Validate and snapshot every durable input before changing either config or
     // the catalog lock. This keeps a malformed lock from becoming a partial
@@ -328,6 +349,7 @@ pub fn select_skills(
         source_id: id.to_owned(),
         selected,
         dry_run,
+        audits,
     })
 }
 
@@ -788,7 +810,7 @@ pub fn hash_directory(skill_dir: &Path) -> DaloResult<String> {
             hasher.update(*b"L");
             let target = fs::read_link(file)?;
             hash_framed(&mut hasher, target.as_os_str().as_bytes());
-        } else {
+        } else if metadata.is_file() {
             hasher.update(*b"F");
             hasher.update((metadata.permissions().mode() & 0o111).to_le_bytes());
             hasher.update(metadata.len().to_le_bytes());
@@ -801,6 +823,13 @@ pub fn hash_directory(skill_dir: &Path) -> DaloResult<String> {
                 }
                 hasher.update(&buffer[..read]);
             }
+        } else {
+            // Special filesystem entries (FIFO, socket, device) must still
+            // participate in identity without opening them and potentially
+            // blocking or interacting with a device.
+            hasher.update(*b"S");
+            hasher.update(metadata.permissions().mode().to_le_bytes());
+            hasher.update(metadata.len().to_le_bytes());
         }
     }
     Ok(hex_digest(&hasher.finalize()))
@@ -836,7 +865,7 @@ fn collect_files(dir: &Path, files: &mut Vec<std::path::PathBuf>) -> DaloResult<
         let path = entry.path();
         if file_type.is_dir() {
             collect_files(&path, files)?;
-        } else if file_type.is_file() || file_type.is_symlink() {
+        } else {
             files.push(path);
         }
     }

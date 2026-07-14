@@ -78,6 +78,32 @@ pub fn fetch(path: &Path) -> DaloResult<()> {
     run_git_network(path, &["fetch", "--quiet", "origin", "HEAD"]).map(|_| ())
 }
 
+/// Fetch the configured upstream without moving the current checkout.
+pub fn fetch_upstream(path: &Path) -> DaloResult<()> {
+    print_network_progress(&format!(
+        "Staging source refresh for `{}`...",
+        path.display()
+    ));
+    run_git_network(path, &["fetch", "--quiet"]).map(|_| ())
+}
+
+/// Count commits reachable from `to` but not from `from`.
+pub fn revision_count(path: &Path, from: &str, to: &str) -> DaloResult<usize> {
+    let range = format!("{from}..{to}");
+    let output = run_git(path, &["rev-list", "--count", &range])?;
+    output.trim().parse().map_err(|error| {
+        DaloError::Io(std::io::Error::other(format!(
+            "git returned an invalid revision count `{}`: {error}",
+            output.trim()
+        )))
+    })
+}
+
+/// Fast-forward the current branch to an already fetched revision.
+pub fn fast_forward_to(path: &Path, revision: &str) -> DaloResult<()> {
+    run_git(path, &["merge", "--ff-only", "--quiet", revision]).map(|_| ())
+}
+
 /// Check a commit out into a detached worktree for read-only inspection. The
 /// caller's own checkout (and pin) is left untouched.
 pub fn add_detached_worktree(repo: &Path, dest: &Path, commit: &str) -> DaloResult<()> {

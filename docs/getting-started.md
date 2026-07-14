@@ -97,9 +97,23 @@ Catalog skills are untrusted by default. After reviewing the pending skill,
 sync it:
 
 ```sh
+dalo audit public:review-helper
+# Optional semantic review. This may send skill contents to the configured provider:
+dalo audit public:review-helper --agent auto
 dalo approve skill public:review-helper
 dalo sync
 ```
+
+`source add`, `source select`, and `approve skill` run deterministic local
+preflight checks. `sync` repeats them against the exact content about to be
+linked and blocks unaccepted `high` or `critical` findings. To accept a known
+risk for one exact content hash, provide a reason:
+
+```sh
+dalo audit public:review-helper --accept-risk "reviewed pinned upstream installer"
+```
+
+Changing any file changes the hash and invalidates that acceptance.
 
 Use `dalo approve list` to inspect local trust rules. Broader `source`, `author`,
 and `org` approvals are available when that is the intended policy.
@@ -144,6 +158,9 @@ Then copy it into Dalo's local source:
 ```sh
 dalo adopt release-notes.local
 ```
+
+Adoption prints a local security preflight before it copies or replaces the
+unmanaged skill.
 
 Replacing the original folder with a Dalo-owned symlink is a separate explicit step:
 
