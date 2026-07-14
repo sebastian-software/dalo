@@ -455,12 +455,19 @@ dalo audit public:review-helper \
   --accept-risk "reviewed pinned upstream installer"
 ```
 
-Reports live below `audits/` and are keyed by the complete skill directory
-hash. Cached agent results additionally require the same provider and Dalo
-review-prompt version. Risk acceptance is bound to the engine versions,
-coverage, and exact deterministic and semantic findings, so newly discovered
-risks require a new decision even when the skill bytes did not change.
-No-finding results are best-effort observations, not a security certification.
+Reports live below `audits/` and are keyed by both the source-qualified skill
+reference and the complete skill directory hash. Cached agent results
+additionally require the same provider and Dalo review-prompt version. Risk
+acceptance is bound to source provenance, engine versions, coverage, and exact
+deterministic and semantic findings, so a different source or newly discovered
+risk requires a new decision even when the skill bytes did not change.
+
+The audit directory and report files are restricted to the current user when
+Dalo writes them. Audit state is still a local trust boundary rather than a
+cryptographically authenticated log: a process running as the same user can
+replace it. Protect the store like other security-sensitive user state and do
+not place it in a shared or untrusted writable directory. No-finding results
+are best-effort observations, not a security certification.
 
 JSON output shape: `AuditReport`.
 
@@ -641,7 +648,7 @@ After `dalo init`, the store contains:
 | `state.toml` | Internal target/materialization/protection state. |
 | `approvals.toml` | Local approval records. |
 | `source-lock.toml` | Catalog source pins, selections, and inventory snapshots. |
-| `audits/<content-hash>.json` | Content-addressed deterministic and optional agent security reports. |
+| `audits/<content-hash>-<source-ref-hash>.json` | Source- and content-bound deterministic and optional agent security reports. |
 | `.lock` | Temporary coarse lock file while mutating commands run. |
 | `local/skills/` | Local private skill directories. |
 | `local/instructions/` | Local instruction pack Markdown files. |
