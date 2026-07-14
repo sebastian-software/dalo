@@ -284,6 +284,17 @@ pub struct InitReport {
     pub dry_run: bool,
     /// Operation results.
     pub operations: Vec<InitOperation>,
+    /// Existing store files that still need manual attention.
+    pub validation_warnings: Vec<InitValidationWarning>,
+}
+
+/// A persisted store file that remained invalid after initialization.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct InitValidationWarning {
+    /// Invalid store file.
+    pub path: PathBuf,
+    /// Validation error with parse or schema location details when available.
+    pub message: String,
 }
 
 /// Resolve the store path from CLI input, environment, or default.
@@ -399,11 +410,33 @@ pub fn init_store(store_root: PathBuf, dry_run: bool) -> DaloResult<InitReport> 
     )?);
     operations.push(ensure_git_repo(&paths.local_dir, dry_run)?);
 
+    let validation_warnings = validate_initialized_store(&paths);
+
     Ok(InitReport {
         store: paths.root,
         dry_run,
         operations,
+        validation_warnings,
     })
+}
+
+fn validate_initialized_store(paths: &StorePaths) -> Vec<InitValidationWarning> {
+    let checks = [
+        (&paths.config_file, read_config(paths).map(|_| ())),
+        (&paths.lock_file, read_user_lock(paths).map(|_| ())),
+        (&paths.state_file, read_state(paths).map(|_| ())),
+    ];
+
+    checks
+        .into_iter()
+        .filter(|(path, _)| path.exists())
+        .filter_map(|(path, result)| {
+            result.err().map(|error| InitValidationWarning {
+                path: path.clone(),
+                message: error.to_string(),
+            })
+        })
+        .collect()
 }
 
 /// Read the initialized store state file.
@@ -1036,7 +1069,22 @@ mod tests {
         fs::write(&paths.approvals_file, "schema_version = ")
             .expect("approvals should be truncated");
 
-        init_store(store_root, false).expect("init should leave non-state TOML files alone");
+        let report =
+            init_store(store_root, false).expect("init should leave non-state TOML files alone");
+
+        assert_eq!(report.validation_warnings.len(), 2);
+        assert!(
+            report
+                .validation_warnings
+                .iter()
+                .any(|warning| warning.path == paths.config_file)
+        );
+        assert!(
+            report
+                .validation_warnings
+                .iter()
+                .any(|warning| warning.path == paths.lock_file)
+        );
 
         assert_eq!(
             fs::read_to_string(&paths.config_file).expect("config should be readable"),

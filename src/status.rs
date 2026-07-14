@@ -242,6 +242,16 @@ pub fn print_init_report(report: &InitReport) {
         );
     }
     println!();
+
+    if !report.validation_warnings.is_empty() {
+        println!("Store needs attention:");
+        for warning in &report.validation_warnings {
+            println!("  warning {}: {}", warning.path.display(), warning.message);
+        }
+        println!("Fix the files above before using dalo.");
+        return;
+    }
+
     println!("Store ready.");
     println!("Next steps:");
     println!("  1. dalo target link <codex|claude|openclaw|hermes>");

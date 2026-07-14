@@ -616,6 +616,7 @@ where
             Ok(true) => {
                 return Err(DaloError::DirtySource {
                     source_id: source.id.clone(),
+                    path: source.path.clone(),
                 });
             }
             Ok(false) => {}

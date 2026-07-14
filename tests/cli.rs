@@ -112,6 +112,35 @@ fn init_should_create_store_layout() {
 }
 
 #[test]
+fn init_should_warn_when_existing_store_files_are_invalid() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::write(store.join("config.toml"), "version = ").expect("config should be corrupted");
+    std::fs::write(store.join("lock.toml"), "schema_version = ").expect("lock should be corrupted");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Store needs attention:"))
+        .stdout(predicate::str::contains(
+            store.join("config.toml").to_string_lossy(),
+        ))
+        .stdout(predicate::str::contains(
+            store.join("lock.toml").to_string_lossy(),
+        ))
+        .stdout(predicate::str::contains("Store ready.").not());
+}
+
+#[test]
 fn approve_cli_should_grant_list_revoke_and_dry_run() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -294,7 +323,10 @@ fn mutating_commands_should_point_to_init_before_locking_missing_store() {
             .assert()
             .failure()
             .code(1)
-            .stderr(predicate::str::contains("run `dalo init` first"))
+            .stderr(predicate::str::contains(format!(
+                "run `dalo --store {} init` first",
+                store.display()
+            )))
             .stderr(predicate::str::contains("No such file or directory").not());
     }
 }
@@ -313,7 +345,10 @@ fn json_errors_should_render_machine_readable_stderr() {
         .code(1)
         .stderr(predicate::str::contains("\"error\""))
         .stderr(predicate::str::contains("\"code\": \"expected_failure\""))
-        .stderr(predicate::str::contains("run `dalo init` first"))
+        .stderr(predicate::str::contains(format!(
+            "run `dalo --store {} init` first",
+            store.display()
+        )))
         .stderr(predicate::str::contains("error:").not());
 }
 
@@ -2810,6 +2845,10 @@ fn sync_should_block_dirty_team_source() {
         "# Dirty\n",
     )
     .expect("checkout should be dirtied");
+    let checkout = store
+        .join("sources/company/checkout")
+        .canonicalize()
+        .expect("checkout should be canonicalizable");
     let mut command = dalo_command();
 
     command
@@ -2821,7 +2860,11 @@ fn sync_should_block_dirty_team_source() {
         .code(3)
         .stderr(predicate::str::contains(
             "source `company` has local changes",
-        ));
+        ))
+        .stderr(predicate::str::contains(format!(
+            "git -C {} status",
+            checkout.display()
+        )));
 }
 
 #[test]
