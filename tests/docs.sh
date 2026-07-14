@@ -6,6 +6,10 @@ root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 for document in "$root/README.md" "$root/site/index.html" "$root/site/install.md" "$root/docs/uninstall.md"; do
   grep -q 'npx getdalo' "$document"
 done
+for document in "$root/README.md" "$root/site/index.html" "$root/site/install.md"; do
+  grep -q 'brew install sebastian-software/tap/dalo' "$document"
+done
+grep -q 'brew uninstall dalo' "$root/docs/uninstall.md"
 grep -q 'npm uninstall --global getdalo' "$root/docs/uninstall.md"
 grep -q 'dalo approve skill' "$root/docs/troubleshooting.md"
 grep -q 'dalo approve skill' "$root/docs/getting-started.md"

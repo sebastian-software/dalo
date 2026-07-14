@@ -192,3 +192,26 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
         run: gh release upload "$TAG_NAME" dist/*.tar.gz dist/*.sha256 dist/*.sigstore.json --clobber
+
+  update-homebrew:
+    name: Update Homebrew tap
+    needs: [release-please, release-artifacts]
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Trigger formula update
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          test -n "$GH_TOKEN"
+          case "$TAG_NAME" in
+            dalo-v*) ;;
+            *) echo "::error::unexpected release tag '${TAG_NAME}'"; exit 1 ;;
+          esac
+          gh api --method POST repos/sebastian-software/homebrew-tap/dispatches \
+            -f event_type=dalo_release \
+            -F "client_payload[tag_name]=$TAG_NAME"
