@@ -21,6 +21,7 @@ dalo --json doctor
 | `blocked_by_same_name_skill`, `unmanaged_same_name_blocker`, sync `blocked` with `real unmanaged entry exists at target slot` | A real folder already occupies the target slot Dalo wanted to link. | Keep it intentionally with `dalo resolve keep <id>` (undo with `dalo resolve unkeep <target>:<slot>`), adopt it with `dalo adopt <id>`, or adopt and replace it with `dalo adopt <id> --replace`. |
 | `pending_approval` | A skill would become active, but no approval rule covers it. | Review the skill, then run `dalo approve skill <source-id>:<skill>` (or grant a reviewed source/author/org scope), or set the source `trusted = true` if the whole source is trusted. Run `dalo status` again. |
 | `dirty_source` | A Git-backed source has local edits. Team sources block refresh when dirty. | Commit, stash, discard, or promote the edits outside Dalo. Then run `dalo sync`. |
+| sync reason `scan degraded`, output `degraded source:` | Dalo could not safely scan an enabled source. Recorded owned links are preserved so an incomplete scan cannot delete them. | Restore or re-clone the source checkout, or remove the source with `dalo source remove <id>`. Do not adopt or delete the preserved target link as an unmanaged blocker. |
 | `lock drift` | Live resolution differs from the last `lock.toml`. | Run `dalo status` to inspect the drift, then `dalo sync` when the change is expected. |
 | `StoreLocked`, error text `another dalo operation is running` | Another Dalo command currently owns `.lock`, or a stale lock file remains. | Wait for the other command. If no Dalo process is running, inspect and remove the stale `.lock` file in the store. |
 | `owned_path_real_entry` | Dalo has an ownership record, but a real file or directory now exists at that path. | Run `dalo resolve remove-owned <id>`. Dalo drops the ownership record and leaves the real entry intact. |
@@ -103,7 +104,8 @@ Lock drift compares the previous `lock.toml` with the current live resolution.
 | `relink` / `applied` | Dalo moved an owned symlink to the desired store path. | No action. |
 | `remove` / `applied` | Dalo removed a no-longer-desired owned symlink. | No action. |
 | `drop_record` / `applied` | Dalo dropped stale ownership state without touching a real entry. | No action unless the skill should be linked again; then run `dalo sync`. |
-| `conflict` / `blocked` | Dalo refused to touch unmanaged or foreign content. | Adopt/keep/rename/remove the blocker, then rerun `dalo sync`. |
+| `conflict` / `blocked`, reason says a real entry or foreign symlink occupies the slot | Dalo refused to touch unmanaged or foreign content. | Adopt, keep, rename, or remove the blocker, then rerun `dalo sync`. |
+| `conflict` / `blocked`, reason contains `source <id> scan degraded` | Dalo preserved a recorded owned link because its source could not be scanned safely. | Restore or re-clone the source checkout, or run `dalo source remove <id>`. Leave the preserved target link in place. |
 | any kind / `planned` | `--dry-run` showed what would happen. | Rerun without `--dry-run` if the plan is correct. |
 | any kind / `existing` | The filesystem already matched the desired state. | No action. |
 
@@ -147,7 +149,7 @@ Doctor includes `ok` and `info` codes as well as warnings/errors. Codes not list
 | `broken_owned_symlink` | error | Run `dalo resolve remove-owned <id>`, then `dalo sync` if it should be recreated. |
 | `owned_path_real_entry` | error | Run `dalo resolve remove-owned <id>`; the real entry stays in place. |
 | `missing_owned_symlink` | warning | Run `dalo resolve remove-owned <id>`, then `dalo sync` if needed. |
-| `dirty_source` | error for team/catalog, warning for local | Commit, stash, discard, or intentionally keep local work before syncing. |
+| `dirty_source` | error for team/catalog, warning for local | If the checkout has edits, commit, stash, discard, or intentionally keep them. If its path is missing or unreadable, restore/re-clone it or run `dalo source remove <id>`. |
 | `pending_approval` | warning | Add the needed approval or leave the skill pending. |
 | `required_closure_blocked` | error | Resolve the closure block reason shown in the message. |
 | `instruction_pack_topic_overlap` | warning | Rename topics or disable one overlapping pack if the overlap is not intended. |

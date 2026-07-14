@@ -6,6 +6,7 @@ Useful checks:
 
 - `dalo status --check --json` reports resolution and fails when the state needs review.
 - `dalo doctor --check --json` reports health and fails on error findings.
+- `dalo sync --check --json` renders the sync result and fails when materialization is blocked or incomplete.
 - `dalo source refresh <catalog> --check` checks catalog drift read-only and fails for changed, moved, or removed selected skills.
 
 ## Example GitHub Actions job

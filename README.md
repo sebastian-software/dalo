@@ -305,7 +305,7 @@ Dalo is multi-source by default.
 
 The everyday command is `sync`: refresh clean tracking team sources, resolve the final skill set, and materialize it into configured targets.
 
-Catalog sources are drift-checked read-only through `source refresh <id>`, which compares the upstream inventory against the pinned snapshot without advancing the pin. `--check` remains accepted for compatibility. Lock advancement (writing a new pin) is a later source-maintenance slice.
+Catalog sources are drift-checked read-only through `source refresh <id>`, which compares the upstream inventory against the pinned snapshot without advancing the pin. Add `--check` when changed, moved, or removed selected skills should produce a non-zero exit for automation. Lock advancement (writing a new pin) is a later source-maintenance slice.
 
 ## Resolution
 
