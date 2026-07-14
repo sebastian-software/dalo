@@ -98,6 +98,29 @@ test('falls back to the newest cached binary when an explicit latest lookup fail
   }
 });
 
+test('orders cached prerelease fallbacks by SemVer precedence', async () => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'dalo-npm-test-'));
+  const cacheRoot = path.join(temp, 'cache');
+  const target = 'x86_64-unknown-linux-gnu';
+  const originalFetch = global.fetch;
+  const originalEmitWarning = process.emitWarning;
+  try {
+    await writeCachedBinary(cacheRoot, '1.0.0-alpha.10', target);
+    await writeCachedBinary(cacheRoot, '1.0.0-alpha.Z', target);
+    const newest = await writeCachedBinary(cacheRoot, '1.0.0-alpha.beta', target);
+    global.fetch = async () => {
+      throw new Error('offline');
+    };
+    process.emitWarning = () => {};
+
+    assert.equal(await ensureBinary({ tag: 'latest', target, cacheRoot }), newest);
+  } finally {
+    global.fetch = originalFetch;
+    process.emitWarning = originalEmitWarning;
+    await fs.rm(temp, { recursive: true, force: true });
+  }
+});
+
 test('reports available cache versions when an exact download fails', async () => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'dalo-npm-test-'));
   const cacheRoot = path.join(temp, 'cache');
