@@ -209,7 +209,7 @@ jobs:
         run: |
           test -n "$GH_TOKEN"
           case "$TAG_NAME" in
-            dalo-v*) ;;
+            dalo-v*|v*) ;;
             *) echo "::error::unexpected release tag '${TAG_NAME}'"; exit 1 ;;
           esac
           gh api --method POST repos/sebastian-software/homebrew-tap/dispatches \
