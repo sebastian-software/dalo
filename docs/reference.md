@@ -433,7 +433,12 @@ dalo audit public:review-helper
 dalo audit ./my-skill --check
 dalo audit public:review-helper --agent auto
 dalo --json audit public:review-helper --agent codex
+dalo audit public:review-helper --agent claude --refresh-audit
 ```
+
+Use `--refresh-audit` to ignore a compatible cached semantic review and run the
+selected provider again. The older `--refresh` spelling remains a hidden alias
+for script compatibility.
 
 `--agent auto|codex|claude|opencode` adds a semantic review through an installed
 agent CLI. Dalo starts a fresh non-persistent reviewer and treats a bounded
@@ -572,7 +577,7 @@ Dalo uses a small scripting contract:
 | Code | Name | Meaning |
 | --- | --- | --- |
 | `0` | success | Command completed. |
-| `1` | expected failure | User-actionable input/state problem, such as unknown source, unknown target, unsupported schema, parse error, a failed explicit check, or adoption destination already existing. |
+| `1` | expected failure | User-actionable input/state problem, such as unknown source, unknown target, unsupported schema, parse error, a failed explicit check, a security-audit block during `sync` or `approve`, or adoption destination already existing. |
 | `2` | usage error | Invalid arguments or flags from Clap. This output is plain text even with `--json`. |
 | `3` | unsafe state | Dalo refused to mutate because the state needs human attention, such as a dirty source, active store lock, or malformed instruction block. |
 | `4` | environment problem | Dependency, path, Git, filesystem, or external command problem. |
@@ -589,16 +594,17 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `target detect` | `TargetDetectReport` | `targets[]` with `id`, `name`, `support`, `path`, `exists`, `linked` |
 | `target link` | `TargetLinkReport` | `target_id`, `path`, `canonical_path`, `status`, `created_dir` |
 | `target unlink` | `TargetUnlinkReport` | `target_id`, `status` |
-| `source add` | `SourceAddReport` | `source`, `dry_run` |
+| `source add` | `SourceAddReport` | `source`, `dry_run`, `audits[]` with one `AuditReport` per discovered skill |
 | `source add-catalog` | `SourceConfig` | `id`, `kind`, `path`, `priority`, `enabled`, `trusted`, `url`, `update_policy`, `selection` |
 | `source list` | `SourceListReport` | `sources[]` |
 | `source priority` | `SourcePriorityReport` | `source`, `dry_run` |
 | `source inspect` | `CatalogInspectReport` | `source_id`, `candidates[]` |
-| `source select` | `CatalogSelectReport` | `source_id`, `selected[]`, `dry_run` |
+| `source select` | `CatalogSelectReport` | `source_id`, `selected[]`, `dry_run`, `audits[]` for skills named by the operation |
 | `source refresh` | `CatalogDrift` | `source_id`, `pinned_commit`, `upstream_commit`, `outcomes[]` |
 | `source remove` | `SourceRemoveReport` | `source_id`, `checkout_path`, `kept_checkout`, `removed_approvals`, `removed_catalog_lock`, `reconciled_links[]`, `deactivated_skills[]`, `cleanup_warnings[]`, `affected_paths[]`, `dry_run` |
 | `status` | `StatusReport` | `store`, `sources[]`, `targets[]`, `inventory_warnings[]`, `resolution`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]` |
 | `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, `operations[]` |
+| `audit` | `AuditReport` | `schema_version`, `source_ref`, `skill_path`, `content_hash`, `static_engine_version`, `scanned_at_unix`, `coverage`, `status`, optional `max_severity`, `static_findings[]`, optional `agent_review`, optional `risk_acceptance` |
 | `approve list` | `ApprovalsFile` | `schema_version`, `approvals[]` |
 | `approve skill` / `source` / `author` / `org` / `revoke` | `ApprovalReport` | `scope`, `value`, `action`, `dry_run` |
 | `adopt` / `resolve adopt` | `AdoptReport` | `slot_name`, `source_path`, `local_path`, `copy`, `replacement` |
@@ -609,6 +615,16 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `doctor` | `DoctorReport` | `store`, `findings[]`, `summary` |
 | `instructions enable` / `disable` | `InstructionPackReport` | `pack_id`, `target`, `action`, `dry_run` |
 | `instructions list` | `LockedInstructionPack[]` | `pack_id`, `target`, `source_id`, optional `commit`, optional `version` |
+
+Each `AuditReport.static_findings[]` entry contains `id`, `severity`,
+`category`, `path`, optional `line`, `message`, and optional bounded `evidence`.
+When present, `risk_acceptance` contains `reason`, `accepted_at_unix`, and
+`scope_hash`; `agent_review` identifies the provider and isolation boundary and
+includes its findings, summary, expected capabilities/actions, and undeclared
+behaviors. `source add` and `source select` expose security preflight results in
+their top-level `audits[]` arrays. `source add-catalog` returns only the new
+`SourceConfig`: adding a pinned catalog does not audit anything until a skill is
+selected.
 
 Common status values:
 

@@ -20,6 +20,7 @@ dalo --json doctor
 | --- | --- | --- |
 | `blocked_by_same_name_skill`, `unmanaged_same_name_blocker`, sync `blocked` with `real unmanaged entry exists at target slot` | A real folder already occupies the target slot Dalo wanted to link. | Keep it intentionally with `dalo resolve keep <id>` (undo with `dalo resolve unkeep <target>:<slot>`), adopt it with `dalo adopt <id>`, or adopt and replace it with `dalo adopt <id> --replace`. |
 | `pending_approval` | A skill would become active, but no approval rule covers it. | Review the skill, then run `dalo approve skill <source-id>:<skill>` (or grant a reviewed source/author/org scope), or set the source `trusted = true` if the whole source is trusted. Run `dalo status` again. |
+| error `security audit blocked ...` | A selected or trusted skill has an unaccepted high or critical finding. Trust skips per-skill approval; it does not bypass the security gate. | Inspect it with `dalo audit <source-id>:<skill>`. If the risk is understood, record a reason with `dalo audit <source-id>:<skill> --accept-risk "<reason>"`, or use `dalo approve skill <source-id>:<skill> --accept-risk "<reason>"` for a catalog skill. Then rerun `dalo sync`. |
 | `dirty_source` | A Git-backed source has local edits. Team sources block refresh when dirty. | Commit, stash, discard, or promote the edits outside Dalo. Then run `dalo sync`. |
 | sync reason `scan degraded`, output `degraded source:` | Dalo could not safely scan an enabled source. Recorded owned links are preserved so an incomplete scan cannot delete them. | Restore or re-clone the source checkout, or remove the source with `dalo source remove <id>`. Do not adopt or delete the preserved target link as an unmanaged blocker. |
 | `lock drift` | Live resolution differs from the last `lock.toml`. | Run `dalo status` to inspect the drift, then `dalo sync` when the change is expected. |
@@ -175,6 +176,36 @@ dalo approve skill <source-id>:<skill>
 ```
 
 Use `dalo approve list` to inspect existing rules and [the user reference](reference.md#dalo-approve) for broader source, author, and organization scopes. Rerun `dalo status` before syncing.
+
+### How do I recover from a security-audit block?
+
+An audit block means deterministic or optional semantic review found an
+unaccepted `high` or `critical` risk. This applies to trusted team sources too:
+trust removes the catalog-style approval requirement, but it never bypasses the
+security gate.
+
+Inspect the exact source-qualified skill first:
+
+```sh
+dalo audit <source-id>:<skill>
+```
+
+If the behavior is expected and you accept the risk, record a specific reason:
+
+```sh
+dalo audit <source-id>:<skill> --accept-risk "reviewed pinned installer"
+```
+
+For a catalog skill that still needs approval, combine both decisions:
+
+```sh
+dalo approve skill <source-id>:<skill> \
+  --accept-risk "reviewed pinned installer"
+```
+
+Then rerun `dalo sync`. Acceptance is bound to the source, exact content,
+engine versions, coverage, and findings; a relevant change invalidates it and
+requires a fresh review.
 
 ### How do I recover from a dirty team source?
 
