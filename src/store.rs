@@ -181,10 +181,7 @@ impl StateFile {
     /// logical targets. `logical_targets` is sorted so a directory shared by
     /// several targets gets a deterministic representative.
     pub fn rebuild_materialization_dirs(&mut self) {
-        let previous_extra = std::mem::take(&mut self.materialization_dirs)
-            .into_iter()
-            .map(|dir| (dir.path, dir.extra))
-            .collect::<BTreeMap<_, _>>();
+        let previous_dirs = std::mem::take(&mut self.materialization_dirs);
         let mut grouped: BTreeMap<PathBuf, Vec<String>> = BTreeMap::new();
         for target in self.targets.iter().filter(|target| target.enabled) {
             grouped
@@ -196,8 +193,20 @@ impl StateFile {
             .into_iter()
             .map(|(path, mut logical_targets)| {
                 logical_targets.sort();
+                let mut extra = BTreeMap::new();
+                for previous in previous_dirs.iter().filter(|previous| {
+                    previous.path == path
+                        || previous
+                            .logical_targets
+                            .iter()
+                            .any(|target| logical_targets.contains(target))
+                }) {
+                    for (key, value) in &previous.extra {
+                        extra.entry(key.clone()).or_insert_with(|| value.clone());
+                    }
+                }
                 MaterializationDirState {
-                    extra: previous_extra.get(&path).cloned().unwrap_or_default(),
+                    extra,
                     path,
                     logical_targets,
                 }
@@ -1086,6 +1095,35 @@ mod tests {
         assert_eq!(parsed.targets.len(), 1);
         assert_eq!(parsed.targets[0].id, "generic");
         assert!(rewritten.contains("future_target_field = \"newer dalo metadata\""));
+    }
+
+    #[test]
+    fn rebuild_materialization_dirs_should_preserve_extra_fields_when_target_moves() {
+        let mut state = StateFile::empty();
+        state.targets.push(TargetState {
+            id: "generic".to_owned(),
+            path: PathBuf::from("/old-target"),
+            canonical_path: PathBuf::from("/old-target"),
+            enabled: true,
+            extra: Default::default(),
+        });
+        state.rebuild_materialization_dirs();
+        state.materialization_dirs[0].extra.insert(
+            "future_directory_field".to_owned(),
+            toml::Value::String("newer dalo metadata".to_owned()),
+        );
+        state.targets[0].path = PathBuf::from("/new-target");
+        state.targets[0].canonical_path = PathBuf::from("/new-target");
+
+        state.rebuild_materialization_dirs();
+
+        assert_eq!(state.materialization_dirs[0].path, Path::new("/new-target"));
+        assert_eq!(
+            state.materialization_dirs[0]
+                .extra
+                .get("future_directory_field"),
+            Some(&toml::Value::String("newer dalo metadata".to_owned()))
+        );
     }
 
     #[test]
