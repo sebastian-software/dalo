@@ -10,6 +10,9 @@ for document in "$root/README.md" "$root/site/index.html" "$root/site/install.md
   grep -q 'brew install sebastian-software/tap/dalo' "$document"
 done
 grep -q 'brew uninstall dalo' "$root/docs/uninstall.md"
+grep -q 'data-install-method="homebrew"' "$root/site/index.html"
+grep -q 'data-install-method="standalone"' "$root/site/index.html"
+grep -q 'preferredInstallMethod' "$root/site/main.js"
 grep -q 'npm uninstall --global getdalo' "$root/docs/uninstall.md"
 grep -q 'dalo approve skill' "$root/docs/troubleshooting.md"
 grep -q 'dalo approve skill' "$root/docs/getting-started.md"

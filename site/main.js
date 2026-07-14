@@ -75,6 +75,48 @@ document.documentElement.classList.add("js");
     }
   }
 
+  var installCommands = {};
+  var installPickers = document.querySelectorAll("[data-install-picker]");
+
+  document.querySelectorAll("[data-install-method][data-command-value]").forEach(function (button) {
+    installCommands[button.dataset.installMethod] = button.dataset.commandValue;
+  });
+
+  function preferredInstallMethod() {
+    var platform = navigator.userAgentData && navigator.userAgentData.platform
+      ? navigator.userAgentData.platform
+      : navigator.platform || "";
+    var mobileApple = /iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+    return /Mac/i.test(platform) && !mobileApple ? "homebrew" : "standalone";
+  }
+
+  function setInstallMethod(method) {
+    if (!installCommands[method]) return;
+
+    document.querySelectorAll("[data-install-command]").forEach(function (command) {
+      command.textContent = installCommands[method];
+    });
+    document.querySelectorAll("[data-install-method]").forEach(function (button) {
+      button.setAttribute("aria-pressed", button.dataset.installMethod === method ? "true" : "false");
+    });
+    document.querySelectorAll("[data-copy-target]").forEach(function (button) {
+      setCopyState(button, false);
+    });
+  }
+
+  if (installPickers.length) {
+    installPickers.forEach(function (picker) {
+      var methods = picker.querySelector(".install-methods");
+      if (methods) methods.hidden = false;
+    });
+    document.querySelectorAll("[data-install-method]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        setInstallMethod(button.dataset.installMethod);
+      });
+    });
+    setInstallMethod(preferredInstallMethod());
+  }
+
   document.querySelectorAll("[data-copy-target]").forEach(function (button) {
     button.addEventListener("click", function () {
       var target = document.getElementById(button.getAttribute("data-copy-target"));
