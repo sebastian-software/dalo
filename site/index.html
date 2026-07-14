@@ -123,12 +123,22 @@
           </a>
           <a class="btn btn-quiet" href="https://github.com/sebastian-software/dalo" rel="noopener">View on GitHub</a>
         </div>
-        <div class="install-copy hero-install reveal">
-          <code id="hero-install-command">curl -fsSL https://dalo.sh/install.sh | sh</code>
-          <button class="copy-btn" type="button" data-copy-target="hero-install-command" aria-label="Copy install command">
-            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" d="M5.5 5.5h7v7h-7zM3.5 10.5h-1v-7h7v1"/></svg>
-            <span>Copy</span>
-          </button>
+        <div class="install-picker hero-install reveal" data-install-picker>
+          <div class="install-methods" role="group" aria-label="Choose an installation method" hidden>
+            <button class="install-method" type="button" data-install-method="homebrew" data-command-value="brew install sebastian-software/tap/dalo" aria-pressed="false">
+              Homebrew <span>macOS</span>
+            </button>
+            <button class="install-method" type="button" data-install-method="standalone" data-command-value="curl -fsSL https://dalo.sh/install.sh | sh" aria-pressed="false">
+              Standalone <span>macOS + Linux</span>
+            </button>
+          </div>
+          <div class="install-copy">
+            <code id="hero-install-command" data-install-command>curl -fsSL https://dalo.sh/install.sh | sh</code>
+            <button class="copy-btn" type="button" data-copy-target="hero-install-command" aria-label="Copy install command">
+              <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" d="M5.5 5.5h7v7h-7zM3.5 10.5h-1v-7h7v1"/></svg>
+              <span>Copy</span>
+            </button>
+          </div>
         </div>
         <div class="proof-badges reveal" aria-label="Project signals">
           <a href="https://crates.io/crates/dalo" rel="noopener">crates.io</a>
@@ -403,15 +413,25 @@
           <a href="https://github.com/sebastian-software/dalo/releases" rel="noopener">GitHub Releases</a>.
           Dalo shells out to <code>git</code> for source operations; there is no daemon.
         </p>
-        <div class="install-copy reveal">
-          <code id="install-command">curl -fsSL https://dalo.sh/install.sh | sh</code>
-          <button class="copy-btn" type="button" data-copy-target="install-command" aria-label="Copy install command">
-            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" d="M5.5 5.5h7v7h-7zM3.5 10.5h-1v-7h7v1"/></svg>
-            <span>Copy</span>
-          </button>
+        <div class="install-picker reveal" data-install-picker>
+          <div class="install-methods" role="group" aria-label="Choose an installation method" hidden>
+            <button class="install-method" type="button" data-install-method="homebrew" data-command-value="brew install sebastian-software/tap/dalo" aria-pressed="false">
+              Homebrew <span>macOS</span>
+            </button>
+            <button class="install-method" type="button" data-install-method="standalone" data-command-value="curl -fsSL https://dalo.sh/install.sh | sh" aria-pressed="false">
+              Standalone <span>macOS + Linux</span>
+            </button>
+          </div>
+          <div class="install-copy">
+            <code id="install-command" data-install-command>curl -fsSL https://dalo.sh/install.sh | sh</code>
+            <button class="copy-btn" type="button" data-copy-target="install-command" aria-label="Copy install command">
+              <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" d="M5.5 5.5h7v7h-7zM3.5 10.5h-1v-7h7v1"/></svg>
+              <span>Copy</span>
+            </button>
+          </div>
         </div>
         <p class="install-alt reveal">
-          On macOS? Run <code>brew install sebastian-software/tap/dalo</code>. Prefer Node? Run <code>npx getdalo --version</code> or <code>npm install --global getdalo</code>. Prefer Rust tooling? <a href="https://crates.io/crates/dalo" rel="noopener">crates.io</a> supports <code>cargo binstall dalo</code> and <code>cargo install dalo</code>.
+          Prefer Node? Run <code>npx getdalo --version</code> or <code>npm install --global getdalo</code>. Prefer Rust tooling? <a href="https://crates.io/crates/dalo" rel="noopener">crates.io</a> supports <code>cargo binstall dalo</code> and <code>cargo install dalo</code>.
         </p>
         <p class="install-alt reveal">Installing through an AI agent? Point it to <a href="/install.md">dalo.sh/install.md</a>.</p>
         <ul class="qs-points reveal">
