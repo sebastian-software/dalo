@@ -361,8 +361,8 @@ Remove a recorded owned symlink by ID. If the recorded path is already missing, 
 Examples:
 
 ```sh
-dalo resolve remove-owned review-helper
-dalo --json resolve remove-owned review-helper
+dalo resolve remove-owned claude:review-helper
+dalo --json resolve remove-owned claude:review-helper
 ```
 
 JSON output shape: `RemoveOwnedReport`.
