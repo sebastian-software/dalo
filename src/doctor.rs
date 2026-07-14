@@ -286,7 +286,7 @@ fn read_config(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) -> Option<
             findings.push(finding_error(
                 DoctorCode::ConfigInvalid,
                 format!("config could not be read: {error}"),
-                Some("dalo init".to_owned()),
+                Some(format!("$EDITOR {}", paths.config_file.display())),
             ));
             None
         }
@@ -506,8 +506,20 @@ fn check_sources(config: &UserConfig, findings: &mut Vec<DoctorFinding>) {
                 findings.push(DoctorFinding {
                     severity,
                     code: DoctorCode::DirtySource,
-                    message: format!("source `{}` has local changes", source.id),
-                    next_command: Some("git status".to_owned()),
+                    message: if source.kind == SourceKind::Local {
+                        format!(
+                            "source `{}` at `{}` has local changes; adopted skills must be committed before syncing",
+                            source.id,
+                            source.path.display()
+                        )
+                    } else {
+                        format!(
+                            "source `{}` at `{}` has local changes; resolve or commit them before syncing",
+                            source.id,
+                            source.path.display()
+                        )
+                    },
+                    next_command: Some(format!("git -C {} status", source.path.display())),
                 });
             }
             Ok(false) => findings.push(ok(
@@ -881,6 +893,28 @@ mod tests {
     }
 
     #[test]
+    fn run_doctor_should_point_invalid_config_to_the_editor() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store = temp_dir.path().join("store");
+        store::init_store(store.clone(), false).expect("init should succeed");
+        let config_file = store.join("config.toml");
+        fs::write(&config_file, "version = ").expect("config should be corrupted");
+
+        let report = run_doctor(&store);
+        let finding = report
+            .findings
+            .iter()
+            .find(|finding| finding.code == DoctorCode::ConfigInvalid)
+            .expect("invalid config should be reported");
+
+        assert!(finding.message.contains("line 1"));
+        assert_eq!(
+            finding.next_command.as_deref(),
+            Some(format!("$EDITOR {}", config_file.display()).as_str())
+        );
+    }
+
+    #[test]
     fn run_doctor_should_report_broken_owned_symlink() {
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
         let store = temp_dir.path().join("store");
@@ -1028,6 +1062,8 @@ mod tests {
             finding.code == DoctorCode::DirtySource
                 && finding.severity == DoctorSeverity::Error
                 && finding.message.contains("`team`")
+                && finding.next_command.as_deref()
+                    == Some(format!("git -C {} status", team_repo.display()).as_str())
         }));
     }
 
@@ -1048,6 +1084,9 @@ mod tests {
             finding.code == DoctorCode::DirtySource
                 && finding.severity == DoctorSeverity::Warning
                 && finding.message.contains("`workspace`")
+                && finding.message.contains("adopted skills must be committed")
+                && finding.next_command.as_deref()
+                    == Some(format!("git -C {} status", local_repo.display()).as_str())
         }));
     }
 

@@ -50,7 +50,7 @@ pub enum DaloError {
     Json(#[from] serde_json::Error),
 
     /// The store has not been initialized yet.
-    #[error("dalo store is not initialized at `{path}`; run `dalo init` first")]
+    #[error("dalo store is not initialized at `{path}`; run `dalo --store {path} init` first")]
     StoreNotInitialized {
         /// Store path.
         path: PathBuf,
@@ -109,10 +109,14 @@ pub enum DaloError {
     },
 
     /// A source has local changes that block the operation.
-    #[error("source `{source_id}` has local changes; resolve or commit them before syncing")]
+    #[error(
+        "source `{source_id}` has local changes at `{path}`; inspect with `git -C {path} status`, then resolve or commit them before syncing"
+    )]
     DirtySource {
         /// Source ID.
         source_id: String,
+        /// Source checkout path.
+        path: PathBuf,
     },
 
     /// The local source priority is fixed and cannot be changed.
@@ -397,7 +401,7 @@ mod tests {
 
         assert_eq!(
             error.to_string(),
-            "dalo store is not initialized at `/tmp/store`; run `dalo init` first"
+            "dalo store is not initialized at `/tmp/store`; run `dalo --store /tmp/store init` first"
         );
     }
 
@@ -468,11 +472,12 @@ mod tests {
     fn dirty_source_should_render_source_id() {
         let error = err::<()>(Err(DaloError::DirtySource {
             source_id: "company".to_owned(),
+            path: PathBuf::from("/tmp/store/sources/company/checkout"),
         }));
 
         assert_eq!(
             error.to_string(),
-            "source `company` has local changes; resolve or commit them before syncing"
+            "source `company` has local changes at `/tmp/store/sources/company/checkout`; inspect with `git -C /tmp/store/sources/company/checkout status`, then resolve or commit them before syncing"
         );
     }
 
@@ -610,6 +615,7 @@ mod tests {
         let cases = [
             DaloError::DirtySource {
                 source_id: "company".to_owned(),
+                path: PathBuf::from("/tmp/store/sources/company/checkout"),
             },
             DaloError::StoreLocked {
                 path: PathBuf::from("/tmp/store/.lock"),
