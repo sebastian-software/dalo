@@ -5007,6 +5007,87 @@ fn source_refresh_check_should_migrate_every_catalog_before_bumping_global_schem
 }
 
 #[test]
+fn source_refresh_check_should_isolate_degraded_legacy_catalog_migration() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let first_repo = temp_dir.path().join("first-catalog");
+    let second_repo = temp_dir.path().join("second-catalog");
+    create_git_catalog_repo(&first_repo);
+    create_git_catalog_repo(&second_repo);
+    setup_store_with_target(&store, &target);
+    for (source, repo) in [("first", &first_repo), ("second", &second_repo)] {
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .args(["source", "add-catalog", source])
+            .arg(repo)
+            .assert()
+            .success();
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .args(["source", "select", source, "copy-editing"])
+            .assert()
+            .success();
+    }
+    let mut lock = read_source_lock(&store);
+    lock.schema_version = 2;
+    for catalog in &mut lock.catalogs {
+        catalog
+            .inventory
+            .iter_mut()
+            .find(|entry| entry.slot_name == "copy-editing")
+            .expect("selected entry should be locked")
+            .content_hash = format!("legacy-{}-hash", catalog.source_id);
+    }
+    write_source_lock(&store, &lock);
+    std::fs::remove_dir_all(store.join("sources/second/checkout/.git"))
+        .expect("second catalog should become unavailable for pinned rehashing");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "refresh", "first", "--check"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "warning: skipped legacy inventory migration for catalog `second`",
+        ))
+        .stdout(predicate::str::contains("selected_changed").not());
+
+    let partially_migrated = read_source_lock(&store);
+    assert_eq!(partially_migrated.schema_version, 2);
+    assert_ne!(
+        partially_migrated
+            .catalog("first")
+            .expect("first catalog should stay locked")
+            .inventory[0]
+            .content_hash,
+        "legacy-first-hash"
+    );
+    assert_eq!(
+        partially_migrated
+            .catalog("second")
+            .expect("second catalog should stay locked for a later retry")
+            .inventory[0]
+            .content_hash,
+        "legacy-second-hash"
+    );
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "refresh", "second", "--check"])
+        .assert()
+        .failure()
+        .code(4)
+        .stderr(predicate::str::contains(
+            "could not migrate legacy inventory for catalog `second`",
+        ));
+}
+
+#[test]
 fn source_refresh_without_check_should_run_read_only_drift_check() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

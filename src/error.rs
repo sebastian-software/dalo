@@ -195,6 +195,15 @@ pub enum DaloError {
         field: String,
     },
 
+    /// A required catalog could not be rehashed while migrating a legacy lock.
+    #[error("could not migrate legacy inventory for catalog `{source_id}`: {reason}")]
+    CatalogMigrationFailed {
+        /// Catalog whose pinned inventory could not be rebuilt.
+        source_id: String,
+        /// Underlying checkout or inventory failure.
+        reason: String,
+    },
+
     /// A system command failed.
     #[error("command `{program}` failed with status {status}: {stderr}")]
     CommandFailed {
@@ -338,6 +347,7 @@ impl DaloError {
             Self::StorePath { .. }
             | Self::InvalidStorePath { .. }
             | Self::CommandFailed { .. }
+            | Self::CatalogMigrationFailed { .. }
             | Self::AgentUnavailable { .. }
             | Self::AgentReviewFailed { .. } => DaloExitCode::EnvironmentProblem,
             Self::TomlSerialize(_) | Self::Json(_) => DaloExitCode::ExpectedFailure,

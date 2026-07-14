@@ -747,6 +747,9 @@ pub fn print_catalog_select_report(report: &CatalogSelectReport) {
     for audit in &report.audits {
         print_audit_report(audit);
     }
+    for warning in &report.migration_warnings {
+        println!("warning: {warning}");
+    }
 }
 
 /// Print a human-readable instruction pack mutation report.
@@ -766,6 +769,9 @@ pub fn print_instruction_pack_report(report: &InstructionPackReport) {
 
 /// Print a human-readable catalog drift report.
 pub fn print_catalog_drift_report(report: &CatalogDrift) {
+    for warning in &report.migration_warnings {
+        println!("warning: {warning}");
+    }
     if report.outcomes.is_empty() {
         println!(
             "catalog {}: up to date (pinned {})",
