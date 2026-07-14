@@ -692,7 +692,7 @@ Unknown fields in this internal state model are retained across reads and writes
 
 ## `source-lock.toml`
 
-Schema version: `schema_version = 1`.
+Schema version: `schema_version = 3`.
 
 This file stores catalog pins and inventory snapshots. It is written by catalog selection and read by drift checks.
 
@@ -713,7 +713,7 @@ Inventory entry fields:
 | `id` | Optional stable skill ID from frontmatter. |
 | `slot_name` | Install slot name. |
 | `path` | Skill directory path relative to the catalog root. |
-| `content_hash` | Hash over skill directory content and symlink metadata. |
+| `content_hash` | Hash over skill directory content, executable file bits, and symlink metadata. |
 | `metadata_hash` | Hash over parsed skill metadata. |
 | `requires[]` | Declared same-source dependencies. |
 

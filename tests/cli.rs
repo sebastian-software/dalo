@@ -4117,14 +4117,119 @@ fn catalog_refresh_check_should_report_upstream_drift() {
 }
 
 #[test]
-fn source_refresh_check_should_rehash_legacy_source_lock_without_phantom_drift() {
+fn catalog_refresh_check_should_report_move_and_content_change_together() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
     let repo = temp_dir.path().join("catalog-repo");
     create_git_catalog_repo(&repo);
+    std::fs::write(
+        repo.join("skills/copy-editing/SKILL.md"),
+        "---\nid: copy-editor\nname: copy-editing\n---\n# Copy editing\n",
+    )
+    .expect("stable skill metadata should be written");
+    run_git(&repo, &["add", "."]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "add stable id",
+            "-q",
+        ],
+    );
     setup_store_with_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "copy-editor"])
+        .assert()
+        .success();
 
+    std::fs::create_dir_all(repo.join("catalog")).expect("catalog dir should be created");
+    std::fs::rename(
+        repo.join("skills/copy-editing"),
+        repo.join("catalog/copy-editing"),
+    )
+    .expect("selected skill should move");
+    std::fs::write(
+        repo.join("catalog/copy-editing/SKILL.md"),
+        "---\nid: copy-editor\nname: copy-editing\n---\n# Copy editing v2\n",
+    )
+    .expect("moved skill should change");
+    run_git(&repo, &["add", "-A"]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "move and edit",
+            "-q",
+        ],
+    );
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "refresh", "marketing", "--check"])
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(predicate::str::contains("selected_changed"))
+        .stdout(predicate::str::contains("selected_moved"));
+}
+
+#[test]
+fn catalog_refresh_check_should_report_executable_bit_change() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    let script = repo.join("skills/copy-editing/review.sh");
+    std::fs::write(&script, "#!/bin/sh\n").expect("script should be written");
+    let mut permissions = std::fs::metadata(&script)
+        .expect("script metadata should be readable")
+        .permissions();
+    permissions.set_mode(0o644);
+    std::fs::set_permissions(&script, permissions.clone())
+        .expect("script should be non-executable");
+    run_git(&repo, &["add", "."]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "add helper",
+            "-q",
+        ],
+    );
+    setup_store_with_target(&store, &target);
     dalo_command()
         .args(["--store"])
         .arg(&store)
@@ -4138,34 +4243,88 @@ fn source_refresh_check_should_rehash_legacy_source_lock_without_phantom_drift()
         .args(["source", "select", "marketing", "copy-editing"])
         .assert()
         .success();
-    let mut lock = read_source_lock(&store);
-    lock.schema_version = 1;
-    let catalog = lock
-        .catalogs
-        .iter_mut()
-        .find(|catalog| catalog.source_id == "marketing")
-        .expect("marketing catalog should be locked");
-    catalog.inventory[0].content_hash = "legacy-v1-hash".to_owned();
-    write_source_lock(&store, &lock);
+
+    permissions.set_mode(0o744);
+    std::fs::set_permissions(&script, permissions).expect("script should become executable");
+    run_git(&repo, &["add", "skills/copy-editing/review.sh"]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "make helper executable",
+            "-q",
+        ],
+    );
 
     dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "refresh", "marketing", "--check"])
         .assert()
-        .success()
-        .stdout(predicate::str::contains("selected_changed").not());
+        .failure()
+        .code(1)
+        .stdout(predicate::str::contains("selected_changed"));
+}
 
-    let migrated = read_source_lock(&store);
-    assert_eq!(migrated.schema_version, SOURCE_LOCK_SCHEMA_VERSION);
-    assert_ne!(
-        migrated
-            .catalog("marketing")
-            .expect("marketing catalog should stay locked")
-            .inventory[0]
-            .content_hash,
-        "legacy-v1-hash"
-    );
+#[test]
+fn source_refresh_check_should_rehash_supported_source_locks_without_phantom_drift() {
+    for legacy_schema in [1, 2] {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store = temp_dir.path().join("store");
+        let target = temp_dir.path().join("skills");
+        let repo = temp_dir.path().join("catalog-repo");
+        create_git_catalog_repo(&repo);
+        setup_store_with_target(&store, &target);
+
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .args(["source", "add-catalog", "marketing"])
+            .arg(&repo)
+            .assert()
+            .success();
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .args(["source", "select", "marketing", "copy-editing"])
+            .assert()
+            .success();
+        let mut lock = read_source_lock(&store);
+        lock.schema_version = legacy_schema;
+        let catalog = lock
+            .catalogs
+            .iter_mut()
+            .find(|catalog| catalog.source_id == "marketing")
+            .expect("marketing catalog should be locked");
+        catalog.inventory[0].content_hash = format!("legacy-v{legacy_schema}-hash");
+        write_source_lock(&store, &lock);
+
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .args(["source", "refresh", "marketing", "--check"])
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("selected_changed").not());
+
+        let migrated = read_source_lock(&store);
+        assert_eq!(migrated.schema_version, SOURCE_LOCK_SCHEMA_VERSION);
+        assert_ne!(
+            migrated
+                .catalog("marketing")
+                .expect("marketing catalog should stay locked")
+                .inventory[0]
+                .content_hash,
+            format!("legacy-v{legacy_schema}-hash")
+        );
+    }
 }
 
 #[test]
