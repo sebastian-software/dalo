@@ -134,24 +134,45 @@ async function isUsableBinary(binary) {
 }
 
 function compareVersions(left, right) {
+  const compareNumericIdentifiers = (a, b) => {
+    const normalizedA = a.replace(/^0+/, '') || '0';
+    const normalizedB = b.replace(/^0+/, '') || '0';
+    if (normalizedA.length !== normalizedB.length) return normalizedA.length - normalizedB.length;
+    if (normalizedA === normalizedB) return 0;
+    return normalizedA < normalizedB ? -1 : 1;
+  };
   const parse = (version) => {
     const withoutBuild = version.split('+', 1)[0];
     const separator = withoutBuild.indexOf('-');
     return {
       core: (separator === -1 ? withoutBuild : withoutBuild.slice(0, separator))
-        .split('.')
-        .map(Number),
+        .split('.'),
       prerelease: separator === -1 ? null : withoutBuild.slice(separator + 1)
     };
   };
   const a = parse(left);
   const b = parse(right);
   for (let index = 0; index < 3; index += 1) {
-    if (a.core[index] !== b.core[index]) return a.core[index] - b.core[index];
+    const comparison = compareNumericIdentifiers(a.core[index], b.core[index]);
+    if (comparison !== 0) return comparison;
   }
   if (a.prerelease === null && b.prerelease !== null) return 1;
   if (a.prerelease !== null && b.prerelease === null) return -1;
-  return (a.prerelease || '').localeCompare(b.prerelease || '', undefined, { numeric: true });
+  if (a.prerelease === null) return 0;
+  const aIdentifiers = a.prerelease.split('.');
+  const bIdentifiers = b.prerelease.split('.');
+  const commonLength = Math.min(aIdentifiers.length, bIdentifiers.length);
+  for (let index = 0; index < commonLength; index += 1) {
+    const aIdentifier = aIdentifiers[index];
+    const bIdentifier = bIdentifiers[index];
+    if (aIdentifier === bIdentifier) continue;
+    const aNumeric = /^\d+$/.test(aIdentifier);
+    const bNumeric = /^\d+$/.test(bIdentifier);
+    if (aNumeric && bNumeric) return compareNumericIdentifiers(aIdentifier, bIdentifier);
+    if (aNumeric !== bNumeric) return aNumeric ? -1 : 1;
+    return aIdentifier < bIdentifier ? -1 : 1;
+  }
+  return aIdentifiers.length - bIdentifiers.length;
 }
 
 async function cachedBinaries(cacheRoot, target) {
