@@ -233,7 +233,7 @@ pub fn link_target(
         let state = state
             .as_mut()
             .expect("state is loaded before non-dry-run target link");
-        let status = upsert_target_state(state, entry.id, &path, &canonical_path);
+        let status = upsert_target_state(state, entry.id, &path, &canonical_path)?;
         store::write_state(&paths, state)?;
         status
     };
@@ -267,7 +267,7 @@ pub fn unlink_target(
         }
     } else {
         state.targets.retain(|target| target.id != target_id);
-        state.rebuild_materialization_dirs();
+        state.rebuild_materialization_dirs()?;
         store::write_state(&paths, &state)?;
 
         if state.targets.len() == original_len {
@@ -365,7 +365,7 @@ fn upsert_target_state(
     target_id: &str,
     path: &Path,
     canonical_path: &Path,
-) -> TargetLinkStatus {
+) -> DaloResult<TargetLinkStatus> {
     let existing = state
         .targets
         .iter_mut()
@@ -391,8 +391,8 @@ fn upsert_target_state(
         TargetLinkStatus::Linked
     };
 
-    state.rebuild_materialization_dirs();
-    status
+    state.rebuild_materialization_dirs()?;
+    Ok(status)
 }
 
 #[cfg(test)]

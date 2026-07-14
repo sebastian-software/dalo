@@ -179,9 +179,9 @@ impl StateFile {
 
     /// Recompute the canonical materialization directories from the enabled
     /// logical targets. `logical_targets` is sorted so a directory shared by
-    /// several targets gets a deterministic representative.
-    pub fn rebuild_materialization_dirs(&mut self) {
-        let previous_dirs = std::mem::take(&mut self.materialization_dirs);
+    /// several targets gets a deterministic representative. The rebuild is
+    /// rejected if opaque metadata from two previous directories conflicts.
+    pub fn rebuild_materialization_dirs(&mut self) -> DaloResult<()> {
         let mut grouped: BTreeMap<PathBuf, Vec<String>> = BTreeMap::new();
         for target in self.targets.iter().filter(|target| target.enabled) {
             grouped
@@ -189,29 +189,38 @@ impl StateFile {
                 .or_default()
                 .push(target.id.clone());
         }
-        self.materialization_dirs = grouped
-            .into_iter()
-            .map(|(path, mut logical_targets)| {
-                logical_targets.sort();
-                let mut extra = BTreeMap::new();
-                for previous in previous_dirs.iter().filter(|previous| {
-                    previous.path == path
-                        || previous
-                            .logical_targets
-                            .iter()
-                            .any(|target| logical_targets.contains(target))
-                }) {
-                    for (key, value) in &previous.extra {
-                        extra.entry(key.clone()).or_insert_with(|| value.clone());
+        let mut rebuilt = Vec::with_capacity(grouped.len());
+        for (path, mut logical_targets) in grouped {
+            logical_targets.sort();
+            let mut extra = BTreeMap::new();
+            for previous in self.materialization_dirs.iter().filter(|previous| {
+                previous.path == path
+                    || previous
+                        .logical_targets
+                        .iter()
+                        .any(|target| logical_targets.contains(target))
+            }) {
+                for (key, value) in &previous.extra {
+                    if let Some(existing) = extra.get(key) {
+                        if existing != value {
+                            return Err(DaloError::StateMetadataConflict {
+                                path,
+                                field: key.clone(),
+                            });
+                        }
+                    } else {
+                        extra.insert(key.clone(), value.clone());
                     }
                 }
-                MaterializationDirState {
-                    extra,
-                    path,
-                    logical_targets,
-                }
-            })
-            .collect();
+            }
+            rebuilt.push(MaterializationDirState {
+                extra,
+                path,
+                logical_targets,
+            });
+        }
+        self.materialization_dirs = rebuilt;
+        Ok(())
     }
 }
 
@@ -499,7 +508,7 @@ pub fn read_state(paths: &StorePaths) -> DaloResult<StateFile> {
     // would make `sync` treat every owned skill as orphaned and remove its symlink.
     // Reconstruct it from the targets when it is missing but targets are present.
     if state.materialization_dirs.is_empty() && !state.targets.is_empty() {
-        state.rebuild_materialization_dirs();
+        state.rebuild_materialization_dirs()?;
     }
     migrate_protected_skills(&mut state);
 
@@ -1077,7 +1086,9 @@ mod tests {
             enabled: true,
             extra: Default::default(),
         });
-        state.rebuild_materialization_dirs();
+        state
+            .rebuild_materialization_dirs()
+            .expect("materialization directories should rebuild");
         write_state(&paths, &state).expect("state should be written");
         let content = fs::read_to_string(&paths.state_file)
             .expect("state should be readable")
@@ -1107,7 +1118,9 @@ mod tests {
             enabled: true,
             extra: Default::default(),
         });
-        state.rebuild_materialization_dirs();
+        state
+            .rebuild_materialization_dirs()
+            .expect("materialization directories should rebuild");
         state.materialization_dirs[0].extra.insert(
             "future_directory_field".to_owned(),
             toml::Value::String("newer dalo metadata".to_owned()),
@@ -1115,7 +1128,9 @@ mod tests {
         state.targets[0].path = PathBuf::from("/new-target");
         state.targets[0].canonical_path = PathBuf::from("/new-target");
 
-        state.rebuild_materialization_dirs();
+        state
+            .rebuild_materialization_dirs()
+            .expect("moved materialization directory should rebuild");
 
         assert_eq!(state.materialization_dirs[0].path, Path::new("/new-target"));
         assert_eq!(
@@ -1124,6 +1139,52 @@ mod tests {
                 .get("future_directory_field"),
             Some(&toml::Value::String("newer dalo metadata".to_owned()))
         );
+    }
+
+    #[test]
+    fn rebuild_materialization_dirs_should_reject_conflicting_extra_fields() {
+        let mut state = StateFile::empty();
+        state.targets = vec![
+            TargetState {
+                id: "first".to_owned(),
+                path: PathBuf::from("/first"),
+                canonical_path: PathBuf::from("/first"),
+                enabled: true,
+                extra: Default::default(),
+            },
+            TargetState {
+                id: "second".to_owned(),
+                path: PathBuf::from("/second"),
+                canonical_path: PathBuf::from("/second"),
+                enabled: true,
+                extra: Default::default(),
+            },
+        ];
+        state
+            .rebuild_materialization_dirs()
+            .expect("separate materialization directories should rebuild");
+        state.materialization_dirs[0].extra.insert(
+            "future_directory_field".to_owned(),
+            toml::Value::String("first value".to_owned()),
+        );
+        state.materialization_dirs[1].extra.insert(
+            "future_directory_field".to_owned(),
+            toml::Value::String("second value".to_owned()),
+        );
+        let previous_dirs = state.materialization_dirs.clone();
+        state.targets[1].path = PathBuf::from("/first");
+        state.targets[1].canonical_path = PathBuf::from("/first");
+
+        let error = state
+            .rebuild_materialization_dirs()
+            .expect_err("conflicting opaque metadata should block a lossy merge");
+
+        assert!(matches!(
+            error,
+            DaloError::StateMetadataConflict { path, field }
+                if path == Path::new("/first") && field == "future_directory_field"
+        ));
+        assert_eq!(state.materialization_dirs, previous_dirs);
     }
 
     #[test]
@@ -1141,7 +1202,9 @@ mod tests {
             enabled: true,
             extra: Default::default(),
         });
-        state.rebuild_materialization_dirs();
+        state
+            .rebuild_materialization_dirs()
+            .expect("materialization directories should rebuild");
         state.protected_skills.push(ProtectedSkillState {
             target_id: String::new(),
             slot_name: "review".to_owned(),
