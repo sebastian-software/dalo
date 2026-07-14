@@ -18,7 +18,7 @@ dalo --json doctor
 
 | Symptom or code | What happened | Recovery |
 | --- | --- | --- |
-| `blocked_by_same_name_skill`, `unmanaged_same_name_blocker`, sync `blocked` with `real unmanaged entry exists at target slot` | A real folder already occupies the target slot Dalo wanted to link. | Keep it with `dalo resolve keep <id>`, adopt it with `dalo adopt <id>`, or adopt and replace it with `dalo adopt <id> --replace`. |
+| `blocked_by_same_name_skill`, `unmanaged_same_name_blocker`, sync `blocked` with `real unmanaged entry exists at target slot` | A real folder already occupies the target slot Dalo wanted to link. | Keep it intentionally with `dalo resolve keep <id>` (undo with `dalo resolve unkeep <target>:<slot>`), adopt it with `dalo adopt <id>`, or adopt and replace it with `dalo adopt <id> --replace`. |
 | `pending_approval` | A skill would become active, but no approval rule covers it. | Review the skill, then run `dalo approve skill <source-id>:<skill>` (or grant a reviewed source/author/org scope), or set the source `trusted = true` if the whole source is trusted. Run `dalo status` again. |
 | `dirty_source` | A Git-backed source has local edits. Team sources block refresh when dirty. | Commit, stash, discard, or promote the edits outside Dalo. Then run `dalo sync`. |
 | `lock drift` | Live resolution differs from the last `lock.toml`. | Run `dalo status` to inspect the drift, then `dalo sync` when the change is expected. |
@@ -154,13 +154,15 @@ Doctor includes `ok` and `info` codes as well as warnings/errors. Codes not list
 | `instruction_block_drift` | error | Re-render or disable the pack. |
 | `unreadable_target_directory` | warning | Fix permissions or remove unreadable entries. |
 | `unmanaged_same_name_blocker` | error | Adopt, keep, rename, or remove the unmanaged blocker. |
+| `stale_protected_skill` | warning | Relink the target if it moved, or remove the stale marker with the suggested `dalo resolve unkeep` command. |
+| `protected_skill_kept` | info | The unmanaged slot was intentionally kept; no recovery is required. |
 | `store_exists`, `store_layout_ok`, `config_ok`, `state_ok`, `lock_ok`, `approvals_ok`, `git_available`, `gh_available`, `gh_authenticated`, `local_git_ok`, `target_exists`, `duplicate_target_directory`, `owned_symlink_ok`, `source_clean` | ok/info | No recovery required. |
 
 ## FAQ
 
 ### Why did `sync` not overwrite my folder?
 
-Dalo treats real folders in target directories as user/project content. Use `dalo adopt <id>` to copy the folder into the local source, `dalo adopt <id> --replace` to replace it with an owned symlink, or `dalo resolve keep <id>` to leave it unmanaged.
+Dalo treats real folders in target directories as user/project content. Use `dalo adopt <id>` to copy the folder into the local source, `dalo adopt <id> --replace` to replace it with an owned symlink, or `dalo resolve keep <id>` to leave it intentionally unmanaged without failing checks. Undo that decision with `dalo resolve unkeep <target>:<slot>`.
 
 ### How do I approve a pending skill?
 

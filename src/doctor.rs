@@ -135,6 +135,10 @@ pub enum DoctorCode {
     ForeignOwnedSymlink,
     /// Unmanaged target skill blocks the same managed slot.
     UnmanagedSameNameBlocker,
+    /// A protected target slot is intentionally kept unmanaged.
+    ProtectedSkillKept,
+    /// A protection record no longer maps to an existing target slot.
+    StaleProtectedSkill,
     /// A linked target directory could not be scanned for unmanaged skills.
     UnreadableTargetDirectory,
     /// Source is clean.
@@ -184,6 +188,7 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
     if let Some(state) = state.as_ref() {
         check_targets(state, &mut findings);
         check_owned_symlinks(&paths, state, &mut findings);
+        check_protected_skills(state, &mut findings);
     }
 
     if let Some(config) = config.as_ref() {
@@ -491,6 +496,43 @@ fn check_owned_symlinks(paths: &StorePaths, state: &StateFile, findings: &mut Ve
     }
 }
 
+fn check_protected_skills(state: &StateFile, findings: &mut Vec<DoctorFinding>) {
+    for protected in &state.protected_skills {
+        let target = state
+            .targets
+            .iter()
+            .find(|target| target.id == protected.target_id && target.enabled);
+        let path = target
+            .map(|target| target.canonical_path.join(&protected.slot_name))
+            .or_else(|| protected.path.clone());
+        let selector = if protected.target_id.is_empty() {
+            protected.slot_name.clone()
+        } else {
+            format!("{}:{}", protected.target_id, protected.slot_name)
+        };
+        if target.is_none() || path.as_ref().is_none_or(|path| !path.is_dir()) {
+            findings.push(finding_warning(
+                DoctorCode::StaleProtectedSkill,
+                format!(
+                    "protected slot `{selector}` no longer maps to an existing target directory{}",
+                    path.as_ref()
+                        .map_or_else(String::new, |path| format!(" at `{}`", path.display()))
+                ),
+                Some(format!("dalo resolve unkeep {selector}")),
+            ));
+        } else {
+            findings.push(info(
+                DoctorCode::ProtectedSkillKept,
+                format!(
+                    "protected slot `{selector}` is kept at `{}`",
+                    path.expect("existing protected path should be present")
+                        .display()
+                ),
+            ));
+        }
+    }
+}
+
 fn owned_selector(owned: &OwnedSkillState) -> String {
     format!("{}:{}", owned.target_id, owned.slot_name)
 }
@@ -692,6 +734,9 @@ fn check_resolution(
             ));
         }
         for unmanaged in unmanaged_scan.unmanaged_skills {
+            if unmanaged.protected {
+                continue;
+            }
             if let Some(source_ref) = active_slots.get(unmanaged.slot_name.as_str()) {
                 findings.push(finding_error(
                     DoctorCode::UnmanagedSameNameBlocker,
@@ -845,6 +890,8 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::OwnedPathRealEntry => "owned_path_real_entry",
         DoctorCode::ForeignOwnedSymlink => "foreign_owned_symlink",
         DoctorCode::UnmanagedSameNameBlocker => "unmanaged_same_name_blocker",
+        DoctorCode::ProtectedSkillKept => "protected_skill_kept",
+        DoctorCode::StaleProtectedSkill => "stale_protected_skill",
         DoctorCode::UnreadableTargetDirectory => "unreadable_target_directory",
         DoctorCode::SourceClean => "source_clean",
         DoctorCode::DirtySource => "dirty_source",

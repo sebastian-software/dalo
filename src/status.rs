@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::adopt::{
-    AdoptReport, KeepReport, RemoveOwnedReport, ResolveListReport, TargetScanWarning,
+    AdoptReport, KeepReport, RemoveOwnedReport, ResolveListReport, TargetScanWarning, UnkeepReport,
     UnmanagedSkill,
 };
 use crate::approval::ApprovalReport;
@@ -243,12 +243,29 @@ pub fn print_init_report(report: &InitReport) {
     }
     println!();
 
+    let state_repaired = report.operations.iter().any(|operation| {
+        operation
+            .path
+            .file_name()
+            .is_some_and(|name| name == "state.toml")
+            && operation.status == store::InitOperationStatus::Repaired
+    });
+    if state_repaired {
+        println!("WARNING: state.toml was unreadable and was reset to empty state.");
+        println!("A state.toml.corrupt-* backup was saved beside it.");
+        println!("Restore target registrations, owned links, and protected slots before syncing.");
+    }
+
     if !report.validation_warnings.is_empty() {
         println!("Store needs attention:");
         for warning in &report.validation_warnings {
             println!("  warning {}: {}", warning.path.display(), warning.message);
         }
         println!("Fix the files above before using dalo.");
+        return;
+    }
+
+    if state_repaired {
         return;
     }
 
@@ -764,6 +781,22 @@ pub fn print_keep_report(report: &KeepReport) {
     println!("{status} {}", report.skill.path.display());
     if let Some(warning) = report.warning.as_deref() {
         println!("warning: {warning}");
+    }
+}
+
+/// Print a human-readable unkeep report.
+pub fn print_unkeep_report(report: &UnkeepReport) {
+    if report.removed.is_empty() {
+        println!("no protection found for {}", report.selector);
+        return;
+    }
+    let verb = if report.dry_run {
+        "would unprotect"
+    } else {
+        "unprotected"
+    };
+    for id in &report.removed {
+        println!("{verb} {id}");
     }
 }
 

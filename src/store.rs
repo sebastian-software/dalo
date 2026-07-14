@@ -80,8 +80,11 @@ impl StorePaths {
 }
 
 /// Internal materialization state.
+///
+/// Unknown fields are intentionally tolerated throughout this state model so
+/// older binaries can read state written by newer binaries after additive
+/// changes. Breaking changes still require a schema-version bump.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct StateFile {
     /// Persisted schema version.
     pub schema_version: u32,
@@ -99,7 +102,6 @@ pub struct StateFile {
 
 /// Configured target state.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct TargetState {
     /// Logical target ID.
     pub id: String,
@@ -113,7 +115,6 @@ pub struct TargetState {
 
 /// One physical materialization directory shared by one or more logical targets.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct MaterializationDirState {
     /// Canonical physical directory.
     pub path: PathBuf,
@@ -123,7 +124,6 @@ pub struct MaterializationDirState {
 
 /// Recorded owned skill symlink.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct OwnedSkillState {
     /// Target ID.
     pub target_id: String,
@@ -137,12 +137,15 @@ pub struct OwnedSkillState {
 
 /// Explicitly protected unmanaged skill.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct ProtectedSkillState {
+    /// Logical target ID whose slot is protected.
+    #[serde(default)]
+    pub target_id: String,
     /// Skill slot name.
     pub slot_name: String,
-    /// Protected target path.
-    pub path: PathBuf,
+    /// Legacy absolute path, retained only when it cannot be migrated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<PathBuf>,
 }
 
 impl StateFile {
@@ -468,8 +471,46 @@ pub fn read_state(paths: &StorePaths) -> DaloResult<StateFile> {
     if state.materialization_dirs.is_empty() && !state.targets.is_empty() {
         state.rebuild_materialization_dirs();
     }
+    migrate_protected_skills(&mut state);
 
     Ok(state)
+}
+
+fn migrate_protected_skills(state: &mut StateFile) {
+    let mut migrated = Vec::new();
+    for protected in std::mem::take(&mut state.protected_skills) {
+        if !protected.target_id.is_empty() {
+            migrated.push(protected);
+            continue;
+        }
+        let Some(path) = protected.path.as_ref() else {
+            migrated.push(protected);
+            continue;
+        };
+        let Some(dir) = state
+            .materialization_dirs
+            .iter()
+            .find(|dir| dir.path.join(&protected.slot_name) == *path)
+        else {
+            migrated.push(protected);
+            continue;
+        };
+        for target_id in &dir.logical_targets {
+            migrated.push(ProtectedSkillState {
+                target_id: target_id.clone(),
+                slot_name: protected.slot_name.clone(),
+                path: None,
+            });
+        }
+    }
+    migrated.sort_by(|left, right| {
+        left.target_id
+            .cmp(&right.target_id)
+            .then_with(|| left.slot_name.cmp(&right.slot_name))
+            .then_with(|| left.path.cmp(&right.path))
+    });
+    migrated.dedup();
+    state.protected_skills = migrated;
 }
 
 /// Read the initialized user config.
@@ -963,6 +1004,90 @@ mod tests {
 
         assert!(matches!(error, DaloError::CorruptState { .. }));
         assert!(error.to_string().contains("run `dalo init`"));
+    }
+
+    #[test]
+    fn read_state_should_tolerate_unknown_top_level_fields() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root.clone());
+        let mut content =
+            fs::read_to_string(&paths.state_file).expect("state should be readable as text");
+        content.push_str("\nfuture_additive_field = \"preserved by newer dalo\"\n");
+        fs::write(&paths.state_file, &content).expect("future state should be written");
+
+        let state = read_state(&paths).expect("unknown additive field should be tolerated");
+        let report = init_store(store_root, false).expect("init should not repair future state");
+
+        assert_eq!(state.schema_version, STATE_SCHEMA_VERSION);
+        assert!(report.operations.iter().any(|operation| {
+            operation.path == paths.state_file && operation.status == InitOperationStatus::Existing
+        }));
+        assert_eq!(
+            fs::read_to_string(&paths.state_file).expect("state should remain readable"),
+            content
+        );
+    }
+
+    #[test]
+    fn read_state_should_tolerate_unknown_nested_fields() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let target = temp_dir.path().join("target");
+        init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root);
+        let mut state = StateFile::empty();
+        state.targets.push(TargetState {
+            id: "generic".to_owned(),
+            path: target.clone(),
+            canonical_path: target,
+            enabled: true,
+        });
+        state.rebuild_materialization_dirs();
+        write_state(&paths, &state).expect("state should be written");
+        let content = fs::read_to_string(&paths.state_file)
+            .expect("state should be readable")
+            .replace(
+                "enabled = true",
+                "enabled = true\nfuture_target_field = \"newer dalo metadata\"",
+            );
+        fs::write(&paths.state_file, content).expect("future nested field should be written");
+
+        let parsed = read_state(&paths).expect("unknown nested field should be tolerated");
+
+        assert_eq!(parsed.targets.len(), 1);
+        assert_eq!(parsed.targets[0].id, "generic");
+    }
+
+    #[test]
+    fn read_state_should_migrate_legacy_protected_path_to_target_slot() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let target = temp_dir.path().join("target");
+        init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root);
+        let mut state = StateFile::empty();
+        state.targets.push(TargetState {
+            id: "generic".to_owned(),
+            path: target.clone(),
+            canonical_path: target.clone(),
+            enabled: true,
+        });
+        state.rebuild_materialization_dirs();
+        state.protected_skills.push(ProtectedSkillState {
+            target_id: String::new(),
+            slot_name: "review".to_owned(),
+            path: Some(target.join("review")),
+        });
+        write_state(&paths, &state).expect("legacy state should be written");
+
+        let migrated = read_state(&paths).expect("legacy protection should migrate");
+
+        assert_eq!(migrated.protected_skills.len(), 1);
+        assert_eq!(migrated.protected_skills[0].target_id, "generic");
+        assert_eq!(migrated.protected_skills[0].slot_name, "review");
+        assert!(migrated.protected_skills[0].path.is_none());
     }
 
     #[test]

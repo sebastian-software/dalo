@@ -173,6 +173,17 @@ pub struct KeepReport {
     pub warning: Option<String>,
 }
 
+/// Remove-protection report.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UnkeepReport {
+    /// Selector accepted by the command.
+    pub selector: String,
+    /// Target-qualified protections removed.
+    pub removed: Vec<String>,
+    /// Whether the command ran as dry-run.
+    pub dry_run: bool,
+}
+
 /// Remove-owned report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RemoveOwnedReport {
@@ -227,11 +238,6 @@ pub fn discover_unmanaged_skill_scan(paths: &StorePaths) -> DaloResult<Unmanaged
         .iter()
         .map(|skill| skill.link_path.clone())
         .collect::<BTreeSet<_>>();
-    let protected_paths = state
-        .protected_skills
-        .iter()
-        .map(|skill| skill.path.clone())
-        .collect::<BTreeSet<_>>();
     let mut found = Vec::new();
     let mut warnings = Vec::new();
 
@@ -275,7 +281,12 @@ pub fn discover_unmanaged_skill_scan(paths: &StorePaths) -> DaloResult<Unmanaged
                 .file_name()
                 .map(|name| name.to_string_lossy().into_owned())
                 .unwrap_or_else(|| path.display().to_string());
-            let protected = is_local_marker(&slot_name) || protected_paths.contains(&path);
+            let protected = is_local_marker(&slot_name)
+                || state.protected_skills.iter().any(|protected| {
+                    protected.slot_name == slot_name
+                        && (dir.logical_targets.contains(&protected.target_id)
+                            || protected.path.as_ref() == Some(&path))
+                });
             found.push(UnmanagedSkill {
                 id: String::new(),
                 slot_name,
@@ -378,18 +389,29 @@ pub fn keep_unmanaged_skill(
 ) -> DaloResult<KeepReport> {
     let skill = find_unmanaged_skill(paths, selector)?;
     let mut state = store::read_state(paths)?;
-    let existing = state
-        .protected_skills
-        .iter()
-        .any(|protected| protected.path == skill.path);
+    let existing = skill.target_ids.iter().all(|target_id| {
+        state.protected_skills.iter().any(|protected| {
+            protected.target_id == *target_id && protected.slot_name == skill.slot_name
+        })
+    });
     if !existing && !dry_run {
-        state.protected_skills.push(ProtectedSkillState {
-            slot_name: skill.slot_name.clone(),
-            path: skill.path.clone(),
+        for target_id in &skill.target_ids {
+            if state.protected_skills.iter().any(|protected| {
+                protected.target_id == *target_id && protected.slot_name == skill.slot_name
+            }) {
+                continue;
+            }
+            state.protected_skills.push(ProtectedSkillState {
+                target_id: target_id.clone(),
+                slot_name: skill.slot_name.clone(),
+                path: None,
+            });
+        }
+        state.protected_skills.sort_by(|left, right| {
+            left.target_id
+                .cmp(&right.target_id)
+                .then_with(|| left.slot_name.cmp(&right.slot_name))
         });
-        state
-            .protected_skills
-            .sort_by(|left, right| left.path.cmp(&right.path));
         store::write_state(paths, &state)?;
     }
 
@@ -409,6 +431,39 @@ pub fn keep_unmanaged_skill(
         existing,
         dry_run,
         warning,
+    })
+}
+
+/// Remove explicit protection by `target:slot` or by slot name across targets.
+pub fn unkeep_skill(paths: &StorePaths, selector: &str, dry_run: bool) -> DaloResult<UnkeepReport> {
+    let mut state = store::read_state(paths)?;
+    let matching = state
+        .protected_skills
+        .iter()
+        .filter(|protected| {
+            format!("{}:{}", protected.target_id, protected.slot_name) == selector
+                || protected.slot_name == selector
+                || protected
+                    .path
+                    .as_ref()
+                    .is_some_and(|path| path == Path::new(selector))
+        })
+        .map(|protected| format!("{}:{}", protected.target_id, protected.slot_name))
+        .collect::<Vec<_>>();
+
+    if !dry_run && !matching.is_empty() {
+        state.protected_skills.retain(|protected| {
+            !matching
+                .iter()
+                .any(|id| *id == format!("{}:{}", protected.target_id, protected.slot_name))
+        });
+        store::write_state(paths, &state)?;
+    }
+
+    Ok(UnkeepReport {
+        selector: selector.to_owned(),
+        removed: matching,
+        dry_run,
     })
 }
 
@@ -548,7 +603,7 @@ fn replace_with_owned_symlink_with_state_writer<F>(
 where
     F: FnOnce(&StorePaths, &store::StateFile) -> DaloResult<()>,
 {
-    if skill.protected {
+    if is_local_marker(&skill.slot_name) {
         return Ok(AdoptReplacementStatus::Protected);
     }
     if dry_run {
@@ -583,6 +638,11 @@ where
         left.link_path
             .cmp(&right.link_path)
             .then_with(|| left.store_path.cmp(&right.store_path))
+    });
+    state.protected_skills.retain(|protected| {
+        protected.slot_name != skill.slot_name
+            || (!skill.target_ids.contains(&protected.target_id)
+                && protected.path.as_ref() != Some(&skill.path))
     });
     if let Err(error) = write_state(paths, &state) {
         return Err(rollback_replacement(&skill.path, &backup_path, error));
