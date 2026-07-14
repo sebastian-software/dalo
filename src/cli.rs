@@ -42,7 +42,7 @@ pub struct Cli {
     pub json: bool,
 
     /// Reserved for future safe interactive prompts; currently a no-op.
-    #[arg(long, global = true, hide = true)]
+    #[arg(long, global = true)]
     pub yes: bool,
 
     /// Show planned changes without mutating state.
@@ -108,12 +108,21 @@ pub enum Command {
     )]
     Sync(CheckArgs),
     /// Adopt an unmanaged skill into the local source.
+    #[command(
+        after_help = "Examples:\n  dalo adopt review-helper\n  dalo adopt review-helper --replace\n  dalo --dry-run adopt /path/to/target/review-helper"
+    )]
     Adopt(AdoptCommand),
     /// Run explicit safe repair helpers.
+    #[command(
+        after_help = "Examples:\n  dalo resolve list\n  dalo resolve adopt review-helper --replace\n  dalo resolve keep review-helper\n  dalo resolve unkeep claude:review-helper\n  dalo resolve remove-owned review-helper"
+    )]
     Resolve(ResolveCommand),
     /// Diagnose store, target, Git, and lockfile health.
     Doctor(CheckArgs),
-    /// Grant, list, and revoke source-qualified skill approvals.
+    /// Grant, list, and revoke scoped approval records.
+    #[command(
+        after_help = "Examples:\n  dalo approve list\n  dalo approve skill public:review-helper\n  dalo approve source team\n  dalo approve author public:maintainers\n  dalo approve org public:example-org\n  dalo approve revoke skill public:review-helper"
+    )]
     Approve(ApproveCommand),
     /// Manage instruction packs rendered into instruction files.
     Instructions(InstructionsCommand),
@@ -182,21 +191,46 @@ pub enum ApproveSubcommand {
     /// List local approval records.
     List,
     /// Approve one source-qualified skill.
-    Skill(ApprovalValueArgs),
+    Skill(SkillApprovalArgs),
     /// Trust every skill from one configured source.
-    Source(ApprovalValueArgs),
+    Source(SourceApprovalArgs),
     /// Trust skills owned by one source-qualified author.
-    Author(ApprovalValueArgs),
+    Author(AuthorApprovalArgs),
     /// Trust skills owned by one source-qualified organization.
-    Org(ApprovalValueArgs),
+    Org(OrgApprovalArgs),
     /// Revoke one exact source-qualified approval.
     Revoke(ApprovalRevokeArgs),
 }
 
-/// One approval value.
+/// One skill approval value.
 #[derive(Debug, Args)]
-pub struct ApprovalValueArgs {
-    /// Source-qualified approval value.
+pub struct SkillApprovalArgs {
+    /// Skill in `<source>:<slot>` format, for example `public:review-helper`.
+    #[arg(value_name = "VALUE")]
+    pub value: String,
+}
+
+/// One source approval value.
+#[derive(Debug, Args)]
+pub struct SourceApprovalArgs {
+    /// Configured source ID, for example `team`.
+    #[arg(value_name = "VALUE")]
+    pub value: String,
+}
+
+/// One author approval value.
+#[derive(Debug, Args)]
+pub struct AuthorApprovalArgs {
+    /// Author in `<source>:<owner>` format, for example `public:maintainers`.
+    #[arg(value_name = "VALUE")]
+    pub value: String,
+}
+
+/// One organization approval value.
+#[derive(Debug, Args)]
+pub struct OrgApprovalArgs {
+    /// Organization in `<source>:<owner>` format, for example `public:example-org`.
+    #[arg(value_name = "VALUE")]
     pub value: String,
 }
 
@@ -205,7 +239,7 @@ pub struct ApprovalValueArgs {
 pub struct ApprovalRevokeArgs {
     /// Approval scope: skill, source, author, or org.
     pub scope: String,
-    /// Source-qualified approval value.
+    /// Approval value in the format required by the selected scope.
     pub value: String,
 }
 
@@ -259,7 +293,7 @@ pub enum SourceSubcommand {
     /// Add a team source from a Git URL.
     Add(SourceAddArgs),
     /// Add a catalog source (a multi-skill repository) from a Git URL.
-    AddCatalog(SourceAddArgs),
+    AddCatalog(SourceAddCatalogArgs),
     /// List configured sources.
     List,
     /// Change a source priority.
@@ -267,10 +301,16 @@ pub enum SourceSubcommand {
     /// Inspect a catalog source's available skills.
     Inspect(SourceInspectArgs),
     /// Select or unselect catalog skills.
+    #[command(
+        after_help = "Examples:\n  dalo source select public review-helper\n  dalo source select public review-helper formatter\n  dalo source select public --unselect formatter\n  dalo --dry-run source select public review-helper"
+    )]
     Select(SourceSelectArgs),
     /// Check a catalog source for upstream drift (read-only).
     Refresh(SourceRefreshArgs),
     /// Remove a team or catalog source and reconcile its owned links.
+    #[command(
+        after_help = "Examples:\n  dalo --dry-run --json source remove platform\n  dalo source remove public\n  dalo source remove public --keep-checkout"
+    )]
     Remove(SourceRemoveArgs),
 }
 
@@ -281,6 +321,16 @@ pub struct SourceAddArgs {
     pub id: String,
 
     /// Git URL of the team source.
+    pub location: String,
+}
+
+/// Arguments for `source add-catalog`.
+#[derive(Debug, Args)]
+pub struct SourceAddCatalogArgs {
+    /// Source ID.
+    pub id: String,
+
+    /// Git URL of the catalog source.
     pub location: String,
 }
 
@@ -363,7 +413,7 @@ pub enum ResolveSubcommand {
     List,
     /// Adopt the referenced unmanaged skill.
     Adopt(ResolveAdoptArgs),
-    /// Keep and protect the referenced unmanaged entry.
+    /// Keep an unmanaged entry in place and treat its sync conflict as non-failing.
     Keep(ResolveIdArg),
     /// Remove protection from a target slot.
     Unkeep(ResolveIdArg),

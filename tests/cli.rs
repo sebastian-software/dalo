@@ -33,7 +33,8 @@ fn help_should_list_planned_top_level_commands() {
         .stdout(predicate::str::contains("doctor"))
         .stdout(predicate::str::contains("Mental model:"))
         .stdout(predicate::str::contains("Quickstart:"))
-        .stdout(predicate::str::contains("--yes").not());
+        .stdout(predicate::str::contains("--yes"))
+        .stdout(predicate::str::contains("currently a no-op"));
 }
 
 #[test]
@@ -46,9 +47,108 @@ fn help_should_render_implemented_command_groups() {
         vec!["status", "--help"],
         vec!["sync", "--help"],
         vec!["doctor", "--help"],
+        vec!["approve", "--help"],
     ] {
         dalo_command().args(args).assert().success();
     }
+}
+
+#[test]
+fn help_should_explain_complex_command_values_and_examples() {
+    dalo_command()
+        .args(["source", "add-catalog", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Git URL of the catalog source"))
+        .stdout(predicate::str::contains("team source").not());
+
+    for (args, expected) in [
+        (
+            vec!["approve", "skill", "--help"],
+            "Skill in `<source>:<slot>` format",
+        ),
+        (
+            vec!["approve", "source", "--help"],
+            "Configured source ID, for example `team`",
+        ),
+        (
+            vec!["approve", "author", "--help"],
+            "Author in `<source>:<owner>` format",
+        ),
+        (
+            vec!["approve", "org", "--help"],
+            "Organization in `<source>:<owner>` format",
+        ),
+        (
+            vec!["approve", "--help"],
+            "dalo approve skill public:review-helper",
+        ),
+        (vec!["resolve", "--help"], "dalo resolve keep review-helper"),
+        (
+            vec!["source", "select", "--help"],
+            "dalo source select public --unselect formatter",
+        ),
+        (
+            vec!["source", "remove", "--help"],
+            "dalo source remove public --keep-checkout",
+        ),
+        (
+            vec!["adopt", "--help"],
+            "dalo adopt review-helper --replace",
+        ),
+        (
+            vec!["resolve", "keep", "--help"],
+            "treat its sync conflict as non-failing",
+        ),
+    ] {
+        dalo_command()
+            .args(args)
+            .assert()
+            .success()
+            .stdout(predicate::str::contains(expected));
+    }
+}
+
+#[test]
+fn approval_validation_errors_should_match_the_selected_scope() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store", store.to_str().expect("utf8 path"), "init"])
+        .assert()
+        .success();
+
+    for (scope, expected) in [
+        ("skill", "skill approval values must use `<source>:<slot>`"),
+        (
+            "author",
+            "author approval values must use `<source>:<owner>`",
+        ),
+        ("org", "org approval values must use `<source>:<owner>`"),
+    ] {
+        dalo_command()
+            .args([
+                "--store",
+                store.to_str().expect("utf8 path"),
+                "approve",
+                scope,
+                "local",
+            ])
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains(expected));
+    }
+
+    dalo_command()
+        .args([
+            "--store",
+            store.to_str().expect("utf8 path"),
+            "approve",
+            "source",
+            "local",
+        ])
+        .assert()
+        .success();
 }
 
 #[test]
