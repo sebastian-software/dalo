@@ -445,7 +445,11 @@ plugins, and MCPs are disabled where the provider supports it. The structured
 result contains evidence-backed findings, expected capabilities, and behavior
 not disclosed by the skill. Depending on the installed agent configuration,
 this can send skill contents to an external model provider and consume that
-provider's quota. Omitting `--agent` is fully local.
+provider's quota. Dalo never includes `.git` metadata in that snapshot; a skill
+containing a `.git` entry receives a blocking, partial-coverage finding instead.
+Provider processes receive only an explicit runtime and provider-authentication
+environment allowlist rather than inheriting Dalo's full environment. Omitting
+`--agent` is fully local.
 
 `--check` exits non-zero for unaccepted `high` or `critical` findings. Record a
 reviewed exception with a non-empty reason:
