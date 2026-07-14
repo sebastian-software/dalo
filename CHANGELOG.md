@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.8.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.7.2...dalo-v0.8.0) (2026-07-14)
+
+
+### Features
+
+* add Homebrew tap release integration ([54d7149](https://github.com/sebastian-software/dalo/commit/54d7149ee6254f4ffd6e14325329422887cfde8f))
+* add platform-aware install picker ([66cdaa8](https://github.com/sebastian-software/dalo/commit/66cdaa81c5c549acb232082fc27e80f81b2099ed))
+
+
+### Bug Fixes
+
+* close catalog drift integrity gaps ([7be72d1](https://github.com/sebastian-software/dalo/commit/7be72d134af5083240d647da8cbb13dec52d311b))
+* document degraded source recovery ([eb630c6](https://github.com/sebastian-software/dalo/commit/eb630c6d905406ef05eca4051d867eed0d1f090f))
+* enforce required closure at link time ([24fbfd2](https://github.com/sebastian-software/dalo/commit/24fbfd27bc8f30ec02686277de72a5f4fb61351d))
+* harden install picker fallbacks ([96f7e8e](https://github.com/sebastian-software/dalo/commit/96f7e8eab76e7e5bc41504aa2655869729f9f399))
+* improve CLI help accuracy ([c01fcb1](https://github.com/sebastian-software/dalo/commit/c01fcb1c720a540a85230ca17cc279373e181a6c))
+* make npm launcher offline resilient ([5799fd1](https://github.com/sebastian-software/dalo/commit/5799fd147b7571f2d742972ecedc72ae19f724e0))
+* make state and keep protection resilient ([61d0fc8](https://github.com/sebastian-software/dalo/commit/61d0fc84856323ae2c47aae3c63c476931b24aa9))
+* migrate every catalog lock inventory ([fbad9e3](https://github.com/sebastian-software/dalo/commit/fbad9e35268e0eeda08dc4089abd8b26cd48ea58))
+* order cached prereleases by semver ([78b8716](https://github.com/sebastian-software/dalo/commit/78b8716e092c57b70f1185a91a43598fa1d016cf))
+* preserve additive state fields on rewrite ([6386824](https://github.com/sebastian-software/dalo/commit/6386824bde36c4de3a38befd82b19f7a9df038e2))
+* preserve moved target metadata ([3c74374](https://github.com/sebastian-software/dalo/commit/3c743744d13118b10b2a0f21dba3d1d058407c3b))
+* preserve no-script picker fallback ([b571091](https://github.com/sebastian-software/dalo/commit/b571091963bf6678370781ef9eb5337d71d6e22e))
+* reject lossy state metadata merges ([e572d1b](https://github.com/sebastian-software/dalo/commit/e572d1b10009fdd299e5e984e86ce9c2630e33cd))
+* scope link conflicts per target ([e440b09](https://github.com/sebastian-software/dalo/commit/e440b09d676b97112a47d72053143b8d23feead0))
+* support legacy release tags in tap dispatch ([a81444f](https://github.com/sebastian-software/dalo/commit/a81444f41d53e1ddbc3e3f39f9f3eaee34ba3ace))
+
 ## [0.7.2](https://github.com/sebastian-software/dalo/compare/dalo-v0.7.1...dalo-v0.7.2) (2026-07-14)
 
 
