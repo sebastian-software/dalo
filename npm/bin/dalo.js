@@ -2,12 +2,18 @@
 
 'use strict';
 
-const { ensureBinary, formatLauncherError } = require('../lib/release');
+const { ensureBinary, formatLauncherError, npmInstallChannel } = require('../lib/release');
 const { spawn } = require('node:child_process');
 
 async function main() {
   const binary = await ensureBinary();
-  const child = spawn(binary, process.argv.slice(2), { stdio: 'inherit' });
+  const child = spawn(binary, process.argv.slice(2), {
+    stdio: 'inherit',
+    env: {
+      ...process.env,
+      DALO_INSTALL_CHANNEL: process.env.DALO_INSTALL_CHANNEL || npmInstallChannel(process.env.npm_command, __filename)
+    }
+  });
   child.on('error', (error) => {
     console.error(`dalo: could not start downloaded binary: ${error.message}`);
     process.exitCode = 1;

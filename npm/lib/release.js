@@ -82,6 +82,11 @@ function releaseBaseUrl() {
   return process.env.DALO_RELEASE_BASE_URL || `https://github.com/${REPOSITORY}/releases/download`;
 }
 
+function npmInstallChannel(npmCommand = process.env.npm_command, launcherPath = '') {
+  const normalizedPath = String(launcherPath).split(path.sep).join('/');
+  return npmCommand === 'exec' || normalizedPath.includes('/_npx/') ? 'npx' : 'npm';
+}
+
 async function latestTag() {
   const response = await fetch(`https://api.github.com/repos/${REPOSITORY}/releases/latest`, {
     headers: { accept: 'application/vnd.github+json', 'user-agent': 'dalo-npm-wrapper' },
@@ -281,6 +286,7 @@ module.exports = {
   ensureBinary,
   expectedChecksum,
   formatLauncherError,
+  npmInstallChannel,
   normalizeTag,
   targetFor,
   targetForCurrentRuntime,

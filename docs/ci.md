@@ -1,5 +1,9 @@
 # Using Dalo in CI
 
+Passive release checks are disabled automatically when the conventional `CI`
+environment variable is set. `DALO_OFFLINE=1` or `DALO_UPDATE_CHECK=never` can
+also disable them explicitly in other managed environments.
+
 Dalo's JSON output and exit codes are intended for automation.
 
 Useful checks:

@@ -62,6 +62,7 @@ make_path "$auto_path"
 auto_output="${test_root}/auto-output"
 run_install "$auto_path" "${test_root}/auto-bin" "$auto_output"
 test -x "${test_root}/auto-bin/dalo"
+test "$(cat "${test_root}/auto-bin/.dalo-install-channel")" = standalone
 grep -q 'cosign not found; verifying the SHA-256 checksum only' "$auto_output"
 grep -q 'is not on PATH' "$auto_output"
 

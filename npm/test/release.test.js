@@ -13,6 +13,7 @@ const {
   ensureBinary,
   expectedChecksum,
   formatLauncherError,
+  npmInstallChannel,
   normalizeTag,
   targetFor,
   versionFromTag
@@ -47,6 +48,12 @@ test('parses release tags and checksum files strictly', () => {
   assert.equal(expectedChecksum(checksums, 'dalo.tar.gz'), 'b'.repeat(64));
   assert.throws(() => expectedChecksum(checksums, 'missing.tar.gz'), /no entry/);
   assert.throws(() => expectedChecksum('not-a-checksum\n', 'dalo.tar.gz'), /malformed/);
+});
+
+test('identifies npm and npx launcher executions for update guidance', () => {
+  assert.equal(npmInstallChannel(undefined, '/usr/local/lib/node_modules/getdalo/bin/dalo.js'), 'npm');
+  assert.equal(npmInstallChannel('exec', '/usr/local/lib/node_modules/getdalo/bin/dalo.js'), 'npx');
+  assert.equal(npmInstallChannel(undefined, '/home/user/.npm/_npx/123/node_modules/getdalo/bin/dalo.js'), 'npx');
 });
 
 test('uses the npm package version from a warm cache without network access', async () => {

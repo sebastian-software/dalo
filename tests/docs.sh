@@ -33,6 +33,8 @@ grep -q 'AsciinemaPlayer.create' "$root/site/main.js"
 grep -q 'dalo-quickstart.cast' "$root/README.md"
 grep -q 'DALO_VERSION' "$root/site/install.md"
 grep -q 'DALO_LINUX_LIBC' "$root/npm/README.md"
+grep -q 'DALO_UPDATE_CHECK=never' "$root/README.md"
+grep -q 'github:sebastian-software/dalo' "$root/site/install.md"
 ! grep -q 'One-time bootstrap publish' "$root/npm/README.md"
 
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/dalo-docs-test.XXXXXX")"

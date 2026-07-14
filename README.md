@@ -247,12 +247,21 @@ brew install sebastian-software/tap/dalo
 # Cargo Binstall
 cargo binstall dalo
 
-# mise with the ubi backend
-mise use -g ubi:sebastian-software/dalo
+# mise with the GitHub Releases backend
+mise use -g github:sebastian-software/dalo
 
 # crates.io (requires Rust 1.93 or newer)
 cargo install dalo
 ```
+
+### Update notices
+
+Successful interactive commands check for a newer GitHub release at most once
+per day. The check is advisory: Dalo never replaces its own executable. When an
+update is available, it prints the upgrade command for the detected installation
+method once for that version. Network and cache failures are ignored, and checks
+are disabled for JSON output, CI, and `DALO_OFFLINE=1`. Set
+`DALO_UPDATE_CHECK=never` to opt out.
 
 You can also ask your agent to install Dalo:
 
