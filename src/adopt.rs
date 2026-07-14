@@ -405,6 +405,7 @@ pub fn keep_unmanaged_skill(
                 target_id: target_id.clone(),
                 slot_name: skill.slot_name.clone(),
                 path: None,
+                extra: Default::default(),
             });
         }
         state.protected_skills.sort_by(|left, right| {
@@ -633,6 +634,7 @@ where
         slot_name: skill.slot_name.clone(),
         link_path: skill.path.clone(),
         store_path: local_path.to_path_buf(),
+        extra: Default::default(),
     });
     state.owned_skills.sort_by(|left, right| {
         left.link_path
@@ -901,6 +903,7 @@ mod tests {
         state.materialization_dirs.push(MaterializationDirState {
             path: unreadable.clone(),
             logical_targets: vec!["other".to_owned()],
+            extra: Default::default(),
         });
         store::write_state(&paths, &state).expect("state should be writable");
 
@@ -932,6 +935,7 @@ mod tests {
         state.materialization_dirs.push(MaterializationDirState {
             path: unreadable,
             logical_targets: vec!["other".to_owned()],
+            extra: Default::default(),
         });
         store::write_state(&paths, &state).expect("state should be writable");
 
@@ -1199,18 +1203,22 @@ mod tests {
                 path: target.to_path_buf(),
                 canonical_path: target.to_path_buf(),
                 enabled: true,
+                extra: Default::default(),
             }],
             materialization_dirs: vec![MaterializationDirState {
                 path: target.to_path_buf(),
                 logical_targets: vec!["generic".to_owned()],
+                extra: Default::default(),
             }],
             owned_skills: vec![OwnedSkillState {
                 target_id: "generic".to_owned(),
                 slot_name: "owned".to_owned(),
                 link_path: owned.to_path_buf(),
                 store_path: store_root.join("local/skills/owned"),
+                extra: Default::default(),
             }],
             protected_skills: Vec::new(),
+            extra: Default::default(),
         };
         store::write_state(&paths, &state).expect("state should be written");
     }

@@ -688,7 +688,7 @@ Top-level fields:
 | `owned_skills[]` | Symlinks Dalo owns: `target_id`, `slot_name`, `link_path`, `store_path`. |
 | `protected_skills[]` | Unmanaged target slots kept by the user: `target_id`, `slot_name`. Legacy path-based entries migrate on read. |
 
-Unknown fields in this internal state model are ignored for downgrade safety after additive changes. Breaking changes still require a schema-version bump. User-authored configuration remains strict.
+Unknown fields in this internal state model are retained across reads and writes for downgrade safety after additive changes. Breaking changes still require a schema-version bump. User-authored configuration remains strict.
 
 ## `source-lock.toml`
 

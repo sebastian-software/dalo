@@ -84,7 +84,7 @@ impl StorePaths {
 /// Unknown fields are intentionally tolerated throughout this state model so
 /// older binaries can read state written by newer binaries after additive
 /// changes. Breaking changes still require a schema-version bump.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct StateFile {
     /// Persisted schema version.
     pub schema_version: u32,
@@ -98,10 +98,13 @@ pub struct StateFile {
     /// Explicitly protected unmanaged skills.
     #[serde(default)]
     pub protected_skills: Vec<ProtectedSkillState>,
+    /// Additive fields written by a newer binary, preserved on rewrite.
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, toml::Value>,
 }
 
 /// Configured target state.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TargetState {
     /// Logical target ID.
     pub id: String,
@@ -111,19 +114,25 @@ pub struct TargetState {
     pub canonical_path: PathBuf,
     /// Whether the target is enabled.
     pub enabled: bool,
+    /// Additive fields written by a newer binary, preserved on rewrite.
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, toml::Value>,
 }
 
 /// One physical materialization directory shared by one or more logical targets.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MaterializationDirState {
     /// Canonical physical directory.
     pub path: PathBuf,
     /// Logical target IDs that use this directory.
     pub logical_targets: Vec<String>,
+    /// Additive fields written by a newer binary, preserved on rewrite.
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, toml::Value>,
 }
 
 /// Recorded owned skill symlink.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OwnedSkillState {
     /// Target ID.
     pub target_id: String,
@@ -133,10 +142,13 @@ pub struct OwnedSkillState {
     pub link_path: PathBuf,
     /// Store path the symlink should point to.
     pub store_path: PathBuf,
+    /// Additive fields written by a newer binary, preserved on rewrite.
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, toml::Value>,
 }
 
 /// Explicitly protected unmanaged skill.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProtectedSkillState {
     /// Logical target ID whose slot is protected.
     #[serde(default)]
@@ -146,6 +158,9 @@ pub struct ProtectedSkillState {
     /// Legacy absolute path, retained only when it cannot be migrated.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<PathBuf>,
+    /// Additive fields written by a newer binary, preserved on rewrite.
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, toml::Value>,
 }
 
 impl StateFile {
@@ -158,6 +173,7 @@ impl StateFile {
             materialization_dirs: Vec::new(),
             owned_skills: Vec::new(),
             protected_skills: Vec::new(),
+            extra: BTreeMap::new(),
         }
     }
 
@@ -165,6 +181,10 @@ impl StateFile {
     /// logical targets. `logical_targets` is sorted so a directory shared by
     /// several targets gets a deterministic representative.
     pub fn rebuild_materialization_dirs(&mut self) {
+        let previous_extra = std::mem::take(&mut self.materialization_dirs)
+            .into_iter()
+            .map(|dir| (dir.path, dir.extra))
+            .collect::<BTreeMap<_, _>>();
         let mut grouped: BTreeMap<PathBuf, Vec<String>> = BTreeMap::new();
         for target in self.targets.iter().filter(|target| target.enabled) {
             grouped
@@ -177,6 +197,7 @@ impl StateFile {
             .map(|(path, mut logical_targets)| {
                 logical_targets.sort();
                 MaterializationDirState {
+                    extra: previous_extra.get(&path).cloned().unwrap_or_default(),
                     path,
                     logical_targets,
                 }
@@ -500,6 +521,7 @@ fn migrate_protected_skills(state: &mut StateFile) {
                 target_id: target_id.clone(),
                 slot_name: protected.slot_name.clone(),
                 path: None,
+                extra: protected.extra.clone(),
             });
         }
     }
@@ -962,6 +984,7 @@ mod tests {
             path: PathBuf::from("/target"),
             canonical_path: PathBuf::from("/target"),
             enabled: true,
+            extra: Default::default(),
         }];
         state.materialization_dirs = Vec::new();
         write_state(&paths, &state).expect("state should be written");
@@ -1018,16 +1041,16 @@ mod tests {
         fs::write(&paths.state_file, &content).expect("future state should be written");
 
         let state = read_state(&paths).expect("unknown additive field should be tolerated");
+        write_state(&paths, &state).expect("unknown additive field should survive a rewrite");
+        let rewritten =
+            fs::read_to_string(&paths.state_file).expect("rewritten state should be readable");
         let report = init_store(store_root, false).expect("init should not repair future state");
 
         assert_eq!(state.schema_version, STATE_SCHEMA_VERSION);
         assert!(report.operations.iter().any(|operation| {
             operation.path == paths.state_file && operation.status == InitOperationStatus::Existing
         }));
-        assert_eq!(
-            fs::read_to_string(&paths.state_file).expect("state should remain readable"),
-            content
-        );
+        assert!(rewritten.contains("future_additive_field = \"preserved by newer dalo\""));
     }
 
     #[test]
@@ -1043,6 +1066,7 @@ mod tests {
             path: target.clone(),
             canonical_path: target,
             enabled: true,
+            extra: Default::default(),
         });
         state.rebuild_materialization_dirs();
         write_state(&paths, &state).expect("state should be written");
@@ -1055,9 +1079,13 @@ mod tests {
         fs::write(&paths.state_file, content).expect("future nested field should be written");
 
         let parsed = read_state(&paths).expect("unknown nested field should be tolerated");
+        write_state(&paths, &parsed).expect("unknown nested field should survive a rewrite");
+        let rewritten =
+            fs::read_to_string(&paths.state_file).expect("rewritten state should be readable");
 
         assert_eq!(parsed.targets.len(), 1);
         assert_eq!(parsed.targets[0].id, "generic");
+        assert!(rewritten.contains("future_target_field = \"newer dalo metadata\""));
     }
 
     #[test]
@@ -1073,12 +1101,14 @@ mod tests {
             path: target.clone(),
             canonical_path: target.clone(),
             enabled: true,
+            extra: Default::default(),
         });
         state.rebuild_materialization_dirs();
         state.protected_skills.push(ProtectedSkillState {
             target_id: String::new(),
             slot_name: "review".to_owned(),
             path: Some(target.join("review")),
+            extra: Default::default(),
         });
         write_state(&paths, &state).expect("legacy state should be written");
 

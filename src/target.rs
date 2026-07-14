@@ -386,6 +386,7 @@ fn upsert_target_state(
             path: path.to_path_buf(),
             canonical_path: canonical_path.to_path_buf(),
             enabled: true,
+            extra: Default::default(),
         });
         TargetLinkStatus::Linked
     };

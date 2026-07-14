@@ -1696,6 +1696,7 @@ fn status_and_resolve_list_should_warn_on_unreadable_target_paths() {
         .push(store::MaterializationDirState {
             path: unreadable.clone(),
             logical_targets: vec!["other".to_owned()],
+            extra: Default::default(),
         });
     store::write_state(&paths, &state).expect("state should be writable");
 
@@ -2289,6 +2290,7 @@ fn sync_should_preserve_owned_symlink_when_slot_name_is_invalidated() {
         slot_name: "Review".to_owned(),
         link_path: target.join("Review"),
         store_path: legacy_skill,
+        extra: Default::default(),
     });
     store::write_state(&paths, &state).expect("state should be writable");
 
