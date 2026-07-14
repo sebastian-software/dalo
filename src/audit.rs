@@ -2,7 +2,7 @@
 
 use std::env;
 use std::fs;
-use std::io::Write;
+use std::io::{ErrorKind, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -1078,7 +1078,15 @@ fn run_with_stdin(
     if !input.is_empty()
         && let Some(mut stdin) = child.stdin.take()
     {
-        stdin.write_all(input.as_bytes())?;
+        // A provider may produce a complete result and close stdin before the
+        // prompt writer observes it. Preserve that output and validate the
+        // provider's exit status below instead of turning the race into an I/O
+        // failure.
+        if let Err(error) = stdin.write_all(input.as_bytes())
+            && error.kind() != ErrorKind::BrokenPipe
+        {
+            return Err(error.into());
+        }
     }
     let deadline = Instant::now() + Duration::from_secs(180);
     loop {
