@@ -504,7 +504,8 @@ pub fn remove_owned_skill(
     })
 }
 
-fn find_unmanaged_skill(paths: &StorePaths, selector: &str) -> DaloResult<UnmanagedSkill> {
+/// Resolve one unmanaged skill selector without mutating it.
+pub fn find_unmanaged_skill(paths: &StorePaths, selector: &str) -> DaloResult<UnmanagedSkill> {
     let skills = discover_unmanaged_skills(paths)?;
     if let Some(skill) = skills
         .iter()

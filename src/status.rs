@@ -9,6 +9,7 @@ use crate::adopt::{
     UnmanagedSkill,
 };
 use crate::approval::ApprovalReport;
+use crate::audit::{AuditCoverage, AuditReport, AuditStatus};
 use crate::catalog::{CatalogDrift, CatalogInspectReport, CatalogSelectReport};
 use crate::doctor::{DoctorReport, DoctorSeverity};
 use crate::error::DaloResult;
@@ -297,6 +298,77 @@ pub fn print_approval_report(report: &ApprovalReport) {
     println!("{verb} {} {}", report.scope, report.value);
 }
 
+/// Print a human-readable layered skill security audit.
+pub fn print_audit_report(report: &AuditReport) {
+    println!("security audit: {}", report.source_ref);
+    println!("  content hash: {}", report.content_hash);
+    println!(
+        "  coverage: {}",
+        match report.coverage {
+            AuditCoverage::Complete => "complete",
+            AuditCoverage::Partial => "partial",
+        }
+    );
+    println!(
+        "  result: {}{}",
+        match report.status {
+            AuditStatus::Clean => "clean",
+            AuditStatus::Review => "review",
+            AuditStatus::Blocked => "blocked",
+        },
+        report
+            .max_severity
+            .map_or_else(String::new, |severity| format!(
+                " (max {})",
+                severity.as_str()
+            ))
+    );
+    for finding in &report.static_findings {
+        print_audit_finding("static", finding);
+    }
+    if let Some(review) = &report.agent_review {
+        println!(
+            "  agent review: {} (isolation: {})",
+            review.provider.as_str(),
+            review.isolation.as_str()
+        );
+        println!("    {}", review.summary);
+        for capability in &review.expected_capabilities {
+            println!("    capability: {capability}");
+        }
+        for action in &review.expected_actions {
+            println!("    expected action: {action}");
+        }
+        for behavior in &review.undeclared_behaviors {
+            println!("    undeclared: {behavior}");
+        }
+        for finding in &review.findings {
+            print_audit_finding("agent", finding);
+        }
+    }
+    if let Some(acceptance) = &report.risk_acceptance {
+        println!("  risk accepted: {}", acceptance.reason);
+    } else if report.status == AuditStatus::Blocked {
+        println!("  installation policy: blocked until risk is explicitly accepted");
+    }
+    println!("  note: no findings means no known issue was detected; it is not a safety guarantee");
+}
+
+fn print_audit_finding(layer: &str, finding: &crate::audit::AuditFinding) {
+    let location = finding.line.map_or_else(
+        || finding.path.clone(),
+        |line| format!("{}:{line}", finding.path),
+    );
+    println!(
+        "  {} {} {} [{}]: {}",
+        layer,
+        finding.severity.as_str(),
+        location,
+        finding.category,
+        finding.message
+    );
+}
+
 /// Print a human-readable status report.
 pub fn print_status_report(report: &StatusReport) {
     println!("dalo store: {}", report.store.display());
@@ -548,6 +620,9 @@ pub fn print_source_add_report(report: &SourceAddReport) {
         report.source.id,
         report.source.path.display()
     );
+    for audit in &report.audits {
+        print_audit_report(audit);
+    }
 }
 
 /// Print a source removal report.
@@ -668,6 +743,9 @@ pub fn print_catalog_select_report(report: &CatalogSelectReport) {
             report.source_id,
             report.selected.join(", ")
         );
+    }
+    for audit in &report.audits {
+        print_audit_report(audit);
     }
 }
 

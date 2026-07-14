@@ -55,6 +55,8 @@ pub struct StorePaths {
     pub sources_dir: PathBuf,
     /// Catalog source lock path (pinned commits, selections, inventory snapshot).
     pub source_lock_file: PathBuf,
+    /// Content-addressed security audit reports.
+    pub audits_dir: PathBuf,
 }
 
 impl StorePaths {
@@ -73,6 +75,7 @@ impl StorePaths {
             local_instructions_dir: local_dir.join("instructions"),
             sources_dir: root.join("sources"),
             source_lock_file: root.join("source-lock.toml"),
+            audits_dir: root.join("audits"),
             local_dir,
             root,
         }
@@ -430,6 +433,7 @@ pub fn init_store(store_root: PathBuf, dry_run: bool) -> DaloResult<InitReport> 
         &paths.local_skills_dir,
         &paths.local_instructions_dir,
         &paths.sources_dir,
+        &paths.audits_dir,
     ] {
         operations.push(ensure_dir(directory, dry_run)?);
     }

@@ -1,9 +1,11 @@
 //! Source definitions and source operations.
 
+use std::fs;
 use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::audit::{self, AuditReport};
 use crate::catalog::{self, SourceLock};
 use crate::config::UserConfig;
 use crate::error::{DaloError, DaloResult};
@@ -81,6 +83,8 @@ pub struct SourceAddReport {
     pub source: SourceConfig,
     /// Whether the command ran as dry-run.
     pub dry_run: bool,
+    /// Deterministic preflight reports for every discovered skill.
+    pub audits: Vec<AuditReport>,
 }
 
 /// Tracking source that could not be refreshed during sync.
@@ -400,10 +404,16 @@ where
         return Ok(SourceAddReport {
             source,
             dry_run: true,
+            audits: Vec::new(),
         });
     }
 
     clone_source_checkout_with(url, &checkout, clone_repo)?;
+
+    let audits = audit_source_checkout(paths, id, &checkout).inspect_err(|_| {
+        let _ = std::fs::remove_dir_all(&checkout);
+        remove_empty_source_dir(&checkout);
+    })?;
 
     // From here on the checkout exists on disk. If persisting the source fails,
     // remove the clone so a later `source add` does not trip over an orphaned
@@ -416,7 +426,28 @@ where
     Ok(SourceAddReport {
         source,
         dry_run: false,
+        audits,
     })
+}
+
+fn audit_source_checkout(
+    paths: &StorePaths,
+    source_id: &str,
+    checkout: &Path,
+) -> DaloResult<Vec<AuditReport>> {
+    let inventory = crate::inventory::scan_source(source_id, checkout)?;
+    inventory
+        .skills
+        .iter()
+        .map(|skill| {
+            audit::audit_skill(
+                paths,
+                &skill.source_ref,
+                &skill.path,
+                &audit::AuditOptions::default(),
+            )
+        })
+        .collect()
 }
 
 /// Clone a source through a temporary sibling and atomically publish it.
@@ -585,18 +616,155 @@ pub fn refresh_tracking_team_sources(
     paths: &StorePaths,
 ) -> DaloResult<Vec<TrackingSourceRefreshFailure>> {
     let config = store::read_config(paths)?;
-    refresh_tracking_team_sources_from_config(&config)
+    refresh_tracking_team_sources_from_config(paths, &config)
 }
 
 /// Refresh clean tracking team sources from an already-read config.
 ///
 /// Missing or unknown update policies are treated as pinned and are not pulled.
 pub fn refresh_tracking_team_sources_from_config(
+    paths: &StorePaths,
     config: &UserConfig,
 ) -> DaloResult<Vec<TrackingSourceRefreshFailure>> {
-    refresh_tracking_team_sources_with(config, git::is_dirty, git::pull_ff_only)
+    let mut failures = Vec::new();
+    for source in config.sources.iter().filter(|source| {
+        source.enabled
+            && source.kind == SourceKind::Team
+            && source.update_policy.as_deref() == Some("track")
+    }) {
+        match git::is_dirty(&source.path) {
+            Ok(true) => {
+                return Err(DaloError::DirtySource {
+                    source_id: source.id.clone(),
+                    path: source.path.clone(),
+                });
+            }
+            Ok(false) => {}
+            Err(error) => {
+                failures.push(TrackingSourceRefreshFailure {
+                    id: source.id.clone(),
+                    path: source.path.clone(),
+                    reason: format!("could not inspect tracking checkout: {error}"),
+                });
+                continue;
+            }
+        }
+        if let Err(error) = stage_audit_and_fast_forward(paths, source) {
+            if matches!(error, DaloError::AuditBlocked { .. }) {
+                return Err(error);
+            }
+            failures.push(TrackingSourceRefreshFailure {
+                id: source.id.clone(),
+                path: source.path.clone(),
+                reason: format!("could not refresh tracking source: {error}"),
+            });
+        }
+    }
+    Ok(failures)
 }
 
+fn stage_audit_and_fast_forward(paths: &StorePaths, source: &SourceConfig) -> DaloResult<()> {
+    git::fetch_upstream(&source.path)?;
+    let upstream = git::rev_parse(&source.path, "@{upstream}")?;
+    let incoming = git::revision_count(&source.path, "HEAD", &upstream)?;
+    if incoming == 0 {
+        return Ok(());
+    }
+    if git::revision_count(&source.path, &upstream, "HEAD")? != 0 {
+        return Err(DaloError::CheckFailed {
+            reason: "tracking branch cannot fast-forward to its configured upstream".to_owned(),
+        });
+    }
+
+    let staging_root = paths.sources_dir.join(".audit-staging");
+    fs::create_dir_all(&staging_root)?;
+    let staging_path = staging_root.join(format!("{}-{upstream}", source.id));
+    cleanup_obsolete_staging_worktrees(source, &staging_root, &staging_path)?;
+    let staging_matches = staging_path.exists()
+        && git::rev_parse_head(&staging_path).is_ok_and(|commit| commit == upstream);
+    if !staging_matches {
+        if staging_path.exists() {
+            let _ = git::remove_worktree(&source.path, &staging_path);
+            let _ = fs::remove_dir_all(&staging_path);
+            git::prune_worktrees(&source.path)?;
+        }
+        git::add_detached_worktree(&source.path, &staging_path, &upstream)?;
+    }
+
+    let audit_result = (|| -> DaloResult<()> {
+        let inventory = crate::inventory::scan_source(&source.id, &staging_path)?;
+        let mut blocked = Vec::new();
+        for skill in inventory.skills {
+            let report = audit::audit_skill(
+                paths,
+                &skill.source_ref,
+                &skill.path,
+                &audit::AuditOptions::default(),
+            )?;
+            if report.is_blocking() {
+                blocked.push((skill.source_ref, skill.path));
+            }
+        }
+        if blocked.is_empty() {
+            Ok(())
+        } else {
+            Err(DaloError::AuditBlocked {
+                reason: format!(
+                    "staged security audit blocked upstream commit {upstream} ({})",
+                    blocked
+                        .iter()
+                        .map(|(source_ref, path)| format!(
+                            "{source_ref}; review with `dalo audit '{}' --accept-risk <reason>`",
+                            path.display()
+                        ))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            })
+        }
+    })();
+    if let Err(error) = audit_result {
+        if matches!(error, DaloError::AuditBlocked { .. }) {
+            // Keep the immutable staged worktree so the user can inspect and
+            // explicitly accept this exact hash. The next sync reuses it.
+            return Err(error);
+        }
+        if let Err(cleanup) = git::remove_worktree(&source.path, &staging_path) {
+            return Err(DaloError::Io(std::io::Error::other(format!(
+                "{error}; additionally failed to remove staged audit worktree: {cleanup}"
+            ))));
+        }
+        return Err(error);
+    }
+    git::remove_worktree(&source.path, &staging_path)?;
+    let _ = fs::remove_dir(&staging_root);
+    git::fast_forward_to(&source.path, &upstream)
+}
+
+fn cleanup_obsolete_staging_worktrees(
+    source: &SourceConfig,
+    staging_root: &Path,
+    keep: &Path,
+) -> DaloResult<()> {
+    for entry in fs::read_dir(staging_root)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path == keep
+            || !entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with(&format!("{}-", source.id))
+        {
+            continue;
+        }
+        if git::remove_worktree(&source.path, &path).is_err() {
+            fs::remove_dir_all(&path)?;
+        }
+    }
+    git::prune_worktrees(&source.path)
+}
+
+#[cfg(test)]
 fn refresh_tracking_team_sources_with<D, P>(
     config: &UserConfig,
     mut is_dirty: D,

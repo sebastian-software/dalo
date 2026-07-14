@@ -108,7 +108,10 @@ JSON output shape: `TargetUnlinkReport`.
 
 ### `dalo source add <id> <git-url>`
 
-Add a trusted team source, clone it into `sources/<id>/checkout`, and configure it with `update_policy = "track"`. Source IDs must be a single path component using only letters, digits, `.`, `_`, and `-`; `.` and `..` are rejected.
+Add a trusted team source, clone it into `sources/<id>/checkout`, configure it
+with `update_policy = "track"`, and run a deterministic security preflight for
+every discovered skill. Source IDs must be a single path component using only
+letters, digits, `.`, `_`, and `-`; `.` and `..` are rejected.
 
 Examples:
 
@@ -176,7 +179,10 @@ JSON output shape: `CatalogInspectReport`.
 
 ### `dalo source select <id> <skill>...`
 
-Select catalog skills by stable frontmatter ID, `<source-id>:<slot>` reference, or slot name. Selection writes `config.toml` and updates `source-lock.toml` with the pinned commit and inventory snapshot.
+Select catalog skills by stable frontmatter ID, `<source-id>:<slot>` reference,
+or slot name. Selection runs the deterministic security preflight, writes
+`config.toml`, and updates `source-lock.toml` with the pinned commit and
+inventory snapshot.
 
 Examples:
 
@@ -257,6 +263,17 @@ report on stdout for JSON consumers.
 
 Refresh clean tracking team sources, resolve the desired skill set, materialize owned symlinks into linked targets, and write `lock.toml`. Dirty tracking sources block refresh. Dalo does not overwrite unmanaged real directories or foreign symlinks.
 
+Before materialization, Dalo audits the exact content hash of every active
+skill. Unaccepted `high` or `critical` findings stop the command before any
+links are changed. A previously recorded risk acceptance is reused only while
+the complete directory hash remains unchanged.
+
+Tracking team updates are fetched and audited in a detached worktree below
+`sources/.audit-staging/` before the live checkout fast-forwards. Existing
+target links therefore continue to expose the last accepted commit. When an
+update is blocked, the error prints a command for auditing and accepting the
+exact staged skill; the next `sync` reuses that staged hash.
+
 Examples:
 
 ```sh
@@ -289,6 +306,10 @@ metadata fingerprints for upstream drift checks.
 ### `dalo adopt <skill> [--replace]`
 
 Copy an unmanaged target skill into `local/skills/<slot>`. With `--replace`, Dalo replaces the original unmanaged directory with an owned symlink after copying. Without `--replace`, the original directory remains untouched.
+
+Adoption runs the same deterministic security preflight before copying or
+replacing anything. `--agent`, `--refresh-audit`, and `--accept-risk <reason>`
+have the same meaning as on `dalo approve skill`.
 
 The `<skill>` argument can be a slot name, a disambiguating path, or an ID reported by `status` or `resolve list`.
 
@@ -384,6 +405,46 @@ JSON output shape: `DoctorReport`.
 `--check` exits with code 1 when the report contains an error finding. Warnings
 remain report-only so CI can choose its own warning policy.
 
+### `dalo audit <skill-or-path>`
+
+Inspect a skill before it is exposed to an agent. The target can be an existing
+directory or a source-qualified reference. Deterministic checks are local and
+never execute skill code.
+
+```sh
+dalo audit public:review-helper
+dalo audit ./my-skill --check
+dalo audit public:review-helper --agent auto
+dalo --json audit public:review-helper --agent codex
+```
+
+`--agent auto|codex|claude|opencode` adds a semantic review through an installed
+agent CLI. Dalo starts a fresh non-persistent reviewer and treats a bounded
+snapshot as untrusted data. Claude and OpenCode run with tools denied. Codex
+currently retains its network-disabled, read-only sandbox shell, so Dalo never
+selects it through `auto`; choosing `--agent codex` is an explicit acceptance of
+that weaker isolation boundary. User configuration, project rules, skills,
+plugins, and MCPs are disabled where the provider supports it. The structured
+result contains evidence-backed findings, expected capabilities, and behavior
+not disclosed by the skill. Depending on the installed agent configuration,
+this can send skill contents to an external model provider and consume that
+provider's quota. Omitting `--agent` is fully local.
+
+`--check` exits non-zero for unaccepted `high` or `critical` findings. Record a
+reviewed exception with a non-empty reason:
+
+```sh
+dalo audit public:review-helper \
+  --accept-risk "reviewed pinned upstream installer"
+```
+
+Reports live below `audits/` and are keyed by the complete skill directory
+hash. Cached agent results additionally require the same provider and Dalo
+review-prompt version. No-finding results are best-effort observations, not a
+security certification.
+
+JSON output shape: `AuditReport`.
+
 ### `dalo approve`
 
 Grant, list, and revoke approval records without editing `approvals.toml`.
@@ -393,6 +454,8 @@ cannot accidentally apply to a different source with the same name.
 ```sh
 dalo approve list
 dalo approve skill public:review-helper
+dalo approve skill public:review-helper --agent codex
+dalo approve skill public:review-helper --accept-risk "reviewed exception"
 dalo approve source team
 dalo approve author public:maintainers
 dalo approve org public:example-org
@@ -401,6 +464,9 @@ dalo approve revoke skill public:review-helper
 
 Approval writes support `--dry-run` and `--json`. A pending skill shown by
 `status` can be approved narrowly with `dalo approve skill <source:skill>`.
+Skill approval always runs the deterministic preflight first and refuses a
+blocking result unless a reason is supplied with `--accept-risk`. `--agent`
+adds the same isolated semantic review as `dalo audit`.
 
 JSON output shapes: `ApprovalsFile` for `list`; `ApprovalReport` for mutations.
 
@@ -556,10 +622,12 @@ After `dalo init`, the store contains:
 | `state.toml` | Internal target/materialization/protection state. |
 | `approvals.toml` | Local approval records. |
 | `source-lock.toml` | Catalog source pins, selections, and inventory snapshots. |
+| `audits/<content-hash>.json` | Content-addressed deterministic and optional agent security reports. |
 | `.lock` | Temporary coarse lock file while mutating commands run. |
 | `local/skills/` | Local private skill directories. |
 | `local/instructions/` | Local instruction pack Markdown files. |
 | `sources/<id>/checkout/` | Team and catalog Git checkouts. |
+| `sources/.audit-staging/` | Detached incoming team commits retained only while security review is required. |
 
 Dalo rejects unsupported schema versions in persisted TOML files.
 

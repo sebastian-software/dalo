@@ -86,7 +86,10 @@ The full terminal session is available as an
                             |
                             v
                      ~/.dalo store
-                  sources · locks · trust
+             sources · locks · trust · audits
+                            |
+                            v
+              preflight · agent review
                             |
                             v
                  deterministic resolution
@@ -147,6 +150,7 @@ select only what you need, approve the exact skill, and sync:
 dalo source add-catalog sebastian https://github.com/sebastian-software/skills.sebastian-software.com.git
 dalo source inspect sebastian
 dalo source select sebastian github-pr-auto-review
+dalo audit sebastian:github-pr-auto-review --agent auto
 dalo approve skill sebastian:github-pr-auto-review
 dalo sync
 ```
@@ -177,6 +181,9 @@ conservative:
 - Dalo removes or repairs only the links and managed blocks it owns
 - dirty team checkouts block refresh instead of losing local changes
 - catalog skills require an explicit selection and approval
+- source additions and catalog selections show deterministic security preflights
+- `sync` blocks high and critical findings before a skill reaches an agent folder
+- optional sandboxed reviews can reuse an installed Codex, Claude, or OpenCode CLI
 - newly active skills are not silently trusted during non-interactive sync
 - `--dry-run` shows planned changes without writing them
 - conflicts stay visible in `status` until you resolve or intentionally keep them
