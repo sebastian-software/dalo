@@ -5,6 +5,8 @@ use std::ffi::OsStr;
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::IsTerminal;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -237,13 +239,11 @@ fn detect_install_channel_from(
         return InstallChannel::Homebrew;
     }
 
-    if components.iter().any(|part| *part == OsStr::new("mise"))
-        && components
-            .iter()
-            .any(|part| *part == OsStr::new("installs"))
-    {
-        let path = executable.to_string_lossy().to_ascii_lowercase();
-        return if path.contains("ubi") {
+    if let Some(install_id) = components.windows(3).find_map(|parts| {
+        (parts[0] == OsStr::new("mise") && parts[1] == OsStr::new("installs"))
+            .then(|| parts[2].to_string_lossy().to_ascii_lowercase())
+    }) {
+        return if install_id == "ubi" || install_id.starts_with("ubi-") {
             InstallChannel::MiseUbi
         } else {
             InstallChannel::Mise
@@ -303,8 +303,19 @@ fn cargo_upgrade_command() -> String {
 
 fn command_exists(program: &str) -> bool {
     env::var_os("PATH").is_some_and(|path| {
-        env::split_paths(&path).any(|directory| directory.join(program).is_file())
+        env::split_paths(&path).any(|directory| is_executable_file(&directory.join(program)))
     })
+}
+
+#[cfg(unix)]
+fn is_executable_file(path: &Path) -> bool {
+    fs::metadata(path)
+        .is_ok_and(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
+}
+
+#[cfg(not(unix))]
+fn is_executable_file(path: &Path) -> bool {
+    path.is_file()
 }
 
 fn standalone_upgrade_command(executable: Option<&Path>) -> Option<String> {
@@ -385,12 +396,23 @@ mod tests {
             detect_install_channel_from(
                 None,
                 Some(Path::new(
-                    "/home/user/.local/share/mise/installs/github-sebastian-software-dalo/latest/bin/dalo"
+                    "/home/rubicon/.local/share/mise/installs/github-sebastian-software-dalo/latest/bin/dalo"
+                )),
+                Some(Path::new("/home/rubicon")),
+                None,
+            ),
+            InstallChannel::Mise
+        );
+        assert_eq!(
+            detect_install_channel_from(
+                None,
+                Some(Path::new(
+                    "/home/user/.local/share/mise/installs/ubi-sebastian-software-dalo/latest/bin/dalo"
                 )),
                 Some(Path::new("/home/user")),
                 None,
             ),
-            InstallChannel::Mise
+            InstallChannel::MiseUbi
         );
         assert_eq!(
             detect_install_channel_from(
@@ -465,5 +487,23 @@ mod tests {
             shell_quote(Path::new("/tmp/dalo's bin")),
             "'/tmp/dalo'\"'\"'s bin'"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn command_detection_should_require_an_executable_file() {
+        let temp = tempdir().expect("tempdir");
+        let command = temp.path().join("cargo-binstall");
+        fs::write(&command, "not really a binary").expect("write command");
+
+        let mut permissions = fs::metadata(&command).expect("metadata").permissions();
+        permissions.set_mode(0o644);
+        fs::set_permissions(&command, permissions).expect("remove execute permission");
+        assert!(!is_executable_file(&command));
+
+        let mut permissions = fs::metadata(&command).expect("metadata").permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&command, permissions).expect("add execute permission");
+        assert!(is_executable_file(&command));
     }
 }
