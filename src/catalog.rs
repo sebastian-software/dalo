@@ -4,6 +4,7 @@
 use std::fs;
 use std::io::Read;
 use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -16,7 +17,7 @@ use crate::source::{self, SourceConfig, SourceKind};
 use crate::store::{self, StorePaths};
 
 /// Current persisted source-lock schema version.
-pub const SOURCE_LOCK_SCHEMA_VERSION: u32 = 2;
+pub const SOURCE_LOCK_SCHEMA_VERSION: u32 = 3;
 const MIN_SUPPORTED_SOURCE_LOCK_SCHEMA_VERSION: u32 = 1;
 
 /// Source lock: pinned catalog commits, selections, and inventory snapshots.
@@ -631,18 +632,20 @@ pub fn compare_catalog_inventory(
             .unwrap_or_else(|| locked_entry.slot_name.clone());
         match by_id.or(by_path) {
             Some(fresh_entry) => {
-                if by_id.is_some() && fresh_entry.path != locked_entry.path {
+                let moved = by_id.is_some() && fresh_entry.path != locked_entry.path;
+                let changed = fresh_entry.content_hash != locked_entry.content_hash
+                    || fresh_entry.metadata_hash != locked_entry.metadata_hash;
+                if moved {
                     outcomes.push(DriftEntry {
                         code: DriftCode::SelectedMoved,
-                        skill,
+                        skill: skill.clone(),
                         message: format!(
                             "`{}` moved from `{}` to `{}`",
                             locked_entry.slot_name, locked_entry.path, fresh_entry.path
                         ),
                     });
-                } else if fresh_entry.content_hash != locked_entry.content_hash
-                    || fresh_entry.metadata_hash != locked_entry.metadata_hash
-                {
+                }
+                if changed {
                     outcomes.push(DriftEntry {
                         code: DriftCode::SelectedChanged,
                         skill,
@@ -762,6 +765,7 @@ pub fn hash_directory(skill_dir: &Path) -> DaloResult<String> {
             hash_framed(&mut hasher, target.as_os_str().as_bytes());
         } else {
             hasher.update(*b"F");
+            hasher.update((metadata.permissions().mode() & 0o111).to_le_bytes());
             hasher.update(metadata.len().to_le_bytes());
             let mut handle = fs::File::open(file)?;
             let mut buffer = [0u8; 8192];
@@ -871,6 +875,20 @@ mod tests {
     }
 
     #[test]
+    fn compare_should_flag_selected_moved_and_changed_via_stable_id() {
+        let locked = vec![entry(Some("a"), "alpha", "skills/alpha", "h1")];
+        let fresh = vec![entry(Some("a"), "alpha", "catalog/alpha", "h2")];
+
+        let outcomes = compare_catalog_inventory(&locked, &["alpha".to_owned()], &fresh);
+
+        assert_eq!(outcomes.len(), 2);
+        assert_eq!(outcomes[0].code, DriftCode::SelectedChanged);
+        assert_eq!(outcomes[1].code, DriftCode::SelectedMoved);
+        assert_eq!(outcomes[0].skill, "a");
+        assert_eq!(outcomes[1].skill, "a");
+    }
+
+    #[test]
     fn compare_should_flag_selected_removed_when_absent() {
         let locked = vec![entry(Some("a"), "alpha", "skills/alpha", "h1")];
         let fresh: Vec<CatalogEntry> = Vec::new();
@@ -906,5 +924,26 @@ mod tests {
         let second = hash_directory(&skill_dir).expect("hash should succeed");
 
         assert_ne!(first, second);
+    }
+
+    #[test]
+    fn hash_directory_should_include_executable_file_bits() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("skill");
+        let script = skill_dir.join("script.sh");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        fs::write(&script, "#!/bin/sh\n").expect("script should be written");
+        let mut permissions = fs::metadata(&script)
+            .expect("script metadata should be readable")
+            .permissions();
+        permissions.set_mode(0o644);
+        fs::set_permissions(&script, permissions.clone()).expect("script should be non-executable");
+        let before = hash_directory(&skill_dir).expect("hash should succeed");
+        permissions.set_mode(0o744);
+        fs::set_permissions(&script, permissions).expect("script should be executable");
+
+        let after = hash_directory(&skill_dir).expect("hash should succeed");
+
+        assert_ne!(before, after);
     }
 }
