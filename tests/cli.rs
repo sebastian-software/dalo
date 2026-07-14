@@ -226,6 +226,89 @@ fn audit_agent_auto_should_prefer_an_enforceable_no_tool_provider() {
 }
 
 #[test]
+fn audit_should_explain_a_present_but_failing_provider() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let skill = temp_dir.path().join("review-helper");
+    let bin = temp_dir.path().join("bin");
+    std::fs::create_dir_all(&skill).expect("skill directory should be created");
+    std::fs::create_dir_all(&bin).expect("bin directory should be created");
+    std::fs::write(skill.join("SKILL.md"), "Summarize a pull request.\n")
+        .expect("skill should be written");
+    let fake_claude = bin.join("claude");
+    std::fs::write(&fake_claude, "#!/bin/sh\nexit 1\n").expect("fake claude should be written");
+    let mut permissions = std::fs::metadata(&fake_claude)
+        .expect("metadata should be readable")
+        .permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&fake_claude, permissions).expect("fake claude should be executable");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    dalo_command()
+        .env("PATH", &bin)
+        .args(["--store"])
+        .arg(&store)
+        .args(["audit"])
+        .arg(&skill)
+        .args(["--agent", "auto"])
+        .assert()
+        .failure()
+        .code(4)
+        .stderr(predicate::str::contains(
+            "sending a bounded skill snapshot to claude with reviewer tools disabled",
+        ))
+        .stderr(predicate::str::contains(
+            "CLI exited with exit status: 1; verify that it runs standalone and is authenticated",
+        ));
+}
+
+#[test]
+fn audit_should_check_explicit_provider_before_printing_egress_warning() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let skill = temp_dir.path().join("review-helper");
+    let bin = temp_dir.path().join("bin");
+    std::fs::create_dir_all(&skill).expect("skill directory should be created");
+    std::fs::create_dir_all(&bin).expect("empty bin directory should be created");
+    std::fs::write(skill.join("SKILL.md"), "Summarize a pull request.\n")
+        .expect("skill should be written");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    dalo_command()
+        .env("PATH", &bin)
+        .args(["--store"])
+        .arg(&store)
+        .args(["audit"])
+        .arg(&skill)
+        .args(["--agent", "codex"])
+        .assert()
+        .failure()
+        .code(4)
+        .stderr(predicate::str::contains("`codex` was not found on PATH"))
+        .stderr(predicate::str::contains("sending a bounded skill snapshot").not());
+}
+
+#[test]
+fn audit_help_should_prefer_refresh_audit_and_keep_refresh_as_hidden_alias() {
+    dalo_command()
+        .args(["audit", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--refresh-audit"))
+        .stdout(predicate::str::contains("--refresh ").not());
+}
+
+#[test]
 fn audit_agent_opencode_should_attach_snapshot_with_all_tools_denied() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

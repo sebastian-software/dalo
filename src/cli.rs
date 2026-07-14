@@ -240,8 +240,8 @@ pub struct AuditCommand {
     pub agent: AuditAgentArg,
 
     /// Ignore a compatible cached semantic review.
-    #[arg(long)]
-    pub refresh: bool,
+    #[arg(long = "refresh-audit", alias = "refresh")]
+    pub refresh_audit: bool,
 
     /// Exit non-zero when unaccepted high or critical findings exist.
     #[arg(long)]
@@ -1474,7 +1474,7 @@ fn run_audit(options: &GlobalOptions, command: AuditCommand) -> DaloResult<()> {
         &command.target,
         &audit::AuditOptions {
             agent,
-            refresh: command.refresh,
+            refresh: command.refresh_audit,
             persist: !options.dry_run,
             accept_risk: command.accept_risk,
         },
@@ -1630,19 +1630,7 @@ fn run_adopt_with_audit(
 }
 
 fn prepare_agent_review(agent: AuditAgentArg) -> DaloResult<audit::AgentSelection> {
-    let selection = audit::resolve_agent_selection(agent.into())?;
-    if let audit::AgentSelection::Provider(provider) = selection {
-        match provider {
-            audit::AgentProvider::Codex => eprintln!(
-                "warning: sending a bounded skill snapshot to Codex; its network-disabled read-only sandbox shell remains available to the reviewer"
-            ),
-            audit::AgentProvider::Claude | audit::AgentProvider::Opencode => eprintln!(
-                "note: sending a bounded skill snapshot to {} with reviewer tools disabled",
-                provider.as_str()
-            ),
-        }
-    }
-    Ok(selection)
+    audit::resolve_agent_selection(agent.into())
 }
 
 fn print_approval_result(

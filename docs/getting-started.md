@@ -65,8 +65,10 @@ dalo sync
 
 A source is a Git-backed collection of skills. Source priority decides conflicts: lower priority wins. A slot is the portable skill name Dalo links into target folders.
 
-Team sources are trusted by default, so their skills can sync immediately. Use
-a catalog source when you want to review and approve individual skills.
+Team sources are trusted by default, so their skills do not need per-skill
+approval. Sync still audits team content and blocks unaccepted high or critical
+findings. Use a catalog source when you want to review and approve individual
+skills.
 
 ## 5. Try a catalog source
 

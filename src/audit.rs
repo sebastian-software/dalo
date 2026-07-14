@@ -960,12 +960,7 @@ fn detect_agent_provider() -> DaloResult<AgentProvider> {
 }
 
 fn run_agent_review(provider: AgentProvider, skill_path: &Path) -> DaloResult<AgentReview> {
-    if !command_available(provider.as_str()) {
-        return Err(DaloError::AgentUnavailable {
-            requested: provider.as_str().to_owned(),
-            reason: format!("`{}` was not found on PATH", provider.as_str()),
-        });
-    }
+    ensure_agent_provider_available(provider)?;
     let snapshot = build_agent_snapshot(skill_path)?;
     let schema = agent_output_schema();
     let prompt = format!(
@@ -973,6 +968,15 @@ fn run_agent_review(provider: AgentProvider, skill_path: &Path) -> DaloResult<Ag
         review_instructions = review_instructions(),
     );
 
+    match provider {
+        AgentProvider::Codex => eprintln!(
+            "warning: sending a bounded skill snapshot to Codex; its network-disabled read-only sandbox shell remains available to the reviewer"
+        ),
+        AgentProvider::Claude | AgentProvider::Opencode => eprintln!(
+            "note: sending a bounded skill snapshot to {} with reviewer tools disabled",
+            provider.as_str()
+        ),
+    }
     let value = match provider {
         AgentProvider::Codex => run_codex(&prompt, &schema)?,
         AgentProvider::Claude => run_claude(&prompt, &schema)?,
@@ -1006,6 +1010,17 @@ fn run_agent_review(provider: AgentProvider, skill_path: &Path) -> DaloResult<Ag
         expected_actions: output.expected_actions,
         undeclared_behaviors: sorted_unique(output.undeclared_behaviors),
     })
+}
+
+fn ensure_agent_provider_available(provider: AgentProvider) -> DaloResult<()> {
+    if command_available(provider.as_str()) {
+        Ok(())
+    } else {
+        Err(DaloError::AgentUnavailable {
+            requested: provider.as_str().to_owned(),
+            reason: format!("`{}` was not found on PATH", provider.as_str()),
+        })
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -1272,13 +1287,15 @@ fn run_with_stdin(
     let stdout_bytes = fs::read(stdout.path())?;
     let stderr_bytes = fs::read(stderr.path())?;
     if !status.success() {
+        let stderr = bounded_evidence(&String::from_utf8_lossy(&stderr_bytes));
+        let reason = if stderr.is_empty() {
+            format!("CLI exited with {status}; verify that it runs standalone and is authenticated")
+        } else {
+            format!("CLI exited with {status}: {stderr}")
+        };
         return Err(DaloError::AgentReviewFailed {
             provider: provider.as_str().to_owned(),
-            reason: format!(
-                "CLI exited with {}: {}",
-                status,
-                bounded_evidence(&String::from_utf8_lossy(&stderr_bytes))
-            ),
+            reason,
         });
     }
     Ok(stdout_bytes)
@@ -1813,6 +1830,53 @@ mod tests {
         .expect("rescan should succeed");
 
         assert!(rescanned.agent_review.is_none());
+    }
+
+    #[test]
+    fn compatible_cached_review_should_not_require_provider_executable() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp.path().join("store");
+        store::init_store(store_root.clone(), false).expect("store should initialize");
+        let paths = StorePaths::new(store_root);
+        let skill = write_skill(temp.path(), "Summarize a pull request.\n");
+        let mut report = audit_skill(
+            &paths,
+            "path:review-helper",
+            &skill,
+            &AuditOptions::default(),
+        )
+        .expect("initial audit should succeed");
+        report.agent_review = Some(AgentReview {
+            provider: AgentProvider::Claude,
+            isolation: AgentIsolation::NoTools,
+            prompt_version: AGENT_REVIEW_PROMPT_VERSION.to_owned(),
+            summary: "Cached review.".to_owned(),
+            max_severity: None,
+            findings: Vec::new(),
+            expected_capabilities: Vec::new(),
+            expected_actions: Vec::new(),
+            undeclared_behaviors: Vec::new(),
+        });
+        write_report(&paths, &report).expect("cached report should be persisted");
+
+        let cached = audit_skill(
+            &paths,
+            "path:review-helper",
+            &skill,
+            &AuditOptions {
+                agent: AgentSelection::Provider(AgentProvider::Claude),
+                ..AuditOptions::default()
+            },
+        )
+        .expect("compatible cache should avoid launching the provider");
+
+        assert_eq!(
+            cached
+                .agent_review
+                .as_ref()
+                .map(|review| review.summary.as_str()),
+            Some("Cached review.")
+        );
     }
 
     #[test]
