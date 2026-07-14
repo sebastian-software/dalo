@@ -424,6 +424,7 @@ fn validate_initialized_store(paths: &StorePaths) -> Vec<InitValidationWarning> 
     let checks = [
         (&paths.config_file, read_config(paths).map(|_| ())),
         (&paths.lock_file, read_user_lock(paths).map(|_| ())),
+        (&paths.approvals_file, read_approvals(paths).map(|_| ())),
         (&paths.state_file, read_state(paths).map(|_| ())),
     ];
 
@@ -1072,7 +1073,7 @@ mod tests {
         let report =
             init_store(store_root, false).expect("init should leave non-state TOML files alone");
 
-        assert_eq!(report.validation_warnings.len(), 2);
+        assert_eq!(report.validation_warnings.len(), 3);
         assert!(
             report
                 .validation_warnings
@@ -1084,6 +1085,12 @@ mod tests {
                 .validation_warnings
                 .iter()
                 .any(|warning| warning.path == paths.lock_file)
+        );
+        assert!(
+            report
+                .validation_warnings
+                .iter()
+                .any(|warning| warning.path == paths.approvals_file)
         );
 
         assert_eq!(

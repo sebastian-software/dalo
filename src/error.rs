@@ -1,6 +1,7 @@
 //! Error types and process exit-code mapping.
 
 use std::io;
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -50,7 +51,10 @@ pub enum DaloError {
     Json(#[from] serde_json::Error),
 
     /// The store has not been initialized yet.
-    #[error("dalo store is not initialized at `{path}`; run `dalo --store {path} init` first")]
+    #[error(
+        "dalo store is not initialized at `{path}`; run `dalo --store {} init` first",
+        shell_quote_path(.path.as_path())
+    )]
     StoreNotInitialized {
         /// Store path.
         path: PathBuf,
@@ -110,7 +114,8 @@ pub enum DaloError {
 
     /// A source has local changes that block the operation.
     #[error(
-        "source `{source_id}` has local changes at `{path}`; inspect with `git -C {path} status`, then resolve or commit them before syncing"
+        "source `{source_id}` has local changes at `{path}`; inspect with `git -C {} status`, then resolve or commit them before syncing",
+        shell_quote_path(.path.as_path())
     )]
     DirtySource {
         /// Source ID.
@@ -236,6 +241,12 @@ pub enum DaloError {
     /// Terminal or filesystem I/O failed.
     #[error(transparent)]
     Io(#[from] io::Error),
+}
+
+/// Render a path as one POSIX shell word for copyable recovery commands.
+#[must_use]
+pub(crate) fn shell_quote_path(path: &Path) -> String {
+    format!("'{}'", path.to_string_lossy().replace('\'', "'\"'\"'"))
 }
 
 impl DaloError {
@@ -396,12 +407,12 @@ mod tests {
     #[test]
     fn store_not_initialized_should_render_path() {
         let error = err::<()>(Err(DaloError::StoreNotInitialized {
-            path: PathBuf::from("/tmp/store"),
+            path: PathBuf::from("/tmp/store with $(shell)/it's"),
         }));
 
         assert_eq!(
             error.to_string(),
-            "dalo store is not initialized at `/tmp/store`; run `dalo --store /tmp/store init` first"
+            "dalo store is not initialized at `/tmp/store with $(shell)/it's`; run `dalo --store '/tmp/store with $(shell)/it'\"'\"'s' init` first"
         );
     }
 
@@ -477,7 +488,15 @@ mod tests {
 
         assert_eq!(
             error.to_string(),
-            "source `company` has local changes at `/tmp/store/sources/company/checkout`; inspect with `git -C /tmp/store/sources/company/checkout status`, then resolve or commit them before syncing"
+            "source `company` has local changes at `/tmp/store/sources/company/checkout`; inspect with `git -C '/tmp/store/sources/company/checkout' status`, then resolve or commit them before syncing"
+        );
+    }
+
+    #[test]
+    fn shell_quote_path_should_keep_metacharacters_in_one_literal_word() {
+        assert_eq!(
+            shell_quote_path(Path::new("/tmp/Jane's $(checkout); rm -rf nope")),
+            "'/tmp/Jane'\"'\"'s $(checkout); rm -rf nope'"
         );
     }
 
