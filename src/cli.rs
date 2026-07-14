@@ -114,7 +114,7 @@ pub enum Command {
     Adopt(AdoptCommand),
     /// Run explicit safe repair helpers.
     #[command(
-        after_help = "Examples:\n  dalo resolve list\n  dalo resolve adopt review-helper --replace\n  dalo resolve keep review-helper\n  dalo resolve unkeep claude:review-helper\n  dalo resolve remove-owned review-helper"
+        after_help = "Examples:\n  dalo resolve list\n  dalo resolve adopt review-helper --replace\n  dalo resolve keep review-helper\n  dalo resolve unkeep claude:review-helper\n  dalo resolve remove-owned claude:review-helper"
     )]
     Resolve(ResolveCommand),
     /// Diagnose store, target, Git, and lockfile health.

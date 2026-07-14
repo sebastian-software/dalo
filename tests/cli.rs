@@ -83,7 +83,10 @@ fn help_should_explain_complex_command_values_and_examples() {
             vec!["approve", "--help"],
             "dalo approve skill public:review-helper",
         ),
-        (vec!["resolve", "--help"], "dalo resolve keep review-helper"),
+        (
+            vec!["resolve", "--help"],
+            "dalo resolve remove-owned claude:review-helper",
+        ),
         (
             vec!["source", "select", "--help"],
             "dalo source select public --unselect formatter",
