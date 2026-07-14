@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/sebastian-software/dalo/compare/dalo-v0.8.0...dalo-v0.8.1) (2026-07-14)
+
+
+### Bug Fixes
+
+* isolate catalog and target recovery ([a6abf9f](https://github.com/sebastian-software/dalo/commit/a6abf9f8a7935519e7989795740441c3ac8a9d43))
+
 ## [0.8.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.7.2...dalo-v0.8.0) (2026-07-14)
 
 
