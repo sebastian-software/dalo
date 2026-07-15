@@ -264,9 +264,7 @@ fn detect_install_channel_from(
         return InstallChannel::Cargo;
     }
 
-    if has_standalone_receipt(executable)
-        || home.is_some_and(|home| executable == home.join(".local/bin/dalo"))
-    {
+    if has_standalone_receipt(executable) {
         return InstallChannel::Standalone;
     }
 
@@ -443,6 +441,19 @@ mod tests {
             shell_quote(executable.parent().expect("parent"))
         );
         assert_eq!(channel.upgrade_command(Some(&executable)), Some(expected));
+    }
+
+    #[test]
+    fn bare_default_install_path_should_not_guess_standalone() {
+        let channel = detect_install_channel_from(
+            None,
+            Some(Path::new("/home/user/.local/bin/dalo")),
+            Some(Path::new("/home/user")),
+            None,
+        );
+
+        assert_eq!(channel, InstallChannel::Unknown);
+        assert_eq!(channel.upgrade_command(None), None);
     }
 
     #[test]
