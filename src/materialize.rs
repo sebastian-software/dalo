@@ -184,6 +184,7 @@ pub fn materialize_with_degraded_sources_rollback(
     let all_links = desired_links(&state, &resolution);
     let mut suppressed_links = BTreeSet::new();
     let mut protected_suppressed_links = BTreeSet::new();
+    let mut suppressed_link_reasons = BTreeMap::new();
     let mut links = all_links.clone();
     let mut operations = build_plan(paths, &state, &links, degraded_sources)?;
     while block_link_time_dependents(
@@ -193,6 +194,7 @@ pub fn materialize_with_degraded_sources_rollback(
         &operations,
         &mut suppressed_links,
         &mut protected_suppressed_links,
+        &mut suppressed_link_reasons,
     ) {
         links = desired_links(&state, &resolution)
             .into_iter()
@@ -230,6 +232,7 @@ pub fn materialize_with_degraded_sources_rollback(
                 &operations,
                 &mut suppressed_links,
                 &mut protected_suppressed_links,
+                &mut suppressed_link_reasons,
             ) {
                 break;
             }
@@ -265,7 +268,13 @@ pub fn materialize_with_degraded_sources_rollback(
         }
     }
 
-    append_protected_closure_operations(&mut operations, &all_links, &protected_suppressed_links);
+    append_closure_operations(
+        &mut operations,
+        &all_links,
+        &suppressed_links,
+        &protected_suppressed_links,
+        &suppressed_link_reasons,
+    );
 
     Ok((
         SyncReport {
@@ -353,6 +362,7 @@ fn block_link_time_dependents(
     operations: &[MaterializeOperation],
     suppressed_links: &mut BTreeSet<PathBuf>,
     protected_suppressed_links: &mut BTreeSet<PathBuf>,
+    suppressed_link_reasons: &mut BTreeMap<PathBuf, String>,
 ) -> bool {
     let direct_blocked = operations
         .iter()
@@ -459,6 +469,13 @@ fn block_link_time_dependents(
             };
 
             suppressed_links.insert(desired.link_path.clone());
+            suppressed_link_reasons.insert(
+                desired.link_path.clone(),
+                format!(
+                    "required closure blocked: `{requirement}` is {} at this target",
+                    closure_block_reason_name(reason)
+                ),
+            );
             let dependent_key = (scope.clone(), dependent.source_ref.clone());
             unavailable.insert(dependent_key.clone());
             if protected_chain {
@@ -541,25 +558,43 @@ fn block_link_time_dependents(
     true
 }
 
-fn append_protected_closure_operations(
+fn append_closure_operations(
     operations: &mut Vec<MaterializeOperation>,
     all_links: &[DesiredLink],
+    suppressed_links: &BTreeSet<PathBuf>,
     protected_suppressed_links: &BTreeSet<PathBuf>,
+    suppressed_link_reasons: &BTreeMap<PathBuf, String>,
 ) {
     let existing_paths = operations
         .iter()
         .map(|operation| operation.link_path.clone())
         .collect::<BTreeSet<_>>();
     for desired in all_links.iter().filter(|desired| {
-        protected_suppressed_links.contains(&desired.link_path)
+        suppressed_links.contains(&desired.link_path)
             && !existing_paths.contains(&desired.link_path)
     }) {
+        let protected = protected_suppressed_links.contains(&desired.link_path);
         operations.push(MaterializeOperation {
-            kind: MaterializeOperationKind::Keep,
+            kind: if protected {
+                MaterializeOperationKind::Keep
+            } else {
+                MaterializeOperationKind::Conflict
+            },
             link_path: desired.link_path.clone(),
             desired_path: Some(desired.store_path.clone()),
-            status: MaterializeOperationStatus::Existing,
-            reason: Some("required closure kept because a required slot is protected".to_owned()),
+            status: if protected {
+                MaterializeOperationStatus::Existing
+            } else {
+                MaterializeOperationStatus::Blocked
+            },
+            reason: Some(if protected {
+                "required closure kept because a required slot is protected".to_owned()
+            } else {
+                suppressed_link_reasons
+                    .get(&desired.link_path)
+                    .cloned()
+                    .unwrap_or_else(|| "required closure blocked at this target".to_owned())
+            }),
         });
     }
     operations.sort_by(|left, right| left.link_path.cmp(&right.link_path));
@@ -1269,6 +1304,15 @@ mod tests {
         );
         assert_eq!(report.resolution.active_skills.len(), 2);
         assert!(report.resolution.blocked_skills.is_empty());
+        assert!(report.operations.iter().any(|operation| {
+            operation.link_path == blocked_target.join("alpha")
+                && operation.kind == MaterializeOperationKind::Conflict
+                && operation.status == MaterializeOperationStatus::Blocked
+                && operation
+                    .reason
+                    .as_deref()
+                    .is_some_and(|reason| reason.starts_with("required closure blocked:"))
+        }));
     }
 
     #[test]

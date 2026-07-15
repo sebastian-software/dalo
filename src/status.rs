@@ -9,7 +9,7 @@ use crate::adopt::{
     UnmanagedSkill,
 };
 use crate::approval::ApprovalReport;
-use crate::audit::{AuditCoverage, AuditReport, AuditStatus};
+use crate::audit::{self, AuditCoverage, AuditOptions, AuditReport, AuditStatus};
 use crate::catalog::{CatalogDrift, CatalogInspectReport, CatalogSelectReport};
 use crate::doctor::{DoctorReport, DoctorSeverity};
 use crate::error::DaloResult;
@@ -18,7 +18,7 @@ use crate::instructions::{
 };
 use crate::inventory::InventoryWarning;
 use crate::lockfile::{self, LockDrift, LockDriftCode};
-use crate::materialize::SyncReport;
+use crate::materialize::{self, MaterializeOperation, MaterializeOperationStatus, SyncReport};
 use crate::resolver::{self, Resolution};
 use crate::source::{
     SourceAddReport, SourceConfig, SourceKind, SourceListReport, SourcePriorityReport,
@@ -41,6 +41,10 @@ pub struct StatusReport {
     pub inventory_warnings: Vec<InventoryWarning>,
     /// Resolution output.
     pub resolution: Resolution,
+    /// Dry-run materialization operations that expose target-level blockers.
+    pub materialization: Vec<MaterializeOperation>,
+    /// Active skills whose deterministic security audit blocks sync.
+    pub blocking_audits: Vec<String>,
     /// Previous-lock comparison against the live resolution.
     pub lock: LockStatus,
     /// Unmanaged skills found in linked targets.
@@ -171,8 +175,11 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         .collect::<Vec<_>>();
     targets.sort_by(|left, right| left.id.cmp(&right.id));
 
-    let resolution = live.resolution;
-    let live_lock = lockfile::build_user_lock(&config.sources, &resolution, None);
+    let live_resolution = live.resolution;
+    let blocking_audits = collect_blocking_audits(&paths, &live_resolution)?;
+    let materialization = materialize::materialize(&paths, &live_resolution, true)?;
+    let resolution = materialization.resolution;
+    let live_lock = lockfile::build_user_lock(&config.sources, &live_resolution, None);
     let mut drift = lockfile::compare_user_lock(&previous_lock, &live_lock);
     suppress_initial_local_source_drift(&previous_lock, &mut drift);
     let lock = LockStatus {
@@ -205,6 +212,8 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         targets,
         inventory_warnings,
         resolution,
+        materialization: materialization.operations,
+        blocking_audits,
         lock,
         unmanaged_skills: unmanaged_scan.unmanaged_skills,
         target_warnings: unmanaged_scan.warnings,
@@ -212,6 +221,25 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         instruction_pack_overlaps,
         instruction_block_drifts,
     })
+}
+
+fn collect_blocking_audits(paths: &StorePaths, resolution: &Resolution) -> DaloResult<Vec<String>> {
+    let mut blocked = Vec::new();
+    for skill in &resolution.active_skills {
+        let report = audit::audit_skill(
+            paths,
+            &skill.source_ref,
+            &skill.path,
+            &AuditOptions {
+                persist: false,
+                ..AuditOptions::default()
+            },
+        )?;
+        if report.is_blocking() {
+            blocked.push(skill.source_ref.clone());
+        }
+    }
+    Ok(blocked)
 }
 
 fn suppress_initial_local_source_drift(
@@ -453,6 +481,28 @@ pub fn print_status_report(report: &StatusReport) {
                 blocked.requirement,
                 resolver::closure_block_reason_name(blocked.reason)
             );
+        }
+    }
+
+    if !report.blocking_audits.is_empty() {
+        println!("security audit blocks:");
+        for source_ref in &report.blocking_audits {
+            println!(
+                "  {source_ref} (run: dalo audit {source_ref}; accept only with an explicit --accept-risk reason)"
+            );
+        }
+    }
+
+    let blocked_operations = report
+        .materialization
+        .iter()
+        .filter(|operation| operation.status == MaterializeOperationStatus::Blocked)
+        .collect::<Vec<_>>();
+    if !blocked_operations.is_empty() {
+        println!("materialization blocks:");
+        for operation in blocked_operations {
+            let reason = operation.reason.as_deref().unwrap_or("blocked");
+            println!("  {}: {reason}", operation.link_path.display());
         }
     }
 

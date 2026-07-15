@@ -128,6 +128,15 @@ fn sync_should_run_static_preflight_before_materializing() {
     dalo_command()
         .args(["--store"])
         .arg(&store)
+        .args(["status", "--check"])
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("security audit blocks:"))
+        .stdout(predicate::str::contains("local:dangerous-skill"));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
         .arg("sync")
         .assert()
         .failure()
@@ -1363,6 +1372,38 @@ fn sync_should_not_link_dependent_when_required_slot_is_blocked() {
         .arg(&repo)
         .assert()
         .success();
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: StatusReportSchema =
+        serde_json::from_slice(&output).expect("status JSON should match the status schema");
+    assert_eq!(report.resolution.blocked_skills.len(), 1);
+    assert_eq!(report.resolution.blocked_skills[0].requirement, "beta");
+    assert!(report.blocking_audits.is_empty());
+    assert!(report.materialization.iter().any(|operation| {
+        operation.status == "blocked"
+            && operation.kind == "conflict"
+            && operation
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.starts_with("required closure blocked:"))
+    }));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["status", "--check"])
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("materialization blocks:"))
+        .stdout(predicate::str::contains("required closure blocked:"));
 
     dalo_command()
         .args(["--store"])
@@ -4156,6 +4197,8 @@ fn source_inspect_json_should_model_catalog_candidates() {
 #[derive(serde::Deserialize)]
 struct StatusReportSchema {
     resolution: ResolutionSchema,
+    materialization: Vec<MaterializationOperationSchema>,
+    blocking_audits: Vec<String>,
     lock: LockStatusSchema,
     instruction_packs: Vec<InstructionPackSchema>,
     instruction_pack_overlaps: Vec<TopicOverlapSchema>,
@@ -4176,6 +4219,13 @@ struct ActiveSkillSchema {
 struct BlockedSkillSchema {
     requirement: String,
     reason: String,
+}
+
+#[derive(serde::Deserialize)]
+struct MaterializationOperationSchema {
+    kind: String,
+    status: String,
+    reason: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
