@@ -727,6 +727,11 @@ fn status_requires_review(report: &status::StatusReport) -> bool {
         || report.sources.iter().any(|source| source.error.is_some())
         || !report.resolution.pending_approval_skills.is_empty()
         || !report.resolution.blocked_skills.is_empty()
+        || !report.blocking_audits.is_empty()
+        || report
+            .materialization
+            .iter()
+            .any(|operation| operation.status == materialize::MaterializeOperationStatus::Blocked)
         || report
             .resolution
             .diagnostics
