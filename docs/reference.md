@@ -456,6 +456,13 @@ Provider processes receive only an explicit runtime and provider-authentication
 environment allowlist rather than inheriting Dalo's full environment. Omitting
 `--agent` is fully local.
 
+Agent review is optional and additive, not an approval mechanism. It can add
+evidence-backed findings to the deterministic audit, but it never clears a
+deterministic finding or certifies a skill as safe. A review with no additional
+findings means only that this constrained assessment found no additional issue;
+it is not an endorsement or safety guarantee. `sync` does not invoke a provider
+on its own.
+
 `--check` exits non-zero for unaccepted `high` or `critical` findings. Record a
 reviewed exception with a non-empty reason:
 

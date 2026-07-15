@@ -180,7 +180,9 @@ Use `dalo approve list` to inspect existing rules and [the user reference](refer
 ### How do I recover from a security-audit block?
 
 An audit block means deterministic or optional semantic review found an
-unaccepted `high` or `critical` risk. This applies to trusted team sources too:
+unaccepted `high` or `critical` risk. Semantic review is optional and can add
+findings, but a review with no additional findings is not an approval or safety
+guarantee. This applies to trusted team sources too:
 trust removes the catalog-style approval requirement, but it never bypasses the
 security gate.
 
