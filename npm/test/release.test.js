@@ -10,6 +10,7 @@ const path = require('node:path');
 const { promisify } = require('node:util');
 const { version: packageVersion } = require('../package.json');
 const {
+  compareVersions,
   ensureBinary,
   expectedChecksum,
   formatLauncherError,
@@ -48,6 +49,11 @@ test('parses release tags and checksum files strictly', () => {
   assert.equal(expectedChecksum(checksums, 'dalo.tar.gz'), 'b'.repeat(64));
   assert.throws(() => expectedChecksum(checksums, 'missing.tar.gz'), /no entry/);
   assert.throws(() => expectedChecksum('not-a-checksum\n', 'dalo.tar.gz'), /malformed/);
+});
+
+test('orders short version cores without throwing', () => {
+  assert.ok(compareVersions('1.0', '1.0.1') < 0);
+  assert.equal(compareVersions('1.0', '1.0.0'), 0);
 });
 
 test('identifies npm and npx launcher executions for update guidance', () => {

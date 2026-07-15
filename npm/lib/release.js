@@ -142,8 +142,8 @@ async function isUsableBinary(binary) {
 
 function compareVersions(left, right) {
   const compareNumericIdentifiers = (a, b) => {
-    const normalizedA = a.replace(/^0+/, '') || '0';
-    const normalizedB = b.replace(/^0+/, '') || '0';
+    const normalizedA = String(a ?? 0).replace(/^0+/, '') || '0';
+    const normalizedB = String(b ?? 0).replace(/^0+/, '') || '0';
     if (normalizedA.length !== normalizedB.length) return normalizedA.length - normalizedB.length;
     if (normalizedA === normalizedB) return 0;
     return normalizedA < normalizedB ? -1 : 1;
@@ -282,6 +282,7 @@ async function ensureBinary({ tag, target, cacheRoot } = {}) {
 }
 
 module.exports = {
+  compareVersions,
   detectLinuxLibc,
   ensureBinary,
   expectedChecksum,
