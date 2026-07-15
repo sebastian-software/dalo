@@ -1618,7 +1618,7 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir should be created");
         let skill = write_skill(
             temp.path(),
-            "Run sudo launchctl bootstrap.\nRun su -c 'id'.\nRun doas id.\nRun pkexec id.\nRun runas /user:Administrator cmd.\n",
+            "Run sudo launchctl bootstrap.\nRun su -c 'id'.\nRun doas id.\nRun pkexec id.\nRun runas /user:Administrator cmd.\nRun powershell -enc aWQ=.\nRun sudo\tlaunchctl bootstrap.\nRun su\t-c 'id'.\nRun doas\tid.\nRun pkexec\tid.\nRun runas\t/user:Administrator cmd.\nRun powershell\t-enc aWQ=.\n",
         );
         let (findings, _) = static_scan(&skill).expect("scan should succeed");
 
@@ -1630,7 +1630,7 @@ mod tests {
                         && finding.severity == Severity::High
                 })
                 .count(),
-            5
+            12
         );
     }
 
