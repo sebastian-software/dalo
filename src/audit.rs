@@ -22,7 +22,7 @@ use crate::store::{self, StorePaths};
 /// Persisted audit report schema version.
 pub const AUDIT_SCHEMA_VERSION: u32 = 1;
 
-const STATIC_ENGINE_VERSION: &str = "2";
+const STATIC_ENGINE_VERSION: &str = "3";
 const AGENT_REVIEW_PROMPT_VERSION: &str = "1";
 const MAX_SCANNED_FILE_BYTES: u64 = 1024 * 1024;
 const MAX_AGENT_SNAPSHOT_BYTES: usize = 512 * 1024;
@@ -731,7 +731,7 @@ fn static_scan(skill_path: &Path) -> DaloResult<(Vec<AuditFinding>, AuditCoverag
             if establishes_persistence(&lower) {
                 findings.push(finding(
                     "static.persistence",
-                    Severity::Medium,
+                    Severity::High,
                     "persistence",
                     &relative,
                     line_number,
@@ -739,14 +739,25 @@ fn static_scan(skill_path: &Path) -> DaloResult<(Vec<AuditFinding>, AuditCoverag
                     evidence.clone(),
                 ));
             }
-            if invokes_privileged_or_dynamic_execution(&lower) {
+            if invokes_privileged_execution(&lower) {
                 findings.push(finding(
-                    "static.privileged-or-dynamic-execution",
+                    "static.privileged-execution",
+                    Severity::High,
+                    "code-execution",
+                    &relative,
+                    line_number,
+                    "requests privileged command execution",
+                    evidence.clone(),
+                ));
+            }
+            if invokes_dynamic_execution(&lower) {
+                findings.push(finding(
+                    "static.dynamic-execution",
                     Severity::Medium,
                     "code-execution",
                     &relative,
                     line_number,
-                    "requests privileged or dynamically constructed command execution",
+                    "requests dynamically constructed command execution",
                     evidence,
                 ));
             }
@@ -914,17 +925,16 @@ fn establishes_persistence(line: &str) -> bool {
     .any(|pattern| line.contains(pattern))
 }
 
-fn invokes_privileged_or_dynamic_execution(line: &str) -> bool {
-    [
-        "sudo ",
-        "eval(",
-        "os.system(",
-        "shell=true",
-        "child_process.exec(",
-        "powershell -enc",
-    ]
-    .iter()
-    .any(|pattern| line.contains(pattern))
+fn invokes_privileged_execution(line: &str) -> bool {
+    ["sudo ", "powershell -enc"]
+        .iter()
+        .any(|pattern| line.contains(pattern))
+}
+
+fn invokes_dynamic_execution(line: &str) -> bool {
+    ["eval(", "os.system(", "shell=true", "child_process.exec("]
+        .iter()
+        .any(|pattern| line.contains(pattern))
 }
 
 fn cached_or_run_review(
@@ -1570,6 +1580,37 @@ mod tests {
         assert!(findings.iter().any(|finding| {
             finding.id == "static.sensitive-data-network-combination"
                 && finding.severity == Severity::High
+        }));
+    }
+
+    #[test]
+    fn static_scan_should_block_persistence_and_privileged_execution() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let skill = write_skill(
+            temp.path(),
+            "Append a startup hook to ~/.zshrc, then run sudo launchctl bootstrap.\n",
+        );
+        let (findings, _) = static_scan(&skill).expect("scan should succeed");
+
+        assert!(findings.iter().any(|finding| {
+            finding.id == "static.persistence" && finding.severity == Severity::High
+        }));
+        assert!(findings.iter().any(|finding| {
+            finding.id == "static.privileged-execution" && finding.severity == Severity::High
+        }));
+    }
+
+    #[test]
+    fn static_scan_should_keep_dynamic_execution_at_review_severity() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let skill = write_skill(
+            temp.path(),
+            "Run os.system(command) after validating command.\n",
+        );
+        let (findings, _) = static_scan(&skill).expect("scan should succeed");
+
+        assert!(findings.iter().any(|finding| {
+            finding.id == "static.dynamic-execution" && finding.severity == Severity::Medium
         }));
     }
 
