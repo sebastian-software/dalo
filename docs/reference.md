@@ -464,6 +464,14 @@ dalo audit public:review-helper \
   --accept-risk "reviewed pinned upstream installer"
 ```
 
+Persistence changes (such as shell startup files, scheduled tasks, or agent
+configuration) and privileged command execution are `high` findings and block
+by default. General dynamic execution remains a `medium` review finding: it is
+reported, but does not block materialization on its own. This policy keeps
+high-confidence persistence and privilege-escalation primitives behind an
+explicit, content-bound risk acceptance without treating every technical skill
+as unsafe by default.
+
 Reports live below `audits/` and are keyed by both the source-qualified skill
 reference and the complete skill directory hash. Cached agent results
 additionally require the same provider and Dalo review-prompt version. Risk
