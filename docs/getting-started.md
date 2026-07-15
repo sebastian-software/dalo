@@ -108,8 +108,10 @@ dalo sync
 
 `source add`, `source select`, and `approve skill` run deterministic local
 preflight checks. `sync` repeats them against the exact content about to be
-linked and blocks unaccepted `high` or `critical` findings. To accept a known
-risk for one exact content hash and finding set, provide a reason:
+linked and blocks unaccepted `high` or `critical` findings from those checks or
+a compatible cached review. `sync` does not start an agent reviewer, and a
+passing preflight is not a safety guarantee. To accept a known risk for one
+exact content hash and finding set, provide a reason:
 
 ```sh
 dalo audit public:review-helper --accept-risk "reviewed pinned upstream installer"

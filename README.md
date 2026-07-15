@@ -182,8 +182,9 @@ conservative:
 - dirty team checkouts block refresh instead of losing local changes
 - catalog skills require an explicit selection and approval
 - source additions and catalog selections show deterministic security preflights
-- `sync` blocks high and critical findings before a skill reaches an agent folder
+- `sync` blocks high and critical findings from deterministic checks and compatible cached reviews before a skill reaches an agent folder
 - optional sandboxed reviews can reuse an installed Codex, Claude, or OpenCode CLI
+- `sync` does not start an agent reviewer, and a passing preflight is not a safety guarantee
 - newly active skills are not silently trusted during non-interactive sync
 - `--dry-run` shows planned changes without writing them
 - conflicts stay visible in `status` until you resolve or intentionally keep them
