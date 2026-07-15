@@ -461,7 +461,7 @@ evidence-backed findings to the deterministic audit, but it never clears a
 deterministic finding or certifies a skill as safe. A review with no additional
 findings means only that this constrained assessment found no additional issue;
 it is not an endorsement or safety guarantee. `sync` does not invoke a provider
-on its own.
+on its own. Its human-readable result repeats that boundary after every sync.
 
 `--check` exits non-zero for unaccepted `high` or `critical` findings. Record a
 reviewed exception with a non-empty reason:

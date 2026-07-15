@@ -677,6 +677,9 @@ pub fn print_sync_report(report: &SyncReport) {
             diagnostic.message
         );
     }
+    println!(
+        "{prefix}security preflight: deterministic checks and compatible cached findings only; sync did not run an agent reviewer; passing is not a safety guarantee"
+    );
 }
 
 /// Print a human-readable source add report.
