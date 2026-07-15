@@ -185,6 +185,24 @@ fn sync_should_block_unaccepted_persistence_and_privileged_execution() {
             "security audit blocked 1 skill (local:persist)",
         ));
     assert!(!target.join("persist").exists());
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["audit", "local:persist", "--accept-risk"])
+        .arg("reviewed persistent privileged automation")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "risk accepted: reviewed persistent privileged automation",
+        ));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    assert!(target.join("persist").is_symlink());
 }
 
 #[test]

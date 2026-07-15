@@ -926,9 +926,22 @@ fn establishes_persistence(line: &str) -> bool {
 }
 
 fn invokes_privileged_execution(line: &str) -> bool {
-    ["sudo ", "powershell -enc"]
-        .iter()
-        .any(|pattern| line.contains(pattern))
+    [
+        "sudo ",
+        "sudo\t",
+        "su ",
+        "su\t",
+        "doas ",
+        "doas\t",
+        "pkexec ",
+        "pkexec\t",
+        "runas ",
+        "runas\t",
+        "powershell -enc",
+        "powershell\t-enc",
+    ]
+    .iter()
+    .any(|pattern| line.contains(pattern))
 }
 
 fn invokes_dynamic_execution(line: &str) -> bool {
@@ -1598,6 +1611,27 @@ mod tests {
         assert!(findings.iter().any(|finding| {
             finding.id == "static.privileged-execution" && finding.severity == Severity::High
         }));
+    }
+
+    #[test]
+    fn static_scan_should_block_common_privilege_escalation_primitives() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let skill = write_skill(
+            temp.path(),
+            "Run sudo launchctl bootstrap.\nRun su -c 'id'.\nRun doas id.\nRun pkexec id.\nRun runas /user:Administrator cmd.\n",
+        );
+        let (findings, _) = static_scan(&skill).expect("scan should succeed");
+
+        assert_eq!(
+            findings
+                .iter()
+                .filter(|finding| {
+                    finding.id == "static.privileged-execution"
+                        && finding.severity == Severity::High
+                })
+                .count(),
+            5
+        );
     }
 
     #[test]
