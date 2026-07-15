@@ -356,11 +356,15 @@ pub fn print_audit_report(report: &AuditReport) {
     }
     if let Some(review) = &report.agent_review {
         println!(
-            "  agent review: {} (isolation: {})",
+            "  agent review: {} (isolation: {}; non-authoritative)",
             review.provider.as_str(),
             review.isolation.as_str()
         );
-        println!("    {}", review.summary);
+        println!(
+            "    assessment: {}",
+            agent_review_assessment(&review.summary, review.findings.len())
+        );
+        println!("    additional findings: {}", review.findings.len());
         for capability in &review.expected_capabilities {
             println!("    capability: {capability}");
         }
@@ -373,6 +377,7 @@ pub fn print_audit_report(report: &AuditReport) {
         for finding in &review.findings {
             print_audit_finding("agent", finding);
         }
+        println!("    note: {}", agent_review_disclaimer());
     }
     if let Some(acceptance) = &report.risk_acceptance {
         println!("  risk accepted: {}", acceptance.reason);
@@ -380,6 +385,18 @@ pub fn print_audit_report(report: &AuditReport) {
         println!("  installation policy: blocked until risk is explicitly accepted");
     }
     println!("  note: no findings means no known issue was detected; it is not a safety guarantee");
+}
+
+fn agent_review_disclaimer() -> &'static str {
+    "this review can add findings but cannot approve content; no additional findings are not an endorsement"
+}
+
+fn agent_review_assessment(summary: &str, findings_len: usize) -> &str {
+    if findings_len == 0 {
+        "no additional findings reported by the agent reviewer"
+    } else {
+        summary
+    }
 }
 
 fn print_audit_finding(layer: &str, finding: &crate::audit::AuditFinding) {
@@ -1041,6 +1058,26 @@ mod tests {
         assert_eq!(
             report.resolution.active_skills[0].source_ref,
             "local:review"
+        );
+    }
+
+    #[test]
+    fn agent_review_disclaimer_should_not_treat_no_findings_as_approval() {
+        assert_eq!(
+            agent_review_disclaimer(),
+            "this review can add findings but cannot approve content; no additional findings are not an endorsement"
+        );
+    }
+
+    #[test]
+    fn agent_review_assessment_should_not_render_an_empty_review_as_safe() {
+        assert_eq!(
+            agent_review_assessment("This skill is safe.", 0),
+            "no additional findings reported by the agent reviewer"
+        );
+        assert_eq!(
+            agent_review_assessment("Found a network request.", 1),
+            "Found a network request."
         );
     }
 
