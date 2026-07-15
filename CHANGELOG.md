@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.8.2](https://github.com/sebastian-software/dalo/compare/dalo-v0.8.1...dalo-v0.8.2) (2026-07-15)
+
+
+### Bug Fixes
+
+* **audit:** block persistence and privileged execution ([954e3b3](https://github.com/sebastian-software/dalo/commit/954e3b3f0f61a5b7ab477e0eb2cfca7c41696ce0))
+* **audit:** cover privilege escalation variants ([7fc21d5](https://github.com/sebastian-software/dalo/commit/7fc21d5c42aa643fab40f049cad78caa21259132))
+* **audit:** make agent reviews non-authoritative ([e3436e3](https://github.com/sebastian-software/dalo/commit/e3436e36236dbdab7255dc8ff5a92a559e3fa841))
+* **release:** harden update distribution edges ([1f1ef60](https://github.com/sebastian-software/dalo/commit/1f1ef609bfa279affb48ce6530a2916889d8a9fe))
+* **status:** surface sync blockers ([f560564](https://github.com/sebastian-software/dalo/commit/f560564aca2345ccc9dccfe01bfbee9f462059e6))
+
 ## [0.8.1](https://github.com/sebastian-software/dalo/compare/dalo-v0.8.0...dalo-v0.8.1) (2026-07-14)
 
 
