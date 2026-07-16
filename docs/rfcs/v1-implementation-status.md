@@ -34,6 +34,8 @@ The V1.1 catalog and instruction-pack layer is also implemented:
 - Instruction pack discovery, `instructions list`, and topic-overlap warnings in `status` and `doctor`.
 - Team-owned `dalo.toml` composition of pinned external catalogs, including
   include/exclude skill filters and local approval gating.
+- Store-independent `dalo team` management commands for authoring and updating
+  the versioned team manifest.
 
 Distribution work is wired for the next tagged release:
 

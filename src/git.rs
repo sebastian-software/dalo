@@ -92,12 +92,7 @@ pub fn fetch_upstream(path: &Path) -> DaloResult<()> {
 /// Remote branches are preferred over local branches so a freshly fetched
 /// branch name cannot accidentally resolve to a stale local tracking branch.
 pub fn resolve_manifest_revision(path: &Path, revision: &str) -> DaloResult<String> {
-    if revision.is_empty() || revision.starts_with('-') || revision.chars().any(char::is_whitespace)
-    {
-        return Err(DaloError::CheckFailed {
-            reason: format!("invalid manifest Git revision `{revision}`"),
-        });
-    }
+    validate_manifest_revision(revision)?;
 
     let remote = format!("refs/remotes/origin/{revision}^{{commit}}");
     match rev_parse(path, &remote) {
@@ -106,6 +101,18 @@ pub fn resolve_manifest_revision(path: &Path, revision: &str) -> DaloResult<Stri
             let requested = format!("{revision}^{{commit}}");
             rev_parse(path, &requested)
         }
+    }
+}
+
+/// Validate a human-authored manifest revision before it reaches Git.
+pub fn validate_manifest_revision(revision: &str) -> DaloResult<()> {
+    if revision.is_empty() || revision.starts_with('-') || revision.chars().any(char::is_whitespace)
+    {
+        Err(DaloError::CheckFailed {
+            reason: format!("invalid manifest Git revision `{revision}`"),
+        })
+    } else {
+        Ok(())
     }
 }
 

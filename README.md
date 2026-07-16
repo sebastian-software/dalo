@@ -137,8 +137,22 @@ success, skip, or blocking reason visible in `status` and `doctor`.
 #### Compose external skill sets for the team
 
 A team repository can include a `dalo.toml` manifest alongside its own
-`skills/` directory. The manifest pins external catalogs and defines the subset
-that every team member should resolve:
+`skills/` directory. Manage it from that repository with the team CLI:
+
+```sh
+dalo team init company --name "Company Skills"
+dalo team catalog add marketing https://github.com/coreyhaines31/marketingskills.git \
+  --version 0123456789abcdef0123456789abcdef01234567 \
+  --skill +copywriting \
+  --skill +launch
+dalo team catalog skills marketing +copywriting +launch +seo-audit -seo-audit
+dalo team show
+```
+
+Use `--repo <path>` to manage another checkout. These commands only edit the
+team repository; they do not require an initialized personal Dalo store and do
+not commit or push changes. The resulting manifest pins external catalogs and
+defines the subset that every team member should resolve:
 
 ```toml
 schema_version = 1

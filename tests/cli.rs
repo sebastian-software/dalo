@@ -26,6 +26,7 @@ fn help_should_list_planned_top_level_commands() {
         .stdout(predicate::str::contains("init"))
         .stdout(predicate::str::contains("target"))
         .stdout(predicate::str::contains("source"))
+        .stdout(predicate::str::contains("team"))
         .stdout(predicate::str::contains("status"))
         .stdout(predicate::str::contains("sync"))
         .stdout(predicate::str::contains("adopt"))
@@ -35,6 +36,168 @@ fn help_should_list_planned_top_level_commands() {
         .stdout(predicate::str::contains("Quickstart:"))
         .stdout(predicate::str::contains("--yes"))
         .stdout(predicate::str::contains("currently a no-op"));
+}
+
+#[test]
+fn team_cli_should_manage_catalog_manifest_end_to_end() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let repo = temp_dir.path().join("team-repo");
+    let unused_store = temp_dir.path().join("unused-store");
+    std::fs::create_dir_all(&repo).expect("team repo should be created");
+
+    dalo_command()
+        .current_dir(&repo)
+        .args(["--store"])
+        .arg(&unused_store)
+        .args(["team", "init", "company", "--name", "Company Skills"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("initialized team manifest"));
+    assert!(!unused_store.exists());
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&unused_store)
+        .args(["team", "--repo"])
+        .arg(&repo)
+        .args([
+            "catalog",
+            "add",
+            "marketing",
+            "https://github.com/coreyhaines31/marketingskills.git",
+            "--version",
+            "v1.0.0",
+            "--skill",
+            "+copywriting",
+            "--skill",
+            "+launch",
+            "--skill",
+            "-seo-audit",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("catalog_added"))
+        .stdout(predicate::str::contains("catalog=marketing"));
+
+    let manifest_path = repo.join("dalo.toml");
+    let manifest = read_team_manifest(&manifest_path);
+    assert_eq!(
+        manifest
+            .source
+            .as_ref()
+            .and_then(|source| source.id.as_deref()),
+        Some("company")
+    );
+    assert_eq!(manifest.catalogs.len(), 1);
+    assert_eq!(
+        manifest.catalogs[0].skills,
+        ["+copywriting", "+launch", "-seo-audit"]
+    );
+    assert_eq!(
+        std::fs::metadata(&manifest_path)
+            .expect("manifest metadata should be readable")
+            .permissions()
+            .mode()
+            & 0o777,
+        0o644
+    );
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&unused_store)
+        .args(["team", "--repo"])
+        .arg(&repo)
+        .args([
+            "catalog",
+            "skills",
+            "marketing",
+            "+copywriting",
+            "+seo-audit",
+            "-seo-audit",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        read_team_manifest(&manifest_path).catalogs[0].skills,
+        ["+copywriting", "+seo-audit", "-seo-audit"]
+    );
+
+    let before_dry_run = std::fs::read(&manifest_path).expect("manifest should be readable");
+    dalo_command()
+        .args(["--store"])
+        .arg(&unused_store)
+        .args(["--dry-run", "team", "--repo"])
+        .arg(&repo)
+        .args(["catalog", "version", "marketing", "v2.0.0"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("would update_catalog_version"));
+    assert_eq!(
+        std::fs::read(&manifest_path).expect("manifest should stay readable"),
+        before_dry_run
+    );
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&unused_store)
+        .args(["team", "--repo"])
+        .arg(&repo)
+        .args(["catalog", "skills", "marketing"])
+        .assert()
+        .success();
+    assert!(
+        read_team_manifest(&manifest_path).catalogs[0]
+            .skills
+            .is_empty()
+    );
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&unused_store)
+        .args(["team", "--repo"])
+        .arg(&repo)
+        .args(["catalog", "version", "marketing", "v2.0.0"])
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&unused_store)
+        .args(["team", "--repo"])
+        .arg(&repo)
+        .arg("show")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "marketing version=v2.0.0 skills=all",
+        ));
+    dalo_command()
+        .args(["--store"])
+        .arg(&unused_store)
+        .args(["--json", "team", "--repo"])
+        .arg(&repo)
+        .arg("show")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"path\""))
+        .stdout(predicate::str::contains("\"catalog\""))
+        .stdout(predicate::str::contains("\"marketing\""));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&unused_store)
+        .args(["team", "--repo"])
+        .arg(&repo)
+        .args(["catalog", "remove", "marketing"])
+        .assert()
+        .success();
+    assert!(read_team_manifest(&manifest_path).catalogs.is_empty());
+}
+
+fn read_team_manifest(path: &std::path::Path) -> dalo::team_manifest::TeamManifest {
+    toml::from_str(
+        &std::fs::read_to_string(path).expect("team manifest should be readable as text"),
+    )
+    .expect("team manifest should parse")
 }
 
 #[test]
