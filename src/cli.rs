@@ -11,6 +11,7 @@ use clap_mangen::Man;
 use crate::adopt;
 use crate::approval;
 use crate::audit;
+use crate::autosync;
 use crate::catalog;
 use crate::doctor;
 use crate::error::{DaloError, DaloResult};
@@ -109,6 +110,8 @@ pub enum Command {
         long_about = "Refresh clean tracking sources, resolve the approved skill set, and materialize it into linked target folders.\n\nA skill source is a Git-backed collection of skills. Sync never overwrites unmanaged files; blocked or shadowed skills are reported instead."
     )]
     Sync(CheckArgs),
+    /// Install, inspect, or remove scheduled synchronization.
+    Autosync(AutosyncCommand),
     /// Adopt an unmanaged skill into the local source.
     #[command(
         after_help = "Examples:\n  dalo adopt review-helper\n  dalo adopt review-helper --replace\n  dalo --dry-run adopt /path/to/target/review-helper"
@@ -182,6 +185,36 @@ pub struct CheckArgs {
     /// Exit non-zero when the report contains a state requiring review.
     #[arg(long)]
     pub check: bool,
+}
+
+/// `autosync` command group.
+#[derive(Debug, Args)]
+pub struct AutosyncCommand {
+    /// Autosync lifecycle command.
+    #[command(subcommand)]
+    pub command: AutosyncSubcommand,
+}
+
+/// Autosync lifecycle commands.
+#[derive(Debug, Subcommand)]
+pub enum AutosyncSubcommand {
+    /// Install or update the current user's native scheduler job.
+    Install(AutosyncInstallArgs),
+    /// Inspect scheduler installation and the latest durable run result.
+    Status,
+    /// Disable and remove the current user's native scheduler job.
+    Uninstall,
+    /// Execute one non-interactive scheduled synchronization.
+    #[command(hide = true)]
+    Run,
+}
+
+/// Arguments for `autosync install`.
+#[derive(Debug, Args)]
+pub struct AutosyncInstallArgs {
+    /// Schedule for the installed job.
+    #[arg(long, value_enum)]
+    pub schedule: Option<autosync::AutosyncSchedule>,
 }
 
 /// `approve` command group.
@@ -578,6 +611,7 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         Command::Source(command) => run_source(&options, command),
         Command::Status(args) => run_status(&options, args),
         Command::Sync(args) => run_sync(&options, args),
+        Command::Autosync(command) => run_autosync(&options, command),
         Command::Adopt(command) => run_adopt(&options, command),
         Command::Resolve(command) => run_resolve(&options, command),
         Command::Doctor(args) => run_doctor(&options, args),
@@ -616,6 +650,9 @@ fn command_ignores_dry_run(command: &Command) -> bool {
             })
             | Command::Instructions(InstructionsCommand {
                 command: InstructionsSubcommand::List
+            })
+            | Command::Autosync(AutosyncCommand {
+                command: AutosyncSubcommand::Status
             })
     ) || matches!(
         command,
@@ -751,6 +788,13 @@ fn status_requires_review(report: &status::StatusReport) -> bool {
         || (report.targets.is_empty() && !report.resolution.active_skills.is_empty())
         || report.unmanaged_skills.iter().any(|skill| !skill.protected)
         || !report.instruction_block_drifts.is_empty()
+        || report.autosync.configured != report.autosync.installed
+        || (report.autosync.installed && !report.autosync.enabled)
+        || report
+            .autosync
+            .last_run
+            .as_ref()
+            .is_some_and(|run| run.outcome == autosync::AutosyncRunOutcome::Blocked)
 }
 
 fn run_sync(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
@@ -761,6 +805,11 @@ fn run_sync(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
     } else {
         Some(store::StoreLock::acquire(&paths)?)
     };
+    run_sync_locked(options, args)
+}
+
+fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
+    let paths = store::StorePaths::new(options.store.clone());
     // Read the existing lock before mutating sources or targets. A malformed or
     // newer lock is recovery data, not an empty baseline we are allowed to
     // overwrite after a successful materialization pass.
@@ -816,6 +865,148 @@ fn run_sync(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
         return Err(DaloError::CheckFailed { reason });
     }
 
+    Ok(())
+}
+
+fn run_autosync(options: &GlobalOptions, command: AutosyncCommand) -> DaloResult<()> {
+    let paths = store::StorePaths::new(options.store.clone());
+    ensure_initialized(&paths)?;
+    match command.command {
+        AutosyncSubcommand::Install(args) => {
+            let _lock = if options.dry_run {
+                None
+            } else {
+                Some(store::StoreLock::acquire(&paths)?)
+            };
+            let report = autosync::install(&paths, args.schedule, options.dry_run)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                status::print_autosync_mutation_report(&report);
+            }
+            Ok(())
+        }
+        AutosyncSubcommand::Status => {
+            let report = autosync::status(&paths)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                status::print_autosync_status_report(&report);
+            }
+            Ok(())
+        }
+        AutosyncSubcommand::Uninstall => {
+            let _lock = if options.dry_run {
+                None
+            } else {
+                Some(store::StoreLock::acquire(&paths)?)
+            };
+            let report = autosync::uninstall(&paths, options.dry_run)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                status::print_autosync_mutation_report(&report);
+            }
+            Ok(())
+        }
+        AutosyncSubcommand::Run => run_scheduled_sync(options, &paths),
+    }
+}
+
+fn run_scheduled_sync(options: &GlobalOptions, paths: &store::StorePaths) -> DaloResult<()> {
+    if options.dry_run {
+        return Err(DaloError::CheckFailed {
+            reason: "the internal scheduled runner does not support --dry-run".to_owned(),
+        });
+    }
+    let attempted = autosync::begin_run(paths)?;
+    let Some(_lock) = store::StoreLock::try_acquire(paths)? else {
+        let holder = store::store_lock_holder(paths).map_or_else(
+            || "store lock is held".to_owned(),
+            |holder| format!("store lock held by {holder}"),
+        );
+        autosync::finish_run(
+            paths,
+            attempted,
+            autosync::AutosyncRunOutcome::Skipped,
+            Some(holder.clone()),
+        )?;
+        println!("autosync skipped: {holder}");
+        return Ok(());
+    };
+
+    let result = run_sync_locked(options, CheckArgs { check: true })
+        .and_then(|()| scheduled_sync_postflight(paths));
+    match result {
+        Ok(()) => autosync::finish_run(
+            paths,
+            attempted,
+            autosync::AutosyncRunOutcome::Succeeded,
+            None,
+        ),
+        Err(error) => {
+            let status_result = autosync::finish_run(
+                paths,
+                attempted,
+                autosync::AutosyncRunOutcome::Blocked,
+                Some(error.to_string()),
+            );
+            if let Err(status_error) = status_result {
+                return Err(DaloError::Io(std::io::Error::other(format!(
+                    "{error}; additionally failed to persist autosync status: {status_error}"
+                ))));
+            }
+            Err(error)
+        }
+    }
+}
+
+fn scheduled_sync_postflight(paths: &store::StorePaths) -> DaloResult<()> {
+    let config = store::read_config(paths)?;
+    let lock = store::read_user_lock(paths)?;
+    let instruction_drifts = instructions::instruction_block_drifts(
+        paths,
+        &config.sources,
+        &lock.active_instruction_packs,
+    );
+    if !instruction_drifts.is_empty() {
+        return Err(DaloError::CheckFailed {
+            reason: format!(
+                "{} managed instruction block{} drifted; inspect with `dalo status`",
+                instruction_drifts.len(),
+                if instruction_drifts.len() == 1 {
+                    ""
+                } else {
+                    "s"
+                }
+            ),
+        });
+    }
+
+    let mut removed = Vec::new();
+    for source in config
+        .sources
+        .iter()
+        .filter(|source| source.enabled && source.kind == source::SourceKind::Catalog)
+    {
+        let drift = catalog::check_catalog_drift(paths, &source.id)?;
+        status::print_catalog_drift_report(&drift);
+        removed.extend(
+            drift
+                .outcomes
+                .into_iter()
+                .filter(|outcome| outcome.code.blocks_sync())
+                .map(|outcome| format!("{}:{}", source.id, outcome.skill)),
+        );
+    }
+    if !removed.is_empty() {
+        return Err(DaloError::CheckFailed {
+            reason: format!(
+                "selected catalog skills were removed upstream ({}); update the selection or keep the existing pin",
+                removed.join(", ")
+            ),
+        });
+    }
     Ok(())
 }
 

@@ -57,6 +57,14 @@ pub struct StorePaths {
     pub source_lock_file: PathBuf,
     /// Content-addressed security audit reports.
     pub audits_dir: PathBuf,
+    /// Installed scheduler metadata.
+    pub autosync_file: PathBuf,
+    /// Durable outcome of the most recent scheduled run.
+    pub autosync_run_file: PathBuf,
+    /// Combined scheduled-run stdout log.
+    pub autosync_log_file: PathBuf,
+    /// Scheduled-run stderr log.
+    pub autosync_error_log_file: PathBuf,
 }
 
 impl StorePaths {
@@ -76,6 +84,10 @@ impl StorePaths {
             sources_dir: root.join("sources"),
             source_lock_file: root.join("source-lock.toml"),
             audits_dir: root.join("audits"),
+            autosync_file: root.join("autosync.toml"),
+            autosync_run_file: root.join("autosync-run.toml"),
+            autosync_log_file: root.join("autosync.log"),
+            autosync_error_log_file: root.join("autosync-error.log"),
             local_dir,
             root,
         }
@@ -734,31 +746,22 @@ impl StoreLock {
         Self::acquire_with_delays(paths, &delays)
     }
 
+    /// Attempt the store lock once without waiting.
+    ///
+    /// Scheduled synchronization uses this to skip immediately when an
+    /// interactive command owns the store.
+    pub fn try_acquire(paths: &StorePaths) -> DaloResult<Option<Self>> {
+        Self::try_acquire_once(paths)
+    }
+
     fn acquire_with_delays(paths: &StorePaths, delays: &[Duration]) -> DaloResult<Self> {
         for delay in delays {
             if !delay.is_zero() {
                 thread::sleep(*delay);
             }
 
-            // The file is persistent; the kernel advisory lock on this handle is
-            // the ownership signal. The pid text is diagnostic metadata only, so
-            // stale pids or missing `kill` binaries cannot block acquisition.
-            let mut file = OpenOptions::new()
-                .read(true)
-                .write(true)
-                .create(true)
-                .truncate(false)
-                .open(&paths.lock_guard_file)?;
-            match file.try_lock() {
-                Ok(()) => {
-                    file.set_len(0)?;
-                    file.seek(SeekFrom::Start(0))?;
-                    writeln!(file, "pid={}", std::process::id())?;
-                    file.flush()?;
-                    return Ok(Self { _file: file });
-                }
-                Err(fs::TryLockError::WouldBlock) => {}
-                Err(fs::TryLockError::Error(error)) => return Err(error.into()),
+            if let Some(lock) = Self::try_acquire_once(paths)? {
+                return Ok(lock);
             }
         }
 
@@ -766,6 +769,38 @@ impl StoreLock {
             path: paths.lock_guard_file.clone(),
         })
     }
+
+    fn try_acquire_once(paths: &StorePaths) -> DaloResult<Option<Self>> {
+        // The file is persistent; the kernel advisory lock on this handle is
+        // the ownership signal. The pid text is diagnostic metadata only, so
+        // stale pids or missing `kill` binaries cannot block acquisition.
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&paths.lock_guard_file)?;
+        match file.try_lock() {
+            Ok(()) => {
+                file.set_len(0)?;
+                file.seek(SeekFrom::Start(0))?;
+                writeln!(file, "pid={}", std::process::id())?;
+                file.flush()?;
+                Ok(Some(Self { _file: file }))
+            }
+            Err(fs::TryLockError::WouldBlock) => Ok(None),
+            Err(fs::TryLockError::Error(error)) => Err(error.into()),
+        }
+    }
+}
+
+/// Best-effort diagnostic text written by the current store-lock holder.
+#[must_use]
+pub fn store_lock_holder(paths: &StorePaths) -> Option<String> {
+    fs::read_to_string(&paths.lock_guard_file)
+        .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
 }
 
 fn ensure_dir(path: &Path, dry_run: bool) -> DaloResult<InitOperation> {
@@ -1484,6 +1519,20 @@ mod tests {
             .expect_err("second lock should fail");
 
         assert!(matches!(error, DaloError::StoreLocked { .. }));
+    }
+
+    #[test]
+    fn store_lock_try_acquire_should_return_immediately_when_held() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let paths = StorePaths::new(temp_dir.path().to_path_buf());
+        fs::create_dir_all(&paths.root).expect("store root should exist");
+        let _lock = StoreLock::acquire(&paths).expect("first lock should be acquired");
+
+        let started = std::time::Instant::now();
+        let second = StoreLock::try_acquire(&paths).expect("try acquire should not error");
+        assert!(second.is_none());
+        assert!(started.elapsed() < Duration::from_millis(50));
+        assert!(store_lock_holder(&paths).is_some_and(|holder| holder.starts_with("pid=")));
     }
 
     #[test]

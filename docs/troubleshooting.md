@@ -30,6 +30,9 @@ dalo --json doctor
 | `instruction_block_drift` | A managed instruction block is missing, malformed, stale, or points to a missing pack. | Re-render with `dalo instructions enable <pack> <file>`, or disable with `dalo instructions disable <pack> <file>` if no longer wanted. |
 | `selected_removed` from catalog drift | A selected catalog skill disappeared upstream. | Unselect it with `dalo source select <catalog> --unselect <skill>`, or wait for a catalog fix before syncing. |
 | catalog drift | A catalog's upstream inventory differs from its pinned snapshot. | Run `dalo source refresh <id>` to inspect it. Add `--check` for CI, or preview the reviewed update with `dalo --dry-run source refresh <id> --advance` before applying it without `--dry-run`. |
+| `autosync_disabled` | Dalo has install metadata, but the native scheduler no longer reports the job enabled. | Reinstall idempotently with `dalo autosync install --schedule <hourly\|daily\|weekly>`, or remove it with `dalo autosync uninstall`. |
+| `autosync_run_blocked` | The latest scheduled run encountered a dirty source, malformed state, pending approval, audit finding, or target conflict. | Run `dalo autosync status` for the durable reason, resolve it with the suggested normal Dalo command, then retry or wait for the next schedule. |
+| autosync `skipped` | Another interactive Dalo process held the store lock. | No action is normally required. The next scheduled run retries without contention. |
 
 ## Status Codes
 
@@ -155,6 +158,11 @@ Doctor includes `ok` and `info` codes as well as warnings/errors. Codes not list
 | `required_closure_blocked` | error | Resolve the closure block reason shown in the message. |
 | `instruction_pack_topic_overlap` | warning | Rename topics or disable one overlapping pack if the overlap is not intended. |
 | `instruction_block_drift` | error | Re-render or disable the pack. |
+| `autosync_installed` | ok | The native scheduler is installed and enabled. |
+| `autosync_not_installed` | info | Install it with `dalo autosync install` if recurring synchronization is desired. |
+| `autosync_disabled` | warning | Reinstall with `dalo autosync install`, or remove stale metadata with `dalo autosync uninstall`. |
+| `autosync_run_blocked` | warning | Inspect `dalo autosync status`, resolve its recorded reason, and retry. |
+| `autosync_state_invalid` | error | Repair or remove malformed `autosync.toml` / `autosync-run.toml`, then reinstall. |
 | `unreadable_target_directory` | warning | Fix permissions or remove unreadable entries. |
 | `unmanaged_same_name_blocker` | error | Adopt, keep, rename, or remove the unmanaged blocker. |
 | `stale_protected_skill` | warning | Relink the target if it moved, or remove the stale marker with the suggested `dalo resolve unkeep` command. |

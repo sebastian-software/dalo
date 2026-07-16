@@ -43,7 +43,6 @@ Distribution work is wired for the next tagged release:
 
 - External sources declared by trusted sources.
 - Lock-advancing `source refresh` that opens lockfile PRs or updates pins.
-- Scheduled autosync installation.
 - Full interactive resolve assistant.
 - Rename/adapt flows for conflicts.
 - Full PR-first `promote`.

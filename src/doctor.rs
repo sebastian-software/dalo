@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 
 use crate::adopt;
+use crate::autosync::{self, AutosyncRunOutcome};
 use crate::config::UserConfig;
 use crate::error::shell_quote_path;
 use crate::git;
@@ -157,6 +158,16 @@ pub enum DoctorCode {
     InstructionBlockDrift,
     /// Target path looks cloud-synced.
     CloudSyncedTarget,
+    /// Scheduled synchronization is installed and enabled.
+    AutosyncInstalled,
+    /// Scheduled synchronization is not installed.
+    AutosyncNotInstalled,
+    /// Scheduler metadata exists but the native job is disabled.
+    AutosyncDisabled,
+    /// The latest scheduled synchronization was blocked.
+    AutosyncRunBlocked,
+    /// Autosync metadata or native scheduler state could not be inspected.
+    AutosyncStateInvalid,
 }
 
 /// Run read-only diagnostics.
@@ -199,6 +210,7 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
     if let (Some(config), Some(_), true) = (config.as_ref(), state.as_ref(), lock_ok) {
         check_resolution(&paths, config, approvals.as_ref(), &mut findings);
     }
+    check_autosync(&paths, &mut findings);
 
     findings.sort_by(|left, right| {
         severity_name(left.severity)
@@ -212,6 +224,66 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
         store: store_root.to_path_buf(),
         findings,
         summary,
+    }
+}
+
+fn check_autosync(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) {
+    match autosync::status(paths) {
+        Ok(status) => {
+            if let Some(error) = &status.scheduler_error {
+                findings.push(finding_error(
+                    DoctorCode::AutosyncStateInvalid,
+                    format!("native autosync scheduler could not be inspected: {error}"),
+                    Some("dalo autosync status".to_owned()),
+                ));
+            }
+            if !status.installed && status.configured {
+                findings.push(finding_warning(
+                    DoctorCode::AutosyncDisabled,
+                    "config enables autosync, but scheduler installation metadata is missing",
+                    Some("dalo autosync install".to_owned()),
+                ));
+            } else if !status.installed {
+                findings.push(info(
+                    DoctorCode::AutosyncNotInstalled,
+                    "scheduled synchronization is not installed",
+                ));
+            } else if status.enabled && status.configured {
+                findings.push(ok(
+                    DoctorCode::AutosyncInstalled,
+                    format!(
+                        "scheduled synchronization is enabled via {} ({})",
+                        status.backend.map_or("unknown", |backend| backend.as_str()),
+                        status
+                            .schedule
+                            .map_or("unknown", |schedule| schedule.as_str())
+                    ),
+                ));
+            } else {
+                findings.push(finding_warning(
+                    DoctorCode::AutosyncDisabled,
+                    "autosync config, metadata, and native scheduler state are inconsistent",
+                    Some("dalo autosync install".to_owned()),
+                ));
+            }
+            if let Some(run) = status.last_run
+                && run.outcome == AutosyncRunOutcome::Blocked
+            {
+                findings.push(finding_warning(
+                    DoctorCode::AutosyncRunBlocked,
+                    format!(
+                        "latest scheduled synchronization was blocked: {}",
+                        run.reason.as_deref().unwrap_or("no reason recorded")
+                    ),
+                    Some("dalo autosync status".to_owned()),
+                ));
+            }
+        }
+        Err(error) => findings.push(finding_error(
+            DoctorCode::AutosyncStateInvalid,
+            format!("autosync state could not be inspected: {error}"),
+            Some("dalo autosync status".to_owned()),
+        )),
     }
 }
 
@@ -901,6 +973,11 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::InstructionPackTopicOverlap => "instruction_pack_topic_overlap",
         DoctorCode::InstructionBlockDrift => "instruction_block_drift",
         DoctorCode::CloudSyncedTarget => "cloud_synced_target",
+        DoctorCode::AutosyncInstalled => "autosync_installed",
+        DoctorCode::AutosyncNotInstalled => "autosync_not_installed",
+        DoctorCode::AutosyncDisabled => "autosync_disabled",
+        DoctorCode::AutosyncRunBlocked => "autosync_run_blocked",
+        DoctorCode::AutosyncStateInvalid => "autosync_state_invalid",
     }
 }
 

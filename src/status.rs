@@ -10,6 +10,7 @@ use crate::adopt::{
 };
 use crate::approval::ApprovalReport;
 use crate::audit::{self, AuditCoverage, AuditOptions, AuditReport, AuditStatus};
+use crate::autosync::{AutosyncMutationReport, AutosyncStatusReport};
 use crate::catalog::{
     CatalogAdvanceReport, CatalogDrift, CatalogInspectReport, CatalogSelectReport,
 };
@@ -59,6 +60,8 @@ pub struct StatusReport {
     pub instruction_pack_overlaps: Vec<TopicOverlap>,
     /// Active instruction blocks that are missing, malformed, or stale.
     pub instruction_block_drifts: Vec<InstructionBlockDrift>,
+    /// Native scheduler installation and latest durable run state.
+    pub autosync: AutosyncStatusReport,
 }
 
 /// User lock status derived during `status`.
@@ -207,6 +210,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         &config.sources,
         &previous_lock.active_instruction_packs,
     );
+    let autosync = crate::autosync::status(&paths)?;
 
     Ok(StatusReport {
         store: store_root.to_path_buf(),
@@ -222,6 +226,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         instruction_packs,
         instruction_pack_overlaps,
         instruction_block_drifts,
+        autosync,
     })
 }
 
@@ -419,6 +424,7 @@ fn print_audit_finding(layer: &str, finding: &crate::audit::AuditFinding) {
 /// Print a human-readable status report.
 pub fn print_status_report(report: &StatusReport) {
     println!("dalo store: {}", report.store.display());
+    print_autosync_status_report(&report.autosync);
     println!("sources:");
     if report.sources.is_empty() {
         println!("  none");
@@ -608,6 +614,57 @@ pub fn print_status_report(report: &StatusReport) {
             );
         }
     }
+}
+
+/// Print scheduler installation and latest durable run status.
+pub fn print_autosync_status_report(report: &AutosyncStatusReport) {
+    if report.configured != report.installed {
+        println!(
+            "autosync: configuration mismatch (configured={}, installed={})",
+            report.configured, report.installed
+        );
+    }
+    if !report.installed {
+        println!("autosync: not installed");
+    } else {
+        println!(
+            "autosync: {} via {} ({})",
+            if report.enabled {
+                "enabled"
+            } else {
+                "disabled"
+            },
+            report.backend.map_or("unknown", |backend| backend.as_str()),
+            report
+                .schedule
+                .map_or("unknown", |schedule| schedule.as_str())
+        );
+        for artifact in &report.artifacts {
+            println!("  artifact: {artifact}");
+        }
+    }
+    if let Some(error) = &report.scheduler_error {
+        println!("  scheduler error: {error}");
+    }
+    if let Some(run) = &report.last_run {
+        println!(
+            "  last run: {} at {}",
+            run.outcome.as_str(),
+            run.last_attempted_at_unix
+        );
+        if let Some(success) = run.last_successful_at_unix {
+            println!("  last success: {success}");
+        }
+        if let Some(reason) = &run.reason {
+            println!("  reason: {reason}");
+        }
+    }
+}
+
+/// Print install or uninstall result followed by resulting status.
+pub fn print_autosync_mutation_report(report: &AutosyncMutationReport) {
+    println!("autosync: {}", report.action);
+    print_autosync_status_report(&report.status);
 }
 
 /// Print a human-readable sync report.
