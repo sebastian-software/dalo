@@ -790,11 +790,12 @@ fn status_requires_review(report: &status::StatusReport) -> bool {
         || !report.instruction_block_drifts.is_empty()
         || report.autosync.configured != report.autosync.installed
         || (report.autosync.installed && !report.autosync.enabled)
-        || report
-            .autosync
-            .last_run
-            .as_ref()
-            .is_some_and(|run| run.outcome == autosync::AutosyncRunOutcome::Blocked)
+        || (report.autosync.installed
+            && report
+                .autosync
+                .last_run
+                .as_ref()
+                .is_some_and(|run| run.outcome == autosync::AutosyncRunOutcome::Blocked))
 }
 
 fn run_sync(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
