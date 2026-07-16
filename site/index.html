@@ -31,7 +31,6 @@
   <link rel="preload" href="/assets/fonts/hanken-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="/assets/fonts/geistmono-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="/styles.css" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/asciinema-player@3.8.0/dist/bundle/asciinema-player.css" />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -464,10 +463,12 @@
 <span class="ln"><span class="prompt">$</span> dalo approve skill sebastian:github-pr-auto-review</span>
 <span class="ln"><span class="prompt">$</span> dalo sync</span></code></pre>
         </div>
-        <div class="cast-demo">
-          <div id="quickstart-cast" aria-label="Twenty-second Dalo quickstart terminal recording"></div>
+        <div class="video-demo">
+          <video autoplay loop muted playsinline controls preload="metadata" aria-label="Twelve-second Dalo quickstart video">
+            <source src="/assets/dalo-quickstart.mp4" type="video/mp4" />
+          </video>
         </div>
-        <p class="copy-hint">Watch the 20-second quickstart above, or <a href="/assets/dalo-quickstart.cast">download the asciicast</a>. Prefer a dry run first? Every command takes <code>--dry-run</code>.</p>
+        <p class="copy-hint">Watch the 12-second quickstart above, or <a href="/assets/dalo-quickstart.mp4">download the MP4</a>. Prefer a dry run first? Every command takes <code>--dry-run</code>.</p>
       </div>
     </div>
   </section>
@@ -652,7 +653,6 @@
   </div>
 </footer>
 
-<script src="https://cdn.jsdelivr.net/npm/asciinema-player@3.8.0/dist/bundle/asciinema-player.min.js" defer></script>
 <script src="/main.js" defer></script>
 </body>
 </html>

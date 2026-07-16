@@ -74,8 +74,8 @@ Prefer Node.js? Run the same CLI without a global install:
 npx getdalo --version
 ```
 
-The full terminal session is available as an
-[asciicast recording](https://dalo.sh/assets/dalo-quickstart.cast).
+The quickstart is also available as a
+[short MP4 video](https://dalo.sh/assets/dalo-quickstart.mp4).
 
 ## How Dalo fits
 

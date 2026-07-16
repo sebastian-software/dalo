@@ -7,6 +7,7 @@ Before redeploying `dalo.sh`, verify the static site against the shipped repo st
 - The roadmap only lists future work; shipped features belong in feature content.
 - Footer links resolve on `main`, including `README.md`, docs, issues, and `LICENSE`.
 - `install.sh` and `install.md` resolve from `https://dalo.sh/` and match README install guidance.
+- `pnpm run render` in `video/` has refreshed `site/assets/dalo-quickstart.mp4` after video source changes.
 - `site/sitemap.xml` `lastmod` matches the redeploy date.
 
 Quick checks:

@@ -485,8 +485,8 @@ section[data-scope="dark"] { background: var(--bg); color: var(--ink); }
 .qs-points .c-ok { color: var(--signal); font-weight: 600; }
 .copy-hint { margin-top: 1rem; font-size: var(--fs-sm); color: var(--ink-faint); text-align: center; }
 .copy-hint code, .qs-points code, .quickstart-copy code, .pipeline code { font-family: var(--font-mono); color: var(--accent-text); font-size: 0.92em; }
-.cast-demo { margin-top: 1rem; overflow: hidden; border-radius: var(--radius-sm); }
-.cast-demo > div { width: 100%; }
+.video-demo { margin-top: 1rem; overflow: hidden; border-radius: var(--r-lg); background: var(--term-bg); box-shadow: var(--shadow-lg); }
+.video-demo video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; }
 
 /* ---------- Safe grid ---------- */
 .safe-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 1rem; margin-top: clamp(2rem, 1rem + 3vw, 3.2rem); }
