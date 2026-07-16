@@ -122,6 +122,18 @@ When multiple sources offer the same skill name, source priority decides which
 one is linked. The other candidates remain visible as shadowed; they are not
 silently discarded.
 
+Install safe recurring synchronization with the native user scheduler:
+
+```sh
+dalo autosync install --schedule daily
+dalo autosync status
+```
+
+macOS uses launchd. Linux uses a systemd user timer when available and falls
+back to an isolated, marked crontab entry. Scheduled runs never wait on an
+interactive Dalo process, never grant approvals, and leave their latest
+success, skip, or blocking reason visible in `status` and `doctor`.
+
 ### Adopt what works locally
 
 Agents often create useful skills directly in their own folders. Dalo can copy

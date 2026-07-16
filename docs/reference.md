@@ -337,6 +337,39 @@ edits do not change the recorded commit, and materialized symlinks expose those
 live edits directly. Catalog selections are the source kind with content and
 metadata fingerprints for upstream drift checks.
 
+### `dalo autosync install|status|uninstall`
+
+Install recurring `dalo sync --check` behavior through the current user's
+native scheduler. macOS uses launchd. Linux prefers a systemd user timer and
+falls back to cron only when the user manager is unavailable. Supported
+schedules are `hourly`, `daily` (default for a first install), and `weekly`.
+Omitting `--schedule` on a reinstall preserves the installed schedule.
+
+```sh
+dalo autosync install
+dalo autosync install --schedule hourly
+dalo --json autosync status
+dalo autosync uninstall
+```
+
+Installation records the exact absolute executable and store paths; generated
+artifacts never depend on shell startup files. Reinstalling or removing the job
+is idempotent. Global `--dry-run` previews install and uninstall without writing
+config, metadata, native artifacts, or scheduler state.
+Re-run `autosync install` after moving the Dalo executable; status treats a
+missing recorded executable as disabled instead of guessing a replacement.
+
+The internal scheduled runner acquires the store lock once without waiting. If
+an interactive Dalo process owns it, the run exits successfully as `skipped`
+and retries on the next schedule. Dirty sources, malformed locks, pending
+approvals, security findings, target conflicts, or managed instruction drift
+remain fail-closed. `autosync-run.toml` records the last attempted and last
+successful timestamps plus `succeeded`, `skipped`, or `blocked` and an
+actionable reason.
+
+`autosync status`, normal `status`, and `doctor` all surface this durable state.
+Logs are written to `autosync.log` and `autosync-error.log` in the store.
+
 ### `dalo adopt <skill> [--replace]`
 
 Copy an unmanaged target skill into `local/skills/<slot>`. With `--replace`, Dalo replaces the original unmanaged directory with an owned symlink after copying. Without `--replace`, the original directory remains untouched.
@@ -635,7 +668,9 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `source refresh` | `CatalogDrift` | `source_id`, `pinned_commit`, `upstream_commit`, `outcomes[]`, `migration_warnings[]` for degraded legacy sibling catalogs |
 | `source refresh --advance` | `CatalogAdvanceReport` | exact `old_lock`/`new_lock`, selections, `outcomes[]`, `audits[]`, `sync`, `blocking_reasons[]`, `dry_run`, and `advanced` |
 | `source remove` | `SourceRemoveReport` | `source_id`, `checkout_path`, `kept_checkout`, `removed_approvals`, `removed_catalog_lock`, `reconciled_links[]`, `deactivated_skills[]`, `cleanup_warnings[]`, `affected_paths[]`, `dry_run` |
-| `status` | `StatusReport` | `store`, `sources[]`, `targets[]`, `inventory_warnings[]`, `resolution`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]` |
+| `autosync install` / `uninstall` | `AutosyncMutationReport` | `action`, `dry_run`, resulting `status` |
+| `autosync status` | `AutosyncStatusReport` | `configured`, `installed`, `enabled`, backend, schedule, executable, store, artifacts, optional `scheduler_error`, and optional `last_run` |
+| `status` | `StatusReport` | `store`, `sources[]`, `targets[]`, `inventory_warnings[]`, `resolution`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]`, `autosync` |
 | `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, `operations[]` |
 | `audit` | `AuditReport` | `schema_version`, `source_ref`, `skill_path`, `content_hash`, `static_engine_version`, `scanned_at_unix`, `coverage`, `status`, optional `max_severity`, `static_findings[]`, optional `agent_review`, optional `risk_acceptance` |
 | `approve list` | `ApprovalsFile` | `schema_version`, `approvals[]` |
@@ -673,6 +708,7 @@ Common status values:
 | `RemoveOwnedStatus` | `planned`, `removed`, `dropped_missing`, `blocked_real_entry` |
 | `InstructionBlockDriftKind` | `missing`, `malformed`, `stale`, `source_missing` |
 | `CatalogDrift.code` | `new_available`, `selected_changed`, `selected_moved`, `selected_removed` |
+| `AutosyncRunOutcome` | `running`, `succeeded`, `skipped`, `blocked` |
 | `TargetScanWarningCode` | `unreadable_target_dir` |
 
 `DoctorFinding` uses:
@@ -701,6 +737,9 @@ After `dalo init`, the store contains:
 | `state.toml` | Internal target/materialization/protection state. |
 | `approvals.toml` | Local approval records. |
 | `source-lock.toml` | Catalog source pins, selections, and inventory snapshots. |
+| `autosync.toml` | Installed scheduler backend, schedule, exact paths, identifier, and artifacts. |
+| `autosync-run.toml` | Last attempted/successful scheduled run and its durable outcome/reason. |
+| `autosync.log`, `autosync-error.log` | Native scheduler stdout and stderr. |
 | `audits/<content-hash>-<source-ref-hash>.json` | Source- and content-bound deterministic and optional agent security reports. |
 | `.lock` | Temporary coarse lock file while mutating commands run. |
 | `local/skills/` | Local private skill directories. |
@@ -757,8 +796,8 @@ Fields:
 
 | Field | Meaning |
 | --- | --- |
-| `settings.autosync` | Reserved scheduled-sync switch. |
-| `settings.sync_interval` | Optional interval label. |
+| `settings.autosync` | Whether `dalo autosync install` has configured a scheduler job. |
+| `settings.sync_interval` | Installed `hourly`, `daily`, or `weekly` schedule. |
 | `sources[].id` | Stable source ID. |
 | `sources[].kind` | `local`, `team`, or `catalog`. |
 | `sources[].path` | Local filesystem path for the source root or checkout. |

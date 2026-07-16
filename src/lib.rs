@@ -16,6 +16,7 @@ compile_error!(
 pub mod adopt;
 pub mod approval;
 pub mod audit;
+pub mod autosync;
 pub mod catalog;
 pub mod cli;
 pub mod config;

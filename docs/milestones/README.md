@@ -80,7 +80,6 @@ V1.1 added the next product layer in M11–M16, in two tracks plus a readiness p
 Later work remains outside this milestone set unless explicitly pulled forward:
 
 - `source refresh` lockfile PRs
-- scheduled autosync installer
 - full interactive resolve assistant
 - rename/adapt flows for conflicts
 - full PR-first `promote`

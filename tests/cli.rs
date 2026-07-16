@@ -49,9 +49,240 @@ fn help_should_render_implemented_command_groups() {
         vec!["doctor", "--help"],
         vec!["audit", "--help"],
         vec!["approve", "--help"],
+        vec!["autosync", "--help"],
     ] {
         dalo_command().args(args).assert().success();
     }
+}
+
+#[test]
+fn autosync_status_should_report_not_installed_after_init() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "autosync", "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"installed\": false"))
+        .stdout(predicate::str::contains("\"enabled\": false"));
+}
+
+#[test]
+fn autosync_run_should_persist_success_and_previous_success_time() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_skill_and_target(&store, &target);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["autosync", "run"])
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "autosync", "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"outcome\": \"succeeded\""))
+        .stdout(predicate::str::contains("last_successful_at_unix"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"autosync\""))
+        .stdout(predicate::str::contains("\"outcome\": \"succeeded\""));
+}
+
+#[test]
+fn autosync_run_should_skip_immediately_when_store_lock_is_held() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    let paths = store::StorePaths::new(store.clone());
+    let _lock = store::StoreLock::acquire(&paths).expect("parent should hold store lock");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["autosync", "run"])
+        .timeout(std::time::Duration::from_secs(1))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("autosync skipped"))
+        .stdout(predicate::str::contains("pid="));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "autosync", "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"outcome\": \"skipped\""))
+        .stdout(predicate::str::contains("store lock held by pid="));
+}
+
+#[test]
+fn autosync_run_should_persist_actionable_block_reason() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_skill_and_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["autosync", "run"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("blocked operation"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "autosync", "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"outcome\": \"blocked\""))
+        .stdout(predicate::str::contains("blocked operation"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "doctor"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("autosync_run_blocked"))
+        .stdout(predicate::str::contains("blocked operation"));
+}
+
+#[test]
+fn autosync_run_should_block_managed_instruction_drift() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target_file = temp_dir.path().join("AGENTS.md");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::write(
+        store.join("local/instructions/house-style.md"),
+        "version: 1.0\n\nUse tabs.\n",
+    )
+    .expect("pack should be written");
+    std::fs::write(&target_file, "# Project\n").expect("target should be written");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "house-style"])
+        .arg(&target_file)
+        .assert()
+        .success();
+    let rendered = std::fs::read_to_string(&target_file).expect("target readable");
+    std::fs::write(&target_file, rendered.replace("Use tabs.", "Tampered."))
+        .expect("managed block should drift");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["autosync", "run"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("managed instruction block"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "autosync", "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("managed instruction block"));
+}
+
+#[test]
+fn autosync_run_should_report_selected_catalog_removal_without_advancing_pin() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "copy-editing"])
+        .assert()
+        .success();
+    approve_source(&store, "marketing");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    let pin_before = read_source_lock(&store)
+        .catalog("marketing")
+        .expect("catalog lock exists")
+        .commit
+        .clone();
+
+    std::fs::remove_dir_all(repo.join("skills/copy-editing"))
+        .expect("selected skill removed upstream");
+    run_git(&repo, &["add", "-A"]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "remove selected skill",
+            "-q",
+        ],
+    );
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["autosync", "run"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("removed upstream"));
+    assert_eq!(
+        read_source_lock(&store)
+            .catalog("marketing")
+            .expect("catalog lock exists")
+            .commit,
+        pin_before
+    );
+    assert!(target.join("copy-editing/SKILL.md").is_file());
 }
 
 #[test]
