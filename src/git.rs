@@ -46,6 +46,12 @@ pub fn validate_remote_url(url: &str) -> DaloResult<()> {
     Ok(())
 }
 
+/// Return a remote location that is safe to include in human or JSON output.
+#[must_use]
+pub fn display_remote_url(url: &str) -> String {
+    redact_url_userinfo(url)
+}
+
 /// Update the current tracking branch through a fast-forward-only pull.
 pub fn pull_ff_only(path: &Path) -> DaloResult<()> {
     print_network_progress(&format!("Refreshing source `{}`...", path.display()));

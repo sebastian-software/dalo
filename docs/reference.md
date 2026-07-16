@@ -221,7 +221,10 @@ JSON output shape: `SourceConfig`.
 
 ### `dalo source list`
 
-List configured sources in priority order.
+List configured sources in priority order. Git-backed entries include a
+read-only `provenance` object assembled from config, `source-lock.toml`, and the
+checkout without fetching: management authority, credential-redacted origin,
+requested ref, resolved pin, and checkout commit.
 
 Examples:
 
@@ -726,7 +729,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `target unlink` | `TargetUnlinkReport` | `target_id`, `status` |
 | `source add` | `SourceAddReport` | `source`, `dry_run`, `audits[]` with one `AuditReport` per discovered skill |
 | `source add-catalog` | `SourceConfig` | `id`, `kind`, `path`, `priority`, `enabled`, `trusted`, `url`, `update_policy`, `selection` |
-| `source list` | `SourceListReport` | `sources[]` |
+| `source list` | `SourceListReport` | `sources[]`, each with existing `SourceConfig` fields plus `provenance` |
 | `source priority` | `SourcePriorityReport` | `source`, `dry_run` |
 | `source inspect` | `CatalogInspectReport` | `source_id`, `candidates[]` |
 | `source select` | `CatalogSelectReport` | `source_id`, `selected[]`, `dry_run`, `audits[]` for skills named by the operation, `migration_warnings[]` for degraded legacy sibling catalogs |
@@ -735,7 +738,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `source remove` | `SourceRemoveReport` | `source_id`, `checkout_path`, `kept_checkout`, `removed_approvals`, `removed_catalog_lock`, `reconciled_links[]`, `deactivated_skills[]`, `cleanup_warnings[]`, `affected_paths[]`, `dry_run` |
 | `autosync install` / `uninstall` | `AutosyncMutationReport` | `action`, `dry_run`, resulting `status` |
 | `autosync status` | `AutosyncStatusReport` | `configured`, `installed`, `enabled`, backend, schedule, executable, store, artifacts, optional `scheduler_error`, and optional `last_run` |
-| `status` | `StatusReport` | `store`, `sources[]`, `targets[]`, `inventory_warnings[]`, `resolution`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]`, `autosync` |
+| `status` | `StatusReport` | `store`, `sources[]` with `provenance`, `targets[]`, `inventory_warnings[]`, `resolution`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]`, `autosync` |
 | `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, `operations[]` |
 | `audit` | `AuditReport` | `schema_version`, `source_ref`, `skill_path`, `content_hash`, `static_engine_version`, `scanned_at_unix`, `coverage`, `status`, optional `max_severity`, `static_findings[]`, optional `agent_review`, optional `risk_acceptance` |
 | `approve list` | `ApprovalsFile` | `schema_version`, `approvals[]` |
@@ -788,6 +791,12 @@ Common status values:
 ```
 
 Doctor severities are `error`, `warning`, `info`, and `ok`.
+
+`SourceProvenance` contains `management` (`direct` or `team_manifest`), optional
+`declared_by`, credential-redacted `origin_url`, optional `requested_ref`, the
+canonical `resolved_commit`, and the observed `checkout_commit`. For catalogs,
+the resolved commit comes from `source-lock.toml`; a differing checkout commit
+is preserved in output so drift remains visible.
 
 Resolution diagnostics use these codes when present in `status.resolution.diagnostics`: `pending_approval`, `local_override`, `shadowed`, `required_expanded`, `cross_source_require`, and `required_blocked`. For recovery steps, see [Troubleshooting and FAQ](troubleshooting.md).
 
