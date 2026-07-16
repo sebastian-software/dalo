@@ -886,12 +886,7 @@ fn cleanup_obsolete_catalog_staging(
     for entry in fs::read_dir(staging_root)? {
         let entry = entry?;
         let path = entry.path();
-        if path == keep
-            || !entry
-                .file_name()
-                .to_string_lossy()
-                .starts_with(&format!("{}-", source.id))
-        {
+        if path == keep || !is_catalog_staging_entry(&entry.file_name(), &source.id) {
             continue;
         }
         if git::remove_worktree(&source.path, &path).is_err() {
@@ -899,6 +894,19 @@ fn cleanup_obsolete_catalog_staging(
         }
     }
     git::prune_worktrees(&source.path)
+}
+
+fn is_catalog_staging_entry(file_name: &std::ffi::OsStr, source_id: &str) -> bool {
+    let Some(file_name) = file_name.to_str() else {
+        return false;
+    };
+    let Some(commit) = file_name
+        .strip_prefix(source_id)
+        .and_then(|suffix| suffix.strip_prefix('-'))
+    else {
+        return false;
+    };
+    commit.len() == 40 && commit.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1137,30 +1145,25 @@ fn reconciled_selection(
     locked: &[CatalogEntry],
     fresh: &[CatalogEntry],
 ) -> Vec<String> {
-    let mut reconciled = selection
-        .iter()
-        .map(|reference| {
-            let old = locked
-                .iter()
-                .find(|entry| entry_matches_ref(entry, reference));
-            let Some(old) = old else {
-                return reference.clone();
-            };
-            let Some(id) = old.id.as_deref() else {
-                return reference.clone();
-            };
-            let Some(candidate) = fresh.iter().find(|entry| entry.id.as_deref() == Some(id)) else {
-                return reference.clone();
-            };
-            if candidate.path != old.path {
-                id.to_owned()
-            } else {
-                reference.clone()
-            }
-        })
-        .collect::<Vec<_>>();
-    reconciled.sort();
-    reconciled.dedup();
+    let mut seen = std::collections::BTreeSet::new();
+    let mut reconciled = Vec::with_capacity(selection.len());
+    for reference in selection {
+        let old = locked
+            .iter()
+            .find(|entry| entry_matches_ref(entry, reference));
+        let resolved = if let Some(old) = old
+            && let Some(id) = old.id.as_deref()
+            && let Some(candidate) = fresh.iter().find(|entry| entry.id.as_deref() == Some(id))
+            && candidate.path != old.path
+        {
+            id.to_owned()
+        } else {
+            reference.clone()
+        };
+        if seen.insert(resolved.clone()) {
+            reconciled.push(resolved);
+        }
+    }
     reconciled
 }
 
@@ -1523,6 +1526,44 @@ mod tests {
         // known, so no new_available either.
         let outcomes = compare_catalog_inventory(&locked, &[], &fresh);
         assert!(outcomes.is_empty());
+    }
+
+    #[test]
+    fn catalog_staging_entry_should_require_exact_source_id_and_commit_shape() {
+        let commit = "0123456789abcdef0123456789abcdef01234567";
+
+        assert!(is_catalog_staging_entry(
+            std::ffi::OsStr::new(&format!("foo-{commit}")),
+            "foo"
+        ));
+        assert!(!is_catalog_staging_entry(
+            std::ffi::OsStr::new(&format!("foo-bar-{commit}")),
+            "foo"
+        ));
+        assert!(!is_catalog_staging_entry(
+            std::ffi::OsStr::new("foo-not-a-commit"),
+            "foo"
+        ));
+    }
+
+    #[test]
+    fn reconciled_selection_should_preserve_order_while_deduplicating_moves() {
+        let locked = vec![
+            entry(Some("a"), "alpha", "skills/alpha", "h1"),
+            entry(Some("b"), "beta", "skills/beta", "h2"),
+        ];
+        let fresh = vec![
+            entry(Some("a"), "alpha", "catalog/alpha", "h1"),
+            entry(Some("b"), "beta", "skills/beta", "h2"),
+        ];
+
+        let reconciled = reconciled_selection(
+            &["beta".to_owned(), "alpha".to_owned(), "a".to_owned()],
+            &locked,
+            &fresh,
+        );
+
+        assert_eq!(reconciled, vec!["beta", "a"]);
     }
 
     #[test]
