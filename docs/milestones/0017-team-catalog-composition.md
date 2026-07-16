@@ -14,6 +14,8 @@ of third-party skills.
 ## Delivered
 
 - Root-level `dalo.toml` discovery in enabled team sources.
+- Store-independent `dalo team` authoring commands for manifest initialization,
+  catalog add/remove, filter replacement, version updates, and inspection.
 - `[[catalog]]` declarations with URL, Git version, optional priority, and
   skill filters.
 - Derived catalog IDs namespaced as `<team-id>.<catalog-id>`.

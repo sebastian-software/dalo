@@ -29,6 +29,7 @@ use crate::source::{
 };
 use crate::store::{self, ApprovalsFile, InitReport, StorePaths};
 use crate::target::{TargetDetectReport, TargetLinkReport, TargetUnlinkReport};
+use crate::team_manifest::{TeamManifestAction, TeamManifestMutationReport, TeamManifestView};
 use crate::term;
 
 /// Full status report.
@@ -1186,6 +1187,55 @@ pub fn print_target_unlink_report(report: &TargetUnlinkReport) {
     println!("{} target {}", report.status.as_str(), report.target_id);
     if report.status == crate::target::TargetUnlinkStatus::Unlinked {
         println!("note: owned symlinks remain; run `dalo sync` to remove them");
+    }
+}
+
+/// Print a team-manifest management mutation.
+pub fn print_team_manifest_mutation(report: &TeamManifestMutationReport) {
+    let (prefix, action) = if report.dry_run && report.action != TeamManifestAction::Unchanged {
+        ("would ", report.action.planned_str())
+    } else {
+        ("", report.action.as_str())
+    };
+    let catalog = report
+        .catalog_id
+        .as_ref()
+        .map_or(String::new(), |id| format!(" catalog={id}"));
+    println!(
+        "{prefix}{} team manifest {}{catalog}",
+        action,
+        report.path.display()
+    );
+}
+
+/// Print a parsed team manifest.
+pub fn print_team_manifest_view(report: &TeamManifestView) {
+    println!("team manifest: {}", report.path.display());
+    if let Some(source) = &report.manifest.source {
+        println!(
+            "source: {}{}",
+            source.id.as_deref().unwrap_or("<missing>"),
+            source
+                .name
+                .as_ref()
+                .map_or(String::new(), |name| format!(" ({name})"))
+        );
+    }
+    if report.manifest.catalogs.is_empty() {
+        println!("catalogs: none");
+        return;
+    }
+    println!("catalogs:");
+    for catalog in &report.manifest.catalogs {
+        let skills = if catalog.skills.is_empty() {
+            "all".to_owned()
+        } else {
+            catalog.skills.join(", ")
+        };
+        println!(
+            "  {} version={} skills={} {}",
+            catalog.id, catalog.version, skills, catalog.url
+        );
     }
 }
 

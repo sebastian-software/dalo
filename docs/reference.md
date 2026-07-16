@@ -70,6 +70,71 @@ dalo --json --dry-run init
 
 JSON output shape: `InitReport`.
 
+### `dalo team init <source-id>`
+
+Create `dalo.toml` in the current team repository. Use `--repo <path>` on the
+`team` command to target another checkout. Team-management commands do not read
+or initialize the personal Dalo store, and they do not commit or push changes.
+They write the manifest in canonical TOML form; catalog mutations may normalize
+formatting and do not preserve comments.
+
+Examples:
+
+```sh
+dalo team init company --name "Company Skills"
+dalo team --repo ../company-skills init company
+dalo --dry-run team init company
+```
+
+An existing manifest with the same source ID is left unchanged. A different ID
+is never overwritten. JSON output shape: `TeamManifestMutationReport`.
+
+### `dalo team catalog add <id> <git-url> --version <revision>`
+
+Add a pinned external skill set to the team manifest. Repeat `--skill` for
+include/exclude filters; omitting it means all skills.
+
+```sh
+dalo team catalog add marketing https://github.com/coreyhaines31/marketingskills.git \
+  --version 0123456789abcdef0123456789abcdef01234567 \
+  --skill +copywriting \
+  --skill +launch \
+  --skill -seo-audit
+```
+
+Use `--priority <number>` to override the derived default. JSON output shape:
+`TeamManifestMutationReport`.
+
+### `dalo team catalog skills <id> [filter]...`
+
+Replace the complete filter list. Calling the command without filters sets
+`skills = []`, which means all skills.
+
+```sh
+dalo team catalog skills marketing +copywriting +launch -seo-audit
+dalo team catalog skills marketing
+```
+
+### `dalo team catalog version <id> <revision>`
+
+Change the requested commit, tag, or ref. The next `dalo sync` on each team
+member's machine stages, audits, and pins the resolved commit before publishing
+it.
+
+```sh
+dalo team catalog version marketing v2.0.0
+```
+
+### `dalo team catalog remove <id>`
+
+Remove the declaration. The next team-member sync removes generated source
+state, approvals, owned links, and checkout state for that catalog.
+
+### `dalo team show`
+
+Print the source identity and catalog declarations from `dalo.toml`. Use
+`--json` for `TeamManifestView`.
+
 ### `dalo target detect`
 
 List known agent targets, their default paths where known, whether those paths exist, and whether they are linked in Dalo state.

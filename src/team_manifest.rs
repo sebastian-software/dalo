@@ -6,6 +6,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
+use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -29,7 +31,7 @@ fn default_schema_version() -> u32 {
 }
 
 /// Human-authored team composition manifest.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TeamManifest {
     /// Manifest schema version. Omitted manifests are interpreted as v1 for
@@ -37,7 +39,7 @@ pub struct TeamManifest {
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
     /// Optional descriptive source metadata.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<ManifestSource>,
     /// External multi-skill repositories composed into this team source.
     #[serde(default, rename = "catalog")]
@@ -45,19 +47,22 @@ pub struct TeamManifest {
 }
 
 /// Optional descriptive metadata retained for RFC compatibility.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ManifestSource {
     /// Expected source ID, when the repository wants to assert it.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     /// Human-readable source name.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     /// Descriptive source kind; currently informational.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
 }
 
 /// One pinned external catalog declared by a team source.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ManifestCatalog {
     /// ID local to the team manifest. The persisted source is namespaced with
@@ -75,7 +80,79 @@ pub struct ManifestCatalog {
     pub skills: Vec<String>,
     /// Optional global resolver priority. By default the catalog follows its
     /// declaring team source.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub priority: Option<i32>,
+}
+
+/// Team-manifest management action.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TeamManifestAction {
+    /// Created a new manifest.
+    Initialized,
+    /// Existing matching manifest needed no change.
+    Unchanged,
+    /// Added one catalog declaration.
+    CatalogAdded,
+    /// Replaced one catalog's skill filters.
+    CatalogSkillsUpdated,
+    /// Changed one catalog's requested version.
+    CatalogVersionUpdated,
+    /// Removed one catalog declaration.
+    CatalogRemoved,
+}
+
+impl TeamManifestAction {
+    /// Stable text label used by the human CLI.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Initialized => "initialized",
+            Self::Unchanged => "unchanged",
+            Self::CatalogAdded => "catalog_added",
+            Self::CatalogSkillsUpdated => "catalog_skills_updated",
+            Self::CatalogVersionUpdated => "catalog_version_updated",
+            Self::CatalogRemoved => "catalog_removed",
+        }
+    }
+
+    /// Human label for a no-write preview.
+    #[must_use]
+    pub const fn planned_str(self) -> &'static str {
+        match self {
+            Self::Initialized => "initialize",
+            Self::Unchanged => "leave_unchanged",
+            Self::CatalogAdded => "add_catalog",
+            Self::CatalogSkillsUpdated => "update_catalog_skills",
+            Self::CatalogVersionUpdated => "update_catalog_version",
+            Self::CatalogRemoved => "remove_catalog",
+        }
+    }
+}
+
+/// Result of a team-manifest management mutation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TeamManifestMutationReport {
+    /// Manifest path.
+    pub path: PathBuf,
+    /// Applied or planned action.
+    pub action: TeamManifestAction,
+    /// Catalog affected by the action, when applicable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub catalog_id: Option<String>,
+    /// Whether this was a no-write preview.
+    pub dry_run: bool,
+    /// Resulting manifest.
+    pub manifest: TeamManifest,
+}
+
+/// Read-only view of a team manifest.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TeamManifestView {
+    /// Manifest path.
+    pub path: PathBuf,
+    /// Parsed manifest.
+    pub manifest: TeamManifest,
 }
 
 /// Summary of one manifest reconciliation pass.
@@ -144,6 +221,301 @@ pub fn cleanup_removed_checkouts(paths: &StorePaths, source_ids: &[String]) {
         let source_dir = paths.sources_dir.join(source_id);
         let _ = fs::remove_dir_all(source_dir);
     }
+}
+
+/// Create a `dalo.toml` in a team repository.
+pub fn init_team_manifest(
+    repo: &Path,
+    source_id: &str,
+    name: Option<&str>,
+    dry_run: bool,
+) -> DaloResult<TeamManifestMutationReport> {
+    if !source::is_valid_source_id(source_id) {
+        return Err(DaloError::InvalidSourceId {
+            id: source_id.to_owned(),
+            reason: "must match `[A-Za-z0-9._-]+`".to_owned(),
+        });
+    }
+    let path = team_manifest_path(repo)?;
+    if path.exists() {
+        reject_symlinked_manifest(&path)?;
+        let manifest = read_managed_manifest(&path)?;
+        let existing_id = manifest
+            .source
+            .as_ref()
+            .and_then(|source| source.id.as_deref());
+        if existing_id != Some(source_id) {
+            return Err(DaloError::CheckFailed {
+                reason: format!(
+                    "team manifest `{}` already exists for source `{}`",
+                    path.display(),
+                    existing_id.unwrap_or("<missing>")
+                ),
+            });
+        }
+        return Ok(TeamManifestMutationReport {
+            path,
+            action: TeamManifestAction::Unchanged,
+            catalog_id: None,
+            dry_run,
+            manifest,
+        });
+    }
+
+    let manifest = TeamManifest {
+        schema_version: TEAM_MANIFEST_SCHEMA_VERSION,
+        source: Some(ManifestSource {
+            id: Some(source_id.to_owned()),
+            name: name.map(str::to_owned),
+            kind: Some("team".to_owned()),
+        }),
+        catalogs: Vec::new(),
+    };
+    if !dry_run {
+        write_manifest_atomic(&path, &manifest)?;
+    }
+    Ok(TeamManifestMutationReport {
+        path,
+        action: TeamManifestAction::Initialized,
+        catalog_id: None,
+        dry_run,
+        manifest,
+    })
+}
+
+/// Read a team repository's manifest for display.
+pub fn show_team_manifest(repo: &Path) -> DaloResult<TeamManifestView> {
+    let path = team_manifest_path(repo)?;
+    let manifest = read_managed_manifest(&path)?;
+    Ok(TeamManifestView { path, manifest })
+}
+
+/// Add one pinned catalog declaration to a team manifest.
+pub fn add_team_catalog(
+    repo: &Path,
+    id: &str,
+    url: &str,
+    version: &str,
+    skills: &[String],
+    priority: Option<i32>,
+    dry_run: bool,
+) -> DaloResult<TeamManifestMutationReport> {
+    if !source::is_valid_source_id(id) {
+        return Err(DaloError::InvalidSourceId {
+            id: id.to_owned(),
+            reason: "must match `[A-Za-z0-9._-]+`".to_owned(),
+        });
+    }
+    git::validate_remote_url(url)?;
+    git::validate_manifest_revision(version)?;
+    validate_filters(skills)?;
+    mutate_team_manifest(
+        repo,
+        TeamManifestAction::CatalogAdded,
+        Some(id),
+        dry_run,
+        |manifest| {
+            if manifest.catalogs.iter().any(|catalog| catalog.id == id) {
+                return Err(DaloError::SourceAlreadyExists {
+                    source_id: id.to_owned(),
+                });
+            }
+            manifest.catalogs.push(ManifestCatalog {
+                id: id.to_owned(),
+                url: url.to_owned(),
+                version: version.to_owned(),
+                skills: deduplicate_filters(skills),
+                priority,
+            });
+            manifest
+                .catalogs
+                .sort_by(|left, right| left.id.cmp(&right.id));
+            Ok(())
+        },
+    )
+}
+
+/// Replace one catalog declaration's include/exclude filters.
+pub fn set_team_catalog_skills(
+    repo: &Path,
+    id: &str,
+    skills: &[String],
+    dry_run: bool,
+) -> DaloResult<TeamManifestMutationReport> {
+    validate_filters(skills)?;
+    mutate_team_manifest(
+        repo,
+        TeamManifestAction::CatalogSkillsUpdated,
+        Some(id),
+        dry_run,
+        |manifest| {
+            manifest_catalog_mut(manifest, id)?.skills = deduplicate_filters(skills);
+            Ok(())
+        },
+    )
+}
+
+/// Change one catalog declaration's requested Git version.
+pub fn set_team_catalog_version(
+    repo: &Path,
+    id: &str,
+    version: &str,
+    dry_run: bool,
+) -> DaloResult<TeamManifestMutationReport> {
+    git::validate_manifest_revision(version)?;
+    mutate_team_manifest(
+        repo,
+        TeamManifestAction::CatalogVersionUpdated,
+        Some(id),
+        dry_run,
+        |manifest| {
+            manifest_catalog_mut(manifest, id)?.version = version.to_owned();
+            Ok(())
+        },
+    )
+}
+
+/// Remove one catalog declaration from a team manifest.
+pub fn remove_team_catalog(
+    repo: &Path,
+    id: &str,
+    dry_run: bool,
+) -> DaloResult<TeamManifestMutationReport> {
+    mutate_team_manifest(
+        repo,
+        TeamManifestAction::CatalogRemoved,
+        Some(id),
+        dry_run,
+        |manifest| {
+            let before = manifest.catalogs.len();
+            manifest.catalogs.retain(|catalog| catalog.id != id);
+            if manifest.catalogs.len() == before {
+                return Err(manifest_catalog_not_found(id, &manifest.catalogs));
+            }
+            Ok(())
+        },
+    )
+}
+
+fn mutate_team_manifest(
+    repo: &Path,
+    action: TeamManifestAction,
+    catalog_id: Option<&str>,
+    dry_run: bool,
+    mutation: impl FnOnce(&mut TeamManifest) -> DaloResult<()>,
+) -> DaloResult<TeamManifestMutationReport> {
+    let path = team_manifest_path(repo)?;
+    reject_symlinked_manifest(&path)?;
+    let mut manifest = read_managed_manifest(&path)?;
+    mutation(&mut manifest)?;
+    validate_managed_manifest(&path, &manifest)?;
+    if !dry_run {
+        write_manifest_atomic(&path, &manifest)?;
+    }
+    Ok(TeamManifestMutationReport {
+        path,
+        action,
+        catalog_id: catalog_id.map(str::to_owned),
+        dry_run,
+        manifest,
+    })
+}
+
+fn team_manifest_path(repo: &Path) -> DaloResult<PathBuf> {
+    let repo = fs::canonicalize(repo).map_err(|error| DaloError::InvalidStorePath {
+        path: repo.to_path_buf(),
+        reason: format!("team repository could not be resolved: {error}"),
+    })?;
+    if !repo.is_dir() {
+        return Err(DaloError::InvalidStorePath {
+            path: repo,
+            reason: "team repository must be a directory".to_owned(),
+        });
+    }
+    Ok(repo.join(TEAM_MANIFEST_FILE))
+}
+
+fn read_managed_manifest(path: &Path) -> DaloResult<TeamManifest> {
+    let manifest = read_manifest(path)?.ok_or_else(|| DaloError::CheckFailed {
+        reason: format!(
+            "team manifest `{}` does not exist; run `dalo team init <source-id>` first",
+            path.display()
+        ),
+    })?;
+    validate_managed_manifest(path, &manifest)?;
+    Ok(manifest)
+}
+
+fn validate_managed_manifest(path: &Path, manifest: &TeamManifest) -> DaloResult<()> {
+    let source_id = manifest
+        .source
+        .as_ref()
+        .and_then(|source| source.id.as_deref())
+        .ok_or_else(|| DaloError::FileParse {
+            path: path.to_path_buf(),
+            reason: "managed team manifests require `[source].id`".to_owned(),
+        })?;
+    validate_manifest(source_id, path, manifest)
+}
+
+fn manifest_catalog_mut<'a>(
+    manifest: &'a mut TeamManifest,
+    id: &str,
+) -> DaloResult<&'a mut ManifestCatalog> {
+    let known = manifest.catalogs.clone();
+    manifest
+        .catalogs
+        .iter_mut()
+        .find(|catalog| catalog.id == id)
+        .ok_or_else(|| manifest_catalog_not_found(id, &known))
+}
+
+fn manifest_catalog_not_found(id: &str, catalogs: &[ManifestCatalog]) -> DaloError {
+    DaloError::unknown_source(
+        id,
+        catalogs.iter().map(|catalog| catalog.id.clone()).collect(),
+    )
+}
+
+fn deduplicate_filters(filters: &[String]) -> Vec<String> {
+    let mut seen = BTreeSet::new();
+    filters
+        .iter()
+        .filter(|filter| seen.insert((*filter).clone()))
+        .cloned()
+        .collect()
+}
+
+fn reject_symlinked_manifest(path: &Path) -> DaloResult<()> {
+    if fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
+        return Err(DaloError::CheckFailed {
+            reason: format!(
+                "team manifest `{}` is a symlink; edit its real file explicitly",
+                path.display()
+            ),
+        });
+    }
+    Ok(())
+}
+
+fn write_manifest_atomic(path: &Path, manifest: &TeamManifest) -> DaloResult<()> {
+    reject_symlinked_manifest(path)?;
+    let parent = path.parent().ok_or_else(|| DaloError::InvalidStorePath {
+        path: path.to_path_buf(),
+        reason: "team manifest has no parent directory".to_owned(),
+    })?;
+    let content = toml::to_string_pretty(manifest)?;
+    let permissions = fs::metadata(path)
+        .map(|metadata| metadata.permissions())
+        .unwrap_or_else(|_| fs::Permissions::from_mode(0o644));
+    let mut temp = tempfile::NamedTempFile::new_in(parent)?;
+    temp.as_file().set_permissions(permissions)?;
+    temp.write_all(content.as_bytes())?;
+    temp.flush()?;
+    temp.as_file().sync_all()?;
+    temp.persist(path).map_err(|error| error.error)?;
+    fs::File::open(parent)?.sync_all()?;
+    Ok(())
 }
 
 /// Build the manifest-derived config view that a dry-run can inspect without

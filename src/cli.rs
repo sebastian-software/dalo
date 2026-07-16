@@ -104,6 +104,11 @@ pub enum Command {
     Target(TargetCommand),
     /// Manage skill sources.
     Source(SourceCommand),
+    /// Author and maintain a team repository's `dalo.toml`.
+    #[command(
+        after_help = "Examples:\n  dalo team init company\n  dalo team catalog add marketing https://github.com/coreyhaines31/marketingskills.git --version <commit> --skill +copywriting\n  dalo team catalog skills marketing +copywriting +launch -seo-audit\n  dalo team show"
+    )]
+    Team(TeamCommand),
     /// Show managed, unmanaged, and conflicted skill state.
     Status(CheckArgs),
     /// Refresh clean sources, resolve approved skills, and link them into targets.
@@ -497,6 +502,111 @@ pub struct SourceRemoveArgs {
     pub keep_checkout: bool,
 }
 
+/// `team` manifest management command group.
+#[derive(Debug, Args)]
+pub struct TeamCommand {
+    /// Team repository directory. Defaults to the current directory.
+    #[arg(long, default_value = ".", value_name = "PATH")]
+    pub repo: PathBuf,
+
+    /// Team management subcommand.
+    #[command(subcommand)]
+    pub command: TeamSubcommand,
+}
+
+/// `team` subcommands.
+#[derive(Debug, Subcommand)]
+pub enum TeamSubcommand {
+    /// Create a `dalo.toml` for this team repository.
+    Init(TeamInitArgs),
+    /// Show the parsed team manifest.
+    Show,
+    /// Add, update, or remove external catalogs.
+    Catalog(TeamCatalogCommand),
+}
+
+/// Arguments for `team init`.
+#[derive(Debug, Args)]
+pub struct TeamInitArgs {
+    /// Stable team source ID used when team members add this repository.
+    pub id: String,
+
+    /// Optional human-readable team source name.
+    #[arg(long)]
+    pub name: Option<String>,
+}
+
+/// `team catalog` command group.
+#[derive(Debug, Args)]
+pub struct TeamCatalogCommand {
+    /// Catalog management subcommand.
+    #[command(subcommand)]
+    pub command: TeamCatalogSubcommand,
+}
+
+/// `team catalog` subcommands.
+#[derive(Debug, Subcommand)]
+pub enum TeamCatalogSubcommand {
+    /// Add a pinned external catalog.
+    Add(TeamCatalogAddArgs),
+    /// Replace a catalog's include/exclude filters. No filters means all.
+    Skills(TeamCatalogSkillsArgs),
+    /// Change a catalog's pinned version.
+    Version(TeamCatalogVersionArgs),
+    /// Remove a catalog declaration.
+    Remove(TeamCatalogIdArgs),
+}
+
+/// Arguments for `team catalog add`.
+#[derive(Debug, Args)]
+pub struct TeamCatalogAddArgs {
+    /// Catalog ID local to this team manifest.
+    pub id: String,
+
+    /// Git URL or path of the external skill set.
+    pub url: String,
+
+    /// Git commit, tag, or ref to pin.
+    #[arg(long)]
+    pub version: String,
+
+    /// Skill include/exclude filter, repeatable. Omit to select all.
+    #[arg(long = "skill", value_name = "FILTER", allow_hyphen_values = true)]
+    pub skills: Vec<String>,
+
+    /// Optional global resolver priority.
+    #[arg(long)]
+    pub priority: Option<i32>,
+}
+
+/// Arguments for `team catalog skills`.
+#[derive(Debug, Args)]
+pub struct TeamCatalogSkillsArgs {
+    /// Catalog ID.
+    pub id: String,
+
+    /// New filters. Empty means all; `+` includes and `-` excludes.
+    #[arg(allow_hyphen_values = true)]
+    pub skills: Vec<String>,
+}
+
+/// Arguments for `team catalog version`.
+#[derive(Debug, Args)]
+pub struct TeamCatalogVersionArgs {
+    /// Catalog ID.
+    pub id: String,
+
+    /// New Git commit, tag, or ref.
+    pub version: String,
+}
+
+/// Catalog ID argument.
+#[derive(Debug, Args)]
+pub struct TeamCatalogIdArgs {
+    /// Catalog ID.
+    pub id: String,
+}
+
 /// Arguments for `adopt`.
 #[derive(Debug, Args)]
 pub struct AdoptCommand {
@@ -610,6 +720,7 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         Command::Init => run_init(&options),
         Command::Target(command) => run_target(&options, command),
         Command::Source(command) => run_source(&options, command),
+        Command::Team(command) => run_team(&options, command),
         Command::Status(args) => run_status(&options, args),
         Command::Sync(args) => run_sync(&options, args),
         Command::Autosync(command) => run_autosync(&options, command),
@@ -654,6 +765,10 @@ fn command_ignores_dry_run(command: &Command) -> bool {
             })
             | Command::Autosync(AutosyncCommand {
                 command: AutosyncSubcommand::Status
+            })
+            | Command::Team(TeamCommand {
+                command: TeamSubcommand::Show,
+                ..
             })
     ) || matches!(
         command,
@@ -1263,6 +1378,71 @@ fn sync_review_reason(report: &materialize::SyncReport) -> Option<String> {
     }
 
     (!reasons.is_empty()).then(|| reasons.join(", "))
+}
+
+fn run_team(options: &GlobalOptions, command: TeamCommand) -> DaloResult<()> {
+    let repo = command.repo;
+    match command.command {
+        TeamSubcommand::Init(args) => {
+            let report = team_manifest::init_team_manifest(
+                &repo,
+                &args.id,
+                args.name.as_deref(),
+                options.dry_run,
+            )?;
+            print_team_manifest_mutation(options, &report)
+        }
+        TeamSubcommand::Show => {
+            let report = team_manifest::show_team_manifest(&repo)?;
+            if options.json {
+                print_json(&report)
+            } else {
+                status::print_team_manifest_view(&report);
+                Ok(())
+            }
+        }
+        TeamSubcommand::Catalog(command) => {
+            let report = match command.command {
+                TeamCatalogSubcommand::Add(args) => team_manifest::add_team_catalog(
+                    &repo,
+                    &args.id,
+                    &args.url,
+                    &args.version,
+                    &args.skills,
+                    args.priority,
+                    options.dry_run,
+                )?,
+                TeamCatalogSubcommand::Skills(args) => team_manifest::set_team_catalog_skills(
+                    &repo,
+                    &args.id,
+                    &args.skills,
+                    options.dry_run,
+                )?,
+                TeamCatalogSubcommand::Version(args) => team_manifest::set_team_catalog_version(
+                    &repo,
+                    &args.id,
+                    &args.version,
+                    options.dry_run,
+                )?,
+                TeamCatalogSubcommand::Remove(args) => {
+                    team_manifest::remove_team_catalog(&repo, &args.id, options.dry_run)?
+                }
+            };
+            print_team_manifest_mutation(options, &report)
+        }
+    }
+}
+
+fn print_team_manifest_mutation(
+    options: &GlobalOptions,
+    report: &team_manifest::TeamManifestMutationReport,
+) -> DaloResult<()> {
+    if options.json {
+        print_json(report)
+    } else {
+        status::print_team_manifest_mutation(report);
+        Ok(())
+    }
 }
 
 fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()> {
