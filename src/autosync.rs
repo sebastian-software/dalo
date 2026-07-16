@@ -969,7 +969,7 @@ fn render_launchd(paths: &StorePaths, state: &AutosyncInstallState) -> String {
             "<key>Hour</key><integer>{hour}</integer><key>Minute</key><integer>{minute}</integer>"
         ),
         AutosyncSchedule::Weekly => format!(
-            "<key>Weekday</key><integer>1</integer><key>Hour</key><integer>{hour}</integer><key>Minute</key><integer>{minute}</integer>"
+            "<key>Weekday</key><integer>0</integer><key>Hour</key><integer>{hour}</integer><key>Minute</key><integer>{minute}</integer>"
         ),
     };
     format!(
@@ -1301,6 +1301,40 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn weekly_schedule_should_use_sunday_for_every_backend() {
+        let (_temp, paths, home, executable) = setup();
+
+        let launchd = planned_state(
+            &paths,
+            SchedulerBackend::Launchd,
+            AutosyncSchedule::Weekly,
+            &executable,
+            &home,
+        );
+        assert!(
+            render_launchd(&paths, &launchd).contains("<key>Weekday</key><integer>0</integer>")
+        );
+
+        let systemd = planned_state(
+            &paths,
+            SchedulerBackend::Systemd,
+            AutosyncSchedule::Weekly,
+            &executable,
+            &home,
+        );
+        assert!(render_systemd_timer(&systemd).contains("OnCalendar=Sun "));
+
+        let cron = planned_state(
+            &paths,
+            SchedulerBackend::Cron,
+            AutosyncSchedule::Weekly,
+            &executable,
+            &home,
+        );
+        assert!(render_cron(&paths, &cron).contains(" * * 0 "));
     }
 
     #[test]
