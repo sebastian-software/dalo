@@ -74,8 +74,9 @@ pub struct ManifestCatalog {
     /// alias; `version` is the preferred user-facing spelling.
     #[serde(alias = "ref")]
     pub version: String,
-    /// Include/exclude filters. Empty means all. If any `+` entry exists, the
-    /// base set is empty; otherwise the base set is all. `-` always wins.
+    /// Include/exclude filters. Empty means all. If any `+` or bare entry
+    /// exists, the base set is empty; otherwise the base set is all. `-`
+    /// always wins.
     #[serde(default)]
     pub skills: Vec<String>,
     /// Optional global resolver priority. By default the catalog follows its
@@ -889,14 +890,16 @@ fn reconcile_catalog(
         let inventory = catalog::catalog_inventory(&scan_root, &selection)?;
         Ok((selection, inventory))
     })();
-    if let Some(staging) = &staging {
+    let cleanup = if let Some(staging) = &staging {
         let cleanup = git::remove_worktree(&checkout, staging);
         if let Some(staging_root) = staging.parent() {
             let _ = fs::remove_dir(staging_root);
         }
-        cleanup?;
-    }
-    let (selection, inventory) = candidate?;
+        cleanup
+    } else {
+        Ok(())
+    };
+    let (selection, inventory) = finish_candidate_after_cleanup(candidate, cleanup)?;
     let previous_commit = if current_commit == desired_commit {
         None
     } else {
@@ -1015,6 +1018,19 @@ fn apply_skill_filters(
     }
     selected.retain(|candidate| !excluded.contains(candidate));
     Ok(selected.into_iter().collect())
+}
+
+fn finish_candidate_after_cleanup<T>(
+    candidate: DaloResult<T>,
+    cleanup: DaloResult<()>,
+) -> DaloResult<T> {
+    match candidate {
+        Ok(value) => {
+            cleanup?;
+            Ok(value)
+        }
+        Err(error) => Err(error),
+    }
 }
 
 fn audit_selected(
@@ -1174,5 +1190,34 @@ mod tests {
         )
         .expect("minus should win");
         assert_eq!(selected, ["copy"]);
+    }
+
+    #[test]
+    fn bare_entry_switches_to_whitelist() {
+        let skills = vec![
+            skill("team.marketing", "copy", None, "copy"),
+            skill("team.marketing", "seo", None, "seo"),
+        ];
+        let selected = apply_skill_filters(
+            "team.marketing",
+            Path::new("/catalog"),
+            &skills,
+            &["copy".to_owned()],
+        )
+        .expect("bare positive should select from an empty base");
+        assert_eq!(selected, ["copy"]);
+    }
+
+    #[test]
+    fn candidate_error_wins_when_cleanup_also_fails() {
+        let result: DaloResult<()> = finish_candidate_after_cleanup(
+            Err(DaloError::AuditBlocked {
+                reason: "blocked skill".to_owned(),
+            }),
+            Err(DaloError::CheckFailed {
+                reason: "cleanup failed".to_owned(),
+            }),
+        );
+        assert!(matches!(result, Err(DaloError::AuditBlocked { .. })));
     }
 }
