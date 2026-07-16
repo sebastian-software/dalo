@@ -125,6 +125,27 @@ it.
 dalo team catalog version marketing v2.0.0
 ```
 
+### `dalo team catalog update <id> --from <ref>`
+
+Resolve an upstream branch, tag, or ref in a temporary clone, compare the
+currently declared version with the candidate inventory, and run deterministic
+audits for the selected candidate skills. A successful real update writes the
+exact candidate commit to `dalo.toml`; it never leaves the shared version as a
+floating ref and never commits or pushes the repository.
+
+```sh
+dalo --dry-run team catalog update marketing --from main
+dalo --json --dry-run team catalog update marketing --from v2
+dalo team catalog update marketing --from main
+```
+
+Dry-run performs network reads and temporary filesystem work but does not edit
+the repository or personal Dalo store. A non-fast-forward candidate, a removed
+selected skill, an invalid candidate selection, or a blocking audit finding
+prevents the write. JSON output shape: `TeamCatalogUpdateReport`, including
+`old_version`, exact `old_commit` and `candidate_commit`, `outcomes[]`,
+`audits[]`, `blocking_reasons[]`, `dry_run`, and `updated`.
+
 ### `dalo team catalog remove <id>`
 
 Remove the declaration. The next team-member sync removes generated source
@@ -724,6 +745,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `target detect` | `TargetDetectReport` | `targets[]` with `id`, `name`, `support`, `path`, `exists`, `linked` |
 | `target link` | `TargetLinkReport` | `target_id`, `path`, `canonical_path`, `status`, `created_dir` |
 | `target unlink` | `TargetUnlinkReport` | `target_id`, `status` |
+| `team catalog update` | `TeamCatalogUpdateReport` | `catalog_id`, `old_version`, `old_commit`, `from_ref`, `candidate_commit`, `outcomes[]`, `audits[]`, `blocking_reasons[]`, `dry_run`, `updated`, resulting `manifest` |
 | `source add` | `SourceAddReport` | `source`, `dry_run`, `audits[]` with one `AuditReport` per discovered skill |
 | `source add-catalog` | `SourceConfig` | `id`, `kind`, `path`, `priority`, `enabled`, `trusted`, `url`, `update_policy`, `selection` |
 | `source list` | `SourceListReport` | `sources[]` |

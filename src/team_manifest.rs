@@ -12,8 +12,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::audit::{self, AuditOptions};
-use crate::catalog::{self, CatalogLock};
+use crate::audit::{self, AuditOptions, AuditReport};
+use crate::catalog::{self, CatalogLock, DriftCode, DriftEntry};
 use crate::config::UserConfig;
 use crate::error::{DaloError, DaloResult};
 use crate::git;
@@ -153,6 +153,35 @@ pub struct TeamManifestView {
     /// Manifest path.
     pub path: PathBuf,
     /// Parsed manifest.
+    pub manifest: TeamManifest,
+}
+
+/// Reviewed plan or applied update for one team-owned catalog pin.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TeamCatalogUpdateReport {
+    /// Manifest path.
+    pub path: PathBuf,
+    /// Catalog ID local to the team manifest.
+    pub catalog_id: String,
+    /// Previous requested version from the manifest.
+    pub old_version: String,
+    /// Previous version resolved to an exact commit.
+    pub old_commit: String,
+    /// User-requested upstream branch, tag, or ref.
+    pub from_ref: String,
+    /// Candidate ref resolved to the exact commit written on success.
+    pub candidate_commit: String,
+    /// Selected-skill inventory changes.
+    pub outcomes: Vec<DriftEntry>,
+    /// Deterministic audits for candidate selected skills.
+    pub audits: Vec<AuditReport>,
+    /// Reasons preventing the manifest update.
+    pub blocking_reasons: Vec<String>,
+    /// Whether this was a no-write preview.
+    pub dry_run: bool,
+    /// Whether `dalo.toml` was changed.
+    pub updated: bool,
+    /// Resulting or currently persisted manifest.
     pub manifest: TeamManifest,
 }
 
@@ -374,6 +403,145 @@ pub fn set_team_catalog_version(
             Ok(())
         },
     )
+}
+
+/// Resolve an upstream ref, audit the candidate, and write its exact commit.
+pub fn update_team_catalog_pin(
+    repo: &Path,
+    id: &str,
+    from_ref: &str,
+    dry_run: bool,
+) -> DaloResult<TeamCatalogUpdateReport> {
+    git::validate_manifest_revision(from_ref)?;
+    let path = team_manifest_path(repo)?;
+    reject_symlinked_manifest(&path)?;
+    let manifest = read_managed_manifest(&path)?;
+    let declaration = manifest
+        .catalogs
+        .iter()
+        .find(|catalog| catalog.id == id)
+        .cloned()
+        .ok_or_else(|| manifest_catalog_not_found(id, &manifest.catalogs))?;
+    let team_id = manifest
+        .source
+        .as_ref()
+        .and_then(|source| source.id.as_deref())
+        .expect("managed manifest validation requires a source id");
+    let source_id = derived_source_id(team_id, id);
+    let manifest_root = path.parent().expect("team manifest path has a parent");
+    let location = source::resolve_source_location(&declaration.url, manifest_root);
+    git::validate_remote_url(&location)?;
+
+    let temp = tempfile::tempdir()?;
+    let checkout = temp.path().join("checkout");
+    git::clone_repo(&location, &checkout)?;
+    git::fetch_upstream(&checkout)?;
+    let old_commit = git::resolve_manifest_revision(&checkout, &declaration.version)?;
+    let candidate_commit = git::resolve_manifest_revision(&checkout, from_ref)?;
+    let mut blocking_reasons = Vec::new();
+    if old_commit != candidate_commit
+        && git::revision_count(&checkout, &candidate_commit, &old_commit)? != 0
+    {
+        blocking_reasons.push(format!(
+            "candidate commit {} is not a fast-forward from current commit {}",
+            short_commit(&candidate_commit),
+            short_commit(&old_commit)
+        ));
+    }
+
+    git::checkout_detached(&checkout, &old_commit)?;
+    let old_scan = inventory::scan_source(&source_id, &checkout)?;
+    let selection_before =
+        apply_skill_filters(&source_id, &checkout, &old_scan.skills, &declaration.skills)?;
+    let old_inventory = catalog::catalog_inventory(&checkout, &selection_before)?;
+
+    git::checkout_detached(&checkout, &candidate_commit)?;
+    let candidate_scan = inventory::scan_source(&source_id, &checkout)?;
+    let selection_after = match apply_skill_filters(
+        &source_id,
+        &checkout,
+        &candidate_scan.skills,
+        &declaration.skills,
+    ) {
+        Ok(selection) => selection,
+        Err(error) => {
+            blocking_reasons.push(format!("candidate selection is invalid: {error}"));
+            selection_before.clone()
+        }
+    };
+    let candidate_inventory = catalog::catalog_inventory(&checkout, &selection_after)?;
+    let outcomes =
+        catalog::compare_catalog_inventory(&old_inventory, &selection_before, &candidate_inventory);
+    for outcome in &outcomes {
+        if outcome.code == DriftCode::SelectedRemoved {
+            blocking_reasons.push(format!(
+                "selected skill `{}` was removed; update filters explicitly before changing the pin",
+                outcome.skill
+            ));
+        }
+    }
+    let audit_paths = StorePaths::new(temp.path().join("audit-context"));
+    let audits = audit_candidate_selection(
+        &audit_paths,
+        &source_id,
+        &checkout,
+        &candidate_scan.skills,
+        &selection_after,
+    )?;
+    for report in &audits {
+        if report.is_blocking() {
+            blocking_reasons.push(format!(
+                "security audit blocks candidate skill `{}`",
+                report.source_ref
+            ));
+        }
+    }
+    blocking_reasons.sort();
+    blocking_reasons.dedup();
+
+    let mut resulting_manifest = manifest.clone();
+    let pin_change = declaration.version != candidate_commit;
+    let updated = !dry_run && pin_change && blocking_reasons.is_empty();
+    if updated {
+        let report = mutate_team_manifest(
+            repo,
+            TeamManifestAction::CatalogVersionUpdated,
+            Some(id),
+            false,
+            |current| {
+                let catalog = manifest_catalog_mut(current, id)?;
+                if catalog != &declaration {
+                    return Err(DaloError::CheckFailed {
+                        reason: format!(
+                            "team manifest catalog `{id}` changed while its update was being reviewed; retry against the current declaration"
+                        ),
+                    });
+                }
+                catalog.version.clone_from(&candidate_commit);
+                Ok(())
+            },
+        )?;
+        resulting_manifest = report.manifest;
+    } else if dry_run && pin_change && blocking_reasons.is_empty() {
+        manifest_catalog_mut(&mut resulting_manifest, id)?
+            .version
+            .clone_from(&candidate_commit);
+    }
+
+    Ok(TeamCatalogUpdateReport {
+        path,
+        catalog_id: id.to_owned(),
+        old_version: declaration.version,
+        old_commit,
+        from_ref: from_ref.to_owned(),
+        candidate_commit,
+        outcomes,
+        audits,
+        blocking_reasons,
+        dry_run,
+        updated,
+        manifest: resulting_manifest,
+    })
 }
 
 /// Remove one catalog declaration from a team manifest.
@@ -1031,6 +1199,48 @@ fn finish_candidate_after_cleanup<T>(
         }
         Err(error) => Err(error),
     }
+}
+
+fn audit_candidate_selection(
+    paths: &StorePaths,
+    source_id: &str,
+    checkout: &Path,
+    skills: &[SkillRecord],
+    selection: &[String],
+) -> DaloResult<Vec<AuditReport>> {
+    let selected = selection.iter().cloned().collect::<BTreeSet<_>>();
+    let mut reports = Vec::new();
+    for skill in skills {
+        let path = skill
+            .path
+            .strip_prefix(checkout)
+            .unwrap_or(&skill.path)
+            .to_path_buf();
+        let canonical = skill
+            .id
+            .clone()
+            .unwrap_or_else(|| path.to_string_lossy().into_owned());
+        if !selected.contains(&canonical) {
+            continue;
+        }
+        let mut report = audit::audit_skill(
+            paths,
+            &format!("{source_id}:{}", skill.slot_name),
+            &skill.path,
+            &AuditOptions {
+                persist: false,
+                ..AuditOptions::default()
+            },
+        )?;
+        report.skill_path = path;
+        reports.push(report);
+    }
+    reports.sort_by(|left, right| left.source_ref.cmp(&right.source_ref));
+    Ok(reports)
+}
+
+fn short_commit(commit: &str) -> &str {
+    commit.get(..12).unwrap_or(commit)
 }
 
 fn audit_selected(

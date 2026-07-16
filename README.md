@@ -146,6 +146,8 @@ dalo team catalog add marketing https://github.com/coreyhaines31/marketingskills
   --skill +copywriting \
   --skill +launch
 dalo team catalog skills marketing +copywriting +launch +seo-audit -seo-audit
+dalo --dry-run team catalog update marketing --from main
+dalo team catalog update marketing --from main
 dalo team show
 ```
 
@@ -170,7 +172,10 @@ skills = ["+copywriting", "+launch", "+seo-audit", "-seo-audit"]
 ```
 
 `version` accepts a Git commit, tag, or ref; an immutable commit is the most
-reproducible choice. Skill filters follow these rules:
+reproducible choice. `team catalog update --from <ref>` clones into temporary
+storage, previews selected-skill drift and deterministic audits, and writes the
+resolved exact commit only when the candidate is safe. It never commits or
+pushes the team repository. Skill filters follow these rules:
 
 - omitted or empty `skills` selects everything
 - only `-name` entries select everything except those entries
