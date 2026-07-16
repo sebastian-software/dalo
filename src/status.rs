@@ -9,7 +9,7 @@ use crate::adopt::{
     UnmanagedSkill,
 };
 use crate::approval::ApprovalReport;
-use crate::audit::{self, AuditCoverage, AuditOptions, AuditReport, AuditStatus};
+use crate::audit::{self, ActiveAuditFailure, AuditCoverage, AuditReport, AuditStatus};
 use crate::autosync::{AutosyncMutationReport, AutosyncStatusReport};
 use crate::catalog::{
     self, CatalogAdvanceReport, CatalogDrift, CatalogInspectReport, CatalogSelectReport,
@@ -51,6 +51,8 @@ pub struct StatusReport {
     pub materialization: Vec<MaterializeOperation>,
     /// Active skills whose deterministic security audit blocks sync.
     pub blocking_audits: Vec<String>,
+    /// Active skills whose security audit could not be completed.
+    pub audit_failures: Vec<ActiveAuditFailure>,
     /// Previous-lock comparison against the live resolution.
     pub lock: LockStatus,
     /// Unmanaged skills found in linked targets.
@@ -188,9 +190,49 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         .collect::<Vec<_>>();
     targets.sort_by(|left, right| left.id.cmp(&right.id));
 
-    let live_resolution = live.resolution;
-    let blocking_audits = collect_blocking_audits(&paths, &live_resolution)?;
-    let materialization = materialize::materialize(&paths, &live_resolution, true)?;
+    let mut live_resolution = live.resolution;
+    let audits = audit::audit_active_skills(&paths, &live_resolution, false);
+    for failure in &audits.failures {
+        if let Some(source) = sources
+            .iter_mut()
+            .find(|source| source.id == failure.source_id)
+        {
+            let reason = format!(
+                "security audit failed for {}: {}",
+                failure.source_ref, failure.reason
+            );
+            source.error = Some(
+                source
+                    .error
+                    .as_ref()
+                    .map_or(reason.clone(), |existing| format!("{existing}; {reason}")),
+            );
+        }
+    }
+    let audit_degraded_sources = audits
+        .failures
+        .iter()
+        .filter_map(|failure| {
+            sources
+                .iter()
+                .find(|source| source.id == failure.source_id)
+                .map(|source| materialize::DegradedSource {
+                    id: source.id.clone(),
+                    path: source.path.clone(),
+                    reason: format!(
+                        "security audit failed for {}: {}",
+                        failure.source_ref, failure.reason
+                    ),
+                })
+        })
+        .collect::<Vec<_>>();
+    resolver::degrade_audit_failures(&mut live_resolution, &audits.failures);
+    let materialization = materialize::materialize_with_degraded_sources(
+        &paths,
+        &live_resolution,
+        true,
+        &audit_degraded_sources,
+    )?;
     let resolution = materialization.resolution;
     let live_lock = lockfile::build_user_lock(&config.sources, &live_resolution, None);
     let mut drift = lockfile::compare_user_lock(&previous_lock, &live_lock);
@@ -239,7 +281,8 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         inventory_warnings,
         resolution,
         materialization: materialization.operations,
-        blocking_audits,
+        blocking_audits: audits.blocking,
+        audit_failures: audits.failures,
         lock,
         unmanaged_skills: unmanaged_scan.unmanaged_skills,
         target_warnings: unmanaged_scan.warnings,
@@ -248,25 +291,6 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         instruction_block_drifts,
         autosync,
     })
-}
-
-fn collect_blocking_audits(paths: &StorePaths, resolution: &Resolution) -> DaloResult<Vec<String>> {
-    let mut blocked = Vec::new();
-    for skill in &resolution.active_skills {
-        let report = audit::audit_skill(
-            paths,
-            &skill.source_ref,
-            &skill.path,
-            &AuditOptions {
-                persist: false,
-                ..AuditOptions::default()
-            },
-        )?;
-        if report.is_blocking() {
-            blocked.push(skill.source_ref.clone());
-        }
-    }
-    Ok(blocked)
 }
 
 fn suppress_initial_local_source_drift(
@@ -536,6 +560,13 @@ pub fn print_status_report(report: &StatusReport) {
             println!(
                 "  {source_ref} (run: dalo audit {source_ref}; accept only with an explicit --accept-risk reason)"
             );
+        }
+    }
+
+    if !report.audit_failures.is_empty() {
+        println!("security audit failures:");
+        for failure in &report.audit_failures {
+            println!("  {}: {}", failure.source_ref, failure.reason);
         }
     }
 

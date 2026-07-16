@@ -904,6 +904,7 @@ fn status_requires_review(report: &status::StatusReport) -> bool {
         || !report.resolution.pending_approval_skills.is_empty()
         || !report.resolution.blocked_skills.is_empty()
         || !report.blocking_audits.is_empty()
+        || !report.audit_failures.is_empty()
         || report
             .materialization
             .iter()
@@ -968,9 +969,11 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
     };
     let sync_result = (|| -> DaloResult<materialize::SyncReport> {
         let approvals = store::read_approvals(&paths)?;
-        let live = resolver::resolve_from_config(&config, approvals.approvals);
-        ensure_active_skills_pass_audit(&paths, &live.resolution, options.dry_run)?;
-        let degraded_sources = collect_degraded_sources(&live, refresh_failures);
+        let mut live = resolver::resolve_from_config(&config, approvals.approvals);
+        let audits = audit::audit_active_skills(&paths, &live.resolution, !options.dry_run);
+        ensure_no_blocking_audits(&audits.blocking)?;
+        resolver::degrade_audit_failures(&mut live.resolution, &audits.failures);
+        let degraded_sources = collect_degraded_sources(&live, refresh_failures, &audits.failures);
         let (report, rollback) = materialize::materialize_with_degraded_sources_rollback(
             &paths,
             &live.resolution,
@@ -1170,35 +1173,7 @@ fn scheduled_sync_postflight(paths: &store::StorePaths) -> DaloResult<()> {
     Ok(())
 }
 
-fn audit_active_skills(
-    paths: &store::StorePaths,
-    resolution: &resolver::Resolution,
-    dry_run: bool,
-) -> DaloResult<Vec<String>> {
-    let mut blocked = Vec::new();
-    for skill in &resolution.active_skills {
-        let report = audit::audit_skill(
-            paths,
-            &skill.source_ref,
-            &skill.path,
-            &audit::AuditOptions {
-                persist: !dry_run,
-                ..audit::AuditOptions::default()
-            },
-        )?;
-        if report.is_blocking() {
-            blocked.push(skill.source_ref.clone());
-        }
-    }
-    Ok(blocked)
-}
-
-fn ensure_active_skills_pass_audit(
-    paths: &store::StorePaths,
-    resolution: &resolver::Resolution,
-    dry_run: bool,
-) -> DaloResult<()> {
-    let blocking_audits = audit_active_skills(paths, resolution, dry_run)?;
+fn ensure_no_blocking_audits(blocking_audits: &[String]) -> DaloResult<()> {
     if blocking_audits.is_empty() {
         return Ok(());
     }
@@ -1215,6 +1190,7 @@ fn ensure_active_skills_pass_audit(
 fn collect_degraded_sources(
     live: &resolver::LiveResolution,
     refresh_failures: Vec<source::TrackingSourceRefreshFailure>,
+    audit_failures: &[audit::ActiveAuditFailure],
 ) -> Vec<materialize::DegradedSource> {
     let mut degraded_sources = live
         .scans
@@ -1246,6 +1222,28 @@ fn collect_degraded_sources(
                 id: failure.id,
                 path: failure.path,
                 reason: failure.reason,
+            });
+        }
+    }
+    for failure in audit_failures {
+        let reason = format!(
+            "security audit failed for {}: {}",
+            failure.source_ref, failure.reason
+        );
+        if let Some(existing) = degraded_sources
+            .iter_mut()
+            .find(|source| source.id == failure.source_id)
+        {
+            existing.reason = format!("{}; {reason}", existing.reason);
+        } else if let Some(scan) = live
+            .scans
+            .iter()
+            .find(|scan| scan.source.id == failure.source_id)
+        {
+            degraded_sources.push(materialize::DegradedSource {
+                id: failure.source_id.clone(),
+                path: scan.source.path.clone(),
+                reason,
             });
         }
     }
@@ -1638,9 +1636,11 @@ fn run_source_remove(
     let mut plan =
         source::plan_remove_source(paths, &args.id, args.keep_checkout, options.dry_run)?;
     let previous_user_lock = store::read_user_lock(paths)?;
-    let live = resolver::resolve_from_config(&plan.config, plan.approvals.approvals.clone());
-    ensure_active_skills_pass_audit(paths, &live.resolution, options.dry_run)?;
-    let degraded_sources = collect_degraded_sources(&live, Vec::new());
+    let mut live = resolver::resolve_from_config(&plan.config, plan.approvals.approvals.clone());
+    let audits = audit::audit_active_skills(paths, &live.resolution, !options.dry_run);
+    ensure_no_blocking_audits(&audits.blocking)?;
+    resolver::degrade_audit_failures(&mut live.resolution, &audits.failures);
+    let degraded_sources = collect_degraded_sources(&live, Vec::new(), &audits.failures);
     let (materialization, rollback) = materialize::materialize_with_degraded_sources_rollback(
         paths,
         &live.resolution,

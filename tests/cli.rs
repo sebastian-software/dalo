@@ -3544,6 +3544,79 @@ fn sync_should_preserve_owned_symlink_when_source_scan_is_degraded() {
 }
 
 #[test]
+fn status_and_sync_should_degrade_a_single_skill_audit_io_failure() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_skill_and_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    let report_path = std::fs::read_dir(store.join("audits"))
+        .expect("audit directory should be readable")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .find(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "json")
+        })
+        .expect("sync should persist an audit report");
+    std::fs::remove_file(&report_path).expect("audit report should be removed");
+    std::fs::create_dir(&report_path)
+        .expect("a directory at the report path should force an audit I/O error");
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let status: serde_json::Value =
+        serde_json::from_slice(&output).expect("status should emit valid JSON");
+    assert_eq!(status["audit_failures"][0]["source_ref"], "local:review");
+    assert_eq!(status["audit_failures"][0]["source_id"], "local");
+    assert!(
+        status["resolution"]["active_skills"]
+            .as_array()
+            .is_some_and(Vec::is_empty)
+    );
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("security audit failures:"))
+        .stdout(predicate::str::contains("local:review"))
+        .stdout(predicate::str::contains("audit_failed:"));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("degraded source: local"))
+        .stdout(predicate::str::contains(
+            "scan degraded; preserving recorded owned link",
+        ));
+    assert!(
+        std::fs::symlink_metadata(target.join("review"))
+            .expect("the previously linked skill should be preserved")
+            .file_type()
+            .is_symlink()
+    );
+}
+
+#[test]
 fn sync_should_preserve_owned_symlink_when_slot_name_is_invalidated() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

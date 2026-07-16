@@ -49,6 +49,7 @@ These appear in `status.resolution.diagnostics` and in related text output.
 | `required_expanded` | A selected catalog skill pulled in a same-catalog dependency through `requires`. | No action required if the dependency is expected. Review the dependency before syncing. |
 | `cross_source_require` | A `requires` entry points at another source. Dalo reports it but does not auto-install across sources. | Select or add the dependency explicitly, or change the skill metadata to use a same-source requirement. |
 | `required_blocked` | A skill was held back because a required closure cannot be linked. | Use the closure block reason below to fix the dependency, approval, shadowing, or target conflict. |
+| `audit_failed` | Dalo could not complete the security audit for one active skill. The owning source is degraded and existing owned links are preserved until the audit succeeds. | Inspect `status.audit_failures`, restore the reported path or permissions, then rerun `dalo status` or `dalo sync`. |
 
 ### Required-Closure Block Reasons
 

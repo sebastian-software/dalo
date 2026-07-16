@@ -173,6 +173,8 @@ pub enum ResolutionDiagnosticCode {
     RequiredBlocked,
     /// A legacy bare approval matched a pending skill but is no longer accepted.
     LegacyBareApproval,
+    /// A resolved skill could not complete its security audit.
+    AuditFailed,
 }
 
 impl ResolutionDiagnosticCode {
@@ -185,6 +187,7 @@ impl ResolutionDiagnosticCode {
                 | Self::CrossSourceRequire
                 | Self::RequiredBlocked
                 | Self::LegacyBareApproval
+                | Self::AuditFailed
         )
     }
 }
@@ -501,6 +504,92 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
     }
 }
 
+/// Remove skills whose audit failed and propagate the block through same-source
+/// requirement closures. The owning source is degraded separately by callers so
+/// existing links are preserved until a complete audit is possible again.
+pub fn degrade_audit_failures(
+    resolution: &mut Resolution,
+    failures: &[crate::audit::ActiveAuditFailure],
+) {
+    if failures.is_empty() {
+        return;
+    }
+
+    let failure_by_ref = failures
+        .iter()
+        .map(|failure| (failure.source_ref.as_str(), failure.reason.as_str()))
+        .collect::<BTreeMap<_, _>>();
+    let mut unavailable = Vec::new();
+    let mut active = Vec::new();
+    for skill in std::mem::take(&mut resolution.active_skills) {
+        if let Some(reason) = failure_by_ref.get(skill.source_ref.as_str()) {
+            resolution.diagnostics.push(ResolutionDiagnostic {
+                code: ResolutionDiagnosticCode::AuditFailed,
+                message: format!("security audit failed for `{}`: {reason}", skill.source_ref),
+                source_ref: Some(skill.source_ref.clone()),
+            });
+            unavailable.push(skill);
+        } else {
+            active.push(skill);
+        }
+    }
+    resolution.active_skills = active;
+
+    while let Some((index, requirement)) =
+        resolution
+            .active_skills
+            .iter()
+            .enumerate()
+            .find_map(|(index, dependent)| {
+                dependent.requires.iter().find_map(|requirement| {
+                    unavailable
+                        .iter()
+                        .any(|blocked| {
+                            blocked.source_id == dependent.source_id
+                                && requirement_matches_resolved(requirement, blocked)
+                        })
+                        .then(|| (index, requirement.clone()))
+                })
+            })
+    {
+        let skill = resolution.active_skills.remove(index);
+        resolution.diagnostics.push(ResolutionDiagnostic {
+            code: ResolutionDiagnosticCode::RequiredBlocked,
+            message: format!(
+                "skill `{}` is blocked: requirement `{requirement}` is unlinked",
+                skill.source_ref
+            ),
+            source_ref: Some(skill.source_ref.clone()),
+        });
+        resolution.blocked_skills.push(BlockedSkill {
+            skill: skill.clone(),
+            requirement,
+            reason: ClosureBlockReason::Unlinked,
+        });
+        unavailable.push(skill);
+    }
+
+    resolution.active_skills.sort_by(|left, right| {
+        left.slot_name
+            .cmp(&right.slot_name)
+            .then_with(|| left.source_ref.cmp(&right.source_ref))
+    });
+    resolution
+        .blocked_skills
+        .sort_by(|left, right| left.skill.source_ref.cmp(&right.skill.source_ref));
+    resolution.diagnostics.sort_by(|left, right| {
+        diagnostic_code_name(left.code)
+            .cmp(diagnostic_code_name(right.code))
+            .then_with(|| left.source_ref.cmp(&right.source_ref))
+    });
+}
+
+fn requirement_matches_resolved(requirement: &str, skill: &ResolvedSkill) -> bool {
+    skill.slot_name == requirement
+        || skill.source_ref == requirement
+        || skill.id.as_deref() == Some(requirement)
+}
+
 fn is_approved(candidate: &Candidate, approvals: &[ApprovalRecord]) -> bool {
     // Local skills and skills from a source the user marked trusted are always
     // approved; everything else needs an explicit approval record.
@@ -593,6 +682,7 @@ pub fn diagnostic_code_name(code: ResolutionDiagnosticCode) -> &'static str {
         ResolutionDiagnosticCode::CrossSourceRequire => "cross_source_require",
         ResolutionDiagnosticCode::RequiredBlocked => "required_blocked",
         ResolutionDiagnosticCode::LegacyBareApproval => "legacy_bare_approval",
+        ResolutionDiagnosticCode::AuditFailed => "audit_failed",
     }
 }
 
@@ -882,9 +972,43 @@ mod tests {
             ResolutionDiagnosticCode::CrossSourceRequire,
             ResolutionDiagnosticCode::RequiredBlocked,
             ResolutionDiagnosticCode::LegacyBareApproval,
+            ResolutionDiagnosticCode::AuditFailed,
         ] {
             assert!(code.requires_review());
         }
+    }
+
+    #[test]
+    fn audit_failure_should_remove_the_skill_and_transitive_dependents() {
+        let mut resolution = resolve_with(
+            vec![source("local", SourceKind::Local, 0)],
+            vec![inventory(
+                "local",
+                vec![
+                    skill_req("local", "alpha", &["beta"]),
+                    skill("local", "beta"),
+                ],
+            )],
+            Vec::new(),
+        );
+
+        degrade_audit_failures(
+            &mut resolution,
+            &[crate::audit::ActiveAuditFailure {
+                source_ref: "local:beta".to_owned(),
+                source_id: "local".to_owned(),
+                reason: "I/O error: permission denied".to_owned(),
+            }],
+        );
+
+        assert!(resolution.active_skills.is_empty());
+        assert_eq!(resolution.blocked_skills.len(), 1);
+        assert_eq!(resolution.blocked_skills[0].skill.source_ref, "local:alpha");
+        assert_eq!(resolution.blocked_skills[0].requirement, "beta");
+        assert!(resolution.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == ResolutionDiagnosticCode::AuditFailed
+                && diagnostic.source_ref.as_deref() == Some("local:beta")
+        }));
     }
 
     #[test]

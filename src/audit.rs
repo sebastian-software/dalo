@@ -17,6 +17,7 @@ use tempfile::NamedTempFile;
 use crate::catalog;
 use crate::error::{DaloError, DaloResult};
 use crate::inventory;
+use crate::resolver::Resolution;
 use crate::store::{self, StorePaths};
 
 /// Persisted audit report schema version.
@@ -307,6 +308,58 @@ pub struct AuditOptions {
     pub persist: bool,
     /// Record an explicit risk acceptance on this exact content hash.
     pub accept_risk: Option<String>,
+}
+
+/// One active skill whose audit could not be completed safely.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ActiveAuditFailure {
+    /// Source-qualified skill reference.
+    pub source_ref: String,
+    /// Owning source ID used for per-source degradation.
+    pub source_id: String,
+    /// Human-readable audit error.
+    pub reason: String,
+}
+
+/// Aggregate audit-gate result for a resolved active skill set.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ActiveAuditOutcome {
+    /// Skills with completed reports that still contain blocking findings.
+    pub blocking: Vec<String>,
+    /// Skills whose audit could not be completed.
+    pub failures: Vec<ActiveAuditFailure>,
+}
+
+/// Audit every active skill while isolating technical failures per skill.
+#[must_use = "audit failures and blocking findings must be handled before materialization"]
+pub fn audit_active_skills(
+    paths: &StorePaths,
+    resolution: &Resolution,
+    persist: bool,
+) -> ActiveAuditOutcome {
+    let mut outcome = ActiveAuditOutcome::default();
+    for skill in &resolution.active_skills {
+        match audit_skill(
+            paths,
+            &skill.source_ref,
+            &skill.path,
+            &AuditOptions {
+                persist,
+                ..AuditOptions::default()
+            },
+        ) {
+            Ok(report) if report.is_blocking() => {
+                outcome.blocking.push(skill.source_ref.clone());
+            }
+            Ok(_) => {}
+            Err(error) => outcome.failures.push(ActiveAuditFailure {
+                source_ref: skill.source_ref.clone(),
+                source_id: skill.source_id.clone(),
+                reason: error.to_string(),
+            }),
+        }
+    }
+    outcome
 }
 
 impl Default for AuditOptions {
