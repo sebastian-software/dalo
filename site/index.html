@@ -274,20 +274,22 @@
         <article class="feature-row feature-row-flip reveal">
           <div class="feature-text">
             <span class="feature-index">04</span>
-            <h3>Selective catalogs</h3>
+            <h3>Team-composed catalogs</h3>
             <p>
-              Public skill repositories are often catalogs, not one-skill packages.
-              Add a catalog source, inspect its inventory, select only the skills you
-              want, and keep the selection pinned with read-only drift checks.
+              A team repository can combine its own skills with external skill sets.
+              Use <code>dalo team catalog add</code> to pin an immutable Git commit in
+              <code>dalo.toml</code>, then apply explicit filters: <code>+</code>
+              includes a skill and <code>-</code> excludes it. An empty list selects all.
             </p>
           </div>
           <div class="feature-aside">
             <div class="store-card">
-              <span class="store-path">catalog flow</span>
+              <span class="store-path">team catalog manifest</span>
               <ul class="store-tree">
-                <li><span class="c-accent">inspect</span> <span class="c-dim">40 offered skills</span></li>
-                <li><span class="c-accent">select</span> <span class="c-dim">3 team-approved skills</span></li>
-                <li><span class="c-accent">check</span> <span class="c-dim">upstream drift before changing pins</span></li>
+                <li><span class="c-accent">version</span> <span class="c-dim">one immutable upstream commit</span></li>
+                <li><span class="c-accent">+copywriting</span> <span class="c-dim">include explicitly</span></li>
+                <li><span class="c-accent">-seo-audit</span> <span class="c-dim">exclude explicitly</span></li>
+                <li><span class="c-accent">skills = []</span> <span class="c-dim">select everything</span></li>
               </ul>
             </div>
           </div>
@@ -383,7 +385,7 @@
         <li class="step reveal">
           <span class="step-n">2</span>
           <h3>Add a source</h3>
-          <p>Connect a team repository of shared skills. Dalo checks it out into the store and tracks its branch.</p>
+          <p>Connect a team repository of shared skills. Its checked-in <code>dalo.toml</code> can also compose commit-pinned external catalogs, so every teammate resolves the same declared selection.</p>
           <code class="step-cmd">dalo source add company git@github.com:acme/agent-skills.git</code>
         </li>
         <li class="step reveal">

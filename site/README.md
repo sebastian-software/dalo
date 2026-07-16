@@ -13,7 +13,7 @@ Before redeploying `dalo.sh`, verify the static site against the shipped repo st
 Quick checks:
 
 ```sh
-rg -n "v[0-9]+\\.[0-9]+\\.[0-9]+|~/.agents/skills|catalog|instruction" site/index.html
+rg -n "v[0-9]+\\.[0-9]+\\.[0-9]+|~/.agents/skills|dalo team catalog add|dalo.toml|instruction" site/index.html
 rg -n "version = " Cargo.toml
 rg -n "Codex|OpenClaw" README.md src/target.rs site/index.html
 sh -n site/install.sh
