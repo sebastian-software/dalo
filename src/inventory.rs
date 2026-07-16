@@ -189,6 +189,14 @@ fn find_skill_dirs(
                 }
             };
             if file_type.is_symlink() {
+                // Regular-file symlinks cannot contain a skill subtree, so they
+                // are irrelevant to directory discovery. Repositories commonly
+                // alias instruction files (for example CLAUDE.md -> AGENTS.md),
+                // and treating those as a degraded skill inventory would make
+                // otherwise compatible catalogs permanently unhealthy.
+                if fs::metadata(entry.path()).is_ok_and(|metadata| metadata.is_file()) {
+                    continue;
+                }
                 warnings.push(InventoryWarning {
                     code: InventoryWarningCode::SkippedSymlink,
                     path: entry.path(),
@@ -695,6 +703,25 @@ mod tests {
             inventory.warnings[0].code,
             InventoryWarningCode::SkippedSymlink
         );
+    }
+
+    #[test]
+    fn scan_source_should_ignore_regular_file_symlinks() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let source_root = temp_dir.path().join("checkout");
+        fs::create_dir_all(source_root.join("skills/review"))
+            .expect("skill directory should be created");
+        fs::write(source_root.join("AGENTS.md"), "# Instructions\n")
+            .expect("instruction file should be written");
+        std::os::unix::fs::symlink("AGENTS.md", source_root.join("CLAUDE.md"))
+            .expect("instruction alias should be linked");
+        fs::write(source_root.join("skills/review/SKILL.md"), "# Review\n")
+            .expect("skill file should be written");
+
+        let inventory = scan_source("team", &source_root).expect("scan should succeed");
+
+        assert_eq!(inventory.skills.len(), 1);
+        assert!(inventory.warnings.is_empty());
     }
 
     #[test]

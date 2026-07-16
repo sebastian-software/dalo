@@ -55,6 +55,8 @@ impl UserConfig {
                 branch: None,
                 update_policy: None,
                 selection: Vec::new(),
+                declared_by: None,
+                declared_ref: None,
             }],
         }
     }

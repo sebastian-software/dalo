@@ -788,6 +788,12 @@ pub fn print_source_remove_report(report: &SourceRemoveReport) {
             report.checkout_path.display()
         );
     }
+    if !report.cascaded_sources.is_empty() {
+        println!(
+            "  manifest-derived sources: {}",
+            report.cascaded_sources.join(", ")
+        );
+    }
     println!("  approvals removed: {}", report.removed_approvals);
     println!("  catalog lock removed: {}", report.removed_catalog_lock);
     if !report.deactivated_skills.is_empty() {
@@ -818,13 +824,18 @@ pub fn print_source_list_report(report: &SourceListReport) {
         return;
     }
     for source in &report.sources {
+        let managed = source
+            .declared_by
+            .as_ref()
+            .map_or(String::new(), |team| format!(" managed-by={team}"));
         println!(
-            "{:<12} {:<5} priority={:<4} enabled={} {}",
+            "{:<12} {:<7} priority={:<4} enabled={} {}{}",
             source.id,
             source.kind,
             source.priority,
             source.enabled,
-            source.path.display()
+            source.path.display(),
+            managed
         );
     }
 }

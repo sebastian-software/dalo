@@ -1,5 +1,6 @@
 //! Source definitions and source operations.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
@@ -74,6 +75,12 @@ pub struct SourceConfig {
     /// for non-catalog sources.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub selection: Vec<String>,
+    /// Team source whose `dalo.toml` declaration manages this source.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub declared_by: Option<String>,
+    /// Revision requested by the declaring team manifest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub declared_ref: Option<String>,
 }
 
 /// Source add report.
@@ -140,6 +147,10 @@ pub struct SourceRemoveReport {
     pub source_id: String,
     /// Checkout path associated with the source.
     pub checkout_path: PathBuf,
+    /// Manifest-derived child source IDs removed with a team source.
+    pub cascaded_sources: Vec<String>,
+    /// Manifest-derived child checkouts removed with a team source.
+    pub cascaded_checkout_paths: Vec<PathBuf>,
     /// Whether the checkout was retained at the user's request.
     pub kept_checkout: bool,
     /// Number of source-scoped approval records removed.
@@ -190,6 +201,14 @@ pub fn plan_remove_source(
                     .collect(),
             )
         })?;
+    if let Some(team) = &source.declared_by {
+        return Err(DaloError::CheckFailed {
+            reason: format!(
+                "source `{id}` is managed by `{team}`; edit `{}` in that team repository",
+                crate::team_manifest::TEAM_MANIFEST_FILE
+            ),
+        });
+    }
     if source.kind == SourceKind::Local {
         return Err(DaloError::InvalidSourceId {
             id: id.to_owned(),
@@ -198,19 +217,35 @@ pub fn plan_remove_source(
     }
     let original_source_lock = catalog::read_source_lock(paths)?;
     let original_approvals = store::read_approvals(paths)?;
+    let mut removed_sources = original_config
+        .sources
+        .iter()
+        .filter(|candidate| candidate.id == id || candidate.declared_by.as_deref() == Some(id))
+        .cloned()
+        .collect::<Vec<_>>();
+    removed_sources.sort_by(|left, right| left.id.cmp(&right.id));
+    let removed_source_ids = removed_sources
+        .iter()
+        .map(|candidate| candidate.id.clone())
+        .collect::<BTreeSet<_>>();
     let mut config = original_config.clone();
-    config.sources.retain(|candidate| candidate.id != id);
+    config
+        .sources
+        .retain(|candidate| !removed_source_ids.contains(&candidate.id));
     sort_sources(&mut config.sources);
     let mut source_lock = original_source_lock.clone();
     let before_catalogs = source_lock.catalogs.len();
-    source_lock.catalogs.retain(|entry| entry.source_id != id);
+    source_lock
+        .catalogs
+        .retain(|entry| !removed_source_ids.contains(&entry.source_id));
     let removed_catalog_lock = source_lock.catalogs.len() != before_catalogs;
     let mut approvals = original_approvals.clone();
-    let source_prefix = format!("{id}:");
     let before_approvals = approvals.approvals.len();
     approvals.approvals.retain(|approval| {
-        !(approval.value.starts_with(&source_prefix)
-            || approval.scope == "source" && approval.value == id)
+        !removed_source_ids.iter().any(|source_id| {
+            approval.value.starts_with(&format!("{source_id}:"))
+                || approval.scope == "source" && approval.value == *source_id
+        })
     });
     let removed_approvals = before_approvals - approvals.approvals.len();
 
@@ -221,13 +256,18 @@ pub fn plan_remove_source(
         paths.lock_file.clone(),
         paths.state_file.clone(),
     ];
+    let cascaded = removed_sources
+        .iter()
+        .filter(|candidate| candidate.id != id)
+        .cloned()
+        .collect::<Vec<_>>();
     if !keep_checkout {
-        affected_paths.push(
-            source
+        affected_paths.extend(removed_sources.iter().map(|candidate| {
+            candidate
                 .path
                 .parent()
-                .map_or_else(|| source.path.clone(), Path::to_path_buf),
-        );
+                .map_or_else(|| candidate.path.clone(), Path::to_path_buf)
+        }));
     }
 
     Ok(SourceRemovalPlan {
@@ -240,6 +280,8 @@ pub fn plan_remove_source(
         report: SourceRemoveReport {
             source_id: id.to_owned(),
             checkout_path: source.path,
+            cascaded_sources: cascaded.iter().map(|source| source.id.clone()).collect(),
+            cascaded_checkout_paths: cascaded.iter().map(|source| source.path.clone()).collect(),
             kept_checkout: keep_checkout,
             removed_approvals,
             removed_catalog_lock,
@@ -398,6 +440,8 @@ where
         branch: None,
         update_policy: Some("track".to_owned()),
         selection: Vec::new(),
+        declared_by: None,
+        declared_ref: None,
     };
 
     if dry_run {
@@ -591,6 +635,14 @@ pub fn set_source_priority(
                 .collect(),
         ));
     };
+    if let Some(team) = &source.declared_by {
+        return Err(DaloError::CheckFailed {
+            reason: format!(
+                "source `{id}` is managed by `{team}`; edit `{}` in that team repository",
+                crate::team_manifest::TEAM_MANIFEST_FILE
+            ),
+        });
+    }
     // The local source is the guaranteed override (priority 0); refuse to move it,
     // otherwise a team skill could shadow a locally adapted one.
     if source.kind == SourceKind::Local {
@@ -1078,6 +1130,8 @@ mod tests {
                 branch: None,
                 update_policy: Some("track".to_owned()),
                 selection: Vec::new(),
+                declared_by: None,
+                declared_ref: None,
             }],
         };
 
@@ -1113,6 +1167,8 @@ mod tests {
                 branch: None,
                 update_policy: Some("track".to_owned()),
                 selection: Vec::new(),
+                declared_by: None,
+                declared_ref: None,
             }],
         };
 

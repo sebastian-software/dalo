@@ -180,6 +180,8 @@ pub fn add_catalog_source(
         branch: None,
         update_policy: Some("pin".to_owned()),
         selection: Vec::new(),
+        declared_by: None,
+        declared_ref: None,
     };
 
     if dry_run {
@@ -250,7 +252,16 @@ pub fn select_skills(
     unselect: bool,
     dry_run: bool,
 ) -> DaloResult<CatalogSelectReport> {
-    let source_path = catalog_source(paths, id)?.path;
+    let configured_source = catalog_source(paths, id)?;
+    if let Some(team) = &configured_source.declared_by {
+        return Err(DaloError::CheckFailed {
+            reason: format!(
+                "catalog `{id}` is managed by `{team}`; edit `{}` in that team repository",
+                crate::team_manifest::TEAM_MANIFEST_FILE
+            ),
+        });
+    }
+    let source_path = configured_source.path;
     let scan = scan_catalog(&source_path)?;
     let candidates = catalog_candidates_from_scan(&source_path, &scan);
     let mut resolved = Vec::with_capacity(refs.len());
@@ -756,6 +767,19 @@ pub fn check_catalog_drift(paths: &StorePaths, id: &str) -> DaloResult<CatalogDr
         .ok_or_else(|| DaloError::unknown_source(id, Vec::new()))?
         .clone();
 
+    // A team manifest is the update authority for a derived catalog. Its
+    // declared version is reconciled during sync, so the remote default branch
+    // is not meaningful drift for this pinned source.
+    if source.declared_by.is_some() {
+        return Ok(CatalogDrift {
+            source_id: id.to_owned(),
+            pinned_commit: catalog_lock.commit.clone(),
+            upstream_commit: catalog_lock.commit,
+            outcomes: Vec::new(),
+            migration_warnings,
+        });
+    }
+
     git::fetch(&source.path)?;
     git::prune_worktrees(&source.path)?;
     let upstream_commit = git::rev_parse(&source.path, "FETCH_HEAD")?;
@@ -791,6 +815,14 @@ pub fn advance_catalog(
 ) -> DaloResult<CatalogAdvanceReport> {
     let config = store::read_config(paths)?;
     let source = catalog_source_from_config(&config.sources, id)?;
+    if let Some(team) = &source.declared_by {
+        return Err(DaloError::CheckFailed {
+            reason: format!(
+                "catalog `{id}` is pinned by `{team}`; update its version in `{}`",
+                crate::team_manifest::TEAM_MANIFEST_FILE
+            ),
+        });
+    }
     if git::is_dirty(&source.path)? {
         return Err(DaloError::DirtySource {
             source_id: id.to_owned(),

@@ -87,6 +87,37 @@ pub fn fetch_upstream(path: &Path) -> DaloResult<()> {
     run_git_network(path, &["fetch", "--quiet"]).map(|_| ())
 }
 
+/// Resolve a manifest-declared revision to a concrete commit.
+///
+/// Remote branches are preferred over local branches so a freshly fetched
+/// branch name cannot accidentally resolve to a stale local tracking branch.
+pub fn resolve_manifest_revision(path: &Path, revision: &str) -> DaloResult<String> {
+    if revision.is_empty() || revision.starts_with('-') || revision.chars().any(char::is_whitespace)
+    {
+        return Err(DaloError::CheckFailed {
+            reason: format!("invalid manifest Git revision `{revision}`"),
+        });
+    }
+
+    let remote = format!("refs/remotes/origin/{revision}^{{commit}}");
+    match rev_parse(path, &remote) {
+        Ok(commit) => Ok(commit),
+        Err(_) => {
+            let requested = format!("{revision}^{{commit}}");
+            rev_parse(path, &requested)
+        }
+    }
+}
+
+/// Move a clean managed checkout to an exact detached commit.
+pub fn checkout_detached(path: &Path, commit: &str) -> DaloResult<()> {
+    run_git(
+        path,
+        &["checkout", "--detach", "--force", "--quiet", commit],
+    )
+    .map(|_| ())
+}
+
 /// Count commits reachable from `to` but not from `from`.
 pub fn revision_count(path: &Path, from: &str, to: &str) -> DaloResult<usize> {
     let range = format!("{from}..{to}");

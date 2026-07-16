@@ -32,6 +32,8 @@ The V1.1 catalog and instruction-pack layer is also implemented:
 - Same-catalog required-closure expansion with approval and linkability preflight.
 - Instruction packs rendered into isolated managed blocks through `instructions enable` and removed through `instructions disable`.
 - Instruction pack discovery, `instructions list`, and topic-overlap warnings in `status` and `doctor`.
+- Team-owned `dalo.toml` composition of pinned external catalogs, including
+  include/exclude skill filters and local approval gating.
 
 Distribution work is wired for the next tagged release:
 
@@ -41,7 +43,7 @@ Distribution work is wired for the next tagged release:
 
 ## Still Planned
 
-- External sources declared by trusted sources.
+- Non-catalog external sources with subpath scoping.
 - Lock-advancing `source refresh` that opens lockfile PRs or updates pins.
 - Full interactive resolve assistant.
 - Rename/adapt flows for conflicts.

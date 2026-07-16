@@ -1318,6 +1318,8 @@ mod tests {
                 branch: None,
                 update_policy: None,
                 selection: Vec::new(),
+                declared_by: None,
+                declared_ref: None,
             }],
         };
         store::write_config(&paths, &config).expect("config should be written");
@@ -1339,6 +1341,8 @@ mod tests {
             branch: None,
             update_policy: None,
             selection: Vec::new(),
+            declared_by: None,
+            declared_ref: None,
         }];
         if let Some(local_repo) = local_repo {
             sources.push(SourceConfig {
@@ -1352,6 +1356,8 @@ mod tests {
                 branch: None,
                 update_policy: None,
                 selection: Vec::new(),
+                declared_by: None,
+                declared_ref: None,
             });
         }
         let config = UserConfig {

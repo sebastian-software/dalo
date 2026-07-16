@@ -281,17 +281,8 @@ path = "skills"
 [[catalog]]
 id = "marketing-skills"
 url = "https://github.com/example/marketing-skills.git"
-ref = "main"
-
-[[catalog.select]]
-catalog = "marketing-skills"
-skill = "positioning"
-path = "skills/positioning"
-
-[[catalog.select]]
-catalog = "marketing-skills"
-skill = "launch-copy"
-path = "skills/launch-copy"
+version = "789abcdef0123456789abcdef0123456789abcd"
+skills = ["+positioning", "+launch-copy"]
 
 [[instructions]]
 id = "company.engineering-defaults"

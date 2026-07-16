@@ -34,6 +34,7 @@ Milestones are intentionally small and stable. Progress is tracked by changing t
 | M14 | [Instruction Pack Managed Blocks](0014-instruction-pack-managed-blocks.md) | done | Render versioned instruction packs into isolated managed blocks in agent files. |
 | M15 | [Instruction Pack Discovery and Overlap](0015-instruction-pack-discovery-overlap.md) | done | Discover packs across sources and warn on topic overlap between active packs. |
 | M16 | [V1.1 Release Readiness](0016-v1-1-release-readiness.md) | done | Harden the V1.1 surface, docs, and tests, and reconnect prepared fields. |
+| M17 | [Team Catalog Composition](0017-team-catalog-composition.md) | done | Compose pinned external catalogs through a versioned team manifest. |
 
 ## Recommended Order
 
