@@ -77,6 +77,38 @@ fn autosync_status_should_report_not_installed_after_init() {
 }
 
 #[test]
+fn status_should_degrade_gracefully_for_invalid_autosync_state() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::write(store.join("autosync.toml"), "not = [valid toml")
+        .expect("invalid autosync state should be written");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"installed\": true"))
+        .stdout(predicate::str::contains("\"scheduler_error\""))
+        .stdout(predicate::str::contains(
+            "autosync state could not be inspected",
+        ));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["status", "--check"])
+        .assert()
+        .failure();
+}
+
+#[test]
 fn autosync_run_should_persist_success_and_previous_success_time() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
