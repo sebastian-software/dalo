@@ -21,6 +21,7 @@ cargo fmt --check
 cargo test
 sh tests/install.sh
 sh tests/docs.sh
+sh tests/workflows.sh
 (cd npm && npm test)
 cargo clippy --all-targets --all-features -- -D warnings
 cargo build --release
