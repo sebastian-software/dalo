@@ -99,7 +99,7 @@ pub enum DoctorCode {
     LockOk,
     /// Lock cannot be parsed.
     LockInvalid,
-    /// Catalog source lock parses.
+    /// Catalog source lock is present and parses.
     SourceLockOk,
     /// Catalog source lock cannot be parsed.
     SourceLockInvalid,
@@ -213,7 +213,7 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
     }
 
     if let Some(config) = config.as_ref() {
-        check_sources(config, source_lock.as_ref(), &mut findings);
+        check_sources(config, &source_lock, &mut findings);
         check_source_store_debris(&paths, config, &mut findings);
     }
 
@@ -432,14 +432,37 @@ fn read_approvals(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) -> Opti
     }
 }
 
-fn read_source_lock(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) -> Option<SourceLock> {
+enum SourceLockRead {
+    Missing,
+    Readable(SourceLock),
+    Invalid,
+}
+
+impl SourceLockRead {
+    fn lock(&self) -> Option<&SourceLock> {
+        match self {
+            Self::Readable(lock) => Some(lock),
+            Self::Missing | Self::Invalid => None,
+        }
+    }
+
+    fn can_check_provenance(&self) -> bool {
+        !matches!(self, Self::Invalid)
+    }
+}
+
+fn read_source_lock(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) -> SourceLockRead {
+    if !paths.source_lock_file.exists() {
+        return SourceLockRead::Missing;
+    }
+
     match catalog::read_source_lock(paths) {
         Ok(lock) => {
             findings.push(ok(
                 DoctorCode::SourceLockOk,
-                "catalog source lock is readable",
+                "catalog source lock is present and readable",
             ));
-            Some(lock)
+            SourceLockRead::Readable(lock)
         }
         Err(error) => {
             findings.push(finding_error(
@@ -447,7 +470,7 @@ fn read_source_lock(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) -> Op
                 format!("catalog source lock could not be read: {error}"),
                 Some("inspect source-lock.toml before syncing".to_owned()),
             ));
-            None
+            SourceLockRead::Invalid
         }
     }
 }
@@ -641,7 +664,7 @@ fn owned_selector(owned: &OwnedSkillState) -> String {
 
 fn check_sources(
     config: &UserConfig,
-    source_lock: Option<&SourceLock>,
+    source_lock: &SourceLockRead,
     findings: &mut Vec<DoctorFinding>,
 ) {
     for source in config.sources.iter().filter(|source| source.enabled) {
@@ -687,8 +710,8 @@ fn check_sources(
                 None,
             )),
         }
-        if source.declared_by.is_some() {
-            check_manifest_source_provenance(source, config, source_lock, findings);
+        if source.declared_by.is_some() && source_lock.can_check_provenance() {
+            check_manifest_source_provenance(source, config, source_lock.lock(), findings);
         }
     }
 }
@@ -1149,6 +1172,76 @@ mod tests {
                 .any(|finding| finding.code == DoctorCode::StoreMissing)
         );
         assert!(!store.exists());
+    }
+
+    #[test]
+    fn read_source_lock_should_not_report_a_missing_file_as_readable() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let paths = StorePaths::new(temp_dir.path().join("store"));
+        let mut findings = Vec::new();
+
+        let source_lock = read_source_lock(&paths, &mut findings);
+
+        assert!(matches!(source_lock, SourceLockRead::Missing));
+        assert!(!findings.iter().any(|finding| {
+            matches!(
+                finding.code,
+                DoctorCode::SourceLockOk | DoctorCode::SourceLockInvalid
+            )
+        }));
+    }
+
+    #[test]
+    fn run_doctor_should_not_compare_provenance_when_source_lock_is_invalid() {
+        use crate::config::Settings;
+
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store = temp_dir.path().join("store");
+        let catalog_repo = temp_dir.path().join("catalog");
+        store::init_store(store.clone(), false).expect("init should succeed");
+        create_git_skill_repo(&catalog_repo);
+        let paths = StorePaths::new(store.clone());
+        let config = UserConfig {
+            version: crate::config::CONFIG_VERSION,
+            settings: Settings {
+                autosync: false,
+                sync_interval: None,
+            },
+            sources: vec![SourceConfig {
+                id: "team.marketing".to_owned(),
+                kind: SourceKind::Catalog,
+                path: catalog_repo,
+                priority: 11,
+                enabled: true,
+                trusted: false,
+                url: Some("https://example.com/marketing.git".to_owned()),
+                branch: None,
+                update_policy: Some("manifest".to_owned()),
+                selection: Vec::new(),
+                declared_by: Some("team".to_owned()),
+                declared_ref: Some("main".to_owned()),
+            }],
+        };
+        store::write_config(&paths, &config).expect("config should be written");
+        fs::write(&paths.source_lock_file, "schema_version = ")
+            .expect("source lock should be corrupted");
+
+        let report = run_doctor(&store);
+
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|finding| finding.code == DoctorCode::SourceLockInvalid)
+        );
+        assert!(!report.findings.iter().any(|finding| {
+            matches!(
+                finding.code,
+                DoctorCode::SourceLockOk
+                    | DoctorCode::SourceProvenanceOk
+                    | DoctorCode::SourceProvenanceMismatch
+            )
+        }));
     }
 
     #[test]
