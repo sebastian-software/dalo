@@ -771,7 +771,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `source remove` | `SourceRemoveReport` | `source_id`, `checkout_path`, `kept_checkout`, `removed_approvals`, `removed_catalog_lock`, `reconciled_links[]`, `deactivated_skills[]`, `cleanup_warnings[]`, `affected_paths[]`, `dry_run` |
 | `autosync install` / `uninstall` | `AutosyncMutationReport` | `action`, `dry_run`, resulting `status` |
 | `autosync status` | `AutosyncStatusReport` | `configured`, `installed`, `enabled`, backend, schedule, executable, store, artifacts, optional `scheduler_error`, and optional `last_run` |
-| `status` | `StatusReport` | `store`, `sources[]` with `provenance`, `targets[]`, `inventory_warnings[]`, `resolution`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]`, `autosync` |
+| `status` | `StatusReport` | `store`, `sources[]` with `provenance`, `targets[]`, `inventory_warnings[]`, `resolution`, dry-run `materialization[]`, `blocking_audits[]`, `audit_failures[]`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]`, `autosync` |
 | `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, `operations[]` |
 | `audit` | `AuditReport` | `schema_version`, `source_ref`, `skill_path`, `content_hash`, `static_engine_version`, `scanned_at_unix`, `coverage`, `status`, optional `max_severity`, `static_findings[]`, optional `agent_review`, optional `risk_acceptance` |
 | `approve list` | `ApprovalsFile` | `schema_version`, `approvals[]` |
@@ -795,6 +795,11 @@ behaviors. `source add` and `source select` expose security preflight results in
 their top-level `audits[]` arrays. `source add-catalog` returns only the new
 `SourceConfig`: adding a pinned catalog does not audit anything until a skill is
 selected.
+
+Each `StatusReport.audit_failures[]` entry contains `source_ref`, `source_id`,
+and the technical `reason`. The failed skill is omitted from the active
+materialization plan, while the owning source is treated as degraded so an
+existing owned link is not removed solely because the audit was incomplete.
 
 Common status values:
 
@@ -832,7 +837,7 @@ canonical `resolved_commit`, and the observed `checkout_commit`. For catalogs,
 the resolved commit comes from `source-lock.toml`; a differing checkout commit
 is preserved in output so drift remains visible.
 
-Resolution diagnostics use these codes when present in `status.resolution.diagnostics`: `pending_approval`, `local_override`, `shadowed`, `required_expanded`, `cross_source_require`, and `required_blocked`. For recovery steps, see [Troubleshooting and FAQ](troubleshooting.md).
+Resolution diagnostics use these codes when present in `status.resolution.diagnostics`: `pending_approval`, `local_override`, `shadowed`, `required_expanded`, `cross_source_require`, `required_blocked`, `legacy_bare_approval`, and `audit_failed`. For recovery steps, see [Troubleshooting and FAQ](troubleshooting.md).
 
 ## Store Layout
 
