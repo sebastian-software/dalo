@@ -36,6 +36,8 @@ The V1.1 catalog and instruction-pack layer is also implemented:
   include/exclude skill filters and local approval gating.
 - Store-independent `dalo team` management commands for authoring and updating
   the versioned team manifest.
+- Reviewed team catalog pin updates that resolve an upstream ref, preview
+  inventory drift and deterministic audits, and write only the exact commit.
 
 Distribution work is wired for the next tagged release:
 

@@ -106,7 +106,7 @@ pub enum Command {
     Source(SourceCommand),
     /// Author and maintain a team repository's `dalo.toml`.
     #[command(
-        after_help = "Examples:\n  dalo team init company\n  dalo team catalog add marketing https://github.com/coreyhaines31/marketingskills.git --version <commit> --skill +copywriting\n  dalo team catalog skills marketing +copywriting +launch -seo-audit\n  dalo team show"
+        after_help = "Examples:\n  dalo team init company\n  dalo team catalog add marketing https://github.com/coreyhaines31/marketingskills.git --version <commit> --skill +copywriting\n  dalo team catalog skills marketing +copywriting +launch -seo-audit\n  dalo --dry-run team catalog update marketing --from main\n  dalo team show"
     )]
     Team(TeamCommand),
     /// Show managed, unmanaged, and conflicted skill state.
@@ -553,6 +553,8 @@ pub enum TeamCatalogSubcommand {
     Skills(TeamCatalogSkillsArgs),
     /// Change a catalog's pinned version.
     Version(TeamCatalogVersionArgs),
+    /// Resolve an upstream ref and review its next exact commit pin.
+    Update(TeamCatalogUpdateArgs),
     /// Remove a catalog declaration.
     Remove(TeamCatalogIdArgs),
 }
@@ -598,6 +600,17 @@ pub struct TeamCatalogVersionArgs {
 
     /// New Git commit, tag, or ref.
     pub version: String,
+}
+
+/// Arguments for `team catalog update`.
+#[derive(Debug, Args)]
+pub struct TeamCatalogUpdateArgs {
+    /// Catalog ID.
+    pub id: String,
+
+    /// Upstream branch, tag, or ref to resolve and review.
+    #[arg(long = "from", value_name = "REF")]
+    pub from_ref: String,
 }
 
 /// Catalog ID argument.
@@ -1403,6 +1416,28 @@ fn run_team(options: &GlobalOptions, command: TeamCommand) -> DaloResult<()> {
         }
         TeamSubcommand::Catalog(command) => {
             let report = match command.command {
+                TeamCatalogSubcommand::Update(args) => {
+                    let report = team_manifest::update_team_catalog_pin(
+                        &repo,
+                        &args.id,
+                        &args.from_ref,
+                        options.dry_run,
+                    )?;
+                    if options.json {
+                        print_json(&report)?;
+                    } else {
+                        status::print_team_catalog_update(&report);
+                    }
+                    if !report.blocking_reasons.is_empty() {
+                        return Err(DaloError::CheckFailed {
+                            reason: format!(
+                                "team catalog pin was not updated: {}",
+                                report.blocking_reasons.join("; ")
+                            ),
+                        });
+                    }
+                    return Ok(());
+                }
                 TeamCatalogSubcommand::Add(args) => team_manifest::add_team_catalog(
                     &repo,
                     &args.id,

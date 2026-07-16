@@ -29,7 +29,9 @@ use crate::source::{
 };
 use crate::store::{self, ApprovalsFile, InitReport, StorePaths};
 use crate::target::{TargetDetectReport, TargetLinkReport, TargetUnlinkReport};
-use crate::team_manifest::{TeamManifestAction, TeamManifestMutationReport, TeamManifestView};
+use crate::team_manifest::{
+    TeamCatalogUpdateReport, TeamManifestAction, TeamManifestMutationReport, TeamManifestView,
+};
 use crate::term;
 
 /// Full status report.
@@ -1266,6 +1268,53 @@ pub fn print_team_manifest_view(report: &TeamManifestView) {
             catalog.id, catalog.version, skills, catalog.url
         );
     }
+}
+
+/// Print a reviewed team catalog pin update.
+pub fn print_team_catalog_update(report: &TeamCatalogUpdateReport) {
+    println!(
+        "team catalog {}: {} -> {} (from {})",
+        report.catalog_id,
+        short_commit(&report.old_commit),
+        short_commit(&report.candidate_commit),
+        report.from_ref
+    );
+    if report.outcomes.is_empty() {
+        println!("  inventory: unchanged");
+    } else {
+        println!("  inventory:");
+        for outcome in &report.outcomes {
+            println!("    {} {}", outcome.code.as_str(), outcome.message);
+        }
+    }
+    if report.audits.is_empty() {
+        println!("  audits: none");
+    } else {
+        println!("  audits:");
+        for audit in &report.audits {
+            let status = match audit.status {
+                AuditStatus::Clean => "clean",
+                AuditStatus::Review => "review",
+                AuditStatus::Blocked => "blocked",
+            };
+            println!("    {} {status}", audit.source_ref);
+        }
+    }
+    for reason in &report.blocking_reasons {
+        println!("  blocked: {reason}");
+    }
+    let result = if !report.blocking_reasons.is_empty() {
+        "not updated"
+    } else if report.updated {
+        "updated"
+    } else if report.dry_run && report.old_version != report.candidate_commit {
+        "would update"
+    } else if report.old_version == report.candidate_commit {
+        "already current"
+    } else {
+        "not updated"
+    };
+    println!("  result: {result} ({})", report.path.display());
 }
 
 #[cfg(test)]
