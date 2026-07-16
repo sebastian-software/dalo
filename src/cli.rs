@@ -2096,7 +2096,7 @@ fn run_adopt_with_audit(
     let agent = prepare_agent_review(agent)?;
     let audit_report = audit::audit_skill(
         paths,
-        &format!("unmanaged:{}", unmanaged.slot_name),
+        &format!("local:{}", unmanaged.slot_name),
         &unmanaged.path,
         &audit::AuditOptions {
             agent,
