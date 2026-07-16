@@ -539,6 +539,9 @@ JSON output shape: `DoctorReport`.
 
 `--check` exits with code 1 when the report contains an error finding. Warnings
 remain report-only so CI can choose its own warning policy.
+Doctor emits `source_lock_ok` only when `source-lock.toml` exists and parses. If
+the file is malformed, it reports `source_lock_invalid` and suppresses dependent
+catalog provenance comparisons so recovery guidance cannot contradict itself.
 
 ### `dalo audit <skill-or-path>`
 
