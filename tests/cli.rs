@@ -170,6 +170,30 @@ fn autosync_run_should_persist_actionable_block_reason() {
 }
 
 #[test]
+fn status_check_should_ignore_blocked_autosync_run_when_not_installed() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    let paths = store::StorePaths::new(store.clone());
+    let started = dalo::autosync::begin_run(&paths).expect("run should begin");
+    dalo::autosync::finish_run(
+        &paths,
+        started,
+        dalo::autosync::AutosyncRunOutcome::Blocked,
+        Some("previous scheduler failure".to_owned()),
+    )
+    .expect("blocked run should persist");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["status", "--check"])
+        .assert()
+        .success();
+}
+
+#[test]
 fn autosync_run_should_block_managed_instruction_drift() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
