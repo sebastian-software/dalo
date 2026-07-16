@@ -477,7 +477,9 @@ dalo adopt review-helper --replace
 dalo --dry-run adopt /path/to/target/review-helper
 ```
 
-JSON output shape: `AdoptReport`.
+Successful JSON output combines the preflight and mutation as
+`{ "audit": AuditReport, "adoption": AdoptReport }`. If the audit blocks the
+operation, Dalo prints only the blocking `AuditReport` and exits non-zero.
 
 ### `dalo resolve list`
 
@@ -503,7 +505,9 @@ dalo resolve adopt review-helper
 dalo resolve adopt review-helper --replace
 ```
 
-JSON output shape: `AdoptReport`.
+JSON output matches `dalo adopt`: successful output is
+`{ "audit": AuditReport, "adoption": AdoptReport }`; a blocking audit prints
+only `AuditReport` and exits non-zero.
 
 ### `dalo resolve keep <id>`
 
@@ -660,7 +664,11 @@ Skill approval always runs the deterministic preflight first and refuses a
 blocking result unless a reason is supplied with `--accept-risk`. `--agent`
 adds the same isolated semantic review as `dalo audit`.
 
-JSON output shapes: `ApprovalsFile` for `list`; `ApprovalReport` for mutations.
+JSON output shapes: `ApprovalsFile` for `list`; successful `approve skill`
+output is `{ "audit": AuditReport, "approval": ApprovalReport }`; `source`,
+`author`, `org`, and `revoke` mutations emit a bare `ApprovalReport`. If the
+skill audit blocks approval, Dalo prints only the blocking `AuditReport` and
+exits non-zero.
 
 ### `dalo instructions enable <pack> <file>`
 
@@ -767,8 +775,9 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, `operations[]` |
 | `audit` | `AuditReport` | `schema_version`, `source_ref`, `skill_path`, `content_hash`, `static_engine_version`, `scanned_at_unix`, `coverage`, `status`, optional `max_severity`, `static_findings[]`, optional `agent_review`, optional `risk_acceptance` |
 | `approve list` | `ApprovalsFile` | `schema_version`, `approvals[]` |
-| `approve skill` / `source` / `author` / `org` / `revoke` | `ApprovalReport` | `scope`, `value`, `action`, `dry_run` |
-| `adopt` / `resolve adopt` | `AdoptReport` | `slot_name`, `source_path`, `local_path`, `copy`, `replacement` |
+| `approve skill` | audited approval outcome | `audit` (`AuditReport`), `approval` (`ApprovalReport`) |
+| `approve source` / `author` / `org` / `revoke` | `ApprovalReport` | `scope`, `value`, `action`, `dry_run` |
+| `adopt` / `resolve adopt` | audited adoption outcome | `audit` (`AuditReport`), `adoption` (`AdoptReport`) |
 | `resolve list` | `ResolveListReport` | `unmanaged_skills[]`, `target_warnings[]`, `owned_skills[]` |
 | `resolve keep` | `KeepReport` | `skill`, `existing`, `dry_run` |
 | `resolve unkeep` | `UnkeepReport` | `selector`, `removed[]`, `dry_run` |
