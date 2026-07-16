@@ -8,7 +8,11 @@ for document in "$root/README.md" "$root/site/index.html" "$root/site/install.md
 done
 for document in "$root/README.md" "$root/site/index.html" "$root/site/install.md"; do
   grep -q 'brew install sebastian-software/tap/dalo' "$document"
+  grep -q 'dalo source select sebastian pr-review' "$document"
+  grep -q 'dalo approve skill sebastian:pr-review' "$document"
 done
+grep -q 'dalo audit sebastian:pr-review --agent auto' "$root/README.md"
+! grep -R -q 'github-pr-auto-review' "$root/README.md" "$root/site"
 grep -q 'brew uninstall dalo' "$root/docs/uninstall.md"
 grep -q 'data-install-method="homebrew"' "$root/site/index.html"
 grep -q 'data-install-method="standalone"' "$root/site/index.html"
