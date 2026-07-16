@@ -83,7 +83,7 @@ jobs:
           esac
           cd npm
           npm version "$version" --no-git-tag-version
-          test "$(node -p \"require('./package.json').version\")" = "$version"
+          test "$(node -p 'require("./package.json").version')" = "$version"
           npm test
           npm pack --dry-run
           DALO_VERSION="$TAG_NAME" node -e "require('./lib/release').ensureBinary().then(binary => require('node:child_process').execFileSync(binary, ['--version'], { stdio: 'inherit' }))"
