@@ -134,6 +134,41 @@ back to an isolated, marked crontab entry. Scheduled runs never wait on an
 interactive Dalo process, never grant approvals, and leave their latest
 success, skip, or blocking reason visible in `status` and `doctor`.
 
+#### Compose external skill sets for the team
+
+A team repository can include a `dalo.toml` manifest alongside its own
+`skills/` directory. The manifest pins external catalogs and defines the subset
+that every team member should resolve:
+
+```toml
+schema_version = 1
+
+[source]
+id = "company"
+name = "Company Skills"
+kind = "team"
+
+[[catalog]]
+id = "marketing"
+url = "https://github.com/coreyhaines31/marketingskills.git"
+version = "0123456789abcdef0123456789abcdef01234567"
+skills = ["+copywriting", "+launch", "+seo-audit", "-seo-audit"]
+```
+
+`version` accepts a Git commit, tag, or ref; an immutable commit is the most
+reproducible choice. Skill filters follow these rules:
+
+- omitted or empty `skills` selects everything
+- only `-name` entries select everything except those entries
+- any `+name` entry switches to whitelist mode
+- exclusions always win, independent of entry order
+- bare names are accepted as includes for compatibility
+
+The catalog above appears locally as `company.marketing`. URL, version,
+priority, and selection remain owned by the team manifest, while security
+approval remains personal. After the first sync, each team member reviews the
+pending skills and approves an appropriate scope before they are linked.
+
 ### Adopt what works locally
 
 Agents often create useful skills directly in their own folders. Dalo can copy

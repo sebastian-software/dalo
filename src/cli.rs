@@ -23,6 +23,7 @@ use crate::source;
 use crate::status;
 use crate::store;
 use crate::target;
+use crate::team_manifest;
 use crate::update;
 
 /// Parsed command-line arguments.
@@ -826,33 +827,72 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
     } else {
         source::refresh_tracking_team_sources_from_config(&paths, &config)?
     };
-    let approvals = store::read_approvals(&paths)?;
-    let live = resolver::resolve_from_config(&config, approvals.approvals);
-    let blocking_audits = audit_active_skills(&paths, &live.resolution, options.dry_run)?;
-    if !blocking_audits.is_empty() {
-        return Err(DaloError::AuditBlocked {
-            reason: format!(
-                "security audit blocked {} skill{} ({}); inspect with `dalo audit <source:skill>` or record an explicit `--accept-risk` reason",
-                blocking_audits.len(),
-                if blocking_audits.len() == 1 { "" } else { "s" },
-                blocking_audits.join(", ")
-            ),
-        });
-    }
-    let degraded_sources = collect_degraded_sources(&live, refresh_failures);
-    let (report, rollback) = materialize::materialize_with_degraded_sources_rollback(
-        &paths,
-        &live.resolution,
-        options.dry_run,
-        &degraded_sources,
-    )?;
-    if !options.dry_run {
-        let previous = previous.expect("non-dry-run sync reads the user lock before materializing");
-        let mut lock = lockfile::build_user_lock(&config.sources, &live.resolution, Some(&report));
-        // Instruction packs are owned by the `instructions` command; preserve them
-        // across a sync instead of dropping them.
-        lock.active_instruction_packs = previous.active_instruction_packs.clone();
-        write_sync_lock_with_rollback(&paths, &previous, &lock, rollback, store::write_user_lock)?;
+    let (manifest_report, manifest_rollback) = if options.dry_run {
+        (None, None)
+    } else {
+        let (report, rollback) = team_manifest::reconcile_team_manifests(&paths)?;
+        (Some(report), Some(rollback))
+    };
+    let config = if options.dry_run {
+        team_manifest::preview_team_manifests(&paths)?
+    } else {
+        store::read_config(&paths)?
+    };
+    let sync_result = (|| -> DaloResult<materialize::SyncReport> {
+        let approvals = store::read_approvals(&paths)?;
+        let live = resolver::resolve_from_config(&config, approvals.approvals);
+        let blocking_audits = audit_active_skills(&paths, &live.resolution, options.dry_run)?;
+        if !blocking_audits.is_empty() {
+            return Err(DaloError::AuditBlocked {
+                reason: format!(
+                    "security audit blocked {} skill{} ({}); inspect with `dalo audit <source:skill>` or record an explicit `--accept-risk` reason",
+                    blocking_audits.len(),
+                    if blocking_audits.len() == 1 { "" } else { "s" },
+                    blocking_audits.join(", ")
+                ),
+            });
+        }
+        let degraded_sources = collect_degraded_sources(&live, refresh_failures);
+        let (report, rollback) = materialize::materialize_with_degraded_sources_rollback(
+            &paths,
+            &live.resolution,
+            options.dry_run,
+            &degraded_sources,
+        )?;
+        if !options.dry_run {
+            let previous = previous
+                .as_ref()
+                .expect("non-dry-run sync reads the user lock before materializing");
+            let mut lock =
+                lockfile::build_user_lock(&config.sources, &live.resolution, Some(&report));
+            // Instruction packs are owned by the `instructions` command; preserve them
+            // across a sync instead of dropping them.
+            lock.active_instruction_packs = previous.active_instruction_packs.clone();
+            write_sync_lock_with_rollback(
+                &paths,
+                previous,
+                &lock,
+                rollback,
+                store::write_user_lock,
+            )?;
+        }
+        Ok(report)
+    })();
+    let report = match sync_result {
+        Ok(report) => report,
+        Err(error) => {
+            if let Some(rollback) = manifest_rollback
+                && let Err(rollback_error) = rollback.rollback(&paths)
+            {
+                return Err(DaloError::Io(std::io::Error::other(format!(
+                    "{error}; additionally failed to roll back team manifest changes: {rollback_error}"
+                ))));
+            }
+            return Err(error);
+        }
+    };
+    if let Some(manifest_report) = &manifest_report {
+        team_manifest::cleanup_removed_checkouts(&paths, &manifest_report.removed);
     }
 
     if options.json {
@@ -1418,13 +1458,19 @@ fn run_source_remove(
     // Metadata and materialization are committed. Checkout deletion is garbage
     // collection from this point forward: failures are visible but must never
     // restore metadata that points at a partially deleted checkout.
-    if !args.keep_checkout
-        && let Err(error) = cleanup_removed_source_checkout(&plan.report.checkout_path)
-    {
-        plan.report.cleanup_warnings.push(format!(
-            "checkout cleanup incomplete for `{}`: {error}",
-            plan.report.checkout_path.display()
-        ));
+    if !args.keep_checkout {
+        let checkouts = std::iter::once(&plan.report.checkout_path)
+            .chain(plan.report.cascaded_checkout_paths.iter())
+            .cloned()
+            .collect::<Vec<_>>();
+        for checkout in checkouts {
+            if let Err(error) = cleanup_removed_source_checkout(&checkout) {
+                plan.report.cleanup_warnings.push(format!(
+                    "checkout cleanup incomplete for `{}`: {error}",
+                    checkout.display()
+                ));
+            }
+        }
     }
 
     if options.json {
@@ -1460,7 +1506,10 @@ fn populate_source_remove_report(
     report.deactivated_skills = previous_user_lock
         .active_skills
         .iter()
-        .filter(|skill| skill.source_id == report.source_id)
+        .filter(|skill| {
+            skill.source_id == report.source_id
+                || report.cascaded_sources.contains(&skill.source_id)
+        })
         .map(|skill| skill.source_ref.clone())
         .collect();
     report.deactivated_skills.sort();

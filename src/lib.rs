@@ -32,6 +32,7 @@ pub mod source;
 pub mod status;
 pub mod store;
 pub mod target;
+pub mod team_manifest;
 pub mod term;
 pub mod update;
 
