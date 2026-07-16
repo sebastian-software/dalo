@@ -1307,7 +1307,10 @@ mod tests {
             provenance.origin_url.as_deref(),
             Some("https://***@example.com/marketing.git")
         );
-        let origin = provenance.origin_url.as_deref().expect("origin should exist");
+        let origin = provenance
+            .origin_url
+            .as_deref()
+            .expect("origin should exist");
         assert!(!origin.contains("user"));
         assert!(!origin.contains("secret"));
         assert_eq!(provenance.requested_ref.as_deref(), Some("main"));
