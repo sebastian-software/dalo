@@ -896,12 +896,7 @@ fn cleanup_obsolete_staging_worktrees(
     for entry in fs::read_dir(staging_root)? {
         let entry = entry?;
         let path = entry.path();
-        if path == keep
-            || !entry
-                .file_name()
-                .to_string_lossy()
-                .starts_with(&format!("{}-", source.id))
-        {
+        if path == keep || !staging_entry_belongs_to_source(&entry.file_name(), &source.id) {
             continue;
         }
         if git::remove_worktree(&source.path, &path).is_err() {
@@ -909,6 +904,19 @@ fn cleanup_obsolete_staging_worktrees(
         }
     }
     git::prune_worktrees(&source.path)
+}
+
+pub(crate) fn staging_entry_belongs_to_source(name: &std::ffi::OsStr, source_id: &str) -> bool {
+    let Some(name) = name.to_str() else {
+        return false;
+    };
+    let Some(commit) = name
+        .strip_prefix(source_id)
+        .and_then(|suffix| suffix.strip_prefix('-'))
+    else {
+        return false;
+    };
+    matches!(commit.len(), 40 | 64) && commit.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 #[cfg(test)]
@@ -974,6 +982,32 @@ mod tests {
     #[test]
     fn is_valid_source_id_should_accept_plain_id() {
         assert!(is_valid_source_id("company"));
+    }
+
+    #[test]
+    fn staging_entry_match_should_disambiguate_dash_prefixed_source_ids() {
+        let commit = "0123456789abcdef0123456789abcdef01234567";
+        let sha256_commit = format!("{commit}0123456789abcdef01234567");
+        assert!(staging_entry_belongs_to_source(
+            std::ffi::OsStr::new(&format!("team-{commit}")),
+            "team"
+        ));
+        assert!(!staging_entry_belongs_to_source(
+            std::ffi::OsStr::new(&format!("team-eu-{commit}")),
+            "team"
+        ));
+        assert!(staging_entry_belongs_to_source(
+            std::ffi::OsStr::new(&format!("team-eu-{commit}")),
+            "team-eu"
+        ));
+        assert!(staging_entry_belongs_to_source(
+            std::ffi::OsStr::new(&format!("team-{sha256_commit}")),
+            "team"
+        ));
+        assert!(!staging_entry_belongs_to_source(
+            std::ffi::OsStr::new("team-not-a-commit"),
+            "team"
+        ));
     }
 
     proptest! {

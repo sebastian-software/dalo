@@ -1771,6 +1771,9 @@ fn cleanup_staged_source_audits(
     let Some(source_id) = source_dir.file_name() else {
         return Ok(());
     };
+    let Some(source_id) = source_id.to_str() else {
+        return Ok(());
+    };
     let Some(sources_dir) = source_dir.parent() else {
         return Ok(());
     };
@@ -1778,10 +1781,9 @@ fn cleanup_staged_source_audits(
     let Ok(entries) = std::fs::read_dir(&staging_root) else {
         return Ok(());
     };
-    let prefix = format!("{}-", source_id.to_string_lossy());
     for entry in entries {
         let entry = entry?;
-        if !entry.file_name().to_string_lossy().starts_with(&prefix) {
+        if !source::staging_entry_belongs_to_source(&entry.file_name(), source_id) {
             continue;
         }
         let path = entry.path();
