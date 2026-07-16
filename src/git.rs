@@ -104,6 +104,14 @@ pub fn fast_forward_to(path: &Path, revision: &str) -> DaloResult<()> {
     run_git(path, &["merge", "--ff-only", "--quiet", revision]).map(|_| ())
 }
 
+/// Restore a clean managed checkout to a previously recorded commit.
+///
+/// Callers must verify that the checkout is clean before beginning the
+/// transaction. This is intentionally reserved for command-level rollback.
+pub fn reset_hard_to(path: &Path, revision: &str) -> DaloResult<()> {
+    run_git(path, &["reset", "--hard", "--quiet", revision]).map(|_| ())
+}
+
 /// Check a commit out into a detached worktree for read-only inspection. The
 /// caller's own checkout (and pin) is left untouched.
 pub fn add_detached_worktree(repo: &Path, dest: &Path, commit: &str) -> DaloResult<()> {

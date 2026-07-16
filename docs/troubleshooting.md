@@ -29,7 +29,7 @@ dalo --json doctor
 | `missing_owned_symlink`, `broken_owned_symlink`, `foreign_owned_symlink` | A recorded owned symlink is missing, broken, or points outside the store. | Run `dalo resolve remove-owned <id>`, then `dalo sync` if the skill should be linked again. |
 | `instruction_block_drift` | A managed instruction block is missing, malformed, stale, or points to a missing pack. | Re-render with `dalo instructions enable <pack> <file>`, or disable with `dalo instructions disable <pack> <file>` if no longer wanted. |
 | `selected_removed` from catalog drift | A selected catalog skill disappeared upstream. | Unselect it with `dalo source select <catalog> --unselect <skill>`, or wait for a catalog fix before syncing. |
-| catalog drift | A catalog's upstream inventory differs from its pinned snapshot. | Run `dalo source refresh <id>` to inspect it. Add `--check` when scripts should fail for changed, moved, or removed selected skills. Pin advancement is a later workflow. |
+| catalog drift | A catalog's upstream inventory differs from its pinned snapshot. | Run `dalo source refresh <id>` to inspect it. Add `--check` for CI, or preview the reviewed update with `dalo --dry-run source refresh <id> --advance` before applying it without `--dry-run`. |
 
 ## Status Codes
 
@@ -115,8 +115,8 @@ Lock drift compares the previous `lock.toml` with the current live resolution.
 | Code | What it means | Recovery |
 | --- | --- | --- |
 | `new_available` | Upstream added an unselected catalog skill. | Inspect/select it if wanted. |
-| `selected_changed` | A selected skill changed content or metadata upstream. | Review the change before advancing the pin in a future source-maintenance flow. |
-| `selected_moved` | A selected skill moved but still has a stable ID. | Review the move. Selection can continue by stable ID. |
+| `selected_changed` | A selected skill changed content or metadata upstream. | Review `dalo --dry-run source refresh <id> --advance`, then apply the reviewed pin. |
+| `selected_moved` | A selected skill moved but still has a stable ID. | Review the advance plan. A real advance canonicalizes the selection to the stable ID and relinks owned targets transactionally. |
 | `selected_removed` | A selected skill no longer exists upstream. | Unselect it, restore it upstream, or keep the old pin until resolved. |
 
 ### Instruction Block Drift

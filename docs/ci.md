@@ -75,3 +75,15 @@ dalo source refresh company-catalog --check
 ```
 
 The command reports new available skills, selected skill changes, moved or removed selections, and changed requirements without changing the source lock. New unselected skills remain informational; any selected-skill drift exits with code 1 for review.
+
+Pin advancement is deliberately separate from CI checking. Preview the exact
+transaction without writes, then apply it only in a reviewed maintenance flow:
+
+```sh
+dalo --dry-run --json source refresh company-catalog --advance
+dalo source refresh company-catalog --advance
+```
+
+The advance report contains both lock entries, every drift classification,
+the affected materialization plan, and blocking reasons. Never add `--advance`
+to an unattended drift-check job.

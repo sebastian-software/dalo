@@ -641,20 +641,24 @@ fn expand_catalog_selections(
         }
         expanded.insert(
             source.id.clone(),
-            closure_for_selection(&source.selection, &inventory.skills),
+            closure_for_selection(&source.selection, &inventory.skills, &source.path),
         );
     }
     expanded
 }
 
-fn closure_for_selection(selection: &[String], skills: &[SkillRecord]) -> Vec<String> {
+fn closure_for_selection(
+    selection: &[String],
+    skills: &[SkillRecord],
+    source_root: &std::path::Path,
+) -> Vec<String> {
     let mut result: Vec<String> = selection.to_vec();
     let mut seen: BTreeSet<String> = selection.iter().cloned().collect();
     let mut queue: VecDeque<String> = selection.iter().cloned().collect();
     while let Some(reference) = queue.pop_front() {
         let Some(skill) = skills
             .iter()
-            .find(|skill| ref_matches_skill(&reference, skill))
+            .find(|skill| selection_ref_matches_skill(&reference, skill, source_root))
         else {
             continue;
         };
@@ -675,6 +679,18 @@ fn closure_for_selection(selection: &[String], skills: &[SkillRecord]) -> Vec<St
         }
     }
     result
+}
+
+fn selection_ref_matches_skill(
+    reference: &str,
+    skill: &SkillRecord,
+    source_root: &std::path::Path,
+) -> bool {
+    ref_matches_skill(reference, skill)
+        || skill
+            .path
+            .strip_prefix(source_root)
+            .is_ok_and(|path| path.to_string_lossy() == reference)
 }
 
 /// Resolved state of one `requires` reference against the active skill set.
@@ -1324,6 +1340,23 @@ mod tests {
         // `beta` was pulled into the selection by `alpha`'s requires.
         assert!(active.contains(&"beta"));
         assert!(resolution.blocked_skills.is_empty());
+    }
+
+    #[test]
+    fn resolve_should_expand_catalog_closure_from_relative_path_selection() {
+        let mut alpha = skill_req("cat", "alpha", &["beta"]);
+        alpha.path = PathBuf::from("/tmp/cat/skills/alpha");
+        let mut beta = skill("cat", "beta");
+        beta.path = PathBuf::from("/tmp/cat/skills/beta");
+        let resolution = resolve_with(
+            vec![catalog("cat", 10, &["skills/alpha"])],
+            vec![inventory("cat", vec![alpha, beta])],
+            Vec::new(),
+        );
+
+        let active = active_slots(&resolution);
+        assert!(active.contains(&"alpha"));
+        assert!(active.contains(&"beta"));
     }
 
     #[test]
