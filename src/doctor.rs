@@ -11,12 +11,13 @@ use serde::Serialize;
 
 use crate::adopt;
 use crate::autosync::{self, AutosyncRunOutcome};
+use crate::catalog::{self, SourceLock};
 use crate::config::UserConfig;
 use crate::error::shell_quote_path;
 use crate::git;
 use crate::instructions;
 use crate::resolver;
-use crate::source::SourceKind;
+use crate::source::{self, SourceConfig, SourceKind};
 use crate::store::{self, ApprovalsFile, OwnedSkillState, StateFile, StorePaths};
 
 const COMMAND_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
@@ -98,6 +99,10 @@ pub enum DoctorCode {
     LockOk,
     /// Lock cannot be parsed.
     LockInvalid,
+    /// Catalog source lock parses.
+    SourceLockOk,
+    /// Catalog source lock cannot be parsed.
+    SourceLockInvalid,
     /// Approvals file parses.
     ApprovalsOk,
     /// Approvals file cannot be parsed.
@@ -146,6 +151,10 @@ pub enum DoctorCode {
     SourceClean,
     /// Source has local changes.
     DirtySource,
+    /// Manifest-derived source provenance is internally consistent.
+    SourceProvenanceOk,
+    /// Manifest declaration, checkout, or source lock disagree.
+    SourceProvenanceMismatch,
     /// Store contains checkout or staging content not owned by config.
     SourceStoreDebris,
     /// A skill is pending approval.
@@ -181,6 +190,7 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
     let config = read_config(&paths, &mut findings);
     let state = read_state(&paths, &mut findings);
     let lock_ok = read_lock(&paths, &mut findings);
+    let source_lock = read_source_lock(&paths, &mut findings);
     let approvals = read_approvals(&paths, &mut findings);
 
     if paths.local_dir.join(".git").is_dir() {
@@ -203,7 +213,7 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
     }
 
     if let Some(config) = config.as_ref() {
-        check_sources(config, &mut findings);
+        check_sources(config, source_lock.as_ref(), &mut findings);
         check_source_store_debris(&paths, config, &mut findings);
     }
 
@@ -422,6 +432,26 @@ fn read_approvals(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) -> Opti
     }
 }
 
+fn read_source_lock(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) -> Option<SourceLock> {
+    match catalog::read_source_lock(paths) {
+        Ok(lock) => {
+            findings.push(ok(
+                DoctorCode::SourceLockOk,
+                "catalog source lock is readable",
+            ));
+            Some(lock)
+        }
+        Err(error) => {
+            findings.push(finding_error(
+                DoctorCode::SourceLockInvalid,
+                format!("catalog source lock could not be read: {error}"),
+                Some("inspect source-lock.toml before syncing".to_owned()),
+            ));
+            None
+        }
+    }
+}
+
 fn check_targets(state: &StateFile, findings: &mut Vec<DoctorFinding>) {
     for target in state.targets.iter().filter(|target| target.enabled) {
         if target.path.is_dir() {
@@ -609,7 +639,11 @@ fn owned_selector(owned: &OwnedSkillState) -> String {
     format!("{}:{}", owned.target_id, owned.slot_name)
 }
 
-fn check_sources(config: &UserConfig, findings: &mut Vec<DoctorFinding>) {
+fn check_sources(
+    config: &UserConfig,
+    source_lock: Option<&SourceLock>,
+    findings: &mut Vec<DoctorFinding>,
+) {
     for source in config.sources.iter().filter(|source| source.enabled) {
         match git::is_dirty(&source.path) {
             Ok(true) => {
@@ -653,7 +687,100 @@ fn check_sources(config: &UserConfig, findings: &mut Vec<DoctorFinding>) {
                 None,
             )),
         }
+        if source.declared_by.is_some() {
+            check_manifest_source_provenance(source, config, source_lock, findings);
+        }
     }
+}
+
+fn check_manifest_source_provenance(
+    source: &SourceConfig,
+    config: &UserConfig,
+    source_lock: Option<&SourceLock>,
+    findings: &mut Vec<DoctorFinding>,
+) {
+    let Some(team_id) = source.declared_by.as_deref() else {
+        return;
+    };
+    let mut mismatches = Vec::new();
+    let lock_commit = source_lock
+        .and_then(|lock| lock.catalog(&source.id))
+        .map(|entry| entry.commit.as_str());
+    let checkout_commit = git::rev_parse_head(&source.path).ok();
+    match (lock_commit, checkout_commit.as_deref()) {
+        (None, _) => mismatches.push("source-lock.toml has no catalog pin".to_owned()),
+        (Some(pin), Some(checkout)) if pin != checkout => mismatches.push(format!(
+            "checkout {} does not match source-lock pin {}",
+            short_commit(checkout),
+            short_commit(pin)
+        )),
+        (Some(_), None) => mismatches.push("checkout commit could not be read".to_owned()),
+        _ => {}
+    }
+
+    let team = config
+        .sources
+        .iter()
+        .find(|candidate| candidate.id == team_id);
+    if let Some(team) = team {
+        match crate::team_manifest::load_team_manifest(&team.path, team_id) {
+            Ok(manifest) => {
+                let prefix = format!("{team_id}.");
+                let catalog_id = source.id.strip_prefix(&prefix);
+                let declaration = catalog_id
+                    .and_then(|id| manifest.catalogs.iter().find(|catalog| catalog.id == id));
+                if let Some(declaration) = declaration {
+                    let expected_url =
+                        source::resolve_source_location(&declaration.url, &team.path);
+                    if source.url.as_deref() != Some(expected_url.as_str()) {
+                        mismatches
+                            .push("manifest origin does not match configured origin".to_owned());
+                    }
+                    if source.declared_ref.as_deref() != Some(declaration.version.as_str()) {
+                        mismatches
+                            .push("manifest version does not match configured version".to_owned());
+                    }
+                } else {
+                    mismatches.push("declaring team manifest has no matching catalog".to_owned());
+                }
+            }
+            Err(error) => mismatches.push(format!("declaring team manifest is invalid: {error}")),
+        }
+    } else {
+        mismatches.push(format!("declaring team source `{team_id}` is missing"));
+    }
+
+    if mismatches.is_empty() {
+        let provenance = source::source_provenance(source, source_lock);
+        let origin = provenance.origin_url.as_deref().unwrap_or("<unknown>");
+        let requested = provenance.requested_ref.as_deref().unwrap_or("<unknown>");
+        let resolved = provenance
+            .resolved_commit
+            .as_deref()
+            .map(short_commit)
+            .unwrap_or("<missing>");
+        findings.push(ok(
+            DoctorCode::SourceProvenanceOk,
+            format!(
+                "manifest-derived source `{}` from `{origin}` requested `{requested}` and resolved `{resolved}`",
+                source.id
+            ),
+        ));
+    } else {
+        findings.push(finding_error(
+            DoctorCode::SourceProvenanceMismatch,
+            format!(
+                "manifest-derived source `{}` has provenance mismatch: {}",
+                source.id,
+                mismatches.join("; ")
+            ),
+            Some("dalo sync".to_owned()),
+        ));
+    }
+}
+
+fn short_commit(commit: &str) -> &str {
+    commit.get(..12).unwrap_or(commit)
 }
 
 fn check_source_store_debris(
@@ -943,6 +1070,8 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::StateInvalid => "state_invalid",
         DoctorCode::LockOk => "lock_ok",
         DoctorCode::LockInvalid => "lock_invalid",
+        DoctorCode::SourceLockOk => "source_lock_ok",
+        DoctorCode::SourceLockInvalid => "source_lock_invalid",
         DoctorCode::ApprovalsOk => "approvals_ok",
         DoctorCode::ApprovalsInvalid => "approvals_invalid",
         DoctorCode::GitAvailable => "git_available",
@@ -967,6 +1096,8 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::UnreadableTargetDirectory => "unreadable_target_directory",
         DoctorCode::SourceClean => "source_clean",
         DoctorCode::DirtySource => "dirty_source",
+        DoctorCode::SourceProvenanceOk => "source_provenance_ok",
+        DoctorCode::SourceProvenanceMismatch => "source_provenance_mismatch",
         DoctorCode::SourceStoreDebris => "source_store_debris",
         DoctorCode::PendingApproval => "pending_approval",
         DoctorCode::RequiredClosureBlocked => "required_closure_blocked",

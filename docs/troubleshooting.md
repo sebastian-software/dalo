@@ -24,6 +24,7 @@ dalo --json doctor
 | `dirty_source` | A Git-backed source has local edits. Team sources block refresh when dirty. | Commit, stash, discard, or promote the edits outside Dalo. Then run `dalo sync`. |
 | sync reason `scan degraded`, output `degraded source:` | Dalo could not safely scan an enabled source. Recorded owned links are preserved so an incomplete scan cannot delete them. | Restore or re-clone the source checkout, or remove the source with `dalo source remove <id>`. Do not adopt or delete the preserved target link as an unmanaged blocker. |
 | `lock drift` | Live resolution differs from the last `lock.toml`. | Run `dalo status` to inspect the drift, then `dalo sync` when the change is expected. |
+| `source_provenance_mismatch` | A manifest-derived catalog's declaration, generated config, checkout HEAD, or `source-lock.toml` pin disagree. | Inspect `dalo source list`, review the declaring team's `dalo.toml`, then run `dalo sync` to reconcile an expected change. Restore the reviewed manifest or checkout first when the difference is unexpected. |
 | `StoreLocked`, error text `another dalo operation is running` | Another Dalo command currently owns `.lock`, or a stale lock file remains. | Wait for the other command. If no Dalo process is running, inspect and remove the stale `.lock` file in the store. |
 | `owned_path_real_entry` | Dalo has an ownership record, but a real file or directory now exists at that path. | Run `dalo resolve remove-owned <id>`. Dalo drops the ownership record and leaves the real entry intact. |
 | `missing_owned_symlink`, `broken_owned_symlink`, `foreign_owned_symlink` | A recorded owned symlink is missing, broken, or points outside the store. | Run `dalo resolve remove-owned <id>`, then `dalo sync` if the skill should be linked again. |
@@ -142,6 +143,8 @@ Doctor includes `ok` and `info` codes as well as warnings/errors. Codes not list
 | `config_invalid` | error | Fix `config.toml` or restore it from version control/backups. |
 | `state_invalid` | error | Run `dalo init`; corrupt state is backed up and regenerated. Relink targets afterward if needed. |
 | `lock_invalid` | error | Fix/remove `lock.toml`, then run `dalo sync` to regenerate it. |
+| `source_lock_invalid` | error | Inspect or restore `source-lock.toml`; do not sync until the intended catalog pins are understood. |
+| `source_provenance_mismatch` | error | Compare `dalo source list` with the declaring team's `dalo.toml`, then run `dalo sync` after restoring the intended declaration or checkout. |
 | `approvals_invalid` | error | Fix `approvals.toml`; doctor suppresses approval-dependent warnings while it is invalid. |
 | `git_missing` | error | Install Git and ensure `git` is on `PATH`. |
 | `gh_missing` | warning | Install GitHub CLI if you need future PR/promotion flows. Normal sync does not require it. |

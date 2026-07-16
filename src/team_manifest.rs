@@ -291,6 +291,16 @@ pub fn show_team_manifest(repo: &Path) -> DaloResult<TeamManifestView> {
     Ok(TeamManifestView { path, manifest })
 }
 
+/// Read and validate a manifest from an already configured team checkout.
+pub fn load_team_manifest(repo: &Path, team_id: &str) -> DaloResult<TeamManifest> {
+    let path = repo.join(TEAM_MANIFEST_FILE);
+    let manifest = read_manifest(&path)?.ok_or_else(|| DaloError::CheckFailed {
+        reason: format!("team manifest `{}` does not exist", path.display()),
+    })?;
+    validate_manifest(team_id, &path, &manifest)?;
+    Ok(manifest)
+}
+
 /// Add one pinned catalog declaration to a team manifest.
 pub fn add_team_catalog(
     repo: &Path,

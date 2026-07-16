@@ -476,6 +476,133 @@ fn e2e_team_manifest_audits_before_publishing_a_new_version() {
     assert_eq!(catalog.declared_ref.as_deref(), Some(safe_commit.as_str()));
 }
 
+#[test]
+fn e2e_manifest_source_provenance_is_visible_and_doctor_detects_pin_mismatch() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let catalog_repo = temp_dir.path().join("catalog");
+    let team_repo = temp_dir.path().join("team");
+    let skill = catalog_repo.join("skills/copy");
+    std::fs::create_dir_all(&skill).expect("catalog skill dir should be created");
+    std::fs::write(skill.join("SKILL.md"), "# Copy v1\n").expect("catalog skill should be written");
+    run_git(&catalog_repo, &["init", "-q"]);
+    run_git(&catalog_repo, &["add", "."]);
+    commit_all(&catalog_repo, "catalog v1");
+    let v1 = git_head(&catalog_repo);
+    std::fs::write(skill.join("SKILL.md"), "# Copy v2\n")
+        .expect("updated catalog skill should be written");
+    run_git(&catalog_repo, &["add", "."]);
+    commit_all(&catalog_repo, "catalog v2");
+    let v2 = git_head(&catalog_repo);
+
+    std::fs::create_dir_all(&team_repo).expect("team repo should be created");
+    write_team_manifest(&team_repo, &catalog_repo, &v1, &["+copy"]);
+    run_git(&team_repo, &["init", "-q"]);
+    run_git(&team_repo, &["add", "."]);
+    commit_all(&team_repo, "team manifest");
+
+    init_store(&store);
+    link_target(&store, &target);
+    add_source(&store, "company", &team_repo);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    let short_v1 = &v1[..12];
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("company.marketing"))
+        .stdout(predicate::str::contains("managed-by=company"))
+        .stdout(predicate::str::contains("management=team_manifest"))
+        .stdout(predicate::str::contains(format!("requested={v1}")))
+        .stdout(predicate::str::contains(format!("resolved={short_v1}")));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("company.marketing"))
+        .stdout(predicate::str::contains("management=team_manifest"))
+        .stdout(predicate::str::contains(format!("resolved={short_v1}")));
+
+    for command in [["source", "list"].as_slice(), ["status"].as_slice()] {
+        let output = dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .arg("--json")
+            .args(command)
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+        let value: serde_json::Value =
+            serde_json::from_slice(&output).expect("JSON output should parse");
+        let sources = value["sources"]
+            .as_array()
+            .expect("sources should be an array");
+        let source = sources
+            .iter()
+            .find(|source| source["id"] == "company.marketing")
+            .expect("derived source should be reported");
+        assert_eq!(source["provenance"]["management"], "team_manifest");
+        assert_eq!(source["provenance"]["declared_by"], "company");
+        assert_eq!(source["provenance"]["requested_ref"], v1);
+        assert_eq!(source["provenance"]["resolved_commit"], v1);
+        assert_eq!(source["provenance"]["checkout_commit"], v1);
+    }
+
+    let doctor = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "doctor"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let doctor: serde_json::Value =
+        serde_json::from_slice(&doctor).expect("doctor JSON should parse");
+    assert!(doctor["findings"].as_array().is_some_and(|findings| {
+        findings
+            .iter()
+            .any(|finding| finding["code"] == "source_provenance_ok")
+    }));
+
+    run_git(
+        &store.join("sources/company.marketing/checkout"),
+        &["checkout", "--detach", &v2],
+    );
+    let doctor = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "doctor", "--check"])
+        .assert()
+        .failure()
+        .get_output()
+        .stdout
+        .clone();
+    let doctor: serde_json::Value =
+        serde_json::from_slice(&doctor).expect("doctor mismatch JSON should parse");
+    assert!(doctor["findings"].as_array().is_some_and(|findings| {
+        findings.iter().any(|finding| {
+            finding["code"] == "source_provenance_mismatch"
+                && finding["message"]
+                    .as_str()
+                    .is_some_and(|message| message.contains("does not match source-lock pin"))
+        })
+    }));
+}
+
 fn git_head(repo: &std::path::Path) -> String {
     let output = std::process::Command::new("git")
         .args(["rev-parse", "HEAD"])

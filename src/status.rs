@@ -12,7 +12,7 @@ use crate::approval::ApprovalReport;
 use crate::audit::{self, AuditCoverage, AuditOptions, AuditReport, AuditStatus};
 use crate::autosync::{AutosyncMutationReport, AutosyncStatusReport};
 use crate::catalog::{
-    CatalogAdvanceReport, CatalogDrift, CatalogInspectReport, CatalogSelectReport,
+    self, CatalogAdvanceReport, CatalogDrift, CatalogInspectReport, CatalogSelectReport,
 };
 use crate::doctor::{DoctorReport, DoctorSeverity};
 use crate::error::DaloResult;
@@ -25,7 +25,7 @@ use crate::materialize::{self, MaterializeOperation, MaterializeOperationStatus,
 use crate::resolver::{self, Resolution};
 use crate::source::{
     SourceAddReport, SourceConfig, SourceKind, SourceListReport, SourcePriorityReport,
-    SourceRemoveReport,
+    SourceProvenance, SourceRemoveReport,
 };
 use crate::store::{self, ApprovalsFile, InitReport, StorePaths};
 use crate::target::{TargetDetectReport, TargetLinkReport, TargetUnlinkReport};
@@ -95,6 +95,8 @@ pub struct SourceStatus {
     pub skill_count: usize,
     /// Optional non-fatal scan error.
     pub error: Option<String>,
+    /// Origin and pin information assembled without network access.
+    pub provenance: SourceProvenance,
 }
 
 /// One configured target shown by `status`.
@@ -118,6 +120,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
     let approvals = store::read_approvals(&paths)?;
     let previous_lock = store::read_user_lock(&paths)?;
     let state = store::read_state(&paths)?;
+    let source_lock = catalog::read_source_lock(&paths).ok();
 
     // The shared pipeline scans every enabled source once and resolves it; we
     // reuse its per-source scan outcomes here for the status detail instead of
@@ -146,6 +149,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
                 exists: source.path.exists(),
                 skill_count: scan.inventory.as_ref().map_or(0, |inv| inv.skills.len()),
                 error: scan.error.clone(),
+                provenance: crate::source::source_provenance(source, source_lock.as_ref()),
             }
         } else {
             SourceStatus {
@@ -157,6 +161,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
                 exists: source.path.exists(),
                 skill_count: 0,
                 error: None,
+                provenance: crate::source::source_provenance(source, source_lock.as_ref()),
             }
         };
         sources.push(status);
@@ -456,6 +461,7 @@ pub fn print_status_report(report: &StatusReport) {
                 "  {:<12} {:<5} priority={:<4} skills={:<3} {}{}",
                 source.id, source.kind, source.priority, source.skill_count, state, error
             );
+            print_source_provenance(&source.provenance, "    ");
         }
     }
 
@@ -824,7 +830,8 @@ pub fn print_source_list_report(report: &SourceListReport) {
         println!("no sources configured");
         return;
     }
-    for source in &report.sources {
+    for entry in &report.sources {
+        let source = &entry.source;
         let managed = source
             .declared_by
             .as_ref()
@@ -838,6 +845,28 @@ pub fn print_source_list_report(report: &SourceListReport) {
             source.path.display(),
             managed
         );
+        print_source_provenance(&entry.provenance, "  ");
+    }
+}
+
+fn print_source_provenance(provenance: &SourceProvenance, indent: &str) {
+    let mut parts = vec![format!("management={}", provenance.management.as_str())];
+    if let Some(origin) = &provenance.origin_url {
+        parts.push(format!("origin={origin}"));
+    }
+    if let Some(requested) = &provenance.requested_ref {
+        parts.push(format!("requested={requested}"));
+    }
+    if let Some(commit) = &provenance.resolved_commit {
+        parts.push(format!("resolved={}", short_commit(commit)));
+    }
+    if provenance.checkout_commit != provenance.resolved_commit
+        && let Some(commit) = &provenance.checkout_commit
+    {
+        parts.push(format!("checkout={}", short_commit(commit)));
+    }
+    if parts.len() > 1 || provenance.declared_by.is_some() {
+        println!("{indent}provenance {}", parts.join(" "));
     }
 }
 

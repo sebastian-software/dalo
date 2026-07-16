@@ -109,7 +109,61 @@ pub struct TrackingSourceRefreshFailure {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SourceListReport {
     /// Configured sources.
-    pub sources: Vec<SourceConfig>,
+    pub sources: Vec<SourceListEntry>,
+}
+
+/// One source plus read-only provenance assembled from config, lock, and Git.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SourceListEntry {
+    /// Existing source configuration fields remain at the top level for JSON
+    /// compatibility.
+    #[serde(flatten)]
+    pub source: SourceConfig,
+    /// Origin and pin information.
+    pub provenance: SourceProvenance,
+}
+
+/// Whether a source is directly configured or owned by a team manifest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceManagement {
+    /// Configured directly in the user's store.
+    Direct,
+    /// Generated from a team repository's `dalo.toml`.
+    TeamManifest,
+}
+
+impl SourceManagement {
+    /// Stable human-readable and serialized label.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Direct => "direct",
+            Self::TeamManifest => "team_manifest",
+        }
+    }
+}
+
+/// Read-only source origin and pin information.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SourceProvenance {
+    /// Configuration authority.
+    pub management: SourceManagement,
+    /// Team source that owns this declaration, when manifest-managed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub declared_by: Option<String>,
+    /// Credential-redacted configured origin.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub origin_url: Option<String>,
+    /// Branch or manifest version requested by configuration.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requested_ref: Option<String>,
+    /// Canonical resolved commit from `source-lock.toml` or the team checkout.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_commit: Option<String>,
+    /// Commit currently checked out on disk.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub checkout_commit: Option<String>,
 }
 
 /// Source priority report.
@@ -612,7 +666,48 @@ fn finish_team_source(
 pub fn list_sources(paths: &StorePaths) -> DaloResult<SourceListReport> {
     let mut sources = store::read_config(paths)?.sources;
     sort_sources(&mut sources);
+    let source_lock = catalog::read_source_lock(paths).ok();
+    let sources = sources
+        .into_iter()
+        .map(|source| SourceListEntry {
+            provenance: source_provenance(&source, source_lock.as_ref()),
+            source,
+        })
+        .collect();
     Ok(SourceListReport { sources })
+}
+
+/// Assemble stable provenance without mutating or fetching a source.
+#[must_use]
+pub fn source_provenance(
+    source: &SourceConfig,
+    source_lock: Option<&SourceLock>,
+) -> SourceProvenance {
+    let checkout_commit = (source.kind != SourceKind::Local)
+        .then(|| git::rev_parse_head(&source.path).ok())
+        .flatten();
+    let resolved_commit = match source.kind {
+        SourceKind::Catalog => source_lock
+            .and_then(|lock| lock.catalog(&source.id))
+            .map(|lock| lock.commit.clone()),
+        SourceKind::Team => checkout_commit.clone(),
+        SourceKind::Local => None,
+    };
+    SourceProvenance {
+        management: if source.declared_by.is_some() {
+            SourceManagement::TeamManifest
+        } else {
+            SourceManagement::Direct
+        },
+        declared_by: source.declared_by.clone(),
+        origin_url: source.url.as_deref().map(git::display_remote_url),
+        requested_ref: source
+            .declared_ref
+            .clone()
+            .or_else(|| source.branch.clone()),
+        resolved_commit,
+        checkout_commit,
+    }
 }
 
 /// Update source priority.
@@ -1176,6 +1271,51 @@ mod tests {
             .expect_err("dirty checkouts must still block sync");
 
         assert!(matches!(error, DaloError::DirtySource { .. }));
+    }
+
+    #[test]
+    fn source_provenance_should_distinguish_manifest_management_and_redact_origin() {
+        let source = SourceConfig {
+            id: "company.marketing".to_owned(),
+            kind: SourceKind::Catalog,
+            path: PathBuf::from("/missing/checkout"),
+            priority: 11,
+            enabled: true,
+            trusted: false,
+            url: Some("https://user:secret@example.com/marketing.git".to_owned()),
+            branch: None,
+            update_policy: Some("manifest".to_owned()),
+            selection: vec!["copy".to_owned()],
+            declared_by: Some("company".to_owned()),
+            declared_ref: Some("main".to_owned()),
+        };
+        let lock = SourceLock {
+            schema_version: catalog::SOURCE_LOCK_SCHEMA_VERSION,
+            catalogs: vec![catalog::CatalogLock {
+                source_id: source.id.clone(),
+                commit: "0123456789abcdef".to_owned(),
+                selected: Vec::new(),
+                inventory: Vec::new(),
+            }],
+        };
+
+        let provenance = source_provenance(&source, Some(&lock));
+
+        assert_eq!(provenance.management, SourceManagement::TeamManifest);
+        assert_eq!(provenance.declared_by.as_deref(), Some("company"));
+        assert_eq!(
+            provenance.origin_url.as_deref(),
+            Some("https://***@example.com/marketing.git")
+        );
+        let origin = provenance.origin_url.as_deref().expect("origin should exist");
+        assert!(!origin.contains("user"));
+        assert!(!origin.contains("secret"));
+        assert_eq!(provenance.requested_ref.as_deref(), Some("main"));
+        assert_eq!(
+            provenance.resolved_commit.as_deref(),
+            Some("0123456789abcdef")
+        );
+        assert!(provenance.checkout_commit.is_none());
     }
 
     #[test]
