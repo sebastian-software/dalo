@@ -374,7 +374,10 @@ pub enum SourceSubcommand {
         after_help = "Examples:\n  dalo source select public review-helper\n  dalo source select public review-helper formatter\n  dalo source select public --unselect formatter\n  dalo --dry-run source select public review-helper"
     )]
     Select(SourceSelectArgs),
-    /// Check a catalog source for upstream drift (read-only).
+    /// Inspect or explicitly advance a pinned catalog source.
+    #[command(
+        after_help = "Examples:\n  dalo source refresh public\n  dalo source refresh public --check\n  dalo --dry-run --json source refresh public --advance\n  dalo source refresh public --advance"
+    )]
     Refresh(SourceRefreshArgs),
     /// Remove a team or catalog source and reconcile its owned links.
     #[command(
@@ -444,6 +447,10 @@ pub struct SourceRefreshArgs {
     /// Exit non-zero when selected skills drifted upstream.
     #[arg(long)]
     pub check: bool,
+
+    /// Advance the catalog pin after previewing and validating the candidate.
+    #[arg(long, conflicts_with = "check")]
+    pub advance: bool,
 }
 
 /// Arguments for `source remove`.
@@ -601,9 +608,7 @@ fn command_ignores_dry_run(command: &Command) -> bool {
         Command::Target(TargetCommand {
             command: TargetSubcommand::Detect
         }) | Command::Source(SourceCommand {
-            command: SourceSubcommand::List
-                | SourceSubcommand::Inspect(_)
-                | SourceSubcommand::Refresh(_)
+            command: SourceSubcommand::List | SourceSubcommand::Inspect(_)
         }) | Command::Status(_)
             | Command::Doctor(_)
             | Command::Approve(ApproveCommand {
@@ -612,6 +617,11 @@ fn command_ignores_dry_run(command: &Command) -> bool {
             | Command::Instructions(InstructionsCommand {
                 command: InstructionsSubcommand::List
             })
+    ) || matches!(
+        command,
+        Command::Source(SourceCommand {
+            command: SourceSubcommand::Refresh(SourceRefreshArgs { advance: false, .. })
+        })
     )
 }
 
@@ -1101,6 +1111,23 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
         SourceSubcommand::Refresh(args) => {
             ensure_initialized(&paths)?;
             let _lock = store::StoreLock::acquire(&paths)?;
+            if args.advance {
+                let report = catalog::advance_catalog(&paths, &args.id, options.dry_run)?;
+                if options.json {
+                    print_json(&report)?;
+                } else {
+                    status::print_catalog_advance_report(&report);
+                }
+                if !report.blocking_reasons.is_empty() {
+                    return Err(DaloError::CheckFailed {
+                        reason: format!(
+                            "catalog pin was not advanced: {}",
+                            report.blocking_reasons.join("; ")
+                        ),
+                    });
+                }
+                return Ok(());
+            }
             let report = catalog::check_catalog_drift(&paths, &args.id)?;
             if options.json {
                 print_json(&report)?;

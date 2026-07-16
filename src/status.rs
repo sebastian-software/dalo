@@ -10,7 +10,9 @@ use crate::adopt::{
 };
 use crate::approval::ApprovalReport;
 use crate::audit::{self, AuditCoverage, AuditOptions, AuditReport, AuditStatus};
-use crate::catalog::{CatalogDrift, CatalogInspectReport, CatalogSelectReport};
+use crate::catalog::{
+    CatalogAdvanceReport, CatalogDrift, CatalogInspectReport, CatalogSelectReport,
+};
 use crate::doctor::{DoctorReport, DoctorSeverity};
 use crate::error::DaloResult;
 use crate::instructions::{
@@ -860,6 +862,72 @@ pub fn print_catalog_drift_report(report: &CatalogDrift) {
     for outcome in &report.outcomes {
         println!("  [{}] {}", outcome.code.as_str(), outcome.message);
     }
+}
+
+/// Print a reviewed catalog pin-advance plan or result.
+pub fn print_catalog_advance_report(report: &CatalogAdvanceReport) {
+    for warning in &report.migration_warnings {
+        println!("warning: {warning}");
+    }
+    let action = if report.advanced {
+        "advanced"
+    } else if report.dry_run {
+        "would advance"
+    } else if report.old_lock.commit == report.new_lock.commit {
+        "unchanged"
+    } else {
+        "blocked"
+    };
+    println!(
+        "catalog {}: {action} {} -> {}",
+        report.source_id,
+        short_commit(&report.old_lock.commit),
+        short_commit(&report.new_lock.commit)
+    );
+    println!(
+        "  selection: [{}] -> [{}]",
+        report.selection_before.join(", "),
+        report.selection_after.join(", ")
+    );
+    println!(
+        "  inventory: {} -> {} entries",
+        report.old_lock.inventory.len(),
+        report.new_lock.inventory.len()
+    );
+    for outcome in &report.outcomes {
+        println!("  [{}] {}", outcome.code.as_str(), outcome.message);
+    }
+    for reason in &report.blocking_reasons {
+        println!("  blocked: {reason}");
+    }
+    if !report.sync.resolution.pending_approval_skills.is_empty() {
+        println!(
+            "  pending approval: {}",
+            report
+                .sync
+                .resolution
+                .pending_approval_skills
+                .iter()
+                .map(|skill| skill.source_ref.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+    for blocked in &report.sync.resolution.blocked_skills {
+        println!(
+            "  inactive: {} requires {} ({})",
+            blocked.skill.source_ref,
+            blocked.requirement,
+            crate::resolver::closure_block_reason_name(blocked.reason)
+        );
+    }
+    let changed_operations = report
+        .sync
+        .operations
+        .iter()
+        .filter(|operation| operation.kind != crate::materialize::MaterializeOperationKind::NoOp)
+        .count();
+    println!("  materialization changes: {changed_operations}");
 }
 
 fn short_commit(commit: &str) -> &str {

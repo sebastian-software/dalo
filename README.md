@@ -157,7 +157,10 @@ dalo sync
 
 Catalog selections are pinned. `dalo source refresh <id>` reports when selected
 skills change, move, disappear, or gain same-catalog dependencies without
-silently advancing the lock.
+silently advancing the lock. Review the exact candidate with
+`dalo --dry-run source refresh <id> --advance`, then rerun without `--dry-run`
+to update that catalog's checkout, locks, selection, and affected target links
+as one rollback-safe transaction.
 
 ### Share instructions that are not skills
 

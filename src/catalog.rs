@@ -1,6 +1,7 @@
 //! Catalog sources: inspect a multi-skill repository, select skills, and pin the
 //! commit plus the resolved inventory snapshot in the source lock.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::Read;
 use std::os::unix::ffi::OsStrExt;
@@ -10,10 +11,14 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::audit::{self, AuditReport};
+use crate::audit::{self, AuditOptions, AuditReport};
+use crate::config::UserConfig;
 use crate::error::{DaloError, DaloResult};
 use crate::git;
 use crate::inventory::{self, SkillRecord, SourceInventory};
+use crate::lockfile::{self, UserLock};
+use crate::materialize::{self, MaterializationRollback, MaterializeOperationKind, SyncReport};
+use crate::resolver::{self, Resolution, ResolvedSkill};
 use crate::source::{self, SourceConfig, SourceKind};
 use crate::store::{self, StorePaths};
 
@@ -617,6 +622,35 @@ pub struct CatalogDrift {
     pub migration_warnings: Vec<String>,
 }
 
+/// Reviewed plan or completed transaction for advancing one catalog pin.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CatalogAdvanceReport {
+    /// Catalog source ID.
+    pub source_id: String,
+    /// Previously persisted catalog lock entry.
+    pub old_lock: CatalogLock,
+    /// Candidate catalog lock entry.
+    pub new_lock: CatalogLock,
+    /// Classified drift outcomes used for review.
+    pub outcomes: Vec<DriftEntry>,
+    /// Selection before the operation.
+    pub selection_before: Vec<String>,
+    /// Selection after stable-ID move reconciliation.
+    pub selection_after: Vec<String>,
+    /// Deterministic security audits for candidate catalog skills.
+    pub audits: Vec<AuditReport>,
+    /// Exact materialization plan or applied result.
+    pub sync: SyncReport,
+    /// Reasons that prevented the candidate from being persisted.
+    pub blocking_reasons: Vec<String>,
+    /// Legacy sibling catalogs that could not be migrated while planning.
+    pub migration_warnings: Vec<String>,
+    /// Whether this was a no-write preview.
+    pub dry_run: bool,
+    /// Whether the persisted pin changed.
+    pub advanced: bool,
+}
+
 /// Compare a pinned inventory snapshot against a fresh inventory and classify the
 /// four drift outcomes. Selected skills are matched by stable ID first (which
 /// enables move detection), then by path.
@@ -746,6 +780,503 @@ pub fn check_catalog_drift(paths: &StorePaths, id: &str) -> DaloResult<CatalogDr
         outcomes,
         migration_warnings,
     })
+}
+
+/// Plan or explicitly advance one catalog pin after reviewing every affected
+/// resolution and materialization boundary.
+pub fn advance_catalog(
+    paths: &StorePaths,
+    id: &str,
+    dry_run: bool,
+) -> DaloResult<CatalogAdvanceReport> {
+    let config = store::read_config(paths)?;
+    let source = catalog_source_from_config(&config.sources, id)?;
+    if git::is_dirty(&source.path)? {
+        return Err(DaloError::DirtySource {
+            source_id: id.to_owned(),
+            path: source.path,
+        });
+    }
+
+    let persisted_source_lock = read_source_lock(paths)?;
+    let mut source_lock = persisted_source_lock.clone();
+    let migration_warnings =
+        migrate_source_lock_inventories(&mut source_lock, &config.sources, Some(id))?;
+    let old_lock = source_lock
+        .catalog(id)
+        .ok_or_else(|| DaloError::unknown_source(id, Vec::new()))?
+        .clone();
+    let checkout_commit = git::rev_parse_head(&source.path)?;
+    if checkout_commit != old_lock.commit {
+        return Err(DaloError::CheckFailed {
+            reason: format!(
+                "catalog `{id}` checkout is at {checkout_commit}, but its pin is {}; restore the pinned checkout before advancing",
+                old_lock.commit
+            ),
+        });
+    }
+
+    git::fetch(&source.path)?;
+    git::prune_worktrees(&source.path)?;
+    let upstream_commit = git::rev_parse(&source.path, "FETCH_HEAD")?;
+    if git::revision_count(&source.path, &upstream_commit, &old_lock.commit)? != 0 {
+        return Err(DaloError::CheckFailed {
+            reason: format!(
+                "catalog `{id}` upstream revision {upstream_commit} is not a fast-forward from pinned revision {}",
+                old_lock.commit
+            ),
+        });
+    }
+
+    let temp = dry_run.then(tempfile::tempdir).transpose()?;
+    let worktree = if let Some(temp) = &temp {
+        temp.path().join("upstream")
+    } else {
+        let staging_root = paths.sources_dir.join(".audit-staging");
+        fs::create_dir_all(&staging_root)?;
+        let staging_path = staging_root.join(format!("{id}-{upstream_commit}"));
+        cleanup_obsolete_catalog_staging(&source, &staging_root, &staging_path)?;
+        staging_path
+    };
+    let staging_matches = worktree.exists()
+        && git::rev_parse_head(&worktree).is_ok_and(|commit| commit == upstream_commit);
+    if !staging_matches {
+        if worktree.exists() {
+            let _ = git::remove_worktree(&source.path, &worktree);
+            let _ = fs::remove_dir_all(&worktree);
+            git::prune_worktrees(&source.path)?;
+        }
+        git::add_detached_worktree(&source.path, &worktree, &upstream_commit)?;
+    }
+    let result = advance_catalog_candidate(
+        paths,
+        id,
+        dry_run,
+        &source,
+        config,
+        persisted_source_lock,
+        source_lock,
+        old_lock,
+        &worktree,
+        upstream_commit,
+        migration_warnings,
+    );
+    let keep_for_audit = !dry_run
+        && result.as_ref().is_ok_and(|report| {
+            report
+                .blocking_reasons
+                .iter()
+                .any(|reason| reason.starts_with("security audit blocks"))
+        });
+    if !keep_for_audit {
+        let _ = git::remove_worktree(&source.path, &worktree);
+        let _ = git::prune_worktrees(&source.path);
+        if !dry_run {
+            let _ = fs::remove_dir(paths.sources_dir.join(".audit-staging"));
+        }
+    }
+    result
+}
+
+fn cleanup_obsolete_catalog_staging(
+    source: &SourceConfig,
+    staging_root: &Path,
+    keep: &Path,
+) -> DaloResult<()> {
+    for entry in fs::read_dir(staging_root)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path == keep
+            || !entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with(&format!("{}-", source.id))
+        {
+            continue;
+        }
+        if git::remove_worktree(&source.path, &path).is_err() {
+            fs::remove_dir_all(&path)?;
+        }
+    }
+    git::prune_worktrees(&source.path)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn advance_catalog_candidate(
+    paths: &StorePaths,
+    id: &str,
+    dry_run: bool,
+    source: &SourceConfig,
+    original_config: UserConfig,
+    persisted_source_lock: SourceLock,
+    original_source_lock: SourceLock,
+    old_lock: CatalogLock,
+    worktree: &Path,
+    upstream_commit: String,
+    migration_warnings: Vec<String>,
+) -> DaloResult<CatalogAdvanceReport> {
+    let fresh_for_comparison = catalog_inventory(worktree, &source.selection)?;
+    let outcomes = compare_catalog_inventory(
+        &old_lock.inventory,
+        &source.selection,
+        &fresh_for_comparison,
+    );
+    let selection_after = reconciled_selection(
+        &source.selection,
+        &old_lock.inventory,
+        &fresh_for_comparison,
+    );
+    let fresh_inventory = catalog_inventory(worktree, &selection_after)?;
+    let new_lock = CatalogLock {
+        source_id: id.to_owned(),
+        commit: upstream_commit.clone(),
+        selected: selection_after.clone(),
+        inventory: fresh_inventory,
+    };
+
+    let mut next_config = original_config.clone();
+    let configured = next_config
+        .sources
+        .iter_mut()
+        .find(|candidate| candidate.id == id)
+        .expect("catalog source was resolved from this config");
+    configured.path = worktree.to_path_buf();
+    configured.selection = selection_after.clone();
+
+    let approvals = store::read_approvals(paths)?;
+    let live = resolver::resolve_from_config(&next_config, approvals.approvals);
+    let mut blocking_reasons = Vec::new();
+    if let Some(scan) = live.scans.iter().find(|scan| scan.source.id == id)
+        && let Some(error) = &scan.error
+    {
+        blocking_reasons.push(format!(
+            "candidate catalog inventory could not be scanned: {error}"
+        ));
+    }
+    for outcome in &outcomes {
+        if outcome.code == DriftCode::SelectedRemoved {
+            blocking_reasons.push(format!(
+                "selected skill `{}` was removed; update the selection explicitly before advancing",
+                outcome.skill
+            ));
+        }
+    }
+    let candidate_skills = candidate_resolution_skills(&live.resolution, id);
+    let audits = candidate_skills
+        .values()
+        .map(|skill| {
+            audit::audit_skill(
+                paths,
+                &skill.source_ref,
+                &skill.path,
+                &AuditOptions {
+                    persist: false,
+                    ..AuditOptions::default()
+                },
+            )
+        })
+        .collect::<DaloResult<Vec<_>>>()?;
+    for audit in &audits {
+        if audit.is_blocking() {
+            blocking_reasons.push(format!(
+                "security audit blocks candidate skill `{}`; review with `dalo audit '{}' --accept-risk <reason>`",
+                audit.source_ref,
+                audit.skill_path.display()
+            ));
+        }
+    }
+
+    let mut candidate_resolution = live.resolution;
+    rebase_resolution_paths(&mut candidate_resolution, worktree, &source.path);
+    let preview = materialize::materialize(paths, &candidate_resolution, true)?;
+    let state = store::read_state(paths)?;
+    for operation in &preview.operations {
+        let changes_state = !matches!(
+            operation.kind,
+            MaterializeOperationKind::NoOp | MaterializeOperationKind::Keep
+        );
+        if changes_state && !operation_is_catalog_related(operation, &state, &source.path) {
+            blocking_reasons.push(
+                "materialization drift outside this catalog must be reconciled with `dalo sync` first"
+                    .to_owned(),
+            );
+            break;
+        }
+        if operation.status == materialize::MaterializeOperationStatus::Blocked
+            && operation_is_catalog_related(operation, &state, &source.path)
+        {
+            blocking_reasons.push(format!(
+                "catalog materialization is blocked at `{}`: {}",
+                operation.link_path.display(),
+                operation.reason.as_deref().unwrap_or("unsafe target state")
+            ));
+        }
+    }
+    blocking_reasons.sort();
+    blocking_reasons.dedup();
+
+    let same_revision = old_lock.commit == upstream_commit;
+    if same_revision {
+        blocking_reasons.clear();
+    }
+    let mut report = CatalogAdvanceReport {
+        source_id: id.to_owned(),
+        old_lock,
+        new_lock,
+        outcomes,
+        selection_before: source.selection.clone(),
+        selection_after,
+        audits,
+        sync: preview,
+        blocking_reasons,
+        migration_warnings,
+        dry_run,
+        advanced: false,
+    };
+    if dry_run || same_revision || !report.blocking_reasons.is_empty() {
+        return Ok(report);
+    }
+
+    let original_user_lock = store::read_user_lock(paths)?;
+    let mut next_source_lock = original_source_lock;
+    next_source_lock
+        .catalogs
+        .retain(|catalog| catalog.source_id != id);
+    next_source_lock.catalogs.push(report.new_lock.clone());
+    next_source_lock
+        .catalogs
+        .sort_by(|left, right| left.source_id.cmp(&right.source_id));
+    let mut persisted_config = original_config.clone();
+    persisted_config
+        .sources
+        .iter_mut()
+        .find(|candidate| candidate.id == id)
+        .expect("catalog source was resolved from this config")
+        .selection = report.selection_after.clone();
+
+    git::fast_forward_to(&source.path, &upstream_commit)?;
+    if let Err(error) = catalog_advance_boundary("checkout") {
+        return rollback_catalog_advance(
+            paths,
+            source,
+            &report.old_lock.commit,
+            &original_config,
+            &persisted_source_lock,
+            &original_user_lock,
+            None,
+            error,
+        );
+    }
+    let (applied, rollback) = match materialize::materialize_with_degraded_sources_rollback(
+        paths,
+        &candidate_resolution,
+        false,
+        &[],
+    ) {
+        Ok(result) => result,
+        Err(error) => {
+            return rollback_catalog_advance(
+                paths,
+                source,
+                &report.old_lock.commit,
+                &original_config,
+                &persisted_source_lock,
+                &original_user_lock,
+                None,
+                error,
+            );
+        }
+    };
+    if let Err(error) = catalog_advance_boundary("materialization") {
+        return rollback_catalog_advance(
+            paths,
+            source,
+            &report.old_lock.commit,
+            &original_config,
+            &persisted_source_lock,
+            &original_user_lock,
+            rollback,
+            error,
+        );
+    }
+    let mut next_user_lock = lockfile::build_user_lock(
+        &persisted_config.sources,
+        &applied.resolution,
+        Some(&applied),
+    );
+    next_user_lock.active_instruction_packs = original_user_lock.active_instruction_packs.clone();
+
+    let persist = (|| -> DaloResult<()> {
+        write_source_lock(paths, &next_source_lock)?;
+        catalog_advance_boundary("source_lock")?;
+        store::write_config(paths, &persisted_config)?;
+        catalog_advance_boundary("config")?;
+        store::write_user_lock(paths, &next_user_lock)?;
+        catalog_advance_boundary("user_lock")
+    })();
+    if let Err(error) = persist {
+        return rollback_catalog_advance(
+            paths,
+            source,
+            &report.old_lock.commit,
+            &original_config,
+            &persisted_source_lock,
+            &original_user_lock,
+            rollback,
+            error,
+        );
+    }
+
+    report.sync = applied;
+    report.advanced = true;
+    Ok(report)
+}
+
+fn reconciled_selection(
+    selection: &[String],
+    locked: &[CatalogEntry],
+    fresh: &[CatalogEntry],
+) -> Vec<String> {
+    let mut reconciled = selection
+        .iter()
+        .map(|reference| {
+            let old = locked
+                .iter()
+                .find(|entry| entry_matches_ref(entry, reference));
+            let Some(old) = old else {
+                return reference.clone();
+            };
+            let Some(id) = old.id.as_deref() else {
+                return reference.clone();
+            };
+            let Some(candidate) = fresh.iter().find(|entry| entry.id.as_deref() == Some(id)) else {
+                return reference.clone();
+            };
+            if candidate.path != old.path {
+                id.to_owned()
+            } else {
+                reference.clone()
+            }
+        })
+        .collect::<Vec<_>>();
+    reconciled.sort();
+    reconciled.dedup();
+    reconciled
+}
+
+fn entry_matches_ref(entry: &CatalogEntry, reference: &str) -> bool {
+    entry.slot_name == reference
+        || entry.path == reference
+        || entry.id.as_deref() == Some(reference)
+}
+
+fn candidate_resolution_skills<'a>(
+    resolution: &'a Resolution,
+    source_id: &str,
+) -> BTreeMap<String, &'a ResolvedSkill> {
+    let mut skills = BTreeMap::new();
+    for skill in resolution
+        .active_skills
+        .iter()
+        .chain(&resolution.pending_approval_skills)
+        .filter(|skill| skill.source_id == source_id)
+    {
+        skills.insert(skill.source_ref.clone(), skill);
+    }
+    for blocked in resolution
+        .blocked_skills
+        .iter()
+        .filter(|blocked| blocked.skill.source_id == source_id)
+    {
+        skills.insert(blocked.skill.source_ref.clone(), &blocked.skill);
+    }
+    skills
+}
+
+fn rebase_resolution_paths(resolution: &mut Resolution, from: &Path, to: &Path) {
+    let rebase = |skill: &mut ResolvedSkill| {
+        if let Ok(relative) = skill.path.strip_prefix(from) {
+            skill.path = to.join(relative);
+        }
+    };
+    for skill in &mut resolution.active_skills {
+        rebase(skill);
+    }
+    for skill in &mut resolution.pending_approval_skills {
+        rebase(skill);
+    }
+    for skill in &mut resolution.unlinked_skills {
+        rebase(&mut skill.skill);
+    }
+    for skill in &mut resolution.blocked_skills {
+        rebase(&mut skill.skill);
+    }
+}
+
+fn operation_is_catalog_related(
+    operation: &materialize::MaterializeOperation,
+    state: &store::StateFile,
+    source_path: &Path,
+) -> bool {
+    operation
+        .desired_path
+        .as_deref()
+        .is_some_and(|path| path.starts_with(source_path))
+        || state.owned_skills.iter().any(|owned| {
+            owned.link_path == operation.link_path && owned.store_path.starts_with(source_path)
+        })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn rollback_catalog_advance(
+    paths: &StorePaths,
+    source: &SourceConfig,
+    old_commit: &str,
+    original_config: &UserConfig,
+    original_source_lock: &SourceLock,
+    original_user_lock: &UserLock,
+    rollback: Option<MaterializationRollback>,
+    error: DaloError,
+) -> DaloResult<CatalogAdvanceReport> {
+    let mut rollback_errors = Vec::new();
+    if let Some(rollback) = rollback
+        && let Err(restore_error) = rollback.restore(paths)
+    {
+        rollback_errors.push(format!("materialization: {restore_error}"));
+    }
+    if let Err(restore_error) = git::reset_hard_to(&source.path, old_commit) {
+        rollback_errors.push(format!("checkout: {restore_error}"));
+    }
+    if let Err(restore_error) = store::write_config(paths, original_config) {
+        rollback_errors.push(format!("config: {restore_error}"));
+    }
+    if let Err(restore_error) = write_source_lock(paths, original_source_lock) {
+        rollback_errors.push(format!("source lock: {restore_error}"));
+    }
+    if let Err(restore_error) = store::write_user_lock(paths, original_user_lock) {
+        rollback_errors.push(format!("user lock: {restore_error}"));
+    }
+    if rollback_errors.is_empty() {
+        Err(error)
+    } else {
+        Err(DaloError::Io(std::io::Error::other(format!(
+            "{error}; additionally failed to roll back catalog advance: {}",
+            rollback_errors.join("; ")
+        ))))
+    }
+}
+
+fn catalog_advance_boundary(boundary: &str) -> DaloResult<()> {
+    if std::env::var("DALO_CATALOG_ADVANCE_FAIL_AT")
+        .ok()
+        .as_deref()
+        == Some(boundary)
+    {
+        return Err(DaloError::CheckFailed {
+            reason: format!("injected catalog-advance failure at {boundary}"),
+        });
+    }
+    Ok(())
 }
 
 fn catalog_inventory_at_commit(

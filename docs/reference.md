@@ -215,8 +215,10 @@ JSON output shape: `CatalogSelectReport`.
 
 Fetch a catalog source and compare the upstream inventory with the pinned
 inventory snapshot. This is read-only for pins and selections. `--check` exits
-non-zero when selected skills drifted upstream. Advancing the pin is not
-implemented yet.
+non-zero when selected skills drifted upstream. `--advance` explicitly updates
+only this catalog after candidate approval, dependency, audit, and
+materialization preflight. Selected removal, dirty or divergent checkouts,
+security-audit blocks, and unsafe target state stop the transaction.
 
 Examples:
 
@@ -224,12 +226,27 @@ Examples:
 dalo source refresh public
 dalo source refresh public --check
 dalo --json source refresh public
+dalo --dry-run --json source refresh public --advance
+dalo source refresh public --advance
 ```
 
 JSON output shape: `CatalogDrift`.
 
 With `--check`, the command exits with code 1 when a selected skill changed,
 moved, or was removed upstream. New unselected offerings remain informational.
+
+`--advance` and `--check` are mutually exclusive. Global `--dry-run` with
+`--advance` returns `CatalogAdvanceReport`, including the complete old and new
+catalog lock entries, stable drift codes, reconciled selection, security audit
+results, materialization plan, and blocking reasons. It performs no config,
+lock, checkout, audit-cache, state, or target writes. A real advance updates the
+checkout, `source-lock.toml`, any stable-ID move in `config.toml`, `lock.toml`,
+and affected owned target links as one rollback-safe transaction. Newly
+required unapproved skills remain unlinked and can be approved after the new
+pin is installed; their dependents remain blocked until then. A candidate with
+blocking audit findings stays in `sources/.audit-staging/`; the report prints
+the exact staged path to review and, when justified, accept for that content
+hash before retrying the advance.
 
 ### `dalo source remove <id>`
 
@@ -616,6 +633,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `source inspect` | `CatalogInspectReport` | `source_id`, `candidates[]` |
 | `source select` | `CatalogSelectReport` | `source_id`, `selected[]`, `dry_run`, `audits[]` for skills named by the operation, `migration_warnings[]` for degraded legacy sibling catalogs |
 | `source refresh` | `CatalogDrift` | `source_id`, `pinned_commit`, `upstream_commit`, `outcomes[]`, `migration_warnings[]` for degraded legacy sibling catalogs |
+| `source refresh --advance` | `CatalogAdvanceReport` | exact `old_lock`/`new_lock`, selections, `outcomes[]`, `audits[]`, `sync`, `blocking_reasons[]`, `dry_run`, and `advanced` |
 | `source remove` | `SourceRemoveReport` | `source_id`, `checkout_path`, `kept_checkout`, `removed_approvals`, `removed_catalog_lock`, `reconciled_links[]`, `deactivated_skills[]`, `cleanup_warnings[]`, `affected_paths[]`, `dry_run` |
 | `status` | `StatusReport` | `store`, `sources[]`, `targets[]`, `inventory_warnings[]`, `resolution`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]` |
 | `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, `operations[]` |
