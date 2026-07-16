@@ -504,6 +504,13 @@ fn uninstall_with(
         restore_previous_install(paths, state.as_ref(), runner);
         return Err(error.into());
     }
+    if paths.autosync_run_file.exists()
+        && let Err(error) = fs::remove_file(&paths.autosync_run_file)
+    {
+        let _ = store::write_config(paths, &original_config);
+        restore_previous_install(paths, state.as_ref(), runner);
+        return Err(error.into());
+    }
 
     Ok(AutosyncMutationReport {
         action: if state.is_some() || configured {
@@ -1389,10 +1396,21 @@ mod tests {
             assert!(installed_status.configured);
             assert!(installed_status.installed);
             assert!(installed_status.enabled);
+            let started = begin_run(&paths).expect("scheduled run should begin");
+            finish_run(
+                &paths,
+                started,
+                AutosyncRunOutcome::Blocked,
+                Some("review required".to_owned()),
+            )
+            .expect("blocked run should persist");
+            assert!(paths.autosync_run_file.exists());
 
             let removed =
                 uninstall_with(&paths, false, &runner).expect("first uninstall should succeed");
             assert_eq!(removed.action, "uninstalled");
+            assert!(removed.status.last_run.is_none());
+            assert!(!paths.autosync_run_file.exists());
             let repeated =
                 uninstall_with(&paths, false, &runner).expect("second uninstall should succeed");
             assert_eq!(repeated.action, "unchanged");
