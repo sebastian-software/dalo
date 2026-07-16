@@ -788,6 +788,7 @@ fn status_requires_review(report: &status::StatusReport) -> bool {
         || (report.targets.is_empty() && !report.resolution.active_skills.is_empty())
         || report.unmanaged_skills.iter().any(|skill| !skill.protected)
         || !report.instruction_block_drifts.is_empty()
+        || report.autosync.scheduler_error.is_some()
         || report.autosync.configured != report.autosync.installed
         || (report.autosync.installed && !report.autosync.enabled)
         || (report.autosync.installed

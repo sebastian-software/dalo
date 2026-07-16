@@ -210,7 +210,19 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         &config.sources,
         &previous_lock.active_instruction_packs,
     );
-    let autosync = crate::autosync::status(&paths)?;
+    let autosync = crate::autosync::status(&paths).unwrap_or_else(|error| AutosyncStatusReport {
+        configured: config.settings.autosync,
+        installed: paths.autosync_file.exists(),
+        enabled: false,
+        backend: None,
+        schedule: None,
+        executable: None,
+        store: None,
+        identifier: None,
+        artifacts: Vec::new(),
+        scheduler_error: Some(format!("autosync state could not be inspected: {error}")),
+        last_run: None,
+    });
 
     Ok(StatusReport {
         store: store_root.to_path_buf(),
