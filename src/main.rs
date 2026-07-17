@@ -6,11 +6,13 @@ use dalo::term;
 use serde::Serialize;
 
 fn main() -> ExitCode {
-    match run_cli(Cli::parse_args()) {
+    let cli = Cli::parse_args();
+    let json = cli.json;
+    match run_cli(cli) {
         Ok(()) => DaloExitCode::Success.into(),
         Err(error) => {
             let code = error.exit_code();
-            if json_requested() {
+            if json {
                 print_json_error(&error, code);
             } else {
                 eprintln!("{}: {error}", term::error_label("error"));
@@ -18,13 +20,6 @@ fn main() -> ExitCode {
             code.into()
         }
     }
-}
-
-fn json_requested() -> bool {
-    std::env::args_os()
-        .skip(1)
-        .take_while(|arg| arg != "--")
-        .any(|arg| arg == "--json")
 }
 
 #[derive(Serialize)]

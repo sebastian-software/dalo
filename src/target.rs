@@ -329,8 +329,11 @@ fn registry_entry(target_id: &str) -> DaloResult<&'static TargetRegistryEntry> {
     registry()
         .iter()
         .find(|entry| entry.id == target_id)
-        .ok_or_else(|| DaloError::UnknownTarget {
-            target: target_id.to_owned(),
+        .ok_or_else(|| {
+            DaloError::unknown_target(
+                target_id,
+                registry().iter().map(|entry| entry.id.to_owned()).collect(),
+            )
         })
 }
 

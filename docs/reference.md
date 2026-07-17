@@ -711,7 +711,8 @@ dalo instructions list
 dalo --json instructions list
 ```
 
-JSON output shape: array of `LockedInstructionPack`.
+JSON output shape: `InstructionPackListReport` with
+`active_instruction_packs[]` entries.
 
 ### `dalo completions <shell>`
 
@@ -788,7 +789,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `resolve remove-owned` | `RemoveOwnedReport` | `id`, `link_path`, `status` |
 | `doctor` | `DoctorReport` | `store`, `findings[]`, `summary` |
 | `instructions enable` / `disable` | `InstructionPackReport` | `pack_id`, `target`, `action`, `dry_run` |
-| `instructions list` | `LockedInstructionPack[]` | `pack_id`, `target`, `source_id`, optional `commit`, optional `version` |
+| `instructions list` | `InstructionPackListReport` | `active_instruction_packs[]` with `pack_id`, `target`, `source_id`, optional `commit`, optional `version` |
 
 Each `AuditReport.static_findings[]` entry contains `id`, `severity`,
 `category`, `path`, optional `line`, `message`, and optional bounded `evidence`.

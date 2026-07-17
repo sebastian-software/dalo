@@ -1014,12 +1014,41 @@ fn audit_should_check_explicit_provider_before_printing_egress_warning() {
 
 #[test]
 fn audit_help_should_prefer_refresh_audit_and_keep_refresh_as_hidden_alias() {
-    dalo_command()
-        .args(["audit", "--help"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("--refresh-audit"))
-        .stdout(predicate::str::contains("--refresh ").not());
+    for args in [
+        vec!["audit", "--help"],
+        vec!["adopt", "--help"],
+        vec!["approve", "skill", "--help"],
+        vec!["resolve", "adopt", "--help"],
+    ] {
+        dalo_command()
+            .args(args)
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("--refresh-audit"))
+            .stdout(predicate::str::contains("--refresh ").not());
+    }
+}
+
+#[test]
+fn refresh_alias_should_work_for_all_audit_related_commands() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+
+    for args in [
+        vec!["adopt", "missing", "--refresh"],
+        vec!["approve", "skill", "local:missing", "--refresh"],
+        vec!["resolve", "adopt", "missing", "--refresh"],
+    ] {
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .args(args)
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("unexpected argument").not());
+    }
 }
 
 #[test]
@@ -1085,8 +1114,18 @@ fn help_should_explain_complex_command_values_and_examples() {
         .args(["source", "add-catalog", "--help"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("Git URL of the catalog source"))
+        .stdout(predicate::str::contains(
+            "Git URL or local path of the catalog source",
+        ))
         .stdout(predicate::str::contains("team source").not());
+
+    dalo_command()
+        .args(["source", "add", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Git URL or local path of the team source",
+        ));
 
     for (args, expected) in [
         (
@@ -1378,7 +1417,14 @@ fn init_should_create_store_layout() {
         .success()
         .stdout(predicate::str::contains("created"))
         .stdout(predicate::str::contains("Store ready."))
-        .stdout(predicate::str::contains("dalo target link"));
+        .stdout(predicate::str::contains(format!(
+            "dalo --store '{}' target link <codex|claude|openclaw|hermes|generic> [path]",
+            store.display()
+        )))
+        .stdout(predicate::str::contains(format!(
+            "dalo --store '{}' sync",
+            store.display()
+        )));
 
     assert!(store.join("config.toml").is_file());
     assert!(store.join("lock.toml").is_file());
@@ -1517,7 +1563,10 @@ fn status_and_sync_should_explain_missing_targets_for_active_skills() {
         .assert()
         .success()
         .stdout(predicate::str::contains("targets:"))
-        .stdout(predicate::str::contains("none linked"));
+        .stdout(predicate::str::contains("none linked"))
+        .stdout(predicate::str::contains(
+            "<codex|claude|openclaw|hermes|generic> [path]",
+        ));
     dalo_command()
         .args(["--store"])
         .arg(&store)
@@ -1533,6 +1582,9 @@ fn status_and_sync_should_explain_missing_targets_for_active_skills() {
         .success()
         .stdout(predicate::str::contains(
             "1 skills resolved but no targets are linked",
+        ))
+        .stdout(predicate::str::contains(
+            "<codex|claude|openclaw|hermes|generic> [path]",
         ));
     dalo_command()
         .args(["--store"])
@@ -1584,6 +1636,14 @@ fn dry_run_should_note_when_status_is_read_only() {
         .assert()
         .success()
         .stderr(predicate::str::contains("--dry-run has no effect"));
+
+    dalo_command()
+        .args(["--dry-run", "--store"])
+        .arg(&store)
+        .args(["resolve", "list"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("--dry-run has no effect"));
 }
 
 #[test]
@@ -1631,6 +1691,31 @@ fn json_errors_should_render_machine_readable_stderr() {
             store.display()
         )))
         .stderr(predicate::str::contains("error:").not());
+}
+
+#[test]
+fn json_error_mode_should_use_the_parsed_flag_not_a_flag_shaped_value() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let missing_repo = temp_dir.path().join("missing-team-repo");
+
+    dalo_command()
+        .args(["team", "--repo"])
+        .arg(&missing_repo)
+        .args([
+            "catalog",
+            "add",
+            "marketing",
+            "https://example.test/catalog.git",
+            "--version",
+            "main",
+            "--skill",
+            "--json",
+        ])
+        .assert()
+        .failure()
+        .code(4)
+        .stderr(predicate::str::starts_with("error:"))
+        .stderr(predicate::str::contains("\"error\"").not());
 }
 
 #[test]
@@ -1974,10 +2059,46 @@ fn target_unlink_dry_run_should_report_missing_when_not_linked() {
     dalo_command()
         .args(["--store"])
         .arg(&store)
+        .args(["target", "unlink", "generic"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "not linked: generic (no state change)",
+        ))
+        .stdout(predicate::str::contains("missing target").not());
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
         .args(["--dry-run", "target", "unlink", "generic"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("missing target generic"));
+        .stdout(predicate::str::contains(
+            "not linked: generic (no state change)",
+        ))
+        .stdout(predicate::str::contains("missing target").not());
+}
+
+#[test]
+fn unknown_target_should_suggest_detection() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "link", "unknown"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("unknown target `unknown`"))
+        .stderr(predicate::str::contains("run `dalo target detect`"));
 }
 
 #[test]
@@ -7256,6 +7377,22 @@ fn instructions_list_should_show_active_pack() {
         .success()
         .stdout(predicate::str::contains("house-style"))
         .stdout(predicate::str::contains("AGENTS.md"));
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "instructions", "list"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value =
+        serde_json::from_slice(&output).expect("instruction list JSON should parse");
+    assert_eq!(
+        report["active_instruction_packs"][0]["pack_id"],
+        "house-style"
+    );
 }
 
 #[test]
