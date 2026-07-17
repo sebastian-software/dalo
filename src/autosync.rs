@@ -46,6 +46,16 @@ impl AutosyncSchedule {
             Self::Weekly => "weekly",
         }
     }
+
+    /// Approximate seconds between two runs on this schedule.
+    #[must_use]
+    pub const fn interval_secs(self) -> u64 {
+        match self {
+            Self::Hourly => 3_600,
+            Self::Daily => 86_400,
+            Self::Weekly => 604_800,
+        }
+    }
 }
 
 /// Native scheduler selected for this installation.
@@ -168,6 +178,9 @@ pub struct AutosyncStatusReport {
     /// Native scheduler inspection failure, when durable metadata remains readable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scheduler_error: Option<String>,
+    /// Why the job is installed but not currently enabled, when that applies.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub disabled_reason: Option<String>,
     /// Durable status from the latest scheduled attempt.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_run: Option<AutosyncRunState>,
@@ -645,6 +658,15 @@ fn uninstall_with(
         return Err(error.into());
     }
 
+    // Autosync logs are append-only with no rotation, so they would otherwise
+    // outlive the install indefinitely. Remove them best-effort: a leftover log
+    // must never block an otherwise-successful uninstall.
+    for log in [&paths.autosync_log_file, &paths.autosync_error_log_file] {
+        if log.exists() {
+            let _ = fs::remove_file(log);
+        }
+    }
+
     let mut status = report_from_state(None, false, read_run_state(paths)?, false);
     if !recovery_errors.is_empty() {
         status.scheduler_error = Some(format!(
@@ -768,6 +790,7 @@ fn status_with(paths: &StorePaths, runner: &dyn CommandRunner) -> DaloResult<Aut
         false
     };
     let mut scheduler_error = None;
+    let mut disabled_reason = None;
     let enabled = match &state {
         Some(state) => {
             let artifacts_present = state.backend == SchedulerBackend::Cron
@@ -775,31 +798,75 @@ fn status_with(paths: &StorePaths, runner: &dyn CommandRunner) -> DaloResult<Aut
                     .artifacts
                     .iter()
                     .all(|artifact| Path::new(artifact).is_file());
-            if artifacts_present
-                && executable_available(&state.executable)
-                && state.store == paths.root
-            {
+            if !artifacts_present {
+                disabled_reason = Some("native scheduler artifacts are missing".to_owned());
+                false
+            } else if !executable_available(&state.executable) {
+                disabled_reason = Some(format!(
+                    "recorded executable `{}` is missing or not executable",
+                    state.executable.display()
+                ));
+                false
+            } else if state.store != paths.root {
+                disabled_reason = Some(format!(
+                    "installed store path `{}` no longer matches this store `{}`",
+                    state.store.display(),
+                    paths.root.display()
+                ));
+                false
+            } else {
                 match scheduler_enabled(state, runner) {
-                    Ok(enabled) => enabled,
+                    Ok(true) => true,
+                    Ok(false) => {
+                        disabled_reason =
+                            Some("the native scheduler reports the job disabled".to_owned());
+                        false
+                    }
                     Err(error) => {
                         scheduler_error = Some(error.to_string());
+                        disabled_reason =
+                            Some("the native scheduler state could not be inspected".to_owned());
                         false
                     }
                 }
-            } else {
-                false
             }
         }
         None => false,
     };
     let mut report = report_from_state(state, enabled, read_run_state(paths)?, configured);
     report.scheduler_error = scheduler_error;
+    report.disabled_reason = disabled_reason;
     Ok(report)
 }
 
 pub(crate) fn executable_available(path: &Path) -> bool {
     fs::metadata(path)
         .is_ok_and(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
+}
+
+/// Number of schedule intervals after which a run still marked `running` is
+/// treated as stale — a runner that was interrupted before it could persist a
+/// terminal outcome (for example a SIGKILL or a power loss mid-sync).
+pub const STALE_RUNNING_INTERVALS: u64 = 2;
+
+/// Whether a run persisted as `running` has been in that state long enough to
+/// be an interrupted run rather than one still in progress. `schedule` is the
+/// installed schedule when known; without it a daily cadence is assumed.
+#[must_use]
+pub fn running_run_is_stale(
+    run: &AutosyncRunState,
+    schedule: Option<AutosyncSchedule>,
+    now: u64,
+) -> bool {
+    if run.outcome != AutosyncRunOutcome::Running {
+        return false;
+    }
+    let interval = schedule.map_or_else(
+        || AutosyncSchedule::Daily.interval_secs(),
+        AutosyncSchedule::interval_secs,
+    );
+    now.saturating_sub(run.last_attempted_at_unix)
+        > interval.saturating_mul(STALE_RUNNING_INTERVALS)
 }
 
 fn report_from_state(
@@ -819,6 +886,7 @@ fn report_from_state(
         identifier: state.as_ref().map(|state| state.identifier.clone()),
         artifacts: state.map_or_else(Vec::new, |state| state.artifacts),
         scheduler_error: None,
+        disabled_reason: None,
         last_run,
     }
 }
@@ -1409,7 +1477,7 @@ fn user_home() -> DaloResult<PathBuf> {
         })
 }
 
-fn now_unix() -> u64 {
+pub(crate) fn now_unix() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -1837,6 +1905,124 @@ mod tests {
                     .autosync
             );
         }
+    }
+
+    #[test]
+    fn running_run_is_stale_should_detect_interrupted_runs() {
+        let running = AutosyncRunState {
+            schema_version: AUTOSYNC_SCHEMA_VERSION,
+            last_attempted_at_unix: 1_000_000,
+            last_successful_at_unix: None,
+            outcome: AutosyncRunOutcome::Running,
+            reason: None,
+        };
+        let interval = AutosyncSchedule::Daily.interval_secs();
+        // Still within the grace window: treated as in progress, not stale.
+        assert!(!running_run_is_stale(
+            &running,
+            Some(AutosyncSchedule::Daily),
+            1_000_000 + interval,
+        ));
+        // Well past the grace window: treated as an interrupted run.
+        assert!(running_run_is_stale(
+            &running,
+            Some(AutosyncSchedule::Daily),
+            1_000_000 + interval * 3,
+        ));
+        // Terminal outcomes are never stale, regardless of age.
+        let succeeded = AutosyncRunState {
+            outcome: AutosyncRunOutcome::Succeeded,
+            ..running
+        };
+        assert!(!running_run_is_stale(
+            &succeeded,
+            Some(AutosyncSchedule::Daily),
+            u64::MAX,
+        ));
+    }
+
+    #[test]
+    fn uninstall_should_remove_autosync_logs() {
+        let (_temp, paths, home, executable) = setup();
+        let runner = FakeRunner::default();
+        install_with(
+            &paths,
+            AutosyncSchedule::Daily,
+            false,
+            SchedulerBackend::Cron,
+            &executable,
+            &home,
+            &runner,
+        )
+        .expect("install should succeed");
+        fs::write(&paths.autosync_log_file, "log line\n").expect("log should be written");
+        fs::write(&paths.autosync_error_log_file, "err line\n")
+            .expect("error log should be written");
+
+        uninstall_with(&paths, false, &runner, Some(&home)).expect("uninstall should succeed");
+
+        assert!(
+            !paths.autosync_log_file.exists(),
+            "stdout log should be removed on uninstall"
+        );
+        assert!(
+            !paths.autosync_error_log_file.exists(),
+            "stderr log should be removed on uninstall"
+        );
+    }
+
+    #[test]
+    fn uninstall_dry_run_should_keep_autosync_logs() {
+        let (_temp, paths, home, executable) = setup();
+        let runner = FakeRunner::default();
+        install_with(
+            &paths,
+            AutosyncSchedule::Daily,
+            false,
+            SchedulerBackend::Cron,
+            &executable,
+            &home,
+            &runner,
+        )
+        .expect("install should succeed");
+        fs::write(&paths.autosync_log_file, "log line\n").expect("log should be written");
+
+        uninstall_with(&paths, true, &runner, Some(&home))
+            .expect("dry-run uninstall should succeed");
+
+        assert!(
+            paths.autosync_log_file.exists(),
+            "dry-run uninstall must not remove logs"
+        );
+    }
+
+    #[test]
+    fn status_should_explain_a_disabled_job() {
+        let (_temp, paths, home, executable) = setup();
+        let runner = FakeRunner::default();
+        install_with(
+            &paths,
+            AutosyncSchedule::Daily,
+            false,
+            SchedulerBackend::Cron,
+            &executable,
+            &home,
+            &runner,
+        )
+        .expect("install should succeed");
+        fs::remove_file(&executable).expect("executable should be removable");
+
+        let status = status_with(&paths, &runner).expect("status should succeed");
+
+        assert!(status.installed);
+        assert!(!status.enabled);
+        let reason = status
+            .disabled_reason
+            .expect("a disabled job should explain the cause");
+        assert!(
+            reason.contains("executable"),
+            "reason should name the missing executable: {reason}"
+        );
     }
 
     #[test]

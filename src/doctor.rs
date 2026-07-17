@@ -177,6 +177,8 @@ pub enum DoctorCode {
     AutosyncExecutableMissing,
     /// The latest scheduled synchronization was blocked.
     AutosyncRunBlocked,
+    /// A scheduled run is still marked `running` long after it started.
+    AutosyncRunStale,
     /// Autosync metadata or native scheduler state could not be inspected.
     AutosyncStateInvalid,
 }
@@ -294,21 +296,39 @@ fn check_autosync(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) {
             } else {
                 findings.push(finding_warning(
                     DoctorCode::AutosyncDisabled,
-                    "autosync config, metadata, and native scheduler state are inconsistent",
+                    status.disabled_reason.as_deref().map_or_else(
+                        || {
+                            "autosync config, metadata, and native scheduler state are inconsistent"
+                                .to_owned()
+                        },
+                        |reason| format!("autosync is installed but disabled: {reason}"),
+                    ),
                     Some("dalo autosync install".to_owned()),
                 ));
             }
-            if let Some(run) = status.last_run
-                && run.outcome == AutosyncRunOutcome::Blocked
+            // Run-state findings only apply to an installed job, matching the
+            // `status --check` gate; a run recorded without an install must not
+            // disagree with that command.
+            if let Some(run) = &status.last_run
+                && status.installed
             {
-                findings.push(finding_warning(
-                    DoctorCode::AutosyncRunBlocked,
-                    format!(
-                        "latest scheduled synchronization was blocked: {}",
-                        run.reason.as_deref().unwrap_or("no reason recorded")
-                    ),
-                    Some("dalo autosync status".to_owned()),
-                ));
+                if run.outcome == AutosyncRunOutcome::Blocked {
+                    findings.push(finding_warning(
+                        DoctorCode::AutosyncRunBlocked,
+                        format!(
+                            "latest scheduled synchronization was blocked: {}",
+                            run.reason.as_deref().unwrap_or("no reason recorded")
+                        ),
+                        Some("dalo autosync status".to_owned()),
+                    ));
+                } else if autosync::running_run_is_stale(run, status.schedule, autosync::now_unix())
+                {
+                    findings.push(finding_warning(
+                        DoctorCode::AutosyncRunStale,
+                        "a scheduled synchronization started but never recorded a terminal outcome; it was likely interrupted",
+                        Some("dalo autosync status".to_owned()),
+                    ));
+                }
             }
         }
         Err(error) => findings.push(finding_error(
@@ -1154,6 +1174,7 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::AutosyncDisabled => "autosync_disabled",
         DoctorCode::AutosyncExecutableMissing => "autosync_executable_missing",
         DoctorCode::AutosyncRunBlocked => "autosync_run_blocked",
+        DoctorCode::AutosyncRunStale => "autosync_run_stale",
         DoctorCode::AutosyncStateInvalid => "autosync_state_invalid",
     }
 }
@@ -1293,6 +1314,101 @@ mod tests {
             !findings
                 .iter()
                 .any(|finding| finding.code == DoctorCode::AutosyncDisabled)
+        );
+    }
+
+    #[test]
+    fn doctor_should_flag_a_stale_running_autosync_run() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store = temp_dir.path().join("store");
+        store::init_store(store.clone(), false).expect("store should initialize");
+        let paths = StorePaths::new(store);
+
+        let executable = temp_dir.path().join("bin/dalo");
+        fs::create_dir_all(executable.parent().expect("binary has parent"))
+            .expect("binary dir should exist");
+        fs::write(&executable, "binary").expect("binary should exist");
+        let mut permissions = fs::metadata(&executable)
+            .expect("binary metadata readable")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&executable, permissions).expect("binary should be executable");
+        let state = crate::autosync::AutosyncInstallState {
+            schema_version: 1,
+            backend: crate::autosync::SchedulerBackend::Cron,
+            schedule: crate::autosync::AutosyncSchedule::Daily,
+            executable,
+            store: paths.root.clone(),
+            identifier: "dalo-autosync-test".to_owned(),
+            artifacts: vec!["crontab".to_owned()],
+            installed_at_unix: 1,
+        };
+        fs::write(
+            &paths.autosync_file,
+            toml::to_string(&state).expect("autosync state should serialize"),
+        )
+        .expect("autosync state should be written");
+        let mut config = store::read_config(&paths).expect("config should parse");
+        config.settings.autosync = true;
+        config.settings.sync_interval = Some("daily".to_owned());
+        store::write_config(&paths, &config).expect("config should be written");
+
+        // A run that started long ago but never recorded a terminal outcome.
+        let run = crate::autosync::AutosyncRunState {
+            schema_version: 1,
+            last_attempted_at_unix: 1_000_000_000,
+            last_successful_at_unix: None,
+            outcome: crate::autosync::AutosyncRunOutcome::Running,
+            reason: None,
+        };
+        fs::write(
+            &paths.autosync_run_file,
+            toml::to_string(&run).expect("run state should serialize"),
+        )
+        .expect("run state should be written");
+
+        let mut findings = Vec::new();
+        check_autosync(&paths, &mut findings);
+
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.code == DoctorCode::AutosyncRunStale
+                    && finding.severity == DoctorSeverity::Warning),
+            "a stale running run should warn: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn doctor_should_ignore_blocked_autosync_run_when_not_installed() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store = temp_dir.path().join("store");
+        store::init_store(store.clone(), false).expect("store should initialize");
+        let paths = StorePaths::new(store);
+
+        // A blocked run persists, but no install metadata exists. `doctor` must
+        // stay consistent with `status --check`, which ignores this case.
+        let run = crate::autosync::AutosyncRunState {
+            schema_version: 1,
+            last_attempted_at_unix: 1_000_000_000,
+            last_successful_at_unix: None,
+            outcome: crate::autosync::AutosyncRunOutcome::Blocked,
+            reason: Some("review required".to_owned()),
+        };
+        fs::write(
+            &paths.autosync_run_file,
+            toml::to_string(&run).expect("run state should serialize"),
+        )
+        .expect("run state should be written");
+
+        let mut findings = Vec::new();
+        check_autosync(&paths, &mut findings);
+
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.code == DoctorCode::AutosyncRunBlocked),
+            "a run recorded without an install must not warn: {findings:?}"
         );
     }
 

@@ -255,6 +255,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         identifier: None,
         artifacts: Vec::new(),
         scheduler_error: Some(format!("autosync state could not be inspected: {error}")),
+        disabled_reason: None,
         last_run: None,
     });
 
@@ -685,6 +686,26 @@ pub fn print_status_report(report: &StatusReport) {
     }
 }
 
+/// Format a Unix timestamp (seconds) as a UTC calendar time such as
+/// `2026-07-17 09:34:09 UTC`, avoiding a calendar dependency.
+fn format_unix_utc(secs: u64) -> String {
+    let days = secs / 86_400;
+    let rem = secs % 86_400;
+    let (hour, minute, second) = (rem / 3_600, (rem % 3_600) / 60, rem % 60);
+    // Howard Hinnant's civil-from-days algorithm for the proleptic Gregorian
+    // calendar. `secs` is unsigned, so the era is always non-negative.
+    let z = days + 719_468;
+    let era = z / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + u64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02} {hour:02}:{minute:02}:{second:02} UTC")
+}
+
 /// Print scheduler installation and latest durable run status.
 pub fn print_autosync_status_report(report: &AutosyncStatusReport) {
     if report.configured != report.installed {
@@ -708,6 +729,11 @@ pub fn print_autosync_status_report(report: &AutosyncStatusReport) {
                 .schedule
                 .map_or("unknown", |schedule| schedule.as_str())
         );
+        if !report.enabled
+            && let Some(reason) = &report.disabled_reason
+        {
+            println!("  disabled: {reason}");
+        }
         for artifact in &report.artifacts {
             println!("  artifact: {artifact}");
         }
@@ -719,10 +745,16 @@ pub fn print_autosync_status_report(report: &AutosyncStatusReport) {
         println!(
             "  last run: {} at {}",
             run.outcome.as_str(),
-            run.last_attempted_at_unix
+            format_unix_utc(run.last_attempted_at_unix)
         );
+        if crate::autosync::running_run_is_stale(run, report.schedule, crate::autosync::now_unix())
+        {
+            println!(
+                "  warning: this run started but never recorded a terminal outcome; it was likely interrupted"
+            );
+        }
         if let Some(success) = run.last_successful_at_unix {
-            println!("  last success: {success}");
+            println!("  last success: {}", format_unix_utc(success));
         }
         if let Some(reason) = &run.reason {
             println!("  reason: {reason}");
@@ -1401,6 +1433,14 @@ mod tests {
     use std::fs;
 
     use super::*;
+
+    #[test]
+    fn format_unix_utc_should_render_calendar_time() {
+        // 2009-02-13 23:31:30 UTC, a well-known round Unix timestamp.
+        assert_eq!(format_unix_utc(1_234_567_890), "2009-02-13 23:31:30 UTC");
+        // The Unix epoch itself.
+        assert_eq!(format_unix_utc(0), "1970-01-01 00:00:00 UTC");
+    }
 
     #[test]
     fn build_status_report_should_resolve_local_skill() {

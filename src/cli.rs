@@ -1161,6 +1161,13 @@ fn status_review_reason(report: &status::StatusReport) -> Option<String> {
     {
         reasons.push("latest autosync run was blocked".to_owned());
     }
+    if report.autosync.installed
+        && report.autosync.last_run.as_ref().is_some_and(|run| {
+            autosync::running_run_is_stale(run, report.autosync.schedule, autosync::now_unix())
+        })
+    {
+        reasons.push("latest autosync run started but never finished".to_owned());
+    }
 
     (!reasons.is_empty()).then(|| reasons.join(", "))
 }
