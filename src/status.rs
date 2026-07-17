@@ -747,7 +747,16 @@ pub fn print_autosync_status_report(report: &AutosyncStatusReport) {
             run.outcome.as_str(),
             format_unix_utc(run.last_attempted_at_unix)
         );
-        if crate::autosync::running_run_is_stale(run, report.schedule, crate::autosync::now_unix())
+        // Only flag staleness for an installed job: without an install the real
+        // schedule is unknown, so the daily fallback interval could misfire on a
+        // leftover run-state from a previously weekly schedule. Matches the
+        // `installed` gate in `doctor` and `status --check`.
+        if report.installed
+            && crate::autosync::running_run_is_stale(
+                run,
+                report.schedule,
+                crate::autosync::now_unix(),
+            )
         {
             println!(
                 "  warning: this run started but never recorded a terminal outcome; it was likely interrupted"
@@ -1440,6 +1449,15 @@ mod tests {
         assert_eq!(format_unix_utc(1_234_567_890), "2009-02-13 23:31:30 UTC");
         // The Unix epoch itself.
         assert_eq!(format_unix_utc(0), "1970-01-01 00:00:00 UTC");
+        // Leap day in a century-leap year (2000 is divisible by 400).
+        assert_eq!(format_unix_utc(951_782_400), "2000-02-29 00:00:00 UTC");
+        // Century non-leap year (2100 is divisible by 100 but not 400): the day
+        // after 2100-02-28 is March 1, not February 29.
+        assert_eq!(format_unix_utc(4_107_542_400), "2100-03-01 00:00:00 UTC");
+        // Year rollover December 31 -> January 1.
+        assert_eq!(format_unix_utc(1_483_228_800), "2017-01-01 00:00:00 UTC");
+        // Last second of a year.
+        assert_eq!(format_unix_utc(978_307_199), "2000-12-31 23:59:59 UTC");
     }
 
     #[test]
