@@ -15,6 +15,7 @@ use sha2::{Digest, Sha256};
 use tempfile::NamedTempFile;
 
 use crate::catalog;
+use crate::config::UserConfig;
 use crate::error::{DaloError, DaloResult};
 use crate::inventory;
 use crate::resolver::Resolution;
@@ -578,24 +579,25 @@ fn resolve_target(paths: &StorePaths, target: &str) -> DaloResult<(String, PathB
             candidate
         };
         let path = store::absolute_path(path)?;
-        if let Some(source_ref) = staged_source_ref(paths, &path)? {
+        if let Some(source_ref) = staged_source_ref(paths, &path, config.as_ref())? {
             return Ok((source_ref, path));
         }
         return Ok((synthetic_path_source_ref(&path), path));
     }
 
-    let (source_id, _) = parsed_selector.ok_or_else(|| DaloError::CheckFailed {
-        reason: "audit target must be an existing skill path or `<source>:<skill>`".to_owned(),
-    })?;
-    let config = config.expect("source-qualified targets read the config");
-    Err(DaloError::unknown_source(
-        source_id,
-        config
-            .sources
-            .iter()
-            .map(|source| source.id.clone())
-            .collect(),
-    ))
+    match (parsed_selector, config) {
+        (Some((source_id, _)), Some(config)) => Err(DaloError::unknown_source(
+            source_id,
+            config
+                .sources
+                .iter()
+                .map(|source| source.id.clone())
+                .collect(),
+        )),
+        _ => Err(DaloError::CheckFailed {
+            reason: "audit target must be an existing skill path or `<source>:<skill>`".to_owned(),
+        }),
+    }
 }
 
 fn synthetic_path_source_ref(path: &Path) -> String {
@@ -613,7 +615,11 @@ fn synthetic_path_source_ref(path: &Path) -> String {
     format!("path:{slot}@{path_hash}")
 }
 
-fn staged_source_ref(paths: &StorePaths, skill_path: &Path) -> DaloResult<Option<String>> {
+fn staged_source_ref(
+    paths: &StorePaths,
+    skill_path: &Path,
+    known_config: Option<&UserConfig>,
+) -> DaloResult<Option<String>> {
     let staging_root = store::comparable_path(&paths.sources_dir.join(".audit-staging"));
     let skill_path = store::comparable_path(skill_path);
     let Ok(relative) = skill_path.strip_prefix(&staging_root) else {
@@ -630,7 +636,13 @@ fn staged_source_ref(paths: &StorePaths, skill_path: &Path) -> DaloResult<Option
         })?
         .as_os_str()
         .to_string_lossy();
-    let config = store::read_config(paths)?;
+    let loaded_config;
+    let config = if let Some(config) = known_config {
+        config
+    } else {
+        loaded_config = store::read_config(paths)?;
+        &loaded_config
+    };
     let source = config
         .sources
         .iter()
@@ -1818,6 +1830,27 @@ mod tests {
             .expect_err("staged provenance errors must not fall back to path provenance");
 
         assert!(error.to_string().contains("config.toml"));
+    }
+
+    #[test]
+    fn staged_target_should_reuse_an_already_loaded_config() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp.path().join("store");
+        store::init_store(store_root.clone(), false).expect("store should initialize");
+        let paths = StorePaths::new(store_root);
+        let config = store::read_config(&paths).expect("config should initially parse");
+        let skill = paths
+            .sources_dir
+            .join(".audit-staging/local-deadbeef/skills/review");
+        fs::create_dir_all(&skill).expect("staged skill directory should be created");
+        fs::write(skill.join("SKILL.md"), "# Review\n").expect("staged skill should be written");
+        fs::write(&paths.config_file, "not valid toml = [").expect("config should be corrupted");
+
+        let source_ref = staged_source_ref(&paths, &skill, Some(&config))
+            .expect("known config should avoid a second read")
+            .expect("staged skill should resolve");
+
+        assert_eq!(source_ref, "local:review");
     }
 
     #[test]
