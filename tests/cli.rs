@@ -1652,7 +1652,13 @@ fn doctor_json_should_report_missing_store_without_creating_it() {
         .args(["--json", "doctor"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("\"code\": \"store_missing\""));
+        .stdout(predicate::str::contains("\"code\": \"store_missing\""))
+        .stdout(predicate::str::contains("\"next_command\": \"dalo init\""))
+        .stdout(predicate::str::contains("\"errors\": 1"))
+        .stdout(predicate::str::contains("config_invalid").not())
+        .stdout(predicate::str::contains("state_invalid").not())
+        .stdout(predicate::str::contains("lock_invalid").not())
+        .stdout(predicate::str::contains("approvals_invalid").not());
 
     assert!(!store.exists());
 }
