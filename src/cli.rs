@@ -889,44 +889,250 @@ fn run_status(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
         status::print_status_report(&report);
     }
 
-    if args.check && status_requires_review(&report) {
-        return Err(DaloError::CheckFailed {
-            reason: "status reports unresolved drift, pending approvals, or blocked state"
-                .to_owned(),
-        });
+    if args.check
+        && let Some(reason) = status_review_reason(&report)
+    {
+        return Err(DaloError::CheckFailed { reason });
     }
     Ok(())
 }
 
-fn status_requires_review(report: &status::StatusReport) -> bool {
-    !report.inventory_warnings.is_empty()
-        || report.sources.iter().any(|source| source.error.is_some())
-        || !report.resolution.pending_approval_skills.is_empty()
-        || !report.resolution.blocked_skills.is_empty()
-        || !report.blocking_audits.is_empty()
-        || !report.audit_failures.is_empty()
-        || report
-            .materialization
-            .iter()
-            .any(|operation| operation.status == materialize::MaterializeOperationStatus::Blocked)
-        || report
-            .resolution
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code.requires_review())
-        || !report.lock.drift.is_empty()
-        || (report.targets.is_empty() && !report.resolution.active_skills.is_empty())
-        || report.unmanaged_skills.iter().any(|skill| !skill.protected)
-        || !report.instruction_block_drifts.is_empty()
-        || report.autosync.scheduler_error.is_some()
-        || report.autosync.configured != report.autosync.installed
-        || (report.autosync.installed && !report.autosync.enabled)
-        || (report.autosync.installed
-            && report
-                .autosync
-                .last_run
-                .as_ref()
-                .is_some_and(|run| run.outcome == autosync::AutosyncRunOutcome::Blocked))
+fn status_review_reason(report: &status::StatusReport) -> Option<String> {
+    let mut reasons = Vec::new();
+
+    if !report.inventory_warnings.is_empty() {
+        let count = report.inventory_warnings.len();
+        reasons.push(format!(
+            "{count} inventory warning{} ({})",
+            if count == 1 { "" } else { "s" },
+            report
+                .inventory_warnings
+                .iter()
+                .map(|warning| warning.path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+
+    let source_errors = report
+        .sources
+        .iter()
+        .filter(|source| source.error.is_some())
+        .collect::<Vec<_>>();
+    if !source_errors.is_empty() {
+        reasons.push(format!(
+            "{} source error{} ({})",
+            source_errors.len(),
+            if source_errors.len() == 1 { "" } else { "s" },
+            source_errors
+                .iter()
+                .map(|source| source.id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+
+    let pending = &report.resolution.pending_approval_skills;
+    if !pending.is_empty() {
+        reasons.push(format!(
+            "{} pending approval{} ({})",
+            pending.len(),
+            if pending.len() == 1 { "" } else { "s" },
+            pending
+                .iter()
+                .map(|skill| skill.source_ref.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+
+    let blocked_skills = &report.resolution.blocked_skills;
+    if !blocked_skills.is_empty() {
+        reasons.push(format!(
+            "{} blocked skill{} ({})",
+            blocked_skills.len(),
+            if blocked_skills.len() == 1 { "" } else { "s" },
+            blocked_skills
+                .iter()
+                .map(|blocked| blocked.skill.source_ref.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+
+    if !report.blocking_audits.is_empty() {
+        reasons.push(format!(
+            "{} blocking security audit{} ({})",
+            report.blocking_audits.len(),
+            if report.blocking_audits.len() == 1 {
+                ""
+            } else {
+                "s"
+            },
+            report.blocking_audits.join(", ")
+        ));
+    }
+
+    if !report.audit_failures.is_empty() {
+        reasons.push(format!(
+            "{} failed security audit{} ({})",
+            report.audit_failures.len(),
+            if report.audit_failures.len() == 1 {
+                ""
+            } else {
+                "s"
+            },
+            report
+                .audit_failures
+                .iter()
+                .map(|failure| failure.source_ref.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+
+    let blocked_operations = report
+        .materialization
+        .iter()
+        .filter(|operation| operation.status == materialize::MaterializeOperationStatus::Blocked)
+        .collect::<Vec<_>>();
+    if !blocked_operations.is_empty() {
+        reasons.push(format!(
+            "{} blocked operation{} ({})",
+            blocked_operations.len(),
+            if blocked_operations.len() == 1 {
+                ""
+            } else {
+                "s"
+            },
+            blocked_operations
+                .iter()
+                .map(|operation| operation.link_path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+
+    let actionable_diagnostics = report
+        .resolution
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.code.requires_review())
+        .filter(|diagnostic| {
+            (pending.is_empty()
+                || diagnostic.code != resolver::ResolutionDiagnosticCode::PendingApproval)
+                && (blocked_skills.is_empty()
+                    || diagnostic.code != resolver::ResolutionDiagnosticCode::RequiredBlocked)
+                && (report.audit_failures.is_empty()
+                    || diagnostic.code != resolver::ResolutionDiagnosticCode::AuditFailed)
+        })
+        .collect::<Vec<_>>();
+    if !actionable_diagnostics.is_empty() {
+        reasons.push(format!(
+            "{} actionable diagnostic{} ({})",
+            actionable_diagnostics.len(),
+            if actionable_diagnostics.len() == 1 {
+                ""
+            } else {
+                "s"
+            },
+            actionable_diagnostics
+                .iter()
+                .map(|diagnostic| diagnostic.source_ref.as_deref().map_or_else(
+                    || resolver::diagnostic_code_name(diagnostic.code).to_owned(),
+                    |source_ref| format!(
+                        "{}:{source_ref}",
+                        resolver::diagnostic_code_name(diagnostic.code)
+                    )
+                ))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+
+    if !report.lock.drift.is_empty() {
+        reasons.push(format!(
+            "{} lock drift item{} ({})",
+            report.lock.drift.len(),
+            if report.lock.drift.len() == 1 {
+                ""
+            } else {
+                "s"
+            },
+            report
+                .lock
+                .drift
+                .iter()
+                .map(|drift| drift.subject.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+
+    if report.targets.is_empty() && !report.resolution.active_skills.is_empty() {
+        let count = report.resolution.active_skills.len();
+        reasons.push(format!(
+            "{count} active skill{} but no linked targets",
+            if count == 1 { "" } else { "s" }
+        ));
+    }
+
+    let unmanaged_skills = report
+        .unmanaged_skills
+        .iter()
+        .filter(|skill| !skill.protected)
+        .collect::<Vec<_>>();
+    if !unmanaged_skills.is_empty() {
+        reasons.push(format!(
+            "{} unmanaged skill{} ({})",
+            unmanaged_skills.len(),
+            if unmanaged_skills.len() == 1 { "" } else { "s" },
+            unmanaged_skills
+                .iter()
+                .map(|skill| skill.id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+
+    if !report.instruction_block_drifts.is_empty() {
+        reasons.push(format!(
+            "{} instruction block drift{} ({})",
+            report.instruction_block_drifts.len(),
+            if report.instruction_block_drifts.len() == 1 {
+                ""
+            } else {
+                "s"
+            },
+            report
+                .instruction_block_drifts
+                .iter()
+                .map(|drift| format!("{}:{}", drift.source_id, drift.pack_id))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+
+    if report.autosync.scheduler_error.is_some() {
+        reasons.push("autosync scheduler inspection failed".to_owned());
+    }
+    if report.autosync.configured != report.autosync.installed {
+        reasons.push("autosync configuration and installation state differ".to_owned());
+    }
+    if report.autosync.installed && !report.autosync.enabled {
+        reasons.push("autosync scheduler is disabled".to_owned());
+    }
+    if report.autosync.installed
+        && report
+            .autosync
+            .last_run
+            .as_ref()
+            .is_some_and(|run| run.outcome == autosync::AutosyncRunOutcome::Blocked)
+    {
+        reasons.push("latest autosync run was blocked".to_owned());
+    }
+
+    (!reasons.is_empty()).then(|| reasons.join(", "))
 }
 
 fn run_sync(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
