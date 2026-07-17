@@ -3,6 +3,7 @@
 #[cfg(test)]
 use std::cell::RefCell;
 use std::env;
+use std::ffi::OsStr;
 use std::fs;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
@@ -21,6 +22,7 @@ use crate::store::{self, StorePaths};
 const AUTOSYNC_SCHEMA_VERSION: u32 = 1;
 const CRON_BEGIN_PREFIX: &str = "# BEGIN dalo autosync ";
 const CRON_END_PREFIX: &str = "# END dalo autosync ";
+const INVOKED_EXECUTABLE_ENV: &str = "DALO_INVOKED_EXECUTABLE";
 
 /// Supported user-facing autosync schedules.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
@@ -252,7 +254,7 @@ pub fn install(
         .unwrap_or(AutosyncSchedule::Daily);
     let runner = SystemCommandRunner;
     let backend = detect_backend(&runner)?;
-    let executable = env::current_exe()?.canonicalize()?;
+    let executable = scheduler_executable()?;
     let home = user_home()?;
     install_with(
         paths,
@@ -263,6 +265,112 @@ pub fn install(
         &home,
         &runner,
     )
+}
+
+fn scheduler_executable() -> DaloResult<PathBuf> {
+    let current = env::current_exe()?;
+    let invoked = env::args_os().next().map(PathBuf::from);
+    let launcher = env::var_os(INVOKED_EXECUTABLE_ENV).map(PathBuf::from);
+    let cwd = env::current_dir()?;
+    let search_path = env::var_os("PATH");
+    let install_channel = env::var("DALO_INSTALL_CHANNEL").ok();
+    select_scheduler_executable(
+        &current,
+        invoked.as_deref(),
+        launcher.as_deref(),
+        &cwd,
+        search_path.as_deref(),
+        install_channel.as_deref(),
+    )
+}
+
+fn select_scheduler_executable(
+    current: &Path,
+    invoked: Option<&Path>,
+    launcher: Option<&Path>,
+    cwd: &Path,
+    search_path: Option<&OsStr>,
+    install_channel: Option<&str>,
+) -> DaloResult<PathBuf> {
+    if install_channel == Some("npx") {
+        return Err(DaloError::CheckFailed {
+            reason: "autosync cannot use the temporary npx launcher; install getdalo globally with `npm install --global getdalo`, or use another persistent Dalo installation"
+                .to_owned(),
+        });
+    }
+    if install_channel == Some("npm") {
+        let launcher = launcher
+            .and_then(|path| resolve_invoked_path(path, cwd, search_path))
+            .filter(|path| executable_available(path))
+            .ok_or_else(|| DaloError::CheckFailed {
+                reason: "autosync could not resolve the persistent npm launcher; reinstall getdalo globally and retry"
+                    .to_owned(),
+            })?;
+        return Ok(launcher);
+    }
+
+    if let Some(candidate) = invoked
+        .and_then(|path| resolve_invoked_path(path, cwd, search_path))
+        .filter(|path| executable_available(path) && same_executable(path, current))
+    {
+        return stable_executable(candidate);
+    }
+    stable_executable(current.to_path_buf())
+}
+
+fn resolve_invoked_path(
+    invoked: &Path,
+    cwd: &Path,
+    search_path: Option<&OsStr>,
+) -> Option<PathBuf> {
+    if invoked.is_absolute() {
+        return Some(invoked.to_path_buf());
+    }
+    if invoked.components().count() > 1 {
+        return Some(cwd.join(invoked));
+    }
+    search_path.and_then(|path| {
+        env::split_paths(path)
+            .map(|directory| {
+                if directory.as_os_str().is_empty() {
+                    cwd.join(invoked)
+                } else if directory.is_absolute() {
+                    directory.join(invoked)
+                } else {
+                    cwd.join(directory).join(invoked)
+                }
+            })
+            .find(|candidate| executable_available(candidate))
+    })
+}
+
+fn same_executable(candidate: &Path, current: &Path) -> bool {
+    matches!(
+        (candidate.canonicalize(), current.canonicalize()),
+        (Ok(candidate), Ok(current)) if candidate == current
+    )
+}
+
+fn stable_executable(executable: PathBuf) -> DaloResult<PathBuf> {
+    if version_managed_executable(&executable) {
+        return Err(DaloError::CheckFailed {
+            reason: format!(
+                "autosync resolved the version-managed executable `{}`; invoke Dalo through a persistent symlink or launcher and retry",
+                executable.display()
+            ),
+        });
+    }
+    Ok(executable)
+}
+
+fn version_managed_executable(executable: &Path) -> bool {
+    let components = executable
+        .components()
+        .filter_map(|component| component.as_os_str().to_str())
+        .collect::<Vec<_>>();
+    components.contains(&"Cellar")
+        || components.windows(2).any(|pair| pair == [".npm", "_npx"])
+        || components.windows(2).any(|pair| pair == [".cache", "dalo"])
 }
 
 fn schedule_from_str(value: &str) -> Option<AutosyncSchedule> {
@@ -683,7 +791,7 @@ fn status_with(paths: &StorePaths, runner: &dyn CommandRunner) -> DaloResult<Aut
     Ok(report)
 }
 
-fn executable_available(path: &Path) -> bool {
+pub(crate) fn executable_available(path: &Path) -> bool {
     fs::metadata(path)
         .is_ok_and(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
 }
@@ -1385,6 +1493,109 @@ mod tests {
         permissions.set_mode(0o755);
         fs::set_permissions(&executable, permissions).expect("binary should be executable");
         (temp, StorePaths::new(store), home, executable)
+    }
+
+    #[test]
+    fn scheduler_executable_should_preserve_invoked_symlink_from_path() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let cellar_binary = temp.path().join("Cellar/dalo/0.9.0/bin/dalo");
+        fs::create_dir_all(cellar_binary.parent().expect("binary has parent"))
+            .expect("cellar directory should exist");
+        fs::write(&cellar_binary, "binary").expect("binary should exist");
+        let mut permissions = fs::metadata(&cellar_binary)
+            .expect("binary metadata readable")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&cellar_binary, permissions).expect("binary should be executable");
+        let stable_directory = temp.path().join("homebrew/bin");
+        fs::create_dir_all(&stable_directory).expect("stable directory should exist");
+        let stable_binary = stable_directory.join("dalo");
+        std::os::unix::fs::symlink(&cellar_binary, &stable_binary)
+            .expect("stable symlink should be created");
+
+        let selected = select_scheduler_executable(
+            &cellar_binary,
+            Some(Path::new("dalo")),
+            None,
+            temp.path(),
+            Some(stable_directory.as_os_str()),
+            None,
+        )
+        .expect("stable PATH entry should be selected");
+
+        assert_eq!(selected, stable_binary);
+        assert!(selected.is_symlink());
+    }
+
+    #[test]
+    fn scheduler_executable_should_use_global_npm_launcher_instead_of_cache_binary() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let cache_binary = temp
+            .path()
+            .join(".cache/dalo/0.9.0/aarch64-apple-darwin/dalo");
+        let launcher = temp.path().join("bin/dalo");
+        for executable in [&cache_binary, &launcher] {
+            fs::create_dir_all(executable.parent().expect("executable has parent"))
+                .expect("executable directory should exist");
+            fs::write(executable, "binary").expect("executable should exist");
+            let mut permissions = fs::metadata(executable)
+                .expect("executable metadata readable")
+                .permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(executable, permissions).expect("file should be executable");
+        }
+
+        let selected = select_scheduler_executable(
+            &cache_binary,
+            Some(&cache_binary),
+            Some(&launcher),
+            temp.path(),
+            None,
+            Some("npm"),
+        )
+        .expect("global npm launcher should be selected");
+
+        assert_eq!(selected, launcher);
+    }
+
+    #[test]
+    fn scheduler_executable_should_reject_temporary_or_version_managed_paths() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let cache_binary = temp.path().join(".cache/dalo/0.9.0/target/dalo");
+        fs::create_dir_all(cache_binary.parent().expect("binary has parent"))
+            .expect("cache directory should exist");
+        fs::write(&cache_binary, "binary").expect("binary should exist");
+        let mut permissions = fs::metadata(&cache_binary)
+            .expect("binary metadata readable")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&cache_binary, permissions).expect("binary should be executable");
+
+        let cached_error = select_scheduler_executable(
+            &cache_binary,
+            Some(&cache_binary),
+            None,
+            temp.path(),
+            None,
+            None,
+        )
+        .expect_err("version-managed cache paths should be rejected");
+        assert!(
+            cached_error
+                .to_string()
+                .contains("version-managed executable")
+        );
+
+        let npx_error = select_scheduler_executable(
+            &cache_binary,
+            Some(&cache_binary),
+            None,
+            temp.path(),
+            None,
+            Some("npx"),
+        )
+        .expect_err("temporary npx launchers should be rejected");
+        assert!(npx_error.to_string().contains("temporary npx launcher"));
     }
 
     #[test]

@@ -87,6 +87,17 @@ function npmInstallChannel(npmCommand = process.env.npm_command, launcherPath = 
   return npmCommand === 'exec' || normalizedPath.includes('/_npx/') ? 'npx' : 'npm';
 }
 
+function launcherEnvironment(baseEnv = process.env, launcherPath = '') {
+  const installChannel = baseEnv.DALO_INSTALL_CHANNEL
+    || npmInstallChannel(baseEnv.npm_command, launcherPath);
+  const environment = { ...baseEnv, DALO_INSTALL_CHANNEL: installChannel };
+  delete environment.DALO_INVOKED_EXECUTABLE;
+  if (installChannel === 'npm' && launcherPath) {
+    environment.DALO_INVOKED_EXECUTABLE = path.resolve(launcherPath);
+  }
+  return environment;
+}
+
 async function latestTag() {
   const response = await fetch(`https://api.github.com/repos/${REPOSITORY}/releases/latest`, {
     headers: { accept: 'application/vnd.github+json', 'user-agent': 'dalo-npm-wrapper' },
@@ -287,6 +298,7 @@ module.exports = {
   ensureBinary,
   expectedChecksum,
   formatLauncherError,
+  launcherEnvironment,
   npmInstallChannel,
   normalizeTag,
   targetFor,

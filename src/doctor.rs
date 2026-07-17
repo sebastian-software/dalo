@@ -173,6 +173,8 @@ pub enum DoctorCode {
     AutosyncNotInstalled,
     /// Scheduler metadata exists but the native job is disabled.
     AutosyncDisabled,
+    /// The executable recorded in scheduler metadata is unavailable.
+    AutosyncExecutableMissing,
     /// The latest scheduled synchronization was blocked.
     AutosyncRunBlocked,
     /// Autosync metadata or native scheduler state could not be inspected.
@@ -264,6 +266,19 @@ fn check_autosync(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) {
                 findings.push(info(
                     DoctorCode::AutosyncNotInstalled,
                     "scheduled synchronization is not installed",
+                ));
+            } else if let Some(executable) = status
+                .executable
+                .as_ref()
+                .filter(|path| !autosync::executable_available(path))
+            {
+                findings.push(finding_warning(
+                    DoctorCode::AutosyncExecutableMissing,
+                    format!(
+                        "recorded autosync executable `{}` is missing or not executable",
+                        executable.display()
+                    ),
+                    Some("dalo autosync install".to_owned()),
                 ));
             } else if status.enabled && status.configured {
                 findings.push(ok(
@@ -1137,6 +1152,7 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::AutosyncInstalled => "autosync_installed",
         DoctorCode::AutosyncNotInstalled => "autosync_not_installed",
         DoctorCode::AutosyncDisabled => "autosync_disabled",
+        DoctorCode::AutosyncExecutableMissing => "autosync_executable_missing",
         DoctorCode::AutosyncRunBlocked => "autosync_run_blocked",
         DoctorCode::AutosyncStateInvalid => "autosync_state_invalid",
     }
@@ -1226,6 +1242,57 @@ mod tests {
         assert_eq!(
             finding.next_command.as_deref(),
             Some("dalo autosync uninstall")
+        );
+    }
+
+    #[test]
+    fn doctor_should_name_the_missing_recorded_autosync_executable() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store = temp_dir.path().join("store");
+        store::init_store(store.clone(), false).expect("store should initialize");
+        let paths = StorePaths::new(store);
+        let missing_executable = temp_dir.path().join("removed/dalo");
+        let state = crate::autosync::AutosyncInstallState {
+            schema_version: 1,
+            backend: crate::autosync::SchedulerBackend::Cron,
+            schedule: crate::autosync::AutosyncSchedule::Daily,
+            executable: missing_executable.clone(),
+            store: paths.root.clone(),
+            identifier: "dalo-autosync-test".to_owned(),
+            artifacts: vec!["crontab".to_owned()],
+            installed_at_unix: 1,
+        };
+        fs::write(
+            &paths.autosync_file,
+            toml::to_string(&state).expect("autosync state should serialize"),
+        )
+        .expect("autosync state should be written");
+        let mut config = store::read_config(&paths).expect("config should parse");
+        config.settings.autosync = true;
+        config.settings.sync_interval = Some("daily".to_owned());
+        store::write_config(&paths, &config).expect("config should be written");
+        let mut findings = Vec::new();
+
+        check_autosync(&paths, &mut findings);
+
+        let finding = findings
+            .iter()
+            .find(|finding| finding.code == DoctorCode::AutosyncExecutableMissing)
+            .expect("missing executable should have a dedicated finding");
+        assert_eq!(finding.severity, DoctorSeverity::Warning);
+        assert!(
+            finding
+                .message
+                .contains(&missing_executable.display().to_string())
+        );
+        assert_eq!(
+            finding.next_command.as_deref(),
+            Some("dalo autosync install")
+        );
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.code == DoctorCode::AutosyncDisabled)
         );
     }
 
