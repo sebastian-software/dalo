@@ -15,10 +15,13 @@ dalo doctor
 If `doctor` reports broken/foreign/missing owned symlinks or real entries at owned paths, clear those records first:
 
 ```sh
-dalo resolve remove-owned <slot>
+dalo resolve list
+dalo resolve remove-owned <target>:<slot>
 ```
 
-That command removes Dalo-owned symlinks or drops stale ownership records. It does not delete real user directories.
+`resolve list` prints the exact owned IDs accepted by `remove-owned`, for example
+`generic:helper`. The removal command removes Dalo-owned symlinks or drops stale
+ownership records. It does not delete real user directories.
 
 ## 2. Unlink Targets
 
@@ -107,7 +110,8 @@ with `mise uninstall -g ubi:sebastian-software/dalo`.
 If installed with the hosted installer or from a GitHub release archive, remove
 the copied `dalo` binary from wherever you placed it on `PATH` (by default,
 `~/.local/bin/dalo`). The hosted installer always verifies checksums; manual
-archives should be checksum-verified before installation as shown in the README.
+archives should be checksum-verified before installation as shown in the
+[installation guide](https://dalo.sh/install.md#manual-release-archives).
 Also remove the adjacent `.dalo-install-channel` receipt when it was created by
 the hosted installer.
 

@@ -142,3 +142,70 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
 - If the install directory is not on `PATH`, the installer prints the exact export command for the current shell.
 - To remove a cached npm binary, delete `~/.cache/dalo`; uninstall a global
   launcher with `npm uninstall --global getdalo`.
+
+## Manual Release Archives
+
+Use the archive matching the machine from the
+[latest GitHub release](https://github.com/sebastian-software/dalo/releases/latest).
+Set `VERSION` without the leading `v` and choose one of the published targets:
+`x86_64-apple-darwin`, `aarch64-apple-darwin`,
+`x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`,
+`x86_64-unknown-linux-musl`, or `aarch64-unknown-linux-musl`.
+
+```sh
+VERSION=REPLACE_WITH_RELEASE_VERSION
+TARGET=aarch64-apple-darwin
+PACKAGE="dalo-${VERSION}-${TARGET}"
+ARCHIVE="${PACKAGE}.tar.gz"
+BASE_URL="https://github.com/sebastian-software/dalo/releases/download/dalo-v${VERSION}"
+
+curl -fLO "${BASE_URL}/${ARCHIVE}"
+curl -fLO "${BASE_URL}/${ARCHIVE}.sha256"
+shasum -a 256 -c "${ARCHIVE}.sha256" # macOS
+# sha256sum -c "${ARCHIVE}.sha256"   # Linux
+tar xzf "$ARCHIVE"
+mkdir -p "$HOME/.local/bin"
+install -m 0755 "$PACKAGE/dalo" "$HOME/.local/bin/dalo"
+```
+
+Do not install an archive when checksum verification fails. Verify the result
+with `$HOME/.local/bin/dalo --version`.
+
+## Shell Completions and Man Page
+
+Each release archive contains generated Bash, Zsh, and Fish completions plus a
+`dalo(1)` man page. Install only the files used by the local shell:
+
+```sh
+mkdir -p "$HOME/.local/share/bash-completion/completions"
+install -m 0644 "$PACKAGE/completions/dalo.bash" \
+  "$HOME/.local/share/bash-completion/completions/dalo"
+
+mkdir -p "$HOME/.zfunc"
+install -m 0644 "$PACKAGE/completions/_dalo" "$HOME/.zfunc/_dalo"
+
+mkdir -p "$HOME/.config/fish/completions"
+install -m 0644 "$PACKAGE/completions/dalo.fish" \
+  "$HOME/.config/fish/completions/dalo.fish"
+
+mkdir -p "$HOME/.local/share/man/man1"
+install -m 0644 "$PACKAGE/man/man1/dalo.1" \
+  "$HOME/.local/share/man/man1/dalo.1"
+```
+
+For Zsh, ensure `$HOME/.zfunc` is in `fpath` before the shell runs `compinit`.
+Do not modify shell startup files without the user's confirmation.
+
+For a Cargo or source install, generate the same files with
+`dalo completions <bash|zsh|fish>` and `dalo manpage`.
+
+## Upgrades and Removal
+
+Upgrade by repeating the original installation method: `brew upgrade dalo`, a
+fresh hosted-installer run, `npm update --global getdalo`,
+`cargo install dalo --locked`, or a newly downloaded and verified release
+archive. Dalo never updates its own executable.
+
+Before removing the store or binary, follow the
+[uninstall guide](https://github.com/sebastian-software/dalo/blob/main/docs/uninstall.md)
+so owned target links and instruction blocks are cleaned up safely.
