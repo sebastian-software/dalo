@@ -287,7 +287,9 @@ JSON output shape: `CatalogInspectReport`.
 Select catalog skills by stable frontmatter ID, `<source-id>:<slot>` reference,
 or slot name. Selection runs the deterministic security preflight, writes
 `config.toml`, and updates `source-lock.toml` with the pinned commit and
-inventory snapshot.
+inventory snapshot. Human-readable output names the skills added or removed,
+reports no-op requests explicitly, and shows the complete resulting selection
+as secondary detail.
 
 Examples:
 
@@ -765,7 +767,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `source list` | `SourceListReport` | `sources[]`, each with existing `SourceConfig` fields plus `provenance` |
 | `source priority` | `SourcePriorityReport` | `source`, `dry_run` |
 | `source inspect` | `CatalogInspectReport` | `source_id`, `candidates[]` |
-| `source select` | `CatalogSelectReport` | `source_id`, `selected[]`, `dry_run`, `audits[]` for skills named by the operation, `migration_warnings[]` for degraded legacy sibling catalogs |
+| `source select` | `CatalogSelectReport` | `source_id`, changed user references in `added[]` / `removed[]`, complete resulting `selected[]`, `dry_run`, `audits[]` for skills named by the operation, `migration_warnings[]` for degraded legacy sibling catalogs |
 | `source refresh` | `CatalogDrift` | `source_id`, `pinned_commit`, `upstream_commit`, `outcomes[]`, `migration_warnings[]` for degraded legacy sibling catalogs |
 | `source refresh --advance` | `CatalogAdvanceReport` | exact `old_lock`/`new_lock`, selections, `outcomes[]`, `audits[]`, `sync`, `blocking_reasons[]`, `dry_run`, and `advanced` |
 | `source remove` | `SourceRemoveReport` | `source_id`, `checkout_path`, `kept_checkout`, `removed_approvals`, `removed_catalog_lock`, `reconciled_links[]`, `deactivated_skills[]`, `cleanup_warnings[]`, `affected_paths[]`, `dry_run` |

@@ -5409,6 +5409,104 @@ fn catalog_select_should_materialize_only_selected_skills() {
 }
 
 #[test]
+fn catalog_select_should_report_mutations_and_no_ops() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "copy-editing"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "catalog marketing: selected copy-editing (1 total selected)",
+        ))
+        .stdout(predicate::str::contains("selection: skills/copy-editing"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "launch-copy"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "catalog marketing: selected launch-copy (2 total selected)",
+        ))
+        .stdout(predicate::str::contains(
+            "selection: skills/copy-editing, skills/launch-copy",
+        ));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args([
+            "source",
+            "select",
+            "marketing",
+            "--unselect",
+            "copy-editing",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "catalog marketing: unselected copy-editing (1 total selected)",
+        ))
+        .stdout(predicate::str::contains("selection: skills/launch-copy"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args([
+            "--json",
+            "source",
+            "select",
+            "marketing",
+            "--unselect",
+            "launch-copy",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"added\": []"))
+        .stdout(predicate::str::contains(
+            "\"removed\": [\n    \"launch-copy\"",
+        ))
+        .stdout(predicate::str::contains("\"selected\": []"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args([
+            "--json",
+            "source",
+            "select",
+            "marketing",
+            "--unselect",
+            "launch-copy",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"added\": []"))
+        .stdout(predicate::str::contains("\"removed\": []"))
+        .stdout(predicate::str::contains("\"selected\": []"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "--unselect", "launch-copy"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("catalog marketing: no change"))
+        .stdout(predicate::str::contains("selection: none"));
+}
+
+#[test]
 fn catalog_selection_should_stay_pending_until_explicitly_approved() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

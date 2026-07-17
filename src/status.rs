@@ -956,25 +956,52 @@ pub fn print_catalog_inspect_report(report: &CatalogInspectReport) {
 
 /// Print a human-readable catalog select report.
 pub fn print_catalog_select_report(report: &CatalogSelectReport) {
-    let verb = if report.dry_run {
-        "would select"
+    let mutation = if !report.added.is_empty() {
+        Some((
+            if report.dry_run {
+                "would select"
+            } else {
+                "selected"
+            },
+            &report.added,
+        ))
+    } else if !report.removed.is_empty() {
+        Some((
+            if report.dry_run {
+                "would unselect"
+            } else {
+                "unselected"
+            },
+            &report.removed,
+        ))
     } else {
-        "selected"
+        None
     };
-    if report.selected.is_empty() {
-        println!("catalog {}: no skills selected", report.source_id);
-    } else {
+
+    if let Some((verb, changed)) = mutation {
         println!(
-            "catalog {}: {verb} {}",
+            "catalog {}: {verb} {} ({} total selected)",
             report.source_id,
-            report.selected.join(", ")
+            changed.join(", "),
+            report.selected.len()
         );
+    } else {
+        println!("catalog {}: no change", report.source_id);
     }
+    print_catalog_selection(&report.selected);
     for audit in &report.audits {
         print_audit_report(audit);
     }
     for warning in &report.migration_warnings {
         println!("warning: {warning}");
+    }
+}
+
+fn print_catalog_selection(selected: &[String]) {
+    if selected.is_empty() {
+        println!("  selection: none");
+    } else {
+        println!("  selection: {}", selected.join(", "));
     }
 }
 
