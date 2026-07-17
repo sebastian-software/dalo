@@ -18,7 +18,8 @@ of third-party skills.
   catalog add/remove, filter replacement, version updates, and inspection.
 - `[[catalog]]` declarations with URL, Git version, optional priority, and
   skill filters.
-- Derived catalog IDs namespaced as `<team-id>.<catalog-id>`.
+- Derived catalog IDs namespaced as `<team-id>.<catalog-id>` for ordinary IDs,
+  with collision-free component encoding when either ID contains a dot.
 - Exact commit persistence in the existing source lock and detached checkout.
 - Filter semantics:
   - missing or empty `skills` means all

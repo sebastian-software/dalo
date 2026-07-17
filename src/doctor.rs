@@ -810,10 +810,13 @@ fn check_manifest_source_provenance(
     if let Some(team) = team {
         match crate::team_manifest::load_team_manifest(&team.path, team_id) {
             Ok(manifest) => {
-                let prefix = format!("{team_id}.");
-                let catalog_id = source.id.strip_prefix(&prefix);
-                let declaration = catalog_id
-                    .and_then(|id| manifest.catalogs.iter().find(|catalog| catalog.id == id));
+                let declaration = manifest.catalogs.iter().find(|catalog| {
+                    crate::team_manifest::source_id_matches_declaration(
+                        &source.id,
+                        team_id,
+                        &catalog.id,
+                    )
+                });
                 if let Some(declaration) = declaration {
                     let expected_url =
                         source::resolve_source_location(&declaration.url, &team.path);
