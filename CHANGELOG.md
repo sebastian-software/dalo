@@ -5,8 +5,11 @@
 
 ### Features
 
+* add installable scheduled autosync ([34603de](https://github.com/sebastian-software/dalo/commit/34603de7603fcbc5f86e84f79ef1a67a1b9c5c32))
+* add reviewed catalog pin advancement ([04e01ed](https://github.com/sebastian-software/dalo/commit/04e01ed717a1cc79cec40a98514b885cb1165c54))
 * add team manifest management CLI ([24fd25d](https://github.com/sebastian-software/dalo/commit/24fd25db5c539f7216471be8b946a334ec1f6e2a))
 * compose team catalog manifests ([7116618](https://github.com/sebastian-software/dalo/commit/71166185f8afdb74860b2e9cbd72f71b3780fd64))
+* replace quickstart asciicast with MP4 video ([fcc1440](https://github.com/sebastian-software/dalo/commit/fcc1440c3a571fe7bda6357ecf7236fcfb407f19))
 
 
 ### Bug Fixes
