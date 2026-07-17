@@ -1105,10 +1105,10 @@ fn xml_escape(value: &str) -> String {
 }
 
 fn systemd_quote(path: &Path) -> String {
-    format!("\"{}\"", systemd_escape(path))
+    format!("\"{}\"", systemd_exec_escape(path))
 }
 
-fn systemd_escape(path: &Path) -> String {
+fn systemd_exec_escape(path: &Path) -> String {
     path.display()
         .to_string()
         .replace('\\', "\\\\")
@@ -1118,7 +1118,7 @@ fn systemd_escape(path: &Path) -> String {
 }
 
 fn systemd_append_value(path: &Path) -> String {
-    format!("append:{}", systemd_escape(path))
+    format!("append:{}", path.display().to_string().replace('%', "%%"))
 }
 
 fn shell_quote(path: &Path) -> String {
@@ -1301,11 +1301,19 @@ mod tests {
                     assert!(artifact.contains("%%"));
                     assert!(artifact.contains(&format!(
                         "StandardOutput=append:{}",
-                        systemd_escape(&paths.autosync_log_file)
+                        paths
+                            .autosync_log_file
+                            .display()
+                            .to_string()
+                            .replace('%', "%%")
                     )));
                     assert!(artifact.contains(&format!(
                         "StandardError=append:{}",
-                        systemd_escape(&paths.autosync_error_log_file)
+                        paths
+                            .autosync_error_log_file
+                            .display()
+                            .to_string()
+                            .replace('%', "%%")
                     )));
                     assert!(!artifact.contains("StandardOutput=\"append:"));
                     assert!(!artifact.contains("StandardError=\"append:"));
@@ -1318,6 +1326,37 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn systemd_log_targets_should_preserve_non_specifier_path_characters() {
+        let (_temp, paths, home, executable) = setup();
+        let paths = StorePaths::new(paths.root.with_file_name(r#"store "$%\path"#));
+        let state = planned_state(
+            &paths,
+            SchedulerBackend::Systemd,
+            AutosyncSchedule::Daily,
+            &executable,
+            &home,
+        );
+        let artifact = render_systemd_service(&paths, &state);
+
+        assert!(artifact.contains(&format!(
+            "StandardOutput=append:{}",
+            paths
+                .autosync_log_file
+                .display()
+                .to_string()
+                .replace('%', "%%")
+        )));
+        assert!(artifact.contains(&format!(
+            "StandardError=append:{}",
+            paths
+                .autosync_error_log_file
+                .display()
+                .to_string()
+                .replace('%', "%%")
+        )));
     }
 
     #[test]
