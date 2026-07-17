@@ -724,17 +724,7 @@ pub fn preview_team_manifests(paths: &StorePaths) -> DaloResult<UserConfig> {
             let source_id = derived_source_id(&team.id, &declaration.id);
             expected.insert(source_id.clone());
             let location = source::resolve_source_location(&declaration.url, &team.path);
-            let Some(existing) = config
-                .sources
-                .iter()
-                .find(|candidate| candidate.id == source_id)
-                .cloned()
-            else {
-                return Err(dry_run_requires_sync(
-                    &source_id,
-                    "catalog is not cloned yet",
-                ));
-            };
+            let existing = preview_derived_source(&config, team, declaration, &source_id)?;
             if existing.declared_by.as_deref() != Some(team.id.as_str()) {
                 return Err(derived_source_conflict(
                     &config,
@@ -785,6 +775,37 @@ fn dry_run_requires_sync(source_id: &str, reason: &str) -> DaloError {
             "cannot preview team catalog `{source_id}` without changing Git state ({reason}); run `dalo sync` to reconcile it first"
         ),
     }
+}
+
+fn preview_derived_source(
+    config: &UserConfig,
+    team: &SourceConfig,
+    declaration: &ManifestCatalog,
+    source_id: &str,
+) -> DaloResult<SourceConfig> {
+    if let Some(existing) = config
+        .sources
+        .iter()
+        .find(|candidate| candidate.id == source_id)
+    {
+        return Ok(existing.clone());
+    }
+    if let Some(legacy) = config.sources.iter().find(|candidate| {
+        candidate.declared_by.as_deref() == Some(team.id.as_str())
+            && source_matches_owned_declaration(candidate, &declaration.id)
+    }) {
+        return Err(dry_run_requires_sync(
+            source_id,
+            &format!(
+                "derived source id requires migration from legacy `{}`",
+                legacy.id
+            ),
+        ));
+    }
+    Err(dry_run_requires_sync(
+        source_id,
+        "catalog is not cloned yet",
+    ))
 }
 
 /// Reconcile every enabled team source's `dalo.toml` into local managed state.
@@ -1019,13 +1040,14 @@ fn encode_source_id_component(value: &str) -> String {
     encoded
 }
 
-pub(crate) fn source_id_matches_declaration(
-    source_id: &str,
-    team_id: &str,
-    catalog_id: &str,
-) -> bool {
-    source_id == derived_source_id(team_id, catalog_id)
-        || source_id == legacy_derived_source_id(team_id, catalog_id)
+/// Match a catalog declaration only after its owning team is known from
+/// persisted `declared_by` metadata. The legacy ID is ambiguous across teams,
+/// so this helper must never be used to discover ownership.
+pub(crate) fn source_matches_owned_declaration(source: &SourceConfig, catalog_id: &str) -> bool {
+    source.declared_by.as_deref().is_some_and(|team_id| {
+        source.id == derived_source_id(team_id, catalog_id)
+            || source.id == legacy_derived_source_id(team_id, catalog_id)
+    })
 }
 
 fn migrate_legacy_derived_state(
@@ -1125,7 +1147,7 @@ fn existing_manifest_declaration(
     let declaration = manifest
         .catalogs
         .iter()
-        .find(|declaration| source_id_matches_declaration(&source.id, team_id, &declaration.id))?;
+        .find(|declaration| source_matches_owned_declaration(source, &declaration.id))?;
     Some((manifest_path, declaration.id.clone()))
 }
 
@@ -1681,6 +1703,12 @@ mod tests {
             },
         ]);
 
+        let preview_error = preview_derived_source(&config, &team, &declaration, &source_id)
+            .expect_err("dry-run should request the namespace migration");
+        assert!(preview_error.to_string().contains(&legacy_id));
+        assert!(preview_error.to_string().contains("requires migration"));
+        assert!(!preview_error.to_string().contains("not cloned"));
+
         migrate_legacy_derived_state(
             &team,
             &declaration,
@@ -1774,6 +1802,8 @@ mod tests {
             },
             sources: vec![existing_team, incoming_team.clone(), existing.clone()],
         };
+        assert!(source_matches_owned_declaration(&existing, "x.y"));
+        assert!(!source_matches_owned_declaration(&existing, "y"));
 
         let error = derived_source_conflict(
             &config,

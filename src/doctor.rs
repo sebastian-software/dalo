@@ -771,11 +771,7 @@ fn check_manifest_source_provenance(
         match crate::team_manifest::load_team_manifest(&team.path, team_id) {
             Ok(manifest) => {
                 let declaration = manifest.catalogs.iter().find(|catalog| {
-                    crate::team_manifest::source_id_matches_declaration(
-                        &source.id,
-                        team_id,
-                        &catalog.id,
-                    )
+                    crate::team_manifest::source_matches_owned_declaration(source, &catalog.id)
                 });
                 if let Some(declaration) = declaration {
                     let expected_url =
