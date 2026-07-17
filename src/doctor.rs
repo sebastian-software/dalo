@@ -299,7 +299,7 @@ fn check_autosync(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) {
         Err(error) => findings.push(finding_error(
             DoctorCode::AutosyncStateInvalid,
             format!("autosync state could not be inspected: {error}"),
-            Some("dalo autosync status".to_owned()),
+            Some("dalo autosync uninstall".to_owned()),
         )),
     }
 }
@@ -1206,6 +1206,27 @@ mod tests {
                 DoctorCode::SourceLockOk | DoctorCode::SourceLockInvalid
             )
         }));
+    }
+
+    #[test]
+    fn doctor_should_point_invalid_autosync_state_to_recovery_uninstall() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store = temp_dir.path().join("store");
+        store::init_store(store.clone(), false).expect("store should initialize");
+        fs::write(store.join("autosync.toml"), "not = [valid toml")
+            .expect("autosync state should be corrupted");
+
+        let report = run_doctor(&store);
+        let finding = report
+            .findings
+            .iter()
+            .find(|finding| finding.code == DoctorCode::AutosyncStateInvalid)
+            .expect("invalid autosync state should be reported");
+
+        assert_eq!(
+            finding.next_command.as_deref(),
+            Some("dalo autosync uninstall")
+        );
     }
 
     #[test]

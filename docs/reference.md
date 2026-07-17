@@ -456,6 +456,10 @@ is idempotent. Global `--dry-run` previews install and uninstall without writing
 config, metadata, native artifacts, or scheduler state.
 Re-run `autosync install` after moving the Dalo executable; status treats a
 missing recorded executable as disabled instead of guessing a replacement.
+If `autosync.toml` is malformed or uses a newer unsupported schema,
+`autosync uninstall` quarantines it as `autosync.toml.corrupt-*`, reconstructs
+the native scheduler identifiers from the store path for best-effort cleanup,
+and leaves autosync ready for a clean reinstall.
 
 The internal scheduled runner acquires the store lock once without waiting. If
 an interactive Dalo process owns it, the run exits successfully as `skipped`

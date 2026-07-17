@@ -169,7 +169,7 @@ Doctor includes `ok` and `info` codes as well as warnings/errors. Codes not list
 | `autosync_not_installed` | info | Install it with `dalo autosync install` if recurring synchronization is desired. |
 | `autosync_disabled` | warning | Reinstall with `dalo autosync install`, or remove stale metadata with `dalo autosync uninstall`. |
 | `autosync_run_blocked` | warning | Inspect `dalo autosync status`, resolve its recorded reason, and retry. |
-| `autosync_state_invalid` | error | Repair or remove malformed `autosync.toml` / `autosync-run.toml`, then reinstall. |
+| `autosync_state_invalid` | error | Run `dalo autosync uninstall` to quarantine malformed or newer-schema `autosync.toml` and clean reconstructed scheduler artifacts, then reinstall. Repair or remove malformed `autosync-run.toml` separately. |
 | `unreadable_target_directory` | warning | Fix permissions or remove unreadable entries. |
 | `unmanaged_same_name_blocker` | error | Adopt, keep, rename, or remove the unmanaged blocker. |
 | `stale_protected_skill` | warning | Relink the target if it moved, or remove the stale marker with the suggested `dalo resolve unkeep` command. |
