@@ -16,7 +16,7 @@ Your agents keep reading the folders they already understand. Dalo handles
 everything behind them: sources, priorities, approvals, conflicts, drift, and
 safe synchronization.
 
-**[Visit dalo.sh](https://dalo.sh)** · **[Watch the 20-second demo](https://dalo.sh/#quickstart)** · **[Get started](docs/getting-started.md)**
+**[Visit dalo.sh](https://dalo.sh)** · **[Watch the 15-second demo](https://dalo.sh/#quickstart)** · **[Get started](docs/getting-started.md)**
 
 ## Stop copying skills between agents
 
