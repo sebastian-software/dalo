@@ -442,7 +442,7 @@ pub fn audit_skill(
     let risk_acceptance = if let Some(reason) = options.accept_risk.as_deref() {
         let reason = reason.trim();
         if reason.is_empty() {
-            return Err(DaloError::CheckFailed {
+            return Err(DaloError::InvalidArgument {
                 reason: "risk acceptance reason must not be empty".to_owned(),
             });
         }
@@ -594,7 +594,7 @@ fn resolve_target(paths: &StorePaths, target: &str) -> DaloResult<(String, PathB
                 .map(|source| source.id.clone())
                 .collect(),
         )),
-        _ => Err(DaloError::CheckFailed {
+        _ => Err(DaloError::InvalidArgument {
             reason: "audit target must be an existing skill path or `<source>:<skill>`".to_owned(),
         }),
     }

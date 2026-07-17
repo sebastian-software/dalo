@@ -13,6 +13,12 @@ pub type DaloResult<T> = Result<T, DaloError>;
 /// Errors returned by dalo library operations.
 #[derive(Debug, Error)]
 pub enum DaloError {
+    /// A command argument failed semantic validation after parsing.
+    #[error("{reason}")]
+    InvalidArgument {
+        /// Human-readable validation error and expected input shape.
+        reason: String,
+    },
     /// An explicit automation check found a state requiring review.
     #[error("check failed: {reason}")]
     CheckFailed {
@@ -124,6 +130,15 @@ pub enum DaloError {
         shell_quote_path(.path.as_path())
     )]
     DirtySource {
+        /// Source ID.
+        source_id: String,
+        /// Source checkout path.
+        path: PathBuf,
+    },
+
+    /// A tracking source diverged from its configured upstream.
+    #[error("source `{source_id}` at `{path}` cannot fast-forward to its configured upstream")]
+    TrackingSourceNotFastForward {
         /// Source ID.
         source_id: String,
         /// Source checkout path.
@@ -320,16 +335,18 @@ impl DaloError {
     #[must_use]
     pub fn exit_code(&self) -> DaloExitCode {
         match self {
-            Self::CheckFailed { .. } | Self::AuditBlocked { .. } | Self::NotImplemented { .. } => {
-                DaloExitCode::ExpectedFailure
-            }
-            Self::StoreNotInitialized { .. }
+            Self::InvalidArgument { .. }
+            | Self::CheckFailed { .. }
+            | Self::AuditBlocked { .. }
+            | Self::NotImplemented { .. }
+            | Self::StoreNotInitialized { .. }
             | Self::UnknownTarget { .. }
             | Self::TargetPathRequired { .. }
             | Self::SourceAlreadyExists { .. }
             | Self::SourceCheckoutExists { .. }
             | Self::InvalidSourceId { .. }
             | Self::UnsafeRemoteUrl
+            | Self::TrackingSourceNotFastForward { .. }
             | Self::NotACatalogSource { .. }
             | Self::AmbiguousSkillReference { .. }
             | Self::UnknownSource { .. }
@@ -631,6 +648,9 @@ mod tests {
     #[test]
     fn expected_failure_exit_codes_should_cover_actionable_variants() {
         let cases = [
+            DaloError::InvalidArgument {
+                reason: "invalid value".to_owned(),
+            },
             DaloError::NotImplemented {
                 command: "sync".to_owned(),
             },
@@ -649,6 +669,10 @@ mod tests {
             DaloError::SourceCheckoutExists {
                 path: PathBuf::from("/tmp/store/sources/company/checkout"),
                 reason: "move or remove it before retrying".to_owned(),
+            },
+            DaloError::TrackingSourceNotFastForward {
+                source_id: "company".to_owned(),
+                path: PathBuf::from("/tmp/store/sources/company/checkout"),
             },
             DaloError::UnknownSource {
                 source_id: "company".to_owned(),

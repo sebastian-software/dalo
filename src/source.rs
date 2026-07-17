@@ -818,8 +818,9 @@ fn stage_audit_and_fast_forward(paths: &StorePaths, source: &SourceConfig) -> Da
         return Ok(());
     }
     if git::revision_count(&source.path, &upstream, "HEAD")? != 0 {
-        return Err(DaloError::CheckFailed {
-            reason: "tracking branch cannot fast-forward to its configured upstream".to_owned(),
+        return Err(DaloError::TrackingSourceNotFastForward {
+            source_id: source.id.clone(),
+            path: source.path.clone(),
         });
     }
 

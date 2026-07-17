@@ -1165,8 +1165,55 @@ fn approval_validation_errors_should_match_the_selected_scope() {
             ])
             .assert()
             .failure()
-            .stderr(predicate::str::contains(expected));
+            .code(1)
+            .stderr(predicate::str::contains(expected))
+            .stderr(predicate::str::contains("check failed").not());
     }
+
+    dalo_command()
+        .args([
+            "--store",
+            store.to_str().expect("utf8 path"),
+            "approve",
+            "revoke",
+            "banana",
+            "value",
+        ])
+        .assert()
+        .failure()
+        .code(2)
+        .stderr(predicate::str::contains("invalid value 'banana'"))
+        .stderr(predicate::str::contains(
+            "possible values: skill, source, author, org",
+        ))
+        .stderr(predicate::str::contains("check failed").not());
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["audit", "not-a-source-qualified-skill"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains(
+            "audit target must be an existing skill path or `<source>:<skill>`",
+        ))
+        .stderr(predicate::str::contains("check failed").not());
+
+    let skill = store.join("local/skills/review");
+    std::fs::create_dir_all(&skill).expect("skill directory should be created");
+    std::fs::write(skill.join("SKILL.md"), "# Review\n").expect("skill should be written");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["audit", "local:review", "--accept-risk", "   "])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains(
+            "risk acceptance reason must not be empty",
+        ))
+        .stderr(predicate::str::contains("check failed").not());
 
     dalo_command()
         .args([
@@ -4945,7 +4992,9 @@ fn sync_should_degrade_non_fast_forward_tracking_team_source() {
         .assert()
         .success()
         .stdout(predicate::str::contains("degraded source: company"))
-        .stdout(predicate::str::contains("fast-forward"));
+        .stdout(predicate::str::contains("fast-forward"))
+        .stdout(predicate::str::contains(checkout.display().to_string()))
+        .stdout(predicate::str::contains("check failed").not());
 
     dalo_command()
         .args(["--store"])

@@ -662,6 +662,8 @@ dalo approve revoke skill public:review-helper
 
 Approval writes support `--dry-run` and `--json`. A pending skill shown by
 `status` can be approved narrowly with `dalo approve skill <source:skill>`.
+The revoke scope is one of `skill`, `source`, `author`, or `org`; Clap validates
+this value and exposes the choices to shell completion.
 Skill approval always runs the deterministic preflight first and refuses a
 blocking result unless a reason is supplied with `--accept-risk`. `--agent`
 adds the same isolated semantic review as `dalo audit`.
@@ -744,7 +746,7 @@ Dalo uses a small scripting contract:
 | Code | Name | Meaning |
 | --- | --- | --- |
 | `0` | success | Command completed. |
-| `1` | expected failure | User-actionable input/state problem, such as unknown source, unknown target, unsupported schema, parse error, a failed explicit check, a security-audit block during `sync` or `approve`, or adoption destination already existing. |
+| `1` | expected failure | User-actionable input/state problem, such as semantic value validation, unknown source, unknown target, unsupported schema, parse error, a failed explicit check, a security-audit block during `sync` or `approve`, or adoption destination already existing. |
 | `2` | usage error | Invalid arguments or flags from Clap. This output is plain text even with `--json`. |
 | `3` | unsafe state | Dalo refused to mutate because the state needs human attention, such as a dirty source, active store lock, or malformed instruction block. |
 | `4` | environment problem | Dependency, path, Git, filesystem, or external command problem. |
