@@ -2420,6 +2420,27 @@ fn status_json_should_report_unmanaged_target_skills() {
 }
 
 #[test]
+fn status_check_should_report_the_actual_unmanaged_skill_reason() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["status", "--check"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains(
+            "check failed: 1 unmanaged skill (review)",
+        ))
+        .stderr(predicate::str::contains("unresolved drift").not());
+}
+
+#[test]
 fn status_should_report_invalid_portable_skill_names() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
