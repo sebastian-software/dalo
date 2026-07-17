@@ -8,7 +8,8 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { promisify } = require('node:util');
-const { version: packageVersion } = require('../package.json');
+const packageManifest = require('../package.json');
+const { version: packageVersion } = packageManifest;
 const {
   compareVersions,
   ensureBinary,
@@ -21,6 +22,14 @@ const {
 } = require('../lib/release');
 
 const execFileAsync = promisify(execFile);
+
+test('publishes discovery and supported-platform metadata', () => {
+  assert.equal(packageManifest.description, 'npm launcher for Dalo on macOS and Linux');
+  assert.equal(packageManifest.homepage, 'https://dalo.sh');
+  assert.equal(packageManifest.bugs.url, 'https://github.com/sebastian-software/dalo/issues');
+  assert.deepEqual(packageManifest.keywords, ['dalo', 'ai', 'agents', 'skills', 'cli']);
+  assert.deepEqual(packageManifest.os, ['darwin', 'linux']);
+});
 
 async function writeCachedBinary(cacheRoot, version, target) {
   const binary = path.join(cacheRoot, version, target, 'dalo');

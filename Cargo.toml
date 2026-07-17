@@ -6,6 +6,10 @@ rust-version = "1.93"
 description = "Git-backed skill management for AI agents."
 license = "MIT"
 repository = "https://github.com/sebastian-software/dalo"
+homepage = "https://dalo.sh"
+keywords = ["ai", "agents", "skills", "cli", "symlink"]
+categories = ["command-line-utilities", "development-tools"]
+exclude = [".github/", "docs/", "npm/", "site/", "video/"]
 
 [dependencies]
 anyhow = "1"
