@@ -124,6 +124,10 @@ pub struct CatalogInspectReport {
 pub struct CatalogSelectReport {
     /// Catalog source ID.
     pub source_id: String,
+    /// User-provided skill references added by this operation.
+    pub added: Vec<String>,
+    /// User-provided skill references removed by this operation.
+    pub removed: Vec<String>,
     /// Selected skill references after the operation.
     pub selected: Vec<String>,
     /// Whether the command ran as dry-run.
@@ -303,16 +307,31 @@ pub fn select_skills(
         .iter_mut()
         .find(|source| source.id == id)
         .ok_or_else(|| DaloError::unknown_source(id, known_sources))?;
-    for candidate in &resolved {
+    let mut added = Vec::new();
+    let mut removed = Vec::new();
+    for (reference, candidate) in refs.iter().zip(&resolved) {
+        let was_selected = source
+            .selection
+            .iter()
+            .any(|existing| selection_matches_candidate(existing, candidate));
         source
             .selection
             .retain(|existing| !selection_matches_candidate(existing, candidate));
         if !unselect {
             source.selection.push(canonical_selection(candidate));
         }
+        match (unselect, was_selected) {
+            (true, true) => removed.push(reference.clone()),
+            (false, false) => added.push(reference.clone()),
+            _ => {}
+        }
     }
     source.selection.sort();
     source.selection.dedup();
+    added.sort();
+    added.dedup();
+    removed.sort();
+    removed.dedup();
     let selected = source.selection.clone();
     let mut migration_warnings = Vec::new();
     if !dry_run {
@@ -365,6 +384,8 @@ pub fn select_skills(
 
     Ok(CatalogSelectReport {
         source_id: id.to_owned(),
+        added,
+        removed,
         selected,
         dry_run,
         audits,
