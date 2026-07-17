@@ -994,8 +994,8 @@ fn render_systemd_service(paths: &StorePaths, state: &AutosyncInstallState) -> S
         "[Unit]\nDescription=Dalo scheduled synchronization\n\n[Service]\nType=oneshot\nExecStart={} --store {} autosync run\nStandardOutput={}\nStandardError={}\n",
         systemd_quote(&state.executable),
         systemd_quote(&state.store),
-        systemd_append_quote(&paths.autosync_log_file),
-        systemd_append_quote(&paths.autosync_error_log_file)
+        systemd_append_value(&paths.autosync_log_file),
+        systemd_append_value(&paths.autosync_error_log_file)
     )
 }
 
@@ -1117,8 +1117,8 @@ fn systemd_escape(path: &Path) -> String {
         .replace('$', "$$")
 }
 
-fn systemd_append_quote(path: &Path) -> String {
-    format!("\"append:{}\"", systemd_escape(path))
+fn systemd_append_value(path: &Path) -> String {
+    format!("append:{}", systemd_escape(path))
 }
 
 fn shell_quote(path: &Path) -> String {
@@ -1299,6 +1299,16 @@ mod tests {
                     assert!(artifact.contains("ExecStart=\""));
                     assert!(artifact.contains(" --store \""));
                     assert!(artifact.contains("%%"));
+                    assert!(artifact.contains(&format!(
+                        "StandardOutput=append:{}",
+                        systemd_escape(&paths.autosync_log_file)
+                    )));
+                    assert!(artifact.contains(&format!(
+                        "StandardError=append:{}",
+                        systemd_escape(&paths.autosync_error_log_file)
+                    )));
+                    assert!(!artifact.contains("StandardOutput=\"append:"));
+                    assert!(!artifact.contains("StandardError=\"append:"));
                 }
                 SchedulerBackend::Cron => {
                     let artifact = render_cron(&paths, &state);
