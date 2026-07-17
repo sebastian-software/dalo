@@ -70,7 +70,7 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
 
    Installer environment variables:
 
-   - `DALO_VERSION` selects a release. Use `dalo-v0.6.1`, `v0.6.1`, or `0.6.1`.
+   - `DALO_VERSION` selects a release. Use `dalo-v<version>`, `v<version>`, or `<version>`.
    - `DALO_INSTALL_DIR` changes the binary destination (default: `~/.local/bin`).
    - `DALO_VERIFY=required` requires Sigstore provenance verification; `auto` is the default.
    - `DALO_LINUX_LIBC=gnu|musl` and `DALO_TARGET` override platform detection when needed.

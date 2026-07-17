@@ -33,4 +33,12 @@ version_check_script="$test_root/publish-version-check.sh"
   bash "$version_check_script" "$version"
 )
 
+package_files="$(cd "$root" && cargo package --list --allow-dirty)"
+for excluded_prefix in '.github/' 'docs/' 'npm/' 'site/' 'video/'; do
+  if printf '%s\n' "$package_files" | grep -q "^$excluded_prefix"; then
+    echo "cargo package unexpectedly contains $excluded_prefix" >&2
+    exit 1
+  fi
+done
+
 echo "workflow checks passed"

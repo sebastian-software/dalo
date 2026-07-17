@@ -1,7 +1,18 @@
 {
   "name": "getdalo",
   "version": "0.6.1",
-  "description": "Cross-platform npm launcher for Dalo",
+  "description": "npm launcher for Dalo on macOS and Linux",
+  "keywords": [
+    "dalo",
+    "ai",
+    "agents",
+    "skills",
+    "cli"
+  ],
+  "homepage": "https://dalo.sh",
+  "bugs": {
+    "url": "https://github.com/sebastian-software/dalo/issues"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -18,6 +29,10 @@
   "engines": {
     "node": ">=20"
   },
+  "os": [
+    "darwin",
+    "linux"
+  ],
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"

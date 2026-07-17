@@ -36,7 +36,7 @@ so runs are reproducible and a warm cache works offline.
 
 | Variable | Purpose |
 | --- | --- |
-| `DALO_VERSION` | Override the package version with `0.7.0`, `v0.7.0`, or `dalo-v0.7.0`. Use `latest` for an explicit GitHub update lookup; if that lookup fails, the newest usable cached version is used with a warning. |
+| `DALO_VERSION` | Override the package version with `<version>`, `v<version>`, or `dalo-v<version>`. Use `latest` for an explicit GitHub update lookup; if that lookup fails, the newest usable cached version is used with a warning. |
 | `DALO_CACHE_DIR` | Override the executable cache location (default: `~/.cache/dalo`). |
 | `DALO_LINUX_LIBC` | Override Linux libc detection with `gnu` or `musl`. |
 
