@@ -306,7 +306,7 @@ fn select_scheduler_executable(
                 reason: "autosync could not resolve the persistent npm launcher; reinstall getdalo globally and retry"
                     .to_owned(),
             })?;
-        return Ok(launcher);
+        return stable_executable(launcher);
     }
 
     if let Some(candidate) = invoked
@@ -368,7 +368,13 @@ fn version_managed_executable(executable: &Path) -> bool {
         .components()
         .filter_map(|component| component.as_os_str().to_str())
         .collect::<Vec<_>>();
-    components.contains(&"Cellar")
+    [
+        Path::new("/opt/homebrew/Cellar"),
+        Path::new("/usr/local/Cellar"),
+        Path::new("/home/linuxbrew/.linuxbrew/Cellar"),
+    ]
+    .iter()
+    .any(|cellar| executable.starts_with(cellar))
         || components.windows(2).any(|pair| pair == [".npm", "_npx"])
         || components.windows(2).any(|pair| pair == [".cache", "dalo"])
 }
@@ -1596,6 +1602,48 @@ mod tests {
         )
         .expect_err("temporary npx launchers should be rejected");
         assert!(npx_error.to_string().contains("temporary npx launcher"));
+    }
+
+    #[test]
+    fn version_managed_executable_should_anchor_homebrew_cellar_prefixes() {
+        assert!(version_managed_executable(Path::new(
+            "/opt/homebrew/Cellar/dalo/0.9.0/bin/dalo"
+        )));
+        assert!(version_managed_executable(Path::new(
+            "/usr/local/Cellar/dalo/0.9.0/bin/dalo"
+        )));
+        assert!(version_managed_executable(Path::new(
+            "/home/linuxbrew/.linuxbrew/Cellar/dalo/0.9.0/bin/dalo"
+        )));
+        assert!(!version_managed_executable(Path::new(
+            "/home/user/Cellar/dalo/bin/dalo"
+        )));
+    }
+
+    #[test]
+    fn scheduler_executable_should_reject_version_managed_npm_launcher_override() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let cache_launcher = temp.path().join(".cache/dalo/0.9.0/bin/dalo");
+        fs::create_dir_all(cache_launcher.parent().expect("launcher has parent"))
+            .expect("cache directory should exist");
+        fs::write(&cache_launcher, "launcher").expect("launcher should exist");
+        let mut permissions = fs::metadata(&cache_launcher)
+            .expect("launcher metadata readable")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&cache_launcher, permissions).expect("launcher should be executable");
+
+        let error = select_scheduler_executable(
+            &cache_launcher,
+            Some(&cache_launcher),
+            Some(&cache_launcher),
+            temp.path(),
+            None,
+            Some("npm"),
+        )
+        .expect_err("npm launcher overrides should use the version-managed guard");
+
+        assert!(error.to_string().contains("version-managed executable"));
     }
 
     #[test]
