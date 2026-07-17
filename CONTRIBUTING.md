@@ -31,7 +31,6 @@ RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
 The MSRV, dependency-audit, and coverage jobs additionally run:
 
 ```sh
-cargo build --release
 cargo check --locked --all-targets --all-features
 cargo deny check
 cargo llvm-cov --workspace --all-features --summary-only

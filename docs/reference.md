@@ -208,12 +208,14 @@ dalo --json target unlink generic
 
 JSON output shape: `TargetUnlinkReport`.
 
-### `dalo source add <id> <git-url>`
+### `dalo source add <id> <git-url-or-path>`
 
 Add a trusted team source, clone it into `sources/<id>/checkout`, configure it
 with `update_policy = "track"`, and run a deterministic security preflight for
 every discovered skill. Source IDs must be a single path component using only
 letters, digits, `.`, `_`, and `-`; `.` and `..` are rejected.
+Local paths are supported; relative paths resolve against the current working
+directory.
 
 Examples:
 
@@ -224,11 +226,13 @@ dalo --dry-run source add team https://github.com/example/team-skills.git
 
 JSON output shape: `SourceAddReport`.
 
-### `dalo source add-catalog <id> <git-url>`
+### `dalo source add-catalog <id> <git-url-or-path>`
 
 Add an untrusted catalog source, clone it into `sources/<id>/checkout`, and
 configure it with `update_policy = "pin"`. Catalog skills are offers; nothing
 from a catalog becomes active until selected and approved.
+Local paths are supported; relative paths resolve against the current working
+directory.
 
 Examples:
 
@@ -1131,7 +1135,8 @@ Instruction packs are Markdown files in `local/instructions/<id>.md` or
 discovery-only. Pack IDs use the same safe token rule as source IDs: letters,
 digits, `.`, `_`, and `-`, excluding `.` and `..`.
 
-Dalo currently reads optional leading metadata lines from the first five lines:
+Dalo reads an optional `version:` entry from the first five lines and optional
+`topics:` or `tags:` metadata from the first eight lines:
 
 ```markdown
 version: 1.0.0
