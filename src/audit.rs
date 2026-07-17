@@ -539,6 +539,37 @@ pub fn read_report(
 }
 
 fn resolve_target(paths: &StorePaths, target: &str) -> DaloResult<(String, PathBuf)> {
+    let parsed_selector = target
+        .split_once(':')
+        .filter(|(source, selector)| !source.is_empty() && !selector.is_empty());
+    let config = parsed_selector
+        .map(|_| store::read_config(paths))
+        .transpose()?;
+    if let Some((source_id, selector)) = parsed_selector
+        && let Some(source) = config
+            .as_ref()
+            .and_then(|config| config.sources.iter().find(|source| source.id == source_id))
+    {
+        let inventory = inventory::scan_source(source_id, &source.path)?;
+        let known_skills = inventory
+            .skills
+            .iter()
+            .map(|skill| skill.source_ref.clone())
+            .collect::<Vec<_>>();
+        let skill = inventory
+            .skills
+            .into_iter()
+            .find(|skill| skill.slot_name == selector || skill.id.as_deref() == Some(selector))
+            .ok_or_else(|| {
+                DaloError::skill_not_found(
+                    target,
+                    known_skills,
+                    format!("dalo source inspect {source_id}"),
+                )
+            })?;
+        return Ok((skill.source_ref, skill.path));
+    }
+
     let candidate = Path::new(target);
     if candidate.exists() {
         let path = if candidate.is_file() {
@@ -547,51 +578,24 @@ fn resolve_target(paths: &StorePaths, target: &str) -> DaloResult<(String, PathB
             candidate
         };
         let path = store::absolute_path(path)?;
-        if let Some(source_ref) = staged_source_ref(paths, &path) {
+        if let Some(source_ref) = staged_source_ref(paths, &path)? {
             return Ok((source_ref, path));
         }
         return Ok((synthetic_path_source_ref(&path), path));
     }
 
-    let (source_id, selector) = target
-        .split_once(':')
-        .filter(|(source, selector)| !source.is_empty() && !selector.is_empty())
-        .ok_or_else(|| DaloError::CheckFailed {
-            reason: "audit target must be an existing skill path or `<source>:<skill>`".to_owned(),
-        })?;
-    let config = store::read_config(paths)?;
-    let source = config
-        .sources
-        .iter()
-        .find(|source| source.id == source_id)
-        .ok_or_else(|| {
-            DaloError::unknown_source(
-                source_id,
-                config
-                    .sources
-                    .iter()
-                    .map(|source| source.id.clone())
-                    .collect(),
-            )
-        })?;
-    let inventory = inventory::scan_source(source_id, &source.path)?;
-    let known_skills = inventory
-        .skills
-        .iter()
-        .map(|skill| skill.source_ref.clone())
-        .collect::<Vec<_>>();
-    let skill = inventory
-        .skills
-        .into_iter()
-        .find(|skill| skill.slot_name == selector || skill.id.as_deref() == Some(selector))
-        .ok_or_else(|| {
-            DaloError::skill_not_found(
-                target,
-                known_skills,
-                format!("dalo source inspect {source_id}"),
-            )
-        })?;
-    Ok((skill.source_ref, skill.path))
+    let (source_id, _) = parsed_selector.ok_or_else(|| DaloError::CheckFailed {
+        reason: "audit target must be an existing skill path or `<source>:<skill>`".to_owned(),
+    })?;
+    let config = config.expect("source-qualified targets read the config");
+    Err(DaloError::unknown_source(
+        source_id,
+        config
+            .sources
+            .iter()
+            .map(|source| source.id.clone())
+            .collect(),
+    ))
 }
 
 fn synthetic_path_source_ref(path: &Path) -> String {
@@ -609,23 +613,48 @@ fn synthetic_path_source_ref(path: &Path) -> String {
     format!("path:{slot}@{path_hash}")
 }
 
-fn staged_source_ref(paths: &StorePaths, skill_path: &Path) -> Option<String> {
-    let staging_root = paths.sources_dir.join(".audit-staging");
-    let relative = skill_path.strip_prefix(&staging_root).ok()?;
-    let staging_dir_name = relative.components().next()?.as_os_str().to_string_lossy();
-    let config = store::read_config(paths).ok()?;
+fn staged_source_ref(paths: &StorePaths, skill_path: &Path) -> DaloResult<Option<String>> {
+    let staging_root = store::comparable_path(&paths.sources_dir.join(".audit-staging"));
+    let skill_path = store::comparable_path(skill_path);
+    let Ok(relative) = skill_path.strip_prefix(&staging_root) else {
+        return Ok(None);
+    };
+    let staging_dir_name = relative
+        .components()
+        .next()
+        .ok_or_else(|| {
+            DaloError::Io(std::io::Error::other(format!(
+                "staged audit path `{}` does not name a staging checkout",
+                skill_path.display()
+            )))
+        })?
+        .as_os_str()
+        .to_string_lossy();
+    let config = store::read_config(paths)?;
     let source = config
         .sources
         .iter()
         .filter(|source| staging_dir_name.starts_with(&format!("{}-", source.id)))
-        .max_by_key(|source| source.id.len())?;
+        .max_by_key(|source| source.id.len())
+        .ok_or_else(|| {
+            DaloError::Io(std::io::Error::other(format!(
+                "staged audit checkout `{staging_dir_name}` does not match a configured source"
+            )))
+        })?;
     let staging_dir = staging_root.join(staging_dir_name.as_ref());
-    inventory::scan_source(&source.id, &staging_dir)
-        .ok()?
+    let source_ref = inventory::scan_source(&source.id, &staging_dir)?
         .skills
         .into_iter()
-        .find(|skill| skill.path == skill_path)
+        .find(|skill| store::comparable_path(&skill.path) == skill_path)
         .map(|skill| skill.source_ref)
+        .ok_or_else(|| {
+            DaloError::Io(std::io::Error::other(format!(
+                "staged audit path `{}` is not a discovered skill in source `{}`",
+                skill_path.display(),
+                source.id
+            )))
+        })?;
+    Ok(Some(source_ref))
 }
 
 fn static_scan(skill_path: &Path) -> DaloResult<(Vec<AuditFinding>, AuditCoverage)> {
@@ -1770,6 +1799,25 @@ mod tests {
         fs::create_dir_all(&skill).expect("skill directory should be created");
         fs::write(skill.join("SKILL.md"), body).expect("skill should be written");
         skill
+    }
+
+    #[test]
+    fn staged_target_should_not_fall_back_when_store_config_is_invalid() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp.path().join("store");
+        store::init_store(store_root.clone(), false).expect("store should initialize");
+        let paths = StorePaths::new(store_root);
+        let skill = paths
+            .sources_dir
+            .join(".audit-staging/local-deadbeef/skills/review");
+        fs::create_dir_all(&skill).expect("staged skill directory should be created");
+        fs::write(skill.join("SKILL.md"), "# Review\n").expect("staged skill should be written");
+        fs::write(&paths.config_file, "not valid toml = [").expect("config should be corrupted");
+
+        let error = resolve_target(&paths, skill.to_str().expect("path should be utf-8"))
+            .expect_err("staged provenance errors must not fall back to path provenance");
+
+        assert!(error.to_string().contains("config.toml"));
     }
 
     #[test]

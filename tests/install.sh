@@ -31,7 +31,7 @@ printf '{}\n' > "${fixture_dir}/${package}.tar.gz.sigstore.json"
 make_path() {
   path_dir="$1"
   mkdir -p "$path_dir"
-  for command_name in cp gzip head install mkdir mktemp rm sed shasum sha256sum tar uname; do
+  for command_name in cp gzip head install mkdir mktemp mv rm sed shasum sha256sum tar uname; do
     command_path="$(command -v "$command_name" 2>/dev/null || true)"
     if [ -n "$command_path" ]; then
       ln -s "$command_path" "${path_dir}/${command_name}"
@@ -60,11 +60,33 @@ run_install() {
 auto_path="${test_root}/auto-path"
 make_path "$auto_path"
 auto_output="${test_root}/auto-output"
-run_install "$auto_path" "${test_root}/auto-bin" "$auto_output"
+curl_log="${test_root}/curl.log"
+run_install "$auto_path" "${test_root}/auto-bin" "$auto_output" \
+  DALO_FAKE_CURL_LOG="$curl_log"
 test -x "${test_root}/auto-bin/dalo"
 test "$(cat "${test_root}/auto-bin/.dalo-install-channel")" = standalone
 grep -q 'cosign not found; verifying the SHA-256 checksum only' "$auto_output"
 grep -q 'is not on PATH' "$auto_output"
+grep -q -- '--connect-timeout 10' "$curl_log"
+grep -q -- '--max-time 120' "$curl_log"
+grep -q -- '--retry 2' "$curl_log"
+
+atomic_path="${test_root}/atomic-path"
+make_path "$atomic_path"
+rm -f "${atomic_path}/mv"
+printf '#!/bin/sh\nexit 1\n' > "${atomic_path}/mv"
+chmod +x "${atomic_path}/mv"
+atomic_bin="${test_root}/atomic-bin"
+mkdir -p "$atomic_bin"
+printf 'previous binary\n' > "${atomic_bin}/dalo"
+atomic_output="${test_root}/atomic-output"
+if run_install "$atomic_path" "$atomic_bin" "$atomic_output"; then
+  echo "expected an atomic install rename failure" >&2
+  exit 1
+fi
+test "$(cat "${atomic_bin}/dalo")" = "previous binary"
+set -- "${atomic_bin}"/.dalo.tmp.*
+test ! -e "$1"
 
 cosign_path="${test_root}/cosign-path"
 make_path "$cosign_path"

@@ -743,6 +743,36 @@ fn audit_should_block_dangerous_skill_until_exact_hash_is_accepted() {
 }
 
 #[test]
+fn audit_should_prefer_a_configured_source_selector_over_a_cwd_decoy() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let project = temp_dir.path().join("project");
+    let skill = store.join("local/skills/review");
+    std::fs::create_dir_all(&skill).expect("local skill directory should be created");
+    std::fs::create_dir_all(project.join("local:review"))
+        .expect("cwd decoy directory should be created");
+    std::fs::write(skill.join("SKILL.md"), "# Managed review\n")
+        .expect("local skill should be written");
+    std::fs::write(project.join("local:review/SKILL.md"), "# Decoy\n")
+        .expect("decoy skill should be written");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    dalo_command()
+        .current_dir(&project)
+        .args(["--store"])
+        .arg(&store)
+        .args(["audit", "local:review"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("security audit: local:review\n"));
+}
+
+#[test]
 fn sync_should_run_static_preflight_before_materializing() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

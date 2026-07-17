@@ -7,8 +7,12 @@ install_dir="${DALO_INSTALL_DIR:-$HOME/.local/bin}"
 verify_mode="${DALO_VERIFY:-auto}"
 umask 077
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/dalo-install.XXXXXX")"
+binary_tmp=""
 
 cleanup() {
+  if [ -n "$binary_tmp" ]; then
+    rm -f "$binary_tmp"
+  fi
   rm -rf "$tmp_dir"
 }
 trap cleanup EXIT INT TERM
@@ -65,8 +69,12 @@ sha_check() {
   fi
 }
 
+fetch() {
+  curl --connect-timeout 10 --max-time 120 --retry 2 "$@"
+}
+
 latest_tag() {
-  tag="$(curl -fsSL "https://api.github.com/repos/${repo}/releases/latest" 2>/dev/null |
+  tag="$(fetch -fsSL "https://api.github.com/repos/${repo}/releases/latest" 2>/dev/null |
     sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' |
     head -n 1 || true)"
   if [ -n "$tag" ]; then
@@ -74,7 +82,7 @@ latest_tag() {
     return
   fi
 
-  redirect_url="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "${base_url}/releases/latest" 2>/dev/null || true)"
+  redirect_url="$(fetch -fsSLI -o /dev/null -w '%{url_effective}' "${base_url}/releases/latest" 2>/dev/null || true)"
   case "$redirect_url" in
     */releases/tag/*) printf '%s\n' "${redirect_url##*/}" ;;
   esac
@@ -116,12 +124,12 @@ archive="${package}.tar.gz"
 mkdir -p "$install_dir"
 
 echo "Installing dalo ${version} for ${target}"
-curl -fL "${base_url}/releases/download/${tag}/${archive}" -o "${tmp_dir}/${archive}"
-curl -fL "${base_url}/releases/download/${tag}/${archive}.sha256" -o "${tmp_dir}/${archive}.sha256"
+fetch -fL "${base_url}/releases/download/${tag}/${archive}" -o "${tmp_dir}/${archive}"
+fetch -fL "${base_url}/releases/download/${tag}/${archive}.sha256" -o "${tmp_dir}/${archive}.sha256"
 
 verify_bundle=0
 if command -v cosign >/dev/null 2>&1; then
-  if curl -fL "${base_url}/releases/download/${tag}/${archive}.sigstore.json" \
+  if fetch -fL "${base_url}/releases/download/${tag}/${archive}.sigstore.json" \
     -o "${tmp_dir}/${archive}.sigstore.json"; then
     verify_bundle=1
   elif [ "$verify_mode" = "required" ]; then
@@ -147,7 +155,10 @@ fi
   tar xzf "$archive"
 )
 
-install -m 0755 "${tmp_dir}/${package}/dalo" "${install_dir}/dalo"
+binary_tmp="$(mktemp "${install_dir}/.dalo.tmp.XXXXXX")"
+install -m 0755 "${tmp_dir}/${package}/dalo" "$binary_tmp"
+mv -f "$binary_tmp" "${install_dir}/dalo"
+binary_tmp=""
 printf '%s\n' standalone > "${install_dir}/.dalo-install-channel"
 
 if [ -d "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions" ]; then

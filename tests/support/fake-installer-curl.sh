@@ -1,6 +1,10 @@
 #!/bin/sh
 set -eu
 
+if [ -n "${DALO_FAKE_CURL_LOG:-}" ]; then
+  printf '%s\n' "$*" >> "$DALO_FAKE_CURL_LOG"
+fi
+
 output=""
 url=""
 effective_url="false"
