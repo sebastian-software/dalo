@@ -192,13 +192,15 @@ fn run_git_program(
     args: &[&str],
     timeout: Duration,
 ) -> DaloResult<String> {
+    let ssh_command_env = std::env::var_os("GIT_SSH_COMMAND");
+    let preflight_timeout = timeout.min(git_timeout(GIT_LOCAL_TIMEOUT));
     run_git_program_with_options(
         program,
         path,
         args,
         timeout,
-        std::env::var_os("GIT_SSH_COMMAND"),
-        has_core_ssh_command(path),
+        ssh_command_env,
+        has_core_ssh_command(program, path, preflight_timeout),
     )
 }
 
@@ -366,16 +368,16 @@ fn configure_ssh_command(
     }
 }
 
-fn has_core_ssh_command(path: &Path) -> bool {
-    Command::new("git")
-        .args(["config", "--get", "core.sshCommand"])
-        .current_dir(path)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success())
+fn has_core_ssh_command(program: &str, path: &Path, timeout: Duration) -> bool {
+    run_git_program_with_options(
+        program,
+        path,
+        &["config", "--get", "core.sshCommand"],
+        timeout,
+        Option::<&str>::None,
+        true,
+    )
+    .is_ok()
 }
 
 fn git_timeout(default: Duration) -> Duration {
@@ -530,6 +532,28 @@ mod tests {
         };
         assert!(status.contains("timed out after"));
         assert!(stderr.contains("terminal prompts are disabled"));
+    }
+
+    #[test]
+    fn core_ssh_preflight_should_share_the_git_timeout() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let fake_git = write_executable(
+            temp_dir.path(),
+            "fake-git",
+            "#!/bin/sh\nif [ \"$1\" = config ]; then while :; do :; done; fi\nprintf 'ok\\n'\n",
+        );
+        let start = Instant::now();
+
+        let output = run_git_program(
+            fake_git.to_str().expect("script path should be utf-8"),
+            temp_dir.path(),
+            &["--version"],
+            Duration::from_millis(200),
+        )
+        .expect("main command should run after the timed-out preflight");
+
+        assert_eq!(output.trim(), "ok");
+        assert!(start.elapsed() < Duration::from_secs(2));
     }
 
     #[test]

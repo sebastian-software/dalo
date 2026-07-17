@@ -474,8 +474,7 @@ where
         let snapshot = target_snapshot(&target)?;
         write_target(&target, &rendered)?;
         if let Err(error) = write_lock(paths, &lock) {
-            let _ = restore_target(snapshot);
-            return Err(error);
+            return Err(restore_target_after_error(snapshot, error));
         }
     }
 
@@ -535,8 +534,7 @@ where
             if lock.active_instruction_packs.len() != before
                 && let Err(error) = write_lock(paths, &lock)
             {
-                let _ = restore_target(snapshot);
-                return Err(error);
+                return Err(restore_target_after_error(snapshot, error));
             }
         } else if lock.active_instruction_packs.len() != before {
             write_lock(paths, &lock)?;
@@ -621,6 +619,17 @@ fn restore_target(snapshot: TargetSnapshot) -> DaloResult<()> {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(error) => Err(error.into()),
         }
+    }
+}
+
+fn restore_target_after_error(snapshot: TargetSnapshot, original_error: DaloError) -> DaloError {
+    let target = snapshot.target.clone();
+    match restore_target(snapshot) {
+        Ok(()) => original_error,
+        Err(restore_error) => DaloError::Io(std::io::Error::other(format!(
+            "{original_error}; also failed to restore instruction target `{}`: {restore_error}",
+            target.display()
+        ))),
     }
 }
 
@@ -1069,6 +1078,27 @@ mod tests {
                 .len(),
             1
         );
+    }
+
+    #[test]
+    fn instruction_rollback_should_report_restore_failure() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let occupied_target = temp.path().join("AGENTS.md");
+        fs::create_dir(&occupied_target).expect("target directory should be created");
+        let snapshot = TargetSnapshot {
+            target: occupied_target.clone(),
+            content: Some("previous content\n".to_owned()),
+        };
+
+        let error = restore_target_after_error(
+            snapshot,
+            DaloError::Io(std::io::Error::other("lock write failed")),
+        );
+        let message = error.to_string();
+
+        assert!(message.contains("lock write failed"));
+        assert!(message.contains("also failed to restore instruction target"));
+        assert!(message.contains(&occupied_target.display().to_string()));
     }
 
     #[test]
