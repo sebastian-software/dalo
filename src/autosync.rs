@@ -276,7 +276,8 @@ fn schedule_from_str(value: &str) -> Option<AutosyncSchedule> {
 
 /// Remove the installed native autosync job idempotently.
 pub fn uninstall(paths: &StorePaths, dry_run: bool) -> DaloResult<AutosyncMutationReport> {
-    uninstall_with(paths, dry_run, &SystemCommandRunner)
+    let home = user_home().ok();
+    uninstall_with(paths, dry_run, &SystemCommandRunner, home.as_deref())
 }
 
 /// Inspect scheduler installation and durable run state.
@@ -455,13 +456,19 @@ fn uninstall_with(
     paths: &StorePaths,
     dry_run: bool,
     runner: &dyn CommandRunner,
+    home: Option<&Path>,
 ) -> DaloResult<AutosyncMutationReport> {
-    let state = read_install_state(paths)?;
+    let (state, invalid_state) = match read_install_state(paths) {
+        Ok(state) => (state, false),
+        Err(_) if paths.autosync_file.exists() => (None, true),
+        Err(error) => return Err(error),
+    };
     let original_config = store::read_config(paths)?;
     let configured = original_config.settings.autosync;
+    let had_install_state = state.is_some() || invalid_state;
     if dry_run {
         return Ok(AutosyncMutationReport {
-            action: if state.is_some() || configured {
+            action: if had_install_state || configured {
                 "would_uninstall"
             } else {
                 "unchanged"
@@ -470,6 +477,12 @@ fn uninstall_with(
             dry_run: true,
             status: report_from_state(None, false, read_run_state(paths)?, false),
         });
+    }
+
+    let mut recovery_errors = Vec::new();
+    if invalid_state {
+        store::backup_corrupt_file(&paths.autosync_file)?;
+        recovery_errors = recover_install_without_state(paths, home, runner);
     }
 
     if let Some(state) = &state {
@@ -507,21 +520,95 @@ fn uninstall_with(
     if paths.autosync_run_file.exists()
         && let Err(error) = fs::remove_file(&paths.autosync_run_file)
     {
-        let _ = store::write_config(paths, &original_config);
-        restore_previous_install(paths, state.as_ref(), runner);
+        if !invalid_state {
+            let _ = store::write_config(paths, &original_config);
+            restore_previous_install(paths, state.as_ref(), runner);
+        }
         return Err(error.into());
     }
 
+    let mut status = report_from_state(None, false, read_run_state(paths)?, false);
+    if !recovery_errors.is_empty() {
+        status.scheduler_error = Some(format!(
+            "autosync recovery could not clean every native scheduler artifact: {}",
+            recovery_errors.join("; ")
+        ));
+    }
     Ok(AutosyncMutationReport {
-        action: if state.is_some() || configured {
+        action: if had_install_state || configured {
             "uninstalled"
         } else {
             "unchanged"
         }
         .to_owned(),
         dry_run: false,
-        status: report_from_state(None, false, read_run_state(paths)?, false),
+        status,
     })
+}
+
+fn recover_install_without_state(
+    paths: &StorePaths,
+    home: Option<&Path>,
+    runner: &dyn CommandRunner,
+) -> Vec<String> {
+    let mut errors = Vec::new();
+    if let Some(home) = home {
+        #[cfg(target_os = "macos")]
+        recover_backend_without_state(paths, home, SchedulerBackend::Launchd, runner, &mut errors);
+        #[cfg(target_os = "linux")]
+        recover_backend_without_state(paths, home, SchedulerBackend::Systemd, runner, &mut errors);
+    } else {
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        errors.push(
+            "HOME is not set, so native scheduler artifact paths could not be reconstructed"
+                .to_owned(),
+        );
+    }
+    recover_backend_without_state(
+        paths,
+        home.unwrap_or_else(|| Path::new(".")),
+        SchedulerBackend::Cron,
+        runner,
+        &mut errors,
+    );
+    errors
+}
+
+fn recover_backend_without_state(
+    paths: &StorePaths,
+    home: &Path,
+    backend: SchedulerBackend,
+    runner: &dyn CommandRunner,
+    errors: &mut Vec<String>,
+) {
+    let state = planned_state(
+        paths,
+        backend,
+        AutosyncSchedule::Daily,
+        Path::new("dalo"),
+        home,
+    );
+    if let Err(error) = disable_scheduler(&state, runner) {
+        errors.push(format!("could not disable {}: {error}", backend.as_str()));
+    }
+    if let Err(error) = remove_artifacts(&state) {
+        errors.push(format!(
+            "could not remove {} artifacts: {error}",
+            backend.as_str()
+        ));
+    }
+    if backend == SchedulerBackend::Systemd
+        && let Err(error) = require_success(
+            "systemctl",
+            &["--user".to_owned(), "daemon-reload".to_owned()],
+            runner,
+            None,
+        )
+    {
+        errors.push(format!(
+            "could not reload systemd after artifact cleanup: {error}"
+        ));
+    }
 }
 
 fn restore_previous_install(
@@ -1216,6 +1303,7 @@ type RecordedCall = (String, Vec<String>, Option<String>);
 struct FakeRunner {
     calls: RefCell<Vec<RecordedCall>>,
     crontab: RefCell<String>,
+    fail_programs: RefCell<Vec<String>>,
 }
 
 #[cfg(test)]
@@ -1229,6 +1317,19 @@ impl CommandRunner for FakeRunner {
         self.calls
             .borrow_mut()
             .push((program.to_owned(), args.to_vec(), input.map(str::to_owned)));
+        if self
+            .fail_programs
+            .borrow()
+            .iter()
+            .any(|failing| failing == program)
+        {
+            return Ok(CommandResult {
+                success: false,
+                stdout: String::new(),
+                stderr: "forced cleanup failure".to_owned(),
+                status: "1".to_owned(),
+            });
+        }
         if program == "id" {
             return Ok(CommandResult {
                 success: true,
@@ -1455,13 +1556,13 @@ mod tests {
             .expect("blocked run should persist");
             assert!(paths.autosync_run_file.exists());
 
-            let removed =
-                uninstall_with(&paths, false, &runner).expect("first uninstall should succeed");
+            let removed = uninstall_with(&paths, false, &runner, Some(&home))
+                .expect("first uninstall should succeed");
             assert_eq!(removed.action, "uninstalled");
             assert!(removed.status.last_run.is_none());
             assert!(!paths.autosync_run_file.exists());
-            let repeated =
-                uninstall_with(&paths, false, &runner).expect("second uninstall should succeed");
+            let repeated = uninstall_with(&paths, false, &runner, Some(&home))
+                .expect("second uninstall should succeed");
             assert_eq!(repeated.action, "unchanged");
             assert!(
                 !store::read_config(&paths)
@@ -1470,6 +1571,158 @@ mod tests {
                     .autosync
             );
         }
+    }
+
+    #[test]
+    fn uninstall_should_recover_from_corrupt_install_state() {
+        let (_temp, paths, home, executable) = setup();
+        let runner = FakeRunner::default();
+        #[cfg(target_os = "macos")]
+        let native_backend = SchedulerBackend::Launchd;
+        #[cfg(target_os = "linux")]
+        let native_backend = SchedulerBackend::Systemd;
+        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        let native_backend = SchedulerBackend::Cron;
+
+        install_with(
+            &paths,
+            AutosyncSchedule::Hourly,
+            false,
+            native_backend,
+            &executable,
+            &home,
+            &runner,
+        )
+        .expect("native install should succeed");
+        let cron_state = planned_state(
+            &paths,
+            SchedulerBackend::Cron,
+            AutosyncSchedule::Hourly,
+            &executable,
+            &home,
+        );
+        install_cron(&paths, &cron_state, &runner).expect("cron block should be installed");
+        let attempted = begin_run(&paths).expect("run state should be created");
+        finish_run(
+            &paths,
+            attempted,
+            AutosyncRunOutcome::Blocked,
+            Some("review required".to_owned()),
+        )
+        .expect("run state should be persisted");
+        fs::write(&paths.autosync_file, "not = [valid toml")
+            .expect("install state should be corrupted");
+
+        let calls_before_dry_run = runner.calls.borrow().len();
+        let preview = uninstall_with(&paths, true, &runner, Some(&home))
+            .expect("recovery dry-run should succeed");
+        assert_eq!(preview.action, "would_uninstall");
+        assert!(paths.autosync_file.exists());
+        assert_eq!(runner.calls.borrow().len(), calls_before_dry_run);
+
+        let report = uninstall_with(&paths, false, &runner, Some(&home))
+            .expect("corrupt install state should be recoverable");
+
+        assert_eq!(report.action, "uninstalled");
+        assert!(report.status.scheduler_error.is_none());
+        assert!(!paths.autosync_file.exists());
+        assert!(!paths.autosync_run_file.exists());
+        assert!(
+            !store::read_config(&paths)
+                .expect("config should remain readable")
+                .settings
+                .autosync
+        );
+        assert!(
+            !runner
+                .crontab
+                .borrow()
+                .contains(&cron_begin(&cron_state.identifier))
+        );
+        for artifact in planned_state(
+            &paths,
+            native_backend,
+            AutosyncSchedule::Daily,
+            &executable,
+            &home,
+        )
+        .artifacts
+        {
+            if artifact != "crontab" {
+                assert!(!Path::new(&artifact).exists());
+            }
+        }
+        let backups = fs::read_dir(&paths.root)
+            .expect("store should be readable")
+            .filter_map(Result::ok)
+            .filter_map(|entry| entry.file_name().into_string().ok())
+            .filter(|name| name.starts_with("autosync.toml.corrupt-"))
+            .collect::<Vec<_>>();
+        assert_eq!(backups.len(), 1);
+
+        install_with(
+            &paths,
+            AutosyncSchedule::Daily,
+            true,
+            native_backend,
+            &executable,
+            &home,
+            &runner,
+        )
+        .expect("a clean reinstall preview should succeed after recovery");
+    }
+
+    #[test]
+    fn uninstall_should_quarantine_newer_schema_install_state() {
+        let (_temp, paths, home, executable) = setup();
+        let runner = FakeRunner::default();
+        let mut state = planned_state(
+            &paths,
+            SchedulerBackend::Cron,
+            AutosyncSchedule::Daily,
+            &executable,
+            &home,
+        );
+        state.schema_version = AUTOSYNC_SCHEMA_VERSION + 1;
+        write_install_state(&paths, &state).expect("newer state should be written");
+
+        let report = uninstall_with(&paths, false, &runner, Some(&home))
+            .expect("newer-schema state should be recoverable");
+
+        assert_eq!(report.action, "uninstalled");
+        assert!(!paths.autosync_file.exists());
+        assert!(
+            fs::read_dir(&paths.root)
+                .expect("store should be readable")
+                .filter_map(Result::ok)
+                .filter_map(|entry| entry.file_name().into_string().ok())
+                .any(|name| name.starts_with("autosync.toml.corrupt-"))
+        );
+    }
+
+    #[test]
+    fn corrupt_state_recovery_should_clear_metadata_after_scheduler_cleanup_failures() {
+        let (_temp, paths, home, _executable) = setup();
+        fs::write(&paths.autosync_file, "not = [valid toml")
+            .expect("install state should be corrupted");
+        let runner = FakeRunner::default();
+        runner
+            .fail_programs
+            .borrow_mut()
+            .extend(["id", "launchctl", "systemctl", "crontab"].map(str::to_owned));
+
+        let report = uninstall_with(&paths, false, &runner, Some(&home))
+            .expect("scheduler failures should not wedge corrupt-state recovery");
+
+        assert_eq!(report.action, "uninstalled");
+        assert!(!paths.autosync_file.exists());
+        assert!(
+            report
+                .status
+                .scheduler_error
+                .as_deref()
+                .is_some_and(|error| error.contains("could not clean every"))
+        );
     }
 
     #[test]

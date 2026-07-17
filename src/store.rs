@@ -884,7 +884,7 @@ fn ensure_state_file(paths: &StorePaths, dry_run: bool) -> DaloResult<InitOperat
     })
 }
 
-fn backup_corrupt_file(path: &Path) -> DaloResult<PathBuf> {
+pub(crate) fn backup_corrupt_file(path: &Path) -> DaloResult<PathBuf> {
     let Some(parent) = path.parent() else {
         return Err(DaloError::InvalidStorePath {
             path: path.to_path_buf(),

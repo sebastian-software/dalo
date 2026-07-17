@@ -450,6 +450,14 @@ fn status_should_degrade_gracefully_for_invalid_autosync_state() {
         .args(["status", "--check"])
         .assert()
         .failure();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--dry-run", "autosync", "uninstall"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("autosync: would_uninstall"));
+    assert!(store.join("autosync.toml").exists());
 }
 
 #[test]
