@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -10,6 +11,7 @@ use crate::error::DaloResult;
 
 const SKILL_FILE: &str = "SKILL.md";
 const MAX_FRONTMATTER_BYTES: usize = 64 * 1024;
+const MAX_SKILL_METADATA_BYTES: usize = MAX_FRONTMATTER_BYTES + 16;
 const MAX_FRONTMATTER_FLOW_DEPTH: usize = 64;
 
 /// Inventory for one source checkout.
@@ -226,8 +228,9 @@ fn scan_skill(
     skill_dir: &Path,
 ) -> DaloResult<(Option<SkillRecord>, Vec<InventoryWarning>)> {
     let skill_file = skill_dir.join(SKILL_FILE);
-    let skill_markdown = fs::read_to_string(&skill_file)?;
-    let (frontmatter, mut warnings) = parse_frontmatter(&skill_markdown, &skill_file);
+    let (skill_markdown, metadata_truncated) = read_skill_metadata(&skill_file)?;
+    let (frontmatter, mut warnings) =
+        parse_frontmatter(&skill_markdown, &skill_file, metadata_truncated);
     let Some(frontmatter) = frontmatter else {
         // Metadata participates in stable identity, approvals, and required
         // closure. Never silently activate a skill after losing those fields.
@@ -262,9 +265,29 @@ fn scan_skill(
     ))
 }
 
+fn read_skill_metadata(path: &Path) -> io::Result<(String, bool)> {
+    let file = fs::File::open(path)?;
+    let metadata_truncated = file.metadata()?.len() > MAX_SKILL_METADATA_BYTES as u64;
+    let mut bytes = Vec::with_capacity(MAX_SKILL_METADATA_BYTES);
+    file.take(MAX_SKILL_METADATA_BYTES as u64)
+        .read_to_end(&mut bytes)?;
+    let markdown = match String::from_utf8(bytes) {
+        Ok(markdown) => markdown,
+        Err(error) if metadata_truncated && error.utf8_error().error_len().is_none() => {
+            let valid_up_to = error.utf8_error().valid_up_to();
+            let mut bytes = error.into_bytes();
+            bytes.truncate(valid_up_to);
+            String::from_utf8(bytes).expect("validated UTF-8 prefix should remain valid")
+        }
+        Err(error) => return Err(io::Error::new(io::ErrorKind::InvalidData, error)),
+    };
+    Ok((markdown, metadata_truncated))
+}
+
 fn parse_frontmatter(
     markdown: &str,
     path: &Path,
+    metadata_truncated: bool,
 ) -> (Option<SkillFrontmatter>, Vec<InventoryWarning>) {
     let mut warnings = Vec::new();
     // Accept both LF and CRLF after the opening `---` fence so skills authored
@@ -280,7 +303,11 @@ fn parse_frontmatter(
         warnings.push(InventoryWarning {
             code: InventoryWarningCode::MalformedFrontmatter,
             path: path.to_path_buf(),
-            message: "frontmatter start marker has no matching end marker".to_owned(),
+            message: if metadata_truncated {
+                format!("frontmatter exceeds the {MAX_FRONTMATTER_BYTES}-byte safety limit")
+            } else {
+                "frontmatter start marker has no matching end marker".to_owned()
+            },
         });
         return (None, warnings);
     };
@@ -828,6 +855,23 @@ mod tests {
             InventoryWarningCode::MalformedFrontmatter
         );
         assert!(inventory.warnings[0].message.contains("byte safety limit"));
+    }
+
+    #[test]
+    fn scan_source_should_not_read_skill_body_beyond_the_metadata_window() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("bounded");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        let mut markdown = b"---\nname: bounded\n---\n# Bounded\n".to_vec();
+        markdown.extend("€".repeat(MAX_SKILL_METADATA_BYTES).as_bytes());
+        markdown.push(0xff);
+        fs::write(skill_dir.join(SKILL_FILE), markdown).expect("skill file should be written");
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should succeed");
+
+        assert_eq!(inventory.skills.len(), 1);
+        assert_eq!(inventory.skills[0].slot_name, "bounded");
+        assert!(inventory.warnings.is_empty());
     }
 
     #[test]
