@@ -379,9 +379,11 @@ dalo --json status
 JSON output shape: `StatusReport`.
 
 `--check` exits with code 1 for unresolved source scans, inventory warnings,
-pending approvals, blocked required closure, missing targets for active skills,
-lock drift, unmanaged blockers, or instruction-block drift. It keeps the full
-report on stdout for JSON consumers.
+pending approvals, blocked required closure, blocking or failed security audits,
+blocked materialization operations, missing targets for active skills, actionable
+resolution diagnostics, lock drift, unmanaged blockers, instruction-block drift,
+or unhealthy autosync state. It keeps the full report on stdout for JSON
+consumers.
 
 ### `dalo sync`
 
@@ -421,7 +423,8 @@ from that source instead of treating the incomplete scan as a deletion. A normal
 `sync` can still apply unrelated safe work and exits successfully; `sync --check`
 exits with code 1 until the source is healthy. Restore or re-clone the checkout,
 or remove the source with `dalo source remove <id>`. Do not adopt or delete the
-preserved target link as if it were an unmanaged conflict.
+preserved target link as if it were an unmanaged conflict. Machine-readable
+consumers can inspect each affected source in `SyncReport.degraded_sources[]`.
 
 Lock drift for local and team sources is commit-based. Uncommitted working-tree
 edits do not change the recorded commit, and materialized symlinks expose those
@@ -539,7 +542,10 @@ JSON output shape: `UnkeepReport`.
 
 ### `dalo resolve remove-owned <id>`
 
-Remove a recorded owned symlink by ID. If the recorded path is already missing, Dalo drops the stale state record. If a real entry exists at that path, Dalo blocks removal.
+Remove a recorded owned symlink by ID. If the recorded path is already missing,
+Dalo drops the stale state record. If a different, foreign symlink occupies the
+path, Dalo leaves that symlink untouched and drops only the stale ownership
+record. If a real entry exists at that path, Dalo blocks removal.
 
 Examples:
 
@@ -777,7 +783,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `autosync install` / `uninstall` | `AutosyncMutationReport` | `action`, `dry_run`, resulting `status` |
 | `autosync status` | `AutosyncStatusReport` | `configured`, `installed`, `enabled`, backend, schedule, executable, store, artifacts, optional `scheduler_error`, and optional `last_run` |
 | `status` | `StatusReport` | `store`, `sources[]` with `provenance`, `targets[]`, `inventory_warnings[]`, `resolution`, dry-run `materialization[]`, `blocking_audits[]`, `audit_failures[]`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]`, `autosync` |
-| `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, `operations[]` |
+| `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, `operations[]`, `resolution`, `degraded_sources[]` (`id`, `path`, `reason`) |
 | `audit` | `AuditReport` | `schema_version`, `source_ref`, `skill_path`, `content_hash`, `static_engine_version`, `scanned_at_unix`, `coverage`, `status`, optional `max_severity`, `static_findings[]`, optional `agent_review`, optional `risk_acceptance` |
 | `approve list` | `ApprovalsFile` | `schema_version`, `approvals[]` |
 | `approve skill` | audited approval outcome | `audit` (`AuditReport`), `approval` (`ApprovalReport`) |
@@ -813,11 +819,11 @@ Common status values:
 | `TargetSupport` | `supported`, `experimental` |
 | `TargetLinkStatus` | `planned`, `linked`, `updated`, `existing` |
 | `TargetUnlinkStatus` | `planned`, `unlinked`, `missing` |
-| `MaterializeOperationKind` | `create`, `relink`, `remove`, `drop_record`, `conflict`, `keep`, `noop` |
+| `MaterializeOperationKind` | `create`, `relink`, `remove`, `drop_record`, `conflict`, `keep`, `no_op` |
 | `MaterializeOperationStatus` | `planned`, `applied`, `existing`, `blocked` |
 | `AdoptCopyStatus` | `planned`, `copied`, `existing` |
 | `AdoptReplacementStatus` | `planned`, `replaced`, `skipped`, `protected` |
-| `RemoveOwnedStatus` | `planned`, `removed`, `dropped_missing`, `blocked_real_entry` |
+| `RemoveOwnedStatus` | `planned`, `removed`, `dropped_missing`, `blocked_real_entry`, `dropped_foreign_symlink` |
 | `InstructionBlockDriftKind` | `missing`, `malformed`, `stale`, `source_missing` |
 | `CatalogDrift.code` | `new_available`, `selected_changed`, `selected_moved`, `selected_removed` |
 | `AutosyncRunOutcome` | `running`, `succeeded`, `skipped`, `blocked` |

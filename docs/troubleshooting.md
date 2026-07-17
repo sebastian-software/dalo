@@ -49,6 +49,7 @@ These appear in `status.resolution.diagnostics` and in related text output.
 | `required_expanded` | A selected catalog skill pulled in a same-catalog dependency through `requires`. | No action required if the dependency is expected. Review the dependency before syncing. |
 | `cross_source_require` | A `requires` entry points at another source. Dalo reports it but does not auto-install across sources. | Select or add the dependency explicitly, or change the skill metadata to use a same-source requirement. |
 | `required_blocked` | A skill was held back because a required closure cannot be linked. | Use the closure block reason below to fix the dependency, approval, shadowing, or target conflict. |
+| `legacy_bare_approval` | An older skill approval names only the skill and is no longer accepted because it is ambiguous across sources. | Re-grant it with `dalo approve skill <source-id>:<skill>` as suggested by the diagnostic. |
 | `audit_failed` | Dalo could not complete the security audit for one active skill. The owning source is degraded and existing owned links are preserved until the audit succeeds. | Inspect `status.audit_failures`, restore the reported path or permissions, then rerun `dalo status` or `dalo sync`. |
 
 ### Required-Closure Block Reasons
@@ -93,6 +94,7 @@ Lock drift compares the previous `lock.toml` with the current live resolution.
 | `invalid_slot_name` | Frontmatter `name` or folder name is not a portable slot name. | Rename the folder or frontmatter `name` to a lowercase portable token. |
 | `duplicate_slot_name` | One source contains multiple skills with the same slot name. | Rename one skill or split the source. |
 | `unreadable_path` | Dalo could not read a skill path. | Fix filesystem permissions, broken links, or the source checkout. |
+| `skipped_symlink` | Dalo skipped a symlinked directory to keep source discovery inside a bounded tree and avoid cycles. | Replace it with a real in-tree directory if it should contain skills, or remove the symlink. |
 
 ### Target Scan Warnings
 
@@ -146,6 +148,7 @@ Doctor includes `ok` and `info` codes as well as warnings/errors. Codes not list
 | `lock_invalid` | error | Fix/remove `lock.toml`, then run `dalo sync` to regenerate it. |
 | `source_lock_invalid` | error | Inspect or restore `source-lock.toml`; do not sync until the intended catalog pins are understood. |
 | `source_provenance_mismatch` | error | Compare `dalo source list` with the declaring team's `dalo.toml`, then run `dalo sync` after restoring the intended declaration or checkout. |
+| `source_store_debris` | warning | Inspect and remove the reported unconfigured source content or interrupted-operation directory when it is no longer needed. |
 | `approvals_invalid` | error | Fix `approvals.toml`; doctor suppresses approval-dependent warnings while it is invalid. |
 | `git_missing` | error | Install Git and ensure `git` is on `PATH`. |
 | `gh_missing` | warning | Install GitHub CLI if you need future PR/promotion flows. Normal sync does not require it. |
