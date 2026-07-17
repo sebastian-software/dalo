@@ -184,8 +184,11 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
     let paths = StorePaths::new(store_root.to_path_buf());
     let mut findings = Vec::new();
 
-    check_commands(&mut findings);
     check_store_layout(&paths, &mut findings);
+    if !paths.root.is_dir() {
+        return finish_report(store_root, findings);
+    }
+    check_commands(&mut findings);
 
     let config = read_config(&paths, &mut findings);
     let state = read_state(&paths, &mut findings);
@@ -222,6 +225,10 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
     }
     check_autosync(&paths, &mut findings);
 
+    finish_report(store_root, findings)
+}
+
+fn finish_report(store_root: &Path, mut findings: Vec<DoctorFinding>) -> DoctorReport {
     findings.sort_by(|left, right| {
         severity_name(left.severity)
             .cmp(severity_name(right.severity))
@@ -1165,11 +1172,21 @@ mod tests {
 
         let report = run_doctor(&store);
 
-        assert!(
-            report
-                .findings
-                .iter()
-                .any(|finding| finding.code == DoctorCode::StoreMissing)
+        assert_eq!(report.findings.len(), 1);
+        assert_eq!(report.findings[0].code, DoctorCode::StoreMissing);
+        assert_eq!(report.findings[0].severity, DoctorSeverity::Error);
+        assert_eq!(
+            report.findings[0].next_command.as_deref(),
+            Some("dalo init")
+        );
+        assert_eq!(
+            report.summary,
+            DoctorSummary {
+                errors: 1,
+                warnings: 0,
+                info: 0,
+                ok: 0,
+            }
         );
         assert!(!store.exists());
     }
