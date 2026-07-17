@@ -15,6 +15,7 @@ const {
   ensureBinary,
   expectedChecksum,
   formatLauncherError,
+  launcherEnvironment,
   npmInstallChannel,
   normalizeTag,
   targetFor,
@@ -69,6 +70,23 @@ test('identifies npm and npx launcher executions for update guidance', () => {
   assert.equal(npmInstallChannel(undefined, '/usr/local/lib/node_modules/getdalo/bin/dalo.js'), 'npm');
   assert.equal(npmInstallChannel('exec', '/usr/local/lib/node_modules/getdalo/bin/dalo.js'), 'npx');
   assert.equal(npmInstallChannel(undefined, '/home/user/.npm/_npx/123/node_modules/getdalo/bin/dalo.js'), 'npx');
+});
+
+test('passes only the persistent global npm launcher to the Rust binary', () => {
+  const globalLauncher = '/usr/local/bin/dalo';
+  const npmEnvironment = launcherEnvironment(
+    { npm_command: 'install', DALO_INVOKED_EXECUTABLE: '/stale/dalo' },
+    globalLauncher
+  );
+  assert.equal(npmEnvironment.DALO_INSTALL_CHANNEL, 'npm');
+  assert.equal(npmEnvironment.DALO_INVOKED_EXECUTABLE, globalLauncher);
+
+  const npxEnvironment = launcherEnvironment(
+    { npm_command: 'exec', DALO_INVOKED_EXECUTABLE: '/stale/dalo' },
+    '/home/user/.npm/_npx/123/node_modules/getdalo/bin/dalo.js'
+  );
+  assert.equal(npxEnvironment.DALO_INSTALL_CHANNEL, 'npx');
+  assert.equal(npxEnvironment.DALO_INVOKED_EXECUTABLE, undefined);
 });
 
 test('uses the npm package version from a warm cache without network access', async () => {

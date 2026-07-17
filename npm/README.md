@@ -21,6 +21,10 @@ npm install --global getdalo
 dalo --help
 ```
 
+Install `getdalo` globally before running `dalo autosync install`; one-off
+`npx` launchers are temporary and are intentionally rejected for scheduled
+jobs.
+
 ## Requirements
 
 - Node.js 20 or newer

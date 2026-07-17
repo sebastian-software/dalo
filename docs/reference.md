@@ -450,12 +450,16 @@ dalo --json autosync status
 dalo autosync uninstall
 ```
 
-Installation records the exact absolute executable and store paths; generated
-artifacts never depend on shell startup files. Reinstalling or removing the job
-is idempotent. Global `--dry-run` previews install and uninstall without writing
-config, metadata, native artifacts, or scheduler state.
-Re-run `autosync install` after moving the Dalo executable; status treats a
-missing recorded executable as disabled instead of guessing a replacement.
+Installation records the stable absolute executable or launcher path that was
+invoked, preserving Homebrew symlinks and the global npm launcher instead of
+pinning their version-specific targets. Temporary `npx` executions cannot
+install autosync; install `getdalo` globally or use another persistent Dalo
+installation first. Generated artifacts never depend on shell startup files.
+Reinstalling or removing the job is idempotent. Global `--dry-run` previews
+install and uninstall without writing config, metadata, native artifacts, or
+scheduler state. Re-run `autosync install` after moving the Dalo executable;
+status treats a missing recorded executable as disabled instead of guessing a
+replacement, and `doctor` reports the exact missing path.
 If `autosync.toml` is malformed or uses a newer unsupported schema,
 `autosync uninstall` quarantines it as `autosync.toml.corrupt-*`, reconstructs
 the native scheduler identifiers from the store path for best-effort cleanup,
