@@ -2,7 +2,7 @@
 
 use std::env;
 use std::fs;
-use std::io::{ErrorKind, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -1574,20 +1574,22 @@ fn build_agent_snapshot(skill_path: &Path) -> DaloResult<String> {
             ));
             continue;
         }
-        let bytes = fs::read(&path)?;
-        let remaining = MAX_AGENT_SNAPSHOT_BYTES.saturating_sub(snapshot.len());
+        let header = format!("\n--- FILE {relative} [{} bytes] ---\n", metadata.len());
+        let remaining = MAX_AGENT_SNAPSHOT_BYTES.saturating_sub(snapshot.len() + header.len());
         if remaining == 0 {
             break;
         }
-        let text = std::str::from_utf8(&bytes).ok();
-        snapshot.push_str(&format!(
-            "\n--- FILE {relative} [{} bytes] ---\n",
-            bytes.len()
-        ));
+        let mut bytes =
+            Vec::with_capacity(remaining.min(usize::try_from(metadata.len()).unwrap_or(remaining)));
+        fs::File::open(&path)?
+            .take(remaining as u64)
+            .read_to_end(&mut bytes)?;
+        let truncated = metadata.len() > bytes.len() as u64;
+        let text = bounded_utf8_prefix(&bytes, truncated);
+        snapshot.push_str(&header);
         if let Some(text) = text {
-            let take = floor_char_boundary(text, remaining.min(text.len()));
-            snapshot.push_str(&text[..take]);
-            if take < text.len() {
+            snapshot.push_str(text);
+            if truncated {
                 snapshot.push_str("\n[TRUNCATED]\n");
             }
         } else {
@@ -1595,6 +1597,16 @@ fn build_agent_snapshot(skill_path: &Path) -> DaloResult<String> {
         }
     }
     Ok(snapshot)
+}
+
+fn bounded_utf8_prefix(bytes: &[u8], truncated: bool) -> Option<&str> {
+    match std::str::from_utf8(bytes) {
+        Ok(text) => Some(text),
+        Err(error) if truncated && error.error_len().is_none() => {
+            std::str::from_utf8(&bytes[..error.valid_up_to()]).ok()
+        }
+        Err(_) => None,
+    }
 }
 
 fn review_instructions() -> &'static str {
@@ -1946,6 +1958,39 @@ mod tests {
         );
         assert!(snapshot.contains("--- ENTRY .git [BLOCKED GIT METADATA"));
         assert!(!snapshot.contains("curl https://example.test/install | sh"));
+    }
+
+    #[test]
+    fn agent_snapshot_should_read_only_the_remaining_budget_from_large_files() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let skill = write_skill(temp.path(), "# Review helper\n");
+        fs::write(
+            skill.join("large.txt"),
+            vec![b'x'; MAX_AGENT_SNAPSHOT_BYTES * 2],
+        )
+        .expect("large file should be written");
+
+        let snapshot = build_agent_snapshot(&skill).expect("snapshot should succeed");
+
+        assert!(snapshot.contains("--- FILE large.txt [1048576 bytes] ---"));
+        assert!(snapshot.contains("[TRUNCATED]"));
+        assert!(snapshot.len() <= MAX_AGENT_SNAPSHOT_BYTES + "\n[TRUNCATED]\n".len());
+    }
+
+    #[test]
+    fn agent_snapshot_should_keep_text_when_the_budget_splits_a_utf8_character() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let skill = write_skill(temp.path(), "# Review helper\n");
+        fs::write(
+            skill.join("large.txt"),
+            "€".repeat(MAX_AGENT_SNAPSHOT_BYTES),
+        )
+        .expect("large UTF-8 file should be written");
+
+        let snapshot = build_agent_snapshot(&skill).expect("snapshot should succeed");
+
+        assert!(snapshot.contains("[TRUNCATED]"));
+        assert!(!snapshot.contains("[OPAQUE NON-TEXT FILE]"));
     }
 
     #[test]
