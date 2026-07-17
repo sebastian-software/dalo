@@ -736,11 +736,13 @@ pub fn preview_team_manifests(paths: &StorePaths) -> DaloResult<UserConfig> {
                 ));
             };
             if existing.declared_by.as_deref() != Some(team.id.as_str()) {
-                return Err(DaloError::CheckFailed {
-                    reason: format!(
-                        "team manifest catalog `{source_id}` conflicts with an independently configured source"
-                    ),
-                });
+                return Err(derived_source_conflict(
+                    &config,
+                    &existing,
+                    team,
+                    declaration,
+                    &source_id,
+                ));
             }
             if existing.url.as_deref() != Some(location.as_str()) {
                 return Err(dry_run_requires_sync(&source_id, "catalog URL changed"));
@@ -767,7 +769,7 @@ pub fn preview_team_manifests(paths: &StorePaths) -> DaloResult<UserConfig> {
             let mut preview = existing;
             preview.priority = declaration.priority.unwrap_or(team.priority + 1);
             preview.selection = selection;
-            upsert_derived_source(&mut config, preview)?;
+            upsert_derived_source(&mut config, preview, team, declaration)?;
         }
     }
     config
@@ -818,6 +820,14 @@ pub fn reconcile_team_manifests(
 
         for declaration in &manifest.catalogs {
             let source_id = derived_source_id(&team.id, &declaration.id);
+            migrate_legacy_derived_state(
+                team,
+                declaration,
+                &source_id,
+                &config,
+                &mut lock,
+                &mut approvals,
+            );
             expected.insert(source_id.clone());
             let checkout_existed = paths
                 .sources_dir
@@ -842,7 +852,9 @@ pub fn reconcile_team_manifests(
             if reconciled.new_checkout {
                 new_source_ids.push(reconciled.source.id.clone());
             }
-            if let Err(error) = upsert_derived_source(&mut config, reconciled.source.clone()) {
+            if let Err(error) =
+                upsert_derived_source(&mut config, reconciled.source.clone(), team, declaration)
+            {
                 rollback_checkouts(&checkout_commits);
                 cleanup_removed_checkouts(paths, &new_source_ids);
                 return Err(error);
@@ -979,8 +991,142 @@ fn validate_filters(filters: &[String]) -> DaloResult<()> {
     Ok(())
 }
 
-fn derived_source_id(team_id: &str, catalog_id: &str) -> String {
+pub(crate) fn derived_source_id(team_id: &str, catalog_id: &str) -> String {
+    // Preserve the original readable form for ordinary IDs. If either
+    // component contains the legacy separator, encode both into a point-free
+    // alphabet whose fixed delimiter cannot occur in the hex payload.
+    if !team_id.contains('.') && !catalog_id.contains('.') {
+        return legacy_derived_source_id(team_id, catalog_id);
+    }
+    format!(
+        "team-{}-catalog-{}",
+        encode_source_id_component(team_id),
+        encode_source_id_component(catalog_id)
+    )
+}
+
+fn legacy_derived_source_id(team_id: &str, catalog_id: &str) -> String {
     format!("{team_id}.{catalog_id}")
+}
+
+fn encode_source_id_component(value: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut encoded = String::with_capacity(value.len() * 2);
+    for byte in value.bytes() {
+        encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+        encoded.push(char::from(HEX[usize::from(byte & 0x0f)]));
+    }
+    encoded
+}
+
+pub(crate) fn source_id_matches_declaration(
+    source_id: &str,
+    team_id: &str,
+    catalog_id: &str,
+) -> bool {
+    source_id == derived_source_id(team_id, catalog_id)
+        || source_id == legacy_derived_source_id(team_id, catalog_id)
+}
+
+fn migrate_legacy_derived_state(
+    team: &SourceConfig,
+    declaration: &ManifestCatalog,
+    source_id: &str,
+    config: &UserConfig,
+    lock: &mut catalog::SourceLock,
+    approvals: &mut store::ApprovalsFile,
+) {
+    let legacy_id = legacy_derived_source_id(&team.id, &declaration.id);
+    if legacy_id == source_id
+        || !config.sources.iter().any(|source| {
+            source.id == legacy_id && source.declared_by.as_deref() == Some(team.id.as_str())
+        })
+    {
+        return;
+    }
+
+    if lock.catalog(source_id).is_none() {
+        if let Some(legacy) = lock
+            .catalogs
+            .iter_mut()
+            .find(|entry| entry.source_id == legacy_id)
+        {
+            legacy.source_id = source_id.to_owned();
+        }
+    } else {
+        lock.catalogs.retain(|entry| entry.source_id != legacy_id);
+    }
+
+    let legacy_prefix = format!("{legacy_id}:");
+    for approval in &mut approvals.approvals {
+        if approval.scope == "source" && approval.value == legacy_id {
+            approval.value = source_id.to_owned();
+        } else if let Some(suffix) = approval.value.strip_prefix(&legacy_prefix) {
+            approval.value = format!("{source_id}:{suffix}");
+        }
+    }
+    let mut seen = BTreeSet::new();
+    approvals
+        .approvals
+        .retain(|approval| seen.insert((approval.scope.clone(), approval.value.clone())));
+}
+
+fn derived_source_conflict(
+    config: &UserConfig,
+    existing: &SourceConfig,
+    team: &SourceConfig,
+    declaration: &ManifestCatalog,
+    source_id: &str,
+) -> DaloError {
+    let incoming_manifest = team.path.join(TEAM_MANIFEST_FILE);
+    let reason = if let Some((existing_manifest, existing_catalog_id)) =
+        existing_manifest_declaration(config, existing)
+    {
+        format!(
+            "team manifest `{}` catalog `{}` derives source `{source_id}`, which conflicts with team manifest `{}` catalog `{existing_catalog_id}`; rename one catalog id and run `dalo sync`",
+            incoming_manifest.display(),
+            declaration.id,
+            existing_manifest.display()
+        )
+    } else if let Some(existing_team) = existing.declared_by.as_deref() {
+        format!(
+            "team manifest `{}` catalog `{}` derives source `{source_id}`, which conflicts with stale state owned by team manifest `{}`; reconcile or remove the stale derived source before retrying",
+            incoming_manifest.display(),
+            declaration.id,
+            config
+                .sources
+                .iter()
+                .find(|source| source.id == existing_team)
+                .map_or_else(
+                    || PathBuf::from(existing_team),
+                    |source| source.path.join(TEAM_MANIFEST_FILE)
+                )
+                .display()
+        )
+    } else {
+        format!(
+            "team manifest `{}` catalog `{}` derives source `{source_id}`, which conflicts with independently configured source `{}`; rename the catalog or remove the independent source before retrying",
+            incoming_manifest.display(),
+            declaration.id,
+            existing.id
+        )
+    };
+    DaloError::CheckFailed { reason }
+}
+
+fn existing_manifest_declaration(
+    config: &UserConfig,
+    source: &SourceConfig,
+) -> Option<(PathBuf, String)> {
+    let team_id = source.declared_by.as_deref()?;
+    let team = config.sources.iter().find(|team| team.id == team_id)?;
+    let manifest_path = team.path.join(TEAM_MANIFEST_FILE);
+    let manifest = read_manifest(&manifest_path).ok().flatten()?;
+    let declaration = manifest
+        .catalogs
+        .iter()
+        .find(|declaration| source_id_matches_declaration(&source.id, team_id, &declaration.id))?;
+    Some((manifest_path, declaration.id.clone()))
 }
 
 struct ReconciledCatalog {
@@ -1005,11 +1151,13 @@ fn reconcile_catalog(
         .find(|candidate| candidate.id == source_id);
     if let Some(existing) = existing {
         if existing.declared_by.as_deref() != Some(team.id.as_str()) {
-            return Err(DaloError::CheckFailed {
-                reason: format!(
-                    "team manifest catalog `{source_id}` conflicts with an independently configured source"
-                ),
-            });
+            return Err(derived_source_conflict(
+                config,
+                existing,
+                team,
+                declaration,
+                source_id,
+            ));
         }
         if existing.url.as_deref() != Some(location.as_str()) {
             return Err(DaloError::CheckFailed {
@@ -1301,21 +1449,28 @@ fn audit_selected(
     }
 }
 
-fn upsert_derived_source(config: &mut UserConfig, source: SourceConfig) -> DaloResult<()> {
-    if let Some(existing) = config
+fn upsert_derived_source(
+    config: &mut UserConfig,
+    source: SourceConfig,
+    team: &SourceConfig,
+    declaration: &ManifestCatalog,
+) -> DaloResult<()> {
+    if let Some(position) = config
         .sources
-        .iter_mut()
-        .find(|candidate| candidate.id == source.id)
+        .iter()
+        .position(|candidate| candidate.id == source.id)
     {
-        if existing.declared_by != source.declared_by {
-            return Err(DaloError::CheckFailed {
-                reason: format!(
-                    "manifest-derived source `{}` conflicts with an independently configured source",
-                    source.id
-                ),
-            });
+        if config.sources[position].declared_by != source.declared_by {
+            let existing = config.sources[position].clone();
+            return Err(derived_source_conflict(
+                config,
+                &existing,
+                team,
+                declaration,
+                &source.id,
+            ));
         }
-        *existing = source;
+        config.sources[position] = source;
     } else {
         config.sources.push(source);
     }
@@ -1351,6 +1506,7 @@ fn persist_reconciled_state(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::store::ApprovalRecord;
 
     fn skill(source: &str, slot: &str, id: Option<&str>, path: &str) -> SkillRecord {
         SkillRecord {
@@ -1439,5 +1595,199 @@ mod tests {
             }),
         );
         assert!(matches!(result, Err(DaloError::AuditBlocked { .. })));
+    }
+
+    #[test]
+    fn derived_source_ids_should_preserve_simple_names_and_disambiguate_dots() {
+        assert_eq!(
+            derived_source_id("company", "marketing"),
+            "company.marketing"
+        );
+
+        let catalog_dot = derived_source_id("company", "x.y");
+        let team_dot = derived_source_id("company.x", "y");
+        assert_eq!(catalog_dot, "team-636f6d70616e79-catalog-782e79");
+        assert_eq!(team_dot, "team-636f6d70616e792e78-catalog-79");
+        assert_ne!(catalog_dot, team_dot);
+        assert!(!catalog_dot.contains('.'));
+        assert!(!team_dot.contains('.'));
+        assert!(source::is_valid_source_id(&catalog_dot));
+        assert!(source::is_valid_source_id(&team_dot));
+    }
+
+    #[test]
+    fn dotted_namespace_migration_should_preserve_locks_and_approvals() {
+        let team = SourceConfig {
+            id: "company".to_owned(),
+            kind: SourceKind::Team,
+            path: PathBuf::from("/team"),
+            priority: 10,
+            enabled: true,
+            trusted: true,
+            url: None,
+            branch: None,
+            update_policy: Some("track".to_owned()),
+            selection: Vec::new(),
+            declared_by: None,
+            declared_ref: None,
+        };
+        let declaration = ManifestCatalog {
+            id: "x.y".to_owned(),
+            url: "https://example.invalid/catalog.git".to_owned(),
+            version: "main".to_owned(),
+            skills: Vec::new(),
+            priority: None,
+        };
+        let legacy_id = legacy_derived_source_id(&team.id, &declaration.id);
+        let source_id = derived_source_id(&team.id, &declaration.id);
+        let derived = SourceConfig {
+            id: legacy_id.clone(),
+            kind: SourceKind::Catalog,
+            path: PathBuf::from("/catalog"),
+            priority: 11,
+            enabled: true,
+            trusted: false,
+            url: Some(declaration.url.clone()),
+            branch: None,
+            update_policy: Some("manifest".to_owned()),
+            selection: Vec::new(),
+            declared_by: Some(team.id.clone()),
+            declared_ref: Some(declaration.version.clone()),
+        };
+        let config = UserConfig {
+            version: crate::config::CONFIG_VERSION,
+            settings: crate::config::Settings {
+                autosync: false,
+                sync_interval: None,
+            },
+            sources: vec![team.clone(), derived],
+        };
+        let mut lock = catalog::SourceLock::empty();
+        lock.catalogs.push(CatalogLock {
+            source_id: legacy_id.clone(),
+            commit: "abc123".to_owned(),
+            selected: vec!["copy".to_owned()],
+            inventory: Vec::new(),
+        });
+        let mut approvals = store::ApprovalsFile::empty();
+        approvals.approvals.extend([
+            ApprovalRecord {
+                scope: "source".to_owned(),
+                value: legacy_id.clone(),
+            },
+            ApprovalRecord {
+                scope: "skill".to_owned(),
+                value: format!("{legacy_id}:copy"),
+            },
+        ]);
+
+        migrate_legacy_derived_state(
+            &team,
+            &declaration,
+            &source_id,
+            &config,
+            &mut lock,
+            &mut approvals,
+        );
+
+        assert!(lock.catalog(&legacy_id).is_none());
+        assert_eq!(
+            lock.catalog(&source_id).map(|entry| entry.commit.as_str()),
+            Some("abc123")
+        );
+        assert!(
+            approvals
+                .approvals
+                .iter()
+                .any(|approval| { approval.scope == "source" && approval.value == source_id })
+        );
+        assert!(approvals.approvals.iter().any(|approval| {
+            approval.scope == "skill" && approval.value == format!("{source_id}:copy")
+        }));
+    }
+
+    #[test]
+    fn derived_source_conflict_should_name_both_manifest_declarations() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let existing_root = temp.path().join("company");
+        let incoming_root = temp.path().join("company-x");
+        fs::create_dir_all(&existing_root).expect("existing team root should exist");
+        fs::create_dir_all(&incoming_root).expect("incoming team root should exist");
+        let existing_manifest = TeamManifest {
+            schema_version: TEAM_MANIFEST_SCHEMA_VERSION,
+            source: None,
+            catalogs: vec![ManifestCatalog {
+                id: "x.y".to_owned(),
+                url: "https://example.invalid/existing.git".to_owned(),
+                version: "main".to_owned(),
+                skills: Vec::new(),
+                priority: None,
+            }],
+        };
+        fs::write(
+            existing_root.join(TEAM_MANIFEST_FILE),
+            toml::to_string(&existing_manifest).expect("manifest should serialize"),
+        )
+        .expect("existing manifest should be written");
+        let team_source = |id: &str, path: PathBuf| SourceConfig {
+            id: id.to_owned(),
+            kind: SourceKind::Team,
+            path,
+            priority: 10,
+            enabled: true,
+            trusted: true,
+            url: None,
+            branch: None,
+            update_policy: Some("track".to_owned()),
+            selection: Vec::new(),
+            declared_by: None,
+            declared_ref: None,
+        };
+        let existing_team = team_source("company", existing_root.clone());
+        let incoming_team = team_source("company.x", incoming_root.clone());
+        let existing = SourceConfig {
+            id: "company.x.y".to_owned(),
+            kind: SourceKind::Catalog,
+            path: PathBuf::from("/catalog"),
+            priority: 11,
+            enabled: true,
+            trusted: false,
+            url: Some("https://example.invalid/existing.git".to_owned()),
+            branch: None,
+            update_policy: Some("manifest".to_owned()),
+            selection: Vec::new(),
+            declared_by: Some("company".to_owned()),
+            declared_ref: Some("main".to_owned()),
+        };
+        let incoming_declaration = ManifestCatalog {
+            id: "y".to_owned(),
+            url: "https://example.invalid/incoming.git".to_owned(),
+            version: "main".to_owned(),
+            skills: Vec::new(),
+            priority: None,
+        };
+        let config = UserConfig {
+            version: crate::config::CONFIG_VERSION,
+            settings: crate::config::Settings {
+                autosync: false,
+                sync_interval: None,
+            },
+            sources: vec![existing_team, incoming_team.clone(), existing.clone()],
+        };
+
+        let error = derived_source_conflict(
+            &config,
+            &existing,
+            &incoming_team,
+            &incoming_declaration,
+            "company.x.y",
+        );
+        let message = error.to_string();
+
+        assert!(message.contains(&incoming_root.join(TEAM_MANIFEST_FILE).display().to_string()));
+        assert!(message.contains(&existing_root.join(TEAM_MANIFEST_FILE).display().to_string()));
+        assert!(message.contains("catalog `y`"));
+        assert!(message.contains("catalog `x.y`"));
+        assert!(!message.contains("independently configured"));
     }
 }

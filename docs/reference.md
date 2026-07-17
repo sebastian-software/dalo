@@ -954,8 +954,11 @@ Unknown fields are rejected.
 Schema version: `schema_version = 1`.
 
 Team repositories may compose their checked-in skills with pinned external
-catalogs. `sync` namespaces each derived catalog as `<team-id>.<catalog-id>` and
-stores the resolved commit in `source-lock.toml`.
+catalogs. `sync` namespaces ordinary IDs as `<team-id>.<catalog-id>` and stores
+the resolved commit in `source-lock.toml`. If either component itself contains
+a dot, Dalo losslessly encodes both components into a reserved point-free
+`team-<hex>-catalog-<hex>` ID so different declarations cannot collapse onto
+the same source.
 
 ```toml
 schema_version = 1

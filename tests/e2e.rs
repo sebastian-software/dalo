@@ -175,6 +175,68 @@ fn e2e_dirty_team_source_blocks_sync() {
 }
 
 #[test]
+fn e2e_dotted_team_and_catalog_ids_should_not_collide() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let catalog_repo = temp_dir.path().join("catalog");
+    let team_a = temp_dir.path().join("team-a");
+    let team_b = temp_dir.path().join("team-b");
+    create_git_skill_repo_with_skill(&catalog_repo, "copy", "# Copy\n");
+    let catalog_commit = git_head(&catalog_repo);
+
+    for (repo, team_id, catalog_id) in [(&team_a, "company", "x.y"), (&team_b, "company.x", "y")] {
+        std::fs::create_dir_all(repo).expect("team repo should be created");
+        std::fs::write(
+            repo.join("dalo.toml"),
+            format!(
+                "schema_version = 1\n\n[source]\nid = \"{team_id}\"\nkind = \"team\"\n\n[[catalog]]\nid = \"{catalog_id}\"\nurl = \"{}\"\nversion = \"{catalog_commit}\"\n",
+                catalog_repo.display()
+            ),
+        )
+        .expect("team manifest should be written");
+        run_git(repo, &["init", "-q"]);
+        run_git(repo, &["add", "."]);
+        commit_all(repo, "team manifest");
+    }
+
+    init_store(&store);
+    add_source(&store, "company", &team_a);
+    add_source(&store, "company.x", &team_b);
+
+    for _ in 0..2 {
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .arg("sync")
+            .assert()
+            .success();
+    }
+
+    let paths = dalo::store::StorePaths::new(store.clone());
+    let config = dalo::store::read_config(&paths).expect("config should be readable");
+    let derived = config
+        .sources
+        .iter()
+        .filter(|source| source.declared_by.is_some())
+        .map(|source| source.id.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        derived,
+        std::collections::BTreeSet::from([
+            "team-636f6d70616e79-catalog-782e79",
+            "team-636f6d70616e792e78-catalog-79",
+        ])
+    );
+    let doctor = dalo::doctor::run_doctor(&store);
+    assert!(
+        !doctor
+            .findings
+            .iter()
+            .any(|finding| { finding.code == dalo::doctor::DoctorCode::SourceProvenanceMismatch })
+    );
+}
+
+#[test]
 fn e2e_team_manifest_composes_a_pinned_filtered_catalog() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
