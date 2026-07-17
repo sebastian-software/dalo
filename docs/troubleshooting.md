@@ -33,6 +33,7 @@ dalo --json doctor
 | catalog drift | A catalog's upstream inventory differs from its pinned snapshot. | Run `dalo source refresh <id>` to inspect it. Add `--check` for CI, or preview the reviewed update with `dalo --dry-run source refresh <id> --advance` before applying it without `--dry-run`. |
 | `autosync_disabled` | Dalo has install metadata, but the native scheduler no longer reports the job enabled. | Reinstall idempotently with `dalo autosync install --schedule <hourly\|daily\|weekly>`, or remove it with `dalo autosync uninstall`. |
 | `autosync_run_blocked` | The latest scheduled run encountered a dirty source, malformed state, pending approval, audit finding, or target conflict. | Run `dalo autosync status` for the durable reason, resolve it with the suggested normal Dalo command, then retry or wait for the next schedule. |
+| `autosync_run_stale` | A scheduled run is still marked `running` well past its schedule interval, so it was likely interrupted (crash or power loss) before recording an outcome. | Run `dalo autosync status` to confirm, then trigger a fresh run (`dalo sync`) or wait for the next schedule to overwrite the state. |
 | autosync `skipped` | Another interactive Dalo process held the store lock. | No action is normally required. The next scheduled run retries without contention. |
 
 ## Status Codes
@@ -170,6 +171,7 @@ Doctor includes `ok` and `info` codes as well as warnings/errors. Codes not list
 | `autosync_disabled` | warning | Reinstall with `dalo autosync install`, or remove stale metadata with `dalo autosync uninstall`. |
 | `autosync_executable_missing` | warning | The executable path recorded during installation is missing or no longer executable. Reinstall with `dalo autosync install` from a persistent launcher. |
 | `autosync_run_blocked` | warning | Inspect `dalo autosync status`, resolve its recorded reason, and retry. |
+| `autosync_run_stale` | warning | A run is still `running` long after it started; it was likely interrupted. Trigger a fresh `dalo sync` or wait for the next schedule. |
 | `autosync_state_invalid` | error | Run `dalo autosync uninstall` to quarantine malformed or newer-schema `autosync.toml` and clean reconstructed scheduler artifacts, then reinstall. Repair or remove malformed `autosync-run.toml` separately. |
 | `unreadable_target_directory` | warning | Fix permissions or remove unreadable entries. |
 | `unmanaged_same_name_blocker` | error | Adopt, keep, rename, or remove the unmanaged blocker. |

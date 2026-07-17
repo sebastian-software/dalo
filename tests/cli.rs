@@ -527,6 +527,26 @@ fn autosync_run_should_persist_actionable_block_reason() {
     setup_store_with_skill_and_target(&store, &target);
     create_unmanaged_skill(&target, "review");
 
+    // A scheduled run only happens for an installed job, and `doctor` surfaces a
+    // blocked run only when autosync is installed (matching `status --check`).
+    // Record a valid install state so this covers the installed case.
+    let paths = store::StorePaths::new(store.clone());
+    let install_state = dalo::autosync::AutosyncInstallState {
+        schema_version: 1,
+        backend: dalo::autosync::SchedulerBackend::Cron,
+        schedule: dalo::autosync::AutosyncSchedule::Daily,
+        executable: store.join("dalo"),
+        store: paths.root.clone(),
+        identifier: "dalo-autosync-test".to_owned(),
+        artifacts: vec!["crontab".to_owned()],
+        installed_at_unix: 1,
+    };
+    std::fs::write(
+        &paths.autosync_file,
+        toml::to_string(&install_state).expect("install state should serialize"),
+    )
+    .expect("install state should be written");
+
     dalo_command()
         .args(["--store"])
         .arg(&store)

@@ -443,6 +443,15 @@ falls back to cron only when the user manager is unavailable. Supported
 schedules are `hourly`, `daily` (default for a first install), and `weekly`.
 Omitting `--schedule` on a reinstall preserves the installed schedule.
 
+Daily and weekly schedules run at a fixed per-store time in the local
+early-morning window (00:00–05:59, derived from the store path so different
+stores stagger rather than all firing at once). launchd coalesces missed jobs
+on wake and the systemd timer uses `Persistent=true`, but the cron fallback has
+no catch-up: a machine powered off throughout its scheduled window simply waits
+for the next slot, so prefer `hourly` on machines that are usually asleep at
+night. The window also overlaps the daylight-saving transition, so a skipped or
+repeated local hour can shift a single run.
+
 ```sh
 dalo autosync install
 dalo autosync install --schedule hourly
@@ -470,11 +479,17 @@ an interactive Dalo process owns it, the run exits successfully as `skipped`
 and retries on the next schedule. Dirty sources, malformed locks, pending
 approvals, security findings, target conflicts, or managed instruction drift
 remain fail-closed. `autosync-run.toml` records the last attempted and last
-successful timestamps plus `succeeded`, `skipped`, or `blocked` and an
-actionable reason.
+successful timestamps plus `running`, `succeeded`, `skipped`, or `blocked` and
+an actionable reason. A run left `running` well past its schedule interval —
+for example after a crash or power loss mid-sync — is surfaced by `status` and
+`doctor` as an interrupted run.
 
-`autosync status`, normal `status`, and `doctor` all surface this durable state.
-Logs are written to `autosync.log` and `autosync-error.log` in the store.
+`autosync status`, normal `status`, and `doctor` all surface this durable
+state; non-JSON output renders timestamps as UTC calendar times and, when an
+installed job is disabled, names the specific cause (missing artifacts, a moved
+store, or a scheduler-reported disable). Logs are written to `autosync.log` and
+`autosync-error.log` in the store; they are appended without rotation and are
+removed on `autosync uninstall`.
 
 ### `dalo adopt <skill> [--replace]`
 
@@ -793,7 +808,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `source refresh --advance` | `CatalogAdvanceReport` | exact `old_lock`/`new_lock`, selections, `outcomes[]`, `audits[]`, `sync`, `blocking_reasons[]`, `dry_run`, and `advanced` |
 | `source remove` | `SourceRemoveReport` | `source_id`, `checkout_path`, `kept_checkout`, `removed_approvals`, `removed_catalog_lock`, `reconciled_links[]`, `deactivated_skills[]`, `cleanup_warnings[]`, `affected_paths[]`, `dry_run` |
 | `autosync install` / `uninstall` | `AutosyncMutationReport` | `action`, `dry_run`, resulting `status` |
-| `autosync status` | `AutosyncStatusReport` | `configured`, `installed`, `enabled`, backend, schedule, executable, store, artifacts, optional `scheduler_error`, and optional `last_run` |
+| `autosync status` | `AutosyncStatusReport` | `configured`, `installed`, `enabled`, backend, schedule, executable, store, artifacts, optional `scheduler_error`, optional `disabled_reason`, and optional `last_run` |
 | `status` | `StatusReport` | `store`, `sources[]` with `provenance`, `targets[]`, `inventory_warnings[]`, `resolution`, dry-run `materialization[]`, `blocking_audits[]`, `audit_failures[]`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]`, `autosync` |
 | `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, `operations[]`, `resolution`, `degraded_sources[]` (`id`, `path`, `reason`) |
 | `audit` | `AuditReport` | `schema_version`, `source_ref`, `skill_path`, `content_hash`, `static_engine_version`, `scanned_at_unix`, `coverage`, `status`, optional `max_severity`, `static_findings[]`, optional `agent_review`, optional `risk_acceptance` |
