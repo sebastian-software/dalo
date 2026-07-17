@@ -28,6 +28,8 @@ const AGENT_REVIEW_PROMPT_VERSION: &str = "2";
 const MAX_SCANNED_FILE_BYTES: u64 = 1024 * 1024;
 const MAX_AGENT_SNAPSHOT_BYTES: usize = 512 * 1024;
 const MAX_PROVIDER_OUTPUT_BYTES: u64 = 2 * 1024 * 1024;
+const TRUNCATED_SNAPSHOT_SUFFIX: &str = "\n[TRUNCATED]\n";
+const OPAQUE_SNAPSHOT_SUFFIX: &str = "[OPAQUE NON-TEXT FILE]\n";
 const OPENCODE_DENY_ALL_CONFIG: &str = r#"{"permission":{"*":"deny","read":"deny","edit":"deny","glob":"deny","grep":"deny","list":"deny","bash":"deny","task":"deny","external_directory":"deny","todowrite":"deny","webfetch":"deny","websearch":"deny","lsp":"deny","skill":"deny","question":"deny"}}"#;
 const COMMON_PROVIDER_ENV: &[&str] = &[
     "PATH",
@@ -1575,14 +1577,23 @@ fn build_agent_snapshot(skill_path: &Path) -> DaloResult<String> {
             continue;
         }
         let header = format!("\n--- FILE {relative} [{} bytes] ---\n", metadata.len());
-        let remaining = MAX_AGENT_SNAPSHOT_BYTES.saturating_sub(snapshot.len() + header.len());
-        if remaining == 0 {
+        let entry_budget = MAX_AGENT_SNAPSHOT_BYTES.saturating_sub(snapshot.len());
+        let reserved_suffix = TRUNCATED_SNAPSHOT_SUFFIX
+            .len()
+            .max(OPAQUE_SNAPSHOT_SUFFIX.len());
+        if header.len() + reserved_suffix > entry_budget {
             break;
         }
-        let mut bytes =
-            Vec::with_capacity(remaining.min(usize::try_from(metadata.len()).unwrap_or(remaining)));
+        let payload_budget = entry_budget - header.len();
+        let file_fits = metadata.len() <= payload_budget as u64;
+        let read_budget = if file_fits {
+            usize::try_from(metadata.len()).unwrap_or(payload_budget)
+        } else {
+            payload_budget - reserved_suffix
+        };
+        let mut bytes = Vec::with_capacity(read_budget);
         fs::File::open(&path)?
-            .take(remaining as u64)
+            .take(read_budget as u64)
             .read_to_end(&mut bytes)?;
         let truncated = metadata.len() > bytes.len() as u64;
         let text = bounded_utf8_prefix(&bytes, truncated);
@@ -1590,10 +1601,10 @@ fn build_agent_snapshot(skill_path: &Path) -> DaloResult<String> {
         if let Some(text) = text {
             snapshot.push_str(text);
             if truncated {
-                snapshot.push_str("\n[TRUNCATED]\n");
+                snapshot.push_str(TRUNCATED_SNAPSHOT_SUFFIX);
             }
         } else {
-            snapshot.push_str("[OPAQUE NON-TEXT FILE]\n");
+            snapshot.push_str(OPAQUE_SNAPSHOT_SUFFIX);
         }
     }
     Ok(snapshot)
@@ -1972,9 +1983,28 @@ mod tests {
 
         let snapshot = build_agent_snapshot(&skill).expect("snapshot should succeed");
 
-        assert!(snapshot.contains("--- FILE large.txt [1048576 bytes] ---"));
+        assert!(snapshot.contains(&format!(
+            "--- FILE large.txt [{} bytes] ---",
+            MAX_AGENT_SNAPSHOT_BYTES * 2
+        )));
         assert!(snapshot.contains("[TRUNCATED]"));
-        assert!(snapshot.len() <= MAX_AGENT_SNAPSHOT_BYTES + "\n[TRUNCATED]\n".len());
+        assert!(snapshot.len() <= MAX_AGENT_SNAPSHOT_BYTES);
+    }
+
+    #[test]
+    fn agent_snapshot_should_include_binary_marker_inside_the_budget() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let skill = write_skill(temp.path(), "# Review helper\n");
+        fs::write(
+            skill.join("large.bin"),
+            vec![0xff; MAX_AGENT_SNAPSHOT_BYTES * 2],
+        )
+        .expect("large binary file should be written");
+
+        let snapshot = build_agent_snapshot(&skill).expect("snapshot should succeed");
+
+        assert!(snapshot.contains(OPAQUE_SNAPSHOT_SUFFIX));
+        assert!(snapshot.len() <= MAX_AGENT_SNAPSHOT_BYTES);
     }
 
     #[test]
