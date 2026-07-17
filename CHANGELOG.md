@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.9.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.8.2...dalo-v0.9.0) (2026-07-17)
+
+
+### Features
+
+* add team manifest management CLI ([24fd25d](https://github.com/sebastian-software/dalo/commit/24fd25db5c539f7216471be8b946a334ec1f6e2a))
+* compose team catalog manifests ([7116618](https://github.com/sebastian-software/dalo/commit/71166185f8afdb74860b2e9cbd72f71b3780fd64))
+
+
+### Bug Fixes
+
+* distinguish invalid CLI arguments ([b503c6e](https://github.com/sebastian-software/dalo/commit/b503c6e21152366125f02f5f3843ee3cb1c831d1))
+* polish CLI guidance and output ([b5e1d13](https://github.com/sebastian-software/dalo/commit/b5e1d13e56a5b78ffb6bdb923732c8be8e8d53bf))
+* preserve team manifest diagnostics ([78dbe61](https://github.com/sebastian-software/dalo/commit/78dbe61175943ffefe7bdb529813280d04cf8900))
+* report catalog selection mutations ([78aed48](https://github.com/sebastian-software/dalo/commit/78aed480c3a3af47a77f921412195f565b9f99fd))
+* report exact status check reasons ([4f592b5](https://github.com/sebastian-software/dalo/commit/4f592b51f4ad417cd4ff5d299ebb9d78013fbf30))
+
 ## [0.8.2](https://github.com/sebastian-software/dalo/compare/dalo-v0.8.1...dalo-v0.8.2) (2026-07-15)
 
 
