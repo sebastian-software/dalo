@@ -346,9 +346,34 @@ pub struct OrgApprovalArgs {
 #[derive(Debug, Args)]
 pub struct ApprovalRevokeArgs {
     /// Approval scope: skill, source, author, or org.
-    pub scope: String,
+    #[arg(value_enum)]
+    pub scope: ApprovalScopeArg,
     /// Approval value in the format required by the selected scope.
     pub value: String,
+}
+
+/// Approval scopes accepted by `approve revoke`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ApprovalScopeArg {
+    /// One source-qualified skill.
+    Skill,
+    /// Every skill from one configured source.
+    Source,
+    /// One source-qualified author.
+    Author,
+    /// One source-qualified organization.
+    Org,
+}
+
+impl ApprovalScopeArg {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Skill => "skill",
+            Self::Source => "source",
+            Self::Author => "author",
+            Self::Org => "org",
+        }
+    }
 }
 
 /// `target` command group.
@@ -2270,7 +2295,7 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
         )?,
         ApproveSubcommand::Revoke(args) => print_approval_result(
             options,
-            approval::revoke(&paths, &args.scope, &args.value, options.dry_run)?,
+            approval::revoke(&paths, args.scope.as_str(), &args.value, options.dry_run)?,
         )?,
     }
     Ok(())

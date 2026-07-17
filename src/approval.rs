@@ -106,7 +106,7 @@ pub fn canonical_skill(paths: &StorePaths, value: &str) -> DaloResult<String> {
     let (source_id, selector) = value
         .split_once(':')
         .filter(|(source, skill)| !source.is_empty() && !skill.is_empty())
-        .ok_or_else(|| DaloError::CheckFailed {
+        .ok_or_else(|| DaloError::InvalidArgument {
             reason: "skill approval values must use `<source>:<slot>`, for example `catalog:review-helper`"
                 .to_owned(),
         })?;
@@ -167,7 +167,7 @@ fn source_qualified_owner<'a>(scope: &str, value: &'a str) -> DaloResult<(&'a st
     value
         .split_once(':')
         .filter(|(source, value)| !source.is_empty() && !value.is_empty())
-        .ok_or_else(|| DaloError::CheckFailed {
+        .ok_or_else(|| DaloError::InvalidArgument {
             reason: format!(
                 "{scope} approval values must use `<source>:<owner>`, for example `catalog:{}`",
                 if scope == "author" {
@@ -180,7 +180,7 @@ fn source_qualified_owner<'a>(scope: &str, value: &'a str) -> DaloResult<(&'a st
 }
 
 fn invalid<T>(reason: &str) -> DaloResult<T> {
-    Err(DaloError::CheckFailed {
+    Err(DaloError::InvalidArgument {
         reason: reason.to_owned(),
     })
 }
