@@ -460,7 +460,11 @@ fn uninstall_with(
 ) -> DaloResult<AutosyncMutationReport> {
     let (state, invalid_state) = match read_install_state(paths) {
         Ok(state) => (state, false),
-        Err(_) if paths.autosync_file.exists() => (None, true),
+        Err(DaloError::FileParse { .. } | DaloError::UnsupportedSchema { .. })
+            if paths.autosync_file.exists() =>
+        {
+            (None, true)
+        }
         Err(error) => return Err(error),
     };
     let original_config = store::read_config(paths)?;
@@ -581,6 +585,9 @@ fn recover_backend_without_state(
     runner: &dyn CommandRunner,
     errors: &mut Vec<String>,
 ) {
+    // Recovery only needs the identifier and artifact paths. `planned_state`
+    // derives both solely from the store root and backend; the placeholder
+    // schedule and executable never affect the cleanup targets.
     let state = planned_state(
         paths,
         backend,
@@ -1722,6 +1729,47 @@ mod tests {
                 .scheduler_error
                 .as_deref()
                 .is_some_and(|error| error.contains("could not clean every"))
+        );
+    }
+
+    #[test]
+    fn uninstall_should_not_quarantine_temporarily_unreadable_install_state() {
+        let (_temp, paths, home, executable) = setup();
+        let state = planned_state(
+            &paths,
+            SchedulerBackend::Cron,
+            AutosyncSchedule::Daily,
+            &executable,
+            &home,
+        );
+        write_install_state(&paths, &state).expect("valid state should be written");
+        let mut permissions = fs::metadata(&paths.autosync_file)
+            .expect("state metadata should be readable")
+            .permissions();
+        permissions.set_mode(0o000);
+        fs::set_permissions(&paths.autosync_file, permissions)
+            .expect("state should be made unreadable");
+        let runner = FakeRunner::default();
+
+        let result = uninstall_with(&paths, false, &runner, Some(&home));
+        let state_remained = paths.autosync_file.exists();
+        if state_remained {
+            let mut permissions = fs::metadata(&paths.autosync_file)
+                .expect("state metadata should remain readable")
+                .permissions();
+            permissions.set_mode(0o600);
+            fs::set_permissions(&paths.autosync_file, permissions)
+                .expect("state permissions should be restored");
+        }
+
+        assert!(matches!(result, Err(DaloError::Io(_))));
+        assert!(state_remained);
+        assert!(
+            !fs::read_dir(&paths.root)
+                .expect("store should be readable")
+                .filter_map(Result::ok)
+                .filter_map(|entry| entry.file_name().into_string().ok())
+                .any(|name| name.starts_with("autosync.toml.corrupt-"))
         );
     }
 
