@@ -11,3 +11,7 @@ pnpm run render
 ```
 
 `pnpm run render` writes `site/assets/dalo-quickstart.mp4`.
+
+The terminal transcript mirrors current human-readable CLI output. When any
+displayed command changes, update the transcript and render the MP4 in the same
+pull request; `tests/docs.sh` guards the shared security-preflight contract.

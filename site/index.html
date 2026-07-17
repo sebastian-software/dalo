@@ -155,9 +155,9 @@
             <span class="terminal-title">~/work · dalo sync</span>
           </div>
           <pre class="terminal-body"><code><span class="ln"><span class="prompt">$</span> dalo sync</span>
-<span class="ln c-dim">dalo store: ~/.dalo</span>
-<span class="ln"><span class="c-ok">applied  create</span>   ~/.agents/skills/review</span>
-<span class="ln c-dim">  -&gt; ~/.dalo/local/skills/review</span></code></pre>
+<span class="ln c-dim">dalo store: /tmp/dalo/store</span>
+<span class="ln"><span class="c-ok">applied  create</span>     /tmp/dalo/skills/review -&gt; /tmp/dalo/store/local/skills/review</span>
+<span class="ln c-dim">security preflight: deterministic checks and compatible cached findings only; sync did not run an agent reviewer; passing is not a safety guarantee</span></code></pre>
         </div>
       </div>
     </div>
@@ -438,6 +438,7 @@
         <ul class="qs-points reveal">
           <li><span class="c-ok">✓</span> Single Rust binary, no daemon</li>
           <li><span class="c-ok">✓</span> Local skills work offline; public catalogs use Git</li>
+          <li><span class="c-ok">✓</span> Security preflight before a skill reaches an agent</li>
           <li><span class="c-ok">✓</span> Detects Codex, Claude Code, OpenClaw, Hermes</li>
         </ul>
       </div>
@@ -462,15 +463,16 @@
 <span class="ln"><span class="prompt">$</span> dalo source add-catalog sebastian https://github.com/sebastian-software/skills.sebastian-software.com.git</span>
 <span class="ln"><span class="prompt">$</span> dalo source inspect sebastian</span>
 <span class="ln"><span class="prompt">$</span> dalo source select sebastian pr-review</span>
+<span class="ln"><span class="prompt">$</span> dalo audit sebastian:pr-review</span>
 <span class="ln"><span class="prompt">$</span> dalo approve skill sebastian:pr-review</span>
 <span class="ln"><span class="prompt">$</span> dalo sync</span></code></pre>
         </div>
         <div class="video-demo">
-          <video autoplay loop muted playsinline controls preload="metadata" aria-label="Twelve-second Dalo quickstart video">
+          <video autoplay loop muted playsinline controls preload="metadata" aria-label="Fifteen-second Dalo secure-sync video">
             <source src="/assets/dalo-quickstart.mp4" type="video/mp4" />
           </video>
         </div>
-        <p class="copy-hint">Watch the 12-second quickstart above, or <a href="/assets/dalo-quickstart.mp4">download the MP4</a>. Prefer a dry run first? Every command takes <code>--dry-run</code>.</p>
+        <p class="copy-hint">Watch the 15-second secure-sync demo above, or <a href="/assets/dalo-quickstart.mp4">download the MP4</a>. Prefer a dry run first? Every command takes <code>--dry-run</code>.</p>
       </div>
     </div>
   </section>
@@ -489,6 +491,10 @@
         <div class="safe-item reveal">
           <h3>Approval gating</h3>
           <p>A newly active skill stays pending until you approve it: by skill, source, author, or org. Run <code>dalo approve skill source:skill</code> for the narrowest rule. Non-interactive syncs you schedule, for example with cron, apply existing approvals but never grant new ones.</p>
+        </div>
+        <div class="safe-item reveal">
+          <h3>Security preflight and review gate</h3>
+          <p>Every active skill is checked before sync. High or critical findings block links until explicitly accepted. <code>dalo audit</code> shows the deterministic evidence, and an optional isolated agent reviewer can add findings but can never approve content.</p>
         </div>
         <div class="safe-item reveal">
           <h3>Visible conflicts</h3>
@@ -574,8 +580,9 @@
       <h2 class="section-h reveal">Early, and honest about it.</h2>
       <p class="lead reveal">
         Dalo is v__DALO_VERSION__. The V1 and V1.1 surfaces work today: local, team, and catalog
-        sources; deterministic resolution; safe sync; adoption; diagnostics; and
-        instruction packs. Here's what's intentionally deferred to later releases.
+        sources; deterministic resolution; security audits and review gates; safe
+        sync; adoption; diagnostics; and instruction packs. Here's what's
+        intentionally deferred to later releases.
       </p>
       <ul class="roadmap-list reveal">
         <li><span class="rm-tag">later</span> PR-first promotion of local skills into team repos</li>

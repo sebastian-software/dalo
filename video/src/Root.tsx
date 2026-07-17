@@ -5,7 +5,7 @@ export const VideoRoot = () => (
   <Composition
     id="DaloQuickstart"
     component={QuickstartVideo}
-    durationInFrames={360}
+    durationInFrames={450}
     fps={30}
     width={1280}
     height={720}

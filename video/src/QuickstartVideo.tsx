@@ -20,19 +20,18 @@ type Line = {
 };
 
 const lines: Line[] = [
-  {at: 22, kind: 'comment', content: '# one store, every agent'},
-  {at: 43, kind: 'command', content: <>dalo init</>},
-  {at: 63, kind: 'success', content: 'Store ready.'},
-  {at: 84, kind: 'command', content: <>dalo target link codex</>},
-  {at: 103, kind: 'output', content: 'linked target codex → ~/.agents/skills'},
-  {at: 122, kind: 'command', content: <>dalo target link claude</>},
-  {at: 141, kind: 'output', content: 'linked target claude → ~/.claude/skills'},
-  {at: 144, kind: 'command', content: <>dalo source add company git@github.com:acme/agent-skills.git</>},
-  {at: 173, kind: 'success', content: 'added source company · 12 skills'},
-  {at: 242, kind: 'command', content: <>dalo sync</>},
-  {at: 264, kind: 'output', content: 'linked 12 skills → codex'},
-  {at: 280, kind: 'output', content: 'linked 12 skills → claude'},
-  {at: 302, kind: 'success', content: '✓ every target is in sync'},
+  {at: 20, kind: 'comment', content: '# inspect the exact skill before approval'},
+  {at: 42, kind: 'command', content: <>dalo audit project:review</>},
+  {at: 66, kind: 'output', content: 'security audit: project:review'},
+  {at: 88, kind: 'output', content: '  content hash: 4ba20c2d2fc180c89d2308e328fadc4b8f425f6fdaa30f4900bb152d02a66362'},
+  {at: 110, kind: 'output', content: '  coverage: complete'},
+  {at: 132, kind: 'success', content: '  result: clean'},
+  {at: 154, kind: 'output', content: '  note: no findings means no known issue was detected; it is not a safety guarantee'},
+  {at: 202, kind: 'command', content: <>dalo sync</>},
+  {at: 226, kind: 'output', content: 'dalo store: /tmp/dalo/store'},
+  {at: 250, kind: 'success', content: 'applied  create     /tmp/dalo/skills/review -> /tmp/dalo/store/local/skills/review'},
+  {at: 278, kind: 'output', content: <span style={{fontSize: 12}}>security preflight: deterministic checks and compatible cached findings only; sync did not run an agent reviewer; passing is not a safety guarantee</span>},
+  {at: 340, kind: 'comment', content: '# exit 0 · reviewed content linked'},
 ];
 
 const DaloMark = () => (
@@ -79,7 +78,7 @@ export const QuickstartVideo = () => {
         <DaloMark />
         <span style={{fontSize: 32, fontWeight: 780, letterSpacing: '-0.04em'}}>dalo</span>
         <span style={{marginLeft: 10, color: '#62656e', fontSize: 19}}>one source of truth for agent skills</span>
-        <span style={{marginLeft: 'auto', border: '1px solid rgba(24,26,32,0.16)', borderRadius: 999, padding: '7px 14px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 15}}>quickstart · 12 sec</span>
+        <span style={{marginLeft: 'auto', border: '1px solid rgba(24,26,32,0.16)', borderRadius: 999, padding: '7px 14px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 15}}>secure sync · 15 sec</span>
       </header>
 
       <div
