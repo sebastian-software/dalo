@@ -362,9 +362,13 @@ pub fn print_init_report(report: &InitReport) {
 
     println!("Store ready.");
     println!("Next steps:");
-    println!("  1. dalo target link <codex|claude|openclaw|hermes>");
-    println!("  2. dalo source add <id> <git-url>");
-    println!("  3. dalo sync");
+    let dalo = format!(
+        "dalo --store {}",
+        crate::error::shell_quote_path(&report.store)
+    );
+    println!("  1. {dalo} target link <codex|claude|openclaw|hermes|generic> [path]");
+    println!("  2. {dalo} source add <id> <git-url-or-path>");
+    println!("  3. {dalo} sync");
 }
 
 /// Print local approval records.
@@ -504,7 +508,9 @@ pub fn print_status_report(report: &StatusReport) {
 
     println!("targets:");
     if report.targets.is_empty() {
-        println!("  none linked (run: dalo target link <codex|claude|openclaw|hermes>)");
+        println!(
+            "  none linked (run: dalo target link <codex|claude|openclaw|hermes|generic> [path])"
+        );
     } else {
         for target in &report.targets {
             let state = if !target.linked {
@@ -736,7 +742,7 @@ pub fn print_sync_report(report: &SyncReport) {
     if report.operations.is_empty() {
         if report.linked_targets == 0 && !report.resolution.active_skills.is_empty() {
             println!(
-                "nothing materialized: {} skills resolved but no targets are linked; run `dalo target link <codex|claude|openclaw|hermes>`",
+                "nothing materialized: {} skills resolved but no targets are linked; run `dalo target link <codex|claude|openclaw|hermes|generic> [path]`",
                 report.resolution.active_skills.len()
             );
         } else if report.resolution.pending_approval_skills.is_empty()
@@ -1284,6 +1290,10 @@ pub fn print_target_link_report(report: &TargetLinkReport) {
 
 /// Print a human-readable target unlink report.
 pub fn print_target_unlink_report(report: &TargetUnlinkReport) {
+    if report.status == crate::target::TargetUnlinkStatus::Missing {
+        println!("not linked: {} (no state change)", report.target_id);
+        return;
+    }
     println!("{} target {}", report.status.as_str(), report.target_id);
     if report.status == crate::target::TargetUnlinkStatus::Unlinked {
         println!("note: owned symlinks remain; run `dalo sync` to remove them");

@@ -33,8 +33,8 @@ use crate::update;
     version,
     about = "Git-backed skill management for AI agents.",
     long_about = "Git-backed skill management for AI agents.\n\nDalo keeps a local store of skill sources, resolves one approved skill set, and links that set into the folders your agents already read.",
-    after_help = "Start here: dalo init -> dalo target link <agent> -> dalo source add <id> <git-url> -> dalo sync\nTry safely: use --store with a temporary directory and target link generic <path>.",
-    after_long_help = "Mental model:\n  store   local database under ~/.dalo, or --store PATH\n  source  Git-backed skill collection, including the built-in local source\n  sync    refreshes clean tracking sources, resolves approved skills, and links them into targets\n\nQuickstart:\n  1. dalo init\n  2. dalo target link <codex|claude|openclaw|hermes>\n  3. dalo source add <id> <git-url>\n  4. dalo sync\n\nSafe sandbox:\n  export DALO_STORE=\"$(mktemp -d)/store\"\n  dalo init\n  dalo target link generic \"$(mktemp -d)/skills\""
+    after_help = "Start here: dalo init -> dalo target link <agent> -> dalo source add <id> <git-url-or-path> -> dalo sync\nTry safely: use --store with a temporary directory and target link generic <path>.",
+    after_long_help = "Mental model:\n  store   local database under ~/.dalo, or --store PATH\n  source  Git-backed skill collection, including the built-in local source\n  sync    refreshes clean tracking sources, resolves approved skills, and links them into targets\n\nQuickstart:\n  1. dalo init\n  2. dalo target link <codex|claude|openclaw|hermes|generic> [path]\n  3. dalo source add <id> <git-url-or-path>\n  4. dalo sync\n\nSafe sandbox:\n  export DALO_STORE=\"$(mktemp -d)/store\"\n  dalo init\n  dalo target link generic \"$(mktemp -d)/skills\""
 )]
 pub struct Cli {
     /// Override the dalo store path.
@@ -260,7 +260,7 @@ pub struct SkillApprovalArgs {
     pub agent: AuditAgentArg,
 
     /// Ignore a compatible cached semantic review.
-    #[arg(long)]
+    #[arg(long = "refresh-audit", alias = "refresh")]
     pub refresh_audit: bool,
 
     /// Accept blocking findings for this exact content hash with a reason.
@@ -456,7 +456,7 @@ pub struct SourceAddArgs {
     /// Source ID.
     pub id: String,
 
-    /// Git URL of the team source.
+    /// Git URL or local path of the team source.
     pub location: String,
 }
 
@@ -466,7 +466,7 @@ pub struct SourceAddCatalogArgs {
     /// Source ID.
     pub id: String,
 
-    /// Git URL of the catalog source.
+    /// Git URL or local path of the catalog source.
     pub location: String,
 }
 
@@ -660,7 +660,7 @@ pub struct AdoptCommand {
     pub agent: AuditAgentArg,
 
     /// Ignore a compatible cached semantic review.
-    #[arg(long)]
+    #[arg(long = "refresh-audit", alias = "refresh")]
     pub refresh_audit: bool,
 
     /// Accept blocking findings for this exact content hash with a reason.
@@ -706,7 +706,7 @@ pub struct ResolveAdoptArgs {
     pub agent: AuditAgentArg,
 
     /// Ignore a compatible cached semantic review.
-    #[arg(long)]
+    #[arg(long = "refresh-audit", alias = "refresh")]
     pub refresh_audit: bool,
 
     /// Accept blocking findings for this exact content hash with a reason.
@@ -808,6 +808,9 @@ fn command_ignores_dry_run(command: &Command) -> bool {
                 command: TeamSubcommand::Show,
                 ..
             })
+            | Command::Resolve(ResolveCommand {
+                command: ResolveSubcommand::List
+            })
     ) || matches!(
         command,
         Command::Source(SourceCommand {
@@ -867,7 +870,9 @@ fn run_instructions(options: &GlobalOptions, command: InstructionsCommand) -> Da
         InstructionsSubcommand::List => {
             let lock = store::read_user_lock(&paths)?;
             if options.json {
-                print_json(&lock.active_instruction_packs)?;
+                print_json(&instructions::InstructionPackListReport {
+                    active_instruction_packs: lock.active_instruction_packs,
+                })?;
             } else if lock.active_instruction_packs.is_empty() {
                 println!("no active instruction packs");
             } else {

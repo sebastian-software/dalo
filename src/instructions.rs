@@ -46,6 +46,13 @@ pub struct InstructionPackReport {
     pub dry_run: bool,
 }
 
+/// Active instruction packs returned by `instructions list`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct InstructionPackListReport {
+    /// Packs currently rendered into instruction files.
+    pub active_instruction_packs: Vec<LockedInstructionPack>,
+}
+
 /// Drift detected for an active instruction pack's rendered block.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct InstructionBlockDrift {

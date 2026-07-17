@@ -73,10 +73,12 @@ pub enum DaloError {
     },
 
     /// Target ID is unknown.
-    #[error("unknown target `{target}`")]
+    #[error("unknown target `{target}`{hint}")]
     UnknownTarget {
         /// Target ID.
         target: String,
+        /// Known target IDs or a recovery command.
+        hint: String,
     },
 
     /// Target requires an explicit path.
@@ -309,6 +311,15 @@ pub(crate) fn shell_quote_path(path: &Path) -> String {
 }
 
 impl DaloError {
+    /// Build an unknown-target error with concise recovery guidance.
+    #[must_use]
+    pub fn unknown_target(target: impl Into<String>, known_targets: Vec<String>) -> Self {
+        Self::UnknownTarget {
+            target: target.into(),
+            hint: known_ids_hint("targets", known_targets, "dalo target detect"),
+        }
+    }
+
     /// Build an unknown-source error with concise recovery guidance.
     #[must_use]
     pub fn unknown_source(source_id: impl Into<String>, known_sources: Vec<String>) -> Self {
@@ -487,6 +498,7 @@ mod tests {
     fn unknown_target_should_render_target_id() {
         let error = err::<()>(Err(DaloError::UnknownTarget {
             target: "codex".to_owned(),
+            hint: String::new(),
         }));
 
         assert_eq!(error.to_string(), "unknown target `codex`");
@@ -659,6 +671,7 @@ mod tests {
             },
             DaloError::UnknownTarget {
                 target: "codex".to_owned(),
+                hint: String::new(),
             },
             DaloError::TargetPathRequired {
                 target: "generic".to_owned(),
