@@ -201,6 +201,29 @@ fn read_team_manifest(path: &std::path::Path) -> dalo::team_manifest::TeamManife
 }
 
 #[test]
+fn team_show_should_report_missing_manifest_without_a_check_prefix() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let repo = temp_dir.path().join("team-repo");
+    let unused_store = temp_dir.path().join("unused-store");
+    std::fs::create_dir_all(&repo).expect("team repo should be created");
+
+    // Reproduces #362: an ordinary missing-manifest state error must not be
+    // rendered with the `check failed:` prefix reserved for `--check` runs.
+    dalo_command()
+        .args(["--store"])
+        .arg(&unused_store)
+        .args(["team", "--repo"])
+        .arg(&repo)
+        .arg("show")
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("does not exist"))
+        .stderr(predicate::str::contains("check failed").not());
+    assert!(!unused_store.exists());
+}
+
+#[test]
 fn team_catalog_update_should_preview_write_exact_pin_and_block_dangerous_candidate() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let repo = temp_dir.path().join("team-repo");

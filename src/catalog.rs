@@ -258,7 +258,7 @@ pub fn select_skills(
 ) -> DaloResult<CatalogSelectReport> {
     let configured_source = catalog_source(paths, id)?;
     if let Some(team) = &configured_source.declared_by {
-        return Err(DaloError::CheckFailed {
+        return Err(DaloError::StateError {
             reason: format!(
                 "catalog `{id}` is managed by `{team}`; edit `{}` in that team repository",
                 crate::team_manifest::TEAM_MANIFEST_FILE
@@ -837,7 +837,7 @@ pub fn advance_catalog(
     let config = store::read_config(paths)?;
     let source = catalog_source_from_config(&config.sources, id)?;
     if let Some(team) = &source.declared_by {
-        return Err(DaloError::CheckFailed {
+        return Err(DaloError::StateError {
             reason: format!(
                 "catalog `{id}` is pinned by `{team}`; update its version in `{}`",
                 crate::team_manifest::TEAM_MANIFEST_FILE
@@ -861,7 +861,7 @@ pub fn advance_catalog(
         .clone();
     let checkout_commit = git::rev_parse_head(&source.path)?;
     if checkout_commit != old_lock.commit {
-        return Err(DaloError::CheckFailed {
+        return Err(DaloError::StateError {
             reason: format!(
                 "catalog `{id}` checkout is at {checkout_commit}, but its pin is {}; restore the pinned checkout before advancing",
                 old_lock.commit
@@ -873,11 +873,10 @@ pub fn advance_catalog(
     git::prune_worktrees(&source.path)?;
     let upstream_commit = git::rev_parse(&source.path, "FETCH_HEAD")?;
     if git::revision_count(&source.path, &upstream_commit, &old_lock.commit)? != 0 {
-        return Err(DaloError::CheckFailed {
-            reason: format!(
-                "catalog `{id}` upstream revision {upstream_commit} is not a fast-forward from pinned revision {}",
-                old_lock.commit
-            ),
+        return Err(DaloError::CatalogNotFastForward {
+            catalog_id: id.to_string(),
+            upstream: upstream_commit,
+            pinned: old_lock.commit,
         });
     }
 
@@ -1328,7 +1327,7 @@ fn catalog_advance_boundary(boundary: &str) -> DaloResult<()> {
         .as_deref()
         == Some(boundary)
     {
-        return Err(DaloError::CheckFailed {
+        return Err(DaloError::StateError {
             reason: format!("injected catalog-advance failure at {boundary}"),
         });
     }
