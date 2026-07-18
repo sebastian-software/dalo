@@ -256,7 +256,7 @@ pub fn plan_remove_source(
             )
         })?;
     if let Some(team) = &source.declared_by {
-        return Err(DaloError::CheckFailed {
+        return Err(DaloError::StateError {
             reason: format!(
                 "source `{id}` is managed by `{team}`; edit `{}` in that team repository",
                 crate::team_manifest::TEAM_MANIFEST_FILE
@@ -731,7 +731,7 @@ pub fn set_source_priority(
         ));
     };
     if let Some(team) = &source.declared_by {
-        return Err(DaloError::CheckFailed {
+        return Err(DaloError::StateError {
             reason: format!(
                 "source `{id}` is managed by `{team}`; edit `{}` in that team repository",
                 crate::team_manifest::TEAM_MANIFEST_FILE

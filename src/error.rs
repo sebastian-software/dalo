@@ -19,10 +19,20 @@ pub enum DaloError {
         /// Human-readable validation error and expected input shape.
         reason: String,
     },
-    /// An explicit automation check found a state requiring review.
+    /// An explicit automation check (a `--check` flag) found a state requiring
+    /// review. Do not use this for ordinary state, environment, or validation
+    /// errors that occur without `--check`; use `StateError` (or a more specific
+    /// variant) for those so the output does not imply the user ran a check.
     #[error("check failed: {reason}")]
     CheckFailed {
         /// Human-readable summary of the state that needs attention.
+        reason: String,
+    },
+    /// The store, repository, or environment is in a state that blocks the
+    /// requested command, outside of an explicit `--check`.
+    #[error("{reason}")]
+    StateError {
+        /// Human-readable summary of the blocking state and how to resolve it.
         reason: String,
     },
     /// A pre-materialization security audit found an unaccepted blocking risk.
@@ -145,6 +155,20 @@ pub enum DaloError {
         source_id: String,
         /// Source checkout path.
         path: PathBuf,
+    },
+
+    /// A catalog's upstream diverged from its pinned revision during a reviewed
+    /// advance, so it cannot fast-forward.
+    #[error(
+        "catalog `{catalog_id}` upstream revision {upstream} is not a fast-forward from pinned revision {pinned}"
+    )]
+    CatalogNotFastForward {
+        /// Catalog source ID.
+        catalog_id: String,
+        /// Fetched upstream revision.
+        upstream: String,
+        /// Pinned revision.
+        pinned: String,
     },
 
     /// The local source priority is fixed and cannot be changed.
@@ -348,6 +372,8 @@ impl DaloError {
         match self {
             Self::InvalidArgument { .. }
             | Self::CheckFailed { .. }
+            | Self::StateError { .. }
+            | Self::CatalogNotFastForward { .. }
             | Self::AuditBlocked { .. }
             | Self::NotImplemented { .. }
             | Self::StoreNotInitialized { .. }
@@ -707,6 +733,14 @@ mod tests {
                 version: 999,
                 supported: 1,
             },
+            DaloError::StateError {
+                reason: "team manifest does not exist".to_owned(),
+            },
+            DaloError::CatalogNotFastForward {
+                catalog_id: "company.marketing".to_owned(),
+                upstream: "abc123".to_owned(),
+                pinned: "def456".to_owned(),
+            },
         ];
 
         assert!(
@@ -714,6 +748,35 @@ mod tests {
                 .iter()
                 .all(|error| error.exit_code() == DaloExitCode::ExpectedFailure)
         );
+    }
+
+    #[test]
+    fn state_error_should_render_without_a_check_prefix() {
+        let error = err::<()>(Err(DaloError::StateError {
+            reason: "team manifest `/x/dalo.toml` does not exist".to_owned(),
+        }));
+
+        assert_eq!(
+            error.to_string(),
+            "team manifest `/x/dalo.toml` does not exist"
+        );
+        assert!(!error.to_string().contains("check failed"));
+        assert_eq!(error.exit_code(), DaloExitCode::ExpectedFailure);
+    }
+
+    #[test]
+    fn catalog_not_fast_forward_should_render_revisions() {
+        let error = err::<()>(Err(DaloError::CatalogNotFastForward {
+            catalog_id: "company.marketing".to_owned(),
+            upstream: "abc123".to_owned(),
+            pinned: "def456".to_owned(),
+        }));
+
+        assert_eq!(
+            error.to_string(),
+            "catalog `company.marketing` upstream revision abc123 is not a fast-forward from pinned revision def456"
+        );
+        assert_eq!(error.exit_code(), DaloExitCode::ExpectedFailure);
     }
 
     #[test]

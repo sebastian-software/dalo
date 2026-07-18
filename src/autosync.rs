@@ -306,7 +306,7 @@ fn select_scheduler_executable(
     install_channel: Option<&str>,
 ) -> DaloResult<PathBuf> {
     if install_channel == Some("npx") {
-        return Err(DaloError::CheckFailed {
+        return Err(DaloError::StateError {
             reason: "autosync cannot use the temporary npx launcher; install getdalo globally with `npm install --global getdalo`, or use another persistent Dalo installation"
                 .to_owned(),
         });
@@ -315,7 +315,7 @@ fn select_scheduler_executable(
         let launcher = launcher
             .and_then(|path| resolve_invoked_path(path, cwd, search_path))
             .filter(|path| executable_available(path))
-            .ok_or_else(|| DaloError::CheckFailed {
+            .ok_or_else(|| DaloError::StateError {
                 reason: "autosync could not resolve the persistent npm launcher; reinstall getdalo globally and retry"
                     .to_owned(),
             })?;
@@ -366,7 +366,7 @@ fn same_executable(candidate: &Path, current: &Path) -> bool {
 
 fn stable_executable(executable: PathBuf) -> DaloResult<PathBuf> {
     if version_managed_executable(&executable) {
-        return Err(DaloError::CheckFailed {
+        return Err(DaloError::StateError {
             reason: format!(
                 "autosync resolved the version-managed executable `{}`; invoke Dalo through a persistent symlink or launcher and retry",
                 executable.display()
@@ -464,7 +464,7 @@ fn install_with(
     runner: &dyn CommandRunner,
 ) -> DaloResult<AutosyncMutationReport> {
     if !executable.is_file() {
-        return Err(DaloError::CheckFailed {
+        return Err(DaloError::StateError {
             reason: format!(
                 "autosync requires a stable executable file, but `{}` is unavailable",
                 executable.display()
@@ -472,7 +472,7 @@ fn install_with(
         });
     }
     if fs::metadata(executable)?.permissions().mode() & 0o111 == 0 {
-        return Err(DaloError::CheckFailed {
+        return Err(DaloError::StateError {
             reason: format!(
                 "autosync executable `{}` is not executable",
                 executable.display()
@@ -912,7 +912,7 @@ fn detect_backend(runner: &dyn CommandRunner) -> DaloResult<SchedulerBackend> {
     if read_crontab(runner).is_ok() {
         return Ok(SchedulerBackend::Cron);
     }
-    Err(DaloError::CheckFailed {
+    Err(DaloError::StateError {
         reason: "no supported user scheduler is available (launchd, systemd --user, or crontab)"
             .to_owned(),
     })
@@ -923,7 +923,7 @@ fn detect_backend(runner: &dyn CommandRunner) -> DaloResult<SchedulerBackend> {
     if read_crontab(runner).is_ok() {
         Ok(SchedulerBackend::Cron)
     } else {
-        Err(DaloError::CheckFailed {
+        Err(DaloError::StateError {
             reason:
                 "no supported user scheduler is available (launchd, systemd --user, or crontab)"
                     .to_owned(),
@@ -1177,7 +1177,7 @@ fn launchd_domain(runner: &dyn CommandRunner) -> DaloResult<String> {
     let result = require_success("id", &["-u".to_owned()], runner, None)?;
     let uid = result.stdout.trim();
     if uid.is_empty() || !uid.chars().all(|character| character.is_ascii_digit()) {
-        return Err(DaloError::CheckFailed {
+        return Err(DaloError::StateError {
             reason: "could not determine the current numeric user ID for launchd".to_owned(),
         });
     }
@@ -1322,7 +1322,7 @@ fn strip_cron_block(content: &str, identifier: &str) -> DaloResult<String> {
     for line in content.lines() {
         if line == begin {
             if skipping {
-                return Err(DaloError::CheckFailed {
+                return Err(DaloError::StateError {
                     reason: format!(
                         "cron fallback contains duplicate start markers for `{identifier}`"
                     ),
@@ -1333,7 +1333,7 @@ fn strip_cron_block(content: &str, identifier: &str) -> DaloResult<String> {
         }
         if line == end {
             if !skipping {
-                return Err(DaloError::CheckFailed {
+                return Err(DaloError::StateError {
                     reason: format!(
                         "cron fallback contains an unmatched end marker for `{identifier}`"
                     ),
@@ -1351,7 +1351,7 @@ fn strip_cron_block(content: &str, identifier: &str) -> DaloResult<String> {
         rendered.push('\n');
     }
     if skipping {
-        return Err(DaloError::CheckFailed {
+        return Err(DaloError::StateError {
             reason: format!("cron fallback has no end marker for `{identifier}`"),
         });
     }

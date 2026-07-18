@@ -275,7 +275,7 @@ pub fn init_team_manifest(
             .as_ref()
             .and_then(|source| source.id.as_deref());
         if existing_id != Some(source_id) {
-            return Err(DaloError::CheckFailed {
+            return Err(DaloError::StateError {
                 reason: format!(
                     "team manifest `{}` already exists for source `{}`",
                     path.display(),
@@ -323,7 +323,7 @@ pub fn show_team_manifest(repo: &Path) -> DaloResult<TeamManifestView> {
 /// Read and validate a manifest from an already configured team checkout.
 pub fn load_team_manifest(repo: &Path, team_id: &str) -> DaloResult<TeamManifest> {
     let path = repo.join(TEAM_MANIFEST_FILE);
-    let manifest = read_manifest(&path)?.ok_or_else(|| DaloError::CheckFailed {
+    let manifest = read_manifest(&path)?.ok_or_else(|| DaloError::StateError {
         reason: format!("team manifest `{}` does not exist", path.display()),
     })?;
     validate_manifest(team_id, &path, &manifest)?;
@@ -521,7 +521,7 @@ pub fn update_team_catalog_pin(
             |current| {
                 let catalog = manifest_catalog_mut(current, id)?;
                 if catalog != &declaration {
-                    return Err(DaloError::CheckFailed {
+                    return Err(DaloError::StateError {
                         reason: format!(
                             "team manifest catalog `{id}` changed while its update was being reviewed; retry against the current declaration"
                         ),
@@ -615,7 +615,7 @@ fn team_manifest_path(repo: &Path) -> DaloResult<PathBuf> {
 }
 
 fn read_managed_manifest(path: &Path) -> DaloResult<TeamManifest> {
-    let manifest = read_manifest(path)?.ok_or_else(|| DaloError::CheckFailed {
+    let manifest = read_manifest(path)?.ok_or_else(|| DaloError::StateError {
         reason: format!(
             "team manifest `{}` does not exist; run `dalo team init <source-id>` first",
             path.display()
@@ -667,7 +667,7 @@ fn deduplicate_filters(filters: &[String]) -> Vec<String> {
 
 fn reject_symlinked_manifest(path: &Path) -> DaloResult<()> {
     if fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
-        return Err(DaloError::CheckFailed {
+        return Err(DaloError::StateError {
             reason: format!(
                 "team manifest `{}` is a symlink; edit its real file explicitly",
                 path.display()
@@ -770,7 +770,7 @@ pub fn preview_team_manifests(paths: &StorePaths) -> DaloResult<UserConfig> {
 }
 
 fn dry_run_requires_sync(source_id: &str, reason: &str) -> DaloError {
-    DaloError::CheckFailed {
+    DaloError::StateError {
         reason: format!(
             "cannot preview team catalog `{source_id}` without changing Git state ({reason}); run `dalo sync` to reconcile it first"
         ),
@@ -967,7 +967,7 @@ fn validate_manifest(team_id: &str, path: &Path, manifest: &TeamManifest) -> Dal
         && let Some(id) = &source.id
         && id != team_id
     {
-        return Err(DaloError::CheckFailed {
+        return Err(DaloError::StateError {
             reason: format!(
                 "team manifest `{}` declares source id `{id}`, but it was added as `{team_id}`",
                 path.display()
@@ -983,7 +983,7 @@ fn validate_manifest(team_id: &str, path: &Path, manifest: &TeamManifest) -> Dal
             });
         }
         if !ids.insert(&catalog.id) {
-            return Err(DaloError::CheckFailed {
+            return Err(DaloError::StateError {
                 reason: format!(
                     "team manifest `{}` declares catalog `{}` more than once",
                     path.display(),
@@ -1004,7 +1004,7 @@ fn validate_filters(filters: &[String]) -> DaloResult<()> {
             .or_else(|| filter.strip_prefix('-'))
             .unwrap_or(filter);
         if reference.is_empty() {
-            return Err(DaloError::CheckFailed {
+            return Err(DaloError::StateError {
                 reason: "team manifest skill filters must name a skill after `+` or `-`".to_owned(),
             });
         }
@@ -1133,7 +1133,7 @@ fn derived_source_conflict(
             existing.id
         )
     };
-    DaloError::CheckFailed { reason }
+    DaloError::StateError { reason }
 }
 
 fn existing_manifest_declaration(
@@ -1182,7 +1182,7 @@ fn reconcile_catalog(
             ));
         }
         if existing.url.as_deref() != Some(location.as_str()) {
-            return Err(DaloError::CheckFailed {
+            return Err(DaloError::StateError {
                 reason: format!(
                     "team manifest changed the URL for `{source_id}`; remove that catalog declaration, sync once, then add the reviewed replacement URL"
                 ),
@@ -1612,7 +1612,7 @@ mod tests {
             Err(DaloError::AuditBlocked {
                 reason: "blocked skill".to_owned(),
             }),
-            Err(DaloError::CheckFailed {
+            Err(DaloError::StateError {
                 reason: "cleanup failed".to_owned(),
             }),
         );
