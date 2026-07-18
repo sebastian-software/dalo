@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.9.1](https://github.com/sebastian-software/dalo/compare/dalo-v0.9.0...dalo-v0.9.1) (2026-07-18)
+
+
+### Bug Fixes
+
+* **autosync:** explain disabled state, flag interrupted runs, bound logs ([98c9f90](https://github.com/sebastian-software/dalo/commit/98c9f908d745f49b065853ae608467178d2247b1)), closes [#364](https://github.com/sebastian-software/dalo/issues/364)
+* **autosync:** gate the stale-run status hint on installed ([8a9dc7f](https://github.com/sebastian-software/dalo/commit/8a9dc7fc793cfba33617ca203d8eac97829c83e5))
+* clarify legacy namespace migration ([eec4202](https://github.com/sebastian-software/dalo/commit/eec42021380c79fb75452cd13d2a570edf2c4d94))
+* disambiguate team catalog source ids ([e398cce](https://github.com/sebastian-software/dalo/commit/e398cce199254cad79d9ca5da0461c963ae6c50b))
+* **doctor:** stop dead-end hints for missing store files; align docs ([9b416dc](https://github.com/sebastian-software/dalo/commit/9b416dc1f9cbface496cb67794b6b316c198e7a3)), closes [#366](https://github.com/sebastian-software/dalo/issues/366)
+* emit valid systemd autosync log targets ([97d3a94](https://github.com/sebastian-software/dalo/commit/97d3a9403a62cdeb4e901cd60f0b343bd9eba13d))
+* **error:** stop labeling plain state errors as "check failed" ([a05d616](https://github.com/sebastian-software/dalo/commit/a05d6168f1480808bb1819b6234af72540383932)), closes [#362](https://github.com/sebastian-software/dalo/issues/362)
+* keep autosync executable paths stable ([5d8b8c2](https://github.com/sebastian-software/dalo/commit/5d8b8c227711ba8eff5325a14619515cf68db07c))
+* narrow autosync path guards ([a4010cf](https://github.com/sebastian-software/dalo/commit/a4010cf2527e3fcfe077c5cd8c07f6b5e159a562))
+* preserve systemd autosync log paths ([bd22b24](https://github.com/sebastian-software/dalo/commit/bd22b2467ba90e49c0cb1a00e1a3c53a1fbd65ba))
+* preserve unreadable autosync metadata ([1cd383a](https://github.com/sebastian-software/dalo/commit/1cd383ac8ed3e3a37b6981f7c0f9d4c178e1cbf6))
+* recover corrupt autosync install state ([4418a4b](https://github.com/sebastian-software/dalo/commit/4418a4b4bd9cad4e3578470a9434641278655fba))
+* **site:** surface autosync on the homepage; align quickstart video ([b411fcf](https://github.com/sebastian-software/dalo/commit/b411fcff8bdd731b178137e800c2ebbc8c290fd3)), closes [#367](https://github.com/sebastian-software/dalo/issues/367)
+* **team:** cap manifest reads, label staging debris, document inert --store ([17bf5f0](https://github.com/sebastian-software/dalo/commit/17bf5f0778bb620506479519c6aee618517d3b75)), closes [#365](https://github.com/sebastian-software/dalo/issues/365)
+
 ## [0.9.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.8.2...dalo-v0.9.0) (2026-07-17)
 
 
