@@ -75,8 +75,10 @@ JSON output shape: `InitReport`.
 Create `dalo.toml` in the current team repository. Use `--repo <path>` on the
 `team` command to target another checkout. Team-management commands do not read
 or initialize the personal Dalo store, and they do not commit or push changes.
-They write the manifest in canonical TOML form; catalog mutations may normalize
-formatting and do not preserve comments.
+The global `--store` flag is accepted for uniformity but has no effect on `team`
+commands; select the target repository with `--repo` instead. They write the
+manifest in canonical TOML form; catalog mutations may normalize formatting and
+do not preserve comments.
 
 Examples:
 

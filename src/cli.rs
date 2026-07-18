@@ -106,7 +106,7 @@ pub enum Command {
     Source(SourceCommand),
     /// Author and maintain a team repository's `dalo.toml`.
     #[command(
-        after_help = "Examples:\n  dalo team init company\n  dalo team catalog add marketing https://github.com/coreyhaines31/marketingskills.git --version <commit> --skill +copywriting\n  dalo team catalog skills marketing +copywriting +launch -seo-audit\n  dalo --dry-run team catalog update marketing --from main\n  dalo team show"
+        after_help = "Team commands act on a repository selected with --repo (default: the current directory). The global --store flag is accepted but has no effect here.\n\nExamples:\n  dalo team init company\n  dalo team catalog add marketing https://github.com/coreyhaines31/marketingskills.git --version <commit> --skill +copywriting\n  dalo team catalog skills marketing +copywriting +launch -seo-audit\n  dalo --dry-run team catalog update marketing --from main\n  dalo team show"
     )]
     Team(TeamCommand),
     /// Show managed, unmanaged, and conflicted skill state.
