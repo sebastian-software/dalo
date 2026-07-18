@@ -1617,6 +1617,15 @@ fn build_agent_snapshot(skill_path: &Path) -> DaloResult<String> {
             ));
             continue;
         }
+        if !metadata.is_file() {
+            // Never `open` a non-regular file (FIFO, socket, device): opening a
+            // FIFO blocks until a writer appears, which would hang the audit on
+            // exactly the untrusted content it exists to inspect.
+            snapshot.push_str(&format!(
+                "\n--- ENTRY {relative} [SPECIAL FILESYSTEM ENTRY; CONTENTS NOT INCLUDED] ---\n"
+            ));
+            continue;
+        }
         let header = format!("\n--- FILE {relative} [{} bytes] ---\n", metadata.len());
         let entry_budget = MAX_AGENT_SNAPSHOT_BYTES.saturating_sub(snapshot.len());
         let reserved_suffix = TRUNCATED_SNAPSHOT_SUFFIX
@@ -1811,6 +1820,22 @@ mod tests {
         fs::create_dir_all(&skill).expect("skill directory should be created");
         fs::write(skill.join("SKILL.md"), body).expect("skill should be written");
         skill
+    }
+
+    #[test]
+    fn build_agent_snapshot_should_skip_special_files_without_opening_them() {
+        use std::os::unix::net::UnixListener;
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let skill = write_skill(temp.path(), "# Review\n");
+        // A unix socket is a non-regular file; `open`ing it errors and a FIFO
+        // would block forever. The snapshot must skip it, not open it.
+        let _listener =
+            UnixListener::bind(skill.join("endpoint.sock")).expect("socket should bind");
+
+        let snapshot =
+            build_agent_snapshot(&skill).expect("snapshot should skip special files, not error");
+        assert!(snapshot.contains("SPECIAL FILESYSTEM ENTRY"));
+        assert!(snapshot.contains("SKILL.md"));
     }
 
     #[test]
