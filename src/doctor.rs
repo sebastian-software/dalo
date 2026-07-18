@@ -885,6 +885,27 @@ fn check_source_store_debris(
     for entry in source_dirs.flatten() {
         let source_id = entry.file_name().to_string_lossy().into_owned();
         let path = entry.path();
+        // dalo-internal staging areas hold detached worktrees created during a
+        // sync or audit. They are expected to be empty between operations, so an
+        // empty directory is not debris; any leftover per-`{source}-{commit}`
+        // subtree is interrupted-operation debris, not removable "unconfigured
+        // source content".
+        if source_id == ".manifest-staging" || source_id == ".audit-staging" {
+            let Ok(children) = fs::read_dir(&path) else {
+                continue;
+            };
+            for child in children.flatten() {
+                findings.push(finding_warning(
+                    DoctorCode::SourceStoreDebris,
+                    format!(
+                        "interrupted source-operation debris exists at `{}`",
+                        child.path().display()
+                    ),
+                    Some(format!("inspect or remove {}", child.path().display())),
+                ));
+            }
+            continue;
+        }
         if !configured.contains(source_id.as_str()) {
             findings.push(finding_warning(
                 DoctorCode::SourceStoreDebris,
@@ -1732,6 +1753,59 @@ mod tests {
                     .message
                     .contains(debris.parent().unwrap().to_string_lossy().as_ref())
         }));
+    }
+
+    #[test]
+    fn doctor_should_classify_staging_leftovers_as_interrupted_debris() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store = temp_dir.path().join("store");
+        store::init_store(store.clone(), false).expect("init should succeed");
+        // A crash left a per-`{source}-{commit}` subtree in the internal staging area.
+        let leftover = store.join("sources/.manifest-staging/company-deadbeef");
+        fs::create_dir_all(&leftover).expect("staging leftover should be created");
+
+        let report = run_doctor(&store);
+
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|finding| finding.code == DoctorCode::SourceStoreDebris
+                    && finding
+                        .message
+                        .contains("interrupted source-operation debris")
+                    && finding.message.contains("company-deadbeef")),
+            "staging leftovers should be interrupted-operation debris: {:?}",
+            report.findings
+        );
+        assert!(
+            !report
+                .findings
+                .iter()
+                .any(|finding| finding.message.contains("unconfigured source content")),
+            "the internal staging directory must not be flagged as unconfigured source content: {:?}",
+            report.findings
+        );
+    }
+
+    #[test]
+    fn doctor_should_not_flag_an_empty_staging_directory() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store = temp_dir.path().join("store");
+        store::init_store(store.clone(), false).expect("init should succeed");
+        fs::create_dir_all(store.join("sources/.audit-staging"))
+            .expect("empty staging dir should be created");
+
+        let report = run_doctor(&store);
+
+        assert!(
+            !report
+                .findings
+                .iter()
+                .any(|finding| finding.code == DoctorCode::SourceStoreDebris),
+            "an empty internal staging directory is not debris: {:?}",
+            report.findings
+        );
     }
 
     fn setup_enabled_instruction_pack(root: &Path, body: &str) -> (PathBuf, PathBuf) {

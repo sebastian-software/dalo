@@ -6,7 +6,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
@@ -25,6 +25,10 @@ use crate::store::{self, StorePaths};
 pub const TEAM_MANIFEST_FILE: &str = "dalo.toml";
 /// Current team manifest schema version.
 pub const TEAM_MANIFEST_SCHEMA_VERSION: u32 = 1;
+/// Safety cap for reading a team `dalo.toml`. A tracked manifest is small even
+/// with many catalogs; a multi-megabyte file shipped in a team repo is treated
+/// as hostile rather than parsed, mirroring the skill-frontmatter read cap.
+const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
 
 fn default_schema_version() -> u32 {
     TEAM_MANIFEST_SCHEMA_VERSION
@@ -946,7 +950,17 @@ fn read_manifest(path: &Path) -> DaloResult<Option<TeamManifest>> {
     if !path.exists() {
         return Ok(None);
     }
-    let content = fs::read_to_string(path)?;
+    let file = fs::File::open(path)?;
+    if file.metadata()?.len() > MAX_MANIFEST_BYTES {
+        return Err(DaloError::StateError {
+            reason: format!(
+                "team manifest `{}` exceeds the {MAX_MANIFEST_BYTES}-byte safety limit",
+                path.display()
+            ),
+        });
+    }
+    let mut content = String::new();
+    file.take(MAX_MANIFEST_BYTES).read_to_string(&mut content)?;
     toml::from_str(&content)
         .map(Some)
         .map_err(|error| DaloError::FileParse {
@@ -1604,6 +1618,19 @@ mod tests {
         )
         .expect("bare positive should select from an empty base");
         assert_eq!(selected, ["copy"]);
+    }
+
+    #[test]
+    fn read_manifest_should_reject_an_oversized_file() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let path = temp.path().join("dalo.toml");
+        let oversized = vec![b'#'; (MAX_MANIFEST_BYTES + 1) as usize];
+        std::fs::write(&path, &oversized).expect("manifest should be written");
+
+        let error = read_manifest(&path).expect_err("oversized manifest should be rejected");
+
+        assert!(matches!(error, DaloError::StateError { .. }));
+        assert!(error.to_string().contains("safety limit"));
     }
 
     #[test]
