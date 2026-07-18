@@ -59,19 +59,29 @@ pub fn revoke(
     value: &str,
     dry_run: bool,
 ) -> DaloResult<ApprovalReport> {
-    let value = canonical_value(paths, scope, value)?;
+    // Resolve canonically when possible so a live reference matches its stored
+    // canonical form. Tolerate a source or skill that no longer resolves so a
+    // stale trust record can always be withdrawn; scope and value-shape errors
+    // (InvalidArgument) are still surfaced.
+    let canonical = match canonical_value(paths, scope, value) {
+        Ok(canonical) => Some(canonical),
+        Err(error @ DaloError::InvalidArgument { .. }) => return Err(error),
+        Err(_) => None,
+    };
     let mut approvals = store::read_approvals(paths)?;
     let before = approvals.approvals.len();
-    approvals
-        .approvals
-        .retain(|record| !(record.scope == scope && record.value == value));
+    approvals.approvals.retain(|record| {
+        let matches = record.scope == scope
+            && (record.value == value || canonical.as_deref() == Some(record.value.as_str()));
+        !matches
+    });
     let changed = approvals.approvals.len() != before;
     if changed && !dry_run {
         store::write_approvals(paths, &approvals)?;
     }
     Ok(ApprovalReport {
         scope: scope.to_owned(),
-        value,
+        value: canonical.unwrap_or_else(|| value.to_owned()),
         action: if changed { "revoked" } else { "unchanged" }.to_owned(),
         dry_run,
     })
@@ -183,4 +193,46 @@ fn invalid<T>(reason: &str) -> DaloResult<T> {
     Err(DaloError::InvalidArgument {
         reason: reason.to_owned(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn init_paths() -> (tempfile::TempDir, StorePaths) {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let root = temp.path().join("store");
+        store::init_store(root.clone(), false).expect("store should initialize");
+        (temp, StorePaths::new(root))
+    }
+
+    #[test]
+    fn revoke_should_remove_approval_when_source_no_longer_resolves() {
+        let (_temp, paths) = init_paths();
+        let mut approvals = store::read_approvals(&paths).expect("approvals should read");
+        approvals.approvals.push(ApprovalRecord {
+            scope: "source".to_owned(),
+            value: "ghost".to_owned(),
+        });
+        store::write_approvals(&paths, &approvals).expect("approvals should write");
+
+        let report = revoke(&paths, "source", "ghost", false)
+            .expect("revoke should tolerate a source that no longer exists");
+        assert_eq!(report.action, "revoked");
+        assert!(
+            store::read_approvals(&paths)
+                .expect("approvals should read")
+                .approvals
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn revoke_should_still_reject_an_invalid_scope() {
+        let (_temp, paths) = init_paths();
+        assert!(matches!(
+            revoke(&paths, "bogus", "x", false),
+            Err(DaloError::InvalidArgument { .. })
+        ));
+    }
 }
