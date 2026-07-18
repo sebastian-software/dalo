@@ -314,6 +314,29 @@
           </div>
         </article>
 
+        <article class="feature-row feature-row-flip reveal">
+          <div class="feature-text">
+            <span class="feature-index">06</span>
+            <h3>Scheduled autosync</h3>
+            <p>
+              Install a background job with <code>dalo autosync install</code> and Dalo
+              keeps your agent folders current on a schedule through the native
+              scheduler. Scheduled runs stay fail-closed: they apply existing approvals
+              but never grant new ones or push past a blocking audit.
+            </p>
+          </div>
+          <div class="feature-aside">
+            <div class="store-card">
+              <span class="store-path">dalo autosync install</span>
+              <ul class="store-tree">
+                <li><span class="c-accent">--schedule daily</span> <span class="c-dim">hourly · daily · weekly</span></li>
+                <li><span class="c-accent">native scheduler</span> <span class="c-dim">launchd · systemd · cron</span></li>
+                <li><span class="c-accent">fail-closed</span> <span class="c-dim">no new approvals granted</span></li>
+              </ul>
+            </div>
+          </div>
+        </article>
+
       </div>
     </div>
   </section>
@@ -490,7 +513,7 @@
         </div>
         <div class="safe-item reveal">
           <h3>Approval gating</h3>
-          <p>A newly active skill stays pending until you approve it: by skill, source, author, or org. Run <code>dalo approve skill source:skill</code> for the narrowest rule. Non-interactive syncs you schedule, for example with cron, apply existing approvals but never grant new ones.</p>
+          <p>A newly active skill stays pending until you approve it: by skill, source, author, or org. Run <code>dalo approve skill source:skill</code> for the narrowest rule. Scheduled runs you install with <code>dalo autosync install</code> apply existing approvals but never grant new ones.</p>
         </div>
         <div class="safe-item reveal">
           <h3>Security preflight and review gate</h3>
