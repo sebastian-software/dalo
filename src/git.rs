@@ -112,7 +112,20 @@ pub fn resolve_manifest_revision(path: &Path, revision: &str) -> DaloResult<Stri
 
 /// Validate a human-authored manifest revision before it reaches Git.
 pub fn validate_manifest_revision(revision: &str) -> DaloResult<()> {
-    if revision.is_empty() || revision.starts_with('-') || revision.chars().any(char::is_whitespace)
+    // A manifest pin must name a single concrete commit, tag, or ref -- not a
+    // Git revision expression. Reject empty/flag-like/whitespace values and the
+    // range (`..`), reflog (`@{`), ancestry (`^`, `~`), and refspec/glob
+    // (`:`, `?`, `*`, `[`, `\`) operators, plus control characters. This still
+    // accepts commit hashes, `v1.0.0`, `main`, and `release/2024`.
+    let has_operator = revision.contains(['^', '~', ':', '?', '*', '[', '\\']);
+    if revision.is_empty()
+        || revision.starts_with('-')
+        || revision
+            .chars()
+            .any(|character| character.is_whitespace() || character.is_control())
+        || revision.contains("..")
+        || revision.contains("@{")
+        || has_operator
     {
         Err(DaloError::CheckFailed {
             reason: format!("invalid manifest Git revision `{revision}`"),
@@ -598,6 +611,29 @@ mod tests {
             Err(DaloError::UnsafeRemoteUrl)
         ));
         assert!(validate_remote_url("git@github.com:sebastian-software/dalo.git").is_ok());
+    }
+
+    #[test]
+    fn validate_manifest_revision_should_reject_revision_expressions() {
+        for accepted in [
+            "0123456789abcdef0123456789abcdef01234567",
+            "v1.0.0",
+            "main",
+            "release/2024",
+        ] {
+            assert!(
+                validate_manifest_revision(accepted).is_ok(),
+                "expected `{accepted}` to be accepted"
+            );
+        }
+        for rejected in [
+            "", "-x", "a b", "main^", "HEAD~1", "a..b", "HEAD@{1}", "a:b", "a*",
+        ] {
+            assert!(
+                validate_manifest_revision(rejected).is_err(),
+                "expected `{rejected}` to be rejected"
+            );
+        }
     }
 
     #[test]

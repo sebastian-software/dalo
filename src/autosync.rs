@@ -222,9 +222,11 @@ impl CommandRunner for SystemCommandRunner {
         let mut command = Command::new(program);
         command
             .args(args)
-            // Force a stable, English C locale so output we parse (for example
-            // `crontab -l` reporting an empty crontab) does not depend on the
-            // caller's `LANG`/`LC_*` settings.
+            // This runner only executes scheduler control/inspection commands
+            // (crontab, launchctl, systemctl) whose output dalo parses, never
+            // user-facing text. Force a stable C locale for all of them --
+            // intentionally global, not just the `crontab -l` empty-crontab
+            // parse -- so parsing never depends on the caller's `LANG`/`LC_*`.
             .env("LC_ALL", "C")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
