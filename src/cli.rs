@@ -1679,7 +1679,7 @@ fn run_team(options: &GlobalOptions, command: TeamCommand) -> DaloResult<()> {
                         status::print_team_catalog_update(&report);
                     }
                     if !report.blocking_reasons.is_empty() {
-                        return Err(DaloError::CheckFailed {
+                        return Err(DaloError::StateError {
                             reason: format!(
                                 "team catalog pin was not updated: {}",
                                 report.blocking_reasons.join("; ")
@@ -1817,7 +1817,7 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
                     status::print_catalog_advance_report(&report);
                 }
                 if !report.blocking_reasons.is_empty() {
-                    return Err(DaloError::CheckFailed {
+                    return Err(DaloError::StateError {
                         reason: format!(
                             "catalog pin was not advanced: {}",
                             report.blocking_reasons.join("; ")
@@ -2275,9 +2275,9 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
                 } else {
                     status::print_audit_report(&audit_report);
                 }
-                return Err(DaloError::CheckFailed {
+                return Err(DaloError::AuditBlocked {
                     reason: format!(
-                        "security audit blocked approval of `{}`; inspect the findings or rerun with `--accept-risk <reason>`",
+                        "refusing to approve `{}` until its findings are reviewed or accepted with `--accept-risk <reason>`",
                         audit_report.source_ref
                     ),
                 });

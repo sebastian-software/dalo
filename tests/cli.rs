@@ -1354,7 +1354,7 @@ fn skill_approval_should_require_preflight_or_hash_bound_risk_acceptance() {
         .args(["approve", "skill", "public:review-helper"])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("blocked approval"));
+        .stderr(predicate::str::contains("refusing to approve"));
     assert!(
         store::read_approvals(&store::StorePaths::new(store.clone()))
             .expect("approvals should be readable")
