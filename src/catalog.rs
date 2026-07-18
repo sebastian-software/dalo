@@ -958,7 +958,7 @@ fn is_catalog_staging_entry(file_name: &std::ffi::OsStr, source_id: &str) -> boo
     else {
         return false;
     };
-    commit.len() == 40 && commit.bytes().all(|byte| byte.is_ascii_hexdigit())
+    matches!(commit.len(), 40 | 64) && commit.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 #[allow(clippy::too_many_arguments)]
