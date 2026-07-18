@@ -89,7 +89,7 @@ dalo --dry-run team init company
 An existing manifest with the same source ID is left unchanged. A different ID
 is never overwritten. JSON output shape: `TeamManifestMutationReport`.
 
-### `dalo team catalog add <id> <git-url> --version <revision>`
+### `dalo team catalog add <id> <git-url-or-path> --version <revision>`
 
 Add a pinned external skill set to the team manifest. Repeat `--skill` for
 include/exclude filters; omitting it means all skills.
@@ -115,6 +115,8 @@ dalo team catalog skills marketing +copywriting +launch -seo-audit
 dalo team catalog skills marketing
 ```
 
+JSON output shape: `TeamManifestMutationReport`.
+
 ### `dalo team catalog version <id> <revision>`
 
 Change the requested commit, tag, or ref. The next `dalo sync` on each team
@@ -124,6 +126,8 @@ it.
 ```sh
 dalo team catalog version marketing v2.0.0
 ```
+
+JSON output shape: `TeamManifestMutationReport`.
 
 ### `dalo team catalog update <id> --from <ref>`
 
@@ -150,6 +154,8 @@ prevents the write. JSON output shape: `TeamCatalogUpdateReport`, including
 
 Remove the declaration. The next team-member sync removes generated source
 state, approvals, owned links, and checkout state for that catalog.
+
+JSON output shape: `TeamManifestMutationReport`.
 
 ### `dalo team show`
 
@@ -797,7 +803,13 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `target detect` | `TargetDetectReport` | `targets[]` with `id`, `name`, `support`, `path`, `exists`, `linked` |
 | `target link` | `TargetLinkReport` | `target_id`, `path`, `canonical_path`, `status`, `created_dir` |
 | `target unlink` | `TargetUnlinkReport` | `target_id`, `status` |
+| `team init` | `TeamManifestMutationReport` | `path`, `action`, `dry_run`, resulting `manifest` |
+| `team catalog add` | `TeamManifestMutationReport` | `path`, `action`, `catalog_id`, `dry_run`, resulting `manifest` |
+| `team catalog skills` | `TeamManifestMutationReport` | `path`, `action`, `catalog_id`, `dry_run`, resulting `manifest` |
+| `team catalog version` | `TeamManifestMutationReport` | `path`, `action`, `catalog_id`, `dry_run`, resulting `manifest` |
 | `team catalog update` | `TeamCatalogUpdateReport` | `catalog_id`, `old_version`, `old_commit`, `from_ref`, `candidate_commit`, `outcomes[]`, `audits[]`, `blocking_reasons[]`, `dry_run`, `updated`, resulting `manifest` |
+| `team catalog remove` | `TeamManifestMutationReport` | `path`, `action`, `catalog_id`, `dry_run`, resulting `manifest` |
+| `team show` | `TeamManifestView` | `path`, `manifest` |
 | `source add` | `SourceAddReport` | `source`, `dry_run`, `audits[]` with one `AuditReport` per discovered skill |
 | `source add-catalog` | `SourceConfig` | `id`, `kind`, `path`, `priority`, `enabled`, `trusted`, `url`, `update_policy`, `selection` |
 | `source list` | `SourceListReport` | `sources[]`, each with existing `SourceConfig` fields plus `provenance` |

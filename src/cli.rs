@@ -423,9 +423,9 @@ pub struct SourceCommand {
 /// `source` subcommands.
 #[derive(Debug, Subcommand)]
 pub enum SourceSubcommand {
-    /// Add a team source from a Git URL.
+    /// Add a team source from a Git URL or local path.
     Add(SourceAddArgs),
-    /// Add a catalog source (a multi-skill repository) from a Git URL.
+    /// Add a catalog source (a multi-skill repository) from a Git URL or local path.
     AddCatalog(SourceAddCatalogArgs),
     /// List configured sources.
     List,

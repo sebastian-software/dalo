@@ -407,6 +407,13 @@ fn check_store_layout(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) {
 }
 
 fn read_config(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) -> Option<UserConfig> {
+    // A merely-missing file is already reported by `check_store_layout` as
+    // `store_layout_missing` with a `dalo init` hint. Re-reporting it here as
+    // `*_invalid` would duplicate that finding and, for config, attach a
+    // dead-end `$EDITOR` hint pointing at a path that does not exist.
+    if !paths.config_file.exists() {
+        return None;
+    }
     match store::read_config(paths) {
         Ok(config) => {
             findings.push(ok(DoctorCode::ConfigOk, "config parses"));
@@ -424,6 +431,10 @@ fn read_config(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) -> Option<
 }
 
 fn read_state(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) -> Option<StateFile> {
+    // A missing file is already surfaced as `store_layout_missing`.
+    if !paths.state_file.exists() {
+        return None;
+    }
     match store::read_state(paths) {
         Ok(state) => {
             findings.push(ok(DoctorCode::StateOk, "state parses"));
@@ -441,6 +452,10 @@ fn read_state(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) -> Option<S
 }
 
 fn read_lock(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) -> bool {
+    // A missing file is already surfaced as `store_layout_missing`.
+    if !paths.lock_file.exists() {
+        return false;
+    }
     match store::read_user_lock(paths) {
         Ok(_) => {
             findings.push(ok(DoctorCode::LockOk, "user lock parses"));
@@ -458,6 +473,11 @@ fn read_lock(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) -> bool {
 }
 
 fn read_approvals(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) -> Option<ApprovalsFile> {
+    // A missing file is already surfaced as `store_layout_missing`; avoid the
+    // dead-end "inspect or restore approvals.toml" hint for a path that is gone.
+    if !paths.approvals_file.exists() {
+        return None;
+    }
     match store::read_approvals(paths) {
         Ok(approvals) => {
             findings.push(ok(DoctorCode::ApprovalsOk, "approvals parse"));
@@ -1484,6 +1504,39 @@ mod tests {
         assert_eq!(
             finding.next_command.as_deref(),
             Some(format!("$EDITOR '{}'", config_file.display()).as_str())
+        );
+    }
+
+    #[test]
+    fn run_doctor_should_not_hint_editor_for_a_missing_config_file() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store = temp_dir.path().join("store");
+        store::init_store(store.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store.clone());
+        fs::remove_file(&paths.config_file).expect("config should be removable");
+
+        let report = run_doctor(&store);
+
+        // A merely-missing file is surfaced once by `store_layout_missing` with a
+        // `dalo init` hint, not as `config_invalid` with a dead-end `$EDITOR`
+        // hint pointing at a path that no longer exists.
+        assert!(
+            !report
+                .findings
+                .iter()
+                .any(|finding| finding.code == DoctorCode::ConfigInvalid),
+            "missing config must not be reported as config_invalid: {:?}",
+            report.findings
+        );
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|finding| finding.code == DoctorCode::StoreLayoutMissing
+                    && finding.message.contains("config.toml")
+                    && finding.next_command.as_deref() == Some("dalo init")),
+            "missing config should be surfaced as store_layout_missing: {:?}",
+            report.findings
         );
     }
 
