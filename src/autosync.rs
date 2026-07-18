@@ -222,6 +222,10 @@ impl CommandRunner for SystemCommandRunner {
         let mut command = Command::new(program);
         command
             .args(args)
+            // Force a stable, English C locale so output we parse (for example
+            // `crontab -l` reporting an empty crontab) does not depend on the
+            // caller's `LANG`/`LC_*` settings.
+            .env("LC_ALL", "C")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         if input.is_some() {
@@ -2194,6 +2198,12 @@ mod tests {
         permissions.set_mode(0o000);
         fs::set_permissions(&paths.autosync_file, permissions)
             .expect("state should be made unreadable");
+        // The superuser bypasses permission bits (common in CI containers), so
+        // the "unreadable state" precondition this test relies on cannot hold
+        // there. Skip rather than fail spuriously when the file stays readable.
+        if fs::read(&paths.autosync_file).is_ok() {
+            return;
+        }
         let runner = FakeRunner::default();
 
         let result = uninstall_with(&paths, false, &runner, Some(&home));
