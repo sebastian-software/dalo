@@ -58,9 +58,14 @@ pub fn pull_ff_only(path: &Path) -> DaloResult<()> {
     run_git_network(path, &["pull", "--ff-only", "--quiet"]).map(|_| ())
 }
 
-/// Return whether a checkout has local changes.
+/// Return whether a checkout has local changes to tracked files.
+///
+/// Untracked files are ignored: a fast-forward or reset never destroys them, so
+/// a stray file (for example macOS `.DS_Store`) must not make a dalo-managed
+/// checkout look dirty and block refresh or sync. Only tracked modifications,
+/// staged changes, and unresolved merges count.
 pub fn is_dirty(path: &Path) -> DaloResult<bool> {
-    let output = run_git(path, &["status", "--porcelain=v2"])?;
+    let output = run_git(path, &["status", "--porcelain=v2", "--untracked-files=no"])?;
     Ok(!output.trim().is_empty())
 }
 
@@ -611,6 +616,40 @@ mod tests {
             Err(DaloError::UnsafeRemoteUrl)
         ));
         assert!(validate_remote_url("git@github.com:sebastian-software/dalo.git").is_ok());
+    }
+
+    #[test]
+    fn is_dirty_should_ignore_untracked_files_but_report_tracked_changes() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let repo = temp.path().join("repo");
+        fs::create_dir_all(&repo).expect("repo dir should be created");
+        run_git(&repo, &["init", "-q"]).expect("repo should initialize");
+        fs::write(repo.join("SKILL.md"), "# Skill\n").expect("skill should be written");
+        run_git(&repo, &["add", "."]).expect("files should stage");
+        run_git(
+            &repo,
+            &[
+                "-c",
+                "commit.gpgsign=false",
+                "-c",
+                "user.email=test@example.com",
+                "-c",
+                "user.name=Test User",
+                "commit",
+                "-m",
+                "initial",
+                "-q",
+            ],
+        )
+        .expect("initial commit should succeed");
+
+        // A stray untracked file must not count as dirty.
+        fs::write(repo.join(".DS_Store"), b"junk").expect("untracked file should be written");
+        assert!(!is_dirty(&repo).expect("status should run"));
+
+        // A tracked modification must still count as dirty.
+        fs::write(repo.join("SKILL.md"), "# Changed\n").expect("tracked file should change");
+        assert!(is_dirty(&repo).expect("status should run"));
     }
 
     #[test]
