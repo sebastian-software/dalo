@@ -228,6 +228,31 @@ mod tests {
     }
 
     #[test]
+    fn revoke_should_remove_skill_approval_by_stored_value_when_source_is_gone() {
+        let (_temp, paths) = init_paths();
+        // `grant` stores a skill approval as its source_ref, which is always
+        // `<source>:<slot>` (see inventory), i.e. the same string the user sees
+        // in `approve list`. Revoking by that value must succeed even once the
+        // `catalog` source no longer exists (canonical resolution fails).
+        let mut approvals = store::read_approvals(&paths).expect("approvals should read");
+        approvals.approvals.push(ApprovalRecord {
+            scope: "skill".to_owned(),
+            value: "catalog:review-helper".to_owned(),
+        });
+        store::write_approvals(&paths, &approvals).expect("approvals should write");
+
+        let report = revoke(&paths, "skill", "catalog:review-helper", false)
+            .expect("revoke should tolerate a skill source that no longer exists");
+        assert_eq!(report.action, "revoked");
+        assert!(
+            store::read_approvals(&paths)
+                .expect("approvals should read")
+                .approvals
+                .is_empty()
+        );
+    }
+
+    #[test]
     fn revoke_should_still_reject_an_invalid_scope() {
         let (_temp, paths) = init_paths();
         assert!(matches!(
