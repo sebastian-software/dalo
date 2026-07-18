@@ -1443,6 +1443,24 @@ fn read_install_state(paths: &StorePaths) -> DaloResult<Option<AutosyncInstallSt
             supported: AUTOSYNC_SCHEMA_VERSION,
         });
     }
+    // The scheduler code indexes `artifacts` by position (launchd/systemd read
+    // fixed slots). A schema-valid but short array would panic on index; treat
+    // it as corrupt so the uninstall recovery path can quarantine it instead.
+    let required_artifacts = match state.backend {
+        SchedulerBackend::Launchd => 1,
+        SchedulerBackend::Systemd => 2,
+        SchedulerBackend::Cron => 0,
+    };
+    if state.artifacts.len() < required_artifacts {
+        return Err(DaloError::FileParse {
+            path: paths.autosync_file.clone(),
+            reason: format!(
+                "{} backend requires {required_artifacts} scheduler artifact path(s), found {}",
+                state.backend.as_str(),
+                state.artifacts.len()
+            ),
+        });
+    }
     Ok(Some(state))
 }
 
@@ -2180,6 +2198,40 @@ mod tests {
                 .scheduler_error
                 .as_deref()
                 .is_some_and(|error| error.contains("could not clean every"))
+        );
+    }
+
+    #[test]
+    fn read_install_state_should_reject_state_with_missing_artifacts() {
+        let (_temp, paths, home, executable) = setup();
+        let mut state = planned_state(
+            &paths,
+            SchedulerBackend::Launchd,
+            AutosyncSchedule::Daily,
+            &executable,
+            &home,
+        );
+        // A launchd state indexes artifacts[0]; an empty array must be rejected
+        // as corrupt rather than panic on out-of-bounds indexing.
+        state.artifacts.clear();
+        write_install_state(&paths, &state).expect("state should be written");
+
+        assert!(matches!(
+            read_install_state(&paths),
+            Err(DaloError::FileParse { .. })
+        ));
+
+        let runner = FakeRunner::default();
+        let report = uninstall_with(&paths, false, &runner, Some(&home))
+            .expect("short-artifact install state should be recoverable");
+        assert_eq!(report.action, "uninstalled");
+        assert!(!paths.autosync_file.exists());
+        assert!(
+            fs::read_dir(&paths.root)
+                .expect("store should be readable")
+                .filter_map(Result::ok)
+                .filter_map(|entry| entry.file_name().into_string().ok())
+                .any(|name| name.starts_with("autosync.toml.corrupt-"))
         );
     }
 
