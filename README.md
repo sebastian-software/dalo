@@ -195,13 +195,13 @@ one into the private local source without taking over the original:
 
 ```sh
 dalo status
-dalo adopt release-notes.local
+dalo adopt release-notes
 ```
 
 Replacing the original with a Dalo-owned link is a separate, explicit step:
 
 ```sh
-dalo adopt --replace release-notes.local
+dalo adopt --replace release-notes
 ```
 
 Dalo does not commit adopted work automatically. You decide when an experiment

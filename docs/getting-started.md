@@ -100,10 +100,17 @@ sync it:
 
 ```sh
 dalo audit public:review-helper
-# Optional semantic review. This may send skill contents to the configured provider:
-dalo audit public:review-helper --agent auto
 dalo approve skill public:review-helper
 dalo sync
+```
+
+Optionally, add a semantic review by an agent. This requires an installed Claude
+or OpenCode CLI on your `PATH` and may send the skill's contents to the
+configured provider; without an agent CLI available it exits with an error, so
+it is not part of the core flow:
+
+```sh
+dalo audit public:review-helper --agent auto
 ```
 
 `source add`, `source select`, and `approve skill` run deterministic local
@@ -161,7 +168,7 @@ dalo status
 Then copy it into Dalo's local source:
 
 ```sh
-dalo adopt release-notes.local
+dalo adopt release-notes
 ```
 
 Adoption prints a local security preflight before it copies or replaces the
@@ -170,7 +177,7 @@ unmanaged skill.
 Replacing the original folder with a Dalo-owned symlink is a separate explicit step:
 
 ```sh
-dalo adopt --replace release-notes.local
+dalo adopt --replace release-notes
 ```
 
 Dalo does not commit adopted work automatically.
