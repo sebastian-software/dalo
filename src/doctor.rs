@@ -151,6 +151,8 @@ pub enum DoctorCode {
     SourceClean,
     /// Source has local changes.
     DirtySource,
+    /// An enabled source's checkout is missing from disk.
+    SourceMissing,
     /// Manifest-derived source provenance is internally consistent.
     SourceProvenanceOk,
     /// Manifest declaration, checkout, or source lock disagree.
@@ -491,7 +493,10 @@ fn read_approvals(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) -> Opti
             findings.push(finding_error(
                 DoctorCode::ApprovalsInvalid,
                 format!("approvals could not be read: {error}"),
-                Some("inspect or restore approvals.toml".to_owned()),
+                Some(format!(
+                    "$EDITOR {}",
+                    shell_quote_path(&paths.approvals_file)
+                )),
             ));
             None
         }
@@ -534,7 +539,10 @@ fn read_source_lock(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) -> So
             findings.push(finding_error(
                 DoctorCode::SourceLockInvalid,
                 format!("catalog source lock could not be read: {error}"),
-                Some("inspect source-lock.toml before syncing".to_owned()),
+                Some(format!(
+                    "$EDITOR {}",
+                    shell_quote_path(&paths.source_lock_file)
+                )),
             ));
             SourceLockRead::Invalid
         }
@@ -734,6 +742,22 @@ fn check_sources(
     findings: &mut Vec<DoctorFinding>,
 ) {
     for source in config.sources.iter().filter(|source| source.enabled) {
+        // A missing checkout is a hard error that degrades sync (matching
+        // `status`/`sync --check`), not a vague "could not check dirty state"
+        // warning that lets `doctor --check` pass.
+        if !source.path.exists() {
+            findings.push(finding_error(
+                DoctorCode::SourceMissing,
+                format!(
+                    "source `{}` checkout is missing at `{}`; restore it or run `dalo source remove {}`",
+                    source.id,
+                    source.path.display(),
+                    source.id
+                ),
+                None,
+            ));
+            continue;
+        }
         match git::is_dirty(&source.path) {
             Ok(true) => {
                 let severity = if source.kind == SourceKind::Team {
@@ -902,10 +926,10 @@ fn check_source_store_debris(
                 findings.push(finding_warning(
                     DoctorCode::SourceStoreDebris,
                     format!(
-                        "interrupted source-operation debris exists at `{}`",
+                        "interrupted source-operation debris exists at `{}`; inspect it and remove it if it is unwanted",
                         child.path().display()
                     ),
-                    Some(format!("inspect or remove {}", child.path().display())),
+                    None,
                 ));
             }
             continue;
@@ -913,8 +937,11 @@ fn check_source_store_debris(
         if !configured.contains(source_id.as_str()) {
             findings.push(finding_warning(
                 DoctorCode::SourceStoreDebris,
-                format!("unconfigured source content exists at `{}`", path.display()),
-                Some(format!("inspect or remove {}", path.display())),
+                format!(
+                    "unconfigured source content exists at `{}`; inspect it and remove it if it is not managed by dalo",
+                    path.display()
+                ),
+                None,
             ));
             continue;
         }
@@ -929,10 +956,10 @@ fn check_source_store_debris(
                 findings.push(finding_warning(
                     DoctorCode::SourceStoreDebris,
                     format!(
-                        "interrupted source-operation debris exists at `{}`",
+                        "interrupted source-operation debris exists at `{}`; inspect it and remove it if it is unwanted",
                         child.path().display()
                     ),
-                    Some(format!("inspect or remove {}", child.path().display())),
+                    None,
                 ));
             }
         }
@@ -1205,6 +1232,7 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::UnreadableTargetDirectory => "unreadable_target_directory",
         DoctorCode::SourceClean => "source_clean",
         DoctorCode::DirtySource => "dirty_source",
+        DoctorCode::SourceMissing => "source_missing",
         DoctorCode::SourceProvenanceOk => "source_provenance_ok",
         DoctorCode::SourceProvenanceMismatch => "source_provenance_mismatch",
         DoctorCode::SourceStoreDebris => "source_store_debris",
@@ -1687,7 +1715,10 @@ mod tests {
         assert!(report.findings.iter().any(|finding| {
             finding.code == DoctorCode::ApprovalsInvalid
                 && finding.severity == DoctorSeverity::Error
-                && finding.next_command.as_deref() == Some("inspect or restore approvals.toml")
+                && finding
+                    .next_command
+                    .as_deref()
+                    .is_some_and(|command| command.starts_with("$EDITOR "))
         }));
         assert!(
             !report
@@ -1715,6 +1746,28 @@ mod tests {
                 && finding.next_command.as_deref()
                     == Some(format!("git -C '{}' status", team_repo.display()).as_str())
         }));
+    }
+
+    #[test]
+    fn check_sources_should_rate_a_missing_source_as_error() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store = temp_dir.path().join("store");
+        store::init_store(store.clone(), false).expect("init should succeed");
+        // The configured team source's checkout does not exist on disk.
+        let missing_repo = temp_dir.path().join("gone-repo");
+        write_config_with_dirty_sources(&store, &missing_repo, None);
+
+        let report = run_doctor(&store);
+
+        assert!(
+            report.findings.iter().any(|finding| {
+                finding.code == DoctorCode::SourceMissing
+                    && finding.severity == DoctorSeverity::Error
+                    && finding.message.contains("missing")
+            }),
+            "a missing source checkout should be reported as an error: {:?}",
+            report.findings
+        );
     }
 
     #[test]
