@@ -23,6 +23,8 @@ const lines: Line[] = [
   {at: 20, kind: 'comment', content: '# inspect the exact skill before approval'},
   {at: 42, kind: 'command', content: <>dalo audit local:review</>},
   {at: 66, kind: 'output', content: 'security audit: local:review'},
+  // The content hash below is an illustrative placeholder for the demo, not the
+  // real audit output of any checked-in skill.
   {at: 88, kind: 'output', content: '  content hash: 4ba20c2d2fc180c89d2308e328fadc4b8f425f6fdaa30f4900bb152d02a66362'},
   {at: 110, kind: 'output', content: '  coverage: complete'},
   {at: 132, kind: 'success', content: '  result: clean'},
