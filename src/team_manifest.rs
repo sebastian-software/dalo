@@ -1006,6 +1006,14 @@ fn validate_manifest(team_id: &str, path: &Path, manifest: &TeamManifest) -> Dal
             });
         }
         git::validate_remote_url(&catalog.url)?;
+        if git::validate_manifest_revision(&catalog.version).is_err() {
+            return Err(DaloError::StateError {
+                reason: format!(
+                    "team catalog `{}` has an invalid version `{}`; expected a Git commit, tag, or ref",
+                    catalog.id, catalog.version
+                ),
+            });
+        }
         validate_filters(&catalog.skills)?;
     }
     Ok(())
