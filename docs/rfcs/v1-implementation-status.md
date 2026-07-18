@@ -38,6 +38,11 @@ The V1.1 catalog and instruction-pack layer is also implemented:
   the versioned team manifest.
 - Reviewed team catalog pin updates that resolve an upstream ref, preview
   inventory drift and deterministic audits, and write only the exact commit.
+- Recurring background `sync` via `autosync install` on launchd, systemd user
+  timers, or a marked crontab entry, with last-run status in `status`/`doctor`.
+- A pre-link security layer: deterministic `audit` preflights, optional
+  agent-assisted review (`--agent`), and per-skill/source `approve` /
+  `approve revoke` trust records.
 
 Distribution work is wired for the next tagged release:
 
@@ -48,18 +53,17 @@ Distribution work is wired for the next tagged release:
 ## Still Planned
 
 - Non-catalog external sources with subpath scoping.
-- Lock-advancing `source refresh` that opens lockfile PRs or updates pins.
+- Lock-advancing `source refresh` that opens lockfile PRs (advancing a catalog's own pin already ships via `source refresh --advance`).
 - Full interactive resolve assistant.
 - Rename/adapt flows for conflicts.
 - Full PR-first `promote`.
 - Forge adapters beyond GitHub.
 - More verified target adapters beyond the current supported set.
-- Homebrew tap and other package-manager integrations.
 - Windows support.
 
 ## Intentional Deviations From Early RFC Text
 
 - Native include/import support for instruction files is not the baseline because it is not portable across agents. Dalo uses explicit managed blocks instead.
 - Cross-source `requires` are checked and reported, but are not auto-installed across source boundaries.
-- Catalog drift checking is read-only. Advancing a catalog pin remains a later source-maintenance flow.
+- Catalog drift checking through `source refresh --check` is read-only; advancing a catalog pin ships separately as the explicit `source refresh --advance`.
 - `gh` is checked by `doctor`, but no shipped command creates PRs yet because `promote` remains planned.
