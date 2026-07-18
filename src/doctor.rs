@@ -196,7 +196,7 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
 
     let config = read_config(&paths, &mut findings);
     let state = read_state(&paths, &mut findings);
-    let lock_ok = read_lock(&paths, &mut findings);
+    read_lock(&paths, &mut findings);
     let source_lock = read_source_lock(&paths, &mut findings);
     let approvals = read_approvals(&paths, &mut findings);
 
@@ -224,7 +224,11 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
         check_source_store_debris(&paths, config, &mut findings);
     }
 
-    if let (Some(config), Some(_), true) = (config.as_ref(), state.as_ref(), lock_ok) {
+    // A corrupt lock is reported by `read_lock`, but resolution/instruction/
+    // blocker checks do not depend on it (they re-derive from config/state and
+    // read the user lock via `unwrap_or_default`), so they must not be gated on
+    // a valid lock.
+    if let (Some(config), Some(_)) = (config.as_ref(), state.as_ref()) {
         check_resolution(&paths, config, approvals.as_ref(), &mut findings);
     }
     check_autosync(&paths, &mut findings);
