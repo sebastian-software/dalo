@@ -175,6 +175,9 @@ pub enum ResolutionDiagnosticCode {
     LegacyBareApproval,
     /// A resolved skill could not complete its security audit.
     AuditFailed,
+    /// A slot's winner was blocked by its required closure while an approved,
+    /// lower-precedence alternate is available for the same slot.
+    BlockedWinnerAlternateAvailable,
 }
 
 impl ResolutionDiagnosticCode {
@@ -352,6 +355,10 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
     let mut pending_approval_skills = Vec::new();
     let mut unlinked_skills = Vec::new();
     let mut diagnostics = Vec::new();
+    // Approved lower-precedence candidates per winning source_ref, in precedence
+    // order, so a winner later removed by the closure preflight can point the
+    // user at a real alternate for its now-empty slot (#391).
+    let mut approved_alternates: BTreeMap<String, Vec<String>> = BTreeMap::new();
 
     for group in groups.into_values() {
         let Some(winner_index) = group
@@ -427,6 +434,12 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
                 ),
                 source_ref: Some(candidate.skill.source_ref.clone()),
             });
+            if is_approved(candidate, &input.approvals) {
+                approved_alternates
+                    .entry(winner.source_ref.clone())
+                    .or_default()
+                    .push(candidate.skill.source_ref.clone());
+            }
         }
 
         active_skills.push(winner);
@@ -442,6 +455,27 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
         &input.inventories,
     );
     diagnostics.extend(closure_diagnostics);
+
+    // A slot whose winner the preflight just blocked has no active skill. If an
+    // approved alternate was shadowed behind that winner, surface it so the slot
+    // is not silently lost and the user knows how to select it. Advisory only:
+    // the block itself is already reported (and gates `--check`) via
+    // `RequiredBlocked`; this does not auto-promote the alternate (#391).
+    for blocked in &blocked_skills {
+        if let Some(alternate) = approved_alternates
+            .get(&blocked.skill.source_ref)
+            .and_then(|refs| refs.first())
+        {
+            diagnostics.push(ResolutionDiagnostic {
+                code: ResolutionDiagnosticCode::BlockedWinnerAlternateAvailable,
+                message: format!(
+                    "slot `{}` has no active skill: winner `{}` is blocked, and the approved alternate `{}` is shadowed behind it — raise its source priority to select it, or resolve the winner's requirement",
+                    blocked.skill.slot_name, blocked.skill.source_ref, alternate
+                ),
+                source_ref: Some(alternate.clone()),
+            });
+        }
+    }
 
     active_skills.sort_by(|left, right| {
         left.slot_name
@@ -683,6 +717,9 @@ pub fn diagnostic_code_name(code: ResolutionDiagnosticCode) -> &'static str {
         ResolutionDiagnosticCode::RequiredBlocked => "required_blocked",
         ResolutionDiagnosticCode::LegacyBareApproval => "legacy_bare_approval",
         ResolutionDiagnosticCode::AuditFailed => "audit_failed",
+        ResolutionDiagnosticCode::BlockedWinnerAlternateAvailable => {
+            "blocked_winner_alternate_available"
+        }
     }
 }
 
@@ -1521,6 +1558,46 @@ mod tests {
             resolution.blocked_skills[0].reason,
             ClosureBlockReason::Missing
         );
+    }
+
+    #[test]
+    fn resolve_should_hint_at_an_approved_alternate_when_the_winner_is_blocked() {
+        // team-a (higher precedence) wins slot `review` but requires a missing
+        // `base`; team-b offers an approved `review` that is shadowed behind it.
+        let resolution = resolve_with(
+            vec![
+                catalog("team-a", 10, &["review"]),
+                catalog("team-b", 20, &["review"]),
+            ],
+            vec![
+                inventory("team-a", vec![skill_req("team-a", "review", &["base"])]),
+                inventory("team-b", vec![skill("team-b", "review")]),
+            ],
+            Vec::new(),
+        );
+
+        // The blocked winner leaves the slot empty; no skill is auto-promoted.
+        assert!(active_slots(&resolution).is_empty());
+        assert!(
+            resolution
+                .blocked_skills
+                .iter()
+                .any(|blocked| blocked.skill.source_ref == "team-a:review")
+        );
+
+        // The approved alternate is surfaced as an advisory hint rather than
+        // being silently lost or reported only as "shadowed by" a blocked winner.
+        let hint = resolution
+            .diagnostics
+            .iter()
+            .find(|diagnostic| {
+                diagnostic.code == ResolutionDiagnosticCode::BlockedWinnerAlternateAvailable
+            })
+            .expect("a blocked-winner alternate hint should be emitted");
+        assert_eq!(hint.source_ref.as_deref(), Some("team-b:review"));
+        assert!(hint.message.contains("team-b:review"));
+        // Advisory only: the block itself already gates `--check`, this must not.
+        assert!(!ResolutionDiagnosticCode::BlockedWinnerAlternateAvailable.requires_review());
     }
 
     #[test]
