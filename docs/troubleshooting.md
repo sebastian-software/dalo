@@ -165,6 +165,8 @@ Doctor includes `ok` and `info` codes as well as warnings/errors. Codes not list
 | `source_missing` | error | The enabled source's checkout is missing from disk or could not be read. Restore/re-clone it (or fix its permissions), or run `dalo source remove <id>`. |
 | `pending_approval` | warning | Add the needed approval or leave the skill pending. |
 | `required_closure_blocked` | error | Resolve the closure block reason shown in the message. |
+| `security_audit_blocked` | error | An active skill has an unaccepted high/critical audit finding; `sync` will refuse to link it. Review with `dalo audit <ref>` and accept the risk or remove/replace the skill. |
+| `security_audit_failed` | warning | An active skill's deterministic security audit could not be completed (for example unreadable content). Investigate with `dalo audit <ref>`. |
 | `instruction_pack_topic_overlap` | warning | Rename topics or disable one overlapping pack if the overlap is not intended. |
 | `instruction_block_drift` | error | Re-render or disable the pack. |
 | `autosync_installed` | ok | The native scheduler is installed and enabled. |

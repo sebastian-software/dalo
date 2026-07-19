@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 
 use crate::adopt;
+use crate::audit;
 use crate::autosync::{self, AutosyncRunOutcome};
 use crate::catalog::{self, SourceLock};
 use crate::config::UserConfig;
@@ -163,6 +164,10 @@ pub enum DoctorCode {
     PendingApproval,
     /// A skill is blocked because its required closure is not linkable.
     RequiredClosureBlocked,
+    /// An active skill is blocked by an unaccepted security-audit finding.
+    SecurityAuditBlocked,
+    /// An active skill's deterministic security audit could not be completed.
+    SecurityAuditFailed,
     /// Two active instruction packs declare overlapping topics.
     InstructionPackTopicOverlap,
     /// An active instruction pack's rendered block is missing, malformed, or stale.
@@ -1027,6 +1032,31 @@ fn check_resolution(
         ));
     }
 
+    // Mirror the deterministic security gate that `status`/`sync --check` apply
+    // so `doctor --check` does not report a healthy store while sync would
+    // refuse to link a skill with an unaccepted blocking finding. Read-only
+    // (persist = false), so it never writes audit reports.
+    let audits = audit::audit_active_skills(paths, &resolution, false);
+    for source_ref in &audits.blocking {
+        findings.push(finding_error(
+            DoctorCode::SecurityAuditBlocked,
+            format!(
+                "active skill `{source_ref}` is blocked by an unaccepted security-audit finding"
+            ),
+            Some(format!("dalo audit {source_ref}")),
+        ));
+    }
+    for failure in &audits.failures {
+        findings.push(finding_warning(
+            DoctorCode::SecurityAuditFailed,
+            format!(
+                "security audit for active skill `{}` could not be completed: {}",
+                failure.source_ref, failure.reason
+            ),
+            Some(format!("dalo audit {}", failure.source_ref)),
+        ));
+    }
+
     let lock = store::read_user_lock(paths).unwrap_or_default();
     let discovered =
         instructions::discover_packs(paths, &config.sources, &lock.active_instruction_packs);
@@ -1256,6 +1286,8 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::SourceStoreDebris => "source_store_debris",
         DoctorCode::PendingApproval => "pending_approval",
         DoctorCode::RequiredClosureBlocked => "required_closure_blocked",
+        DoctorCode::SecurityAuditBlocked => "security_audit_blocked",
+        DoctorCode::SecurityAuditFailed => "security_audit_failed",
         DoctorCode::InstructionPackTopicOverlap => "instruction_pack_topic_overlap",
         DoctorCode::InstructionBlockDrift => "instruction_block_drift",
         DoctorCode::CloudSyncedTarget => "cloud_synced_target",
