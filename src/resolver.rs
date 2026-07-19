@@ -469,7 +469,7 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
             diagnostics.push(ResolutionDiagnostic {
                 code: ResolutionDiagnosticCode::BlockedWinnerAlternateAvailable,
                 message: format!(
-                    "slot `{}` has no active skill: winner `{}` is blocked, and the approved alternate `{}` is shadowed behind it — raise its source priority to select it, or resolve the winner's requirement",
+                    "slot `{}` has no active skill: winner `{}` is blocked, and the approved alternate `{}` is shadowed behind it — give the alternate higher precedence with a lower `dalo source priority` value than the winner to select it, or resolve the blocking requirement(s) in the winner's closure",
                     blocked.skill.slot_name, blocked.skill.source_ref, alternate
                 ),
                 source_ref: Some(alternate.clone()),
