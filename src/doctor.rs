@@ -742,21 +742,39 @@ fn check_sources(
     findings: &mut Vec<DoctorFinding>,
 ) {
     for source in config.sources.iter().filter(|source| source.enabled) {
-        // A missing checkout is a hard error that degrades sync (matching
-        // `status`/`sync --check`), not a vague "could not check dirty state"
-        // warning that lets `doctor --check` pass.
-        if !source.path.exists() {
-            findings.push(finding_error(
-                DoctorCode::SourceMissing,
-                format!(
-                    "source `{}` checkout is missing at `{}`; restore it or run `dalo source remove {}`",
-                    source.id,
-                    source.path.display(),
-                    source.id
-                ),
-                None,
-            ));
-            continue;
+        // An enabled source whose checkout cannot be read degrades sync, so it
+        // must be a hard error (matching `status`/`sync --check`), not a vague
+        // "could not check dirty state" warning that lets `doctor --check`
+        // pass. `try_exists` distinguishes a confirmed-absent path from a stat
+        // error (e.g. permission denied on a parent) so the message is accurate.
+        match source.path.try_exists() {
+            Ok(false) => {
+                findings.push(finding_error(
+                    DoctorCode::SourceMissing,
+                    format!(
+                        "source `{}` checkout is missing at `{}`; restore it or run `dalo source remove {}`",
+                        source.id,
+                        source.path.display(),
+                        source.id
+                    ),
+                    None,
+                ));
+                continue;
+            }
+            Err(error) => {
+                findings.push(finding_error(
+                    DoctorCode::SourceMissing,
+                    format!(
+                        "source `{}` checkout at `{}` could not be read: {error}; restore it or run `dalo source remove {}`",
+                        source.id,
+                        source.path.display(),
+                        source.id
+                    ),
+                    None,
+                ));
+                continue;
+            }
+            Ok(true) => {}
         }
         match git::is_dirty(&source.path) {
             Ok(true) => {

@@ -162,7 +162,7 @@ Doctor includes `ok` and `info` codes as well as warnings/errors. Codes not list
 | `owned_path_real_entry` | error | Run `dalo resolve remove-owned <id>`; the real entry stays in place. |
 | `missing_owned_symlink` | warning | Run `dalo resolve remove-owned <id>`, then `dalo sync` if needed. |
 | `dirty_source` | error for team/catalog, warning for local | The checkout has local edits to tracked files (untracked files such as `.DS_Store` no longer count). Commit, stash, discard, or intentionally keep them. |
-| `source_missing` | error | The enabled source's checkout is missing from disk. Restore/re-clone it or run `dalo source remove <id>`. |
+| `source_missing` | error | The enabled source's checkout is missing from disk or could not be read. Restore/re-clone it (or fix its permissions), or run `dalo source remove <id>`. |
 | `pending_approval` | warning | Add the needed approval or leave the skill pending. |
 | `required_closure_blocked` | error | Resolve the closure block reason shown in the message. |
 | `instruction_pack_topic_overlap` | warning | Rename topics or disable one overlapping pack if the overlap is not intended. |
