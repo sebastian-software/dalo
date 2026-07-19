@@ -1495,12 +1495,15 @@ fn trim_log_to_tail(path: &Path, max_bytes: u64) -> DaloResult<()> {
     }
     let content = fs::read(path)?;
     // Keep the last `max_bytes`, advanced to the next line boundary so the
-    // retained log starts at a clean entry rather than mid-line.
+    // retained log starts at a clean entry rather than mid-line. If the window
+    // has no newline at all (a pathological single oversized/binary line),
+    // fall back to the raw window so the most recent bytes survive rather than
+    // discarding the whole log.
     let window_start = content.len().saturating_sub(max_bytes as usize);
     let tail_start = content[window_start..]
         .iter()
         .position(|&byte| byte == b'\n')
-        .map_or(content.len(), |offset| window_start + offset + 1);
+        .map_or(window_start, |offset| window_start + offset + 1);
     let mut trimmed = b"... [older autosync log output truncated by dalo] ...\n".to_vec();
     trimmed.extend_from_slice(&content[tail_start..]);
     // Rewrite in place (same inode) so the scheduler's already-open append fd
@@ -2059,6 +2062,25 @@ mod tests {
         for line in trimmed.lines().skip(1) {
             assert!(line.starts_with("line "), "unexpected partial line: {line}");
         }
+    }
+
+    #[test]
+    fn trim_log_to_tail_keeps_tail_bytes_when_the_window_has_no_newline() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let log = temp.path().join("autosync.log");
+        // A single oversized line with no newline must not lose all content.
+        fs::write(&log, "x".repeat(200)).expect("log should be written");
+
+        trim_log_to_tail(&log, 40).expect("trim should succeed");
+
+        let trimmed = fs::read(&log).expect("trimmed log should read");
+        let marker_end = trimmed
+            .iter()
+            .position(|&byte| byte == b'\n')
+            .expect("marker should be present")
+            + 1;
+        // The most recent 40 bytes survive rather than being discarded.
+        assert_eq!(&trimmed[marker_end..], vec![b'x'; 40].as_slice());
     }
 
     #[test]
