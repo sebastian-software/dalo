@@ -1325,6 +1325,8 @@ fn run_scheduled_sync(options: &GlobalOptions, paths: &store::StorePaths) -> Dal
             reason: "the internal scheduled runner does not support --dry-run".to_owned(),
         });
     }
+    // Bound the append-only scheduler logs before this run appends to them.
+    autosync::trim_scheduler_logs(paths);
     let attempted = autosync::begin_run(paths)?;
     let Some(_lock) = store::StoreLock::try_acquire(paths)? else {
         let holder = store::store_lock_holder(paths).map_or_else(
