@@ -20,6 +20,10 @@ use crate::error::{DaloError, DaloResult};
 use crate::store::{self, StorePaths};
 
 const AUTOSYNC_SCHEMA_VERSION: u32 = 1;
+/// Upper bound for each append-only scheduler log before it is trimmed to its
+/// most recent tail. The native scheduler appends every run's output, so
+/// without this the logs would grow without bound over months of hourly runs.
+const MAX_AUTOSYNC_LOG_BYTES: u64 = 1 << 20; // 1 MiB
 const CRON_BEGIN_PREFIX: &str = "# BEGIN dalo autosync ";
 const CRON_END_PREFIX: &str = "# END dalo autosync ";
 const INVOKED_EXECUTABLE_ENV: &str = "DALO_INVOKED_EXECUTABLE";
@@ -1468,6 +1472,43 @@ fn write_install_state(paths: &StorePaths, state: &AutosyncInstallState) -> Dalo
     store::write_toml_atomic(&paths.autosync_file, state)
 }
 
+/// Cap the append-only scheduler logs before a scheduled run adds to them.
+///
+/// The native scheduler (cron `>>`, systemd `append:`, launchd `StandardOutPath`)
+/// appends this run's stdout/stderr to these files with no rotation of its own.
+/// Trimming here—before the run produces any output—keeps only the most recent
+/// tail. Best-effort: a trim failure must never abort a scheduled sync.
+pub fn trim_scheduler_logs(paths: &StorePaths) {
+    for log in [&paths.autosync_log_file, &paths.autosync_error_log_file] {
+        let _ = trim_log_to_tail(log, MAX_AUTOSYNC_LOG_BYTES);
+    }
+}
+
+fn trim_log_to_tail(path: &Path, max_bytes: u64) -> DaloResult<()> {
+    let metadata = match fs::metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    if metadata.len() <= max_bytes {
+        return Ok(());
+    }
+    let content = fs::read(path)?;
+    // Keep the last `max_bytes`, advanced to the next line boundary so the
+    // retained log starts at a clean entry rather than mid-line.
+    let window_start = content.len().saturating_sub(max_bytes as usize);
+    let tail_start = content[window_start..]
+        .iter()
+        .position(|&byte| byte == b'\n')
+        .map_or(content.len(), |offset| window_start + offset + 1);
+    let mut trimmed = b"... [older autosync log output truncated by dalo] ...\n".to_vec();
+    trimmed.extend_from_slice(&content[tail_start..]);
+    // Rewrite in place (same inode) so the scheduler's already-open append fd
+    // keeps writing this run's output after the retained tail.
+    fs::write(path, &trimmed)?;
+    Ok(())
+}
+
 fn read_run_state(paths: &StorePaths) -> DaloResult<Option<AutosyncRunState>> {
     if !paths.autosync_run_file.exists() {
         return Ok(None);
@@ -1993,6 +2034,51 @@ mod tests {
             !paths.autosync_error_log_file.exists(),
             "stderr log should be removed on uninstall"
         );
+    }
+
+    #[test]
+    fn trim_log_to_tail_keeps_recent_tail_and_marks_truncation() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let log = temp.path().join("autosync.log");
+        let mut content = String::new();
+        for index in 0..50 {
+            content.push_str(&format!("line {index}\n"));
+        }
+        fs::write(&log, &content).expect("log should be written");
+        let original_len = fs::metadata(&log).expect("metadata").len();
+
+        trim_log_to_tail(&log, 40).expect("trim should succeed");
+
+        let trimmed = fs::read_to_string(&log).expect("trimmed log should read");
+        assert!(fs::metadata(&log).expect("metadata").len() < original_len);
+        assert!(trimmed.contains("truncated by dalo"));
+        // The most recent lines survive; the oldest are dropped.
+        assert!(trimmed.contains("line 49\n"));
+        assert!(!trimmed.contains("line 0\n"));
+        // Every retained line (after the marker) is whole.
+        for line in trimmed.lines().skip(1) {
+            assert!(line.starts_with("line "), "unexpected partial line: {line}");
+        }
+    }
+
+    #[test]
+    fn trim_log_to_tail_leaves_small_logs_untouched() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let log = temp.path().join("autosync.log");
+        fs::write(&log, "small\n").expect("log should be written");
+        trim_log_to_tail(&log, 1024).expect("trim should succeed");
+        assert_eq!(
+            fs::read_to_string(&log).expect("log should read"),
+            "small\n"
+        );
+    }
+
+    #[test]
+    fn trim_log_to_tail_is_a_noop_for_a_missing_file() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let log = temp.path().join("missing.log");
+        trim_log_to_tail(&log, 1024).expect("a missing log is not an error");
+        assert!(!log.exists());
     }
 
     #[test]
