@@ -426,12 +426,23 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
                 reason: UnlinkedReason::Shadowed,
                 shadowed_by: winner.source_ref.clone(),
             });
-            diagnostics.push(ResolutionDiagnostic {
-                code: ResolutionDiagnosticCode::Shadowed,
-                message: format!(
+            // Disclose when the winner was picked over an equal-priority
+            // candidate: the tie is broken by source id, so the choice is
+            // arbitrary unless the user sets an explicit priority (#392).
+            let message = if candidate.skill.source_priority == winner.source_priority {
+                format!(
+                    "skill `{}` is unlinked because `{}` wins the same slot at equal source priority (the tie was broken by source id) — set an explicit `dalo source priority` to choose deliberately",
+                    candidate.skill.source_ref, winner.source_ref
+                )
+            } else {
+                format!(
                     "skill `{}` is unlinked because `{}` wins the same slot",
                     candidate.skill.source_ref, winner.source_ref
-                ),
+                )
+            };
+            diagnostics.push(ResolutionDiagnostic {
+                code: ResolutionDiagnosticCode::Shadowed,
+                message,
                 source_ref: Some(candidate.skill.source_ref.clone()),
             });
             if is_approved(candidate, &input.approvals) {
@@ -1598,6 +1609,33 @@ mod tests {
         assert!(hint.message.contains("team-b:review"));
         // Advisory only: the block itself already gates `--check`, this must not.
         assert!(!ResolutionDiagnosticCode::BlockedWinnerAlternateAvailable.requires_review());
+    }
+
+    #[test]
+    fn resolve_should_disclose_an_equal_priority_tie_in_the_shadow_message() {
+        // Both sources offer `review` at the same priority, so the winner is
+        // decided only by source id — an arbitrary tie the user should know about.
+        let resolution = resolve_with(
+            vec![
+                catalog("team-a", 10, &["review"]),
+                catalog("team-b", 10, &["review"]),
+            ],
+            vec![
+                inventory("team-a", vec![skill("team-a", "review")]),
+                inventory("team-b", vec![skill("team-b", "review")]),
+            ],
+            Vec::new(),
+        );
+
+        assert_eq!(active_slots(&resolution), vec!["review"]);
+        let shadow = resolution
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == ResolutionDiagnosticCode::Shadowed)
+            .expect("a shadow diagnostic should be emitted");
+        assert_eq!(shadow.source_ref.as_deref(), Some("team-b:review"));
+        assert!(shadow.message.contains("equal source priority"));
+        assert!(shadow.message.contains("dalo source priority"));
     }
 
     #[test]
