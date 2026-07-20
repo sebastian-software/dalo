@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.9.2](https://github.com/sebastian-software/dalo/compare/dalo-v0.9.1...dalo-v0.9.2) (2026-07-20)
+
+
+### Bug Fixes
+
+* **approve:** allow revoking approvals for unresolvable sources/skills ([8ef27d1](https://github.com/sebastian-software/dalo/commit/8ef27d165aae849bf06374543aaacf521e433091))
+* **approve:** point non-catalog sources at status for a missing skill ([8233153](https://github.com/sebastian-software/dalo/commit/8233153f20e175e7b4db81030a92e8d2d4e3d77a))
+* **audit:** skip special files in the agent snapshot to avoid a hang ([69e45bf](https://github.com/sebastian-software/dalo/commit/69e45bf6bd9bcf4324247fae9f9a60d218a834c2))
+* **autosync:** bound the append-only scheduler logs ([eaffa98](https://github.com/sebastian-software/dalo/commit/eaffa987b173c6e2151af4e3934fe21b274b4c59))
+* **autosync:** force C locale for scheduler commands; root-safe test ([4e0663a](https://github.com/sebastian-software/dalo/commit/4e0663aa9e4f54c696c83c734fe0a280f15802b0))
+* **autosync:** keep the tail bytes when a log line has no newline ([06065fa](https://github.com/sebastian-software/dalo/commit/06065fae4282eacee63b0ce02e4434cbfd40130d))
+* **autosync:** validate scheduler artifact count to prevent a panic ([d412c21](https://github.com/sebastian-software/dalo/commit/d412c21f9077ff031d3afdc0a988d9b3cb78f9b6))
+* **catalog:** clean up SHA-256 (64-char) staging worktrees ([36bfc3e](https://github.com/sebastian-software/dalo/commit/36bfc3e9a4ca08eec9166038c1836783aa13cac4))
+* **cli:** report audit/state blocks without the "check failed:" prefix ([5ea5bbc](https://github.com/sebastian-software/dalo/commit/5ea5bbc85c663532032405875793db0699af4fc4))
+* **doctor:** distinguish an unreadable source checkout from a missing one ([732e394](https://github.com/sebastian-software/dalo/commit/732e3940602a1bcbffcd404eda5d5f0efa700bca))
+* **doctor:** report missing sources and use runnable next_command hints ([43b91c5](https://github.com/sebastian-software/dalo/commit/43b91c54cec509c8d680516b6ec77b4206434cf2))
+* **doctor:** run resolution checks even when the lock is corrupt ([db18b2f](https://github.com/sebastian-software/dalo/commit/db18b2f9725213c73249782d5f870f9a0753db95))
+* **doctor:** run the security-audit gate so doctor matches status/sync ([d370453](https://github.com/sebastian-software/dalo/commit/d37045375b1c9d50c0dd94eaadbb6faef26f025c))
+* **git:** ignore untracked files when checking source dirtiness ([142a285](https://github.com/sebastian-software/dalo/commit/142a285d4b45e46787750692a83c95bc773e05a7))
+* **git:** reject Git revision expressions as manifest pins ([de51028](https://github.com/sebastian-software/dalo/commit/de51028c1a7385e17a5110604b00f97d31322932))
+* **resolver:** clarify the blocked-winner alternate hint wording ([90efbc4](https://github.com/sebastian-software/dalo/commit/90efbc4925a5bbea196bc710e2e1ab8636426aaf))
+* **resolver:** disclose an equal-priority tie in the shadow message ([5a1ee36](https://github.com/sebastian-software/dalo/commit/5a1ee36763f26d1e8b15d24106b49035ac1487cc))
+* **resolver:** surface an approved alternate when a slot's winner is blocked ([3e0a88f](https://github.com/sebastian-software/dalo/commit/3e0a88f7b197b75fcc749240e4d7a16d3ecd4a7c))
+* **team:** validate catalog version during manifest validation ([3a242b3](https://github.com/sebastian-software/dalo/commit/3a242b33f5abf6b6e6fa973deb48101af47b4483))
+
 ## [0.9.1](https://github.com/sebastian-software/dalo/compare/dalo-v0.9.0...dalo-v0.9.1) (2026-07-18)
 
 
