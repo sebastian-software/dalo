@@ -4,6 +4,7 @@ use serde::Serialize;
 
 use crate::error::{DaloError, DaloResult};
 use crate::inventory;
+use crate::source::SourceKind;
 use crate::store::{self, ApprovalRecord, ApprovalsFile, StorePaths};
 
 /// Result of granting or revoking an approval.
@@ -141,6 +142,12 @@ pub fn canonical_skill(paths: &StorePaths, value: &str) -> DaloResult<String> {
         .iter()
         .find(|skill| skill.slot_name == selector || skill.id.as_deref() == Some(selector))
         .ok_or_else(|| {
+            // `source inspect` is catalog-only; point team/local sources at a
+            // command that actually lists their skills (#402).
+            let next_command = match source.kind {
+                SourceKind::Catalog => format!("dalo source inspect {source_id}"),
+                _ => "dalo status".to_owned(),
+            };
             DaloError::skill_not_found(
                 value,
                 inventory
@@ -148,7 +155,7 @@ pub fn canonical_skill(paths: &StorePaths, value: &str) -> DaloResult<String> {
                     .iter()
                     .map(|candidate| candidate.source_ref.clone())
                     .collect(),
-                format!("dalo source inspect {source_id}"),
+                next_command,
             )
         })?;
     Ok(skill.source_ref.clone())
