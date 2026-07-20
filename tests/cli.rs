@@ -1589,6 +1589,29 @@ fn approve_cli_should_grant_list_revoke_and_dry_run() {
 }
 
 #[test]
+fn approve_skill_not_found_should_point_non_catalog_sources_at_status() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    // `source inspect` is catalog-only, so a missing skill on the local source
+    // should point at `dalo status`, not `dalo source inspect`.
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "skill", "local:ghost"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("dalo status"))
+        .stderr(predicate::str::contains("source inspect").not());
+}
+
+#[test]
 fn doctor_check_should_keep_json_report_and_fail_for_errors() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("missing-store");
