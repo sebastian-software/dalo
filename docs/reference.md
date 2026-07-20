@@ -205,7 +205,10 @@ JSON output shape: `TargetLinkReport`.
 
 ### `dalo target unlink <target>`
 
-Disable a target in state. This does not delete skills from the target directory.
+Disable a target in state. `unlink` itself removes nothing from the target
+directory. The next `dalo sync` then reconciles the target and removes the
+Dalo-owned links it had materialized there; unmanaged files and real
+directories are never touched.
 
 Examples:
 
