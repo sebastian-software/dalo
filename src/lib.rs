@@ -14,6 +14,7 @@ compile_error!(
 );
 
 pub mod adopt;
+pub mod agent;
 pub mod approval;
 pub mod audit;
 pub mod autosync;

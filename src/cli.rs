@@ -9,6 +9,7 @@ use clap_complete::{Shell, generate};
 use clap_mangen::Man;
 
 use crate::adopt;
+use crate::agent;
 use crate::approval;
 use crate::audit;
 use crate::autosync;
@@ -16,6 +17,7 @@ use crate::catalog;
 use crate::doctor;
 use crate::error::{DaloError, DaloResult};
 use crate::instructions;
+use crate::inventory;
 use crate::lockfile;
 use crate::materialize;
 use crate::resolver;
@@ -104,6 +106,8 @@ pub enum Command {
     Target(TargetCommand),
     /// Manage skill sources.
     Source(SourceCommand),
+    /// Inspect portable canonical agent packages and provider projections.
+    Agent(AgentCommand),
     /// Author and maintain a team repository's `dalo.toml`.
     #[command(
         after_help = "Team commands act on a repository selected with --repo (default: the current directory). The global --store flag is accepted but has no effect here.\n\nExamples:\n  dalo team init company\n  dalo team catalog add marketing https://github.com/coreyhaines31/marketingskills.git --version <commit> --skill +copywriting\n  dalo team catalog skills marketing +copywriting +launch -seo-audit\n  dalo --dry-run team catalog update marketing --from main\n  dalo team show"
@@ -418,6 +422,52 @@ pub struct SourceCommand {
     /// Source subcommand.
     #[command(subcommand)]
     pub command: SourceSubcommand,
+}
+
+/// `agent` command group.
+#[derive(Debug, Args)]
+pub struct AgentCommand {
+    /// Agent lifecycle command.
+    #[command(subcommand)]
+    pub command: AgentSubcommand,
+}
+
+/// Read-only agent subcommands available during the compiler foundation stage.
+#[derive(Debug, Subcommand)]
+pub enum AgentSubcommand {
+    /// List discovered canonical agents and their deterministic approval state.
+    List,
+    /// Show a canonical agent and provider compilation previews without writing files.
+    Show(AgentShowArgs),
+}
+
+/// Arguments for `agent show`.
+#[derive(Debug, Args)]
+pub struct AgentShowArgs {
+    /// Agent in `<source>:<name>` format, for example `local:reviewer`.
+    pub agent: String,
+
+    /// Restrict previews to one provider.
+    #[arg(long, value_enum)]
+    pub provider: Option<AgentProviderArg>,
+}
+
+/// Provider selection exposed by canonical-agent previews.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum AgentProviderArg {
+    /// Anthropic Claude Code agent format.
+    Claude,
+    /// OpenAI Codex agent format.
+    Codex,
+}
+
+impl From<AgentProviderArg> for agent::AgentProvider {
+    fn from(value: AgentProviderArg) -> Self {
+        match value {
+            AgentProviderArg::Claude => Self::Claude,
+            AgentProviderArg::Codex => Self::Codex,
+        }
+    }
 }
 
 /// `source` subcommands.
@@ -758,6 +808,7 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         Command::Init => run_init(&options),
         Command::Target(command) => run_target(&options, command),
         Command::Source(command) => run_source(&options, command),
+        Command::Agent(command) => run_agent(&options, command),
         Command::Team(command) => run_team(&options, command),
         Command::Status(args) => run_status(&options, args),
         Command::Sync(args) => run_sync(&options, args),
@@ -793,6 +844,8 @@ fn command_ignores_dry_run(command: &Command) -> bool {
             command: TargetSubcommand::Detect
         }) | Command::Source(SourceCommand {
             command: SourceSubcommand::List | SourceSubcommand::Inspect(_)
+        }) | Command::Agent(AgentCommand {
+            command: AgentSubcommand::List | AgentSubcommand::Show(_)
         }) | Command::Status(_)
             | Command::Doctor(_)
             | Command::Approve(ApproveCommand {
@@ -830,6 +883,133 @@ fn run_manpage() -> DaloResult<()> {
     Man::new(Cli::command()).render(&mut buffer)?;
     io::copy(&mut buffer.as_slice(), &mut io::stdout())?;
     Ok(())
+}
+
+fn run_agent(options: &GlobalOptions, command: AgentCommand) -> DaloResult<()> {
+    let paths = store::StorePaths::new(options.store.clone());
+    ensure_initialized(&paths)?;
+    let config = store::read_config(&paths)?;
+    let approvals = store::read_approvals(&paths)?;
+    let mut inventories = Vec::new();
+    let mut warnings = Vec::new();
+    let mut source_errors = Vec::new();
+    for source in config.sources.iter().filter(|source| source.enabled) {
+        match inventory::scan_source(&source.id, &source.path) {
+            Ok(inventory) => {
+                warnings.extend(inventory.agent_warnings.iter().cloned());
+                inventories.push(inventory);
+            }
+            Err(error) => source_errors.push(format!("{}: {error}", source.id)),
+        }
+    }
+    warnings.sort_by(|left, right| {
+        left.path
+            .cmp(&right.path)
+            .then_with(|| left.code.as_str().cmp(right.code.as_str()))
+    });
+    source_errors.sort();
+
+    match command.command {
+        AgentSubcommand::List => {
+            let report = agent::AgentListReport {
+                resolution: agent::resolve_agents(
+                    &config.sources,
+                    &inventories,
+                    &approvals.approvals,
+                ),
+                inventory_warnings: warnings,
+                source_errors,
+            };
+            if options.json {
+                print_json(&report)?;
+            } else {
+                print_agent_list_report(&report);
+            }
+        }
+        AgentSubcommand::Show(args) => {
+            if !source_errors.is_empty() {
+                return Err(DaloError::StateError {
+                    reason: format!(
+                        "cannot inspect canonical agents because source inventory failed: {}",
+                        source_errors.join(", ")
+                    ),
+                });
+            }
+            let record = agent::find_agent(&config.sources, &inventories, &args.agent)?;
+            let providers = args.provider.map_or_else(
+                || vec![agent::AgentProvider::Claude, agent::AgentProvider::Codex],
+                |provider| vec![provider.into()],
+            );
+            let report = agent::AgentShowReport {
+                compilations: providers
+                    .into_iter()
+                    .map(|provider| agent::compile_record(&record, provider))
+                    .collect(),
+                agent: record,
+            };
+            if options.json {
+                print_json(&report)?;
+            } else {
+                print_agent_show_report(&report);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn print_agent_list_report(report: &agent::AgentListReport) {
+    if report.resolution.active_agents.is_empty()
+        && report.resolution.pending_approval_agents.is_empty()
+        && report.resolution.shadowed_agents.is_empty()
+    {
+        println!("no canonical agents discovered");
+    }
+    for active in &report.resolution.active_agents {
+        println!(
+            "active {} (priority {})",
+            active.agent.source_ref, active.source_priority
+        );
+    }
+    for pending in &report.resolution.pending_approval_agents {
+        println!("pending approval {}", pending.agent.source_ref);
+    }
+    for shadowed in &report.resolution.shadowed_agents {
+        println!(
+            "shadowed {} by {}",
+            shadowed.agent.agent.source_ref, shadowed.shadowed_by
+        );
+    }
+    for warning in &report.inventory_warnings {
+        println!(
+            "warning {}: {} ({})",
+            warning.code,
+            warning.path.display(),
+            warning.message
+        );
+    }
+    for error in &report.source_errors {
+        println!("source error {error}");
+    }
+}
+
+fn print_agent_show_report(report: &agent::AgentShowReport) {
+    println!("{}", report.agent.source_ref);
+    println!("description: {}", report.agent.description);
+    println!("package hash: {}", report.agent.content_hash);
+    for compilation in &report.compilations {
+        let status = if compilation.not_targeted {
+            "not targeted".to_owned()
+        } else {
+            format!("{:?}", compilation.overall).to_lowercase()
+        };
+        println!("{}: {status}", compilation.provider.id());
+        for finding in &compilation.findings {
+            println!(
+                "  {}: {:?} — {}",
+                finding.field, finding.result, finding.message
+            );
+        }
+    }
 }
 
 fn run_instructions(options: &GlobalOptions, command: InstructionsCommand) -> DaloResult<()> {
@@ -937,6 +1117,20 @@ fn status_review_reason(report: &status::StatusReport) -> Option<String> {
             if count == 1 { "" } else { "s" },
             report
                 .inventory_warnings
+                .iter()
+                .map(|warning| warning.path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+
+    if !report.agent_inventory_warnings.is_empty() {
+        let count = report.agent_inventory_warnings.len();
+        reasons.push(format!(
+            "{count} agent inventory warning{} ({})",
+            if count == 1 { "" } else { "s" },
+            report
+                .agent_inventory_warnings
                 .iter()
                 .map(|warning| warning.path.display().to_string())
                 .collect::<Vec<_>>()

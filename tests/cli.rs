@@ -38,6 +38,50 @@ fn help_should_list_planned_top_level_commands() {
 }
 
 #[test]
+fn agent_list_and_show_should_preview_canonical_provider_projections() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    let package = store.join("local/agents/reviewer");
+    std::fs::create_dir_all(&package).expect("agent package directory should be created");
+    std::fs::write(
+        package.join("AGENT.md"),
+        "---\nschema_version: 1\nname: reviewer\ndescription: Reviews code\nmodel:\n  profile: balanced\nskills:\n  - pr-review\n---\nReview the requested change.\n",
+    )
+    .expect("canonical agent should be written");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["agent", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("active local:reviewer"));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args([
+            "--json",
+            "agent",
+            "show",
+            "local:reviewer",
+            "--provider",
+            "codex",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("developer_instructions"))
+        .stdout(predicate::str::contains("guidance_only"));
+}
+
+#[test]
 fn team_cli_should_manage_catalog_manifest_end_to_end() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let repo = temp_dir.path().join("team-repo");
