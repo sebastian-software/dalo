@@ -8,6 +8,7 @@ use crate::adopt::{
     AdoptReport, KeepReport, RemoveOwnedReport, ResolveListReport, TargetScanWarning, UnkeepReport,
     UnmanagedSkill,
 };
+use crate::agent::AgentInventoryWarning;
 use crate::approval::ApprovalReport;
 use crate::audit::{self, ActiveAuditFailure, AuditCoverage, AuditReport, AuditStatus};
 use crate::autosync::{AutosyncMutationReport, AutosyncStatusReport};
@@ -45,6 +46,8 @@ pub struct StatusReport {
     pub targets: Vec<TargetStatus>,
     /// Inventory warnings.
     pub inventory_warnings: Vec<InventoryWarning>,
+    /// Canonical agent-package inventory warnings.
+    pub agent_inventory_warnings: Vec<AgentInventoryWarning>,
     /// Resolution output.
     pub resolution: Resolution,
     /// Dry-run materialization operations that expose target-level blockers.
@@ -97,6 +100,8 @@ pub struct SourceStatus {
     pub exists: bool,
     /// Number of scanned skills.
     pub skill_count: usize,
+    /// Number of scanned canonical agent packages.
+    pub agent_count: usize,
     /// Optional non-fatal scan error.
     pub error: Option<String>,
     /// Origin and pin information assembled without network access.
@@ -138,11 +143,13 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
 
     let mut sources = Vec::new();
     let mut inventory_warnings = Vec::new();
+    let mut agent_inventory_warnings = Vec::new();
 
     for source in &config.sources {
         let status = if let Some(scan) = scan_by_id.get(source.id.as_str()) {
             if let Some(inventory) = &scan.inventory {
                 inventory_warnings.extend(inventory.warnings.iter().cloned());
+                agent_inventory_warnings.extend(inventory.agent_warnings.iter().cloned());
             }
             SourceStatus {
                 id: source.id.clone(),
@@ -152,6 +159,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
                 enabled: true,
                 exists: source.path.exists(),
                 skill_count: scan.inventory.as_ref().map_or(0, |inv| inv.skills.len()),
+                agent_count: scan.inventory.as_ref().map_or(0, |inv| inv.agents.len()),
                 error: scan.error.clone(),
                 provenance: crate::source::source_provenance(source, source_lock.as_ref()),
             }
@@ -164,6 +172,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
                 enabled: false,
                 exists: source.path.exists(),
                 skill_count: 0,
+                agent_count: 0,
                 error: None,
                 provenance: crate::source::source_provenance(source, source_lock.as_ref()),
             }
@@ -177,6 +186,11 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
             .then_with(|| left.id.cmp(&right.id))
     });
     inventory_warnings.sort_by(|left, right| left.path.cmp(&right.path));
+    agent_inventory_warnings.sort_by(|left, right| {
+        left.path
+            .cmp(&right.path)
+            .then_with(|| left.code.as_str().cmp(right.code.as_str()))
+    });
 
     let mut targets = state
         .targets
@@ -264,6 +278,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         sources,
         targets,
         inventory_warnings,
+        agent_inventory_warnings,
         resolution,
         materialization: materialization.operations,
         blocking_audits: audits.blocking,
@@ -500,8 +515,14 @@ pub fn print_status_report(report: &StatusReport) {
                 .as_ref()
                 .map_or(String::new(), |error| format!(" ({error})"));
             println!(
-                "  {:<12} {:<5} priority={:<4} skills={:<3} {}{}",
-                source.id, source.kind, source.priority, source.skill_count, state, error
+                "  {:<12} {:<5} priority={:<4} skills={:<3} agents={:<3} {}{}",
+                source.id,
+                source.kind,
+                source.priority,
+                source.skill_count,
+                source.agent_count,
+                state,
+                error
             );
             print_source_provenance(&source.provenance, "    ");
         }
@@ -630,6 +651,18 @@ pub fn print_status_report(report: &StatusReport) {
     if !report.inventory_warnings.is_empty() {
         println!("inventory warnings:");
         for warning in &report.inventory_warnings {
+            println!(
+                "  {} {}: {}",
+                warning.code,
+                warning.path.display(),
+                warning.message
+            );
+        }
+    }
+
+    if !report.agent_inventory_warnings.is_empty() {
+        println!("agent inventory warnings:");
+        for warning in &report.agent_inventory_warnings {
             println!(
                 "  {} {}: {}",
                 warning.code,
@@ -1487,6 +1520,7 @@ mod tests {
             enabled: true,
             exists: true,
             skill_count: 2,
+            agent_count: 0,
             error: None,
             provenance: SourceProvenance {
                 management: crate::source::SourceManagement::Direct,

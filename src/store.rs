@@ -51,6 +51,8 @@ pub struct StorePaths {
     pub local_skills_dir: PathBuf,
     /// Local instruction pack directory.
     pub local_instructions_dir: PathBuf,
+    /// Local canonical agent package directory.
+    pub local_agents_dir: PathBuf,
     /// Source checkout root.
     pub sources_dir: PathBuf,
     /// Catalog source lock path (pinned commits, selections, inventory snapshot).
@@ -81,6 +83,7 @@ impl StorePaths {
             lock_guard_file: root.join(".lock"),
             local_skills_dir: local_dir.join("skills"),
             local_instructions_dir: local_dir.join("instructions"),
+            local_agents_dir: local_dir.join("agents"),
             sources_dir: root.join("sources"),
             source_lock_file: root.join("source-lock.toml"),
             audits_dir: root.join("audits"),
@@ -466,6 +469,7 @@ pub fn init_store(store_root: PathBuf, dry_run: bool) -> DaloResult<InitReport> 
         &paths.local_dir,
         &paths.local_skills_dir,
         &paths.local_instructions_dir,
+        &paths.local_agents_dir,
         &paths.sources_dir,
         &paths.audits_dir,
     ] {
@@ -1013,6 +1017,7 @@ mod tests {
         assert!(store_root.join("local/.git").is_dir());
         assert!(store_root.join("local/skills").is_dir());
         assert!(store_root.join("local/instructions").is_dir());
+        assert!(store_root.join("local/agents").is_dir());
         assert!(store_root.join("sources").is_dir());
     }
 

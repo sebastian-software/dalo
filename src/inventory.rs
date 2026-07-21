@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::agent::{self, AgentInventoryWarning, AgentRecord};
 use crate::error::DaloResult;
 
 const SKILL_FILE: &str = "SKILL.md";
@@ -15,14 +16,18 @@ const MAX_SKILL_METADATA_BYTES: usize = MAX_FRONTMATTER_BYTES + 16;
 const MAX_FRONTMATTER_FLOW_DEPTH: usize = 64;
 
 /// Inventory for one source checkout.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SourceInventory {
     /// Source ID.
     pub source_id: String,
     /// Scanned skills.
     pub skills: Vec<SkillRecord>,
+    /// Scanned canonical agent packages.
+    pub agents: Vec<AgentRecord>,
     /// Non-fatal scan warnings.
     pub warnings: Vec<InventoryWarning>,
+    /// Non-fatal canonical-agent package warnings.
+    pub agent_warnings: Vec<AgentInventoryWarning>,
 }
 
 /// One discovered skill.
@@ -130,10 +135,14 @@ pub fn scan_source(source_id: &str, source_root: &Path) -> DaloResult<SourceInve
             .then_with(|| warning_code_name(left.code).cmp(warning_code_name(right.code)))
     });
 
+    let agent_inventory = agent::scan_source_agents(source_id, source_root);
+
     Ok(SourceInventory {
         source_id: source_id.to_owned(),
         skills,
+        agents: agent_inventory.agents,
         warnings,
+        agent_warnings: agent_inventory.warnings,
     })
 }
 

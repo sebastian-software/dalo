@@ -1064,11 +1064,13 @@ mod tests {
         let inventory = SourceInventory {
             source_id: "company".to_owned(),
             skills: vec![skill("company", "review")],
+            agents: Vec::new(),
             warnings: vec![InventoryWarning {
                 code: InventoryWarningCode::UnreadablePath,
                 path: PathBuf::from("/repo/skills/private"),
                 message: "permission denied".to_owned(),
             }],
+            agent_warnings: Vec::new(),
         };
 
         assert!(inventory_degrades_source_for_removal(&inventory));
@@ -1079,11 +1081,13 @@ mod tests {
         let inventory = SourceInventory {
             source_id: "company".to_owned(),
             skills: Vec::new(),
+            agents: Vec::new(),
             warnings: vec![InventoryWarning {
                 code: InventoryWarningCode::InvalidSlotName,
                 path: PathBuf::from("/repo/skills/Review/SKILL.md"),
                 message: "folder name `Review` is not a valid slot name".to_owned(),
             }],
+            agent_warnings: Vec::new(),
         };
 
         assert!(inventory_degrades_source_for_removal(&inventory));
@@ -1445,7 +1449,9 @@ mod tests {
         SourceInventory {
             source_id: source_id.to_owned(),
             skills,
+            agents: Vec::new(),
             warnings: Vec::new(),
+            agent_warnings: Vec::new(),
         }
     }
 
