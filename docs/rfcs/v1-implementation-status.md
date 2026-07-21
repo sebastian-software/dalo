@@ -41,7 +41,7 @@ The V1.1 catalog and instruction-pack layer is also implemented:
 - Recurring background `sync` via `autosync install` on launchd, systemd user
   timers, or a marked crontab entry, with last-run status in `status`/`doctor`.
 - A pre-link security layer: deterministic `audit` preflights, optional
-  agent-assisted review (`--agent`), and per-skill/source `approve` /
+  agent-assisted review (`--reviewer`; `--agent` remains a compatibility alias), and per-skill/source `approve` /
   `approve revoke` trust records.
 
 Distribution work is wired for the next tagged release:

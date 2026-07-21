@@ -507,7 +507,7 @@ removed on `autosync uninstall`.
 Copy an unmanaged target skill into `local/skills/<slot>`. With `--replace`, Dalo replaces the original unmanaged directory with an owned symlink after copying. Without `--replace`, the original directory remains untouched.
 
 Adoption runs the same deterministic security preflight before copying or
-replacing anything. `--agent`, `--refresh-audit`, and `--accept-risk <reason>`
+replacing anything. `--reviewer` (with deprecated `--agent` alias), `--refresh-audit`, and `--accept-risk <reason>`
 have the same meaning as on `dalo approve skill`.
 
 The `<skill>` argument can be a slot name, a disambiguating path, or an ID reported by `status` or `resolve list`.
@@ -623,20 +623,20 @@ never execute skill code.
 ```sh
 dalo audit public:review-helper
 dalo audit ./my-skill --check
-dalo audit public:review-helper --agent auto
-dalo --json audit public:review-helper --agent codex
-dalo audit public:review-helper --agent claude --refresh-audit
+dalo audit public:review-helper --reviewer auto
+dalo --json audit public:review-helper --reviewer codex
+dalo audit public:review-helper --reviewer claude --refresh-audit
 ```
 
 Use `--refresh-audit` to ignore a compatible cached semantic review and run the
 selected provider again. The older `--refresh` spelling remains a hidden alias
 for script compatibility.
 
-`--agent auto|codex|claude|opencode` adds a semantic review through an installed
+`--reviewer auto|codex|claude|opencode` adds a semantic review through an installed
 agent CLI. Dalo starts a fresh non-persistent reviewer and treats a bounded
 snapshot as untrusted data. Claude and OpenCode run with tools denied. Codex
 currently retains its network-disabled, read-only sandbox shell, so Dalo never
-selects it through `auto`; choosing `--agent codex` is an explicit acceptance of
+selects it through `auto`; choosing `--reviewer codex` is an explicit acceptance of
 that weaker isolation boundary. User configuration, project rules, skills,
 plugins, and MCPs are disabled where the provider supports it. The structured
 result contains evidence-backed findings, expected capabilities, and behavior
@@ -646,7 +646,7 @@ provider's quota. Dalo never includes `.git` metadata in that snapshot; a skill
 containing a `.git` entry receives a blocking, partial-coverage finding instead.
 Provider processes receive only an explicit runtime and provider-authentication
 environment allowlist rather than inheriting Dalo's full environment. Omitting
-`--agent` is fully local.
+`--reviewer` is fully local. `--agent` remains a deprecated compatibility alias.
 
 Agent review is optional and additive, not an approval mechanism. It can add
 evidence-backed findings to the deterministic audit, but it never clears a
@@ -696,7 +696,7 @@ cannot accidentally apply to a different source with the same name.
 ```sh
 dalo approve list
 dalo approve skill public:review-helper
-dalo approve skill public:review-helper --agent codex
+dalo approve skill public:review-helper --reviewer codex
 dalo approve skill public:review-helper --accept-risk "reviewed exception"
 dalo approve source team
 dalo approve author public:maintainers
@@ -709,7 +709,7 @@ Approval writes support `--dry-run` and `--json`. A pending skill shown by
 The revoke scope is one of `skill`, `source`, `author`, or `org`; Clap validates
 this value and exposes the choices to shell completion.
 Skill approval always runs the deterministic preflight first and refuses a
-blocking result unless a reason is supplied with `--accept-risk`. `--agent`
+blocking result unless a reason is supplied with `--accept-risk`. `--reviewer`
 adds the same isolated semantic review as `dalo audit`.
 
 JSON output shapes: `ApprovalsFile` for `list`; successful `approve skill`

@@ -136,7 +136,7 @@ pub enum Command {
     Doctor(CheckArgs),
     /// Inspect a skill with deterministic checks and an optional isolated AI reviewer.
     #[command(
-        after_help = "Examples:\n  dalo audit public:review-helper\n  dalo audit ./my-skill --agent auto\n  dalo audit public:review-helper --agent codex --check\n  dalo audit public:review-helper --accept-risk 'reviewed upstream installer'"
+        after_help = "Examples:\n  dalo audit public:review-helper\n  dalo audit ./my-skill --reviewer auto\n  dalo audit public:review-helper --reviewer codex --check\n  dalo audit public:review-helper --accept-risk 'reviewed upstream installer'"
     )]
     Audit(AuditCommand),
     /// Grant, list, and revoke scoped approval records.
@@ -259,9 +259,9 @@ pub struct SkillApprovalArgs {
     #[arg(value_name = "VALUE")]
     pub value: String,
 
-    /// Run an isolated semantic review; this may send skill contents to its provider.
-    #[arg(long, value_enum, default_value_t = AuditAgentArg::None)]
-    pub agent: AuditAgentArg,
+    /// Semantic-review provider selection.
+    #[command(flatten)]
+    pub reviewer: ReviewerArgs,
 
     /// Ignore a compatible cached semantic review.
     #[arg(long = "refresh-audit", alias = "refresh")]
@@ -278,9 +278,9 @@ pub struct AuditCommand {
     /// Existing skill path or source-qualified `<source>:<skill>` reference.
     pub target: String,
 
-    /// Semantic reviewer; this may send skill contents to its configured provider.
-    #[arg(long, value_enum, default_value_t = AuditAgentArg::None)]
-    pub agent: AuditAgentArg,
+    /// Semantic-review provider selection.
+    #[command(flatten)]
+    pub reviewer: ReviewerArgs,
 
     /// Ignore a compatible cached semantic review.
     #[arg(long = "refresh-audit", alias = "refresh")]
@@ -308,6 +308,24 @@ pub enum AuditAgentArg {
     Claude,
     /// OpenCode CLI.
     Opencode,
+}
+
+/// Semantic-review selection with a deprecated `--agent` compatibility alias.
+#[derive(Debug, Args)]
+pub struct ReviewerArgs {
+    /// Run an isolated semantic review; this may send skill contents to its provider.
+    #[arg(long, value_enum, default_value_t = AuditAgentArg::None)]
+    pub reviewer: AuditAgentArg,
+
+    /// Deprecated alias for `--reviewer`.
+    #[arg(long = "agent", value_enum, hide = true, conflicts_with = "reviewer")]
+    pub legacy_agent: Option<AuditAgentArg>,
+}
+
+impl ReviewerArgs {
+    fn selected(&self) -> AuditAgentArg {
+        self.legacy_agent.unwrap_or(self.reviewer)
+    }
 }
 
 impl From<AuditAgentArg> for audit::AgentSelection {
@@ -705,9 +723,9 @@ pub struct AdoptCommand {
     #[arg(long)]
     pub replace: bool,
 
-    /// Run a semantic review; this may send skill contents to its provider.
-    #[arg(long, value_enum, default_value_t = AuditAgentArg::None)]
-    pub agent: AuditAgentArg,
+    /// Semantic-review provider selection.
+    #[command(flatten)]
+    pub reviewer: ReviewerArgs,
 
     /// Ignore a compatible cached semantic review.
     #[arg(long = "refresh-audit", alias = "refresh")]
@@ -751,9 +769,9 @@ pub struct ResolveAdoptArgs {
     #[arg(long)]
     pub replace: bool,
 
-    /// Run a semantic review; this may send skill contents to its provider.
-    #[arg(long, value_enum, default_value_t = AuditAgentArg::None)]
-    pub agent: AuditAgentArg,
+    /// Semantic-review provider selection.
+    #[command(flatten)]
+    pub reviewer: ReviewerArgs,
 
     /// Ignore a compatible cached semantic review.
     #[arg(long = "refresh-audit", alias = "refresh")]
@@ -2296,7 +2314,7 @@ fn run_adopt(options: &GlobalOptions, command: AdoptCommand) -> DaloResult<()> {
         &paths,
         &command.skill,
         command.replace,
-        command.agent,
+        command.reviewer.selected(),
         command.refresh_audit,
         command.accept_risk,
     )
@@ -2326,7 +2344,7 @@ fn run_resolve(options: &GlobalOptions, command: ResolveCommand) -> DaloResult<(
                 &paths,
                 &args.id,
                 args.replace,
-                args.agent,
+                args.reviewer.selected(),
                 args.refresh_audit,
                 args.accept_risk,
             )
@@ -2408,7 +2426,7 @@ fn run_audit(options: &GlobalOptions, command: AuditCommand) -> DaloResult<()> {
     } else {
         Some(store::StoreLock::acquire(&paths)?)
     };
-    let agent = prepare_agent_review(command.agent)?;
+    let agent = prepare_agent_review(command.reviewer.selected())?;
     let report = audit::audit_target(
         &paths,
         &command.target,
@@ -2454,7 +2472,7 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
         }
         ApproveSubcommand::Skill(args) => {
             let canonical = approval::canonical_skill(&paths, &args.value)?;
-            let agent = prepare_agent_review(args.agent)?;
+            let agent = prepare_agent_review(args.reviewer.selected())?;
             let audit_report = audit::audit_target(
                 &paths,
                 &canonical,
