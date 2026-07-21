@@ -110,7 +110,7 @@ configured provider; without an agent CLI available it exits with an error, so
 it is not part of the core flow:
 
 ```sh
-dalo audit public:review-helper --agent auto
+dalo audit public:review-helper --reviewer auto
 ```
 
 `source add`, `source select`, and `approve skill` run deterministic local

@@ -216,7 +216,7 @@ select only what you need, approve the exact skill, and sync:
 dalo source add-catalog sebastian https://github.com/sebastian-software/skills.sebastian-software.com.git
 dalo source inspect sebastian
 dalo source select sebastian pr-review
-dalo audit sebastian:pr-review --agent auto
+dalo audit sebastian:pr-review --reviewer auto
 dalo approve skill sebastian:pr-review
 dalo sync
 ```

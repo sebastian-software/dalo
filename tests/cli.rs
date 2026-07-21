@@ -1148,8 +1148,19 @@ fn audit_help_should_prefer_refresh_audit_and_keep_refresh_as_hidden_alias() {
             .assert()
             .success()
             .stdout(predicate::str::contains("--refresh-audit"))
-            .stdout(predicate::str::contains("--refresh ").not());
+            .stdout(predicate::str::contains("--refresh ").not())
+            .stdout(predicate::str::contains("--reviewer"))
+            .stdout(predicate::str::contains("--agent").not());
     }
+}
+
+#[test]
+fn reviewer_should_accept_the_agent_alias_but_reject_both_flags() {
+    dalo_command()
+        .args(["audit", "missing", "--reviewer", "auto", "--agent", "codex"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("cannot be used with"));
 }
 
 #[test]
