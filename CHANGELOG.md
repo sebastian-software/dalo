@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.10.1](https://github.com/sebastian-software/dalo/compare/dalo-v0.10.0...dalo-v0.10.1) (2026-07-22)
+
+
+### Bug Fixes
+
+* close instruction target race windows ([a245f53](https://github.com/sebastian-software/dalo/commit/a245f537dd1617195cb5ec619d61d8dcf3ad4b2e))
+* contain inventory symlinks and target rollback ([3b5fb93](https://github.com/sebastian-software/dalo/commit/3b5fb9313b8aec61ab502d77f8f71889183db713))
+* harden adoption selectors and comparisons ([3d8958f](https://github.com/sebastian-software/dalo/commit/3d8958f4161a544e8a1364a8052fcb409c3fc181))
+* make instruction target writes conditional ([3e93c0d](https://github.com/sebastian-software/dalo/commit/3e93c0deb7de5a2e776a8ebd7e6644058bf78ebf))
+* protect instruction pack mutations ([42ee685](https://github.com/sebastian-software/dalo/commit/42ee685854b6c5b676fdc71d30386a0be9de138b))
+
 ## [0.10.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.9.2...dalo-v0.10.0) (2026-07-22)
 
 
