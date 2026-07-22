@@ -143,14 +143,22 @@ floating ref and never commits or pushes the repository.
 dalo --dry-run team catalog update marketing --from main
 dalo --json --dry-run team catalog update marketing --from v2
 dalo team catalog update marketing --from main
+dalo team catalog update marketing --from main \
+  --accept-risk "reviewed pinned automation"
 ```
 
 Dry-run performs network reads and temporary filesystem work but does not edit
 the repository or personal Dalo store. A non-fast-forward candidate, a removed
 selected skill, an invalid candidate selection, or a blocking audit finding
-prevents the write. JSON output shape: `TeamCatalogUpdateReport`, including
+prevents the write. `--accept-risk <reason>` is required to be non-empty and
+accepts only blocking security-audit findings from this exact candidate. It
+does not bypass non-fast-forward updates, removed skills, invalid selections,
+or other structural blockers. Each accepted audit report retains its
+content-bound `risk_acceptance` scope hash; no personal store state is written.
+JSON output shape: `TeamCatalogUpdateReport`, including
 `old_version`, exact `old_commit` and `candidate_commit`, `outcomes[]`,
-`audits[]`, `blocking_reasons[]`, `dry_run`, and `updated`.
+`audits[]`, `accepted_risk_reason`, `blocking_reasons[]`, `dry_run`, and
+`updated`.
 
 ### `dalo team catalog remove <id>`
 
@@ -812,7 +820,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `team catalog add` | `TeamManifestMutationReport` | `path`, `action`, `catalog_id`, `dry_run`, resulting `manifest` |
 | `team catalog skills` | `TeamManifestMutationReport` | `path`, `action`, `catalog_id`, `dry_run`, resulting `manifest` |
 | `team catalog version` | `TeamManifestMutationReport` | `path`, `action`, `catalog_id`, `dry_run`, resulting `manifest` |
-| `team catalog update` | `TeamCatalogUpdateReport` | `catalog_id`, `old_version`, `old_commit`, `from_ref`, `candidate_commit`, `outcomes[]`, `audits[]`, `blocking_reasons[]`, `dry_run`, `updated`, resulting `manifest` |
+| `team catalog update` | `TeamCatalogUpdateReport` | `catalog_id`, `old_version`, `old_commit`, `from_ref`, `candidate_commit`, `outcomes[]`, `audits[]`, optional `accepted_risk_reason`, `blocking_reasons[]`, `dry_run`, `updated`, resulting `manifest` |
 | `team catalog remove` | `TeamManifestMutationReport` | `path`, `action`, `catalog_id`, `dry_run`, resulting `manifest` |
 | `team show` | `TeamManifestView` | `path`, `manifest` |
 | `source add` | `SourceAddReport` | `source`, `dry_run`, `audits[]` with one `AuditReport` per discovered skill |

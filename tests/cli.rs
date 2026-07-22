@@ -267,6 +267,47 @@ fn team_show_should_report_missing_manifest_without_a_check_prefix() {
 }
 
 #[test]
+fn team_commands_should_not_require_home() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let repo = temp_dir.path().join("team");
+    std::fs::create_dir_all(&repo).expect("team repo should be created");
+    std::fs::write(
+        repo.join("dalo.toml"),
+        "schema_version = 1\n[source]\nid = \"team\"\n",
+    )
+    .expect("manifest should be writable");
+
+    dalo_command()
+        .env_remove("HOME")
+        .args(["team", "--repo"])
+        .arg(&repo)
+        .arg("show")
+        .assert()
+        .success();
+}
+
+#[test]
+fn team_manifest_should_explain_future_schema_before_unknown_fields() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let repo = temp_dir.path().join("team");
+    std::fs::create_dir_all(&repo).expect("team repo should be created");
+    std::fs::write(
+        repo.join("dalo.toml"),
+        "schema_version = 2\nnew_field = true\n[source]\nid = \"team\"\n",
+    )
+    .expect("manifest should be writable");
+
+    dalo_command()
+        .args(["team", "--repo"])
+        .arg(&repo)
+        .arg("show")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("unsupported schema version 2"))
+        .stderr(predicate::str::contains("upgrade dalo"));
+}
+
+#[test]
 fn team_catalog_update_should_preview_write_exact_pin_and_block_dangerous_candidate() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let repo = temp_dir.path().join("team-repo");
@@ -364,6 +405,7 @@ fn team_catalog_update_should_preview_write_exact_pin_and_block_dangerous_candid
         .arg(&unused_store)
         .args(["team", "catalog", "update", "marketing", "--from"])
         .arg(&v1)
+        .args(["--accept-risk", "reviewed catalog update"])
         .assert()
         .failure()
         .stdout(predicate::str::contains("not a fast-forward"))
@@ -414,6 +456,94 @@ fn team_catalog_update_should_preview_write_exact_pin_and_block_dangerous_candid
         before_blocked
     );
     assert_eq!(read_team_manifest(&manifest_path).catalogs[0].version, v2);
+
+    let accepted_reason = "reviewed catalog persistence workflow";
+    let accepted_before = std::fs::read(&manifest_path).expect("manifest should be readable");
+    let accepted_output = dalo_command()
+        .current_dir(&repo)
+        .args(["--store"])
+        .arg(&unused_store)
+        .args([
+            "--json",
+            "--dry-run",
+            "team",
+            "catalog",
+            "update",
+            "marketing",
+            "--from",
+            "main",
+            "--accept-risk",
+            accepted_reason,
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let accepted_report: serde_json::Value =
+        serde_json::from_slice(&accepted_output).expect("accepted update JSON should parse");
+    assert_eq!(accepted_report["accepted_risk_reason"], accepted_reason);
+    assert_eq!(accepted_report["blocking_reasons"], serde_json::json!([]));
+    assert_eq!(accepted_report["updated"], false);
+    assert_eq!(
+        accepted_report["audits"][0]["risk_acceptance"]["reason"],
+        accepted_reason
+    );
+    assert!(
+        accepted_report["audits"][0]["risk_acceptance"]["scope_hash"]
+            .as_str()
+            .is_some_and(|hash| hash.len() == 64)
+    );
+    assert_eq!(
+        std::fs::read(&manifest_path).expect("manifest should remain readable"),
+        accepted_before
+    );
+    assert!(!unused_store.exists());
+
+    dalo_command()
+        .current_dir(&repo)
+        .args(["--store"])
+        .arg(&unused_store)
+        .args([
+            "team",
+            "catalog",
+            "update",
+            "marketing",
+            "--from",
+            "main",
+            "--accept-risk",
+            accepted_reason,
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "risk accepted: reviewed catalog persistence workflow",
+        ))
+        .stdout(predicate::str::contains("result: updated"));
+    assert_eq!(
+        read_team_manifest(&manifest_path).catalogs[0].version,
+        test_git_head(&catalog)
+    );
+
+    dalo_command()
+        .current_dir(&repo)
+        .args(["--store"])
+        .arg(&unused_store)
+        .args([
+            "team",
+            "catalog",
+            "update",
+            "marketing",
+            "--from",
+            "main",
+            "--accept-risk",
+            "",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "--accept-risk requires a non-empty reason",
+        ));
 }
 
 fn commit_test_repo(repo: &std::path::Path, message: &str) {
