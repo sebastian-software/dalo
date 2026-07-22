@@ -7,11 +7,13 @@
 
 use std::collections::BTreeSet;
 use std::fs;
+use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::Component;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use tempfile::NamedTempFile;
 
 use crate::error::{DaloError, DaloResult};
@@ -463,10 +465,11 @@ where
 {
     let target = normalize_target_path(target)?;
     let pack = read_local_pack(paths, pack_id)?;
+    let mut lock = store::read_user_lock(paths)?;
+    let _target_lock = acquire_target_lock(paths, &target)?;
     let snapshot = target_snapshot(&target)?;
     let existing = snapshot.content.clone().unwrap_or_default();
     let rendered = render_block(&existing, &pack.id, &pack.body)?;
-    let mut lock = store::read_user_lock(paths)?;
     if !dry_run {
         lock.active_instruction_packs
             .retain(|entry| !(entry.pack_id == pack.id && targets_match(entry, &target)));
@@ -482,10 +485,9 @@ where
                 .cmp(&right.pack_id)
                 .then(left.target.cmp(&right.target))
         });
-        ensure_target_unchanged(&snapshot)?;
-        write_target(&target, &rendered)?;
+        write_target_if_unchanged(&snapshot, &rendered)?;
         if let Err(error) = write_lock(paths, &lock) {
-            return Err(restore_target_after_error(snapshot, error));
+            return Err(restore_target_after_error(snapshot, &rendered, error));
         }
     }
 
@@ -519,6 +521,8 @@ where
     F: FnOnce(&StorePaths, &crate::lockfile::UserLock) -> DaloResult<()>,
 {
     let target = normalize_target_path(target)?;
+    let mut lock = store::read_user_lock(paths)?;
+    let _target_lock = acquire_target_lock(paths, &target)?;
     let snapshot = target_snapshot(&target)?;
     let existing = snapshot.content.clone().unwrap_or_default();
     let (block, malformed_error) = match find_block(&existing, pack_id) {
@@ -526,7 +530,6 @@ where
         Err(error) => (None, Some(error.to_string())),
     };
     let has_block = block.is_some();
-    let mut lock = store::read_user_lock(paths)?;
     let before = lock.active_instruction_packs.len();
     let has_lock_entry = lock
         .active_instruction_packs
@@ -560,12 +563,11 @@ where
         .retain(|entry| !(entry.pack_id == pack_id && targets_match(entry, &target)));
     if !dry_run {
         if let Some(updated) = updated {
-            ensure_target_unchanged(&snapshot)?;
-            write_target(&target, &updated)?;
+            write_target_if_unchanged(&snapshot, &updated)?;
             if lock.active_instruction_packs.len() != before
                 && let Err(error) = write_lock(paths, &lock)
             {
-                return Err(restore_target_after_error(snapshot, error));
+                return Err(restore_target_after_error(snapshot, &updated, error));
             }
         } else if lock.active_instruction_packs.len() != before {
             write_lock(paths, &lock)?;
@@ -628,6 +630,31 @@ struct TargetSnapshot {
     content: Option<String>,
 }
 
+/// Advisory lock held while a target is read, rendered, replaced, or rolled back.
+/// The lock is keyed by the normalized target path and intentionally lives in the
+/// Dalo store so missing targets can be serialized before their first write.
+#[derive(Debug)]
+struct TargetLock {
+    _file: fs::File,
+}
+
+fn acquire_target_lock(paths: &StorePaths, target: &Path) -> DaloResult<TargetLock> {
+    let digest = Sha256::digest(target.to_string_lossy().as_bytes());
+    let suffix = digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    let path = paths.root.join(format!(".target-{suffix}.lock"));
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path)?;
+    file.lock()?;
+    Ok(TargetLock { _file: file })
+}
+
 fn target_snapshot(target: &Path) -> DaloResult<TargetSnapshot> {
     let target = writable_target_path(target)?;
     match fs::read_to_string(&target) {
@@ -653,6 +680,11 @@ fn ensure_target_unchanged(snapshot: &TargetSnapshot) -> DaloResult<()> {
     Ok(())
 }
 
+fn write_target_if_unchanged(snapshot: &TargetSnapshot, content: &str) -> DaloResult<()> {
+    ensure_target_unchanged(snapshot)?;
+    write_target(&snapshot.target, content)
+}
+
 fn restore_target(snapshot: TargetSnapshot) -> DaloResult<()> {
     if let Some(content) = snapshot.content {
         write_target(&snapshot.target, &content)
@@ -665,9 +697,23 @@ fn restore_target(snapshot: TargetSnapshot) -> DaloResult<()> {
     }
 }
 
-fn restore_target_after_error(snapshot: TargetSnapshot, original_error: DaloError) -> DaloError {
+fn restore_target_after_error(
+    snapshot: TargetSnapshot,
+    written_content: &str,
+    original_error: DaloError,
+) -> DaloError {
     let target = snapshot.target.clone();
-    match restore_target(snapshot) {
+    let restore = match target_snapshot(&target) {
+        Ok(current) if current.content.as_deref() == Some(written_content) => {
+            restore_target(snapshot)
+        }
+        Ok(_) => Err(std::io::Error::other(
+            "instruction target changed during rollback; newer content was left untouched",
+        )
+        .into()),
+        Err(error) => Err(error),
+    };
+    match restore {
         Ok(()) => original_error,
         Err(restore_error) => DaloError::Io(std::io::Error::other(format!(
             "{original_error}; also failed to restore instruction target `{}`: {restore_error}",
@@ -1188,6 +1234,7 @@ mod tests {
 
         let error = restore_target_after_error(
             snapshot,
+            "new content",
             DaloError::Io(std::io::Error::other("lock write failed")),
         );
         let message = error.to_string();
@@ -1195,6 +1242,46 @@ mod tests {
         assert!(message.contains("lock write failed"));
         assert!(message.contains("also failed to restore instruction target"));
         assert!(message.contains(&occupied_target.display().to_string()));
+    }
+
+    #[test]
+    fn write_target_if_unchanged_should_preserve_external_edit() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let target = temp.path().join("AGENTS.md");
+        fs::write(&target, "before\n").expect("target should be seeded");
+        let snapshot = target_snapshot(&target).expect("snapshot should be readable");
+        fs::write(&target, "external edit\n").expect("target should be edited");
+
+        let error = write_target_if_unchanged(&snapshot, "dalo output\n")
+            .expect_err("external edit should block replacement");
+        assert!(matches!(error, DaloError::InstructionTargetChanged { .. }));
+        assert_eq!(fs::read_to_string(&target).unwrap(), "external edit\n");
+    }
+
+    #[test]
+    fn rollback_should_not_restore_over_newer_external_content() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let target = temp.path().join("AGENTS.md");
+        fs::write(&target, "before\n").expect("target should be seeded");
+        let snapshot = target_snapshot(&target).expect("snapshot should be readable");
+        write_target(&target, "dalo output\n").expect("dalo output should be written");
+        fs::write(&target, "newer external edit\n").expect("target should be edited");
+
+        let error = restore_target_after_error(
+            snapshot,
+            "dalo output\n",
+            DaloError::Io(std::io::Error::other("lock write failed")),
+        );
+
+        assert!(
+            error
+                .to_string()
+                .contains("newer content was left untouched")
+        );
+        assert_eq!(
+            fs::read_to_string(&target).unwrap(),
+            "newer external edit\n"
+        );
     }
 
     #[test]
