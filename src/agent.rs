@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use sha2::{Digest, Sha256};
 
 use crate::error::{DaloError, DaloResult};
@@ -144,6 +144,7 @@ pub struct CanonicalAgent {
     /// Optional portable hard network boundary.
     pub network: Option<NetworkBoundary>,
     /// Provider-specific overlays retained with the canonical source.
+    #[serde(serialize_with = "serialize_redacted_providers")]
     pub providers: BTreeMap<String, serde_json::Value>,
     /// Canonical Markdown system prompt.
     pub prompt: String,
@@ -672,7 +673,7 @@ fn contains_unquoted_yaml_token(line: &str, token: char) -> bool {
     let mut single = false;
     let mut double = false;
     let mut escaped = false;
-    for character in line.chars() {
+    for (index, character) in line.char_indices() {
         if double {
             if escaped {
                 escaped = false;
@@ -693,11 +694,85 @@ fn contains_unquoted_yaml_token(line: &str, token: char) -> bool {
             '\'' => single = true,
             '"' => double = true,
             '#' => break,
-            _ if character == token => return true,
+            _ if character == token && is_yaml_indicator_position(line, index) => {
+                return true;
+            }
             _ => {}
         }
     }
     false
+}
+
+fn is_yaml_indicator_position(line: &str, index: usize) -> bool {
+    let prefix = line[..index].trim_end();
+    if prefix.is_empty()
+        || prefix.ends_with(':')
+        || prefix.ends_with('[')
+        || prefix.ends_with('{')
+        || prefix.ends_with(',')
+    {
+        return true;
+    }
+    prefix
+        .strip_suffix('-')
+        .is_some_and(|before_dash| before_dash.trim().is_empty())
+}
+
+fn serialize_redacted_providers<S>(
+    providers: &BTreeMap<String, serde_json::Value>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let redacted = providers
+        .iter()
+        .map(|(provider, value)| (provider.clone(), redact_provider_value(value, None)))
+        .collect::<BTreeMap<_, _>>();
+    redacted.serialize(serializer)
+}
+
+fn redact_provider_value(value: &serde_json::Value, key: Option<&str>) -> serde_json::Value {
+    if key.is_some_and(is_secret_like_key) {
+        return serde_json::Value::String("[REDACTED]".to_owned());
+    }
+    match value {
+        serde_json::Value::Object(object) => serde_json::Value::Object(
+            object
+                .iter()
+                .map(|(key, value)| {
+                    (
+                        key.clone(),
+                        redact_provider_value(value, Some(key.as_str())),
+                    )
+                })
+                .collect(),
+        ),
+        serde_json::Value::Array(values) => serde_json::Value::Array(
+            values
+                .iter()
+                .map(|value| redact_provider_value(value, None))
+                .collect(),
+        ),
+        _ => value.clone(),
+    }
+}
+
+fn is_secret_like_key(key: &str) -> bool {
+    let normalized = key
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .map(|character| character.to_ascii_lowercase())
+        .collect::<String>();
+    normalized.contains("secret")
+        || normalized.contains("token")
+        || normalized.contains("password")
+        || normalized.contains("credential")
+        || normalized.contains("apikey")
+        || normalized.contains("privatekey")
+        || normalized.contains("accesskey")
+        || normalized == "auth"
+        || normalized.contains("authorization")
 }
 
 fn validate_frontmatter(frontmatter: &AgentFrontmatter) -> Result<(), String> {
@@ -900,9 +975,9 @@ pub struct AgentCompilation {
     pub provider: AgentProvider,
     /// Whether this provider is excluded by the canonical `targets` allowlist.
     pub not_targeted: bool,
-    /// Complete generated native bytes when safe to materialize.
+    /// Complete generated native preview when safe to materialize.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub bytes: Option<Vec<u8>>,
+    pub bytes: Option<String>,
     /// Ordered field-level compatibility report.
     pub findings: Vec<CompatibilityFinding>,
     /// Greatest finding severity.
@@ -1298,7 +1373,7 @@ fn validate_overlay(
     }
 }
 
-fn render_claude(agent: &CanonicalAgent) -> Vec<u8> {
+fn render_claude(agent: &CanonicalAgent) -> String {
     let mut output = String::from("---\n");
     output.push_str("name: ");
     output.push_str(&yaml_string(&agent.name));
@@ -1336,10 +1411,10 @@ fn render_claude(agent: &CanonicalAgent) -> Vec<u8> {
     }
     output.push_str("---\n");
     output.push_str(&agent.prompt);
-    output.into_bytes()
+    output
 }
 
-fn render_codex(agent: &CanonicalAgent) -> Vec<u8> {
+fn render_codex(agent: &CanonicalAgent) -> String {
     let mut output = String::new();
     output.push_str("name = ");
     output.push_str(&toml_string(&agent.name));
@@ -1376,7 +1451,7 @@ fn render_codex(agent: &CanonicalAgent) -> Vec<u8> {
     output.push_str("developer_instructions = ");
     output.push_str(&toml_string(&instructions));
     output.push('\n');
-    output.into_bytes()
+    output
 }
 
 fn overlay_string<'a>(
@@ -1553,10 +1628,56 @@ mod tests {
         let second = compile(&agent, AgentProvider::Claude);
         assert_eq!(first.bytes, second.bytes);
         assert_eq!(first.overall, CompatibilityResult::Unsupported);
-        let output =
-            String::from_utf8(first.bytes.expect("safe compilation")).expect("UTF-8 output");
+        let output = first.bytes.expect("safe compilation");
         assert!(output.contains("model: \"sonnet-4\""));
         assert!(output.contains("skills:"));
+    }
+
+    #[test]
+    fn scan_should_allow_punctuation_in_plain_yaml_scalars() {
+        let temp = tempfile::tempdir().expect("temp directory should be created");
+        write_agent(
+            temp.path(),
+            "reviewer",
+            "---\nschema_version: 1\nname: reviewer\ndescription: Review bugs!\nowners: [R&D reviewer]\n---\nReview bugs!\n",
+        );
+
+        let inventory = scan_source_agents("local", temp.path());
+
+        assert!(inventory.warnings.is_empty());
+        assert_eq!(inventory.agents[0].description, "Review bugs!");
+        assert_eq!(inventory.agents[0].owners, ["R&D reviewer"]);
+    }
+
+    #[test]
+    fn unsafe_yaml_indicators_are_rejected_at_scalar_boundaries() {
+        assert!(reject_unsafe_yaml("description: !secret\n").is_err());
+        assert!(reject_unsafe_yaml("description: &anchor value\n").is_err());
+        assert!(reject_unsafe_yaml("description: *alias\n").is_err());
+        assert!(reject_unsafe_yaml("description: ordinary! punctuation\n").is_ok());
+    }
+
+    #[test]
+    fn json_serialization_redacts_secret_like_provider_overlays() {
+        let temp = tempfile::tempdir().expect("temp directory should be created");
+        write_agent(
+            temp.path(),
+            "reviewer",
+            "---\nschema_version: 1\nname: reviewer\ndescription: Reviews code\nproviders:\n  claude:\n    model: sonnet-4\n    api_key: super-secret\n    nested:\n      access_token: nested-secret\n---\nReview carefully.\n",
+        );
+        let agent = scan_source_agents("local", temp.path())
+            .agents
+            .remove(0)
+            .agent;
+
+        let json = serde_json::to_value(agent).expect("agent should serialize");
+
+        assert_eq!(json["providers"]["claude"]["model"], "sonnet-4");
+        assert_eq!(json["providers"]["claude"]["api_key"], "[REDACTED]");
+        assert_eq!(
+            json["providers"]["claude"]["nested"]["access_token"],
+            "[REDACTED]"
+        );
     }
 
     #[test]
