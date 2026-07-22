@@ -25,6 +25,26 @@ use crate::store::{self, StorePaths};
 /// Current persisted source-lock schema version.
 pub const SOURCE_LOCK_SCHEMA_VERSION: u32 = 3;
 const MIN_SUPPORTED_SOURCE_LOCK_SCHEMA_VERSION: u32 = 1;
+const CATALOG_ADVANCE_SCHEMA_VERSION: u32 = 1;
+
+/// Durable recovery data for an in-progress catalog advance.
+///
+/// The record is written before the checkout or materialization can change. A
+/// following mutating command restores this baseline after an ungraceful
+/// interruption, making the multi-file operation restartable rather than
+/// leaving the pin, checkout, and live links out of sync.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CatalogAdvanceJournal {
+    schema_version: u32,
+    source_id: String,
+    original_commit: String,
+    original_config: UserConfig,
+    original_source_lock: SourceLock,
+    original_user_lock: UserLock,
+    #[serde(default)]
+    completed: bool,
+}
 
 /// Source lock: pinned catalog commits, selections, and inventory snapshots.
 ///
@@ -769,17 +789,16 @@ pub fn compare_catalog_inventory(
 
 /// Read-only drift check: fetch the catalog's upstream ref and compare a fresh
 /// inventory against the pinned snapshot. Does not advance pins or change config
-/// or the resolved set; supported legacy locks are rehashed at their existing
-/// pins before comparison.
+/// or the resolved set; supported legacy locks are rehashed in memory at their
+/// existing pins before comparison.
 pub fn check_catalog_drift(paths: &StorePaths, id: &str) -> DaloResult<CatalogDrift> {
+    ensure_no_pending_catalog_advance(paths)?;
     let config = store::read_config(paths)?;
     let source = catalog_source_from_config(&config.sources, id)?;
     let mut lock = read_source_lock(paths)?;
 
     let migration_warnings = if lock.schema_version != SOURCE_LOCK_SCHEMA_VERSION {
-        let warnings = migrate_source_lock_inventories(&mut lock, &config.sources, Some(id))?;
-        write_source_lock(paths, &lock)?;
-        warnings
+        migrate_source_lock_inventories(&mut lock, &config.sources, Some(id))?
     } else {
         Vec::new()
     };
@@ -801,6 +820,7 @@ pub fn check_catalog_drift(paths: &StorePaths, id: &str) -> DaloResult<CatalogDr
         });
     }
 
+    ensure_catalog_checkout(id, &source.path)?;
     git::fetch(&source.path)?;
     git::prune_worktrees(&source.path)?;
     let upstream_commit = git::rev_parse(&source.path, "FETCH_HEAD")?;
@@ -834,6 +854,11 @@ pub fn advance_catalog(
     id: &str,
     dry_run: bool,
 ) -> DaloResult<CatalogAdvanceReport> {
+    if dry_run {
+        ensure_no_pending_catalog_advance(paths)?;
+    } else {
+        recover_pending_catalog_advance(paths)?;
+    }
     let config = store::read_config(paths)?;
     let source = catalog_source_from_config(&config.sources, id)?;
     if let Some(team) = &source.declared_by {
@@ -844,6 +869,7 @@ pub fn advance_catalog(
             ),
         });
     }
+    ensure_catalog_checkout(id, &source.path)?;
     if git::is_dirty(&source.path)? {
         return Err(DaloError::DirtySource {
             source_id: id.to_owned(),
@@ -928,6 +954,31 @@ pub fn advance_catalog(
         }
     }
     result
+}
+
+fn ensure_catalog_checkout(id: &str, path: &Path) -> DaloResult<()> {
+    let unavailable = |error: Option<&std::io::Error>| DaloError::StateError {
+        reason: match error {
+            Some(error) => format!(
+                "catalog `{id}` checkout at `{}` is unavailable ({error}); restore it or remove and re-add the catalog",
+                path.display()
+            ),
+            None => format!(
+                "catalog `{id}` checkout at `{}` is unavailable; restore it or remove and re-add the catalog",
+                path.display()
+            ),
+        },
+    };
+
+    let metadata = fs::metadata(path).map_err(|error| unavailable(Some(&error)))?;
+    if !metadata.is_dir() {
+        return Err(unavailable(None));
+    }
+    match path.join(".git").try_exists() {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(unavailable(None)),
+        Err(error) => Err(unavailable(Some(&error))),
+    }
 }
 
 fn cleanup_obsolete_catalog_staging(
@@ -1114,7 +1165,21 @@ fn advance_catalog_candidate(
         .expect("catalog source was resolved from this config")
         .selection = report.selection_after.clone();
 
+    write_catalog_advance_journal(
+        paths,
+        &CatalogAdvanceJournal {
+            schema_version: CATALOG_ADVANCE_SCHEMA_VERSION,
+            source_id: id.to_owned(),
+            original_commit: report.old_lock.commit.clone(),
+            original_config: original_config.clone(),
+            original_source_lock: persisted_source_lock.clone(),
+            original_user_lock: original_user_lock.clone(),
+            completed: false,
+        },
+    )?;
+
     git::fast_forward_to(&source.path, &upstream_commit)?;
+    catalog_advance_hard_interrupt("checkout");
     if let Err(error) = catalog_advance_boundary("checkout") {
         return rollback_catalog_advance(
             paths,
@@ -1147,6 +1212,7 @@ fn advance_catalog_candidate(
             );
         }
     };
+    catalog_advance_hard_interrupt("materialization");
     if let Err(error) = catalog_advance_boundary("materialization") {
         return rollback_catalog_advance(
             paths,
@@ -1168,10 +1234,13 @@ fn advance_catalog_candidate(
 
     let persist = (|| -> DaloResult<()> {
         write_source_lock(paths, &next_source_lock)?;
+        catalog_advance_hard_interrupt("source_lock");
         catalog_advance_boundary("source_lock")?;
         store::write_config(paths, &persisted_config)?;
+        catalog_advance_hard_interrupt("config");
         catalog_advance_boundary("config")?;
         store::write_user_lock(paths, &next_user_lock)?;
+        catalog_advance_hard_interrupt("user_lock");
         catalog_advance_boundary("user_lock")
     })();
     if let Err(error) = persist {
@@ -1186,6 +1255,20 @@ fn advance_catalog_candidate(
             error,
         );
     }
+
+    if let Err(error) = mark_catalog_advance_complete(paths) {
+        return rollback_catalog_advance(
+            paths,
+            source,
+            &report.old_lock.commit,
+            &original_config,
+            &persisted_source_lock,
+            &original_user_lock,
+            rollback,
+            error,
+        );
+    }
+    let _ = clear_catalog_advance_journal(paths);
 
     report.sync = applied;
     report.advanced = true;
@@ -1312,6 +1395,7 @@ fn rollback_catalog_advance(
         rollback_errors.push(format!("user lock: {restore_error}"));
     }
     if rollback_errors.is_empty() {
+        let _ = clear_catalog_advance_journal(paths);
         Err(error)
     } else {
         Err(DaloError::Io(std::io::Error::other(format!(
@@ -1319,6 +1403,111 @@ fn rollback_catalog_advance(
             rollback_errors.join("; ")
         ))))
     }
+}
+
+fn read_catalog_advance_journal(paths: &StorePaths) -> DaloResult<Option<CatalogAdvanceJournal>> {
+    if !paths.catalog_advance_file.exists() {
+        return Ok(None);
+    }
+    let content = fs::read_to_string(&paths.catalog_advance_file)?;
+    let journal = toml::from_str::<CatalogAdvanceJournal>(&content).map_err(|error| {
+        DaloError::FileParse {
+            path: paths.catalog_advance_file.clone(),
+            reason: error.to_string(),
+        }
+    })?;
+    if journal.schema_version != CATALOG_ADVANCE_SCHEMA_VERSION {
+        return Err(DaloError::UnsupportedSchema {
+            path: paths.catalog_advance_file.clone(),
+            version: journal.schema_version,
+            supported: CATALOG_ADVANCE_SCHEMA_VERSION,
+        });
+    }
+    Ok(Some(journal))
+}
+
+fn write_catalog_advance_journal(
+    paths: &StorePaths,
+    journal: &CatalogAdvanceJournal,
+) -> DaloResult<()> {
+    store::write_toml_atomic(&paths.catalog_advance_file, journal)
+}
+
+fn mark_catalog_advance_complete(paths: &StorePaths) -> DaloResult<()> {
+    let Some(mut journal) = read_catalog_advance_journal(paths)? else {
+        return Err(DaloError::StateError {
+            reason: "catalog advance recovery record disappeared before completion".to_owned(),
+        });
+    };
+    journal.completed = true;
+    write_catalog_advance_journal(paths, &journal)
+}
+
+fn clear_catalog_advance_journal(paths: &StorePaths) -> DaloResult<()> {
+    if paths.catalog_advance_file.exists() {
+        fs::remove_file(&paths.catalog_advance_file)?;
+    }
+    Ok(())
+}
+
+/// Stop read-only commands from reporting a misleading state while an
+/// interrupted catalog advance still requires recovery.
+pub fn ensure_no_pending_catalog_advance(paths: &StorePaths) -> DaloResult<()> {
+    if let Some(journal) = read_catalog_advance_journal(paths)?
+        && !journal.completed
+    {
+        return Err(DaloError::StateError {
+            reason: format!(
+                "catalog `{}` has an interrupted advance; run `dalo sync` or retry `dalo source refresh {} --advance` to recover it",
+                journal.source_id, journal.source_id
+            ),
+        });
+    }
+    Ok(())
+}
+
+/// Recover the original catalog state from an interrupted advance.
+///
+/// Callers must hold the store lock because this may rewrite checkout, links,
+/// and the three persistent state files.
+pub fn recover_pending_catalog_advance(paths: &StorePaths) -> DaloResult<()> {
+    let Some(journal) = read_catalog_advance_journal(paths)? else {
+        return Ok(());
+    };
+    if journal.completed {
+        return clear_catalog_advance_journal(paths);
+    }
+
+    let source = journal
+        .original_config
+        .sources
+        .iter()
+        .find(|source| source.id == journal.source_id)
+        .ok_or_else(|| DaloError::StateError {
+            reason: format!(
+                "catalog advance recovery for `{}` cannot find the original source configuration",
+                journal.source_id
+            ),
+        })?;
+    ensure_catalog_checkout(&journal.source_id, &source.path)?;
+    if git::is_dirty(&source.path)? {
+        return Err(DaloError::StateError {
+            reason: format!(
+                "catalog `{}` has an interrupted advance and a dirty checkout at `{}`; restore or commit the checkout before recovery",
+                journal.source_id,
+                source.path.display()
+            ),
+        });
+    }
+    git::reset_hard_to(&source.path, &journal.original_commit)?;
+
+    let approvals = store::read_approvals(paths)?;
+    let live = resolver::resolve_from_config(&journal.original_config, approvals.approvals);
+    materialize::materialize(paths, &live.resolution, false)?;
+    store::write_config(paths, &journal.original_config)?;
+    write_source_lock(paths, &journal.original_source_lock)?;
+    store::write_user_lock(paths, &journal.original_user_lock)?;
+    clear_catalog_advance_journal(paths)
 }
 
 fn catalog_advance_boundary(boundary: &str) -> DaloResult<()> {
@@ -1332,6 +1521,16 @@ fn catalog_advance_boundary(boundary: &str) -> DaloResult<()> {
         });
     }
     Ok(())
+}
+
+fn catalog_advance_hard_interrupt(boundary: &str) {
+    if std::env::var("DALO_CATALOG_ADVANCE_ABORT_AT")
+        .ok()
+        .as_deref()
+        == Some(boundary)
+    {
+        std::process::abort();
+    }
 }
 
 fn catalog_inventory_at_commit(

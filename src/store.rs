@@ -55,6 +55,8 @@ pub struct StorePaths {
     pub sources_dir: PathBuf,
     /// Catalog source lock path (pinned commits, selections, inventory snapshot).
     pub source_lock_file: PathBuf,
+    /// Durable recovery record for an interrupted catalog advance.
+    pub catalog_advance_file: PathBuf,
     /// Content-addressed security audit reports.
     pub audits_dir: PathBuf,
     /// Installed scheduler metadata.
@@ -83,6 +85,7 @@ impl StorePaths {
             local_instructions_dir: local_dir.join("instructions"),
             sources_dir: root.join("sources"),
             source_lock_file: root.join("source-lock.toml"),
+            catalog_advance_file: root.join("catalog-advance.toml"),
             audits_dir: root.join("audits"),
             autosync_file: root.join("autosync.toml"),
             autosync_run_file: root.join("autosync-run.toml"),
