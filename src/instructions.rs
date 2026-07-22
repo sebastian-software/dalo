@@ -8,12 +8,14 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::fs::OpenOptions;
-use std::io::Write;
+use std::io::{Read, Seek, SeekFrom, Write};
+use std::os::unix::fs::MetadataExt;
 use std::path::Component;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+#[cfg(test)]
 use tempfile::NamedTempFile;
 
 use crate::error::{DaloError, DaloResult};
@@ -485,9 +487,14 @@ where
                 .cmp(&right.pack_id)
                 .then(left.target.cmp(&right.target))
         });
-        write_target_if_unchanged(&snapshot, &rendered)?;
+        let written_identity = write_target_if_unchanged(&snapshot, &rendered)?;
         if let Err(error) = write_lock(paths, &lock) {
-            return Err(restore_target_after_error(snapshot, &rendered, error));
+            return Err(restore_target_after_error(
+                snapshot,
+                &rendered,
+                written_identity,
+                error,
+            ));
         }
     }
 
@@ -563,11 +570,16 @@ where
         .retain(|entry| !(entry.pack_id == pack_id && targets_match(entry, &target)));
     if !dry_run {
         if let Some(updated) = updated {
-            write_target_if_unchanged(&snapshot, &updated)?;
+            let written_identity = write_target_if_unchanged(&snapshot, &updated)?;
             if lock.active_instruction_packs.len() != before
                 && let Err(error) = write_lock(paths, &lock)
             {
-                return Err(restore_target_after_error(snapshot, &updated, error));
+                return Err(restore_target_after_error(
+                    snapshot,
+                    &updated,
+                    written_identity,
+                    error,
+                ));
             }
         } else if lock.active_instruction_packs.len() != before {
             write_lock(paths, &lock)?;
@@ -628,6 +640,23 @@ fn read_target(target: &Path) -> DaloResult<String> {
 struct TargetSnapshot {
     target: PathBuf,
     content: Option<String>,
+    identity: Option<TargetIdentity>,
+}
+
+/// Stable identity for a target inode. A path can be replaced by another file
+/// while an operation is in flight; checking this identity prevents rollback
+/// from touching the replacement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TargetIdentity {
+    device: u64,
+    inode: u64,
+}
+
+fn target_identity(metadata: &fs::Metadata) -> TargetIdentity {
+    TargetIdentity {
+        device: metadata.dev(),
+        inode: metadata.ino(),
+    }
 }
 
 /// Advisory lock held while a target is read, rendered, replaced, or rolled back.
@@ -658,60 +687,136 @@ fn acquire_target_lock(paths: &StorePaths, target: &Path) -> DaloResult<TargetLo
 fn target_snapshot(target: &Path) -> DaloResult<TargetSnapshot> {
     let target = writable_target_path(target)?;
     match fs::read_to_string(&target) {
-        Ok(content) => Ok(TargetSnapshot {
-            target,
-            content: Some(content),
-        }),
+        Ok(content) => {
+            let metadata = fs::metadata(&target)?;
+            Ok(TargetSnapshot {
+                target,
+                content: Some(content),
+                identity: Some(target_identity(&metadata)),
+            })
+        }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(TargetSnapshot {
             target,
             content: None,
+            identity: None,
         }),
         Err(error) => Err(error.into()),
     }
 }
 
-fn ensure_target_unchanged(snapshot: &TargetSnapshot) -> DaloResult<()> {
-    let current = target_snapshot(&snapshot.target)?;
-    if current.content != snapshot.content {
+fn write_target_if_unchanged(
+    snapshot: &TargetSnapshot,
+    content: &str,
+) -> DaloResult<TargetIdentity> {
+    let mut file = match snapshot.identity {
+        Some(_) => OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&snapshot.target)?,
+        None => OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(&snapshot.target)
+            .map_err(|error| {
+                if error.kind() == std::io::ErrorKind::AlreadyExists {
+                    DaloError::InstructionTargetChanged {
+                        path: snapshot.target.clone(),
+                    }
+                } else {
+                    error.into()
+                }
+            })?,
+    };
+    // Keep the target inode locked while checking and replacing its contents.
+    // Editors that use the same standard advisory lock cannot interleave an
+    // update, and a rename-based replacement is harmless because this handle
+    // continues to refer to the original inode.
+    file.lock()?;
+    let identity = target_identity(&file.metadata()?);
+    if snapshot
+        .identity
+        .is_some_and(|expected| expected != identity)
+    {
         return Err(DaloError::InstructionTargetChanged {
             path: snapshot.target.clone(),
         });
     }
+    let current = read_locked_target(&mut file)?;
+    if current != snapshot.content.as_deref().unwrap_or_default() {
+        return Err(DaloError::InstructionTargetChanged {
+            path: snapshot.target.clone(),
+        });
+    }
+    write_locked_target(&mut file, content)?;
+    if !target_has_identity(&snapshot.target, identity)?
+        || read_locked_target(&mut file)? != content
+    {
+        return Err(DaloError::InstructionTargetChanged {
+            path: snapshot.target.clone(),
+        });
+    }
+    Ok(identity)
+}
+
+fn read_locked_target(file: &mut fs::File) -> DaloResult<String> {
+    file.seek(SeekFrom::Start(0))?;
+    let mut content = String::new();
+    file.read_to_string(&mut content)?;
+    Ok(content)
+}
+
+fn write_locked_target(file: &mut fs::File, content: &str) -> DaloResult<()> {
+    file.set_len(0)?;
+    file.seek(SeekFrom::Start(0))?;
+    file.write_all(content.as_bytes())?;
+    file.flush()?;
+    file.sync_all()?;
     Ok(())
 }
 
-fn write_target_if_unchanged(snapshot: &TargetSnapshot, content: &str) -> DaloResult<()> {
-    ensure_target_unchanged(snapshot)?;
-    write_target(&snapshot.target, content)
-}
-
-fn restore_target(snapshot: TargetSnapshot) -> DaloResult<()> {
-    if let Some(content) = snapshot.content {
-        write_target(&snapshot.target, &content)
-    } else {
-        match fs::remove_file(snapshot.target) {
-            Ok(()) => Ok(()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(error) => Err(error.into()),
-        }
+fn target_has_identity(target: &Path, expected: TargetIdentity) -> DaloResult<bool> {
+    match fs::metadata(target) {
+        Ok(metadata) => Ok(target_identity(&metadata) == expected),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error.into()),
     }
 }
 
 fn restore_target_after_error(
     snapshot: TargetSnapshot,
     written_content: &str,
+    written_identity: TargetIdentity,
     original_error: DaloError,
 ) -> DaloError {
     let target = snapshot.target.clone();
-    let restore = match target_snapshot(&target) {
-        Ok(current) if current.content.as_deref() == Some(written_content) => {
-            restore_target(snapshot)
+    let restore = match OpenOptions::new().read(true).write(true).open(&target) {
+        Ok(mut file) => (|| -> DaloResult<()> {
+            file.lock()?;
+            if target_identity(&file.metadata()?) != written_identity
+                || read_locked_target(&mut file)? != written_content
+            {
+                return Err(std::io::Error::other(
+                    "instruction target changed during rollback; newer content was left untouched",
+                )
+                .into());
+            }
+            if let Some(content) = snapshot.content {
+                write_locked_target(&mut file, &content)
+            } else {
+                drop(file);
+                if target_has_identity(&target, written_identity)? {
+                    fs::remove_file(&target)?;
+                }
+                Ok(())
+            }
+        })(),
+        Err(error)
+            if error.kind() == std::io::ErrorKind::NotFound && snapshot.content.is_none() =>
+        {
+            Ok(())
         }
-        Ok(_) => Err(std::io::Error::other(
-            "instruction target changed during rollback; newer content was left untouched",
-        )
-        .into()),
-        Err(error) => Err(error),
+        Err(error) => Err(error.into()),
     };
     match restore {
         Ok(()) => original_error,
@@ -722,6 +827,7 @@ fn restore_target_after_error(
     }
 }
 
+#[cfg(test)]
 fn write_target(target: &Path, content: &str) -> DaloResult<()> {
     let target = writable_target_path(target)?;
     let existing_permissions = fs::metadata(&target)
@@ -1210,19 +1316,6 @@ mod tests {
     }
 
     #[test]
-    fn ensure_target_unchanged_should_reject_external_edits() {
-        let temp = tempfile::tempdir().expect("tempdir should be created");
-        let target = temp.path().join("AGENTS.md");
-        fs::write(&target, "before\n").expect("target should be seeded");
-        let snapshot = target_snapshot(&target).expect("snapshot should be readable");
-
-        fs::write(&target, "external edit\n").expect("target should be edited");
-
-        let error = ensure_target_unchanged(&snapshot).expect_err("external edit should block");
-        assert!(matches!(error, DaloError::InstructionTargetChanged { .. }));
-    }
-
-    #[test]
     fn instruction_rollback_should_report_restore_failure() {
         let temp = tempfile::tempdir().expect("tempdir should be created");
         let occupied_target = temp.path().join("AGENTS.md");
@@ -1230,11 +1323,19 @@ mod tests {
         let snapshot = TargetSnapshot {
             target: occupied_target.clone(),
             content: Some("previous content\n".to_owned()),
+            identity: Some(TargetIdentity {
+                device: 0,
+                inode: 0,
+            }),
         };
 
         let error = restore_target_after_error(
             snapshot,
             "new content",
+            TargetIdentity {
+                device: 0,
+                inode: 0,
+            },
             DaloError::Io(std::io::Error::other("lock write failed")),
         );
         let message = error.to_string();
@@ -1259,17 +1360,38 @@ mod tests {
     }
 
     #[test]
+    fn write_target_if_unchanged_should_reject_replaced_file() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let target = temp.path().join("AGENTS.md");
+        let replacement = temp.path().join("AGENTS.md.external");
+        fs::write(&target, "before\n").expect("target should be seeded");
+        let snapshot = target_snapshot(&target).expect("snapshot should be readable");
+        fs::write(&replacement, "external edit\n").expect("replacement should be written");
+        fs::rename(&replacement, &target).expect("replacement should be installed");
+
+        let error = write_target_if_unchanged(&snapshot, "dalo output\n")
+            .expect_err("replaced target should block replacement");
+        assert!(matches!(error, DaloError::InstructionTargetChanged { .. }));
+        assert_eq!(fs::read_to_string(&target).unwrap(), "external edit\n");
+    }
+
+    #[test]
     fn rollback_should_not_restore_over_newer_external_content() {
         let temp = tempfile::tempdir().expect("tempdir should be created");
         let target = temp.path().join("AGENTS.md");
         fs::write(&target, "before\n").expect("target should be seeded");
         let snapshot = target_snapshot(&target).expect("snapshot should be readable");
         write_target(&target, "dalo output\n").expect("dalo output should be written");
+        let written_identity = target_snapshot(&target)
+            .expect("written target should be readable")
+            .identity
+            .expect("written target should have an identity");
         fs::write(&target, "newer external edit\n").expect("target should be edited");
 
         let error = restore_target_after_error(
             snapshot,
             "dalo output\n",
+            written_identity,
             DaloError::Io(std::io::Error::other("lock write failed")),
         );
 
@@ -1282,6 +1404,36 @@ mod tests {
             fs::read_to_string(&target).unwrap(),
             "newer external edit\n"
         );
+    }
+
+    #[test]
+    fn rollback_should_not_restore_over_replaced_file_with_same_content() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let target = temp.path().join("AGENTS.md");
+        let replacement = temp.path().join("AGENTS.md.external");
+        fs::write(&target, "before\n").expect("target should be seeded");
+        let snapshot = target_snapshot(&target).expect("snapshot should be readable");
+        write_target(&target, "dalo output\n").expect("dalo output should be written");
+        let written_identity = target_snapshot(&target)
+            .expect("written target should be readable")
+            .identity
+            .expect("written target should have an identity");
+        fs::write(&replacement, "dalo output\n").expect("replacement should be written");
+        fs::rename(&replacement, &target).expect("replacement should be installed");
+
+        let error = restore_target_after_error(
+            snapshot,
+            "dalo output\n",
+            written_identity,
+            DaloError::Io(std::io::Error::other("lock write failed")),
+        );
+
+        assert!(
+            error
+                .to_string()
+                .contains("newer content was left untouched")
+        );
+        assert_eq!(fs::read_to_string(&target).unwrap(), "dalo output\n");
     }
 
     #[test]

@@ -757,7 +757,9 @@ JSON output shape: `InstructionPackReport` with `pack_id`, `target`, `action`,
 block untouched. Disabling a pack removes its lock entry even when its managed
 markers are malformed; the target file is left unchanged and the warning
 explains the remaining drift. Mutations abort if the target changed on disk
-after it was read.
+after it was read. Target updates lock the opened inode and verify both its
+content and identity before and after writing, so a file replaced by another
+process is left untouched and the command fails safely.
 
 ### `dalo instructions list`
 
