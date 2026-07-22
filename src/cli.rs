@@ -704,6 +704,10 @@ pub struct TeamCatalogUpdateArgs {
     /// Upstream branch, tag, or ref to resolve and review.
     #[arg(long = "from", value_name = "REF")]
     pub from_ref: String,
+
+    /// Accept blocking security-audit findings for this exact reviewed candidate.
+    #[arg(long, value_name = "REASON")]
+    pub accept_risk: Option<String>,
 }
 
 /// Catalog ID argument.
@@ -817,7 +821,16 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         _ => {}
     }
 
-    let options = GlobalOptions::resolve(store.as_deref(), json, yes, dry_run)?;
+    let options = if matches!(command, Command::Team(_)) {
+        GlobalOptions {
+            store: PathBuf::new(),
+            json,
+            yes,
+            dry_run,
+        }
+    } else {
+        GlobalOptions::resolve(store.as_deref(), json, yes, dry_run)?
+    };
     if command_ignores_dry_run(&command) {
         warn_noop_dry_run(options.dry_run, options.json);
     }
@@ -1896,6 +1909,7 @@ fn run_team(options: &GlobalOptions, command: TeamCommand) -> DaloResult<()> {
                         &args.id,
                         &args.from_ref,
                         options.dry_run,
+                        args.accept_risk.as_deref(),
                     )?;
                     if options.json {
                         print_json(&report)?;

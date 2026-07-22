@@ -214,7 +214,7 @@ pub enum DaloError {
 
     /// A persisted store file uses an unsupported schema version.
     #[error(
-        "unsupported schema version {version} in `{path}`; this dalo supports version {supported}"
+        "unsupported schema version {version} in `{path}`; this dalo supports version {supported}; upgrade dalo"
     )]
     UnsupportedSchema {
         /// Store file path.
@@ -663,7 +663,7 @@ mod tests {
         assert_eq!(error.exit_code(), DaloExitCode::ExpectedFailure);
         assert_eq!(
             error.to_string(),
-            "unsupported schema version 999 in `/tmp/store/state.toml`; this dalo supports version 1"
+            "unsupported schema version 999 in `/tmp/store/state.toml`; this dalo supports version 1; upgrade dalo"
         );
     }
 

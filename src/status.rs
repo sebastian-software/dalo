@@ -1453,6 +1453,9 @@ pub fn print_team_catalog_update(report: &TeamCatalogUpdateReport) {
             println!("    {} {status}", audit.source_ref);
         }
     }
+    if let Some(reason) = &report.accepted_risk_reason {
+        println!("  risk accepted: {reason}");
+    }
     for reason in &report.blocking_reasons {
         println!("  blocked: {reason}");
     }

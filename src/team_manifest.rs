@@ -179,6 +179,9 @@ pub struct TeamCatalogUpdateReport {
     pub outcomes: Vec<DriftEntry>,
     /// Deterministic audits for candidate selected skills.
     pub audits: Vec<AuditReport>,
+    /// Reason accepting blocking audit findings for this exact candidate.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accepted_risk_reason: Option<String>,
     /// Reasons preventing the manifest update.
     pub blocking_reasons: Vec<String>,
     /// Whether this was a no-write preview.
@@ -425,7 +428,17 @@ pub fn update_team_catalog_pin(
     id: &str,
     from_ref: &str,
     dry_run: bool,
+    accept_risk: Option<&str>,
 ) -> DaloResult<TeamCatalogUpdateReport> {
+    let requested_risk_reason = accept_risk
+        .map(str::trim)
+        .filter(|reason| !reason.is_empty())
+        .map(str::to_owned);
+    if accept_risk.is_some() && requested_risk_reason.is_none() {
+        return Err(DaloError::InvalidArgument {
+            reason: "--accept-risk requires a non-empty reason".to_owned(),
+        });
+    }
     git::validate_manifest_revision(from_ref)?;
     let path = team_manifest_path(repo)?;
     reject_symlinked_manifest(&path)?;
@@ -495,19 +508,30 @@ pub fn update_team_catalog_pin(
         }
     }
     let audit_paths = StorePaths::new(temp.path().join("audit-context"));
-    let audits = audit_candidate_selection(
+    let mut audits = audit_candidate_selection(
         &audit_paths,
         &source_id,
         &checkout,
         &candidate_scan.skills,
         &selection_after,
+        requested_risk_reason.as_deref(),
     )?;
+    let mut accepted_risk_reason = None;
     for report in &audits {
         if report.is_blocking() {
             blocking_reasons.push(format!(
                 "security audit blocks candidate skill `{}`",
                 report.source_ref
             ));
+        }
+    }
+    for report in &mut audits {
+        if report.status != audit::AuditStatus::Blocked {
+            // `--accept-risk` is scoped to blocking findings only. Do not
+            // attach an acceptance marker to clean or review-level reports.
+            report.risk_acceptance = None;
+        } else if report.risk_acceptance.is_some() {
+            accepted_risk_reason.clone_from(&requested_risk_reason);
         }
     }
     blocking_reasons.sort();
@@ -551,6 +575,7 @@ pub fn update_team_catalog_pin(
         candidate_commit,
         outcomes,
         audits,
+        accepted_risk_reason,
         blocking_reasons,
         dry_run,
         updated,
@@ -961,6 +986,23 @@ fn read_manifest(path: &Path) -> DaloResult<Option<TeamManifest>> {
     }
     let mut content = String::new();
     file.take(MAX_MANIFEST_BYTES).read_to_string(&mut content)?;
+    #[derive(Deserialize)]
+    struct SchemaVersionProbe {
+        #[serde(default = "default_schema_version")]
+        schema_version: u32,
+    }
+    let probe =
+        toml::from_str::<SchemaVersionProbe>(&content).map_err(|error| DaloError::FileParse {
+            path: path.to_path_buf(),
+            reason: error.to_string(),
+        })?;
+    if probe.schema_version != TEAM_MANIFEST_SCHEMA_VERSION {
+        return Err(DaloError::UnsupportedSchema {
+            path: path.to_path_buf(),
+            version: probe.schema_version,
+            supported: TEAM_MANIFEST_SCHEMA_VERSION,
+        });
+    }
     toml::from_str(&content)
         .map(Some)
         .map_err(|error| DaloError::FileParse {
@@ -1409,6 +1451,7 @@ fn audit_candidate_selection(
     checkout: &Path,
     skills: &[SkillRecord],
     selection: &[String],
+    accept_risk: Option<&str>,
 ) -> DaloResult<Vec<AuditReport>> {
     let selected = selection.iter().cloned().collect::<BTreeSet<_>>();
     let mut reports = Vec::new();
@@ -1431,6 +1474,7 @@ fn audit_candidate_selection(
             &skill.path,
             &AuditOptions {
                 persist: false,
+                accept_risk: accept_risk.map(str::to_owned),
                 ..AuditOptions::default()
             },
         )?;
