@@ -1098,6 +1098,9 @@ pub fn print_instruction_pack_report(report: &InstructionPackReport) {
         report.pack_id,
         report.target.display()
     );
+    if let Some(warning) = &report.warning {
+        println!("warning: {warning}");
+    }
 }
 
 /// Print a human-readable catalog drift report.

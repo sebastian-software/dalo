@@ -198,6 +198,13 @@ pub enum DaloError {
         path: PathBuf,
     },
 
+    /// An instruction target changed after it was read for a mutation.
+    #[error("instruction target `{path}` changed on disk; re-run the command")]
+    InstructionTargetChanged {
+        /// Instruction-file target that changed during the operation.
+        path: PathBuf,
+    },
+
     /// A local skill destination already exists.
     #[error("local skill destination `{path}` already exists; dalo will not overwrite it")]
     AdoptionDestinationExists {
@@ -397,7 +404,8 @@ impl DaloError {
             Self::DirtySource { .. }
             | Self::StoreLocked { .. }
             | Self::StateMetadataConflict { .. }
-            | Self::MalformedInstructionBlock { .. } => DaloExitCode::UnsafeState,
+            | Self::MalformedInstructionBlock { .. }
+            | Self::InstructionTargetChanged { .. } => DaloExitCode::UnsafeState,
             Self::StorePath { .. }
             | Self::InvalidStorePath { .. }
             | Self::CommandFailed { .. }
@@ -625,6 +633,19 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "instruction pack `house-style` was not found; create `/tmp/store/local/instructions/house-style.md` before enabling it"
+        );
+    }
+
+    #[test]
+    fn instruction_target_changed_should_render_unsafe_state() {
+        let error = DaloError::InstructionTargetChanged {
+            path: PathBuf::from("/tmp/AGENTS.md"),
+        };
+
+        assert_eq!(error.exit_code(), DaloExitCode::UnsafeState);
+        assert_eq!(
+            error.to_string(),
+            "instruction target `/tmp/AGENTS.md` changed on disk; re-run the command"
         );
     }
 

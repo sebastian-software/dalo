@@ -7909,6 +7909,53 @@ fn instructions_enable_should_reject_malformed_existing_block() {
 }
 
 #[test]
+fn instructions_disable_should_remove_lock_for_malformed_existing_block() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target_file = temp_dir.path().join("AGENTS.md");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::write(
+        store.join("local/instructions/house-style.md"),
+        "version: 1.0\n\nUse tabs.\n",
+    )
+    .expect("pack should be written");
+    std::fs::write(&target_file, "# Project\n").expect("target should be written");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "house-style"])
+        .arg(&target_file)
+        .assert()
+        .success();
+
+    let malformed = "# Project\n\n<!-- dalo:start house-style -->\nmissing end\n";
+    std::fs::write(&target_file, malformed).expect("malformed target should be written");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "disable", "house-style"])
+        .arg(&target_file)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("disabled"))
+        .stdout(predicate::str::contains("target left untouched"));
+
+    assert_eq!(
+        std::fs::read_to_string(&target_file).expect("target should remain readable"),
+        malformed
+    );
+    assert!(read_user_lock(&store).active_instruction_packs.is_empty());
+}
+
+#[test]
 fn instructions_enable_should_fail_on_non_utf8_target_without_rewriting() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

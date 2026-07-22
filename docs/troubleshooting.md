@@ -132,7 +132,7 @@ Lock drift compares the previous `lock.toml` with the current live resolution.
 | Kind | What it means | Recovery |
 | --- | --- | --- |
 | `missing` | The target file or managed block is missing. | Re-render with `dalo instructions enable <pack> <file>`, or disable the pack if no longer wanted. |
-| `malformed` | Managed block markers are duplicated, reversed, unreadable, or malformed. | Fix the markers manually, then re-run `dalo instructions enable <pack> <file>`. |
+| `malformed` | Managed block markers are duplicated, reversed, unreadable, or malformed. | Re-run `dalo instructions disable <pack> <file>` to remove the stale lock entry while leaving the malformed target untouched, then fix or remove the markers before re-enabling. |
 | `stale` | The block exists but no longer matches the pack body. | Re-render with `dalo instructions enable <pack> <file>`. |
 | `source_missing` | The active lock entry points to a pack that cannot be read. | Restore the pack file or disable the pack. |
 

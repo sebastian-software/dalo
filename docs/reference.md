@@ -737,7 +737,9 @@ dalo instructions enable team-style ~/.codex/AGENTS.md
 dalo --dry-run instructions enable team-style ./AGENTS.md
 ```
 
-JSON output shape: `InstructionPackReport`.
+JSON output shape: `InstructionPackReport` with `pack_id`, `target`, `action`,
+`dry_run`, and an optional `warning` when recovery leaves a malformed target
+block untouched.
 
 ### `dalo instructions disable <pack> <file>`
 
@@ -750,7 +752,12 @@ dalo instructions disable team-style ~/.codex/AGENTS.md
 dalo --json instructions disable team-style ./AGENTS.md
 ```
 
-JSON output shape: `InstructionPackReport`.
+JSON output shape: `InstructionPackReport` with `pack_id`, `target`, `action`,
+`dry_run`, and an optional `warning` when recovery leaves a malformed target
+block untouched. Disabling a pack removes its lock entry even when its managed
+markers are malformed; the target file is left unchanged and the warning
+explains the remaining drift. Mutations abort if the target changed on disk
+after it was read.
 
 ### `dalo instructions list`
 
@@ -846,7 +853,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `resolve unkeep` | `UnkeepReport` | `selector`, `removed[]`, `dry_run` |
 | `resolve remove-owned` | `RemoveOwnedReport` | `id`, `link_path`, `status` |
 | `doctor` | `DoctorReport` | `store`, `findings[]`, `summary` |
-| `instructions enable` / `disable` | `InstructionPackReport` | `pack_id`, `target`, `action`, `dry_run` |
+| `instructions enable` / `disable` | `InstructionPackReport` | `pack_id`, `target`, `action`, `dry_run`, optional `warning` |
 | `instructions list` | `InstructionPackListReport` | `active_instruction_packs[]` with `pack_id`, `target`, `source_id`, optional `commit`, optional `version` |
 
 Each `AuditReport.static_findings[]` entry contains `id`, `severity`,
