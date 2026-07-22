@@ -11,7 +11,7 @@ for document in "$root/README.md" "$root/site/index.html" "$root/site/install.md
   grep -q 'dalo source select sebastian pr-review' "$document"
   grep -q 'dalo approve skill sebastian:pr-review' "$document"
 done
-grep -q 'dalo audit sebastian:pr-review --agent auto' "$root/README.md"
+grep -q 'dalo audit sebastian:pr-review --reviewer auto' "$root/README.md"
 grep -q 'Watch the 15-second demo' "$root/README.md"
 ! grep -q '20-second demo' "$root/README.md"
 grep -q '15-second secure-sync demo' "$root/site/index.html"
