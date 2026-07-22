@@ -1185,6 +1185,11 @@ fn run_sync(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
 
 fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
     let paths = store::StorePaths::new(options.store.clone());
+    let _catalog_lock = if options.dry_run {
+        store::CatalogLock::acquire_shared(&paths)?
+    } else {
+        store::CatalogLock::acquire_exclusive(&paths)?
+    };
     if options.dry_run {
         catalog::ensure_no_pending_catalog_advance(&paths)?;
     } else {
@@ -1817,6 +1822,11 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             ensure_initialized(&paths)?;
             let _lock = if args.advance && !options.dry_run {
                 Some(store::StoreLock::acquire(&paths)?)
+            } else {
+                None
+            };
+            let _catalog_lock = if args.advance && !options.dry_run {
+                Some(store::CatalogLock::acquire_exclusive(&paths)?)
             } else {
                 None
             };

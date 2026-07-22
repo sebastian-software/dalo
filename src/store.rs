@@ -57,6 +57,8 @@ pub struct StorePaths {
     pub source_lock_file: PathBuf,
     /// Durable recovery record for an interrupted catalog advance.
     pub catalog_advance_file: PathBuf,
+    /// Lock coordinating catalog checks with catalog mutations.
+    pub catalog_lock_file: PathBuf,
     /// Content-addressed security audit reports.
     pub audits_dir: PathBuf,
     /// Installed scheduler metadata.
@@ -86,6 +88,7 @@ impl StorePaths {
             sources_dir: root.join("sources"),
             source_lock_file: root.join("source-lock.toml"),
             catalog_advance_file: root.join("catalog-advance.toml"),
+            catalog_lock_file: root.join(".catalog.lock"),
             audits_dir: root.join("audits"),
             autosync_file: root.join("autosync.toml"),
             autosync_run_file: root.join("autosync-run.toml"),
@@ -732,6 +735,38 @@ pub fn write_state(paths: &StorePaths, state: &StateFile) -> DaloResult<()> {
 #[derive(Debug)]
 pub struct StoreLock {
     _file: fs::File,
+}
+
+/// Shared/exclusive lock for catalog checkout and source-lock operations.
+#[derive(Debug)]
+pub struct CatalogLock {
+    _file: fs::File,
+}
+
+impl CatalogLock {
+    /// Acquire a shared catalog lock for a read-only check.
+    pub fn acquire_shared(paths: &StorePaths) -> DaloResult<Self> {
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&paths.catalog_lock_file)?;
+        file.lock_shared()?;
+        Ok(Self { _file: file })
+    }
+
+    /// Acquire an exclusive catalog lock for a mutation.
+    pub fn acquire_exclusive(paths: &StorePaths) -> DaloResult<Self> {
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&paths.catalog_lock_file)?;
+        file.lock()?;
+        Ok(Self { _file: file })
+    }
 }
 
 impl StoreLock {

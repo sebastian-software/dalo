@@ -329,14 +329,19 @@ fn compare_sources(previous: &UserLock, current: &UserLock, drift: &mut Vec<Lock
             current_sources.get(source_id),
         ) {
             (Some(previous_source), Some(current_source))
-                if previous_source.kind != SourceKind::Catalog
-                    && current_source.kind != SourceKind::Catalog
-                    && previous_source.commit != current_source.commit =>
+                if previous_source.kind != current_source.kind
+                    || (previous_source.kind != SourceKind::Catalog
+                        && current_source.kind != SourceKind::Catalog
+                        && previous_source.commit != current_source.commit) =>
             {
                 drift.push(LockDrift {
                     code: LockDriftCode::SourceCommitChanged,
                     subject: source_id.to_owned(),
-                    message: format!("source `{source_id}` commit differs from lock"),
+                    message: if previous_source.kind != current_source.kind {
+                        format!("source `{source_id}` kind differs from lock")
+                    } else {
+                        format!("source `{source_id}` commit differs from lock")
+                    },
                 });
             }
             (Some(_), None) => drift.push(LockDrift {
@@ -530,6 +535,34 @@ mod tests {
                 .iter()
                 .all(|entry| entry.code != LockDriftCode::SourceCommitChanged)
         );
+    }
+
+    #[test]
+    fn compare_sources_should_report_source_kind_change() {
+        let previous = UserLock {
+            sources: vec![LockedSource {
+                id: "source".to_owned(),
+                kind: SourceKind::Catalog,
+                path: PathBuf::from("/source"),
+                commit: None,
+            }],
+            ..UserLock::empty()
+        };
+        let current = UserLock {
+            sources: vec![LockedSource {
+                id: "source".to_owned(),
+                kind: SourceKind::Team,
+                path: PathBuf::from("/source"),
+                commit: Some("bbbb".to_owned()),
+            }],
+            ..UserLock::empty()
+        };
+
+        let drift = compare_user_lock(&previous, &current);
+
+        assert!(drift.iter().any(|entry| {
+            entry.code == LockDriftCode::SourceCommitChanged && entry.subject == "source"
+        }));
     }
 
     #[test]

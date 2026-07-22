@@ -792,6 +792,7 @@ pub fn compare_catalog_inventory(
 /// or the resolved set; supported legacy locks are rehashed in memory at their
 /// existing pins before comparison.
 pub fn check_catalog_drift(paths: &StorePaths, id: &str) -> DaloResult<CatalogDrift> {
+    let _catalog_lock = store::CatalogLock::acquire_shared(paths)?;
     ensure_no_pending_catalog_advance(paths)?;
     let config = store::read_config(paths)?;
     let source = catalog_source_from_config(&config.sources, id)?;
