@@ -44,6 +44,9 @@ pub struct InstructionPackReport {
     pub action: String,
     /// Whether the command ran as dry-run.
     pub dry_run: bool,
+    /// Non-fatal recovery detail, such as a malformed block left untouched.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
 }
 
 /// Active instruction packs returned by `instructions list`.
@@ -460,7 +463,8 @@ where
 {
     let target = normalize_target_path(target)?;
     let pack = read_local_pack(paths, pack_id)?;
-    let existing = read_target(&target)?;
+    let snapshot = target_snapshot(&target)?;
+    let existing = snapshot.content.clone().unwrap_or_default();
     let rendered = render_block(&existing, &pack.id, &pack.body)?;
     let mut lock = store::read_user_lock(paths)?;
     if !dry_run {
@@ -478,7 +482,7 @@ where
                 .cmp(&right.pack_id)
                 .then(left.target.cmp(&right.target))
         });
-        let snapshot = target_snapshot(&target)?;
+        ensure_target_unchanged(&snapshot)?;
         write_target(&target, &rendered)?;
         if let Err(error) = write_lock(paths, &lock) {
             return Err(restore_target_after_error(snapshot, error));
@@ -490,6 +494,7 @@ where
         target,
         action: "enabled".to_owned(),
         dry_run,
+        warning: None,
     })
 }
 
@@ -514,18 +519,37 @@ where
     F: FnOnce(&StorePaths, &crate::lockfile::UserLock) -> DaloResult<()>,
 {
     let target = normalize_target_path(target)?;
-    let existing = read_target(&target)?;
-    let has_block = find_block(&existing, pack_id)?.is_some();
+    let snapshot = target_snapshot(&target)?;
+    let existing = snapshot.content.clone().unwrap_or_default();
+    let (block, malformed_error) = match find_block(&existing, pack_id) {
+        Ok(block) => (block, None),
+        Err(error) => (None, Some(error.to_string())),
+    };
+    let has_block = block.is_some();
     let mut lock = store::read_user_lock(paths)?;
     let before = lock.active_instruction_packs.len();
     let has_lock_entry = lock
         .active_instruction_packs
         .iter()
         .any(|entry| entry.pack_id == pack_id && targets_match(entry, &target));
+    let warning = malformed_error.map(|error| {
+        let lock_action = if has_lock_entry {
+            if dry_run {
+                "the lock entry would be removed"
+            } else {
+                "the lock entry was removed"
+            }
+        } else {
+            "no matching lock entry was found"
+        };
+        format!("{error}; target left untouched and {lock_action}")
+    });
 
-    let updated = has_block
-        .then(|| remove_block(&existing, pack_id))
-        .transpose()?;
+    let updated = if warning.is_none() && has_block {
+        Some(remove_block(&existing, pack_id)?)
+    } else {
+        None
+    };
     let action = if has_block || has_lock_entry {
         "disabled"
     } else {
@@ -536,7 +560,7 @@ where
         .retain(|entry| !(entry.pack_id == pack_id && targets_match(entry, &target)));
     if !dry_run {
         if let Some(updated) = updated {
-            let snapshot = target_snapshot(&target)?;
+            ensure_target_unchanged(&snapshot)?;
             write_target(&target, &updated)?;
             if lock.active_instruction_packs.len() != before
                 && let Err(error) = write_lock(paths, &lock)
@@ -553,6 +577,7 @@ where
         target,
         action: action.to_owned(),
         dry_run,
+        warning,
     })
 }
 
@@ -588,6 +613,7 @@ fn lexically_normalize(path: &Path) -> PathBuf {
     normalized
 }
 
+#[cfg(test)]
 fn read_target(target: &Path) -> DaloResult<String> {
     match fs::read_to_string(target) {
         Ok(content) => Ok(content),
@@ -615,6 +641,16 @@ fn target_snapshot(target: &Path) -> DaloResult<TargetSnapshot> {
         }),
         Err(error) => Err(error.into()),
     }
+}
+
+fn ensure_target_unchanged(snapshot: &TargetSnapshot) -> DaloResult<()> {
+    let current = target_snapshot(&snapshot.target)?;
+    if current.content != snapshot.content {
+        return Err(DaloError::InstructionTargetChanged {
+            path: snapshot.target.clone(),
+        });
+    }
+    Ok(())
 }
 
 fn restore_target(snapshot: TargetSnapshot) -> DaloResult<()> {
@@ -1085,6 +1121,59 @@ mod tests {
                 .len(),
             1
         );
+    }
+
+    #[test]
+    fn disable_pack_should_remove_lock_and_leave_malformed_target_untouched() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp.path().join("store");
+        let target = temp.path().join("AGENTS.md");
+        store::init_store(store_root.clone(), false).expect("store should be initialized");
+        let paths = StorePaths::new(store_root);
+        fs::write(
+            paths.local_instructions_dir.join(format!("{PACK}.md")),
+            "Body\n",
+        )
+        .expect("pack should be written");
+        fs::write(&target, "user-owned content\n").expect("target should be seeded");
+        enable_pack(&paths, PACK, &target, false).expect("pack should enable");
+
+        let malformed = format!(
+            "user-owned content\n\n{}\nmissing end\n",
+            start_marker(PACK)
+        );
+        fs::write(&target, &malformed).expect("malformed target should be written");
+
+        let report = disable_pack(&paths, PACK, &target, false)
+            .expect("disable should recover the malformed block lock");
+
+        assert_eq!(report.action, "disabled");
+        assert!(
+            report
+                .warning
+                .as_deref()
+                .is_some_and(|warning| warning.contains("target left untouched"))
+        );
+        assert_eq!(fs::read_to_string(&target).unwrap(), malformed);
+        assert!(
+            store::read_user_lock(&paths)
+                .unwrap()
+                .active_instruction_packs
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn ensure_target_unchanged_should_reject_external_edits() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let target = temp.path().join("AGENTS.md");
+        fs::write(&target, "before\n").expect("target should be seeded");
+        let snapshot = target_snapshot(&target).expect("snapshot should be readable");
+
+        fs::write(&target, "external edit\n").expect("target should be edited");
+
+        let error = ensure_target_unchanged(&snapshot).expect_err("external edit should block");
+        assert!(matches!(error, DaloError::InstructionTargetChanged { .. }));
     }
 
     #[test]
