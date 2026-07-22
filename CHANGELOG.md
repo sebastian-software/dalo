@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.10.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.9.2...dalo-v0.10.0) (2026-07-22)
+
+
+### Features
+
+* **agent:** add portable agent package foundation ([4b8973b](https://github.com/sebastian-software/dalo/commit/4b8973be2d5d1f6fe64136119286bf5379f11f0b))
+* **audit:** rename reviewer selector ([1707f8f](https://github.com/sebastian-software/dalo/commit/1707f8fc9c7775d8d51cf2d964a69d6ea07e3f05))
+
+
+### Bug Fixes
+
+* harden portable agent previews ([cad182d](https://github.com/sebastian-software/dalo/commit/cad182deedcfd67b7b5c251b6790c2c4e2920379))
+* harden team catalog updates ([5c641a5](https://github.com/sebastian-software/dalo/commit/5c641a5dd9de491b2871138d8275f5ac7a9c141a))
+* keep catalog refresh consistent ([0255dc9](https://github.com/sebastian-software/dalo/commit/0255dc92b0142bc37c0221e7cc84b1a53b4cf1bc))
+* satisfy strict clippy byte lint ([b8876e0](https://github.com/sebastian-software/dalo/commit/b8876e01d7f2ce978d1c844ba0de755aadb7f9e3))
+* serialize catalog checks with advances ([b004792](https://github.com/sebastian-software/dalo/commit/b004792c52568d9d48477dbfd3dbaf819fdd6988))
+
 ## [0.9.2](https://github.com/sebastian-software/dalo/compare/dalo-v0.9.1...dalo-v0.9.2) (2026-07-20)
 
 
