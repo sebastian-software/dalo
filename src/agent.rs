@@ -564,7 +564,7 @@ fn hash_package_files(entries: &PackageFiles) -> String {
     for (path, bytes) in entries {
         hash.update((path.len() as u64).to_be_bytes());
         hash.update(path.as_bytes());
-        hash.update([b'f']);
+        hash.update(*b"f");
         hash.update((bytes.len() as u64).to_be_bytes());
         hash.update(bytes);
     }
