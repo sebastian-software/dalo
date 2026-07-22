@@ -321,6 +321,15 @@ pub enum DaloError {
         matches: String,
     },
 
+    /// An unmanaged-skill selector matches more than one target path.
+    #[error("skill selector `{selector}` is ambiguous; choose one of: {matches}")]
+    AmbiguousSkillSelector {
+        /// User-provided selector.
+        selector: String,
+        /// Human-readable matching candidate IDs.
+        matches: String,
+    },
+
     /// Managed instruction block markers are malformed.
     #[error("malformed instruction block for `{pack_id}`: {reason}")]
     MalformedInstructionBlock {
@@ -393,6 +402,7 @@ impl DaloError {
             | Self::TrackingSourceNotFastForward { .. }
             | Self::NotACatalogSource { .. }
             | Self::AmbiguousSkillReference { .. }
+            | Self::AmbiguousSkillSelector { .. }
             | Self::UnknownSource { .. }
             | Self::SkillNotFound { .. }
             | Self::InstructionPackNotFound { .. }

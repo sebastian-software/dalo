@@ -518,7 +518,7 @@ Adoption runs the same deterministic security preflight before copying or
 replacing anything. `--reviewer` (with deprecated `--agent` alias), `--refresh-audit`, and `--accept-risk <reason>`
 have the same meaning as on `dalo approve skill`.
 
-The `<skill>` argument can be a slot name, a disambiguating path, or an ID reported by `status` or `resolve list`.
+The `<skill>` argument can be a slot name, a disambiguating path, or an ID reported by `status` or `resolve list`. If the slot name exists in more than one target, Dalo refuses the ambiguous selector and lists the paths to choose from.
 
 Examples:
 
@@ -527,6 +527,10 @@ dalo adopt review-helper
 dalo adopt review-helper --replace
 dalo --dry-run adopt /path/to/target/review-helper
 ```
+
+When `--replace` reuses an existing local copy, Dalo compares the complete
+directory shape before removing the unmanaged original: file bytes and
+executable bits, empty directories, and symlink targets must all match.
 
 Successful JSON output combines the preflight and mutation as
 `{ "audit": AuditReport, "adoption": AdoptReport }`. If the audit blocks the

@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
 use std::os::unix::fs as unix_fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
@@ -507,11 +508,26 @@ pub fn remove_owned_skill(
 /// Resolve one unmanaged skill selector without mutating it.
 pub fn find_unmanaged_skill(paths: &StorePaths, selector: &str) -> DaloResult<UnmanagedSkill> {
     let skills = discover_unmanaged_skills(paths)?;
-    if let Some(skill) = skills
-        .iter()
-        .find(|skill| skill.id == selector || skill.slot_name == selector)
-    {
+    if let Some(skill) = skills.iter().find(|skill| skill.id == selector) {
         return Ok(skill.clone());
+    }
+    let slot_matches = skills
+        .iter()
+        .filter(|skill| skill.slot_name == selector)
+        .collect::<Vec<_>>();
+    match slot_matches.as_slice() {
+        [skill] => return Ok((*skill).clone()),
+        [] => {}
+        matches => {
+            return Err(DaloError::AmbiguousSkillSelector {
+                selector: selector.to_owned(),
+                matches: matches
+                    .iter()
+                    .map(|skill| skill.id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            });
+        }
     }
 
     let selector_path = PathBuf::from(selector);
@@ -812,37 +828,73 @@ where
     Ok(())
 }
 
-/// Whether two directories have identical content: the same set of relative file
-/// paths, each with identical bytes. Used to confirm an existing local destination
+#[derive(Debug, PartialEq, Eq)]
+enum DirectoryEntryKind {
+    Directory,
+    File { executable: bool, content: Vec<u8> },
+    Symlink(PathBuf),
+    Other,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct DirectoryEntrySnapshot {
+    path: PathBuf,
+    kind: DirectoryEntryKind,
+}
+
+/// Whether two directories have identical content and filesystem shape: the same
+/// set of relative entries, with matching file bytes, executable bits, empty
+/// directories, and symlink targets. Used to confirm an existing local destination
 /// is the copy a prior `adopt` made — not an unrelated pre-existing local skill —
 /// before replacing (and deleting) the unmanaged original. On any doubt it returns
 /// `false`, so the caller refuses rather than risk discarding unmanaged content.
 fn directories_match(left: &Path, right: &Path) -> DaloResult<bool> {
-    let mut left_files = Vec::new();
-    let mut right_files = Vec::new();
-    collect_relative_files(left, left, &mut left_files)?;
-    collect_relative_files(right, right, &mut right_files)?;
-    left_files.sort();
-    right_files.sort();
-    if left_files != right_files {
+    let mut left_entries = Vec::new();
+    let mut right_entries = Vec::new();
+    collect_relative_entries(left, left, &mut left_entries)?;
+    collect_relative_entries(right, right, &mut right_entries)?;
+    left_entries.sort_by(|left, right| left.path.cmp(&right.path));
+    right_entries.sort_by(|left, right| left.path.cmp(&right.path));
+    if left_entries != right_entries {
         return Ok(false);
     }
-    for relative in &left_files {
-        if fs::read(left.join(relative))? != fs::read(right.join(relative))? {
-            return Ok(false);
-        }
-    }
-    Ok(true)
+    Ok(!left_entries
+        .iter()
+        .any(|entry| entry.kind == DirectoryEntryKind::Other))
 }
 
-fn collect_relative_files(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> DaloResult<()> {
+fn collect_relative_entries(
+    root: &Path,
+    dir: &Path,
+    out: &mut Vec<DirectoryEntrySnapshot>,
+) -> DaloResult<()> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
-        if entry.file_type()?.is_dir() {
-            collect_relative_files(root, &path, out)?;
-        } else if let Ok(relative) = path.strip_prefix(root) {
-            out.push(relative.to_path_buf());
+        let relative = path
+            .strip_prefix(root)
+            .map_err(|error| io::Error::other(error.to_string()))?
+            .to_path_buf();
+        let metadata = fs::symlink_metadata(&path)?;
+        let file_type = metadata.file_type();
+        let kind = if file_type.is_dir() {
+            DirectoryEntryKind::Directory
+        } else if file_type.is_symlink() {
+            DirectoryEntryKind::Symlink(fs::read_link(&path)?)
+        } else if file_type.is_file() {
+            DirectoryEntryKind::File {
+                executable: metadata.permissions().mode() & 0o111 != 0,
+                content: fs::read(&path)?,
+            }
+        } else {
+            DirectoryEntryKind::Other
+        };
+        out.push(DirectoryEntrySnapshot {
+            path: relative,
+            kind,
+        });
+        if file_type.is_dir() {
+            collect_relative_entries(root, &path, out)?;
         }
     }
     Ok(())
@@ -860,6 +912,7 @@ fn owned_id(skill: &OwnedSkillState) -> String {
 mod tests {
     use std::fs;
     use std::io;
+    use std::os::unix::fs::PermissionsExt;
 
     use super::*;
     use crate::store::{MaterializationDirState, StateFile, TargetState};
@@ -1123,6 +1176,88 @@ mod tests {
         assert!(message.contains("restore it"));
         assert!(message.contains("remove it before retrying"));
         assert!(message.contains(&link_path.display().to_string()));
+    }
+
+    #[test]
+    fn find_unmanaged_skill_should_reject_ambiguous_slot_selector() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let first_target = temp_dir.path().join("first");
+        let second_target = temp_dir.path().join("second");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        write_state(&store_root, &first_target, &first_target.join("unused"));
+        fs::create_dir_all(&second_target).expect("second target should be created");
+        let paths = StorePaths::new(store_root);
+        let mut state = store::read_state(&paths).expect("state should be readable");
+        state.materialization_dirs.push(MaterializationDirState {
+            path: second_target.clone(),
+            logical_targets: vec!["second".to_owned()],
+            extra: Default::default(),
+        });
+        store::write_state(&paths, &state).expect("state should be writable");
+        for target in [&first_target, &second_target] {
+            let skill = target.join("review");
+            fs::create_dir_all(&skill).expect("skill directory should be created");
+            fs::write(skill.join(SKILL_FILE), "# Review\n").expect("skill should be written");
+        }
+
+        let error = find_unmanaged_skill(&paths, "review")
+            .expect_err("bare slot selector should be rejected as ambiguous");
+
+        assert!(matches!(error, DaloError::AmbiguousSkillSelector { .. }));
+        let message = error.to_string();
+        assert!(message.contains("ambiguous"));
+        assert!(message.contains(&first_target.join("review").display().to_string()));
+        assert!(message.contains(&second_target.join("review").display().to_string()));
+    }
+
+    #[test]
+    fn directories_match_should_compare_executable_bits() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let left = temp_dir.path().join("left");
+        let right = temp_dir.path().join("right");
+        fs::create_dir_all(&left).expect("left should be created");
+        fs::create_dir_all(&right).expect("right should be created");
+        fs::write(left.join("run.sh"), "echo hi\n").expect("left file should be written");
+        fs::write(right.join("run.sh"), "echo hi\n").expect("right file should be written");
+        let mut executable = fs::metadata(left.join("run.sh"))
+            .expect("left metadata should be readable")
+            .permissions();
+        executable.set_mode(executable.mode() | 0o111);
+        fs::set_permissions(left.join("run.sh"), executable)
+            .expect("left permissions should be writable");
+
+        assert!(!directories_match(&left, &right).expect("directory comparison should succeed"));
+    }
+
+    #[test]
+    fn directories_match_should_compare_empty_directories() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let left = temp_dir.path().join("left");
+        let right = temp_dir.path().join("right");
+        fs::create_dir_all(left.join("empty")).expect("left empty dir should be created");
+        fs::create_dir_all(&right).expect("right should be created");
+
+        assert!(!directories_match(&left, &right).expect("directory comparison should succeed"));
+    }
+
+    #[test]
+    fn directories_match_should_compare_symlink_targets() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let left = temp_dir.path().join("left");
+        let right = temp_dir.path().join("right");
+        fs::create_dir_all(&left).expect("left should be created");
+        fs::create_dir_all(&right).expect("right should be created");
+        fs::write(temp_dir.path().join("left-target"), "left\n")
+            .expect("left target should be written");
+        fs::write(temp_dir.path().join("right-target"), "right\n")
+            .expect("right target should be written");
+        unix_fs::symlink("../left-target", left.join("linked"))
+            .expect("left symlink should be created");
+        unix_fs::symlink("../right-target", right.join("linked"))
+            .expect("right symlink should be created");
+
+        assert!(!directories_match(&left, &right).expect("directory comparison should succeed"));
     }
 
     #[test]
