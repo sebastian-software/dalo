@@ -95,7 +95,7 @@ Lock drift compares the previous `lock.toml` with the current live resolution.
 | `invalid_slot_name` | Frontmatter `name` or folder name is not a portable slot name. | Rename the folder or frontmatter `name` to a lowercase portable token. |
 | `duplicate_slot_name` | One source contains multiple skills with the same slot name. | Rename one skill or split the source. |
 | `unreadable_path` | Dalo could not read a skill path. | Fix filesystem permissions, broken links, or the source checkout. |
-| `skipped_symlink` | Dalo skipped a symlinked directory to keep source discovery inside a bounded tree and avoid cycles. | Replace it with a real in-tree directory if it should contain skills, or remove the symlink. |
+| `skipped_symlink` | Dalo skipped a symlinked directory or an out-of-tree `SKILL.md` metadata symlink to keep source discovery and skill identity inside a bounded checkout. | Replace it with a real in-tree path, or remove the symlink. |
 
 ### Target Scan Warnings
 

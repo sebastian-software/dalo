@@ -213,7 +213,7 @@ pub fn link_target(
 ) -> DaloResult<TargetLinkReport> {
     let entry = registry_entry(target_id)?;
     let path = target_path(entry, path_override)?;
-    let existed_before = path.exists();
+    let existed_before = fs::symlink_metadata(&path).is_ok();
 
     let paths = StorePaths::new(store_root.to_path_buf());
     let mut state = if dry_run {
@@ -230,16 +230,20 @@ pub fn link_target(
             .as_mut()
             .expect("state is loaded before non-dry-run target link");
         let status = upsert_target_state(state, entry.id, &path, &canonical_path)?;
-        if !existed_before {
-            fs::create_dir_all(&path)?;
-        }
-        if let Err(error) = store::write_state(&paths, state) {
-            if !existed_before {
-                // Only remove the leaf when it is still empty. This avoids
-                // leaving a phantom target directory without risking content
-                // that appeared concurrently.
-                let _ = fs::remove_dir(&path);
+        let created_dirs = if existed_before {
+            if !fs::metadata(&path).is_ok_and(|metadata| metadata.is_dir()) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::NotADirectory,
+                    format!("target path `{}` is not a directory", path.display()),
+                )
+                .into());
             }
+            Vec::new()
+        } else {
+            create_target_directories(&path)?
+        };
+        if let Err(error) = store::write_state(&paths, state) {
+            remove_created_target_directories(&created_dirs);
             return Err(error);
         }
         status
@@ -252,6 +256,56 @@ pub fn link_target(
         status,
         created_dir: !existed_before && !dry_run,
     })
+}
+
+fn missing_target_directories(path: &Path) -> Vec<PathBuf> {
+    let mut missing = Vec::new();
+    let mut current = Some(path);
+    while let Some(candidate) = current.filter(|path| !path.as_os_str().is_empty()) {
+        if fs::symlink_metadata(candidate).is_ok() {
+            break;
+        }
+        missing.push(candidate.to_path_buf());
+        current = candidate.parent();
+    }
+    missing.reverse();
+    missing
+}
+
+fn create_target_directories(path: &Path) -> DaloResult<Vec<PathBuf>> {
+    let mut created = Vec::new();
+    for candidate in missing_target_directories(path) {
+        match fs::create_dir(&candidate) {
+            Ok(()) => created.push(candidate),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => {
+                remove_created_target_directories(&created);
+                return Err(error.into());
+            }
+        }
+    }
+
+    if !fs::metadata(path).is_ok_and(|metadata| metadata.is_dir()) {
+        remove_created_target_directories(&created);
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotADirectory,
+            format!("target path `{}` is not a directory", path.display()),
+        )
+        .into());
+    }
+
+    Ok(created)
+}
+
+fn remove_created_target_directories(created: &[PathBuf]) {
+    for path in created.iter().rev() {
+        // Removing only directories that this operation observed as missing
+        // avoids touching pre-existing parents. Stop at the first non-empty
+        // or otherwise unavailable directory so concurrent content is kept.
+        if fs::remove_dir(path).is_err() {
+            break;
+        }
+    }
 }
 
 /// Unlink a target from state without removing target files.
@@ -499,6 +553,43 @@ mod tests {
         assert_eq!(
             store::read_state(&paths).expect("state should remain readable"),
             state
+        );
+    }
+
+    #[test]
+    fn link_target_cleanup_should_remove_new_empty_ancestors_only() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let existing_parent = temp_dir.path().join("existing");
+        let target = existing_parent.join("new/deep/skills");
+        fs::create_dir_all(&existing_parent).expect("existing parent should be created");
+
+        let created = missing_target_directories(&target);
+        fs::create_dir_all(&target).expect("target hierarchy should be created");
+        remove_created_target_directories(&created);
+
+        assert!(existing_parent.is_dir());
+        assert!(!target.exists());
+        assert!(!existing_parent.join("new").exists());
+    }
+
+    #[test]
+    fn link_target_should_reject_a_broken_symlink_without_recording_state() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let target = temp_dir.path().join("broken-skills");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        std::os::unix::fs::symlink(temp_dir.path().join("missing"), &target)
+            .expect("broken target symlink should be created");
+
+        let error = link_target(&store_root, "codex", Some(&target), false)
+            .expect_err("broken target symlink should be rejected");
+
+        assert!(error.to_string().contains("not a directory"));
+        assert!(
+            store::read_state(&StorePaths::new(store_root))
+                .expect("state should remain readable")
+                .targets
+                .is_empty()
         );
     }
 

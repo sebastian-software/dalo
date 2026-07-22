@@ -209,6 +209,11 @@ dalo target link generic ./tmp/agent-skills
 dalo --dry-run target link claude ~/.claude/skills
 ```
 
+When a target path does not exist yet, Dalo creates its missing directory
+ancestors only after validating the state update. If persisting `state.toml`
+fails, newly created empty ancestors are removed again; pre-existing directories
+and any concurrent content are preserved.
+
 JSON output shape: `TargetLinkReport`.
 
 ### `dalo target unlink <target>`
@@ -1190,6 +1195,11 @@ requires:
 | `requires[]` | no | Same-source or same-catalog dependencies. Required skills are expanded only when the closure is linkable and approved. |
 
 If `name` is absent, the directory name is the slot name. Duplicate slot names within one source are warned and de-duplicated by resolver behavior.
+
+`SKILL.md` may reference another file inside the same source checkout, but a
+metadata symlink whose resolved target escapes the checkout is skipped and
+reported as `skipped_symlink`. This keeps skill identity and approval metadata
+contained within the source being scanned.
 
 ## Instruction Packs
 
