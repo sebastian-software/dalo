@@ -152,6 +152,7 @@ fn find_skill_dirs(
 ) -> DaloResult<Vec<PathBuf>> {
     let mut found = Vec::new();
     let mut pending = vec![source_root.to_path_buf()];
+    let canonical_source_root = fs::canonicalize(source_root).ok();
 
     while let Some(dir) = pending.pop() {
         if dir.file_name().is_some_and(|name| name == ".git") {
@@ -160,6 +161,24 @@ fn find_skill_dirs(
 
         let skill_file = dir.join(SKILL_FILE);
         if skill_file.is_file() {
+            let metadata_is_symlink = fs::symlink_metadata(&skill_file)
+                .is_ok_and(|metadata| metadata.file_type().is_symlink());
+            if metadata_is_symlink
+                && !canonical_source_root.as_ref().is_some_and(|source_root| {
+                    skill_file
+                        .canonicalize()
+                        .is_ok_and(|target| target.starts_with(source_root))
+                })
+            {
+                warnings.push(InventoryWarning {
+                    code: InventoryWarningCode::SkippedSymlink,
+                    path: skill_file,
+                    message:
+                        "skipped symlinked SKILL.md whose target is outside the source checkout"
+                            .to_owned(),
+                });
+                continue;
+            }
             found.push(dir);
             continue;
         }
@@ -753,6 +772,59 @@ mod tests {
             .expect("instruction alias should be linked");
         fs::write(source_root.join("skills/review/SKILL.md"), "# Review\n")
             .expect("skill file should be written");
+
+        let inventory = scan_source("team", &source_root).expect("scan should succeed");
+
+        assert_eq!(inventory.skills.len(), 1);
+        assert!(inventory.warnings.is_empty());
+    }
+
+    #[test]
+    fn scan_source_should_warn_when_skill_metadata_symlink_escapes_source() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let source_root = temp_dir.path().join("checkout");
+        let external_skill = temp_dir.path().join("external-review");
+        fs::create_dir_all(source_root.join("skills/review"))
+            .expect("skill directory should be created");
+        fs::create_dir_all(&external_skill).expect("external skill directory should be created");
+        fs::write(
+            external_skill.join(SKILL_FILE),
+            "---\nname: external-review\n---\n# External Review\n",
+        )
+        .expect("external skill file should be written");
+        std::os::unix::fs::symlink(
+            external_skill.join(SKILL_FILE),
+            source_root.join("skills/review").join(SKILL_FILE),
+        )
+        .expect("skill metadata symlink should be created");
+
+        let inventory = scan_source("team", &source_root).expect("scan should succeed");
+
+        assert!(inventory.skills.is_empty());
+        assert_eq!(inventory.warnings.len(), 1);
+        assert_eq!(
+            inventory.warnings[0].code,
+            InventoryWarningCode::SkippedSymlink
+        );
+        assert_eq!(
+            inventory.warnings[0].path,
+            source_root.join("skills/review").join(SKILL_FILE)
+        );
+    }
+
+    #[test]
+    fn scan_source_should_allow_skill_metadata_symlink_inside_source() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let source_root = temp_dir.path().join("checkout");
+        let metadata = source_root.join("metadata/review.md");
+        let skill_dir = source_root.join("skills/review");
+        fs::create_dir_all(metadata.parent().expect("metadata should have a parent"))
+            .expect("metadata directory should be created");
+        fs::create_dir_all(&skill_dir).expect("skill directory should be created");
+        fs::write(&metadata, "---\nname: review\n---\n# Review\n")
+            .expect("metadata should be written");
+        std::os::unix::fs::symlink(&metadata, skill_dir.join(SKILL_FILE))
+            .expect("skill metadata symlink should be created");
 
         let inventory = scan_source("team", &source_root).expect("scan should succeed");
 
