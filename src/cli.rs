@@ -1185,6 +1185,11 @@ fn run_sync(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
 
 fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
     let paths = store::StorePaths::new(options.store.clone());
+    if options.dry_run {
+        catalog::ensure_no_pending_catalog_advance(&paths)?;
+    } else {
+        catalog::recover_pending_catalog_advance(&paths)?;
+    }
     // Read the existing lock before mutating sources or targets. A malformed or
     // newer lock is recovery data, not an empty baseline we are allowed to
     // overwrite after a successful materialization pass.
@@ -1810,7 +1815,11 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
         }
         SourceSubcommand::Refresh(args) => {
             ensure_initialized(&paths)?;
-            let _lock = store::StoreLock::acquire(&paths)?;
+            let _lock = if args.advance && !options.dry_run {
+                Some(store::StoreLock::acquire(&paths)?)
+            } else {
+                None
+            };
             if args.advance {
                 let report = catalog::advance_catalog(&paths, &args.id, options.dry_run)?;
                 if options.json {

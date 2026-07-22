@@ -1,4 +1,3 @@
-use dalo::catalog::SOURCE_LOCK_SCHEMA_VERSION;
 use dalo::lockfile::LockedInstructionPack;
 use dalo::store;
 use predicates::prelude::*;
@@ -6059,7 +6058,7 @@ fn catalog_select_should_support_path_fallback_for_duplicate_slots() {
 }
 
 #[test]
-fn catalog_refresh_check_should_require_store_lock() {
+fn catalog_refresh_check_should_not_require_store_lock() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
@@ -6082,11 +6081,42 @@ fn catalog_refresh_check_should_require_store_lock() {
         .arg(&store)
         .args(["source", "refresh", "marketing", "--check"])
         .assert()
-        .failure()
-        .code(3)
-        .stderr(predicate::str::contains(
-            "another dalo operation is running",
-        ));
+        .success();
+}
+
+#[test]
+fn catalog_refresh_should_explain_how_to_recover_a_missing_checkout() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    std::fs::remove_dir_all(store.join("sources/marketing/checkout"))
+        .expect("catalog checkout should be removable");
+
+    for args in [
+        vec!["source", "refresh", "marketing", "--check"],
+        vec!["source", "refresh", "marketing", "--advance"],
+    ] {
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .args(args)
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("catalog `marketing` checkout"))
+            .stderr(predicate::str::contains(
+                "restore it or remove and re-add the catalog",
+            ));
+    }
 }
 
 #[test]
@@ -6308,7 +6338,7 @@ fn catalog_refresh_check_should_report_executable_bit_change() {
 }
 
 #[test]
-fn source_refresh_check_should_rehash_supported_source_locks_without_phantom_drift() {
+fn source_refresh_check_should_rehash_legacy_locks_in_memory_without_writing() {
     for legacy_schema in [1, 2] {
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
         let store = temp_dir.path().join("store");
@@ -6339,6 +6369,8 @@ fn source_refresh_check_should_rehash_supported_source_locks_without_phantom_dri
             .expect("marketing catalog should be locked");
         catalog.inventory[0].content_hash = format!("legacy-v{legacy_schema}-hash");
         write_source_lock(&store, &lock);
+        let source_lock_before =
+            std::fs::read(store.join("source-lock.toml")).expect("source lock should be readable");
 
         dalo_command()
             .args(["--store"])
@@ -6348,21 +6380,15 @@ fn source_refresh_check_should_rehash_supported_source_locks_without_phantom_dri
             .success()
             .stdout(predicate::str::contains("selected_changed").not());
 
-        let migrated = read_source_lock(&store);
-        assert_eq!(migrated.schema_version, SOURCE_LOCK_SCHEMA_VERSION);
-        assert_ne!(
-            migrated
-                .catalog("marketing")
-                .expect("marketing catalog should stay locked")
-                .inventory[0]
-                .content_hash,
-            format!("legacy-v{legacy_schema}-hash")
+        assert_eq!(
+            std::fs::read(store.join("source-lock.toml")).expect("source lock should be readable"),
+            source_lock_before
         );
     }
 }
 
 #[test]
-fn source_refresh_check_should_migrate_every_catalog_before_bumping_global_schema() {
+fn source_refresh_check_should_not_persist_legacy_sibling_migrations() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
@@ -6397,6 +6423,8 @@ fn source_refresh_check_should_migrate_every_catalog_before_bumping_global_schem
             .content_hash = format!("legacy-{}-hash", catalog.source_id);
     }
     write_source_lock(&store, &lock);
+    let source_lock_before =
+        std::fs::read(store.join("source-lock.toml")).expect("source lock should be readable");
 
     dalo_command()
         .args(["--store"])
@@ -6406,19 +6434,10 @@ fn source_refresh_check_should_migrate_every_catalog_before_bumping_global_schem
         .success()
         .stdout(predicate::str::contains("selected_changed").not());
 
-    let migrated = read_source_lock(&store);
-    assert_eq!(migrated.schema_version, SOURCE_LOCK_SCHEMA_VERSION);
-    for catalog in &migrated.catalogs {
-        assert_ne!(
-            catalog
-                .inventory
-                .iter()
-                .find(|entry| entry.slot_name == "copy-editing")
-                .expect("selected entry should remain locked")
-                .content_hash,
-            format!("legacy-{}-hash", catalog.source_id)
-        );
-    }
+    assert_eq!(
+        std::fs::read(store.join("source-lock.toml")).expect("source lock should be readable"),
+        source_lock_before
+    );
 }
 
 #[test]
@@ -6473,10 +6492,10 @@ fn source_refresh_check_should_isolate_degraded_legacy_catalog_migration() {
 
     let partially_migrated = read_source_lock(&store);
     assert_eq!(partially_migrated.schema_version, 2);
-    assert_ne!(
+    assert_eq!(
         partially_migrated
             .catalog("first")
-            .expect("first catalog should stay locked")
+            .expect("first catalog should remain unchanged")
             .inventory[0]
             .content_hash,
         "legacy-first-hash"
@@ -6484,7 +6503,7 @@ fn source_refresh_check_should_isolate_degraded_legacy_catalog_migration() {
     assert_eq!(
         partially_migrated
             .catalog("second")
-            .expect("second catalog should stay locked for a later retry")
+            .expect("second catalog should remain unchanged")
             .inventory[0]
             .content_hash,
         "legacy-second-hash"
@@ -6720,8 +6739,7 @@ fn catalog_advance_should_update_pin_checkout_and_active_materialization() {
         read_user_lock(&store)
             .sources
             .iter()
-            .any(|source| source.id == "marketing"
-                && source.commit.as_deref() == Some(catalog.commit.as_str()))
+            .any(|source| source.id == "marketing" && source.commit.is_none())
     );
 }
 
@@ -7113,6 +7131,92 @@ fn catalog_advance_failure_should_roll_back_checkout_locks_and_links() {
             "{boundary} target content"
         );
     }
+}
+
+#[test]
+fn catalog_advance_hard_interrupt_should_recover_on_the_next_sync() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "copy-editing"])
+        .assert()
+        .success();
+    approve_source(&store, "marketing");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    let config_before = std::fs::read(store.join("config.toml")).expect("config readable");
+    let source_lock_before =
+        std::fs::read(store.join("source-lock.toml")).expect("source lock readable");
+
+    std::fs::write(
+        repo.join("skills/copy-editing/SKILL.md"),
+        "# copy-editing v2\n",
+    )
+    .expect("skill rewritten");
+    run_git(&repo, &["add", "."]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "update",
+            "-q",
+        ],
+    );
+
+    dalo_command()
+        .env("DALO_CATALOG_ADVANCE_ABORT_AT", "materialization")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "refresh", "marketing", "--advance"])
+        .assert()
+        .failure();
+    assert!(store.join("catalog-advance.toml").is_file());
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    assert_eq!(
+        std::fs::read(store.join("config.toml")).expect("config readable"),
+        config_before
+    );
+    assert_eq!(
+        std::fs::read(store.join("source-lock.toml")).expect("source lock readable"),
+        source_lock_before
+    );
+    assert_eq!(
+        std::fs::read_to_string(target.join("copy-editing/SKILL.md"))
+            .expect("materialized skill readable"),
+        "# copy-editing\n"
+    );
+    assert!(!store.join("catalog-advance.toml").exists());
 }
 
 #[test]
