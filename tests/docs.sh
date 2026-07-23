@@ -127,7 +127,7 @@ dalo="$root/target/debug/dalo"
 "$dalo" --store "$store" source inspect public > /dev/null
 "$dalo" --store "$store" source select public review-helper
 "$dalo" --store "$store" status > "$test_root/status"
-grep -q 'dalo approve skill public:review-helper' "$test_root/status"
+grep -q 'dalo --store .* approve skill public:review-helper' "$test_root/status"
 "$dalo" --store "$store" approve skill public:review-helper
 "$dalo" --store "$store" sync
 test -L "$target/review-helper"
