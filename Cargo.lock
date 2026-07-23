@@ -330,6 +330,7 @@ dependencies = [
  "clap_mangen",
  "predicates",
  "proptest",
+ "rustix",
  "serde",
  "serde_json",
  "sha2",
