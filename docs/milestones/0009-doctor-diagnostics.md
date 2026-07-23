@@ -18,7 +18,6 @@ Make dalo self-explanatory when something is wrong. `doctor` should inspect envi
   - lock parses
   - local source Git repository exists
   - `git` is available
-  - `gh` is available and authenticated for PR flows
   - configured targets exist or can be created
   - duplicate canonical target directories are understood
   - owned symlinks point inside the store
@@ -41,7 +40,6 @@ Make dalo self-explanatory when something is wrong. `doctor` should inspect envi
 - Each finding has severity, code, message, and suggested next command.
 - Broken owned symlinks are reported.
 - Foreign symlinks are reported without being modified.
-- Missing `gh` is only an error for PR-flow readiness, not for normal sync readiness.
 - JSON output can be consumed by automation.
 
 ## Validation
@@ -61,10 +59,9 @@ Validated on 2026-06-24.
 - Added `dalo doctor` with text and JSON output.
 - Doctor is read-only and returns a report instead of mutating or repairing state.
 - Each finding includes severity, code, message, and an optional next command.
-- Added store layout, config, state, lock, local Git, `git`, `gh`, target, duplicate target directory, source dirtiness, pending approval, and cloud-synced path checks.
+- Added store layout, config, state, lock, local Git, `git`, target, duplicate target directory, source dirtiness, pending approval, and cloud-synced path checks.
 - Added owned symlink checks for valid, missing, broken, real-entry, and foreign symlink states.
 - Added unmanaged same-name blocker reporting.
-- Missing or unauthenticated `gh` is reported as PR-flow readiness, not normal sync readiness.
 - Added unit and CLI tests for missing stores, initialized stores, broken symlinks, foreign symlinks, and unmanaged blockers.
 
 ## Suggested Issue Split
@@ -72,5 +69,5 @@ Validated on 2026-06-24.
 - Implement diagnostic model.
 - Add store/config/source checks.
 - Add target/symlink checks.
-- Add Git/gh checks.
+- Add Git checks.
 - Add doctor JSON snapshots.

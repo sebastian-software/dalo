@@ -152,8 +152,6 @@ Doctor includes `ok` and `info` codes as well as warnings/errors. Codes not list
 | `source_store_debris` | warning | Inspect and remove the reported unconfigured source content or interrupted-operation directory when it is no longer needed. |
 | `approvals_invalid` | error | Fix `approvals.toml`; doctor suppresses approval-dependent warnings while it is invalid. |
 | `git_missing` | error | Install Git and ensure `git` is on `PATH`. |
-| `gh_missing` | warning | Install GitHub CLI if you need future PR/promotion flows. Normal sync does not require it. |
-| `gh_unauthenticated` | warning | Run `gh auth login` if you need GitHub PR flows. |
 | `local_git_missing` | error | Run `dalo init` to restore the local source Git repository. |
 | `target_missing` | warning | Recreate the directory or run `dalo target link <target> [path]`. |
 | `cloud_synced_target` | warning | Prefer a non-cloud-synced target path if sync software interferes with symlinks. |

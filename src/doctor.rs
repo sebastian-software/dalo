@@ -113,14 +113,6 @@ pub enum DoctorCode {
     GitAvailable,
     /// Git executable is missing.
     GitMissing,
-    /// GitHub CLI is available.
-    GhAvailable,
-    /// GitHub CLI is missing.
-    GhMissing,
-    /// GitHub CLI is authenticated.
-    GhAuthenticated,
-    /// GitHub CLI is not authenticated.
-    GhUnauthenticated,
     /// Local source has a Git repository.
     LocalGitOk,
     /// Local source Git repository is missing.
@@ -379,25 +371,6 @@ fn check_commands(findings: &mut Vec<DoctorFinding>) {
         findings.push(finding_error(
             DoctorCode::GitMissing,
             "git is not available on PATH",
-            None,
-        ));
-    }
-
-    if command_succeeds("gh", &["--version"]) {
-        findings.push(ok(DoctorCode::GhAvailable, "gh is available"));
-        if command_succeeds("gh", &["auth", "status"]) {
-            findings.push(ok(DoctorCode::GhAuthenticated, "gh is authenticated"));
-        } else {
-            findings.push(finding_warning(
-                DoctorCode::GhUnauthenticated,
-                "gh is not authenticated; PR flows will not work",
-                Some("gh auth login".to_owned()),
-            ));
-        }
-    } else {
-        findings.push(finding_warning(
-            DoctorCode::GhMissing,
-            "gh is not available; normal sync works, but PR flows will not",
             None,
         ));
     }
@@ -1378,10 +1351,6 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::ApprovalsInvalid => "approvals_invalid",
         DoctorCode::GitAvailable => "git_available",
         DoctorCode::GitMissing => "git_missing",
-        DoctorCode::GhAvailable => "gh_available",
-        DoctorCode::GhMissing => "gh_missing",
-        DoctorCode::GhAuthenticated => "gh_authenticated",
-        DoctorCode::GhUnauthenticated => "gh_unauthenticated",
         DoctorCode::LocalGitOk => "local_git_ok",
         DoctorCode::LocalGitMissing => "local_git_missing",
         DoctorCode::TargetExists => "target_exists",
@@ -1468,6 +1437,21 @@ mod tests {
             }
         );
         assert!(!store.exists());
+    }
+
+    #[test]
+    fn run_doctor_should_not_report_unimplemented_github_pr_readiness() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store = temp_dir.path().join("store");
+        store::init_store(store.clone(), false).expect("store should initialize");
+
+        let report = run_doctor(&store);
+        let serialized = serde_json::to_string(&report).expect("doctor report should serialize");
+
+        assert!(
+            !serialized.contains("gh_"),
+            "doctor must not report GitHub CLI readiness before dalo has a PR flow: {serialized}"
+        );
     }
 
     #[test]
