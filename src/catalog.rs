@@ -493,7 +493,7 @@ fn catalog_inventory_from_scan(
             slot_name: skill.slot_name.clone(),
             path: relative_path(checkout, &skill.path),
             content_hash: skill_is_selected(skill, selection, checkout)
-                .then(|| hash_directory(&skill.path))
+                .then(|| hash_skill_directory(checkout, &skill.path))
                 .transpose()?
                 .unwrap_or_default(),
             metadata_hash: hash_metadata(skill),
@@ -519,7 +519,7 @@ fn hydrate_selected_content_hashes(
             continue;
         };
         if skill_is_selected(skill, selection, checkout) && entry.content_hash.is_empty() {
-            entry.content_hash = hash_directory(&skill.path)?;
+            entry.content_hash = hash_skill_directory(checkout, &skill.path)?;
         }
     }
     Ok(())
@@ -1100,6 +1100,8 @@ fn advance_catalog_candidate(
                 &skill.path,
                 &AuditOptions {
                     persist: false,
+                    exclude_root_source_metadata: store::comparable_path(&skill.path)
+                        == store::comparable_path(worktree),
                     ..AuditOptions::default()
                 },
             )
@@ -1632,8 +1634,26 @@ fn relative_path(root: &Path, path: &Path) -> String {
 
 /// Stream a skill directory's files into a stable content fingerprint.
 pub fn hash_directory(skill_dir: &Path) -> DaloResult<String> {
+    hash_directory_with_options(skill_dir, false)
+}
+
+pub(crate) fn hash_source_root_directory(skill_dir: &Path) -> DaloResult<String> {
+    hash_directory_with_options(skill_dir, true)
+}
+
+fn hash_skill_directory(source_root: &Path, skill_dir: &Path) -> DaloResult<String> {
+    hash_directory_with_options(
+        skill_dir,
+        store::comparable_path(source_root) == store::comparable_path(skill_dir),
+    )
+}
+
+fn hash_directory_with_options(
+    skill_dir: &Path,
+    exclude_root_git_metadata: bool,
+) -> DaloResult<String> {
     let mut files = Vec::new();
-    collect_files(skill_dir, &mut files)?;
+    collect_files(skill_dir, skill_dir, exclude_root_git_metadata, &mut files)?;
     files.sort();
 
     let mut hasher = Sha256::new();
@@ -1693,13 +1713,21 @@ fn hash_metadata(skill: &SkillRecord) -> String {
     hex_digest(&hasher.finalize())
 }
 
-fn collect_files(dir: &Path, files: &mut Vec<std::path::PathBuf>) -> DaloResult<()> {
+fn collect_files(
+    root: &Path,
+    dir: &Path,
+    exclude_root_git_metadata: bool,
+    files: &mut Vec<std::path::PathBuf>,
+) -> DaloResult<()> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
+        if exclude_root_git_metadata && dir == root && entry.file_name() == ".git" {
+            continue;
+        }
         let file_type = entry.file_type()?;
         let path = entry.path();
         if file_type.is_dir() {
-            collect_files(&path, files)?;
+            collect_files(root, &path, exclude_root_git_metadata, files)?;
         } else {
             files.push(path);
         }
@@ -1872,5 +1900,25 @@ mod tests {
         let after = hash_directory(&skill_dir).expect("hash should succeed");
 
         assert_ne!(before, after);
+    }
+
+    #[test]
+    fn source_root_hash_should_exclude_checkout_git_metadata() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp.path().join("skill");
+        fs::create_dir_all(skill_dir.join(".git"))
+            .expect("checkout metadata directory should be created");
+        fs::write(skill_dir.join("SKILL.md"), "# Root skill\n").expect("skill should be written");
+        fs::write(skill_dir.join(".git/HEAD"), "ref: refs/heads/main\n")
+            .expect("checkout metadata should be written");
+
+        let before =
+            hash_source_root_directory(&skill_dir).expect("source-root hash should succeed");
+        fs::write(skill_dir.join(".git/HEAD"), "ref: refs/heads/other\n")
+            .expect("checkout metadata should change");
+        let after =
+            hash_source_root_directory(&skill_dir).expect("source-root hash should succeed");
+
+        assert_eq!(before, after);
     }
 }

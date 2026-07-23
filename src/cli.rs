@@ -2568,6 +2568,7 @@ fn run_audit(options: &GlobalOptions, command: AuditCommand) -> DaloResult<()> {
             refresh: command.refresh_audit,
             persist: !options.dry_run,
             accept_risk: command.accept_risk,
+            exclude_root_source_metadata: false,
         },
     )?;
     if options.json {
@@ -2614,6 +2615,7 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
                     refresh: args.refresh_audit,
                     persist: !options.dry_run,
                     accept_risk: args.accept_risk,
+                    exclude_root_source_metadata: false,
                 },
             )?;
             if audit_report.is_blocking() {
@@ -2698,6 +2700,7 @@ fn run_adopt_with_audit(
             refresh,
             persist: !options.dry_run,
             accept_risk,
+            exclude_root_source_metadata: false,
         },
     )?;
     if audit_report.is_blocking() {

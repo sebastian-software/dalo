@@ -1475,6 +1475,8 @@ fn audit_candidate_selection(
             &AuditOptions {
                 persist: false,
                 accept_risk: accept_risk.map(str::to_owned),
+                exclude_root_source_metadata: store::comparable_path(&skill.path)
+                    == store::comparable_path(checkout),
                 ..AuditOptions::default()
             },
         )?;
@@ -1518,7 +1520,11 @@ fn audit_selected(
             paths,
             &format!("{source_id}:{}", skill.slot_name),
             &skill.path,
-            &AuditOptions::default(),
+            &AuditOptions {
+                exclude_root_source_metadata: store::comparable_path(&skill.path)
+                    == store::comparable_path(checkout),
+                ..AuditOptions::default()
+            },
         )?;
         if report.is_blocking() {
             blocked.push(format!("{source_id}:{}", skill.slot_name));

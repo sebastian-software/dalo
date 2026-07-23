@@ -544,7 +544,11 @@ fn audit_source_checkout(
                 paths,
                 &skill.source_ref,
                 &skill.path,
-                &audit::AuditOptions::default(),
+                &audit::AuditOptions {
+                    exclude_root_source_metadata: store::comparable_path(&skill.path)
+                        == store::comparable_path(checkout),
+                    ..audit::AuditOptions::default()
+                },
             )
         })
         .collect()
@@ -854,7 +858,11 @@ fn stage_audit_and_fast_forward(paths: &StorePaths, source: &SourceConfig) -> Da
                 paths,
                 &skill.source_ref,
                 &skill.path,
-                &audit::AuditOptions::default(),
+                &audit::AuditOptions {
+                    exclude_root_source_metadata: store::comparable_path(&skill.path)
+                        == store::comparable_path(&staging_path),
+                    ..audit::AuditOptions::default()
+                },
             )?;
             if report.is_blocking() {
                 blocked.push((skill.source_ref, skill.path));
