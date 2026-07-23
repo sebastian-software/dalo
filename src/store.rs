@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 
 use crate::config::{CONFIG_VERSION, UserConfig};
-use crate::error::{DaloError, DaloResult};
+use crate::error::{DaloError, DaloResult, shell_quote_path};
 use crate::git;
 use crate::lockfile::{USER_LOCK_SCHEMA_VERSION, UserLock};
 
@@ -396,6 +396,71 @@ pub fn resolve_store_path(explicit: Option<&Path>) -> DaloResult<PathBuf> {
     };
 
     absolute_path(&expand_user_path(&candidate)?)
+}
+
+/// Build a copyable Dalo command for a resolved store.
+///
+/// The effective default (including `DALO_STORE`) needs no flag. Other stores
+/// need an explicit, shell-quoted `--store` so a pasted recovery command acts
+/// on the same store that produced it.
+#[must_use]
+pub fn dalo_command(store_root: &Path, arguments: &str) -> String {
+    if resolve_store_path(None)
+        .ok()
+        .is_some_and(|default_store| comparable_path(&default_store) == comparable_path(store_root))
+    {
+        format!("dalo {arguments}")
+    } else {
+        format!("dalo --store {} {arguments}", shell_quote_path(store_root))
+    }
+}
+
+/// Add the resolved store to embedded Dalo commands when it is not the
+/// effective default. Existing explicit `--store` commands and prose such as
+/// "dalo store" are left intact.
+#[must_use]
+pub fn contextualize_dalo_commands(store_root: &Path, text: &str) -> String {
+    let prefix = dalo_command(store_root, "");
+    if prefix == "dalo " {
+        return text.to_owned();
+    }
+
+    let mut contextualized = String::with_capacity(text.len() + prefix.len());
+    let mut remaining = text;
+    while let Some(index) = remaining.find("dalo ") {
+        contextualized.push_str(&remaining[..index]);
+        let after_command = &remaining[index + "dalo ".len()..];
+        let command = after_command
+            .split(|character: char| character.is_whitespace() || character == '`')
+            .next()
+            .unwrap_or_default();
+        if matches!(
+            command,
+            "init"
+                | "status"
+                | "sync"
+                | "approve"
+                | "target"
+                | "source"
+                | "resolve"
+                | "audit"
+                | "adopt"
+                | "instructions"
+                | "autosync"
+                | "doctor"
+                | "agent"
+                | "team"
+                | "--dry-run"
+                | "--json"
+        ) {
+            contextualized.push_str(&prefix);
+        } else {
+            contextualized.push_str("dalo ");
+        }
+        remaining = after_command;
+    }
+    contextualized.push_str(remaining);
+    contextualized
 }
 
 /// Resolve a possibly relative path to an absolute path without requiring the
@@ -1648,5 +1713,29 @@ mod tests {
         let successes = outcomes.iter().filter(|outcome| outcome.is_ok()).count();
 
         assert_eq!(successes, 1);
+    }
+
+    #[test]
+    fn dalo_command_should_only_prefix_nondefault_stores() {
+        let default_store = resolve_store_path(None).expect("default store should resolve");
+        let custom_store = Path::new("/tmp/dalo user's store");
+
+        assert_eq!(dalo_command(&default_store, "sync"), "dalo sync");
+        assert_eq!(
+            dalo_command(custom_store, "sync"),
+            "dalo --store '/tmp/dalo user'\"'\"'s store' sync"
+        );
+    }
+
+    #[test]
+    fn contextualize_dalo_commands_should_preserve_store_prose_and_explicit_flags() {
+        let custom_store = Path::new("/tmp/custom store");
+        let message =
+            "dalo store is unavailable; run `dalo sync` or `dalo --store '/tmp/old' init`";
+
+        assert_eq!(
+            contextualize_dalo_commands(custom_store, message),
+            "dalo store is unavailable; run `dalo --store '/tmp/custom store' sync` or `dalo --store '/tmp/old' init`"
+        );
     }
 }

@@ -258,6 +258,12 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
 }
 
 fn finish_report(store_root: &Path, mut findings: Vec<DoctorFinding>) -> DoctorReport {
+    for finding in &mut findings {
+        finding.message = store::contextualize_dalo_commands(store_root, &finding.message);
+        if let Some(next_command) = &mut finding.next_command {
+            *next_command = store::contextualize_dalo_commands(store_root, next_command);
+        }
+    }
     findings.sort_by(|left, right| {
         severity_name(left.severity)
             .cmp(severity_name(right.severity))
@@ -1425,7 +1431,7 @@ mod tests {
         assert_eq!(report.findings[0].severity, DoctorSeverity::Error);
         assert_eq!(
             report.findings[0].next_command.as_deref(),
-            Some("dalo init")
+            Some(store::dalo_command(&store, "init").as_str())
         );
         assert_eq!(
             report.summary,
@@ -1544,7 +1550,7 @@ mod tests {
 
         assert_eq!(
             finding.next_command.as_deref(),
-            Some("dalo autosync uninstall")
+            Some(store::dalo_command(&store, "autosync uninstall").as_str())
         );
     }
 
@@ -1796,7 +1802,8 @@ mod tests {
                 .iter()
                 .any(|finding| finding.code == DoctorCode::StoreLayoutMissing
                     && finding.message.contains("config.toml")
-                    && finding.next_command.as_deref() == Some("dalo init")),
+                    && finding.next_command.as_deref()
+                        == Some(store::dalo_command(&store, "init").as_str())),
             "missing config should be surfaced as store_layout_missing: {:?}",
             report.findings
         );
@@ -1920,7 +1927,7 @@ mod tests {
                 && finding
                     .next_command
                     .as_deref()
-                    .is_some_and(|command| command.contains("dalo instructions enable house-style"))
+                    .is_some_and(|command| command.contains("instructions enable house-style"))
         }));
     }
 
