@@ -565,20 +565,17 @@ fn install_with(
         restore_previous_install(paths, previous.as_ref(), runner);
         return Err(error);
     }
-    if let Err(error) = enable_scheduler(paths, &state, runner) {
+    if let Err(error) = persist_install(paths, &state, &config) {
         let _ = remove_artifacts(&state);
+        restore_install_metadata(paths, previous.as_ref(), &config);
         restore_previous_install(paths, previous.as_ref(), runner);
         return Err(error);
     }
-    if let Err(error) = persist_install(paths, &state, &config) {
+    if let Err(error) = enable_scheduler(paths, &state, runner) {
         let _ = disable_scheduler(&state, runner);
         let _ = remove_artifacts(&state);
-        if let Some(previous) = previous {
-            let _ = write_artifacts(paths, &previous);
-            let _ = write_install_state(paths, &previous);
-            let _ = enable_scheduler(paths, &previous, runner);
-        }
-        let _ = store::write_config(paths, &config);
+        restore_install_metadata(paths, previous.as_ref(), &config);
+        restore_previous_install(paths, previous.as_ref(), runner);
         return Err(error);
     }
 
@@ -774,6 +771,19 @@ fn restore_previous_install(
         let _ = write_install_state(paths, previous);
         let _ = enable_scheduler(paths, previous, runner);
     }
+}
+
+fn restore_install_metadata(
+    paths: &StorePaths,
+    previous: Option<&AutosyncInstallState>,
+    original_config: &crate::config::UserConfig,
+) {
+    if let Some(previous) = previous {
+        let _ = write_install_state(paths, previous);
+    } else {
+        let _ = fs::remove_file(&paths.autosync_file);
+    }
+    let _ = store::write_config(paths, original_config);
 }
 
 fn persist_install(
@@ -1561,6 +1571,9 @@ struct FakeRunner {
     calls: RefCell<Vec<RecordedCall>>,
     crontab: RefCell<String>,
     fail_programs: RefCell<Vec<String>>,
+    observe_enable_paths: RefCell<Option<StorePaths>>,
+    observed_enable_install: RefCell<Option<AutosyncInstallState>>,
+    observed_enable_config: RefCell<Option<crate::config::UserConfig>>,
 }
 
 #[cfg(test)]
@@ -1604,6 +1617,16 @@ impl CommandRunner for FakeRunner {
             });
         }
         if program == "crontab" && args == ["-"] {
+            if let Some(paths) = self.observe_enable_paths.borrow().as_ref() {
+                *self.observed_enable_install.borrow_mut() = Some(
+                    read_install_state(paths)
+                        .expect("install state should be readable while enabling")
+                        .expect("install state should exist while enabling"),
+                );
+                *self.observed_enable_config.borrow_mut() = Some(
+                    store::read_config(paths).expect("config should be readable while enabling"),
+                );
+            }
             *self.crontab.borrow_mut() = input.unwrap_or_default().to_owned();
         }
         Ok(CommandResult {
@@ -1894,6 +1917,61 @@ mod tests {
             &home,
         );
         assert!(render_cron(&paths, &cron).contains(" * * 0 "));
+    }
+
+    #[test]
+    fn install_should_persist_state_before_enabling_scheduler() {
+        let (_temp, paths, home, executable) = setup();
+        let runner = FakeRunner::default();
+        *runner.observe_enable_paths.borrow_mut() = Some(paths.clone());
+
+        install_with(
+            &paths,
+            AutosyncSchedule::Daily,
+            false,
+            SchedulerBackend::Cron,
+            &executable,
+            &home,
+            &runner,
+        )
+        .expect("install should succeed");
+
+        let state = runner
+            .observed_enable_install
+            .borrow_mut()
+            .take()
+            .expect("scheduler enable should observe the persisted install state");
+        let config = runner
+            .observed_enable_config
+            .borrow_mut()
+            .take()
+            .expect("scheduler enable should observe the persisted config");
+        assert_eq!(state.schedule, AutosyncSchedule::Daily);
+        assert!(config.settings.autosync);
+        assert_eq!(config.settings.sync_interval.as_deref(), Some("daily"));
+    }
+
+    #[test]
+    fn install_should_roll_back_persisted_metadata_when_enabling_fails() {
+        let (_temp, paths, home, executable) = setup();
+        let runner = FakeRunner::default();
+        runner.fail_programs.borrow_mut().push("crontab".to_owned());
+
+        install_with(
+            &paths,
+            AutosyncSchedule::Daily,
+            false,
+            SchedulerBackend::Cron,
+            &executable,
+            &home,
+            &runner,
+        )
+        .expect_err("a scheduler failure should fail the install");
+
+        assert!(!paths.autosync_file.exists());
+        let config = store::read_config(&paths).expect("config should remain readable");
+        assert!(!config.settings.autosync);
+        assert!(config.settings.sync_interval.is_none());
     }
 
     #[test]
