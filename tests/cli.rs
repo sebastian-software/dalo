@@ -37,6 +37,9 @@ fn help_should_list_planned_top_level_commands() {
         .stdout(predicate::str::contains("Mental model:"))
         .stdout(predicate::str::contains("Quickstart:"))
         .stdout(predicate::str::contains("Choose a skill path:"))
+        .stdout(predicate::str::contains(
+            "create <store>/local/skills/<name>/SKILL.md",
+        ))
         .stdout(predicate::str::contains("dalo adopt <skill>"))
         .stdout(predicate::str::contains("--yes"))
         .stdout(predicate::str::contains(
