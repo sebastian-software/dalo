@@ -36,8 +36,8 @@ use crate::update;
     version,
     about = "Git-backed skill management for AI agents.",
     long_about = "Git-backed skill management for AI agents.\n\nDalo keeps a local store of skill sources, resolves one approved skill set, and links that set into the folders your agents already read.",
-    after_help = "Start here: dalo init -> dalo target link <agent> -> dalo source add <id> <git-url-or-path> -> dalo sync\nUse `dalo next` for one state-aware next action.\nTry safely: use --store with a temporary directory and target link generic <path>.",
-    after_long_help = "Mental model:\n  store   local database under ~/.dalo, or --store PATH\n  source  Git-backed skill collection, including the built-in local source\n  sync    refreshes clean tracking sources, resolves approved skills, and links them into targets\n\nQuickstart:\n  1. dalo init\n  2. dalo target link <codex|claude|openclaw|hermes|generic> [path]\n  3. dalo source add <id> <git-url-or-path>\n  4. dalo sync\n\nSafe sandbox:\n  export DALO_STORE=\"$(mktemp -d)/store\"\n  dalo init\n  dalo target link generic \"$(mktemp -d)/skills\""
+    after_help = "Start here: dalo init -> dalo target link <agent> -> add a team source, local skill, or adopted skill -> dalo sync\nUse `dalo next` for one state-aware next action.\nTry safely: use --store with a temporary directory and target link generic <path>.",
+    after_long_help = "Mental model:\n  store   local database under ~/.dalo, or --store PATH\n  source  Git-backed skill collection, including the built-in local source\n  sync    refreshes clean tracking sources, resolves approved skills, and links them into targets\n\nQuickstart:\n  1. dalo init\n  2. dalo target link <codex|claude|openclaw|hermes|generic> [path]\n  3. Choose a skill path:\n     team:     dalo source add <id> <git-url-or-path>\n     local:    create store/local/skills/<name>/SKILL.md\n     existing: dalo adopt <skill>\n  4. dalo sync\n\nSafe sandbox:\n  export DALO_STORE=\"$(mktemp -d)/store\"\n  dalo init\n  dalo target link generic \"$(mktemp -d)/skills\""
 )]
 pub struct Cli {
     /// Override the dalo store path.
