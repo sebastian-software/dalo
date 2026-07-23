@@ -603,12 +603,23 @@ mod tests {
         let helper_pid = Pid::from_raw(helper_pid).expect("helper PID should be positive");
 
         for _ in 0..100 {
-            if rustix::process::test_kill_process(helper_pid).is_err() {
+            if process_is_gone_or_zombie(helper_pid) {
                 return;
             }
             thread::sleep(Duration::from_millis(10));
         }
         panic!("timeout should terminate the helper process");
+    }
+
+    fn process_is_gone_or_zombie(pid: Pid) -> bool {
+        let output = Command::new("ps")
+            .args(["-o", "stat=", "-p", &pid.to_string()])
+            .output()
+            .expect("ps should run");
+        !output.status.success()
+            || String::from_utf8_lossy(&output.stdout)
+                .trim_start()
+                .starts_with('Z')
     }
 
     #[test]
