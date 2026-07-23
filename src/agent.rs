@@ -1286,7 +1286,12 @@ fn compile_claude(agent: &CanonicalAgent, findings: &mut Vec<CompatibilityFindin
         findings.push(exact("skills", "Claude native skill preload metadata"));
     }
     if let Some(tools) = &agent.tools {
-        if tools.allow.contains(&ToolCapability::UseMcp) {
+        if tools.allow.is_empty() {
+            findings.push(blocked(
+                "tools.allow",
+                "Claude has no representation for an empty tool allowlist",
+            ));
+        } else if tools.allow.contains(&ToolCapability::UseMcp) {
             findings.push(blocked(
                 "tools.allow",
                 "Claude has no portable exact allowlist representation for use-mcp",
@@ -1717,6 +1722,30 @@ mod tests {
         let compilation = compile(&agent, AgentProvider::Codex);
         assert_eq!(compilation.overall, CompatibilityResult::Blocked);
         assert!(compilation.bytes.is_none());
+    }
+
+    #[test]
+    fn claude_should_block_an_empty_tool_allowlist_without_rendering_tools() {
+        let temp = tempfile::tempdir().expect("temp directory should be created");
+        write_agent(
+            temp.path(),
+            "reviewer",
+            "---\nschema_version: 1\nname: reviewer\ndescription: Reviews code\ntools:\n  allow: []\n---\nReview carefully.\n",
+        );
+        let agent = scan_source_agents("local", temp.path())
+            .agents
+            .remove(0)
+            .agent;
+
+        let compilation = compile(&agent, AgentProvider::Claude);
+
+        assert_eq!(compilation.overall, CompatibilityResult::Blocked);
+        assert!(compilation.bytes.is_none());
+        assert!(compilation.findings.iter().any(|finding| {
+            finding.field == "tools.allow"
+                && finding.result == CompatibilityResult::Blocked
+                && finding.message == "Claude has no representation for an empty tool allowlist"
+        }));
     }
 
     #[test]
