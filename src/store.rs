@@ -415,9 +415,10 @@ pub fn dalo_command(store_root: &Path, arguments: &str) -> String {
     }
 }
 
-/// Add the resolved store to embedded Dalo commands when it is not the
-/// effective default. Existing explicit `--store` commands and prose such as
-/// "dalo store" are left intact.
+/// Add the resolved store to embedded inline-code Dalo commands when it is not
+/// the effective default. A complete command may also begin the text, as in a
+/// doctor's `next_command`. Existing explicit `--store` commands and prose
+/// such as "dalo store" are left intact.
 #[must_use]
 pub fn contextualize_dalo_commands(store_root: &Path, text: &str) -> String {
     let prefix = dalo_command(store_root, "");
@@ -434,25 +435,27 @@ pub fn contextualize_dalo_commands(store_root: &Path, text: &str) -> String {
             .split(|character: char| character.is_whitespace() || character == '`')
             .next()
             .unwrap_or_default();
-        if matches!(
-            command,
-            "init"
-                | "status"
-                | "sync"
-                | "approve"
-                | "target"
-                | "source"
-                | "resolve"
-                | "audit"
-                | "adopt"
-                | "instructions"
-                | "autosync"
-                | "doctor"
-                | "agent"
-                | "team"
-                | "--dry-run"
-                | "--json"
-        ) {
+        if (index == 0 || remaining[..index].ends_with('`'))
+            && matches!(
+                command,
+                "init"
+                    | "status"
+                    | "sync"
+                    | "approve"
+                    | "target"
+                    | "source"
+                    | "resolve"
+                    | "audit"
+                    | "adopt"
+                    | "instructions"
+                    | "autosync"
+                    | "doctor"
+                    | "agent"
+                    | "team"
+                    | "--dry-run"
+                    | "--json"
+            )
+        {
             contextualized.push_str(&prefix);
         } else {
             contextualized.push_str("dalo ");
@@ -1728,14 +1731,13 @@ mod tests {
     }
 
     #[test]
-    fn contextualize_dalo_commands_should_preserve_store_prose_and_explicit_flags() {
+    fn contextualize_dalo_commands_should_preserve_prose_paths_and_explicit_flags() {
         let custom_store = Path::new("/tmp/custom store");
-        let message =
-            "dalo store is unavailable; run `dalo sync` or `dalo --store '/tmp/old' init`";
+        let message = "dalo store is unavailable at `/tmp/dalo sync`; run `dalo sync` or `dalo --store '/tmp/old' init`";
 
         assert_eq!(
             contextualize_dalo_commands(custom_store, message),
-            "dalo store is unavailable; run `dalo --store '/tmp/custom store' sync` or `dalo --store '/tmp/old' init`"
+            "dalo store is unavailable at `/tmp/dalo sync`; run `dalo --store '/tmp/custom store' sync` or `dalo --store '/tmp/old' init`"
         );
     }
 }
