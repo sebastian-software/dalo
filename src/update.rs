@@ -37,13 +37,14 @@ pub fn maybe_print_notice() {
     if !mark_version_notified(&version.to_string()) {
         return;
     }
+    let latest_version = version.semver().to_string();
 
     let executable = env::current_exe().ok();
     let channel = detect_install_channel(executable.as_deref());
     eprintln!(
         "\n{}",
         render_notice(
-            &version.to_string(),
+            &latest_version,
             env!("CARGO_PKG_VERSION"),
             channel,
             executable.as_deref()
@@ -471,13 +472,28 @@ mod tests {
 
     #[test]
     fn notice_should_include_channel_specific_or_generic_guidance() {
+        let latest_version = update_informer::fake(DaloGitHub, "dalo", "1.2.3", "1.2.4")
+            .check_version()
+            .expect("fake version check should succeed")
+            .expect("fake version check should return a version");
+
         assert_eq!(
-            render_notice("1.2.4", "1.2.3", InstallChannel::Homebrew, None),
+            render_notice(
+                &latest_version.semver().to_string(),
+                "1.2.3",
+                InstallChannel::Homebrew,
+                None,
+            ),
             "update available: dalo v1.2.4 (installed v1.2.3 via Homebrew)\n\
              upgrade with: brew upgrade sebastian-software/tap/dalo"
         );
         assert_eq!(
-            render_notice("1.2.4", "1.2.3", InstallChannel::Unknown, None),
+            render_notice(
+                &latest_version.semver().to_string(),
+                "1.2.3",
+                InstallChannel::Unknown,
+                None,
+            ),
             "update available: dalo v1.2.4 (installed v1.2.3 via an unknown installation method)\n\
              upgrade guide: https://dalo.sh/install.md"
         );
