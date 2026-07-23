@@ -2477,6 +2477,67 @@ fn target_detect_should_report_known_targets() {
 }
 
 #[test]
+fn target_detect_should_suggest_the_next_action_for_each_state() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let home = temp_dir.path().join("home");
+    let generic_target = temp_dir.path().join("generic-skills");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    let mut no_agents = dalo_command();
+    no_agents
+        .env("HOME", &home)
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "detect"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "no agent folders found; link any folder with: dalo target link generic <path>",
+        ));
+
+    std::fs::create_dir_all(home.join(".claude/skills"))
+        .expect("Claude skill directory should be created");
+    let mut detected_unlinked = dalo_command();
+    detected_unlinked
+        .env("HOME", &home)
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "detect"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("next: dalo target link claude"));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "link", "generic"])
+        .arg(&generic_target)
+        .assert()
+        .success();
+    std::fs::remove_dir_all(&home).expect("detected agent folders should be removed");
+    let mut linked_generic = dalo_command();
+    linked_generic
+        .env("HOME", &home)
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "generic   supported    exists=true  linked=true  {}",
+            generic_target.display()
+        )))
+        .stdout(predicate::str::contains("all detected targets are linked"));
+}
+
+#[test]
 fn target_link_generic_should_create_directory_and_update_state() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

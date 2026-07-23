@@ -1418,6 +1418,28 @@ pub fn print_target_detect_report(report: &TargetDetectReport) {
             path
         );
     }
+
+    let unlinked = report
+        .targets
+        .iter()
+        .find(|target| target.exists && !target.linked);
+    if let Some(target) = unlinked {
+        println!("next: dalo target link {}", target.id);
+    } else if report
+        .targets
+        .iter()
+        .all(|target| !target.exists && !target.linked)
+    {
+        println!("no agent folders found; link any folder with: dalo target link generic <path>");
+    } else if report.targets.iter().any(|target| target.exists)
+        && report
+            .targets
+            .iter()
+            .filter(|target| target.exists)
+            .all(|target| target.linked)
+    {
+        println!("all detected targets are linked");
+    }
 }
 
 /// Print a human-readable target link report.

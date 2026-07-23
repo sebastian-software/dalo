@@ -416,6 +416,7 @@ pub struct TargetCommand {
 #[derive(Debug, Subcommand)]
 pub enum TargetSubcommand {
     /// Detect known agent targets.
+    #[command(alias = "list")]
     Detect,
     /// Link a target by ID.
     Link(TargetLinkArgs),
