@@ -449,6 +449,7 @@ mod tests {
             operations: vec![operation("/target/b"), operation("/target/a")],
             resolution: resolution.clone(),
             degraded_sources: Vec::new(),
+            unrefreshed_tracking_sources: Vec::new(),
             unselected_catalogs: Vec::new(),
         };
 

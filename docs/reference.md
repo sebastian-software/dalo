@@ -442,6 +442,11 @@ dalo --json sync
 
 JSON output shape: `SyncReport`.
 
+`dalo --dry-run sync` does not fetch tracking team sources, so it prints a
+note when upstream changes are not reflected in its plan. Run a real
+`dalo sync` to fetch those sources first; JSON consumers can inspect
+`SyncReport.unrefreshed_tracking_sources[]`.
+
 `sync --check` still renders the report, then exits with code 1 when materialization
 is blocked or incomplete, including pending approvals, resolution diagnostics,
 degraded sources, blocked operations, or active skills without linked targets.
