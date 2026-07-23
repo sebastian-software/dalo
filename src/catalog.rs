@@ -158,13 +158,22 @@ pub struct CatalogSelectReport {
     pub migration_warnings: Vec<String>,
 }
 
+/// Result of adding a catalog source for human-oriented follow-up guidance.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CatalogAddOutcome {
+    /// Added catalog source configuration.
+    pub source: SourceConfig,
+    /// Available skill count when a real checkout was created.
+    pub available_skills: Option<usize>,
+}
+
 /// Add a catalog source and clone it into the store.
 pub fn add_catalog_source(
     paths: &StorePaths,
     id: &str,
     url: &str,
     dry_run: bool,
-) -> DaloResult<SourceConfig> {
+) -> DaloResult<CatalogAddOutcome> {
     if !source::is_valid_source_id(id) {
         return Err(DaloError::InvalidSourceId {
             id: id.to_owned(),
@@ -209,7 +218,10 @@ pub fn add_catalog_source(
     };
 
     if dry_run {
-        return Ok(source);
+        return Ok(CatalogAddOutcome {
+            source,
+            available_skills: None,
+        });
     }
 
     source::clone_source_checkout(url, &checkout)?;
@@ -246,7 +258,18 @@ pub fn add_catalog_source(
         }
     })?;
 
-    Ok(source)
+    let available_skills = read_source_lock(paths)?
+        .catalogs
+        .iter()
+        .find(|catalog| catalog.source_id == id)
+        .map(|catalog| catalog.inventory.len())
+        .ok_or_else(|| DaloError::StateError {
+            reason: format!("catalog `{id}` was added without an inventory snapshot"),
+        })?;
+    Ok(CatalogAddOutcome {
+        source,
+        available_skills: Some(available_skills),
+    })
 }
 
 /// Inspect a catalog source read-only: list its candidate skills and which are

@@ -255,6 +255,8 @@ JSON output shape: `SourceAddReport`.
 Add an untrusted catalog source, clone it into `sources/<id>/checkout`, and
 configure it with `update_policy = "pin"`. Catalog skills are offers; nothing
 from a catalog becomes active until selected and approved.
+After adding a catalog, the CLI reports how many skills are available and prints
+the exact `source inspect` and `source select` commands for the next step.
 Local paths are supported; relative paths resolve against the current working
 directory.
 
@@ -856,7 +858,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `autosync install` / `uninstall` | `AutosyncMutationReport` | `action`, `dry_run`, resulting `status` |
 | `autosync status` | `AutosyncStatusReport` | `configured`, `installed`, `enabled`, backend, schedule, executable, store, artifacts, optional `scheduler_error`, optional `disabled_reason`, and optional `last_run` |
 | `status` | `StatusReport` | `store`, `sources[]` with `provenance`, `targets[]`, `inventory_warnings[]`, `resolution`, dry-run `materialization[]`, `blocking_audits[]`, `audit_failures[]`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]`, `autosync` |
-| `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, `operations[]`, `resolution`, `degraded_sources[]` (`id`, `path`, `reason`) |
+| `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, `operations[]`, `resolution`, `degraded_sources[]` (`id`, `path`, `reason`), `unselected_catalogs[]` (`source_id`, `available_skills`) |
 | `audit` | `AuditReport` | `schema_version`, `source_ref`, `skill_path`, `content_hash`, `static_engine_version`, `scanned_at_unix`, `coverage`, `status`, optional `max_severity`, `static_findings[]`, optional `agent_review`, optional `risk_acceptance` |
 | `approve list` | `ApprovalsFile` | `schema_version`, `approvals[]` |
 | `approve skill` | audited approval outcome | `audit` (`AuditReport`), `approval` (`ApprovalReport`) |

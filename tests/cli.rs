@@ -5739,6 +5739,49 @@ fn source_inspect_json_should_model_catalog_candidates() {
     );
 }
 
+#[test]
+fn catalog_add_and_sync_should_explain_how_to_select_available_skills() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("2 skills available"))
+        .stdout(predicate::str::contains("dalo source inspect marketing"))
+        .stdout(predicate::str::contains(
+            "dalo source select marketing <skill>",
+        ));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "inspect", "marketing"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("* selected"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("nothing to sync"))
+        .stdout(predicate::str::contains(
+            "catalog `marketing` has 2 available skills, none selected",
+        ))
+        .stdout(predicate::str::contains(
+            "dalo source select marketing <skill>",
+        ));
+}
+
 // Mirror structs for the machine-output schema. They intentionally live in the test
 // crate so production types are not forced to derive `Deserialize`. Deserialization
 // fails if a named field is renamed, removed, or changes type, which is the schema
