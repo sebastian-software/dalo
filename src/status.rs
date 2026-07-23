@@ -404,13 +404,20 @@ pub fn print_approval_list(report: &ApprovalsFile) {
 }
 
 /// Print one approval mutation result.
-pub fn print_approval_report(report: &ApprovalReport) {
+pub fn print_approval_report(report: &ApprovalReport, store_root: &Path) {
     let verb = if report.dry_run && report.action != "unchanged" {
         "planned"
     } else {
         report.action.as_str()
     };
     println!("{verb} {} {}", report.scope, report.value);
+    if report.scope == "skill" && !report.dry_run && report.action != "unchanged" {
+        print_sync_next_step(store_root, "to link it");
+    }
+}
+
+fn print_sync_next_step(store_root: &Path, reason: &str) {
+    println!("next: {} {reason}", store::dalo_command(store_root, "sync"));
 }
 
 /// Print a human-readable layered skill security audit.
@@ -1063,8 +1070,10 @@ fn print_source_provenance(provenance: &SourceProvenance, indent: &str) {
 }
 
 /// Print a human-readable source priority report.
-pub fn print_source_priority_report(report: &SourcePriorityReport) {
-    let verb = if report.dry_run {
+pub fn print_source_priority_report(report: &SourcePriorityReport, store_root: &Path) {
+    let verb = if !report.changed {
+        "unchanged"
+    } else if report.dry_run {
         "would update"
     } else {
         "updated"
@@ -1073,6 +1082,9 @@ pub fn print_source_priority_report(report: &SourcePriorityReport) {
         "{verb} source {} priority={}",
         report.source.id, report.source.priority
     );
+    if report.changed && !report.dry_run {
+        print_sync_next_step(store_root, "to update linked targets");
+    }
 }
 
 /// Print a human-readable catalog add report.
@@ -1134,7 +1146,7 @@ pub fn print_catalog_inspect_report(report: &CatalogInspectReport, store_root: &
 }
 
 /// Print a human-readable catalog select report.
-pub fn print_catalog_select_report(report: &CatalogSelectReport) {
+pub fn print_catalog_select_report(report: &CatalogSelectReport, store_root: &Path) {
     let mutation = if !report.added.is_empty() {
         Some((
             if report.dry_run {
@@ -1173,6 +1185,9 @@ pub fn print_catalog_select_report(report: &CatalogSelectReport) {
     }
     for warning in &report.migration_warnings {
         println!("warning: {warning}");
+    }
+    if mutation.is_some() && !report.dry_run {
+        print_sync_next_step(store_root, "to update linked targets");
     }
 }
 
