@@ -72,6 +72,7 @@
       <a href="#how">How it works</a>
       <a href="#workflow">Workflow</a>
       <a href="#quickstart">Quickstart</a>
+      <a href="#recovery">Recovery</a>
       <a href="#targets">Targets</a>
       <a href="#compare">Compare</a>
       <a href="#roadmap">Roadmap</a>
@@ -87,6 +88,7 @@
         <a href="#how">How it works</a>
         <a href="#workflow">Workflow</a>
         <a href="#quickstart">Quickstart</a>
+        <a href="#recovery">Recovery</a>
         <a href="#targets">Targets</a>
         <a href="#compare">Compare</a>
         <a href="#roadmap">Roadmap</a>
@@ -114,6 +116,7 @@
           Dalo is the missing layer between "I found a useful skill" and "our agents
           can rely on this." Keep local experiments and team skills in Git, resolve
           one approved set, and link it into the folders your agents already read.
+          When something is off, Dalo tells you exactly what to run next — no archaeology.
         </p>
         <div class="hero-cta reveal">
           <a class="btn btn-accent" href="#quickstart">
@@ -159,8 +162,8 @@
           </div>
           <pre class="terminal-body"><code><span class="ln"><span class="prompt">$</span> dalo sync</span>
 <span class="ln c-dim">dalo store: /tmp/dalo/store</span>
-<span class="ln"><span class="c-ok">applied  create</span>     /tmp/dalo/skills/review -&gt; /tmp/dalo/store/local/skills/review</span>
-<span class="ln c-dim">security preflight: deterministic checks and compatible cached findings only; sync did not run an agent reviewer; passing is not a safety guarantee</span></code></pre>
+<span class="ln"><span class="c-ok">applied  create</span>     ~/.agents/skills/review -&gt; /tmp/dalo/store/local/skills/review</span>
+<span class="ln"><span class="c-ok">applied  create</span>     ~/.claude/skills/review -&gt; /tmp/dalo/store/local/skills/review</span></code></pre>
         </div>
       </div>
     </div>
@@ -495,7 +498,8 @@
 <span class="ln"><span class="prompt">$</span> dalo source select sebastian pr-review</span>
 <span class="ln"><span class="prompt">$</span> dalo audit sebastian:pr-review</span>
 <span class="ln"><span class="prompt">$</span> dalo approve skill sebastian:pr-review</span>
-<span class="ln"><span class="prompt">$</span> dalo sync</span></code></pre>
+<span class="ln"><span class="prompt">$</span> dalo sync</span>
+<span class="ln c-dim">security preflight: deterministic checks and compatible cached findings only; sync did not run an agent reviewer; passing is not a safety guarantee</span></code></pre>
         </div>
         <div class="video-demo">
           <video autoplay loop muted playsinline controls preload="metadata" aria-label="Fifteen-second Dalo secure-sync video">
@@ -542,6 +546,42 @@
           <h3>Built-in diagnostics</h3>
           <p><code>dalo doctor</code> checks store structure, lockfiles, Git auth, target paths, and broken symlinks, so you can trust the result.</p>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── RECOVERY ───────────────────────── -->
+  <section class="band band-recovery" id="recovery">
+    <div class="wrap recovery-grid">
+      <div class="recovery-copy">
+        <p class="kicker reveal"><span class="dot"></span> Helpful by default</p>
+        <h2 class="section-h reveal">Get it wrong. Dalo gets you back.</h2>
+        <p class="lead reveal">
+          Mistype a command and Dalo suggests the right one. Reference a skill that
+          does not exist and it lists the ones that do. When sync blocks, the output
+          is the fix: the exact command to run next.
+        </p>
+        <p class="recovery-note reveal">
+          <code>dalo doctor</code> turns a broken state into a runnable to-do list,
+          so getting unstuck does not mean searching docs or reconstructing state.
+        </p>
+      </div>
+
+      <div class="terminal recovery-terminal reveal" aria-label="Examples of Dalo recovery guidance">
+        <div class="terminal-bar">
+          <span class="tdot"></span><span class="tdot"></span><span class="tdot"></span>
+          <span class="terminal-title">recovery, not dead ends</span>
+        </div>
+        <pre class="terminal-body"><code><span class="ln"><span class="prompt">$</span> dalo synk</span>
+<span class="ln c-block">error: unrecognized subcommand 'synk'</span>
+<span class="ln c-warn">tip: a similar subcommand exists: 'sync'</span>
+<span class="ln"> </span>
+<span class="ln"><span class="prompt">$</span> dalo approve skill company:relese-helper</span>
+<span class="ln c-block">error: skill 'company:relese-helper' was not found</span>
+<span class="ln c-dim">known skills: company:new-skill, company:release-helper</span>
+<span class="ln"> </span>
+<span class="ln"><span class="prompt">$</span> dalo sync</span>
+<span class="ln c-warn">pending approval: sebastian:tech-docs (run: dalo approve skill sebastian:tech-docs)</span></code></pre>
       </div>
     </div>
   </section>

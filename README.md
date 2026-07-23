@@ -38,6 +38,8 @@ Dalo gives that knowledge a lifecycle:
   folder.
 - **Stay in control.** Dalo reports conflicts and drift instead of overwriting
   files or silently trusting new code.
+- **Recover without googling.** Errors name the fix: did-you-mean suggestions,
+  known-ID lists, and the exact next command from `sync`, `status`, and `doctor`.
 
 ## See it work
 

@@ -179,6 +179,11 @@ svg { display: block; }
 .band { background: var(--bg); padding-block: var(--section-y); }
 .band-tint { background: var(--surface); }
 .band-dark { background: var(--bg); }
+.band-recovery {
+  background:
+    radial-gradient(68% 100% at 95% 50%, oklch(0.70 0.175 45 / 0.12), transparent 72%),
+    var(--surface);
+}
 section[data-scope="dark"] { background: var(--bg); color: var(--ink); }
 
 /* let grid/flex items shrink so pre/terminal content scrolls instead of blowing out the layout */
@@ -497,6 +502,14 @@ section[data-scope="dark"] { background: var(--bg); color: var(--ink); }
 .safe-item p { color: var(--ink-soft); font-size: var(--fs-sm); }
 .safe-item code { font-family: var(--font-mono); color: var(--accent-text); font-size: 0.9em; }
 
+/* ---------- Recovery ---------- */
+.recovery-grid { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: clamp(2rem, 1rem + 4vw, 4rem); align-items: center; }
+.recovery-copy .kicker { margin-bottom: 1.2rem; }
+.recovery-note { margin-top: 1.25rem; max-width: 48ch; color: var(--ink-soft); font-size: var(--fs-sm); }
+.recovery-note code { font-family: var(--font-mono); color: var(--accent-text); font-size: 0.92em; }
+.recovery-terminal { box-shadow: var(--shadow-lg); }
+.recovery-terminal .terminal-body { font-size: clamp(0.7rem, 0.61rem + 0.22vw, var(--fs-mono)); }
+
 /* ---------- Targets ---------- */
 .targets-grid { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: clamp(2rem, 1rem + 4vw, 4rem); align-items: start; }
 .targets-lead { position: sticky; top: 90px; }
@@ -573,7 +586,7 @@ section[data-scope="dark"] { background: var(--bg); color: var(--ink); }
 @media (max-width: 960px) {
   .hero-grid { grid-template-columns: 1fr; }
   .hero-demo { max-width: 38rem; }
-  .why-grid, .quickstart-grid, .targets-grid { grid-template-columns: 1fr; }
+  .why-grid, .quickstart-grid, .recovery-grid, .targets-grid { grid-template-columns: 1fr; }
   .objection-grid { grid-template-columns: repeat(2, 1fr); }
   .why-lead, .targets-lead { position: static; }
   .feature-row, .feature-row-flip { grid-template-columns: 1fr; gap: 1.4rem; }
