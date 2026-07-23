@@ -48,7 +48,7 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub json: bool,
 
-    /// Reserved for future safe interactive prompts; currently ignored with a notice.
+    /// Reserved for future safe interactive prompts; ignored in JSON mode and otherwise noted.
     #[arg(long, global = true)]
     pub yes: bool,
 
@@ -809,7 +809,7 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         command,
     } = cli;
 
-    warn_noop_yes(yes);
+    warn_noop_yes(yes, json);
     let Some(command) = command else {
         Cli::command().print_help()?;
         println!();
@@ -868,8 +868,8 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
     result
 }
 
-fn warn_noop_yes(yes: bool) {
-    if yes {
+fn warn_noop_yes(yes: bool, json: bool) {
+    if yes && !json {
         eprintln!("note: --yes is reserved for future safe prompts and is currently ignored");
     }
 }

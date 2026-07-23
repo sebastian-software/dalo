@@ -34,7 +34,9 @@ fn help_should_list_planned_top_level_commands() {
         .stdout(predicate::str::contains("Mental model:"))
         .stdout(predicate::str::contains("Quickstart:"))
         .stdout(predicate::str::contains("--yes"))
-        .stdout(predicate::str::contains("currently ignored with a notice"));
+        .stdout(predicate::str::contains(
+            "ignored in JSON mode and otherwise noted",
+        ));
 }
 
 #[test]
@@ -2126,6 +2128,26 @@ fn json_errors_should_render_machine_readable_stderr() {
             store.display()
         )))
         .stderr(predicate::str::contains("error:").not());
+}
+
+#[test]
+fn yes_should_not_corrupt_json_errors() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("missing-store");
+
+    let stderr = dalo_command()
+        .args(["--yes", "--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .failure()
+        .code(1)
+        .get_output()
+        .stderr
+        .clone();
+    let payload: serde_json::Value =
+        serde_json::from_slice(&stderr).expect("JSON error should remain parseable with --yes");
+    assert_eq!(payload["error"]["code"], "expected_failure");
 }
 
 #[test]
