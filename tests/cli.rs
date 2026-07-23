@@ -1253,6 +1253,22 @@ fn audit_should_prefer_a_configured_source_selector_over_a_cwd_decoy() {
 }
 
 #[test]
+fn audit_should_resolve_a_unique_bare_active_skill() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_skill_and_target(&store, &target);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["audit", "review"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("security audit: local:review\n"));
+}
+
+#[test]
 fn sync_should_run_static_preflight_before_materializing() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -1550,6 +1566,13 @@ fn reviewer_should_accept_the_agent_alias_but_reject_both_flags() {
         .assert()
         .failure()
         .stderr(predicate::str::contains("cannot be used with"));
+
+    dalo_command()
+        .args(["audit", "missing", "--agent", "bogus"])
+        .assert()
+        .failure()
+        .code(2)
+        .stderr(predicate::str::contains("--agent <REVIEWER>"));
 }
 
 #[test]
@@ -1759,8 +1782,9 @@ fn approval_validation_errors_should_match_the_selected_scope() {
         .failure()
         .code(1)
         .stderr(predicate::str::contains(
-            "audit target must be an existing skill path or `<source>:<skill>`",
+            "skill `not-a-source-qualified-skill` was not found",
         ))
+        .stderr(predicate::str::contains(" status"))
         .stderr(predicate::str::contains("check failed").not());
 
     let skill = store.join("local/skills/review");
@@ -3224,7 +3248,33 @@ fn sync_should_report_existing_on_second_run() {
         .arg("sync")
         .assert()
         .success()
-        .stdout(predicate::str::contains("existing"));
+        .stdout(predicate::str::contains("existing"))
+        .stdout(predicate::str::contains(
+            "synced: 1 skill across 1 target (1 unchanged)",
+        ));
+}
+
+#[test]
+fn status_should_cap_the_human_readable_active_skill_list() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    for index in 0..21 {
+        let skill = store.join("local/skills").join(format!("skill-{index}"));
+        std::fs::create_dir_all(&skill).expect("skill directory should be created");
+        std::fs::write(skill.join("SKILL.md"), "# Skill\n").expect("skill should be written");
+    }
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "… 1 more active skills (use --json for the full inventory)",
+        ));
 }
 
 #[test]
@@ -4419,6 +4469,25 @@ fn doctor_should_report_stale_protection_records() {
 }
 
 #[test]
+fn doctor_should_collapse_info_and_ok_findings_in_human_output() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("doctor")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("summary:"))
+        .stdout(predicate::str::contains(
+            "info/ok findings omitted; use --json for the full report",
+        ));
+}
+
+#[test]
 fn resolve_keep_should_warn_when_an_adopted_skill_still_targets_the_slot() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -5210,6 +5279,16 @@ fn source_remove_dry_run_should_list_affected_team_artifacts_without_writing() {
     dalo_command()
         .args(["--store"])
         .arg(&store)
+        .args(["--dry-run", "source", "remove", "company"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("checkout: would remove"))
+        .stdout(predicate::str::contains("approvals: would remove"))
+        .stdout(predicate::str::contains("catalog lock: would remove"));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
         .args(["--json", "--dry-run", "source", "remove", "company"])
         .assert()
         .success()
@@ -5623,6 +5702,15 @@ fn source_priority_should_update_config() {
             "unchanged source company priority=3",
         ))
         .stdout(predicate::str::contains("next:").not());
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "priority", "company", "high"])
+        .assert()
+        .failure()
+        .code(2)
+        .stderr(predicate::str::contains("priority must be an integer"));
 }
 
 #[test]
@@ -5643,6 +5731,34 @@ fn source_priority_should_refuse_to_move_local_source() {
         .assert()
         .failure()
         .stderr(predicate::str::contains("local source"));
+}
+
+#[test]
+fn source_add_should_explain_an_overlong_source_id_before_creating_a_checkout() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let source_id = "a".repeat(300);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add"])
+        .arg(&source_id)
+        .arg("https://example.test/team.git")
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains(
+            "source ids must be at most 128 characters",
+        ));
+    assert!(!store.join("sources").join(source_id).exists());
 }
 
 #[test]
@@ -6287,6 +6403,35 @@ fn status_json_schema_should_model_instruction_packs_and_blocked_skills() {
             .iter()
             .all(|blocked| !blocked.requirement.is_empty() && !blocked.reason.is_empty())
     );
+}
+
+#[test]
+fn source_inspect_should_explain_team_source_behavior() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo(&repo);
+    setup_store_with_target(&store, &target);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "company"])
+        .arg(&repo)
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "inspect", "company"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "team sources sync all skills automatically",
+        ))
+        .stderr(predicate::str::contains("source add-catalog"));
 }
 
 #[test]

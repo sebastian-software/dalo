@@ -306,7 +306,9 @@ pub enum DaloError {
     },
 
     /// A catalog command targeted a source that is not a catalog source.
-    #[error("source `{source_id}` is not a catalog source")]
+    #[error(
+        "source `{source_id}` is not a catalog source; team sources sync all skills automatically (`dalo sync` refreshes them). To select individual skills, re-add it with `dalo source add-catalog`"
+    )]
     NotACatalogSource {
         /// Source ID.
         source_id: String,

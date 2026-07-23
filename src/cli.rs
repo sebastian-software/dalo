@@ -323,7 +323,13 @@ pub struct ReviewerArgs {
     pub reviewer: AuditAgentArg,
 
     /// Deprecated alias for `--reviewer`.
-    #[arg(long = "agent", value_enum, hide = true, conflicts_with = "reviewer")]
+    #[arg(
+        long = "agent",
+        value_enum,
+        value_name = "REVIEWER",
+        hide = true,
+        conflicts_with = "reviewer"
+    )]
     pub legacy_agent: Option<AuditAgentArg>,
 }
 
@@ -554,7 +560,14 @@ pub struct SourcePriorityArgs {
     pub id: String,
 
     /// New priority. Lower numbers win.
+    #[arg(value_parser = parse_source_priority)]
     pub priority: i32,
+}
+
+fn parse_source_priority(value: &str) -> Result<i32, String> {
+    value
+        .parse()
+        .map_err(|_| "priority must be an integer".to_owned())
 }
 
 /// Arguments for `source inspect`.

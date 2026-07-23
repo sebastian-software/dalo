@@ -177,7 +177,7 @@ pub fn add_catalog_source(
     if !source::is_valid_source_id(id) {
         return Err(DaloError::InvalidSourceId {
             id: id.to_owned(),
-            reason: "must be non-empty, not `.`/`..`, and only contain `[A-Za-z0-9._-]`".to_owned(),
+            reason: source::SOURCE_ID_REQUIREMENTS.to_owned(),
         });
     }
     git::validate_remote_url(url)?;

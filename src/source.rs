@@ -14,6 +14,11 @@ use crate::git;
 use crate::materialize::MaterializeOperationKind;
 use crate::store::{self, ApprovalsFile, StorePaths};
 
+/// Maximum length of a source ID, matching portable filesystem component limits.
+pub const MAX_SOURCE_ID_LENGTH: usize = 128;
+/// Error detail for an invalid source ID.
+pub const SOURCE_ID_REQUIREMENTS: &str = "source ids must be at most 128 characters; they must be non-empty, not `.`/`..`, and only contain `[A-Za-z0-9._-]`";
+
 /// Source kind supported by the V1 config schema.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -465,7 +470,7 @@ where
     if !is_valid_source_id(id) {
         return Err(DaloError::InvalidSourceId {
             id: id.to_owned(),
-            reason: "must be non-empty, not `.`/`..`, and only contain `[A-Za-z0-9._-]`".to_owned(),
+            reason: SOURCE_ID_REQUIREMENTS.to_owned(),
         });
     }
     git::validate_remote_url(url)?;
@@ -637,7 +642,7 @@ fn remove_empty_source_dir(checkout: &Path) {
 /// because they are materialized into user-facing target directories.
 #[must_use]
 pub fn is_valid_source_id(value: &str) -> bool {
-    if value.is_empty() || value == "." || value == ".." {
+    if value.is_empty() || value.len() > MAX_SOURCE_ID_LENGTH || value == "." || value == ".." {
         return false;
     }
 
@@ -993,6 +998,7 @@ mod tests {
         assert!(!is_valid_source_id(".."));
         assert!(!is_valid_source_id("a/b"));
         assert!(!is_valid_source_id(""));
+        assert!(!is_valid_source_id(&"a".repeat(MAX_SOURCE_ID_LENGTH + 1)));
     }
 
     #[test]
