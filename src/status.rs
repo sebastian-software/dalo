@@ -378,13 +378,18 @@ pub fn print_init_report(report: &InitReport) {
 
     println!("Store ready.");
     println!("Next steps:");
-    let dalo = format!(
-        "dalo --store {}",
-        crate::error::shell_quote_path(&report.store)
+    println!(
+        "  1. {}",
+        store::dalo_command(
+            &report.store,
+            "target link <codex|claude|openclaw|hermes|generic> [path]"
+        )
     );
-    println!("  1. {dalo} target link <codex|claude|openclaw|hermes|generic> [path]");
-    println!("  2. {dalo} source add <id> <git-url-or-path>");
-    println!("  3. {dalo} sync");
+    println!(
+        "  2. {}",
+        store::dalo_command(&report.store, "source add <id> <git-url-or-path>")
+    );
+    println!("  3. {}", store::dalo_command(&report.store, "sync"));
 }
 
 /// Print local approval records.
@@ -531,7 +536,11 @@ pub fn print_status_report(report: &StatusReport) {
     println!("targets:");
     if report.targets.is_empty() {
         println!(
-            "  none linked (run: dalo target link <codex|claude|openclaw|hermes|generic> [path])"
+            "  none linked (run: {})",
+            store::dalo_command(
+                &report.store,
+                "target link <codex|claude|openclaw|hermes|generic> [path]"
+            )
         );
     } else {
         for target in &report.targets {
@@ -564,8 +573,13 @@ pub fn print_status_report(report: &StatusReport) {
         println!("pending approval:");
         for skill in &report.resolution.pending_approval_skills {
             println!(
-                "  {} -> {} (run: dalo approve skill {})",
-                skill.slot_name, skill.source_ref, skill.source_ref
+                "  {} -> {} (run: {})",
+                skill.slot_name,
+                skill.source_ref,
+                store::dalo_command(
+                    &report.store,
+                    &format!("approve skill {}", skill.source_ref)
+                )
             );
         }
     }
@@ -597,7 +611,8 @@ pub fn print_status_report(report: &StatusReport) {
         println!("security audit blocks:");
         for source_ref in &report.blocking_audits {
             println!(
-                "  {source_ref} (run: dalo audit {source_ref}; accept only with an explicit --accept-risk reason)"
+                "  {source_ref} (run: {}; accept only with an explicit --accept-risk reason)",
+                store::dalo_command(&report.store, &format!("audit {source_ref}"))
             );
         }
     }
@@ -628,7 +643,7 @@ pub fn print_status_report(report: &StatusReport) {
             println!(
                 "  {}: {}",
                 resolver::diagnostic_code_name(diagnostic.code),
-                diagnostic.message
+                store::contextualize_dalo_commands(&report.store, &diagnostic.message)
             );
         }
     }
@@ -659,7 +674,8 @@ pub fn print_status_report(report: &StatusReport) {
             );
             if warning.code == InventoryWarningCode::InvalidSlotName {
                 println!(
-                    "    fix: rename the skill folder or set its frontmatter `name` to a portable lowercase slot name, then run `dalo sync`"
+                    "    fix: rename the skill folder or set its frontmatter `name` to a portable lowercase slot name, then run `{}`",
+                    store::dalo_command(&report.store, "sync")
                 );
             }
         }
@@ -821,8 +837,12 @@ pub fn print_sync_report(report: &SyncReport) {
     if report.operations.is_empty() {
         if report.linked_targets == 0 && !report.resolution.active_skills.is_empty() {
             println!(
-                "nothing materialized: {} skills resolved but no targets are linked; run `dalo target link <codex|claude|openclaw|hermes|generic> [path]`",
-                report.resolution.active_skills.len()
+                "nothing materialized: {} skills resolved but no targets are linked; run `{}`",
+                report.resolution.active_skills.len(),
+                store::dalo_command(
+                    &report.store,
+                    "target link <codex|claude|openclaw|hermes|generic> [path]"
+                )
             );
         } else if report.resolution.pending_approval_skills.is_empty()
             && report.resolution.blocked_skills.is_empty()
@@ -836,7 +856,7 @@ pub fn print_sync_report(report: &SyncReport) {
             println!("nothing to sync: 0 skills materialized; store is up to date");
             for catalog in &report.unselected_catalogs {
                 println!(
-                    "note: catalog `{}` has {} available {}, none selected; run `dalo source select {} <skill>`",
+                    "note: catalog `{}` has {} available {}, none selected; run `{}`",
                     catalog.source_id,
                     catalog.available_skills,
                     if catalog.available_skills == 1 {
@@ -844,7 +864,10 @@ pub fn print_sync_report(report: &SyncReport) {
                     } else {
                         "skills"
                     },
-                    catalog.source_id
+                    store::dalo_command(
+                        &report.store,
+                        &format!("source select {} <skill>", catalog.source_id)
+                    )
                 );
             }
         } else {
@@ -877,8 +900,12 @@ pub fn print_sync_report(report: &SyncReport) {
     };
     for skill in &report.resolution.pending_approval_skills {
         println!(
-            "{prefix}pending approval: {} (run: dalo approve skill {})",
-            skill.source_ref, skill.source_ref
+            "{prefix}pending approval: {} (run: {})",
+            skill.source_ref,
+            store::dalo_command(
+                &report.store,
+                &format!("approve skill {}", skill.source_ref)
+            )
         );
     }
     for blocked in &report.resolution.blocked_skills {
@@ -892,8 +919,9 @@ pub fn print_sync_report(report: &SyncReport) {
     }
     if !report.unrefreshed_tracking_sources.is_empty() {
         println!(
-            "{prefix}note: --dry-run did not refresh tracking {}; upstream changes are not reflected; run `dalo sync` to fetch {}",
+            "{prefix}note: --dry-run did not refresh tracking {}; upstream changes are not reflected; run `{}` to fetch {}",
             pluralized_source_list(&report.unrefreshed_tracking_sources),
+            store::dalo_command(&report.store, "sync"),
             if report.unrefreshed_tracking_sources.len() == 1 {
                 "it"
             } else {
@@ -905,7 +933,7 @@ pub fn print_sync_report(report: &SyncReport) {
         println!(
             "{prefix}diagnostic: {}: {}",
             resolver::diagnostic_code_name(diagnostic.code),
-            diagnostic.message
+            store::contextualize_dalo_commands(&report.store, &diagnostic.message)
         );
     }
     println!(
@@ -1052,6 +1080,7 @@ pub fn print_catalog_add_report(
     source: &SourceConfig,
     available_skills: Option<usize>,
     dry_run: bool,
+    store_root: &Path,
 ) {
     let verb = if dry_run { "would add" } else { "added" };
     println!(
@@ -1061,34 +1090,38 @@ pub fn print_catalog_add_report(
     );
     if let Some(available_skills) = available_skills {
         println!(
-            "{} {} available; next: dalo source inspect {}, then dalo source select {} <skill>",
+            "{} {} available; next: {}, then {}",
             available_skills,
             if available_skills == 1 {
                 "skill"
             } else {
                 "skills"
             },
-            source.id,
-            source.id
+            store::dalo_command(store_root, &format!("source inspect {}", source.id)),
+            store::dalo_command(store_root, &format!("source select {} <skill>", source.id))
         );
     } else {
         println!(
-            "next: dalo source inspect {}, then dalo source select {} <skill>",
-            source.id, source.id
+            "next: {}, then {}",
+            store::dalo_command(store_root, &format!("source inspect {}", source.id)),
+            store::dalo_command(store_root, &format!("source select {} <skill>", source.id))
         );
     }
 }
 
 /// Print a human-readable catalog inspect report.
-pub fn print_catalog_inspect_report(report: &CatalogInspectReport) {
+pub fn print_catalog_inspect_report(report: &CatalogInspectReport, store_root: &Path) {
     println!(
         "catalog {}: {} available skill(s)",
         report.source_id,
         report.candidates.len()
     );
     println!(
-        "  * selected; add a skill with `dalo source select {} <skill>`",
-        report.source_id
+        "  * selected; add a skill with `{}`",
+        store::dalo_command(
+            store_root,
+            &format!("source select {} <skill>", report.source_id)
+        )
     );
     for candidate in &report.candidates {
         let marker = if candidate.selected { "*" } else { " " };
@@ -1265,7 +1298,7 @@ fn short_commit(commit: &str) -> &str {
 }
 
 /// Print a human-readable adopt report.
-pub fn print_adopt_report(report: &AdoptReport) {
+pub fn print_adopt_report(report: &AdoptReport, store_root: &Path) {
     println!(
         "{} {} -> {}",
         report.copy.as_str(),
@@ -1274,7 +1307,10 @@ pub fn print_adopt_report(report: &AdoptReport) {
     );
     println!("replacement: {}", report.replacement.as_str());
     if let Some(next_step) = report.next_step.as_deref() {
-        println!("note: {next_step}");
+        println!(
+            "note: {}",
+            store::contextualize_dalo_commands(store_root, next_step)
+        );
     }
 }
 
@@ -1403,7 +1439,7 @@ fn instruction_block_drift_kind_label(
 }
 
 /// Print a human-readable target detection report.
-pub fn print_target_detect_report(report: &TargetDetectReport) {
+pub fn print_target_detect_report(report: &TargetDetectReport, store_root: &Path) {
     for target in &report.targets {
         let path = target
             .path
@@ -1429,17 +1465,23 @@ pub fn print_target_detect_report(report: &TargetDetectReport) {
         .find(|target| target.exists && !target.linked);
     if let Some(target) = missing_link {
         println!(
-            "linked target path is missing; recreate it or relink with: dalo target link {} <path>",
-            target.id
+            "linked target path is missing; recreate it or relink with: {}",
+            store::dalo_command(store_root, &format!("target link {} <path>", target.id))
         );
     } else if let Some(target) = unlinked {
-        println!("next: dalo target link {}", target.id);
+        println!(
+            "next: {}",
+            store::dalo_command(store_root, &format!("target link {}", target.id))
+        );
     } else if report
         .targets
         .iter()
         .all(|target| !target.exists && !target.linked)
     {
-        println!("no agent folders found; link any folder with: dalo target link generic <path>");
+        println!(
+            "no agent folders found; link any folder with: {}",
+            store::dalo_command(store_root, "target link generic <path>")
+        );
     } else if report.targets.iter().any(|target| target.exists)
         && report
             .targets
@@ -1463,14 +1505,17 @@ pub fn print_target_link_report(report: &TargetLinkReport) {
 }
 
 /// Print a human-readable target unlink report.
-pub fn print_target_unlink_report(report: &TargetUnlinkReport) {
+pub fn print_target_unlink_report(report: &TargetUnlinkReport, store_root: &Path) {
     if report.status == crate::target::TargetUnlinkStatus::Missing {
         println!("not linked: {} (no state change)", report.target_id);
         return;
     }
     println!("{} target {}", report.status.as_str(), report.target_id);
     if report.status == crate::target::TargetUnlinkStatus::Unlinked {
-        println!("note: owned symlinks remain; run `dalo sync` to remove them");
+        println!(
+            "note: owned symlinks remain; run `{}` to remove them",
+            store::dalo_command(store_root, "sync")
+        );
     }
 }
 

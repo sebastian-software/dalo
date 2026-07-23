@@ -967,7 +967,7 @@ fn run_agent(options: &GlobalOptions, command: AgentCommand) -> DaloResult<()> {
             if options.json {
                 print_json(&report)?;
             } else {
-                print_agent_list_report(&report);
+                print_agent_list_report(&report, &options.store);
             }
         }
         AgentSubcommand::Show(args) => {
@@ -1001,7 +1001,7 @@ fn run_agent(options: &GlobalOptions, command: AgentCommand) -> DaloResult<()> {
     Ok(())
 }
 
-fn print_agent_list_report(report: &agent::AgentListReport) {
+fn print_agent_list_report(report: &agent::AgentListReport, store_root: &std::path::Path) {
     if report.resolution.active_agents.is_empty()
         && report.resolution.pending_approval_agents.is_empty()
         && report.resolution.shadowed_agents.is_empty()
@@ -1016,8 +1016,12 @@ fn print_agent_list_report(report: &agent::AgentListReport) {
     }
     for pending in &report.resolution.pending_approval_agents {
         println!(
-            "pending approval {} (run: dalo approve agent {})",
-            pending.agent.source_ref, pending.agent.source_ref
+            "pending approval {} (run: {})",
+            pending.agent.source_ref,
+            store::dalo_command(
+                store_root,
+                &format!("approve agent {}", pending.agent.source_ref)
+            )
         );
     }
     for shadowed in &report.resolution.shadowed_agents {
@@ -2071,6 +2075,7 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
                     &outcome.source,
                     outcome.available_skills,
                     options.dry_run,
+                    &options.store,
                 );
             }
             Ok(())
@@ -2089,7 +2094,7 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             if options.json {
                 print_json(&report)?;
             } else {
-                status::print_catalog_inspect_report(&report);
+                status::print_catalog_inspect_report(&report, &options.store);
             }
             Ok(())
         }
@@ -2690,7 +2695,7 @@ fn run_adopt_with_audit(
         })?;
     } else {
         status::print_audit_report(&audit_report);
-        status::print_adopt_report(&adoption);
+        status::print_adopt_report(&adoption, &options.store);
     }
     Ok(())
 }
@@ -2718,7 +2723,7 @@ fn run_target(options: &GlobalOptions, command: TargetCommand) -> DaloResult<()>
             if options.json {
                 print_json(&report)?;
             } else {
-                status::print_target_detect_report(&report);
+                status::print_target_detect_report(&report, &options.store);
             }
             Ok(())
         }
@@ -2755,7 +2760,7 @@ fn run_target(options: &GlobalOptions, command: TargetCommand) -> DaloResult<()>
             if options.json {
                 print_json(&report)?;
             } else {
-                status::print_target_unlink_report(&report);
+                status::print_target_unlink_report(&report, &options.store);
             }
             Ok(())
         }

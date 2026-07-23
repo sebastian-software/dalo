@@ -103,6 +103,7 @@ fn agent_list_and_show_should_preview_canonical_provider_projections() {
 fn approve_agent_should_activate_and_revoke_a_team_agent() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
+    let store_root = store::comparable_path(&store);
     let repo = temp_dir.path().join("team-repo");
     create_git_skill_repo(&repo);
     let package = repo.join("agents/reviewer");
@@ -150,9 +151,10 @@ fn approve_agent_should_activate_and_revoke_a_team_agent() {
         .assert()
         .success()
         .stdout(predicate::str::contains("pending approval team:reviewer"))
-        .stdout(predicate::str::contains(
-            "run: dalo approve agent team:reviewer",
-        ));
+        .stdout(predicate::str::contains(format!(
+            "run: {}",
+            store::dalo_command(&store_root, "approve agent team:reviewer")
+        )));
     dalo_command()
         .args(["--store"])
         .arg(&store)
@@ -1913,6 +1915,7 @@ fn approve_cli_should_grant_list_revoke_and_dry_run() {
 fn approve_skill_not_found_should_point_non_catalog_sources_at_status() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
+    let store_root = store::comparable_path(&store);
     dalo_command()
         .args(["--store"])
         .arg(&store)
@@ -1928,7 +1931,10 @@ fn approve_skill_not_found_should_point_non_catalog_sources_at_status() {
         .args(["approve", "skill", "local:ghost"])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("dalo status"))
+        .stderr(predicate::str::contains(store::dalo_command(
+            &store_root,
+            "status",
+        )))
         .stderr(predicate::str::contains("source inspect").not());
 }
 
@@ -2266,9 +2272,43 @@ fn init_should_ignore_legacy_store_environment_override() {
 }
 
 #[test]
+fn init_hints_should_include_store_only_when_it_is_not_effectively_default() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let default_store = temp_dir.path().join("default-store");
+    let custom_store = temp_dir.path().join("custom-store");
+
+    dalo_command()
+        .env("DALO_STORE", &default_store)
+        .arg("init")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "1. dalo target link <codex|claude|openclaw|hermes|generic> [path]",
+        ))
+        .stdout(predicate::str::contains("1. dalo --store").not());
+
+    let custom_root =
+        store::resolve_store_path(Some(&custom_store)).expect("custom store path should resolve");
+    dalo_command()
+        .args(["--store"])
+        .arg(&custom_store)
+        .arg("init")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "1. {}",
+            store::dalo_command(
+                &custom_root,
+                "target link <codex|claude|openclaw|hermes|generic> [path]"
+            )
+        )));
+}
+
+#[test]
 fn doctor_json_should_report_missing_store_without_creating_it() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("missing-store");
+    let store_root = store::resolve_store_path(Some(&store)).expect("store path should resolve");
     let mut command = dalo_command();
 
     command
@@ -2278,7 +2318,10 @@ fn doctor_json_should_report_missing_store_without_creating_it() {
         .assert()
         .success()
         .stdout(predicate::str::contains("\"code\": \"store_missing\""))
-        .stdout(predicate::str::contains("\"next_command\": \"dalo init\""))
+        .stdout(predicate::str::contains(format!(
+            "\"next_command\": \"{}\"",
+            store::dalo_command(&store_root, "init")
+        )))
         .stdout(predicate::str::contains("\"errors\": 1"))
         .stdout(predicate::str::contains("config_invalid").not())
         .stdout(predicate::str::contains("state_invalid").not())
@@ -2480,6 +2523,7 @@ fn target_detect_should_report_known_targets() {
 fn target_detect_should_suggest_the_next_action_for_each_state() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
+    let store_root = store::comparable_path(&store);
     let home = temp_dir.path().join("home");
     let generic_target = temp_dir.path().join("generic-skills");
 
@@ -2498,9 +2542,10 @@ fn target_detect_should_suggest_the_next_action_for_each_state() {
         .args(["target", "detect"])
         .assert()
         .success()
-        .stdout(predicate::str::contains(
-            "no agent folders found; link any folder with: dalo target link generic <path>",
-        ));
+        .stdout(predicate::str::contains(format!(
+            "no agent folders found; link any folder with: {}",
+            store::dalo_command(&store_root, "target link generic <path>")
+        )));
 
     std::fs::create_dir_all(home.join(".claude/skills"))
         .expect("Claude skill directory should be created");
@@ -2512,7 +2557,10 @@ fn target_detect_should_suggest_the_next_action_for_each_state() {
         .args(["target", "detect"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("next: dalo target link claude"));
+        .stdout(predicate::str::contains(format!(
+            "next: {}",
+            store::dalo_command(&store_root, "target link claude")
+        )));
 
     dalo_command()
         .args(["--store"])
@@ -2549,9 +2597,10 @@ fn target_detect_should_suggest_the_next_action_for_each_state() {
             "generic   supported    exists=false linked=true  {}",
             generic_target.display()
         )))
-        .stdout(predicate::str::contains(
-            "linked target path is missing; recreate it or relink with: dalo target link generic <path>",
-        ));
+        .stdout(predicate::str::contains(format!(
+            "linked target path is missing; recreate it or relink with: {}",
+            store::dalo_command(&store_root, "target link generic <path>")
+        )));
 }
 
 #[test]
@@ -2588,6 +2637,7 @@ fn target_link_generic_should_create_directory_and_update_state() {
 fn target_unlink_should_keep_target_directory() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
+    let store_root = store::comparable_path(&store);
     let target = temp_dir.path().join("skills");
     dalo_command()
         .args(["--store"])
@@ -2611,7 +2661,10 @@ fn target_unlink_should_keep_target_directory() {
         .assert()
         .success()
         .stdout(predicate::str::contains("unlinked target generic"))
-        .stdout(predicate::str::contains("run `dalo sync` to remove them"));
+        .stdout(predicate::str::contains(format!(
+            "run `{}` to remove them",
+            store::dalo_command(&store_root, "sync")
+        )));
 
     assert!(target.is_dir());
 }
@@ -2715,6 +2768,7 @@ fn sync_dry_run_should_not_create_symlink() {
 fn sync_dry_run_should_disclose_unrefreshed_tracking_sources() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
+    let store_root = store::comparable_path(&store);
     let target = temp_dir.path().join("skills");
     let repo = temp_dir.path().join("team-repo");
     create_git_skill_repo(&repo);
@@ -2760,9 +2814,10 @@ fn sync_dry_run_should_disclose_unrefreshed_tracking_sources() {
         .args(["--dry-run", "sync"])
         .assert()
         .success()
-        .stdout(predicate::str::contains(
-            "note: --dry-run did not refresh tracking source `company`; upstream changes are not reflected; run `dalo sync` to fetch it",
-        ))
+        .stdout(predicate::str::contains(format!(
+            "note: --dry-run did not refresh tracking source `company`; upstream changes are not reflected; run `{}` to fetch it",
+            store::dalo_command(&store_root, "sync")
+        )))
         .stdout(predicate::str::contains("newbie").not());
     dalo_command()
         .args(["--store"])
@@ -3277,6 +3332,7 @@ fn status_should_report_invalid_portable_skill_names() {
 fn status_should_report_actionable_error_for_corrupt_state() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
+    let store_root = store::comparable_path(&store);
     dalo_command()
         .args(["--store"])
         .arg(&store)
@@ -3294,7 +3350,10 @@ fn status_should_report_actionable_error_for_corrupt_state() {
         .assert()
         .failure()
         .code(1)
-        .stderr(predicate::str::contains("run `dalo init`"));
+        .stderr(predicate::str::contains(format!(
+            "run `{}`",
+            store::dalo_command(&store_root, "init")
+        )));
 }
 
 #[test]
@@ -3345,6 +3404,7 @@ fn init_should_repair_corrupt_state_file() {
 fn adopt_should_copy_unmanaged_skill_without_replacing_by_default() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
+    let store_root = store::comparable_path(&store);
     let target = temp_dir.path().join("skills");
     setup_store_with_target(&store, &target);
     create_unmanaged_skill(&target, "review");
@@ -3358,9 +3418,10 @@ fn adopt_should_copy_unmanaged_skill_without_replacing_by_default() {
         .success()
         .stdout(predicate::str::contains("copied"))
         .stdout(predicate::str::contains("replacement: skipped"))
-        .stdout(predicate::str::contains(
-            "run `dalo adopt review --replace`",
-        ));
+        .stdout(predicate::str::contains(format!(
+            "run `{}`",
+            store::dalo_command(&store_root, "adopt review --replace")
+        )));
 
     assert!(store.join("local/skills/review/SKILL.md").is_file());
     assert!(
@@ -4148,6 +4209,7 @@ fn protection_should_follow_target_id_when_directory_moves() {
 fn doctor_should_report_stale_protection_records() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
+    let store_root = store::comparable_path(&store);
     let target = temp_dir.path().join("skills");
     setup_store_with_target(&store, &target);
     create_unmanaged_skill(&target, "review");
@@ -4166,9 +4228,10 @@ fn doctor_should_report_stale_protection_records() {
         .assert()
         .success()
         .stdout(predicate::str::contains("\"stale_protected_skill\""))
-        .stdout(predicate::str::contains(
-            "dalo resolve unkeep generic:review",
-        ));
+        .stdout(predicate::str::contains(store::dalo_command(
+            &store_root,
+            "resolve unkeep generic:review",
+        )));
 }
 
 #[test]
@@ -4307,6 +4370,7 @@ fn resolve_remove_owned_yes_should_not_remove_real_entry() {
 fn doctor_suggested_remove_owned_should_clear_real_entry_record() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
+    let store_root = store::comparable_path(&store);
     let target = temp_dir.path().join("skills");
     setup_store_with_skill_and_target(&store, &target);
     dalo_command()
@@ -4327,9 +4391,10 @@ fn doctor_suggested_remove_owned_should_clear_real_entry_record() {
         .stdout(predicate::str::contains(
             "\"code\": \"owned_path_real_entry\"",
         ))
-        .stdout(predicate::str::contains(
-            "\"next_command\": \"dalo resolve remove-owned generic:review\"",
-        ));
+        .stdout(predicate::str::contains(format!(
+            "\"next_command\": \"{}\"",
+            store::dalo_command(&store_root, "resolve remove-owned generic:review")
+        )));
 
     dalo_command()
         .args(["--store"])
@@ -6078,6 +6143,7 @@ fn source_inspect_json_should_model_catalog_candidates() {
 fn catalog_add_and_sync_should_explain_how_to_select_available_skills() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
+    let store_root = store::comparable_path(&store);
     let target = temp_dir.path().join("skills");
     let repo = temp_dir.path().join("catalog-repo");
     create_git_catalog_repo(&repo);
@@ -6091,10 +6157,14 @@ fn catalog_add_and_sync_should_explain_how_to_select_available_skills() {
         .assert()
         .success()
         .stdout(predicate::str::contains("2 skills available"))
-        .stdout(predicate::str::contains("dalo source inspect marketing"))
-        .stdout(predicate::str::contains(
-            "dalo source select marketing <skill>",
-        ));
+        .stdout(predicate::str::contains(store::dalo_command(
+            &store_root,
+            "source inspect marketing",
+        )))
+        .stdout(predicate::str::contains(store::dalo_command(
+            &store_root,
+            "source select marketing <skill>",
+        )));
     dalo_command()
         .args(["--store"])
         .arg(&store)
@@ -6112,9 +6182,10 @@ fn catalog_add_and_sync_should_explain_how_to_select_available_skills() {
         .stdout(predicate::str::contains(
             "catalog `marketing` has 2 available skills, none selected",
         ))
-        .stdout(predicate::str::contains(
-            "dalo source select marketing <skill>",
-        ));
+        .stdout(predicate::str::contains(store::dalo_command(
+            &store_root,
+            "source select marketing <skill>",
+        )));
 }
 
 // Mirror structs for the machine-output schema. They intentionally live in the test
