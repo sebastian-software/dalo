@@ -954,6 +954,26 @@ pub enum CompatibilityResult {
     Blocked,
 }
 
+impl CompatibilityResult {
+    /// Stable snake-case label used in text and JSON reports.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Exact => "exact",
+            Self::Mapped => "mapped",
+            Self::GuidanceOnly => "guidance_only",
+            Self::Unsupported => "unsupported",
+            Self::Blocked => "blocked",
+        }
+    }
+}
+
+impl std::fmt::Display for CompatibilityResult {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
 /// One field-level provider compatibility finding.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CompatibilityFinding {
@@ -966,6 +986,14 @@ pub struct CompatibilityFinding {
     /// Native value or field mapping when one exists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub native_mapping: Option<String>,
+}
+
+impl CompatibilityFinding {
+    /// Whether this finding is Dalo-only identity metadata omitted by native adapters.
+    #[must_use]
+    pub fn is_dalo_identity_metadata(&self) -> bool {
+        matches!(self.field.as_str(), "id" | "owners" | "tags")
+    }
 }
 
 /// Result of compiling one canonical agent for one provider.
@@ -1272,7 +1300,15 @@ fn baseline_findings(agent: &CanonicalAgent, provider: AgentProvider) -> Vec<Com
             model_mapping(provider, agent.model.profile),
         ),
     ];
-    for field in ["id", "owners", "tags"] {
+    let declared_identity_fields = [
+        (agent.id.is_some(), "id"),
+        (!agent.owners.is_empty(), "owners"),
+        (!agent.tags.is_empty(), "tags"),
+    ];
+    for (is_declared, field) in declared_identity_fields {
+        if !is_declared {
+            continue;
+        }
         findings.push(unsupported(
             field,
             "retained by Dalo but not emitted as native metadata",
@@ -1632,10 +1668,36 @@ mod tests {
         let first = compile(&agent, AgentProvider::Claude);
         let second = compile(&agent, AgentProvider::Claude);
         assert_eq!(first.bytes, second.bytes);
-        assert_eq!(first.overall, CompatibilityResult::Unsupported);
+        assert_eq!(first.overall, CompatibilityResult::Mapped);
         let output = first.bytes.expect("safe compilation");
         assert!(output.contains("model: \"sonnet-4\""));
         assert!(output.contains("skills:"));
+    }
+
+    #[test]
+    fn identity_metadata_should_only_be_reported_when_declared() {
+        let temp = tempfile::tempdir().expect("temp directory should be created");
+        write_agent(
+            temp.path(),
+            "reviewer",
+            "---\nschema_version: 1\nname: reviewer\ndescription: Reviews code\nid: reviewer-v1\nowners: [platform]\ntags: [review]\n---\nReview carefully.\n",
+        );
+        let agent = scan_source_agents("local", temp.path())
+            .agents
+            .remove(0)
+            .agent;
+
+        let compilation = compile(&agent, AgentProvider::Claude);
+
+        assert_eq!(compilation.overall, CompatibilityResult::Unsupported);
+        assert_eq!(
+            compilation
+                .findings
+                .iter()
+                .filter(|finding| finding.is_dalo_identity_metadata())
+                .count(),
+            3
+        );
     }
 
     #[test]
