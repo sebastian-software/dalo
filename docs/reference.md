@@ -707,7 +707,7 @@ JSON output shape: `AuditReport`.
 ### `dalo approve`
 
 Grant, list, and revoke approval records without editing `approvals.toml`.
-Every skill, author, and organization value is source-qualified, so an approval
+Every skill, agent, author, and organization value is source-qualified, so an approval
 cannot accidentally apply to a different source with the same name.
 
 ```sh
@@ -715,6 +715,7 @@ dalo approve list
 dalo approve skill public:review-helper
 dalo approve skill public:review-helper --reviewer codex
 dalo approve skill public:review-helper --accept-risk "reviewed exception"
+dalo approve agent team:reviewer
 dalo approve source team
 dalo approve author public:maintainers
 dalo approve org public:example-org
@@ -723,15 +724,17 @@ dalo approve revoke skill public:review-helper
 
 Approval writes support `--dry-run` and `--json`. A pending skill shown by
 `status` can be approved narrowly with `dalo approve skill <source:skill>`.
-The revoke scope is one of `skill`, `source`, `author`, or `org`; Clap validates
+A pending canonical agent shown by `agent list` can be activated with
+`dalo approve agent <source:agent>`. The revoke scope is one of `skill`,
+`agent`, `source`, `author`, or `org`; Clap validates
 this value and exposes the choices to shell completion.
 Skill approval always runs the deterministic preflight first and refuses a
 blocking result unless a reason is supplied with `--accept-risk`. `--reviewer`
 adds the same isolated semantic review as `dalo audit`.
 
 JSON output shapes: `ApprovalsFile` for `list`; successful `approve skill`
-output is `{ "audit": AuditReport, "approval": ApprovalReport }`; `source`,
-`author`, `org`, and `revoke` mutations emit a bare `ApprovalReport`. If the
+output is `{ "audit": AuditReport, "approval": ApprovalReport }`; `agent`,
+`source`, `author`, `org`, and `revoke` mutations emit a bare `ApprovalReport`. If the
 skill audit blocks approval, Dalo prints only the blocking `AuditReport` and
 exits non-zero.
 
@@ -857,7 +860,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `audit` | `AuditReport` | `schema_version`, `source_ref`, `skill_path`, `content_hash`, `static_engine_version`, `scanned_at_unix`, `coverage`, `status`, optional `max_severity`, `static_findings[]`, optional `agent_review`, optional `risk_acceptance` |
 | `approve list` | `ApprovalsFile` | `schema_version`, `approvals[]` |
 | `approve skill` | audited approval outcome | `audit` (`AuditReport`), `approval` (`ApprovalReport`) |
-| `approve source` / `author` / `org` / `revoke` | `ApprovalReport` | `scope`, `value`, `action`, `dry_run` |
+| `approve agent` / `source` / `author` / `org` / `revoke` | `ApprovalReport` | `scope`, `value`, `action`, `dry_run` |
 | `adopt` / `resolve adopt` | audited adoption outcome | `audit` (`AuditReport`), `adoption` (`AdoptReport`) |
 | `resolve list` | `ResolveListReport` | `unmanaged_skills[]`, `target_warnings[]`, `owned_skills[]` |
 | `resolve keep` | `KeepReport` | `skill`, `existing`, `dry_run` |
@@ -1085,6 +1088,7 @@ Approval scopes:
 | Scope | Value | Matches |
 | --- | --- | --- |
 | `skill` | `<source-id>:<slot>` or `<source-id>:<stable-id>` | One skill from one source. Bare slot names and bare stable IDs do not match. |
+| `agent` | `<source-id>:<name>` or `<source-id>:<stable-id>` | One canonical agent package from one source. |
 | `source` | `<source-id>` | Every skill from that source. |
 | `author` | `<source-id>:<owner>` | Skills from that source whose `owners` frontmatter contains that owner. |
 | `org` | `<source-id>:<owner>` | Same matching behavior as `author`; the scope is a policy label. |

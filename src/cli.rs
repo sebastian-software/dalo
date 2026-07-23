@@ -141,7 +141,7 @@ pub enum Command {
     Audit(AuditCommand),
     /// Grant, list, and revoke scoped approval records.
     #[command(
-        after_help = "Examples:\n  dalo approve list\n  dalo approve skill public:review-helper\n  dalo approve source team\n  dalo approve author public:maintainers\n  dalo approve org public:example-org\n  dalo approve revoke skill public:review-helper"
+        after_help = "Examples:\n  dalo approve list\n  dalo approve skill public:review-helper\n  dalo approve agent team:reviewer\n  dalo approve source team\n  dalo approve author public:maintainers\n  dalo approve org public:example-org\n  dalo approve revoke skill public:review-helper"
     )]
     Approve(ApproveCommand),
     /// Manage instruction packs rendered into instruction files.
@@ -242,6 +242,8 @@ pub enum ApproveSubcommand {
     List,
     /// Approve one source-qualified skill.
     Skill(SkillApprovalArgs),
+    /// Approve one source-qualified canonical agent package.
+    Agent(AgentApprovalArgs),
     /// Trust every skill from one configured source.
     Source(SourceApprovalArgs),
     /// Trust skills owned by one source-qualified author.
@@ -270,6 +272,14 @@ pub struct SkillApprovalArgs {
     /// Accept blocking findings for this exact content hash with a reason.
     #[arg(long, value_name = "REASON")]
     pub accept_risk: Option<String>,
+}
+
+/// One canonical agent approval value.
+#[derive(Debug, Args)]
+pub struct AgentApprovalArgs {
+    /// Agent in `<source>:<name>` format, for example `team:reviewer`.
+    #[arg(value_name = "VALUE")]
+    pub value: String,
 }
 
 /// Arguments for `audit`.
@@ -367,7 +377,7 @@ pub struct OrgApprovalArgs {
 /// One approval to revoke.
 #[derive(Debug, Args)]
 pub struct ApprovalRevokeArgs {
-    /// Approval scope: skill, source, author, or org.
+    /// Approval scope: skill, agent, source, author, or org.
     #[arg(value_enum)]
     pub scope: ApprovalScopeArg,
     /// Approval value in the format required by the selected scope.
@@ -379,6 +389,8 @@ pub struct ApprovalRevokeArgs {
 pub enum ApprovalScopeArg {
     /// One source-qualified skill.
     Skill,
+    /// One source-qualified canonical agent package.
+    Agent,
     /// Every skill from one configured source.
     Source,
     /// One source-qualified author.
@@ -391,6 +403,7 @@ impl ApprovalScopeArg {
     const fn as_str(self) -> &'static str {
         match self {
             Self::Skill => "skill",
+            Self::Agent => "agent",
             Self::Source => "source",
             Self::Author => "author",
             Self::Org => "org",
@@ -1002,7 +1015,10 @@ fn print_agent_list_report(report: &agent::AgentListReport) {
         );
     }
     for pending in &report.resolution.pending_approval_agents {
-        println!("pending approval {}", pending.agent.source_ref);
+        println!(
+            "pending approval {} (run: dalo approve agent {})",
+            pending.agent.source_ref, pending.agent.source_ref
+        );
     }
     for shadowed in &report.resolution.shadowed_agents {
         println!(
@@ -2550,6 +2566,10 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
                 status::print_approval_report(&approval_report);
             }
         }
+        ApproveSubcommand::Agent(args) => print_approval_result(
+            options,
+            approval::grant(&paths, "agent", &args.value, options.dry_run)?,
+        )?,
         ApproveSubcommand::Source(args) => print_approval_result(
             options,
             approval::grant(&paths, "source", &args.value, options.dry_run)?,
