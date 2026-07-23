@@ -1,5 +1,58 @@
 # Changelog
 
+## [0.11.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.10.1...dalo-v0.11.0) (2026-07-23)
+
+
+### Features
+
+* add conflict repair guidance ([21663a6](https://github.com/sebastian-software/dalo/commit/21663a64b994347dd7991c8f1b431921a9f2d51e))
+* add state-aware entry guidance ([7ea0312](https://github.com/sebastian-software/dalo/commit/7ea0312ff0fe828a9e087b0dcf31192c2cb3e2c4))
+* add sync follow-up to resolution changes ([603de51](https://github.com/sebastian-software/dalo/commit/603de517f7f4a614f5626ba1882bb3d25b87dc51))
+
+
+### Bug Fixes
+
+* add agent approval lifecycle ([b8ec524](https://github.com/sebastian-software/dalo/commit/b8ec524dea35af2aefef2df061da66791dbe7034))
+* avoid rewriting paths in recovery hints ([35d3026](https://github.com/sebastian-software/dalo/commit/35d3026ddae13a37e7c4036d684d3be312f1912c))
+* avoid SIGPIPE for review provider input ([b09b491](https://github.com/sebastian-software/dalo/commit/b09b491e32cf5d52e3e4b8c493af51f854e47de1))
+* block empty Claude tool allowlists ([261e4c6](https://github.com/sebastian-software/dalo/commit/261e4c65aea5aee319856296f583721ae8b31f2e))
+* clarify agent compatibility reporting ([7b42232](https://github.com/sebastian-software/dalo/commit/7b422320824930f6c030d14ee83e5eccdb73c077))
+* clarify dry-run output ([a460725](https://github.com/sebastian-software/dalo/commit/a460725e8b68ee6430cb1a8962830f28b9aa0583))
+* clarify local skill path guidance ([15e32ef](https://github.com/sebastian-software/dalo/commit/15e32ef6de23a0b8fb454b866950df3fd9d4bf2c))
+* detect repointed owned symlinks ([ef8f56a](https://github.com/sebastian-software/dalo/commit/ef8f56a31fc328c5a7b70ab01e42bf260e713d51))
+* disclose skipped dry-run source refreshes ([0c3ad90](https://github.com/sebastian-software/dalo/commit/0c3ad9020591ae6b098317cba3948e2e784a65fc))
+* exit cleanly on closed output pipes ([418a984](https://github.com/sebastian-software/dalo/commit/418a984c6dabc37377c80b8d73cc803e80193119))
+* fail closed agent approval revocation ([544a45c](https://github.com/sebastian-software/dalo/commit/544a45c694701aa342bb307377b4b443efe6393a))
+* guide catalog skill selection ([4a8e97f](https://github.com/sebastian-software/dalo/commit/4a8e97f648820bb0900283d2f2ef37c6f6d4e741))
+* guide repairs for missing target paths ([a81c672](https://github.com/sebastian-software/dalo/commit/a81c672f82668749ef454e7ad2eb2ab448f6419a))
+* keep catalog add reporting atomic ([1301e86](https://github.com/sebastian-software/dalo/commit/1301e86f699472a9565817b9b08cac567bfa4ab8))
+* make target detection actionable ([d921e19](https://github.com/sebastian-software/dalo/commit/d921e1963127bf91993a2a3f55ee2341291ccd48))
+* match privileged commands by token ([a31e3a5](https://github.com/sebastian-software/dalo/commit/a31e3a50d2b25debb96b120f582d7291c6008471))
+* match recovery diagnostic layout ([6209771](https://github.com/sebastian-software/dalo/commit/62097712355a89b99b02fb4fdb83cdd39f914139))
+* persist autosync state before enabling scheduler ([30774c8](https://github.com/sebastian-software/dalo/commit/30774c80e659dddd7437222ed92f3766de9fda5c))
+* polish cli diagnostics and output ([712356a](https://github.com/sebastian-software/dalo/commit/712356aaadfdcfeca76eac7cdee6ee30778a6274))
+* preserve custom stores in recovery hints ([33a4bc1](https://github.com/sebastian-software/dalo/commit/33a4bc17a61d55144a332e0bc9446e04bb25e138))
+* preserve JSON errors with --yes ([ec1e713](https://github.com/sebastian-software/dalo/commit/ec1e713bd06619eee8a06e38fc84712c9ebdb4de))
+* preserve PowerShell encoded flag detection ([6dee6e7](https://github.com/sebastian-software/dalo/commit/6dee6e700d3b1d1bc5d0a2acdb6a5da862d1320f))
+* preserve recent crontab edits during autosync updates ([6ef2d5b](https://github.com/sebastian-software/dalo/commit/6ef2d5b05817bc1aeb9de2581cf0833925d9b440))
+* reject invalid adopt destination folders ([3ffca6f](https://github.com/sebastian-software/dalo/commit/3ffca6f5e55e3686f8ceac3974d2bfaad97c88b1))
+* remove phantom GitHub CLI doctor warnings ([1546c80](https://github.com/sebastian-software/dalo/commit/1546c80eaaed221051f6c37104d5cdcff7298eae))
+* render update version with one prefix ([f67f94f](https://github.com/sebastian-software/dalo/commit/f67f94f5fe4bc25f50a8e46ae35d5ab31472c38f))
+* report degraded source inventories in doctor ([84afdbb](https://github.com/sebastian-software/dalo/commit/84afdbbc3c8d98cbfbfccdc2b484373f279ee6c7))
+* report ignored --yes flag ([b2b49e4](https://github.com/sebastian-software/dalo/commit/b2b49e467a2c29952fdb07de677be2ed15789457))
+* reuse doctor source inventory scans ([34d574c](https://github.com/sebastian-software/dalo/commit/34d574caf57c102259083bcd14bd57dfc3c41717))
+* scope conflict repair guidance ([dd8a6f3](https://github.com/sebastian-software/dalo/commit/dd8a6f3797029791703fdf7b654645caf3ce7178))
+* suggest nearby unknown identifiers ([a315ffc](https://github.com/sebastian-software/dalo/commit/a315ffc4fb613874b9203570746bdcdf6781d190))
+* support skills at source roots ([f18a851](https://github.com/sebastian-software/dalo/commit/f18a8511d51169ef8fabbf542a7cd43780d06583))
+* surface solo skill onboarding paths ([115a8d0](https://github.com/sebastian-software/dalo/commit/115a8d0f5b52fbdfe05161f8ac10e9434b5f3f72))
+* terminate git helper processes on timeout ([f0cb289](https://github.com/sebastian-software/dalo/commit/f0cb289888418af025fddb60b649a0f3f5eb3471))
+* validate adoptable skill slots ([756f110](https://github.com/sebastian-software/dalo/commit/756f110d6a2292f0323355d0dd65ce3d3695ed3b))
+
+
+### Performance Improvements
+
+* skip SSH preflight for local git commands ([40fa05a](https://github.com/sebastian-software/dalo/commit/40fa05af56f63d7741c5d7941ecda3d66e21a73e))
+
 ## [0.10.1](https://github.com/sebastian-software/dalo/compare/dalo-v0.10.0...dalo-v0.10.1) (2026-07-22)
 
 
