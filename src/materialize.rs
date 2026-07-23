@@ -47,6 +47,17 @@ pub struct SyncReport {
     pub resolution: Resolution,
     /// Sources whose scan was incomplete, so stale links were preserved.
     pub degraded_sources: Vec<DegradedSource>,
+    /// Enabled catalogs with available skills but no explicit selection.
+    pub unselected_catalogs: Vec<UnselectedCatalog>,
+}
+
+/// A catalog that needs an explicit skill selection before it can contribute to sync.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UnselectedCatalog {
+    /// Catalog source ID.
+    pub source_id: String,
+    /// Number of available skills in the current catalog inventory.
+    pub available_skills: usize,
 }
 
 /// In-memory rollback data for a materialization pass that has not yet committed
@@ -284,6 +295,7 @@ pub fn materialize_with_degraded_sources_rollback(
             operations,
             resolution,
             degraded_sources: degraded_sources.to_vec(),
+            unselected_catalogs: Vec::new(),
         },
         rollback,
     ))

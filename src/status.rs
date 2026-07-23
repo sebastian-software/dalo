@@ -829,6 +829,19 @@ pub fn print_sync_report(report: &SyncReport) {
             && report.degraded_sources.is_empty()
         {
             println!("nothing to sync: 0 skills materialized; store is up to date");
+            for catalog in &report.unselected_catalogs {
+                println!(
+                    "note: catalog `{}` has {} available {}, none selected; run `dalo source select {} <skill>`",
+                    catalog.source_id,
+                    catalog.available_skills,
+                    if catalog.available_skills == 1 {
+                        "skill"
+                    } else {
+                        "skills"
+                    },
+                    catalog.source_id
+                );
+            }
         } else {
             println!("nothing materialized: resolution is incomplete");
         }
@@ -1008,13 +1021,35 @@ pub fn print_source_priority_report(report: &SourcePriorityReport) {
 }
 
 /// Print a human-readable catalog add report.
-pub fn print_catalog_add_report(source: &SourceConfig, dry_run: bool) {
+pub fn print_catalog_add_report(
+    source: &SourceConfig,
+    available_skills: Option<usize>,
+    dry_run: bool,
+) {
     let verb = if dry_run { "would add" } else { "added" };
     println!(
         "{verb} catalog source {} -> {}",
         source.id,
         source.path.display()
     );
+    if let Some(available_skills) = available_skills {
+        println!(
+            "{} {} available; next: dalo source inspect {}, then dalo source select {} <skill>",
+            available_skills,
+            if available_skills == 1 {
+                "skill"
+            } else {
+                "skills"
+            },
+            source.id,
+            source.id
+        );
+    } else {
+        println!(
+            "next: dalo source inspect {}, then dalo source select {} <skill>",
+            source.id, source.id
+        );
+    }
 }
 
 /// Print a human-readable catalog inspect report.
@@ -1023,6 +1058,10 @@ pub fn print_catalog_inspect_report(report: &CatalogInspectReport) {
         "catalog {}: {} available skill(s)",
         report.source_id,
         report.candidates.len()
+    );
+    println!(
+        "  * selected; add a skill with `dalo source select {} <skill>`",
+        report.source_id
     );
     for candidate in &report.candidates {
         let marker = if candidate.selected { "*" } else { " " };

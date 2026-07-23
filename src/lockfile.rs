@@ -449,6 +449,7 @@ mod tests {
             operations: vec![operation("/target/b"), operation("/target/a")],
             resolution: resolution.clone(),
             degraded_sources: Vec::new(),
+            unselected_catalogs: Vec::new(),
         };
 
         let lock = build_user_lock(&[], &resolution, Some(&report));

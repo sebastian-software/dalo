@@ -1478,12 +1478,13 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
         ensure_no_blocking_audits(&audits.blocking)?;
         resolver::degrade_audit_failures(&mut live.resolution, &audits.failures);
         let degraded_sources = collect_degraded_sources(&live, refresh_failures, &audits.failures);
-        let (report, rollback) = materialize::materialize_with_degraded_sources_rollback(
+        let (mut report, rollback) = materialize::materialize_with_degraded_sources_rollback(
             &paths,
             &live.resolution,
             options.dry_run,
             &degraded_sources,
         )?;
+        report.unselected_catalogs = unselected_catalogs(&live);
         if !options.dry_run {
             let previous = previous
                 .as_ref()
@@ -1906,6 +1907,25 @@ fn sync_review_reason(report: &materialize::SyncReport) -> Option<String> {
     (!reasons.is_empty()).then(|| reasons.join(", "))
 }
 
+fn unselected_catalogs(live: &resolver::LiveResolution) -> Vec<materialize::UnselectedCatalog> {
+    let mut catalogs = live
+        .scans
+        .iter()
+        .filter(|scan| {
+            scan.source.kind == source::SourceKind::Catalog && scan.source.selection.is_empty()
+        })
+        .filter_map(|scan| {
+            let available_skills = scan.inventory.as_ref()?.skills.len();
+            (available_skills > 0).then(|| materialize::UnselectedCatalog {
+                source_id: scan.source.id.clone(),
+                available_skills,
+            })
+        })
+        .collect::<Vec<_>>();
+    catalogs.sort_by(|left, right| left.source_id.cmp(&right.source_id));
+    catalogs
+}
+
 fn run_team(options: &GlobalOptions, command: TeamCommand) -> DaloResult<()> {
     let repo = command.repo;
     match command.command {
@@ -2023,11 +2043,16 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             };
             let location =
                 source::resolve_source_location(&args.location, &std::env::current_dir()?);
-            let source = catalog::add_catalog_source(&paths, &args.id, &location, options.dry_run)?;
+            let outcome =
+                catalog::add_catalog_source(&paths, &args.id, &location, options.dry_run)?;
             if options.json {
-                print_json(&source)?;
+                print_json(&outcome.source)?;
             } else {
-                status::print_catalog_add_report(&source, options.dry_run);
+                status::print_catalog_add_report(
+                    &outcome.source,
+                    outcome.available_skills,
+                    options.dry_run,
+                );
             }
             Ok(())
         }
