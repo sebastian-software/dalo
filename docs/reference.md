@@ -177,8 +177,9 @@ Print the source identity and catalog declarations from `dalo.toml`. Use
 List known agent targets, their linked paths when configured (otherwise their
 default paths where known), whether those paths exist, and whether they are
 linked in Dalo state. The text output finishes with the next link command when
-it finds an installed-but-unlinked agent, or with a generic-folder command when
-no agent folder is present. `dalo target list` is an alias for this command.
+it finds an installed-but-unlinked agent, a repair command when a recorded
+target path is missing, or a generic-folder command when no agent folder is
+present. `dalo target list` is an alias for this command.
 
 Examples:
 

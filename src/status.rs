@@ -1419,11 +1419,20 @@ pub fn print_target_detect_report(report: &TargetDetectReport) {
         );
     }
 
+    let missing_link = report
+        .targets
+        .iter()
+        .find(|target| target.linked && !target.exists);
     let unlinked = report
         .targets
         .iter()
         .find(|target| target.exists && !target.linked);
-    if let Some(target) = unlinked {
+    if let Some(target) = missing_link {
+        println!(
+            "linked target path is missing; recreate it or relink with: dalo target link {} <path>",
+            target.id
+        );
+    } else if let Some(target) = unlinked {
         println!("next: dalo target link {}", target.id);
     } else if report
         .targets

@@ -2535,6 +2535,23 @@ fn target_detect_should_suggest_the_next_action_for_each_state() {
             generic_target.display()
         )))
         .stdout(predicate::str::contains("all detected targets are linked"));
+
+    std::fs::remove_dir_all(&generic_target).expect("linked target directory should be removed");
+    let mut missing_link = dalo_command();
+    missing_link
+        .env("HOME", &home)
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "detect"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "generic   supported    exists=false linked=true  {}",
+            generic_target.display()
+        )))
+        .stdout(predicate::str::contains(
+            "linked target path is missing; recreate it or relink with: dalo target link generic <path>",
+        ));
 }
 
 #[test]
