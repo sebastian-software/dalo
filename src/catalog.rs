@@ -229,9 +229,10 @@ pub fn add_catalog_source(
     // Pin the catalog commit and capture its inventory snapshot, then register the
     // source. On a later failure, remove the clone and the lock entry so config
     // never references a missing checkout.
-    let persist = (|| -> DaloResult<()> {
+    let available_skills = (|| -> DaloResult<usize> {
         let commit = git::rev_parse_head(&checkout)?;
         let inventory = catalog_inventory(&checkout, &[])?;
+        let available_skills = inventory.len();
         let mut lock = read_source_lock(paths)?;
         lock.catalogs.retain(|c| c.source_id != id);
         lock.catalogs.push(CatalogLock {
@@ -245,9 +246,10 @@ pub fn add_catalog_source(
 
         config.sources.push(source.clone());
         source::sort_sources(&mut config.sources);
-        store::write_config(paths, &config)
+        store::write_config(paths, &config)?;
+        Ok(available_skills)
     })();
-    persist.inspect_err(|_| {
+    let available_skills = available_skills.inspect_err(|_| {
         let _ = fs::remove_dir_all(&checkout);
         if let Some(parent) = checkout.parent() {
             let _ = fs::remove_dir(parent);
@@ -258,14 +260,6 @@ pub fn add_catalog_source(
         }
     })?;
 
-    let available_skills = read_source_lock(paths)?
-        .catalogs
-        .iter()
-        .find(|catalog| catalog.source_id == id)
-        .map(|catalog| catalog.inventory.len())
-        .ok_or_else(|| DaloError::StateError {
-            reason: format!("catalog `{id}` was added without an inventory snapshot"),
-        })?;
     Ok(CatalogAddOutcome {
         source,
         available_skills: Some(available_skills),
