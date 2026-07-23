@@ -64,15 +64,21 @@ pub fn revoke(
     // Resolve canonically when possible so a live reference matches its stored
     // canonical form. Tolerate a source or skill that no longer resolves so a
     // stale trust record can always be withdrawn; scope and value-shape errors
-    // (InvalidArgument) are still surfaced.
+    // (InvalidArgument) are still surfaced, except for old hand-written agent
+    // records that need an exact raw-value escape hatch.
     let canonical = match canonical_value(paths, scope, value) {
         Ok(canonical) => Some(canonical),
         // Agent approvals predate the CLI and may have been hand-written. Keep
         // revocation available for those records even if their agent package
         // has since disappeared or the stored value is not a current ref.
-        Err(_) if scope == "agent" => None,
+        Err(DaloError::UnknownSource { .. } | DaloError::InvalidArgument { .. })
+            if scope == "agent" =>
+        {
+            None
+        }
+        Err(DaloError::UnknownSource { .. } | DaloError::SkillNotFound { .. }) => None,
         Err(error @ DaloError::InvalidArgument { .. }) => return Err(error),
-        Err(_) => None,
+        Err(error) => return Err(error),
     };
     let mut approvals = store::read_approvals(paths)?;
     let before = approvals.approvals.len();
@@ -311,6 +317,28 @@ mod tests {
                 .expect("approvals should read")
                 .approvals
                 .is_empty()
+        );
+    }
+
+    #[test]
+    fn revoke_should_fail_closed_for_an_agent_when_the_config_cannot_be_read() {
+        let (_temp, paths) = init_paths();
+        let mut approvals = store::read_approvals(&paths).expect("approvals should read");
+        approvals.approvals.push(ApprovalRecord {
+            scope: "agent".to_owned(),
+            value: "team:reviewer".to_owned(),
+        });
+        store::write_approvals(&paths, &approvals).expect("approvals should write");
+        std::fs::write(&paths.config_file, "schema_version = ")
+            .expect("config should be corrupted");
+
+        assert!(revoke(&paths, "agent", "team:reviewer", false).is_err());
+        assert_eq!(
+            store::read_approvals(&paths)
+                .expect("approvals should read")
+                .approvals
+                .len(),
+            1
         );
     }
 

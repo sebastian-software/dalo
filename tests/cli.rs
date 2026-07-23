@@ -105,7 +105,7 @@ fn approve_agent_should_activate_and_revoke_a_team_agent() {
     std::fs::create_dir_all(&package).expect("agent package directory should be created");
     std::fs::write(
         package.join("AGENT.md"),
-        "---\nschema_version: 1\nname: reviewer\ndescription: Reviews code\n---\nReview the requested change.\n",
+        "---\nschema_version: 1\nname: reviewer\nid: reviewer-v1\ndescription: Reviews code\n---\nReview the requested change.\n",
     )
     .expect("canonical agent should be written");
     run_git(&repo, &["add", "."]);
@@ -152,7 +152,7 @@ fn approve_agent_should_activate_and_revoke_a_team_agent() {
     dalo_command()
         .args(["--store"])
         .arg(&store)
-        .args(["approve", "agent", "team:reviewer"])
+        .args(["approve", "agent", "team:reviewer-v1"])
         .assert()
         .success()
         .stdout(predicate::str::contains("granted agent team:reviewer"));
@@ -166,7 +166,7 @@ fn approve_agent_should_activate_and_revoke_a_team_agent() {
     dalo_command()
         .args(["--store"])
         .arg(&store)
-        .args(["approve", "revoke", "agent", "team:reviewer"])
+        .args(["approve", "revoke", "agent", "team:reviewer-v1"])
         .assert()
         .success()
         .stdout(predicate::str::contains("revoked agent team:reviewer"));
