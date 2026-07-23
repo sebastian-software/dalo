@@ -51,7 +51,7 @@ pub struct TargetDetection {
     pub name: String,
     /// Support level.
     pub support: TargetSupport,
-    /// Expanded default path when known.
+    /// Linked path when configured, otherwise the expanded default path when known.
     pub path: Option<PathBuf>,
     /// Whether the path currently exists.
     pub exists: bool,
@@ -348,18 +348,23 @@ fn detect_entry(
     entry: &TargetRegistryEntry,
     state: Option<&StateFile>,
 ) -> DaloResult<TargetDetection> {
-    let path = entry
-        .default_path
-        .map(PathBuf::from)
-        .map(|path| store::expand_user_path(&path))
-        .transpose()?;
-    let exists = path.as_ref().is_some_and(|path| path.exists());
-    let linked = state.is_some_and(|state| {
+    let linked_target = state.and_then(|state| {
         state
             .targets
             .iter()
-            .any(|target| target.id == entry.id && target.enabled)
+            .find(|target| target.id == entry.id && target.enabled)
     });
+    let path = if let Some(target) = linked_target {
+        Some(target.path.clone())
+    } else {
+        entry
+            .default_path
+            .map(PathBuf::from)
+            .map(|path| store::expand_user_path(&path))
+            .transpose()?
+    };
+    let exists = path.as_ref().is_some_and(|path| path.exists());
+    let linked = linked_target.is_some();
 
     Ok(TargetDetection {
         id: entry.id.to_owned(),
