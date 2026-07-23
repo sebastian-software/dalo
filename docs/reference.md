@@ -70,6 +70,26 @@ dalo --json --dry-run init
 
 JSON output shape: `InitReport`.
 
+### `dalo next`
+
+Show a compact summary of the selected store and one copyable next action. It
+chooses initialization, target discovery, source addition, an exact pending
+approval, or synchronization from the current store state. When no action is
+needed, it reports `All synced`.
+
+Running bare `dalo` shows this same summary only when stdout is a terminal;
+when output is piped it keeps printing the normal static help. Use `dalo next`
+in scripts or whenever you want the state-aware result explicitly.
+
+```sh
+dalo next
+dalo --store /tmp/dalo-demo next
+dalo --json next
+```
+
+JSON output shape: `NextActionReport` with store counts, `state`, `message`,
+and an optional copyable `command`.
+
 ### `dalo team init <source-id>`
 
 Create `dalo.toml` in the current team repository. Use `--repo <path>` on the

@@ -18,6 +18,10 @@ The store is Dalo's local database. It contains source checkouts, the local sour
 
 The target is where Dalo materializes the resolved skill set. In this sandbox it is just a temporary folder.
 
+At any point, run `dalo next` to see the store summary and the single most
+useful next command. In a terminal, bare `dalo` shows the same summary; use
+`dalo next` when output is piped or scripted.
+
 ## 2. Add a local skill
 
 ```sh

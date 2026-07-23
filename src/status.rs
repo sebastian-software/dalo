@@ -72,6 +72,49 @@ pub struct StatusReport {
     pub autosync: AutosyncStatusReport,
 }
 
+/// Compact state-aware guidance for an entry point or repeated initialization.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct NextActionReport {
+    /// Store root.
+    pub store: PathBuf,
+    /// Whether the store has its configuration file.
+    pub initialized: bool,
+    /// Number of enabled linked targets.
+    pub linked_targets: usize,
+    /// Number of configured sources.
+    pub sources: usize,
+    /// Number of currently active skills.
+    pub active_skills: usize,
+    /// Number of skills awaiting approval.
+    pub pending_approvals: usize,
+    /// Current onboarding or synchronization state.
+    pub state: NextActionState,
+    /// Short explanation of the recommended action or healthy state.
+    pub message: String,
+    /// One copyable command, absent when the store is fully synchronized.
+    pub command: Option<String>,
+}
+
+/// State selected for the single next action.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NextActionState {
+    /// The store still needs to be initialized.
+    Uninitialized,
+    /// No enabled target is linked.
+    NoTarget,
+    /// No source exposes a skill yet.
+    NoSkills,
+    /// A skill needs an explicit approval record.
+    PendingApproval,
+    /// The live resolution differs from the last synchronized lock.
+    SyncNeeded,
+    /// A problem needs the full status report before it can be resolved.
+    NeedsAttention,
+    /// The store has no outstanding next action.
+    Synced,
+}
+
 /// User lock status derived during `status`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LockStatus {
@@ -293,6 +336,102 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
     })
 }
 
+/// Build compact onboarding guidance from the current store state.
+#[must_use = "the next action should be rendered or inspected"]
+pub fn build_next_action_report(store_root: &Path) -> DaloResult<NextActionReport> {
+    let paths = StorePaths::new(store_root.to_path_buf());
+    if !paths.config_file.exists() {
+        return Ok(NextActionReport {
+            store: store_root.to_path_buf(),
+            initialized: false,
+            linked_targets: 0,
+            sources: 0,
+            active_skills: 0,
+            pending_approvals: 0,
+            state: NextActionState::Uninitialized,
+            message: "Initialize a store before adding targets or skills.".to_owned(),
+            command: Some(store::dalo_command(store_root, "init")),
+        });
+    }
+
+    let report = build_status_report(store_root)?;
+    let linked_targets = report.targets.iter().filter(|target| target.linked).count();
+    let sources_with_skills = report.sources.iter().any(|source| source.skill_count > 0);
+    let pending_approvals = report.resolution.pending_approval_skills.len();
+    let (state, message, command) = if linked_targets == 0 {
+        (
+            NextActionState::NoTarget,
+            "Link a target so Dalo knows where to materialize skills.".to_owned(),
+            Some(store::dalo_command(store_root, "target detect")),
+        )
+    } else if report.sources.iter().any(|source| source.error.is_some()) {
+        (
+            NextActionState::NeedsAttention,
+            "At least one source could not be inspected; review its detailed status.".to_owned(),
+            Some(store::dalo_command(store_root, "status")),
+        )
+    } else if !sources_with_skills {
+        (
+            NextActionState::NoSkills,
+            "No skills are available yet; add a source or create a local skill.".to_owned(),
+            Some(store::dalo_command(
+                store_root,
+                "source add <id> <git-url-or-path>",
+            )),
+        )
+    } else if let Some(skill) = report.resolution.pending_approval_skills.first() {
+        (
+            NextActionState::PendingApproval,
+            format!("Approve {} before it can be linked.", skill.source_ref),
+            Some(store::dalo_command(
+                store_root,
+                &format!("approve skill {}", skill.source_ref),
+            )),
+        )
+    } else if !report.blocking_audits.is_empty()
+        || !report.audit_failures.is_empty()
+        || report
+            .materialization
+            .iter()
+            .any(|operation| operation.status == MaterializeOperationStatus::Blocked)
+        || report
+            .resolution
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code.requires_review())
+    {
+        (
+            NextActionState::NeedsAttention,
+            "The store has a blocker; inspect its detailed status before changing it.".to_owned(),
+            Some(store::dalo_command(store_root, "status")),
+        )
+    } else if !report.lock.drift.is_empty() {
+        (
+            NextActionState::SyncNeeded,
+            "The live skill set changed since the last synchronization.".to_owned(),
+            Some(store::dalo_command(store_root, "sync")),
+        )
+    } else {
+        (
+            NextActionState::Synced,
+            "All configured skills are synchronized.".to_owned(),
+            None,
+        )
+    };
+
+    Ok(NextActionReport {
+        store: report.store,
+        initialized: true,
+        linked_targets,
+        sources: report.sources.len(),
+        active_skills: report.resolution.active_skills.len(),
+        pending_approvals,
+        state,
+        message,
+        command,
+    })
+}
+
 fn degraded_sources_from_audit_failures(
     sources: &[SourceStatus],
     failures: &[ActiveAuditFailure],
@@ -337,7 +476,7 @@ fn suppress_initial_local_source_drift(
 }
 
 /// Print a human-readable init report.
-pub fn print_init_report(report: &InitReport) {
+pub fn print_init_report(report: &InitReport, next: Option<&NextActionReport>) {
     println!("dalo store: {}", report.store.display());
 
     for operation in &report.operations {
@@ -377,19 +516,53 @@ pub fn print_init_report(report: &InitReport) {
     }
 
     println!("Store ready.");
-    println!("Next steps:");
+    let created_config = report.operations.iter().any(|operation| {
+        operation
+            .path
+            .file_name()
+            .is_some_and(|name| name == "config.toml")
+            && operation.status == store::InitOperationStatus::Created
+    });
+    if created_config {
+        println!("Next steps:");
+        println!(
+            "  1. {}",
+            store::dalo_command(
+                &report.store,
+                "target link <codex|claude|openclaw|hermes|generic> [path]"
+            )
+        );
+        println!(
+            "  2. {}",
+            store::dalo_command(&report.store, "source add <id> <git-url-or-path>")
+        );
+        println!("  3. {}", store::dalo_command(&report.store, "sync"));
+    } else if let Some(next) = next {
+        println!();
+        print_next_action_report(next);
+    }
+}
+
+/// Print a compact, state-aware entry-point report.
+pub fn print_next_action_report(report: &NextActionReport) {
+    println!("Dalo");
+    println!("  store: {}", report.store.display());
     println!(
-        "  1. {}",
-        store::dalo_command(
-            &report.store,
-            "target link <codex|claude|openclaw|hermes|generic> [path]"
-        )
+        "  initialized: {}",
+        if report.initialized { "yes" } else { "no" }
     );
-    println!(
-        "  2. {}",
-        store::dalo_command(&report.store, "source add <id> <git-url-or-path>")
-    );
-    println!("  3. {}", store::dalo_command(&report.store, "sync"));
+    println!("  linked targets: {}", report.linked_targets);
+    println!("  sources: {}", report.sources);
+    println!("  active skills: {}", report.active_skills);
+    println!("  pending approvals: {}", report.pending_approvals);
+    println!();
+    if let Some(command) = &report.command {
+        println!("Next: {command}");
+        println!("  {}", report.message);
+    } else {
+        println!("All synced ✓");
+        println!("  {}", report.message);
+    }
 }
 
 /// Print local approval records.
