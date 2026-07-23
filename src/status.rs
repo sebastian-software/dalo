@@ -889,15 +889,14 @@ pub fn print_sync_report(report: &SyncReport) {
                 .reason
                 .as_ref()
                 .map_or(String::new(), |reason| format!(" ({reason})"));
-            let repair_hint =
-                if operation.kind == crate::materialize::MaterializeOperationKind::Conflict {
-                    format!(
-                        " ({})",
-                        unmanaged_repair_hint(&report.store, &operation.link_path)
-                    )
-                } else {
-                    String::new()
-                };
+            let repair_hint = if is_unmanaged_entry_conflict(operation) {
+                format!(
+                    " ({})",
+                    unmanaged_repair_hint(&report.store, &operation.link_path)
+                )
+            } else {
+                String::new()
+            };
             println!(
                 "{:<8} {:<10} {}{}{}{}",
                 operation.status.as_str(),
@@ -1398,6 +1397,14 @@ fn unmanaged_repair_hint(store_root: &Path, selector: &Path) -> String {
         store::dalo_command(store_root, &format!("resolve adopt {selector} --replace")),
         store::dalo_command(store_root, &format!("resolve keep {selector}"))
     )
+}
+
+fn is_unmanaged_entry_conflict(operation: &MaterializeOperation) -> bool {
+    operation.kind == crate::materialize::MaterializeOperationKind::Conflict
+        && operation.reason.as_deref().is_some_and(|reason| {
+            reason == "real unmanaged entry exists at target slot"
+                || reason == "real unmanaged entry appeared at target slot"
+        })
 }
 
 /// Print a human-readable keep report.
