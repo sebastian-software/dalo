@@ -3,11 +3,15 @@
 use std::ffi::OsStr;
 use std::fs;
 use std::io::IsTerminal;
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+#[cfg(unix)]
+use rustix::process::{Pid, Signal, kill_process_group};
 use tempfile::NamedTempFile;
 
 use crate::error::{DaloError, DaloResult};
@@ -245,6 +249,8 @@ fn run_git_program_with_options(
         ssh_command_env.as_ref(),
         core_ssh_command_configured,
     );
+    #[cfg(unix)]
+    command.process_group(0);
     let mut child = command.spawn()?;
 
     let start = Instant::now();
@@ -253,16 +259,14 @@ fn run_git_program_with_options(
             Ok(Some(status)) => break status,
             Ok(None) => {}
             Err(error) => {
-                let _ = child.kill();
-                let _ = child.wait();
+                terminate_git_process(&mut child);
                 return Err(DaloError::Io(error));
             }
         }
 
         let elapsed = start.elapsed();
         if elapsed >= timeout {
-            let _ = child.kill();
-            let _ = child.wait();
+            terminate_git_process(&mut child);
             return Err(DaloError::CommandFailed {
                 program: program.to_owned(),
                 args: display_git_args(args),
@@ -290,6 +294,21 @@ fn run_git_program_with_options(
             .map_or_else(|| "signal".to_owned(), |code| code.to_string()),
         stderr: humanize_git_failure(args, &stderr_text),
     })
+}
+
+/// Terminate Git and any remote helpers it spawned, then reap the direct child.
+fn terminate_git_process(child: &mut Child) {
+    #[cfg(unix)]
+    {
+        let process_group = Pid::from_child(child);
+        if kill_process_group(process_group, Signal::KILL).is_ok() {
+            let _ = child.wait();
+            return;
+        }
+    }
+
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 fn print_network_progress(message: &str) {
@@ -550,6 +569,46 @@ mod tests {
         };
         assert!(status.contains("timed out after"));
         assert!(stderr.contains("terminal prompts are disabled"));
+    }
+
+    #[test]
+    fn run_git_program_should_terminate_helper_processes_on_timeout() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let helper_pid_file = temp_dir.path().join("helper.pid");
+        let fake_git = write_executable(
+            temp_dir.path(),
+            "fake-git",
+            "#!/bin/sh\nsh -c 'while :; do sleep 1; done' &\nprintf '%s\\n' \"$!\" > \"$1\"\nwhile :; do sleep 1; done\n",
+        );
+        let helper_pid_file_arg = helper_pid_file
+            .to_str()
+            .expect("helper PID path should be utf-8");
+
+        let error = run_git_program_with_options(
+            fake_git.to_str().expect("script path should be utf-8"),
+            temp_dir.path(),
+            &[helper_pid_file_arg],
+            Duration::from_secs(1),
+            Option::<&str>::None,
+            false,
+        )
+        .expect_err("hung command should time out");
+
+        assert!(matches!(error, DaloError::CommandFailed { .. }));
+        let helper_pid = fs::read_to_string(&helper_pid_file)
+            .expect("helper PID should be written")
+            .trim()
+            .parse::<i32>()
+            .expect("helper PID should be numeric");
+        let helper_pid = Pid::from_raw(helper_pid).expect("helper PID should be positive");
+
+        for _ in 0..100 {
+            if rustix::process::test_kill_process(helper_pid).is_err() {
+                return;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        panic!("timeout should terminate the helper process");
     }
 
     #[test]
