@@ -24,7 +24,7 @@ use crate::store::{self, StorePaths};
 /// Persisted audit report schema version.
 pub const AUDIT_SCHEMA_VERSION: u32 = 1;
 
-const STATIC_ENGINE_VERSION: &str = "4";
+const STATIC_ENGINE_VERSION: &str = "5";
 const AGENT_REVIEW_PROMPT_VERSION: &str = "2";
 const MAX_SCANNED_FILE_BYTES: u64 = 1024 * 1024;
 const MAX_AGENT_SNAPSHOT_BYTES: usize = 512 * 1024;
@@ -837,7 +837,7 @@ fn static_scan(skill_path: &Path) -> DaloResult<(Vec<AuditFinding>, AuditCoverag
                     evidence.clone(),
                 ));
             }
-            if invokes_privileged_execution(lower) {
+            if invokes_privileged_execution(&analysis) {
                 findings.push(finding(
                     "static.privileged-execution",
                     Severity::High,
@@ -1151,23 +1151,9 @@ fn establishes_persistence(line: &str) -> bool {
     .any(|pattern| line.contains(pattern))
 }
 
-fn invokes_privileged_execution(line: &str) -> bool {
-    [
-        "sudo ",
-        "sudo\t",
-        "su ",
-        "su\t",
-        "doas ",
-        "doas\t",
-        "pkexec ",
-        "pkexec\t",
-        "runas ",
-        "runas\t",
-        "powershell -enc",
-        "powershell\t-enc",
-    ]
-    .iter()
-    .any(|pattern| line.contains(pattern))
+fn invokes_privileged_execution(analysis: &LineAnalysis) -> bool {
+    analysis.has_any_word(&["sudo", "su", "doas", "pkexec", "runas"])
+        || analysis.has_sequence(&["powershell", "-enc"])
 }
 
 fn invokes_dynamic_execution(line: &str) -> bool {
@@ -2010,6 +1996,22 @@ mod tests {
                 })
                 .count(),
             12
+        );
+    }
+
+    #[test]
+    fn static_scan_should_not_match_privilege_primitives_inside_hyphenated_words() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let skill = write_skill(
+            temp.path(),
+            "Compare the product with a Marketing Jiu-Jitsu approach.\n",
+        );
+        let (findings, _) = static_scan(&skill).expect("scan should succeed");
+
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.id == "static.privileged-execution")
         );
     }
 
