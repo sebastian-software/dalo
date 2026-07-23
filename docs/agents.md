@@ -1,4 +1,7 @@
-# Agent Integration
+# Agent Target Integration
+
+This page documents target directories for agent skills. Portable canonical
+agent packages are documented in the [command reference](reference.md#dalo-agent-listshow-sourcename).
 
 Dalo's V1 targets are directory-based. Each target links the resolved skill set into the folder that agent already reads.
 

@@ -433,7 +433,25 @@ dalo --json status
 
 JSON output shape: `StatusReport`.
 
-`--check` exits with code 1 for unresolved source scans, inventory warnings,
+### `dalo agent list|show <source>:<name>`
+
+Canonical agent packages live in `agents/<name>/AGENT.md` inside a source.
+`agent list` shows active, pending, and shadowed packages; `agent show` previews
+the package for Claude and Codex without writing provider files.
+
+```sh
+dalo agent list
+dalo agent show local:reviewer --provider codex
+dalo approve agent team:reviewer
+```
+
+Non-local agents need explicit `approve agent <source>:<name>` records; skill,
+source, author, and org approvals do not activate them. Invalid packages also
+make `status --check` fail. JSON shapes: `AgentListReport` (`resolution`,
+`inventory_warnings[]`, `source_errors[]`) and `AgentShowReport` (`agent`,
+`compilations[]`).
+
+`--check` exits with code 1 for unresolved source scans, skill or agent inventory warnings,
 pending approvals, blocked required closure, blocking or failed security audits,
 blocked materialization operations, missing targets for active skills, actionable
 resolution diagnostics, lock drift, unmanaged blockers, instruction-block drift,
@@ -891,9 +909,11 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `source refresh` | `CatalogDrift` | `source_id`, `pinned_commit`, `upstream_commit`, `outcomes[]`, `migration_warnings[]` for degraded legacy sibling catalogs |
 | `source refresh --advance` | `CatalogAdvanceReport` | exact `old_lock`/`new_lock`, selections, `outcomes[]`, `audits[]`, `sync`, `blocking_reasons[]`, `dry_run`, and `advanced` |
 | `source remove` | `SourceRemoveReport` | `source_id`, `checkout_path`, `kept_checkout`, `removed_approvals`, `removed_catalog_lock`, `reconciled_links[]`, `deactivated_skills[]`, `cleanup_warnings[]`, `affected_paths[]`, `dry_run` |
+| `agent list` | `AgentListReport` | `resolution`, `inventory_warnings[]`, `source_errors[]` |
+| `agent show` | `AgentShowReport` | `agent`, provider `compilations[]` |
 | `autosync install` / `uninstall` | `AutosyncMutationReport` | `action`, `dry_run`, resulting `status` |
 | `autosync status` | `AutosyncStatusReport` | `configured`, `installed`, `enabled`, backend, schedule, executable, store, artifacts, optional `scheduler_error`, optional `disabled_reason`, and optional `last_run` |
-| `status` | `StatusReport` | `store`, `sources[]` with `provenance`, `targets[]`, `inventory_warnings[]`, `resolution`, dry-run `materialization[]`, `blocking_audits[]`, `audit_failures[]`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]`, `autosync` |
+| `status` | `StatusReport` | `store`, `sources[]` with `skill_count`, `agent_count`, and `provenance`, `targets[]`, `inventory_warnings[]`, `agent_inventory_warnings[]`, `resolution`, dry-run `materialization[]`, `blocking_audits[]`, `audit_failures[]`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]`, `autosync` |
 | `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, `operations[]`, `resolution`, `degraded_sources[]` (`id`, `path`, `reason`), `unselected_catalogs[]` (`source_id`, `available_skills`) |
 | `audit` | `AuditReport` | `schema_version`, `source_ref`, `skill_path`, `content_hash`, `static_engine_version`, `scanned_at_unix`, `coverage`, `status`, optional `max_severity`, `static_findings[]`, optional `agent_review`, optional `risk_acceptance` |
 | `approve list` | `ApprovalsFile` | `schema_version`, `approvals[]` |
@@ -978,6 +998,7 @@ After `dalo init`, the store contains:
 | `audits/<content-hash>-<source-ref-hash>.json` | Source- and content-bound deterministic and optional agent security reports. |
 | `.lock` | Temporary coarse lock file while mutating commands run. |
 | `local/skills/` | Local private skill directories. |
+| `local/agents/` | Local portable canonical agent packages. |
 | `local/instructions/` | Local instruction pack Markdown files. |
 | `sources/<id>/checkout/` | Team and catalog Git checkouts. |
 | `sources/.audit-staging/` | Detached incoming team commits retained only while security review is required. |
@@ -1242,6 +1263,34 @@ If `name` is absent, the directory name is the slot name. Duplicate slot names w
 metadata symlink whose resolved target escapes the checkout is skipped and
 reported as `skipped_symlink`. This keeps skill identity and approval metadata
 contained within the source being scanned.
+
+## `AGENT.md` Canonical Packages
+
+An agent package is an `agents/<name>/AGENT.md` directory. `AGENT.md` starts
+with YAML frontmatter and then contains the portable Markdown prompt. Required
+fields are `schema_version: 1`, `name`, and `description`; `model.profile`,
+`targets`, and `skills` express portable intent and requirements.
+
+```markdown
+---
+schema_version: 1
+name: reviewer
+description: Reviews pull requests for behavior regressions
+model:
+  profile: balanced
+targets: [claude, codex]
+skills: [review-helper]
+---
+
+Review behavior before style nits.
+```
+
+`targets` may omit providers (all compatible providers) or name `claude` and
+`codex`; `skills` lists required skill references. Optional `id`, `owners`,
+`tags`, `tools`, `filesystem`, `network`, and `providers` metadata add identity,
+boundaries, and provider overlays. Packages are bounded to 256 entries, 16
+directory levels, and 16 MiB total; `AGENT.md` itself is limited to 1 MiB.
+Symlinks and unsupported special files are rejected.
 
 ## Instruction Packs
 
