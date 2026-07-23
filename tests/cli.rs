@@ -2449,6 +2449,15 @@ fn doctor_json_should_report_foreign_owned_symlink() {
         .stdout(predicate::str::contains(
             "\"code\": \"foreign_owned_symlink\"",
         ));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["sync", "--check"])
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("foreign symlink"))
+        .stdout(predicate::str::contains("repair: run").not());
 }
 
 #[test]
