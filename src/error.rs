@@ -354,18 +354,20 @@ impl DaloError {
     /// Build an unknown-target error with concise recovery guidance.
     #[must_use]
     pub fn unknown_target(target: impl Into<String>, known_targets: Vec<String>) -> Self {
+        let target = target.into();
         Self::UnknownTarget {
-            target: target.into(),
-            hint: known_ids_hint("targets", known_targets, "dalo target detect"),
+            hint: known_ids_hint("targets", &target, known_targets, "dalo target detect"),
+            target,
         }
     }
 
     /// Build an unknown-source error with concise recovery guidance.
     #[must_use]
     pub fn unknown_source(source_id: impl Into<String>, known_sources: Vec<String>) -> Self {
+        let source_id = source_id.into();
         Self::UnknownSource {
-            source_id: source_id.into(),
-            hint: known_ids_hint("sources", known_sources, "dalo source list"),
+            hint: known_ids_hint("sources", &source_id, known_sources, "dalo source list"),
+            source_id,
         }
     }
 
@@ -376,9 +378,10 @@ impl DaloError {
         known_skills: Vec<String>,
         next_command: impl AsRef<str>,
     ) -> Self {
+        let skill = skill.into();
         Self::SkillNotFound {
-            skill: skill.into(),
-            hint: known_ids_hint("skills", known_skills, next_command.as_ref()),
+            hint: known_ids_hint("skills", &skill, known_skills, next_command.as_ref()),
+            skill,
         }
     }
 
@@ -428,16 +431,57 @@ impl DaloError {
     }
 }
 
-fn known_ids_hint(label: &str, mut ids: Vec<String>, next_command: &str) -> String {
+const MAX_KNOWN_IDS_IN_HINT: usize = 8;
+const MAX_SUGGESTION_DISTANCE: usize = 2;
+
+fn known_ids_hint(
+    label: &str,
+    unknown_id: &str,
+    mut ids: Vec<String>,
+    next_command: &str,
+) -> String {
     ids.sort();
     ids.dedup();
-    if ids.is_empty() {
+    let suggestion = unique_nearby_id(unknown_id, &ids)
+        .map(|id| format!("; did you mean `{id}`?"))
+        .unwrap_or_default();
+    let recovery = if ids.is_empty() {
         format!("; run `{next_command}`")
-    } else if ids.len() <= 6 {
+    } else if ids.len() <= MAX_KNOWN_IDS_IN_HINT {
         format!("; known {label}: {}", ids.join(", "))
     } else {
         format!("; run `{next_command}`")
+    };
+    format!("{suggestion}{recovery}")
+}
+
+fn unique_nearby_id<'a>(unknown_id: &str, ids: &'a [String]) -> Option<&'a str> {
+    let mut candidates = ids
+        .iter()
+        .filter(|id| levenshtein_distance(unknown_id, id) <= MAX_SUGGESTION_DISTANCE);
+    match (candidates.next(), candidates.next()) {
+        (Some(candidate), None) => Some(candidate),
+        _ => None,
     }
+}
+
+fn levenshtein_distance(left: &str, right: &str) -> usize {
+    let right = right.chars().collect::<Vec<_>>();
+    let mut previous = (0..=right.len()).collect::<Vec<_>>();
+
+    for (left_index, left_char) in left.chars().enumerate() {
+        let mut current = Vec::with_capacity(right.len() + 1);
+        current.push(left_index + 1);
+        for (right_index, right_char) in right.iter().enumerate() {
+            let insertion = current[right_index] + 1;
+            let deletion = previous[right_index + 1] + 1;
+            let substitution = previous[right_index] + usize::from(left_char != *right_char);
+            current.push(insertion.min(deletion).min(substitution));
+        }
+        previous = current;
+    }
+
+    previous[right.len()]
 }
 
 /// Public process exit code policy.
@@ -546,6 +590,35 @@ mod tests {
         }));
 
         assert_eq!(error.to_string(), "unknown target `codex`");
+    }
+
+    #[test]
+    fn known_id_hints_should_suggest_only_one_nearby_match() {
+        let target_hint = known_ids_hint(
+            "targets",
+            "cluade",
+            vec![
+                "claude".to_owned(),
+                "codex".to_owned(),
+                "cursor".to_owned(),
+                "generic".to_owned(),
+                "hermes".to_owned(),
+                "opencode".to_owned(),
+                "openclaw".to_owned(),
+            ],
+            "dalo target detect",
+        );
+        assert!(target_hint.contains("did you mean `claude`?"));
+        assert!(target_hint.contains("known targets:"));
+        assert!(target_hint.contains("openclaw"));
+
+        let ambiguous_hint = known_ids_hint(
+            "sources",
+            "teem",
+            vec!["team".to_owned(), "term".to_owned()],
+            "dalo source list",
+        );
+        assert!(!ambiguous_hint.contains("did you mean"));
     }
 
     #[test]

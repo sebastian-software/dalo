@@ -2586,12 +2586,15 @@ fn unknown_target_should_suggest_detection() {
     dalo_command()
         .args(["--store"])
         .arg(&store)
-        .args(["target", "link", "unknown"])
+        .args(["target", "link", "cluade"])
         .assert()
         .failure()
         .code(1)
-        .stderr(predicate::str::contains("unknown target `unknown`"))
-        .stderr(predicate::str::contains("run `dalo target detect`"));
+        .stderr(predicate::str::contains("unknown target `cluade`"))
+        .stderr(predicate::str::contains("did you mean `claude`?"))
+        .stderr(predicate::str::contains("known targets:"))
+        .stderr(predicate::str::contains("opencode"))
+        .stderr(predicate::str::contains("run `dalo target detect`").not());
 }
 
 #[test]
