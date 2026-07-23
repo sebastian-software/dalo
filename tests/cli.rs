@@ -2944,7 +2944,10 @@ fn sync_dry_run_should_not_create_symlink() {
         .args(["--dry-run", "sync"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("planned"));
+        .stdout(predicate::str::contains("planned"))
+        .stdout(predicate::str::contains(
+            "would sync: 1 skill across 1 target (1 planned)",
+        ));
 
     assert!(!target.join("review").exists());
 }
@@ -3273,7 +3276,7 @@ fn status_should_cap_the_human_readable_active_skill_list() {
         .assert()
         .success()
         .stdout(predicate::str::contains(
-            "… 1 more active skills (use --json for the full inventory)",
+            "… 1 more active skill (use --json for the full inventory)",
         ));
 }
 

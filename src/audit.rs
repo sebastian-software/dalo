@@ -621,19 +621,16 @@ fn resolve_target(paths: &StorePaths, target: &str) -> DaloResult<(String, PathB
         return Ok((synthetic_path_source_ref(&path), path));
     }
 
-    match parsed_selector {
-        Some((source_id, _)) => Err(DaloError::unknown_source(
-            source_id,
-            config
-                .sources
-                .iter()
-                .map(|source| source.id.clone())
-                .collect(),
-        )),
-        None => Err(DaloError::InvalidArgument {
-            reason: "audit target must be an existing skill path or `<source>:<skill>`".to_owned(),
-        }),
-    }
+    let (source_id, _) =
+        parsed_selector.expect("bare non-path audit targets return from their resolution branch");
+    Err(DaloError::unknown_source(
+        source_id,
+        config
+            .sources
+            .iter()
+            .map(|source| source.id.clone())
+            .collect(),
+    ))
 }
 
 fn synthetic_path_source_ref(path: &Path) -> String {

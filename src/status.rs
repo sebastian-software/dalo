@@ -773,7 +773,8 @@ pub fn print_status_report(report: &StatusReport) {
             .len()
             .saturating_sub(HUMAN_LIST_LIMIT);
         if omitted > 0 {
-            println!("  … {omitted} more active skills (use --json for the full inventory)");
+            let skill_word = if omitted == 1 { "skill" } else { "skills" };
+            println!("  … {omitted} more active {skill_word} (use --json for the full inventory)");
         }
     }
 
@@ -1200,8 +1201,13 @@ fn print_sync_summary(report: &SyncReport) {
     if outcomes.is_empty() {
         outcomes.push("no link changes".to_owned());
     }
+    let verb = if report.dry_run {
+        "would sync"
+    } else {
+        "synced"
+    };
     println!(
-        "synced: {} {} across {} {} ({})",
+        "{verb}: {} {} across {} {} ({})",
         report.resolution.active_skills.len(),
         if report.resolution.active_skills.len() == 1 {
             "skill"
