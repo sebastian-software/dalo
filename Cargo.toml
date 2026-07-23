@@ -32,6 +32,7 @@ proptest = "1.11.0"
 
 [target.'cfg(unix)'.dependencies]
 rustix = { version = "1", features = ["process"] }
+sigpipe = "0.1.3"
 
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/dalo-v{ version }/{ name }-{ version }-{ target }.tar.gz"

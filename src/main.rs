@@ -6,6 +6,7 @@ use dalo::term;
 use serde::Serialize;
 
 fn main() -> ExitCode {
+    sigpipe::reset();
     let cli = Cli::parse_args();
     let json = cli.json;
     match run_cli(cli) {

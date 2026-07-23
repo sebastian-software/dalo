@@ -1,7 +1,9 @@
 use dalo::lockfile::LockedInstructionPack;
 use dalo::store;
 use predicates::prelude::*;
+use std::io::Read;
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::process::ExitStatusExt;
 
 mod common;
 
@@ -1738,6 +1740,37 @@ fn completions_should_generate_zsh_script() {
         .success()
         .stdout(predicate::str::contains("#compdef dalo"))
         .stdout(predicate::str::contains("_dalo"));
+}
+
+#[test]
+fn closed_pipe_should_terminate_without_a_print_panic() {
+    let executable = assert_cmd::cargo::cargo_bin("dalo");
+    let mut child = std::process::Command::new(executable)
+        .args(["completions", "bash"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("dalo should start");
+    let mut stdout = child.stdout.take().expect("dalo stdout should be piped");
+    let mut first_byte = [0_u8; 1];
+    stdout
+        .read_exact(&mut first_byte)
+        .expect("dalo should begin writing completions");
+    drop(stdout);
+
+    let output = child
+        .wait_with_output()
+        .expect("dalo should exit after the pipe closes");
+    assert_eq!(
+        output.status.signal(),
+        Some(13),
+        "dalo should terminate with SIGPIPE instead of panicking: {}",
+        String::from_utf8_lossy(&output.stderr),
+    );
+    assert!(
+        !String::from_utf8_lossy(&output.stderr).contains("failed printing to stdout"),
+        "dalo should not report a print panic",
+    );
 }
 
 #[test]
