@@ -1229,8 +1229,11 @@ fn audit_agent_auto_should_prefer_an_enforceable_no_tool_provider() {
     let bin = temp_dir.path().join("bin");
     std::fs::create_dir_all(&skill).expect("skill directory should be created");
     std::fs::create_dir_all(&bin).expect("bin directory should be created");
-    std::fs::write(skill.join("SKILL.md"), "Summarize a pull request.\n")
-        .expect("skill should be written");
+    std::fs::write(
+        skill.join("SKILL.md"),
+        format!("# Review\n{}", "x".repeat(128 * 1024)),
+    )
+    .expect("skill should be written");
     let fake_claude = bin.join("claude");
     std::fs::write(
         &fake_claude,
