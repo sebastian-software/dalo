@@ -20,7 +20,7 @@ use crate::error::DaloResult;
 use crate::instructions::{
     self, DiscoveredPack, InstructionBlockDrift, InstructionPackReport, TopicOverlap,
 };
-use crate::inventory::InventoryWarning;
+use crate::inventory::{InventoryWarning, InventoryWarningCode};
 use crate::lockfile::{self, LockDrift, LockDriftCode};
 use crate::materialize::{self, MaterializeOperation, MaterializeOperationStatus, SyncReport};
 use crate::resolver::{self, Resolution};
@@ -657,6 +657,11 @@ pub fn print_status_report(report: &StatusReport) {
                 warning.path.display(),
                 warning.message
             );
+            if warning.code == InventoryWarningCode::InvalidSlotName {
+                println!(
+                    "    fix: rename the skill folder or set its frontmatter `name` to a portable lowercase slot name, then run `dalo sync`"
+                );
+            }
         }
     }
 

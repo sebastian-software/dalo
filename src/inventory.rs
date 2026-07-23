@@ -293,6 +293,17 @@ fn scan_skill(
     ))
 }
 
+/// Return an invalid-slot warning for one skill directory, if present.
+///
+/// This reuses the source-inventory parser so callers that copy skills into a
+/// managed source can reject names which the next sync would otherwise reject.
+pub(crate) fn invalid_slot_name_warning(skill_dir: &Path) -> DaloResult<Option<InventoryWarning>> {
+    let (_, warnings) = scan_skill("adopt", skill_dir)?;
+    Ok(warnings
+        .into_iter()
+        .find(|warning| warning.code == InventoryWarningCode::InvalidSlotName))
+}
+
 fn read_skill_metadata(path: &Path) -> io::Result<(String, bool)> {
     let file = fs::File::open(path)?;
     let metadata_truncated = file.metadata()?.len() > MAX_SKILL_METADATA_BYTES as u64;
