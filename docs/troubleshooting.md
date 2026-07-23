@@ -97,6 +97,18 @@ Lock drift compares the previous `lock.toml` with the current live resolution.
 | `unreadable_path` | Dalo could not read a skill path. | Fix filesystem permissions, broken links, or the source checkout. |
 | `skipped_symlink` | Dalo skipped a symlinked directory or an out-of-tree `SKILL.md` metadata symlink to keep source discovery and skill identity inside a bounded checkout. | Replace it with a real in-tree path, or remove the symlink. |
 
+### Agent Inventory Warnings
+
+These appear in `status.agent_inventory_warnings`, `dalo agent list`, and make
+`dalo status --check` fail.
+
+| Code | What it means | Recovery |
+| --- | --- | --- |
+| `invalid_agent_package` | `AGENT.md` is malformed, misses required frontmatter such as `schema_version: 1`, or exceeds a safety bound. | Fix the frontmatter and package layout, then rerun `dalo status`. |
+| `unsafe_agent_package_entry` | The package contains a symlink or unsupported special filesystem entry. | Replace it with a real in-tree file or directory. |
+| `duplicate_agent_slot_name` | Two packages in one source declare the same canonical agent name. | Rename one package or split the source. |
+| `unreadable_agent_path` | Dalo could not read an agent package or one of its entries. | Restore the checkout or fix permissions, then rerun `dalo status`. |
+
 ### Target Scan Warnings
 
 | Code | What it means | Recovery |
