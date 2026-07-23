@@ -17,6 +17,7 @@ use crate::config::UserConfig;
 use crate::error::shell_quote_path;
 use crate::git;
 use crate::instructions;
+use crate::inventory::{self, InventoryWarning, InventoryWarningCode};
 use crate::resolver;
 use crate::source::{self, SourceConfig, SourceKind};
 use crate::store::{self, ApprovalsFile, OwnedSkillState, StateFile, StorePaths};
@@ -154,6 +155,8 @@ pub enum DoctorCode {
     DirtySource,
     /// An enabled source's checkout is missing from disk.
     SourceMissing,
+    /// A source inventory is partial, so sync preserves existing links.
+    SourceInventoryDegraded,
     /// Manifest-derived source provenance is internally consistent.
     SourceProvenanceOk,
     /// Manifest declaration, checkout, or source lock disagree.
@@ -781,6 +784,7 @@ fn check_sources(
             }
             Ok(true) => {}
         }
+        check_source_inventory(source, findings);
         match git::is_dirty(&source.path) {
             Ok(true) => {
                 let severity = if source.kind == SourceKind::Team {
@@ -827,6 +831,75 @@ fn check_sources(
             check_manifest_source_provenance(source, config, source_lock.lock(), findings);
         }
     }
+}
+
+fn check_source_inventory(source: &SourceConfig, findings: &mut Vec<DoctorFinding>) {
+    match inventory::scan_source(&source.id, &source.path) {
+        Ok(inventory) if resolver::inventory_degrades_source_for_removal(&inventory) => {
+            let details = inventory
+                .warnings
+                .iter()
+                .map(|warning| {
+                    format!(
+                        "{} at `{}`: {}",
+                        warning.code,
+                        warning.path.display(),
+                        warning.message
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("; ");
+            findings.push(finding_error(
+                DoctorCode::SourceInventoryDegraded,
+                format!(
+                    "source `{}` inventory is degraded; sync preserves existing links: {details}",
+                    source.id
+                ),
+                Some(source_inventory_fix_hint(&inventory.warnings)),
+            ));
+        }
+        Ok(_) => {}
+        Err(error) => findings.push(finding_error(
+            DoctorCode::SourceInventoryDegraded,
+            format!(
+                "source `{}` inventory could not be scanned: {error}; sync preserves existing links",
+                source.id
+            ),
+            Some("dalo status".to_owned()),
+        )),
+    }
+}
+
+fn source_inventory_fix_hint(warnings: &[InventoryWarning]) -> String {
+    if let Some(warning) = warnings
+        .iter()
+        .find(|warning| warning.code == InventoryWarningCode::InvalidSlotName)
+    {
+        let path = warning.path.parent().unwrap_or(&warning.path);
+        return format!(
+            "rename {} to a portable lowercase slot name, then run `dalo sync`",
+            shell_quote_path(path)
+        );
+    }
+    if let Some(warning) = warnings
+        .iter()
+        .find(|warning| warning.code == InventoryWarningCode::UnreadablePath)
+    {
+        return format!(
+            "restore read access to {}, then run `dalo sync`",
+            shell_quote_path(&warning.path)
+        );
+    }
+    if let Some(warning) = warnings
+        .iter()
+        .find(|warning| warning.code == InventoryWarningCode::SkippedSymlink)
+    {
+        return format!(
+            "replace the unsafe symlink at {} with a real path inside the source, then run `dalo sync`",
+            shell_quote_path(&warning.path)
+        );
+    }
+    "fix the source inventory warning, then run `dalo sync`".to_owned()
 }
 
 fn check_manifest_source_provenance(
@@ -1281,6 +1354,7 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::SourceClean => "source_clean",
         DoctorCode::DirtySource => "dirty_source",
         DoctorCode::SourceMissing => "source_missing",
+        DoctorCode::SourceInventoryDegraded => "source_inventory_degraded",
         DoctorCode::SourceProvenanceOk => "source_provenance_ok",
         DoctorCode::SourceProvenanceMismatch => "source_provenance_mismatch",
         DoctorCode::SourceStoreDebris => "source_store_debris",
@@ -1348,6 +1422,37 @@ mod tests {
             }
         );
         assert!(!store.exists());
+    }
+
+    #[test]
+    fn run_doctor_should_report_inventory_degradation_as_an_error() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store = temp_dir.path().join("store");
+        store::init_store(store.clone(), false).expect("store should initialize");
+        let invalid_skill = store.join("local/skills/Review");
+        fs::create_dir_all(&invalid_skill).expect("invalid skill directory should be created");
+        fs::write(invalid_skill.join("SKILL.md"), "# Review\n")
+            .expect("invalid skill should be written");
+
+        let report = run_doctor(&store);
+        let finding = report
+            .findings
+            .iter()
+            .find(|finding| finding.code == DoctorCode::SourceInventoryDegraded)
+            .expect("degraded inventory should be reported");
+        assert_eq!(finding.severity, DoctorSeverity::Error);
+        assert!(finding.message.contains("invalid_slot_name"));
+        assert!(
+            finding
+                .message
+                .contains(invalid_skill.to_string_lossy().as_ref())
+        );
+        assert!(
+            finding
+                .next_command
+                .as_deref()
+                .is_some_and(|hint| hint.contains("rename"))
+        );
     }
 
     #[test]

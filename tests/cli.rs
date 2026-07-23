@@ -1910,6 +1910,33 @@ fn doctor_check_should_keep_json_report_and_fail_for_errors() {
 }
 
 #[test]
+fn doctor_check_should_fail_for_a_degraded_source_inventory() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    let invalid_skill = store.join("local/skills/Review");
+    std::fs::create_dir_all(&invalid_skill).expect("invalid skill directory should be created");
+    std::fs::write(invalid_skill.join("SKILL.md"), "# Review\n")
+        .expect("invalid skill should be written");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["doctor", "--check"])
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(predicate::str::contains("source_inventory_degraded"))
+        .stdout(predicate::str::contains("invalid_slot_name"))
+        .stdout(predicate::str::contains("rename"));
+}
+
+#[test]
 fn status_check_should_succeed_for_a_clean_store() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
