@@ -753,13 +753,27 @@ pub fn print_status_report(report: &StatusReport) {
     if report.resolution.active_skills.is_empty() {
         println!("  none");
     } else {
-        for skill in &report.resolution.active_skills {
+        const HUMAN_LIST_LIMIT: usize = 20;
+        for skill in report
+            .resolution
+            .active_skills
+            .iter()
+            .take(HUMAN_LIST_LIMIT)
+        {
             let marker = if skill.local_override {
                 " local_override"
             } else {
                 ""
             };
             println!("  {} -> {}{}", skill.slot_name, skill.source_ref, marker);
+        }
+        let omitted = report
+            .resolution
+            .active_skills
+            .len()
+            .saturating_sub(HUMAN_LIST_LIMIT);
+        if omitted > 0 {
+            println!("  … {omitted} more active skills (use --json for the full inventory)");
         }
     }
 
@@ -1094,6 +1108,7 @@ pub fn print_sync_report(report: &SyncReport) {
                 repair_hint
             );
         }
+        print_sync_summary(report);
     }
     let prefix = if report.operations.is_empty() {
         "  "
@@ -1143,6 +1158,66 @@ pub fn print_sync_report(report: &SyncReport) {
     );
 }
 
+fn print_sync_summary(report: &SyncReport) {
+    let mut created = 0;
+    let mut relinked = 0;
+    let mut removed = 0;
+    let mut unchanged = 0;
+    let mut planned = 0;
+    let mut blocked = 0;
+    for operation in &report.operations {
+        match operation.status {
+            crate::materialize::MaterializeOperationStatus::Applied => match operation.kind {
+                crate::materialize::MaterializeOperationKind::Create => created += 1,
+                crate::materialize::MaterializeOperationKind::Relink => relinked += 1,
+                crate::materialize::MaterializeOperationKind::Remove => removed += 1,
+                _ => {}
+            },
+            crate::materialize::MaterializeOperationStatus::Existing => unchanged += 1,
+            crate::materialize::MaterializeOperationStatus::Planned => planned += 1,
+            crate::materialize::MaterializeOperationStatus::Blocked => blocked += 1,
+        }
+    }
+    let mut outcomes = Vec::new();
+    if created > 0 {
+        outcomes.push(format!("{created} created"));
+    }
+    if relinked > 0 {
+        outcomes.push(format!("{relinked} relinked"));
+    }
+    if removed > 0 {
+        outcomes.push(format!("{removed} removed"));
+    }
+    if unchanged > 0 {
+        outcomes.push(format!("{unchanged} unchanged"));
+    }
+    if planned > 0 {
+        outcomes.push(format!("{planned} planned"));
+    }
+    if blocked > 0 {
+        outcomes.push(format!("{blocked} blocked"));
+    }
+    if outcomes.is_empty() {
+        outcomes.push("no link changes".to_owned());
+    }
+    println!(
+        "synced: {} {} across {} {} ({})",
+        report.resolution.active_skills.len(),
+        if report.resolution.active_skills.len() == 1 {
+            "skill"
+        } else {
+            "skills"
+        },
+        report.linked_targets,
+        if report.linked_targets == 1 {
+            "target"
+        } else {
+            "targets"
+        },
+        outcomes.join(", ")
+    );
+}
+
 fn pluralized_source_list(ids: &[String]) -> String {
     let source_word = if ids.len() == 1 { "source" } else { "sources" };
     format!(
@@ -1182,7 +1257,12 @@ pub fn print_source_remove_report(report: &SourceRemoveReport) {
             report.source_id
         );
     } else if report.cleanup_warnings.is_empty() {
-        println!("  checkout: removed {}", report.checkout_path.display());
+        let action = if report.dry_run {
+            "would remove"
+        } else {
+            "removed"
+        };
+        println!("  checkout: {action} {}", report.checkout_path.display());
     } else {
         println!(
             "  checkout: cleanup incomplete {}",
@@ -1195,8 +1275,16 @@ pub fn print_source_remove_report(report: &SourceRemoveReport) {
             report.cascaded_sources.join(", ")
         );
     }
-    println!("  approvals removed: {}", report.removed_approvals);
-    println!("  catalog lock removed: {}", report.removed_catalog_lock);
+    if report.dry_run {
+        println!("  approvals: would remove {}", report.removed_approvals);
+        println!(
+            "  catalog lock: would remove {}",
+            report.removed_catalog_lock
+        );
+    } else {
+        println!("  approvals removed: {}", report.removed_approvals);
+        println!("  catalog lock removed: {}", report.removed_catalog_lock);
+    }
     if !report.deactivated_skills.is_empty() {
         println!("  deactivated skills:");
         for skill in &report.deactivated_skills {
@@ -1637,7 +1725,12 @@ pub fn print_doctor_report(report: &DoctorReport) {
         "summary: errors={} warnings={} info={} ok={}",
         report.summary.errors, report.summary.warnings, report.summary.info, report.summary.ok
     );
-    for finding in &report.findings {
+    for finding in report.findings.iter().filter(|finding| {
+        matches!(
+            finding.severity,
+            DoctorSeverity::Error | DoctorSeverity::Warning
+        )
+    }) {
         let next = finding
             .next_command
             .as_ref()
@@ -1652,6 +1745,14 @@ pub fn print_doctor_report(report: &DoctorReport) {
             finding.message,
             next
         );
+    }
+    let omitted = report
+        .findings
+        .iter()
+        .filter(|finding| matches!(finding.severity, DoctorSeverity::Info | DoctorSeverity::Ok))
+        .count();
+    if omitted > 0 {
+        println!("details: {omitted} info/ok findings omitted; use --json for the full report");
     }
 }
 

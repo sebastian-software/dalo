@@ -18,7 +18,7 @@ use crate::catalog;
 use crate::config::UserConfig;
 use crate::error::{DaloError, DaloResult};
 use crate::inventory;
-use crate::resolver::Resolution;
+use crate::resolver::{self, Resolution};
 use crate::store::{self, StorePaths};
 
 /// Persisted audit report schema version.
@@ -376,7 +376,7 @@ impl Default for AuditOptions {
     }
 }
 
-/// Resolve and audit a source-qualified skill or a local skill path.
+/// Resolve and audit a source-qualified skill, a unique active skill name, or a local skill path.
 pub fn audit_target(
     paths: &StorePaths,
     target: &str,
@@ -543,13 +543,9 @@ fn resolve_target(paths: &StorePaths, target: &str) -> DaloResult<(String, PathB
     let parsed_selector = target
         .split_once(':')
         .filter(|(source, selector)| !source.is_empty() && !selector.is_empty());
-    let config = parsed_selector
-        .map(|_| store::read_config(paths))
-        .transpose()?;
+    let config = store::read_config(paths)?;
     if let Some((source_id, selector)) = parsed_selector
-        && let Some(source) = config
-            .as_ref()
-            .and_then(|config| config.sources.iter().find(|source| source.id == source_id))
+        && let Some(source) = config.sources.iter().find(|source| source.id == source_id)
     {
         let inventory = inventory::scan_source(source_id, &source.path)?;
         let known_skills = inventory
@@ -571,6 +567,46 @@ fn resolve_target(paths: &StorePaths, target: &str) -> DaloResult<(String, PathB
         return Ok((skill.source_ref, skill.path));
     }
 
+    if parsed_selector.is_none() && !Path::new(target).exists() {
+        let approvals = store::read_approvals(paths)?;
+        let live = resolver::resolve_from_config(&config, approvals.approvals);
+        let known_skills = live
+            .resolution
+            .active_skills
+            .iter()
+            .map(|skill| skill.source_ref.clone())
+            .collect::<Vec<_>>();
+        let matches = live
+            .resolution
+            .active_skills
+            .into_iter()
+            .filter(|skill| skill.slot_name == target || skill.id.as_deref() == Some(target))
+            .map(|skill| (skill.source_ref, skill.path))
+            .collect::<Vec<_>>();
+        match matches.as_slice() {
+            [(source_ref, path)] => return Ok((source_ref.clone(), path.clone())),
+            [] => {
+                return Err(DaloError::skill_not_found(
+                    target,
+                    known_skills,
+                    "dalo status",
+                ));
+            }
+            _ => {
+                let candidates = matches
+                    .iter()
+                    .map(|(source_ref, _)| source_ref.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                return Err(DaloError::InvalidArgument {
+                    reason: format!(
+                        "audit target `{target}` is ambiguous; use one of: {candidates}"
+                    ),
+                });
+            }
+        }
+    }
+
     let candidate = Path::new(target);
     if candidate.exists() {
         let path = if candidate.is_file() {
@@ -579,14 +615,14 @@ fn resolve_target(paths: &StorePaths, target: &str) -> DaloResult<(String, PathB
             candidate
         };
         let path = store::absolute_path(path)?;
-        if let Some(source_ref) = staged_source_ref(paths, &path, config.as_ref())? {
+        if let Some(source_ref) = staged_source_ref(paths, &path, Some(&config))? {
             return Ok((source_ref, path));
         }
         return Ok((synthetic_path_source_ref(&path), path));
     }
 
-    match (parsed_selector, config) {
-        (Some((source_id, _)), Some(config)) => Err(DaloError::unknown_source(
+    match parsed_selector {
+        Some((source_id, _)) => Err(DaloError::unknown_source(
             source_id,
             config
                 .sources
@@ -594,7 +630,7 @@ fn resolve_target(paths: &StorePaths, target: &str) -> DaloResult<(String, PathB
                 .map(|source| source.id.clone())
                 .collect(),
         )),
-        _ => Err(DaloError::InvalidArgument {
+        None => Err(DaloError::InvalidArgument {
             reason: "audit target must be an existing skill path or `<source>:<skill>`".to_owned(),
         }),
     }
