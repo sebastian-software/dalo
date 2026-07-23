@@ -2115,7 +2115,7 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             if options.json {
                 print_json(&report)?;
             } else {
-                status::print_catalog_select_report(&report);
+                status::print_catalog_select_report(&report, &options.store);
             }
             Ok(())
         }
@@ -2180,7 +2180,7 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             if options.json {
                 print_json(&report)?;
             } else {
-                status::print_source_priority_report(&report);
+                status::print_source_priority_report(&report, &options.store);
             }
             Ok(())
         }
@@ -2612,7 +2612,7 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
                 })?;
             } else {
                 status::print_audit_report(&audit_report);
-                status::print_approval_report(&approval_report);
+                status::print_approval_report(&approval_report, &options.store);
             }
         }
         ApproveSubcommand::Agent(args) => print_approval_result(
@@ -2711,7 +2711,7 @@ fn print_approval_result(
     if options.json {
         print_json(&report)
     } else {
-        status::print_approval_report(&report);
+        status::print_approval_report(&report, &options.store);
         Ok(())
     }
 }

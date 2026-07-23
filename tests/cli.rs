@@ -5400,6 +5400,7 @@ fn source_remove_should_refuse_the_built_in_local_source() {
 fn source_priority_should_update_config() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
+    let store_root = store::comparable_path(&store);
     let repo = temp_dir.path().join("team-repo");
     create_git_skill_repo(&repo);
     dalo_command()
@@ -5423,7 +5424,21 @@ fn source_priority_should_update_config() {
         .args(["source", "priority", "company", "3"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("priority=3"));
+        .stdout(predicate::str::contains("priority=3"))
+        .stdout(predicate::str::contains(format!(
+            "next: {} to update linked targets",
+            store::dalo_command(&store_root, "sync")
+        )));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "priority", "company", "3"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "unchanged source company priority=3",
+        ))
+        .stdout(predicate::str::contains("next:").not());
 }
 
 #[test]
@@ -6417,6 +6432,7 @@ fn catalog_select_should_materialize_only_selected_skills() {
 fn catalog_select_should_report_mutations_and_no_ops() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
+    let store_root = store::comparable_path(&store);
     let target = temp_dir.path().join("skills");
     let repo = temp_dir.path().join("catalog-repo");
     create_git_catalog_repo(&repo);
@@ -6438,7 +6454,11 @@ fn catalog_select_should_report_mutations_and_no_ops() {
         .stdout(predicate::str::contains(
             "catalog marketing: selected copy-editing (1 total selected)",
         ))
-        .stdout(predicate::str::contains("selection: skills/copy-editing"));
+        .stdout(predicate::str::contains("selection: skills/copy-editing"))
+        .stdout(predicate::str::contains(format!(
+            "next: {} to update linked targets",
+            store::dalo_command(&store_root, "sync")
+        )));
     dalo_command()
         .args(["--store"])
         .arg(&store)
@@ -6450,7 +6470,11 @@ fn catalog_select_should_report_mutations_and_no_ops() {
         ))
         .stdout(predicate::str::contains(
             "selection: skills/copy-editing, skills/launch-copy",
-        ));
+        ))
+        .stdout(predicate::str::contains(format!(
+            "next: {} to update linked targets",
+            store::dalo_command(&store_root, "sync")
+        )));
     dalo_command()
         .args(["--store"])
         .arg(&store)
@@ -6466,7 +6490,11 @@ fn catalog_select_should_report_mutations_and_no_ops() {
         .stdout(predicate::str::contains(
             "catalog marketing: unselected copy-editing (1 total selected)",
         ))
-        .stdout(predicate::str::contains("selection: skills/launch-copy"));
+        .stdout(predicate::str::contains("selection: skills/launch-copy"))
+        .stdout(predicate::str::contains(format!(
+            "next: {} to update linked targets",
+            store::dalo_command(&store_root, "sync")
+        )));
     dalo_command()
         .args(["--store"])
         .arg(&store)
@@ -6508,13 +6536,15 @@ fn catalog_select_should_report_mutations_and_no_ops() {
         .assert()
         .success()
         .stdout(predicate::str::contains("catalog marketing: no change"))
-        .stdout(predicate::str::contains("selection: none"));
+        .stdout(predicate::str::contains("selection: none"))
+        .stdout(predicate::str::contains("next:").not());
 }
 
 #[test]
 fn catalog_selection_should_stay_pending_until_explicitly_approved() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
+    let store_root = store::comparable_path(&store);
     let target = temp_dir.path().join("skills");
     let repo = temp_dir.path().join("catalog-repo");
     create_git_catalog_repo(&repo);
@@ -6550,6 +6580,20 @@ fn catalog_selection_should_stay_pending_until_explicitly_approved() {
         .success()
         .stdout(predicate::str::contains("pending approval"))
         .stdout(predicate::str::contains("marketing:copy-editing"));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "skill", "marketing:copy-editing"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "granted skill marketing:copy-editing",
+        ))
+        .stdout(predicate::str::contains(format!(
+            "next: {} to link it",
+            store::dalo_command(&store_root, "sync")
+        )));
 }
 
 #[test]

@@ -171,6 +171,8 @@ pub struct SourceProvenance {
 pub struct SourcePriorityReport {
     /// Updated source.
     pub source: SourceConfig,
+    /// Whether the priority differs from its previous value.
+    pub changed: bool,
     /// Whether the command ran as dry-run.
     pub dry_run: bool,
 }
@@ -745,15 +747,20 @@ pub fn set_source_priority(
             source_id: id.to_owned(),
         });
     }
+    let changed = source.priority != priority;
     source.priority = priority;
     let source = source.clone();
 
-    if !dry_run {
+    if changed && !dry_run {
         sort_sources(&mut config.sources);
         store::write_config(paths, &config)?;
     }
 
-    Ok(SourcePriorityReport { source, dry_run })
+    Ok(SourcePriorityReport {
+        source,
+        changed,
+        dry_run,
+    })
 }
 
 /// Refresh clean tracking team sources before sync.
