@@ -48,7 +48,7 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub json: bool,
 
-    /// Reserved for future safe interactive prompts; currently a no-op.
+    /// Reserved for future safe interactive prompts; currently ignored with a notice.
     #[arg(long, global = true)]
     pub yes: bool,
 
@@ -68,23 +68,15 @@ pub struct GlobalOptions {
     pub store: PathBuf,
     /// Emit JSON.
     pub json: bool,
-    /// Reserved for future safe prompts.
-    pub yes: bool,
     /// Plan without mutating.
     pub dry_run: bool,
 }
 
 impl GlobalOptions {
-    fn resolve(
-        store: Option<&std::path::Path>,
-        json: bool,
-        yes: bool,
-        dry_run: bool,
-    ) -> DaloResult<Self> {
+    fn resolve(store: Option<&std::path::Path>, json: bool, dry_run: bool) -> DaloResult<Self> {
         Ok(Self {
             store: store::resolve_store_path(store)?,
             json,
-            yes,
             dry_run,
         })
     }
@@ -817,6 +809,7 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         command,
     } = cli;
 
+    warn_noop_yes(yes);
     let Some(command) = command else {
         Cli::command().print_help()?;
         println!();
@@ -839,11 +832,10 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         GlobalOptions {
             store: PathBuf::new(),
             json,
-            yes,
             dry_run,
         }
     } else {
-        GlobalOptions::resolve(store.as_deref(), json, yes, dry_run)?
+        GlobalOptions::resolve(store.as_deref(), json, dry_run)?
     };
     if command_ignores_dry_run(&command) {
         warn_noop_dry_run(options.dry_run, options.json);
@@ -874,6 +866,12 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
     }
 
     result
+}
+
+fn warn_noop_yes(yes: bool) {
+    if yes {
+        eprintln!("note: --yes is reserved for future safe prompts and is currently ignored");
+    }
 }
 
 fn warn_noop_dry_run(dry_run: bool, json: bool) {
