@@ -665,8 +665,7 @@ pub fn print_status_report(report: &StatusReport) {
     if !report.unmanaged_skills.is_empty() {
         println!("unmanaged skills:");
         for skill in &report.unmanaged_skills {
-            let marker = if skill.protected { " protected" } else { "" };
-            println!("  {} -> {}{}", skill.id, skill.path.display(), marker);
+            print_unmanaged_skill_with_repair_hint(skill, &report.store);
         }
     }
 
@@ -890,13 +889,23 @@ pub fn print_sync_report(report: &SyncReport) {
                 .reason
                 .as_ref()
                 .map_or(String::new(), |reason| format!(" ({reason})"));
+            let repair_hint =
+                if operation.kind == crate::materialize::MaterializeOperationKind::Conflict {
+                    format!(
+                        " ({})",
+                        unmanaged_repair_hint(&report.store, &operation.link_path)
+                    )
+                } else {
+                    String::new()
+                };
             println!(
-                "{:<8} {:<10} {}{}{}",
+                "{:<8} {:<10} {}{}{}{}",
                 operation.status.as_str(),
                 operation.kind.as_str(),
                 operation.link_path.display(),
                 desired,
-                reason
+                reason,
+                repair_hint
             );
         }
     }
@@ -1330,7 +1339,7 @@ pub fn print_adopt_report(report: &AdoptReport, store_root: &Path) {
 }
 
 /// Print a human-readable resolve list report.
-pub fn print_resolve_list_report(report: &ResolveListReport) {
+pub fn print_resolve_list_report(report: &ResolveListReport, store_root: &Path) {
     if report.unmanaged_skills.is_empty()
         && report.owned_skills.is_empty()
         && report.target_warnings.is_empty()
@@ -1342,8 +1351,7 @@ pub fn print_resolve_list_report(report: &ResolveListReport) {
     if !report.unmanaged_skills.is_empty() {
         println!("unmanaged skills:");
         for skill in &report.unmanaged_skills {
-            let marker = if skill.protected { " protected" } else { "" };
-            println!("  {} -> {}{}", skill.id, skill.path.display(), marker);
+            print_unmanaged_skill_with_repair_hint(skill, store_root);
         }
     }
 
@@ -1370,6 +1378,26 @@ pub fn print_resolve_list_report(report: &ResolveListReport) {
             );
         }
     }
+}
+
+fn print_unmanaged_skill_with_repair_hint(skill: &UnmanagedSkill, store_root: &Path) {
+    let marker = if skill.protected { " protected" } else { "" };
+    println!(
+        "  {} -> {}{} ({})",
+        skill.id,
+        skill.path.display(),
+        marker,
+        unmanaged_repair_hint(store_root, std::path::Path::new(&skill.id))
+    );
+}
+
+fn unmanaged_repair_hint(store_root: &Path, selector: &Path) -> String {
+    let selector = crate::error::shell_quote_path(selector);
+    format!(
+        "repair: run `{}`, or `{}`",
+        store::dalo_command(store_root, &format!("resolve adopt {selector} --replace")),
+        store::dalo_command(store_root, &format!("resolve keep {selector}"))
+    )
 }
 
 /// Print a human-readable keep report.

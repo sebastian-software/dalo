@@ -2890,6 +2890,7 @@ fn sync_check_should_allow_informational_local_override_diagnostics() {
 fn sync_yes_should_not_replace_unmanaged_real_directory() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
+    let store_root = store::comparable_path(&store);
     let target = temp_dir.path().join("skills");
     setup_store_with_skill_and_target(&store, &target);
     create_unmanaged_skill(&target, "review");
@@ -2902,7 +2903,22 @@ fn sync_yes_should_not_replace_unmanaged_real_directory() {
         .failure()
         .code(1)
         .stdout(predicate::str::contains("conflict"))
+        .stdout(predicate::str::contains("repair: run"))
+        .stdout(predicate::str::contains(store::dalo_command(
+            &store_root,
+            "",
+        )))
         .stderr(predicate::str::contains("1 blocked operation ("));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("unmanaged skills:"))
+        .stdout(predicate::str::contains("repair: run"))
+        .stdout(predicate::str::contains("resolve adopt 'review' --replace"));
 
     let mut command = dalo_command();
 
@@ -3943,6 +3959,7 @@ fn adopted_skill_should_show_as_local_override_over_team_skill() {
 fn resolve_list_should_report_unmanaged_skills() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
+    let store_root = store::comparable_path(&store);
     let target = temp_dir.path().join("skills");
     setup_store_with_target(&store, &target);
     create_unmanaged_skill(&target, "review");
@@ -3955,7 +3972,13 @@ fn resolve_list_should_report_unmanaged_skills() {
         .assert()
         .success()
         .stdout(predicate::str::contains("unmanaged skills:"))
-        .stdout(predicate::str::contains("review"));
+        .stdout(predicate::str::contains("review"))
+        .stdout(predicate::str::contains("repair: run"))
+        .stdout(predicate::str::contains("resolve adopt 'review' --replace"))
+        .stdout(predicate::str::contains(store::dalo_command(
+            &store_root,
+            "",
+        )));
 }
 
 #[test]
