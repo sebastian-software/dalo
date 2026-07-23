@@ -2,7 +2,7 @@
 
 use std::env;
 use std::fs;
-use std::io::{ErrorKind, Read, Write};
+use std::io::{Read, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -1468,13 +1468,19 @@ fn run_with_stdin(
     input: &str,
     provider: AgentProvider,
 ) -> DaloResult<Vec<u8>> {
+    let stdin_file = if input.is_empty() {
+        None
+    } else {
+        let mut file = NamedTempFile::new()?;
+        file.write_all(input.as_bytes())?;
+        Some(file)
+    };
     let stdout = NamedTempFile::new()?;
     let stderr = NamedTempFile::new()?;
     command
-        .stdin(if input.is_empty() {
-            Stdio::null()
-        } else {
-            Stdio::piped()
+        .stdin(match &stdin_file {
+            Some(file) => Stdio::from(file.reopen()?),
+            None => Stdio::null(),
         })
         .stdout(Stdio::from(stdout.reopen()?))
         .stderr(Stdio::from(stderr.reopen()?));
@@ -1484,13 +1490,6 @@ fn run_with_stdin(
             provider: provider.as_str().to_owned(),
             reason: error.to_string(),
         })?;
-    let stdin_writer = child.stdin.take().map(|mut stdin| {
-        let input = input.as_bytes().to_vec();
-        thread::spawn(move || match stdin.write_all(&input) {
-            Err(error) if error.kind() == ErrorKind::BrokenPipe => Ok(()),
-            result => result,
-        })
-    });
     let deadline = Instant::now() + Duration::from_secs(180);
     let status = loop {
         if provider_output_len(&stdout)? > MAX_PROVIDER_OUTPUT_BYTES
@@ -1498,7 +1497,6 @@ fn run_with_stdin(
         {
             let _ = child.kill();
             let _ = child.wait();
-            join_stdin_writer(stdin_writer, provider)?;
             return Err(DaloError::AgentReviewFailed {
                 provider: provider.as_str().to_owned(),
                 reason: format!(
@@ -1513,7 +1511,6 @@ fn run_with_stdin(
         if Instant::now() >= deadline {
             let _ = child.kill();
             let _ = child.wait();
-            join_stdin_writer(stdin_writer, provider)?;
             return Err(DaloError::AgentReviewFailed {
                 provider: provider.as_str().to_owned(),
                 reason: "review exceeded the 180 second timeout".to_owned(),
@@ -1521,7 +1518,6 @@ fn run_with_stdin(
         }
         thread::sleep(Duration::from_millis(50));
     };
-    join_stdin_writer(stdin_writer, provider)?;
     if provider_output_len(&stdout)? > MAX_PROVIDER_OUTPUT_BYTES
         || provider_output_len(&stderr)? > MAX_PROVIDER_OUTPUT_BYTES
     {
@@ -1552,22 +1548,6 @@ fn run_with_stdin(
 
 fn provider_output_len(output: &NamedTempFile) -> DaloResult<u64> {
     Ok(output.as_file().metadata()?.len())
-}
-
-fn join_stdin_writer(
-    writer: Option<thread::JoinHandle<std::io::Result<()>>>,
-    provider: AgentProvider,
-) -> DaloResult<()> {
-    let Some(writer) = writer else {
-        return Ok(());
-    };
-    writer
-        .join()
-        .map_err(|_| DaloError::AgentReviewFailed {
-            provider: provider.as_str().to_owned(),
-            reason: "prompt writer panicked".to_owned(),
-        })?
-        .map_err(DaloError::Io)
 }
 
 fn parse_direct_json(bytes: Vec<u8>, provider: AgentProvider) -> DaloResult<serde_json::Value> {
