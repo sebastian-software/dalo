@@ -2,6 +2,7 @@
 
 use serde::Serialize;
 
+use crate::agent;
 use crate::error::{DaloError, DaloResult};
 use crate::inventory;
 use crate::source::SourceKind;
@@ -66,6 +67,10 @@ pub fn revoke(
     // (InvalidArgument) are still surfaced.
     let canonical = match canonical_value(paths, scope, value) {
         Ok(canonical) => Some(canonical),
+        // Agent approvals predate the CLI and may have been hand-written. Keep
+        // revocation available for those records even if their agent package
+        // has since disappeared or the stored value is not a current ref.
+        Err(_) if scope == "agent" => None,
         Err(error @ DaloError::InvalidArgument { .. }) => return Err(error),
         Err(_) => None,
     };
@@ -100,6 +105,7 @@ fn canonical_value(paths: &StorePaths, scope: &str, value: &str) -> DaloResult<S
             Ok(value.to_owned())
         }
         "skill" => canonical_skill(paths, value),
+        "agent" => canonical_agent(paths, value),
         "author" | "org" => {
             let (source, owner) = source_qualified_owner(scope, value)?;
             source_exists(paths, source)?;
@@ -108,7 +114,7 @@ fn canonical_value(paths: &StorePaths, scope: &str, value: &str) -> DaloResult<S
             }
             Ok(format!("{source}:{owner}"))
         }
-        _ => invalid("approval scope must be one of skill, source, author, or org"),
+        _ => invalid("approval scope must be one of skill, source, agent, author, or org"),
     }
 }
 
@@ -159,6 +165,34 @@ pub fn canonical_skill(paths: &StorePaths, value: &str) -> DaloResult<String> {
             )
         })?;
     Ok(skill.source_ref.clone())
+}
+
+/// Resolve a source-qualified slot or stable ID to its canonical agent ref.
+fn canonical_agent(paths: &StorePaths, value: &str) -> DaloResult<String> {
+    let (source_id, _) = value
+        .split_once(':')
+        .filter(|(source, agent)| !source.is_empty() && !agent.is_empty())
+        .ok_or_else(|| DaloError::InvalidArgument {
+            reason: "agent approval values must use `<source>:<name>`, for example `team:reviewer`"
+                .to_owned(),
+        })?;
+    let config = store::read_config(paths)?;
+    let source = config
+        .sources
+        .iter()
+        .find(|source| source.id == source_id)
+        .ok_or_else(|| {
+            DaloError::unknown_source(
+                source_id,
+                config
+                    .sources
+                    .iter()
+                    .map(|candidate| candidate.id.clone())
+                    .collect(),
+            )
+        })?;
+    let inventory = inventory::scan_source(source_id, &source.path)?;
+    Ok(agent::find_agent(&config.sources, &[inventory], value)?.source_ref)
 }
 
 fn source_exists(paths: &StorePaths, source_id: &str) -> DaloResult<()> {
@@ -250,6 +284,27 @@ mod tests {
 
         let report = revoke(&paths, "skill", "catalog:review-helper", false)
             .expect("revoke should tolerate a skill source that no longer exists");
+        assert_eq!(report.action, "revoked");
+        assert!(
+            store::read_approvals(&paths)
+                .expect("approvals should read")
+                .approvals
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn revoke_should_remove_hand_written_agent_approval_when_it_no_longer_resolves() {
+        let (_temp, paths) = init_paths();
+        let mut approvals = store::read_approvals(&paths).expect("approvals should read");
+        approvals.approvals.push(ApprovalRecord {
+            scope: "agent".to_owned(),
+            value: "retired-reviewer".to_owned(),
+        });
+        store::write_approvals(&paths, &approvals).expect("approvals should write");
+
+        let report = revoke(&paths, "agent", "retired-reviewer", false)
+            .expect("revoke should tolerate a hand-written agent approval");
         assert_eq!(report.action, "revoked");
         assert!(
             store::read_approvals(&paths)

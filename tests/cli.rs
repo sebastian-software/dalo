@@ -96,6 +96,90 @@ fn agent_list_and_show_should_preview_canonical_provider_projections() {
 }
 
 #[test]
+fn approve_agent_should_activate_and_revoke_a_team_agent() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo(&repo);
+    let package = repo.join("agents/reviewer");
+    std::fs::create_dir_all(&package).expect("agent package directory should be created");
+    std::fs::write(
+        package.join("AGENT.md"),
+        "---\nschema_version: 1\nname: reviewer\ndescription: Reviews code\n---\nReview the requested change.\n",
+    )
+    .expect("canonical agent should be written");
+    run_git(&repo, &["add", "."]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "add canonical agent",
+            "-q",
+        ],
+    );
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "team"])
+        .arg(&repo)
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["agent", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("pending approval team:reviewer"))
+        .stdout(predicate::str::contains(
+            "run: dalo approve agent team:reviewer",
+        ));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "agent", "team:reviewer"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("granted agent team:reviewer"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["agent", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("active team:reviewer"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "revoke", "agent", "team:reviewer"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("revoked agent team:reviewer"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["agent", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("pending approval team:reviewer"));
+}
+
+#[test]
 fn team_cli_should_manage_catalog_manifest_end_to_end() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let repo = temp_dir.path().join("team-repo");
@@ -1466,6 +1550,7 @@ fn approval_validation_errors_should_match_the_selected_scope() {
 
     for (scope, expected) in [
         ("skill", "skill approval values must use `<source>:<slot>`"),
+        ("agent", "agent approval values must use `<source>:<name>`"),
         (
             "author",
             "author approval values must use `<source>:<owner>`",
@@ -1501,7 +1586,7 @@ fn approval_validation_errors_should_match_the_selected_scope() {
         .code(2)
         .stderr(predicate::str::contains("invalid value 'banana'"))
         .stderr(predicate::str::contains(
-            "possible values: skill, source, author, org",
+            "possible values: skill, agent, source, author, org",
         ))
         .stderr(predicate::str::contains("check failed").not());
 
