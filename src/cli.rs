@@ -1,7 +1,7 @@
 //! Command-line parser and handlers.
 
 use std::fs;
-use std::io;
+use std::io::{self, IsTerminal};
 use std::path::PathBuf;
 
 use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
@@ -36,7 +36,7 @@ use crate::update;
     version,
     about = "Git-backed skill management for AI agents.",
     long_about = "Git-backed skill management for AI agents.\n\nDalo keeps a local store of skill sources, resolves one approved skill set, and links that set into the folders your agents already read.",
-    after_help = "Start here: dalo init -> dalo target link <agent> -> dalo source add <id> <git-url-or-path> -> dalo sync\nTry safely: use --store with a temporary directory and target link generic <path>.",
+    after_help = "Start here: dalo init -> dalo target link <agent> -> dalo source add <id> <git-url-or-path> -> dalo sync\nUse `dalo next` for one state-aware next action.\nTry safely: use --store with a temporary directory and target link generic <path>.",
     after_long_help = "Mental model:\n  store   local database under ~/.dalo, or --store PATH\n  source  Git-backed skill collection, including the built-in local source\n  sync    refreshes clean tracking sources, resolves approved skills, and links them into targets\n\nQuickstart:\n  1. dalo init\n  2. dalo target link <codex|claude|openclaw|hermes|generic> [path]\n  3. dalo source add <id> <git-url-or-path>\n  4. dalo sync\n\nSafe sandbox:\n  export DALO_STORE=\"$(mktemp -d)/store\"\n  dalo init\n  dalo target link generic \"$(mktemp -d)/skills\""
 )]
 pub struct Cli {
@@ -108,6 +108,8 @@ pub enum Command {
     Team(TeamCommand),
     /// Show managed, unmanaged, and conflicted skill state.
     Status(CheckArgs),
+    /// Show one state-aware next action for this store.
+    Next,
     /// Refresh clean sources, resolve approved skills, and link them into targets.
     #[command(
         long_about = "Refresh clean tracking sources, resolve the approved skill set, and materialize it into linked target folders.\n\nA skill source is a Git-backed collection of skills. Sync never overwrites unmanaged files; blocked or shadowed skills are reported instead."
@@ -812,6 +814,10 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
 
     warn_noop_yes(yes, json);
     let Some(command) = command else {
+        if !json && io::stdout().is_terminal() {
+            let options = GlobalOptions::resolve(store.as_deref(), false, dry_run)?;
+            return run_next(&options);
+        }
         Cli::command().print_help()?;
         println!();
         return Ok(());
@@ -849,6 +855,7 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         Command::Agent(command) => run_agent(&options, command),
         Command::Team(command) => run_team(&options, command),
         Command::Status(args) => run_status(&options, args),
+        Command::Next => run_next(&options),
         Command::Sync(args) => run_sync(&options, args),
         Command::Autosync(command) => run_autosync(&options, command),
         Command::Adopt(command) => run_adopt(&options, command),
@@ -891,6 +898,7 @@ fn command_ignores_dry_run(command: &Command) -> bool {
         }) | Command::Agent(AgentCommand {
             command: AgentSubcommand::List | AgentSubcommand::Show(_)
         }) | Command::Status(_)
+            | Command::Next
             | Command::Doctor(_)
             | Command::Approve(ApproveCommand {
                 command: ApproveSubcommand::List
@@ -1139,7 +1147,24 @@ fn run_init(options: &GlobalOptions) -> DaloResult<()> {
     if options.json {
         print_json(&report)?;
     } else {
-        status::print_init_report(&report);
+        let next = if report.validation_warnings.is_empty() {
+            Some(status::build_next_action_report(&options.store)?)
+        } else {
+            None
+        };
+        status::print_init_report(&report, next.as_ref());
+    }
+
+    Ok(())
+}
+
+fn run_next(options: &GlobalOptions) -> DaloResult<()> {
+    let report = status::build_next_action_report(&options.store)?;
+
+    if options.json {
+        print_json(&report)?;
+    } else {
+        status::print_next_action_report(&report);
     }
 
     Ok(())

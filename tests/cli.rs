@@ -29,6 +29,7 @@ fn help_should_list_planned_top_level_commands() {
         .stdout(predicate::str::contains("source"))
         .stdout(predicate::str::contains("team"))
         .stdout(predicate::str::contains("status"))
+        .stdout(predicate::str::contains("next"))
         .stdout(predicate::str::contains("sync"))
         .stdout(predicate::str::contains("adopt"))
         .stdout(predicate::str::contains("resolve"))
@@ -39,6 +40,138 @@ fn help_should_list_planned_top_level_commands() {
         .stdout(predicate::str::contains(
             "ignored in JSON mode and otherwise noted",
         ));
+}
+
+#[test]
+fn next_should_choose_one_action_from_store_state_and_keep_init_state_aware() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = store::comparable_path(&temp_dir.path().join("store"));
+    let target = temp_dir.path().join("skills");
+    let source = temp_dir.path().join("source");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("next")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("initialized: no"))
+        .stdout(predicate::str::contains(format!(
+            "Next: {}",
+            store::dalo_command(&store, "init")
+        )));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("next")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("linked targets: 0"))
+        .stdout(predicate::str::contains(format!(
+            "Next: {}",
+            store::dalo_command(&store, "target detect")
+        )));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "link", "generic"])
+        .arg(&target)
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("next")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("linked targets: 1"))
+        .stdout(predicate::str::contains(format!(
+            "Next: {}",
+            store::dalo_command(&store, "source add <id> <git-url-or-path>")
+        )));
+
+    create_git_skill_repo_with_skill(&source, "review", "# Review\n");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "team"])
+        .arg(&source)
+        .assert()
+        .success();
+    set_source_untrusted(&store, "team");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("next")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("pending approvals: 1"))
+        .stdout(predicate::str::contains(format!(
+            "Next: {}",
+            store::dalo_command(&store, "approve skill team:review")
+        )));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "skill", "team:review"])
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("next")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "Next: {}",
+            store::dalo_command(&store, "sync")
+        )));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("next")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("All synced ✓"));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Dalo"))
+        .stdout(predicate::str::contains("All synced ✓"))
+        .stdout(predicate::str::contains("Next steps:").not());
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Usage:"))
+        .stdout(predicate::str::contains("next"));
 }
 
 #[test]
