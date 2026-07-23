@@ -2436,7 +2436,7 @@ fn run_resolve(options: &GlobalOptions, command: ResolveCommand) -> DaloResult<(
             if options.json {
                 print_json(&report)?;
             } else {
-                status::print_resolve_list_report(&report);
+                status::print_resolve_list_report(&report, &options.store);
             }
             Ok(())
         }
