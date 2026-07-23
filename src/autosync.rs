@@ -1209,21 +1209,35 @@ fn install_cron(
     state: &AutosyncInstallState,
     runner: &dyn CommandRunner,
 ) -> DaloResult<()> {
-    let current = read_crontab(runner)?;
-    let without = strip_cron_block(&current, &state.identifier)?;
-    let block = render_cron(paths, state);
-    let content = if without.trim().is_empty() {
-        block
-    } else {
-        format!("{}\n{}", without.trim_end(), block)
-    };
-    require_success("crontab", &["-".to_owned()], runner, Some(&content))?;
-    Ok(())
+    rewrite_crontab(runner, |current| {
+        let without = strip_cron_block(current, &state.identifier)?;
+        let block = render_cron(paths, state);
+        Ok(if without.trim().is_empty() {
+            block
+        } else {
+            format!("{}\n{}", without.trim_end(), block)
+        })
+    })
 }
 
 fn remove_cron(state: &AutosyncInstallState, runner: &dyn CommandRunner) -> DaloResult<()> {
-    let current = read_crontab(runner)?;
-    let content = strip_cron_block(&current, &state.identifier)?;
+    rewrite_crontab(runner, |current| {
+        strip_cron_block(current, &state.identifier)
+    })
+}
+
+/// Rewrite a crontab while minimizing the stale-snapshot window. The crontab
+/// interface has no compare-and-swap operation, so a concurrent edit can never
+/// be ruled out completely; validating a first snapshot and re-reading directly
+/// before the write preserves edits that arrive while dalo prepares its update.
+fn rewrite_crontab(
+    runner: &dyn CommandRunner,
+    update: impl Fn(&str) -> DaloResult<String>,
+) -> DaloResult<()> {
+    let initial = read_crontab(runner)?;
+    let _ = update(&initial)?;
+    let latest = read_crontab(runner)?;
+    let content = update(&latest)?;
     require_success("crontab", &["-".to_owned()], runner, Some(&content))?;
     Ok(())
 }
@@ -1570,6 +1584,7 @@ type RecordedCall = (String, Vec<String>, Option<String>);
 struct FakeRunner {
     calls: RefCell<Vec<RecordedCall>>,
     crontab: RefCell<String>,
+    crontab_after_next_read: RefCell<Option<String>>,
     fail_programs: RefCell<Vec<String>>,
     observe_enable_paths: RefCell<Option<StorePaths>>,
     observed_enable_install: RefCell<Option<AutosyncInstallState>>,
@@ -1609,9 +1624,13 @@ impl CommandRunner for FakeRunner {
             });
         }
         if program == "crontab" && args == ["-l"] {
+            let crontab = self.crontab.borrow().clone();
+            if let Some(updated) = self.crontab_after_next_read.borrow_mut().take() {
+                *self.crontab.borrow_mut() = updated;
+            }
             return Ok(CommandResult {
                 success: true,
-                stdout: self.crontab.borrow().clone(),
+                stdout: crontab,
                 stderr: String::new(),
                 status: "0".to_owned(),
             });
@@ -2538,6 +2557,54 @@ mod tests {
             .expect("state exists");
         assert_eq!(state.last_successful_at_unix, successful);
         assert_eq!(state.outcome, AutosyncRunOutcome::Skipped);
+    }
+
+    #[test]
+    fn cron_install_should_preserve_unrelated_edits_made_before_the_final_read() {
+        let (_temp, paths, home, executable) = setup();
+        let state = planned_state(
+            &paths,
+            SchedulerBackend::Cron,
+            AutosyncSchedule::Daily,
+            &executable,
+            &home,
+        );
+        let runner = FakeRunner::default();
+        *runner.crontab.borrow_mut() = "5 4 * * * /usr/bin/backup\n".to_owned();
+        *runner.crontab_after_next_read.borrow_mut() =
+            Some("5 4 * * * /usr/bin/backup\n6 4 * * * /usr/bin/rotate\n".to_owned());
+
+        install_cron(&paths, &state, &runner).expect("cron install should succeed");
+
+        let crontab = runner.crontab.borrow();
+        assert!(crontab.contains("/usr/bin/backup"));
+        assert!(crontab.contains("/usr/bin/rotate"));
+        assert!(crontab.contains(&cron_begin(&state.identifier)));
+    }
+
+    #[test]
+    fn cron_remove_should_preserve_unrelated_edits_made_before_the_final_read() {
+        let (_temp, paths, home, executable) = setup();
+        let state = planned_state(
+            &paths,
+            SchedulerBackend::Cron,
+            AutosyncSchedule::Daily,
+            &executable,
+            &home,
+        );
+        let runner = FakeRunner::default();
+        let dalo_block = render_cron(&paths, &state);
+        *runner.crontab.borrow_mut() = format!("5 4 * * * /usr/bin/backup\n{dalo_block}");
+        *runner.crontab_after_next_read.borrow_mut() = Some(format!(
+            "5 4 * * * /usr/bin/backup\n6 4 * * * /usr/bin/rotate\n{dalo_block}"
+        ));
+
+        remove_cron(&state, &runner).expect("cron removal should succeed");
+
+        let crontab = runner.crontab.borrow();
+        assert!(crontab.contains("/usr/bin/backup"));
+        assert!(crontab.contains("/usr/bin/rotate"));
+        assert!(!crontab.contains(&cron_begin(&state.identifier)));
     }
 
     #[test]
