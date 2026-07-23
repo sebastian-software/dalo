@@ -371,9 +371,13 @@ pub fn build_next_action_report(store_root: &Path) -> DaloResult<NextActionRepor
             Some(store::dalo_command(store_root, "status")),
         )
     } else if !sources_with_skills {
+        let local_skills_dir = StorePaths::new(store_root.to_path_buf()).local_skills_dir;
         (
             NextActionState::NoSkills,
-            "No skills are available yet; add a source or create a local skill.".to_owned(),
+            format!(
+                "No skills are available yet; add a team source, create one in {}, or adopt an existing skill.",
+                local_skills_dir.display()
+            ),
             Some(store::dalo_command(
                 store_root,
                 "source add <id> <git-url-or-path>",
@@ -532,9 +536,19 @@ pub fn print_init_report(report: &InitReport, next: Option<&NextActionReport>) {
                 "target link <codex|claude|openclaw|hermes|generic> [path]"
             )
         );
+        let local_skills_dir = StorePaths::new(report.store.clone()).local_skills_dir;
+        println!("  2. Choose a skill path:");
         println!(
-            "  2. {}",
+            "     team:     {}",
             store::dalo_command(&report.store, "source add <id> <git-url-or-path>")
+        );
+        println!(
+            "     local:    create {}/<name>/SKILL.md",
+            local_skills_dir.display()
+        );
+        println!(
+            "     existing: {}",
+            store::dalo_command(&report.store, "adopt <skill>")
         );
         println!("  3. {}", store::dalo_command(&report.store, "sync"));
     } else if let Some(next) = next {
@@ -1566,9 +1580,9 @@ fn print_unmanaged_skill_with_repair_hint(skill: &UnmanagedSkill, store_root: &P
 fn unmanaged_repair_hint(store_root: &Path, selector: &Path) -> String {
     let selector = crate::error::shell_quote_path(selector);
     format!(
-        "repair: run `{}`, or `{}`",
-        store::dalo_command(store_root, &format!("resolve adopt {selector} --replace")),
-        store::dalo_command(store_root, &format!("resolve keep {selector}"))
+        "adopt: run `{}` to copy it into the local source; use `{}` to replace the original",
+        store::dalo_command(store_root, &format!("adopt {selector}")),
+        store::dalo_command(store_root, &format!("adopt {selector} --replace"))
     )
 }
 

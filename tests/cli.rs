@@ -36,6 +36,8 @@ fn help_should_list_planned_top_level_commands() {
         .stdout(predicate::str::contains("doctor"))
         .stdout(predicate::str::contains("Mental model:"))
         .stdout(predicate::str::contains("Quickstart:"))
+        .stdout(predicate::str::contains("Choose a skill path:"))
+        .stdout(predicate::str::contains("dalo adopt <skill>"))
         .stdout(predicate::str::contains("--yes"))
         .stdout(predicate::str::contains(
             "ignored in JSON mode and otherwise noted",
@@ -66,7 +68,16 @@ fn next_should_choose_one_action_from_store_state_and_keep_init_state_aware() {
         .arg(&store)
         .arg("init")
         .assert()
-        .success();
+        .success()
+        .stdout(predicate::str::contains("Choose a skill path:"))
+        .stdout(predicate::str::contains(format!(
+            "local:    create {}/local/skills/<name>/SKILL.md",
+            store.display()
+        )))
+        .stdout(predicate::str::contains(format!(
+            "existing: {}",
+            store::dalo_command(&store, "adopt <skill>")
+        )));
 
     dalo_command()
         .args(["--store"])
@@ -98,7 +109,12 @@ fn next_should_choose_one_action_from_store_state_and_keep_init_state_aware() {
         .stdout(predicate::str::contains(format!(
             "Next: {}",
             store::dalo_command(&store, "source add <id> <git-url-or-path>")
-        )));
+        )))
+        .stdout(predicate::str::contains(format!(
+            "create one in {}/local/skills",
+            store.display()
+        )))
+        .stdout(predicate::str::contains("adopt an existing skill"));
 
     create_git_skill_repo_with_skill(&source, "review", "# Review\n");
     dalo_command()
@@ -3045,7 +3061,7 @@ fn sync_yes_should_not_replace_unmanaged_real_directory() {
         .failure()
         .code(1)
         .stdout(predicate::str::contains("conflict"))
-        .stdout(predicate::str::contains("repair: run"))
+        .stdout(predicate::str::contains("adopt: run"))
         .stdout(predicate::str::contains(store::dalo_command(
             &store_root,
             "",
@@ -3059,8 +3075,8 @@ fn sync_yes_should_not_replace_unmanaged_real_directory() {
         .assert()
         .success()
         .stdout(predicate::str::contains("unmanaged skills:"))
-        .stdout(predicate::str::contains("repair: run"))
-        .stdout(predicate::str::contains("resolve adopt 'review' --replace"));
+        .stdout(predicate::str::contains("adopt: run"))
+        .stdout(predicate::str::contains("adopt 'review'"));
 
     let mut command = dalo_command();
 
@@ -4115,8 +4131,8 @@ fn resolve_list_should_report_unmanaged_skills() {
         .success()
         .stdout(predicate::str::contains("unmanaged skills:"))
         .stdout(predicate::str::contains("review"))
-        .stdout(predicate::str::contains("repair: run"))
-        .stdout(predicate::str::contains("resolve adopt 'review' --replace"))
+        .stdout(predicate::str::contains("adopt: run"))
+        .stdout(predicate::str::contains("adopt 'review'"))
         .stdout(predicate::str::contains(store::dalo_command(
             &store_root,
             "",
