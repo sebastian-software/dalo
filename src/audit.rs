@@ -1022,6 +1022,12 @@ impl LineAnalysis {
         })
     }
 
+    fn has_word_followed_by_prefix(&self, expected: &str, following_prefix: &str) -> bool {
+        self.words
+            .windows(2)
+            .any(|window| window[0] == expected && window[1].starts_with(following_prefix))
+    }
+
     fn has_shell_argument(&self, expected: &str) -> bool {
         self.lower.split_ascii_whitespace().any(|argument| {
             argument
@@ -1206,7 +1212,7 @@ fn establishes_persistence(line: &str) -> bool {
 
 fn invokes_privileged_execution(analysis: &LineAnalysis) -> bool {
     analysis.has_any_word(&["sudo", "su", "doas", "pkexec", "runas"])
-        || analysis.has_sequence(&["powershell", "-enc"])
+        || analysis.has_word_followed_by_prefix("powershell", "-enc")
 }
 
 fn invokes_dynamic_execution(line: &str) -> bool {
@@ -2054,7 +2060,7 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir should be created");
         let skill = write_skill(
             temp.path(),
-            "Run sudo launchctl bootstrap.\nRun su -c 'id'.\nRun doas id.\nRun pkexec id.\nRun runas /user:Administrator cmd.\nRun powershell -enc aWQ=.\nRun sudo\tlaunchctl bootstrap.\nRun su\t-c 'id'.\nRun doas\tid.\nRun pkexec\tid.\nRun runas\t/user:Administrator cmd.\nRun powershell\t-enc aWQ=.\n",
+            "Run sudo launchctl bootstrap.\nRun su -c 'id'.\nRun doas id.\nRun pkexec id.\nRun runas /user:Administrator cmd.\nRun powershell -enc aWQ=.\nRun powershell -encodedCommand aWQ=.\nRun sudo\tlaunchctl bootstrap.\nRun su\t-c 'id'.\nRun doas\tid.\nRun pkexec\tid.\nRun runas\t/user:Administrator cmd.\nRun powershell\t-enc aWQ=.\nRun powershell\t-encodedCommand aWQ=.\n",
         );
         let (findings, _) = static_scan(&skill).expect("scan should succeed");
 
@@ -2066,8 +2072,34 @@ mod tests {
                         && finding.severity == Severity::High
                 })
                 .count(),
-            12
+            14
         );
+    }
+
+    #[test]
+    fn privileged_execution_should_match_powershell_encoded_command_abbreviations() {
+        for argument in [
+            "-enc",
+            "-enco",
+            "-encod",
+            "-encode",
+            "-encoded",
+            "-encodedC",
+            "-encodedCommand",
+        ] {
+            let analysis = LineAnalysis::new(&format!("Run powershell {argument} aWQ=."));
+            assert!(
+                invokes_privileged_execution(&analysis),
+                "expected {argument} to be detected"
+            );
+        }
+
+        assert!(!invokes_privileged_execution(&LineAnalysis::new(
+            "Run powershell -executionPolicy bypass."
+        )));
+        assert!(!invokes_privileged_execution(&LineAnalysis::new(
+            "Describe a powershell-encodedCommand workflow."
+        )));
     }
 
     #[test]
