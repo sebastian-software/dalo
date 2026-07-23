@@ -34,7 +34,7 @@ fn help_should_list_planned_top_level_commands() {
         .stdout(predicate::str::contains("Mental model:"))
         .stdout(predicate::str::contains("Quickstart:"))
         .stdout(predicate::str::contains("--yes"))
-        .stdout(predicate::str::contains("currently a no-op"));
+        .stdout(predicate::str::contains("currently ignored with a notice"));
 }
 
 #[test]
@@ -2057,6 +2057,28 @@ fn dry_run_should_note_when_status_is_read_only() {
         .assert()
         .success()
         .stderr(predicate::str::contains("--dry-run has no effect"));
+}
+
+#[test]
+fn yes_should_note_that_it_is_currently_ignored() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--yes", "--store"])
+        .arg(&store)
+        .arg("status")
+        .assert()
+        .success()
+        .stderr(predicate::str::contains(
+            "--yes is reserved for future safe prompts",
+        ));
 }
 
 #[test]
