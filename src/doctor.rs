@@ -17,7 +17,7 @@ use crate::config::UserConfig;
 use crate::error::shell_quote_path;
 use crate::git;
 use crate::instructions;
-use crate::inventory::{self, InventoryWarning, InventoryWarningCode};
+use crate::inventory::{InventoryWarning, InventoryWarningCode};
 use crate::resolver;
 use crate::source::{self, SourceConfig, SourceKind};
 use crate::store::{self, ApprovalsFile, OwnedSkillState, StateFile, StorePaths};
@@ -229,8 +229,17 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
         check_protected_skills(state, &mut findings);
     }
 
+    let live_resolution = config.as_ref().map(|config| {
+        let approval_records = approvals
+            .as_ref()
+            .map(|approvals| approvals.approvals.clone())
+            .unwrap_or_default();
+        resolver::resolve_from_config(config, approval_records)
+    });
+
     if let Some(config) = config.as_ref() {
         check_sources(config, &source_lock, &mut findings);
+        check_source_inventories(live_resolution.as_ref(), &mut findings);
         check_source_store_debris(&paths, config, &mut findings);
     }
 
@@ -238,8 +247,16 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
     // blocker checks do not depend on it (they re-derive from config/state and
     // read the user lock via `unwrap_or_default`), so they must not be gated on
     // a valid lock.
-    if let (Some(config), Some(_)) = (config.as_ref(), state.as_ref()) {
-        check_resolution(&paths, config, approvals.as_ref(), &mut findings);
+    if let (Some(config), Some(_), Some(live_resolution)) =
+        (config.as_ref(), state.as_ref(), live_resolution.as_ref())
+    {
+        check_resolution(
+            &paths,
+            config,
+            live_resolution,
+            approvals.is_some(),
+            &mut findings,
+        );
     }
     check_autosync(&paths, &mut findings);
 
@@ -784,7 +801,6 @@ fn check_sources(
             }
             Ok(true) => {}
         }
-        check_source_inventory(source, findings);
         match git::is_dirty(&source.path) {
             Ok(true) => {
                 let severity = if source.kind == SourceKind::Team {
@@ -833,9 +849,16 @@ fn check_sources(
     }
 }
 
-fn check_source_inventory(source: &SourceConfig, findings: &mut Vec<DoctorFinding>) {
-    match inventory::scan_source(&source.id, &source.path) {
-        Ok(inventory) if resolver::inventory_degrades_source_for_removal(&inventory) => {
+fn check_source_inventories(
+    live_resolution: Option<&resolver::LiveResolution>,
+    findings: &mut Vec<DoctorFinding>,
+) {
+    let Some(live_resolution) = live_resolution else {
+        return;
+    };
+    for scan in &live_resolution.scans {
+        match (&scan.inventory, &scan.error) {
+            (Some(inventory), _) if resolver::inventory_degrades_source_for_removal(inventory) => {
             let details = inventory
                 .warnings
                 .iter()
@@ -853,20 +876,24 @@ fn check_source_inventory(source: &SourceConfig, findings: &mut Vec<DoctorFindin
                 DoctorCode::SourceInventoryDegraded,
                 format!(
                     "source `{}` inventory is degraded; sync preserves existing links: {details}",
-                    source.id
+                    scan.source.id
                 ),
                 Some(source_inventory_fix_hint(&inventory.warnings)),
             ));
+            }
+            // `check_sources` already reports a missing or unreadable checkout.
+            // Only add a distinct inventory error when the checkout itself is
+            // present but scanning it failed.
+            (None, Some(error)) if scan.source.path.try_exists().is_ok_and(|exists| exists) => findings.push(finding_error(
+                DoctorCode::SourceInventoryDegraded,
+                format!(
+                    "source `{}` inventory could not be scanned: {error}; sync preserves existing links",
+                    scan.source.id
+                ),
+                Some("dalo status".to_owned()),
+            )),
+            _ => {}
         }
-        Ok(_) => {}
-        Err(error) => findings.push(finding_error(
-            DoctorCode::SourceInventoryDegraded,
-            format!(
-                "source `{}` inventory could not be scanned: {error}; sync preserves existing links",
-                source.id
-            ),
-            Some("dalo status".to_owned()),
-        )),
     }
 }
 
@@ -875,6 +902,12 @@ fn source_inventory_fix_hint(warnings: &[InventoryWarning]) -> String {
         .iter()
         .find(|warning| warning.code == InventoryWarningCode::InvalidSlotName)
     {
+        if warning.message.starts_with("frontmatter name ") {
+            return format!(
+                "change the frontmatter `name` in {} to a portable lowercase slot name, then run `dalo sync`",
+                shell_quote_path(&warning.path)
+            );
+        }
         let path = warning.path.parent().unwrap_or(&warning.path);
         return format!(
             "rename {} to a portable lowercase slot name, then run `dalo sync`",
@@ -1065,15 +1098,13 @@ fn check_source_store_debris(
 fn check_resolution(
     paths: &StorePaths,
     config: &UserConfig,
-    approvals: Option<&ApprovalsFile>,
+    live_resolution: &resolver::LiveResolution,
+    approvals_present: bool,
     findings: &mut Vec<DoctorFinding>,
 ) {
-    let approval_records = approvals
-        .map(|approvals| approvals.approvals.clone())
-        .unwrap_or_default();
-    let resolution = resolver::resolve_from_config(config, approval_records).resolution;
+    let resolution = &live_resolution.resolution;
 
-    if approvals.is_some() {
+    if approvals_present {
         for diagnostic in &resolution.diagnostics {
             if diagnostic.code == resolver::ResolutionDiagnosticCode::LegacyBareApproval {
                 findings.push(finding_warning(
@@ -1109,7 +1140,7 @@ fn check_resolution(
     // so `doctor --check` does not report a healthy store while sync would
     // refuse to link a skill with an unaccepted blocking finding. Read-only
     // (persist = false), so it never writes audit reports.
-    let audits = audit::audit_active_skills(paths, &resolution, false);
+    let audits = audit::audit_active_skills(paths, resolution, false);
     for source_ref in &audits.blocking {
         findings.push(finding_error(
             DoctorCode::SecurityAuditBlocked,
@@ -1453,6 +1484,31 @@ mod tests {
                 .as_deref()
                 .is_some_and(|hint| hint.contains("rename"))
         );
+    }
+
+    #[test]
+    fn run_doctor_should_point_invalid_frontmatter_name_to_skill_file() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store = temp_dir.path().join("store");
+        store::init_store(store.clone(), false).expect("store should initialize");
+        let skill = store.join("local/skills/review/SKILL.md");
+        fs::create_dir_all(skill.parent().expect("skill should have a parent"))
+            .expect("skill directory should be created");
+        fs::write(&skill, "---\nname: Review\n---\n# Review\n").expect("skill should be written");
+
+        let report = run_doctor(&store);
+        let finding = report
+            .findings
+            .iter()
+            .find(|finding| finding.code == DoctorCode::SourceInventoryDegraded)
+            .expect("degraded inventory should be reported");
+        let hint = finding
+            .next_command
+            .as_deref()
+            .expect("invalid frontmatter should include a repair hint");
+        assert!(hint.contains("frontmatter `name`"));
+        assert!(hint.contains(skill.to_string_lossy().as_ref()));
+        assert!(!hint.contains("rename"));
     }
 
     #[test]
