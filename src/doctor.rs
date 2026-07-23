@@ -141,6 +141,8 @@ pub enum DoctorCode {
     OwnedPathRealEntry,
     /// Recorded owned symlink points outside the store.
     ForeignOwnedSymlink,
+    /// Recorded owned symlink points to a different path inside the store.
+    OwnedSymlinkRepointed,
     /// Unmanaged target skill blocks the same managed slot.
     UnmanagedSameNameBlocker,
     /// A protected target slot is intentionally kept unmanaged.
@@ -629,45 +631,57 @@ fn check_owned_symlinks(paths: &StorePaths, state: &StateFile, findings: &mut Ve
         match fs::symlink_metadata(&owned.link_path) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
                 match fs::read_link(&owned.link_path) {
-                    Ok(target)
-                        if !store::path_is_same_or_descendant(
-                            &store::resolve_link_target(&owned.link_path, &target),
-                            &paths.root,
-                        ) =>
-                    {
-                        findings.push(finding_error(
-                            DoctorCode::ForeignOwnedSymlink,
-                            format!(
-                                "owned symlink `{}` points outside the store to `{}`",
-                                owned.link_path.display(),
-                                target.display()
-                            ),
-                            Some(format!(
-                                "dalo resolve remove-owned {}",
-                                owned_selector(owned)
-                            )),
-                        ));
+                    Ok(target) => {
+                        let resolved = store::resolve_link_target(&owned.link_path, &target);
+                        if !store::path_is_same_or_descendant(&resolved, &paths.root) {
+                            findings.push(finding_error(
+                                DoctorCode::ForeignOwnedSymlink,
+                                format!(
+                                    "owned symlink `{}` points outside the store to `{}`",
+                                    owned.link_path.display(),
+                                    target.display()
+                                ),
+                                Some(format!(
+                                    "dalo resolve remove-owned {}",
+                                    owned_selector(owned)
+                                )),
+                            ));
+                        } else if !resolved.exists() {
+                            findings.push(finding_error(
+                                DoctorCode::BrokenOwnedSymlink,
+                                format!(
+                                    "owned symlink `{}` points to missing `{}`",
+                                    owned.link_path.display(),
+                                    target.display()
+                                ),
+                                Some(format!(
+                                    "dalo resolve remove-owned {}",
+                                    owned_selector(owned)
+                                )),
+                            ));
+                        } else if store::comparable_path(&resolved)
+                            != store::comparable_path(&owned.store_path)
+                        {
+                            findings.push(finding_error(
+                                DoctorCode::OwnedSymlinkRepointed,
+                                format!(
+                                    "owned symlink `{}` points to `{}`, but its recorded store path is `{}`",
+                                    owned.link_path.display(),
+                                    resolved.display(),
+                                    owned.store_path.display()
+                                ),
+                                Some(format!(
+                                    "dalo resolve remove-owned {}",
+                                    owned_selector(owned)
+                                )),
+                            ));
+                        } else {
+                            findings.push(ok(
+                                DoctorCode::OwnedSymlinkOk,
+                                format!("owned symlink `{}` is valid", owned.link_path.display()),
+                            ));
+                        }
                     }
-                    Ok(target)
-                        if !store::resolve_link_target(&owned.link_path, &target).exists() =>
-                    {
-                        findings.push(finding_error(
-                            DoctorCode::BrokenOwnedSymlink,
-                            format!(
-                                "owned symlink `{}` points to missing `{}`",
-                                owned.link_path.display(),
-                                target.display()
-                            ),
-                            Some(format!(
-                                "dalo resolve remove-owned {}",
-                                owned_selector(owned)
-                            )),
-                        ));
-                    }
-                    Ok(_) => findings.push(ok(
-                        DoctorCode::OwnedSymlinkOk,
-                        format!("owned symlink `{}` is valid", owned.link_path.display()),
-                    )),
                     Err(error) => findings.push(finding_error(
                         DoctorCode::BrokenOwnedSymlink,
                         format!(
@@ -1378,6 +1392,7 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::BrokenOwnedSymlink => "broken_owned_symlink",
         DoctorCode::OwnedPathRealEntry => "owned_path_real_entry",
         DoctorCode::ForeignOwnedSymlink => "foreign_owned_symlink",
+        DoctorCode::OwnedSymlinkRepointed => "owned_symlink_repointed",
         DoctorCode::UnmanagedSameNameBlocker => "unmanaged_same_name_blocker",
         DoctorCode::ProtectedSkillKept => "protected_skill_kept",
         DoctorCode::StaleProtectedSkill => "stale_protected_skill",
@@ -1851,6 +1866,38 @@ mod tests {
         );
         assert!(
             report
+                .findings
+                .iter()
+                .any(|finding| finding.code == DoctorCode::OwnedSymlinkOk)
+        );
+    }
+
+    #[test]
+    fn run_doctor_should_report_repointed_owned_symlink_inside_the_store() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store = temp_dir.path().join("store");
+        let target = temp_dir.path().join("target");
+        store::init_store(store.clone(), false).expect("init should succeed");
+        fs::create_dir_all(&target).expect("target should be created");
+        let expected_skill = store.join("local/skills/review");
+        let repointed_skill = store.join("local/skills/other");
+        fs::create_dir_all(&expected_skill).expect("expected skill should be created");
+        fs::create_dir_all(&repointed_skill).expect("repointed skill should be created");
+        let link = target.join("review");
+        std::os::unix::fs::symlink(&repointed_skill, &link)
+            .expect("repointed symlink should be created");
+        write_state(&store, &target, &link, &expected_skill);
+
+        let report = run_doctor(&store);
+
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|finding| finding.code == DoctorCode::OwnedSymlinkRepointed)
+        );
+        assert!(
+            !report
                 .findings
                 .iter()
                 .any(|finding| finding.code == DoctorCode::OwnedSymlinkOk)
