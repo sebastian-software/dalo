@@ -178,7 +178,7 @@ Doctor includes `ok` and `info` codes as well as warnings/errors. Codes not list
 | `unmanaged_same_name_blocker` | error | Adopt, keep, rename, or remove the unmanaged blocker. |
 | `stale_protected_skill` | warning | Relink the target if it moved, or remove the stale marker with the suggested `dalo resolve unkeep` command. |
 | `protected_skill_kept` | info | The unmanaged slot was intentionally kept; no recovery is required. |
-| `store_exists`, `store_layout_ok`, `config_ok`, `state_ok`, `lock_ok`, `approvals_ok`, `git_available`, `gh_available`, `gh_authenticated`, `local_git_ok`, `target_exists`, `duplicate_target_directory`, `owned_symlink_ok`, `source_clean` | ok/info | No recovery required. |
+| `store_exists`, `store_layout_ok`, `config_ok`, `state_ok`, `lock_ok`, `approvals_ok`, `git_available`, `local_git_ok`, `target_exists`, `duplicate_target_directory`, `owned_symlink_ok`, `source_clean` | ok/info | No recovery required. |
 
 ## FAQ
 
