@@ -532,10 +532,10 @@ have the same meaning as on `dalo approve skill`.
 
 The `<skill>` argument can be a slot name, a disambiguating path, or an ID reported by `status` or `resolve list`. If the slot name exists in more than one target, Dalo refuses the ambiguous selector and lists the paths to choose from.
 
-Before it audits or copies anything, adoption rejects a skill whose effective
-slot name (its `SKILL.md` frontmatter `name`, or its folder name when no valid
-frontmatter name exists) is not portable lowercase. Rename the folder or
-correct the frontmatter first, then run `dalo adopt` again.
+Before it audits or copies anything, adoption rejects a folder name or
+`SKILL.md` frontmatter `name` that is not a portable lowercase slot name.
+Rename the folder or correct the frontmatter first, then run `dalo adopt`
+again.
 
 Examples:
 
