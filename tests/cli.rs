@@ -3266,6 +3266,32 @@ fn adopt_should_reject_an_invalid_frontmatter_name_before_copying() {
 }
 
 #[test]
+fn adopt_should_reject_an_invalid_folder_even_when_frontmatter_name_is_valid() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "my local skill");
+    std::fs::write(
+        target.join("my local skill/SKILL.md"),
+        "---\nname: my-local-skill\n---\n# My Local Skill\n",
+    )
+    .expect("valid frontmatter should be written");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["adopt", "my local skill"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("folder name `my local skill`"));
+
+    assert!(target.join("my local skill/SKILL.md").is_file());
+    assert!(!store.join("local/skills/my local skill").exists());
+}
+
+#[test]
 fn adopt_should_resolve_slot_when_cwd_contains_same_named_decoy_directory() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let project = temp_dir.path().join("project");

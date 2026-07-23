@@ -366,6 +366,16 @@ pub(crate) fn validate_adoptable_slot_name(
     skill: &UnmanagedSkill,
     selector: &str,
 ) -> DaloResult<()> {
+    if !inventory::is_valid_slot_name(&skill.slot_name) {
+        return Err(DaloError::InvalidArgument {
+            reason: format!(
+                "cannot adopt `{}`: folder name `{}` is not a valid slot name; rename `{}` to a portable lowercase slot name (for example `my-local-skill`), then rerun `dalo adopt {selector}`",
+                skill.id,
+                skill.slot_name,
+                skill.path.display()
+            ),
+        });
+    }
     let Some(warning) = inventory::invalid_slot_name_warning(&skill.path)? else {
         return Ok(());
     };

@@ -553,7 +553,8 @@ fn select_slot_name(
     None
 }
 
-fn is_valid_slot_name(value: &str) -> bool {
+/// Whether a slot name is portable as a materialization path component.
+pub(crate) fn is_valid_slot_name(value: &str) -> bool {
     // A slot name becomes a single path component under each target directory,
     // so keep the accepted language conservative and cross-platform: lowercase
     // ASCII tokens only, no hidden/traversal segments, no trailing dots, and no
