@@ -52,7 +52,7 @@ fn agent_list_and_show_should_preview_canonical_provider_projections() {
     std::fs::create_dir_all(&package).expect("agent package directory should be created");
     std::fs::write(
         package.join("AGENT.md"),
-        "---\nschema_version: 1\nname: reviewer\ndescription: Reviews code\nmodel:\n  profile: balanced\nskills:\n  - pr-review\n---\nReview the requested change.\n",
+        "---\nschema_version: 1\nname: reviewer\ndescription: Reviews code\nid: reviewer-v1\nowners: [platform]\ntags: [review]\nmodel:\n  profile: balanced\nskills:\n  - pr-review\n---\nReview the requested change.\n",
     )
     .expect("canonical agent should be written");
 
@@ -79,6 +79,20 @@ fn agent_list_and_show_should_preview_canonical_provider_projections() {
         .success()
         .stdout(predicate::str::contains("developer_instructions"))
         .stdout(predicate::str::contains("guidance_only"));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["agent", "show", "local:reviewer", "--provider", "claude"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("claude: mapped"))
+        .stdout(predicate::str::contains("model.profile: mapped"))
+        .stdout(predicate::str::contains("  id:").not())
+        .stdout(predicate::str::contains("  owners:").not())
+        .stdout(predicate::str::contains("  tags:").not())
+        .stdout(predicate::str::contains("Exact").not())
+        .stdout(predicate::str::contains("Mapped").not());
 }
 
 #[test]

@@ -1028,15 +1028,25 @@ fn print_agent_show_report(report: &agent::AgentShowReport) {
     println!("description: {}", report.agent.description);
     println!("package hash: {}", report.agent.content_hash);
     for compilation in &report.compilations {
+        let visible_findings = compilation
+            .findings
+            .iter()
+            .filter(|finding| !finding.is_dalo_identity_metadata())
+            .collect::<Vec<_>>();
         let status = if compilation.not_targeted {
             "not targeted".to_owned()
         } else {
-            format!("{:?}", compilation.overall).to_lowercase()
+            visible_findings
+                .iter()
+                .map(|finding| finding.result)
+                .max()
+                .unwrap_or(agent::CompatibilityResult::Exact)
+                .to_string()
         };
         println!("{}: {status}", compilation.provider.id());
-        for finding in &compilation.findings {
+        for finding in visible_findings {
             println!(
-                "  {}: {:?} — {}",
+                "  {}: {} — {}",
                 finding.field, finding.result, finding.message
             );
         }
