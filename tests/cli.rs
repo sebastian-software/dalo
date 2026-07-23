@@ -3105,6 +3105,9 @@ fn status_should_report_invalid_portable_skill_names() {
         .success()
         .stdout(predicate::str::contains("inventory warnings:"))
         .stdout(predicate::str::contains("invalid_slot_name"))
+        .stdout(predicate::str::contains(
+            "fix: rename the skill folder or set its frontmatter `name`",
+        ))
         .stdout(predicate::str::contains("Review"))
         .stdout(predicate::str::contains("caf\u{e9}"));
 }
@@ -3205,6 +3208,61 @@ fn adopt_should_copy_unmanaged_skill_without_replacing_by_default() {
             .file_type()
             .is_symlink()
     );
+}
+
+#[test]
+fn adopt_should_reject_an_invalid_folder_slot_before_copying_or_replacing() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "my local skill");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["adopt", "my local skill", "--replace"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("folder name `my local skill`"))
+        .stderr(predicate::str::contains("my-local-skill"));
+
+    assert!(target.join("my local skill/SKILL.md").is_file());
+    assert!(
+        !std::fs::symlink_metadata(target.join("my local skill"))
+            .expect("original should remain")
+            .file_type()
+            .is_symlink()
+    );
+    assert!(!store.join("local/skills/my local skill").exists());
+}
+
+#[test]
+fn adopt_should_reject_an_invalid_frontmatter_name_before_copying() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    std::fs::write(
+        target.join("review/SKILL.md"),
+        "---\nname: Review\n---\n# Review\n",
+    )
+    .expect("invalid frontmatter should be written");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["adopt", "review"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("frontmatter name `Review`"))
+        .stderr(predicate::str::contains("frontmatter `name`"));
+
+    assert!(target.join("review/SKILL.md").is_file());
+    assert!(!store.join("local/skills/review").exists());
 }
 
 #[test]

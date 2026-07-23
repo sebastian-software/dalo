@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::error::{DaloError, DaloResult};
+use crate::inventory;
 use crate::store::{self, OwnedSkillState, ProtectedSkillState, StorePaths};
 
 const SKILL_FILE: &str = "SKILL.md";
@@ -313,6 +314,7 @@ pub fn adopt_skill(
     dry_run: bool,
 ) -> DaloResult<AdoptReport> {
     let skill = find_unmanaged_skill(paths, selector)?;
+    validate_adoptable_slot_name(&skill, selector)?;
     let local_path = paths.local_skills_dir.join(&skill.slot_name);
     if !dry_run {
         remove_interrupted_adoption_dirs(&local_path)?;
@@ -356,6 +358,33 @@ pub fn adopt_skill(
         local_path,
         copy,
         replacement,
+    })
+}
+
+/// Reject an unmanaged skill whose name would degrade the local source after adoption.
+pub(crate) fn validate_adoptable_slot_name(
+    skill: &UnmanagedSkill,
+    selector: &str,
+) -> DaloResult<()> {
+    let Some(warning) = inventory::invalid_slot_name_warning(&skill.path)? else {
+        return Ok(());
+    };
+    let recovery = if warning.message.starts_with("frontmatter name ") {
+        format!(
+            "change the frontmatter `name` in `{}` to a portable lowercase slot name",
+            warning.path.display()
+        )
+    } else {
+        format!(
+            "rename `{}` to a portable lowercase slot name (for example `my-local-skill`)",
+            skill.path.display()
+        )
+    };
+    Err(DaloError::InvalidArgument {
+        reason: format!(
+            "cannot adopt `{}`: {}; {recovery}, then rerun `dalo adopt {selector}`",
+            skill.id, warning.message
+        ),
     })
 }
 

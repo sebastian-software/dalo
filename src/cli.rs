@@ -2658,6 +2658,7 @@ fn run_adopt_with_audit(
     accept_risk: Option<String>,
 ) -> DaloResult<()> {
     let unmanaged = adopt::find_unmanaged_skill(paths, selector)?;
+    adopt::validate_adoptable_slot_name(&unmanaged, selector)?;
     let agent = prepare_agent_review(agent)?;
     let audit_report = audit::audit_skill(
         paths,
