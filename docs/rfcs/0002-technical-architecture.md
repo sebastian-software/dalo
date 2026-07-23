@@ -85,11 +85,10 @@ Rules:
 - surface failed Git commands with command, exit status, stderr, and safe context
 - do not store credentials
 
-GitHub PR flows should use `gh` in the same style:
+Future GitHub PR flows should use `gh` in the same style:
 
-- detect `gh` availability in `doctor`
 - use existing `gh` authentication
-- create PRs only from explicit `promote` flows in V1
+- create PRs only from an explicit user command
 - fail the PR flow when `gh` is missing or not authenticated
 - do not create an internal GitHub API client or manage GitHub secrets in V1
 - treat GitLab, Forgejo, and other forges as future features rather than V1 adapters

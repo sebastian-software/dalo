@@ -869,7 +869,6 @@ Checks:
 - lockfile consistency
 - source reachability
 - Git auth
-- `gh` availability and authentication for PR flows
 - target paths
 - broken symlinks
 - malformed managed instruction block markers
@@ -1060,7 +1059,7 @@ Principles:
 - new direct user sources only through explicit action
 - team sources may declare external and catalog sources, but newly active skills still require approval unless covered by an existing approval rule
 - lockfile changes are reviewable
-- PR flows use existing `gh` authentication
+- Any future PR flows use existing `gh` authentication
 - project repositories must not automatically activate global skills
 
 Approval is modeled separately from source configuration. A source can be configured, reachable, and selected while one or more skills from it remain pending local approval. This mirrors package-manager safety models where newly introduced artifacts with local execution or instruction impact require acknowledgement before they become active.
