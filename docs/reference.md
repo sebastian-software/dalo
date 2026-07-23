@@ -524,8 +524,9 @@ for example after a crash or power loss mid-sync — is surfaced by `status` and
 state; non-JSON output renders timestamps as UTC calendar times and, when an
 installed job is disabled, names the specific cause (missing artifacts, a moved
 store, or a scheduler-reported disable). Logs are written to `autosync.log` and
-`autosync-error.log` in the store; they are appended without rotation and are
-removed on `autosync uninstall`.
+`autosync-error.log` in the store and are bounded: Dalo keeps roughly the most
+recent 1 MiB of each file, marking discarded older output with a truncation
+line. Both files are removed on `autosync uninstall`.
 
 ### `dalo adopt <skill> [--replace]`
 

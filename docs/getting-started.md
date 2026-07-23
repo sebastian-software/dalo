@@ -41,6 +41,10 @@ ls -la "$target_dir"
 
 `sync` refreshes clean tracking sources, resolves one approved skill set, and links that set into configured targets. Dalo links directories it owns and refuses to overwrite unmanaged files.
 
+`status` may show a `lock drift` block here. That just means the next `sync`
+has not recorded the new skill yet; it disappears after `dalo sync`. See
+[Lock Drift](troubleshooting.md#lock-drift) for more detail.
+
 ## 4. Try a local team source
 
 This uses a local Git repository, so it works without network access.
@@ -96,7 +100,8 @@ dalo status
 
 Catalog skills are untrusted by default. After reviewing the pending skill,
 `status` prints the exact narrow approval command. Grant only that skill, then
-sync it:
+sync it. The `lock drift` block is still expected until that sync records the
+new selection:
 
 ```sh
 dalo audit public:review-helper
