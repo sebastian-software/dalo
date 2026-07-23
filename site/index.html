@@ -130,6 +130,9 @@
             <button class="install-method" type="button" data-install-method="standalone" data-command-value="curl -fsSL https://dalo.sh/install.sh | sh" aria-pressed="false">
               Standalone <span>macOS + Linux</span>
             </button>
+            <button class="install-method" type="button" data-install-method="npx" data-command-value="npx getdalo init" aria-pressed="false">
+              npx <span>Node 20+</span>
+            </button>
           </div>
           <div class="install-copy">
             <code id="hero-install-command" data-install-command>curl -fsSL https://dalo.sh/install.sh | sh</code>
@@ -445,6 +448,9 @@
             <button class="install-method" type="button" data-install-method="standalone" data-command-value="curl -fsSL https://dalo.sh/install.sh | sh" aria-pressed="false">
               Standalone <span>macOS + Linux</span>
             </button>
+            <button class="install-method" type="button" data-install-method="npx" data-command-value="npx getdalo init" aria-pressed="false">
+              npx <span>Node 20+</span>
+            </button>
           </div>
           <div class="install-copy">
             <code id="install-command" data-install-command>curl -fsSL https://dalo.sh/install.sh | sh</code>
@@ -457,6 +463,7 @@
         <p class="install-alt reveal">
           Prefer Node? Run <code>npx getdalo --version</code> or <code>npm install --global getdalo</code>. Prefer Rust tooling? <a href="https://crates.io/crates/dalo" rel="noopener">crates.io</a> supports <code>cargo binstall dalo</code> and <code>cargo install dalo</code>.
         </p>
+        <p class="install-alt reveal">On Windows? Dalo runs under WSL; use the standalone command from your WSL shell.</p>
         <p class="install-alt reveal">Installing through an AI agent? Point it to <a href="/install.md">dalo.sh/install.md</a>.</p>
         <ul class="qs-points reveal">
           <li><span class="c-ok">✓</span> Single Rust binary, no daemon</li>
@@ -478,9 +485,9 @@
           </div>
           <pre class="terminal-body"><code id="quickstart-code"><span class="ln c-dim"># sandbox: no real agent folders touched</span>
 <span class="ln"><span class="prompt">$</span> export DALO_STORE="$(mktemp -d)/store"</span>
-<span class="ln"><span class="prompt">$</span> export DALO_TARGET="$(mktemp -d)/skills"</span>
+<span class="ln"><span class="prompt">$</span> export SKILLS_DIR="$(mktemp -d)/skills"</span>
 <span class="ln"><span class="prompt">$</span> dalo init</span>
-<span class="ln"><span class="prompt">$</span> dalo target link generic "$DALO_TARGET"</span>
+<span class="ln"><span class="prompt">$</span> dalo target link generic "$SKILLS_DIR"</span>
 <span class="ln"> </span>
 <span class="ln c-dim"># try a real public catalog</span>
 <span class="ln"><span class="prompt">$</span> dalo source add-catalog sebastian https://github.com/sebastian-software/skills.sebastian-software.com.git</span>
@@ -602,14 +609,14 @@
     <div class="wrap">
       <h2 class="section-h reveal">Early, and honest about it.</h2>
       <p class="lead reveal">
-        Dalo is v__DALO_VERSION__. The V1 and V1.1 surfaces work today: local, team, and catalog
+        Dalo is v__DALO_VERSION__. Everything above works today: local, team, and catalog
         sources; deterministic resolution; security audits and review gates; safe
         sync; adoption; diagnostics; and instruction packs. Here's what's
         intentionally deferred to later releases.
       </p>
       <ul class="roadmap-list reveal">
         <li><span class="rm-tag">later</span> PR-first promotion of local skills into team repos</li>
-        <li><span class="rm-tag">later</span> Lock-advancing source refresh and catalog pin PRs</li>
+        <li><span class="rm-tag">later</span> Catalog pin updates as ready-to-review pull requests</li>
         <li><span class="rm-tag">later</span> More verified agent adapters and package managers</li>
       </ul>
     </div>
