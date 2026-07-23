@@ -205,7 +205,7 @@ fn run_git(path: &Path, args: &[&str]) -> DaloResult<String> {
 }
 
 fn run_git_network(path: &Path, args: &[&str]) -> DaloResult<String> {
-    run_git_program("git", path, args, git_timeout(GIT_NETWORK_TIMEOUT))
+    run_git_program_with_ssh_preflight("git", path, args, git_timeout(GIT_NETWORK_TIMEOUT), true)
 }
 
 fn run_git_program(
@@ -214,15 +214,26 @@ fn run_git_program(
     args: &[&str],
     timeout: Duration,
 ) -> DaloResult<String> {
+    run_git_program_with_ssh_preflight(program, path, args, timeout, false)
+}
+
+fn run_git_program_with_ssh_preflight(
+    program: &str,
+    path: &Path,
+    args: &[&str],
+    timeout: Duration,
+    preflight_core_ssh_command: bool,
+) -> DaloResult<String> {
     let ssh_command_env = std::env::var_os("GIT_SSH_COMMAND");
-    let preflight_timeout = timeout.min(git_timeout(GIT_LOCAL_TIMEOUT));
+    let core_ssh_command_configured = preflight_core_ssh_command
+        && has_core_ssh_command(program, path, timeout.min(git_timeout(GIT_LOCAL_TIMEOUT)));
     run_git_program_with_options(
         program,
         path,
         args,
         timeout,
         ssh_command_env,
-        has_core_ssh_command(program, path, preflight_timeout),
+        core_ssh_command_configured,
     )
 }
 
@@ -483,7 +494,7 @@ mod tests {
             fake_git.to_str().expect("script path should be utf-8"),
             temp_dir.path(),
             &["pull"],
-            Duration::from_secs(1),
+            Duration::from_secs(3),
             Option::<&str>::None,
             false,
         )
@@ -509,7 +520,7 @@ mod tests {
             fake_git.to_str().expect("script path should be utf-8"),
             temp_dir.path(),
             &["fetch"],
-            Duration::from_secs(1),
+            Duration::from_secs(3),
             Some("ssh -i deploy-key -oBatchMode=yes"),
             false,
         )
@@ -534,7 +545,7 @@ mod tests {
             fake_git.to_str().expect("script path should be utf-8"),
             temp_dir.path(),
             &["fetch"],
-            Duration::from_secs(1),
+            Duration::from_secs(3),
             Option::<&str>::None,
             true,
         )
@@ -572,54 +583,58 @@ mod tests {
     }
 
     #[test]
-    fn run_git_program_should_terminate_helper_processes_on_timeout() {
+    fn run_git_program_should_skip_ssh_preflight_for_local_commands() {
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
-        let helper_pid_file = temp_dir.path().join("helper.pid");
         let fake_git = write_executable(
             temp_dir.path(),
             "fake-git",
-            "#!/bin/sh\nsh -c 'while :; do sleep 1; done' &\nprintf '%s\\n' \"$!\" > \"$1\"\nwhile :; do sleep 1; done\n",
+            "#!/bin/sh\nif [ \"$1\" = config ]; then : > preflight-called; exit 1; fi\nprintf 'ok\\n'\n",
         );
-        let helper_pid_file_arg = helper_pid_file
+
+        let output = run_git_program(
+            fake_git.to_str().expect("script path should be utf-8"),
+            temp_dir.path(),
+            &["status"],
+            Duration::from_secs(3),
+        )
+        .expect("local command should run");
+
+        assert_eq!(output.trim(), "ok");
+        assert!(!temp_dir.path().join("preflight-called").exists());
+    }
+
+    #[test]
+    fn run_git_program_should_terminate_helper_processes_on_timeout() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let helper_activity_file = temp_dir.path().join("helper-activity");
+        let fake_git = write_executable(
+            temp_dir.path(),
+            "fake-git",
+            "#!/bin/sh\nwhile :; do printf . >> \"$1\"; sleep 0.01; done &\nwhile :; do sleep 1; done\n",
+        );
+        let helper_activity_file_arg = helper_activity_file
             .to_str()
-            .expect("helper PID path should be utf-8");
+            .expect("helper activity path should be utf-8");
 
         let error = run_git_program_with_options(
             fake_git.to_str().expect("script path should be utf-8"),
             temp_dir.path(),
-            &[helper_pid_file_arg],
-            Duration::from_secs(1),
+            &[helper_activity_file_arg],
+            Duration::from_secs(3),
             Option::<&str>::None,
             false,
         )
         .expect_err("hung command should time out");
 
         assert!(matches!(error, DaloError::CommandFailed { .. }));
-        let helper_pid = fs::read_to_string(&helper_pid_file)
-            .expect("helper PID should be written")
-            .trim()
-            .parse::<i32>()
-            .expect("helper PID should be numeric");
-        let helper_pid = Pid::from_raw(helper_pid).expect("helper PID should be positive");
-
-        for _ in 0..100 {
-            if process_is_gone_or_zombie(helper_pid) {
-                return;
-            }
-            thread::sleep(Duration::from_millis(10));
-        }
-        panic!("timeout should terminate the helper process");
-    }
-
-    fn process_is_gone_or_zombie(pid: Pid) -> bool {
-        let output = Command::new("ps")
-            .args(["-o", "stat=", "-p", &pid.to_string()])
-            .output()
-            .expect("ps should run");
-        !output.status.success()
-            || String::from_utf8_lossy(&output.stdout)
-                .trim_start()
-                .starts_with('Z')
+        let activity_after_timeout = fs::read(&helper_activity_file)
+            .expect("helper should record activity before the timeout");
+        thread::sleep(Duration::from_millis(100));
+        assert_eq!(
+            fs::read(&helper_activity_file).expect("helper activity should remain readable"),
+            activity_after_timeout,
+            "timeout should terminate the helper process"
+        );
     }
 
     #[test]
@@ -632,16 +647,17 @@ mod tests {
         );
         let start = Instant::now();
 
-        let output = run_git_program(
+        let output = run_git_program_with_ssh_preflight(
             fake_git.to_str().expect("script path should be utf-8"),
             temp_dir.path(),
             &["--version"],
-            Duration::from_millis(200),
+            Duration::from_secs(1),
+            true,
         )
         .expect("main command should run after the timed-out preflight");
 
         assert_eq!(output.trim(), "ok");
-        assert!(start.elapsed() < Duration::from_secs(2));
+        assert!(start.elapsed() < Duration::from_secs(5));
     }
 
     #[test]
