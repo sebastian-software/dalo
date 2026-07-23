@@ -47,6 +47,9 @@ pub struct SyncReport {
     pub resolution: Resolution,
     /// Sources whose scan was incomplete, so stale links were preserved.
     pub degraded_sources: Vec<DegradedSource>,
+    /// Tracking team sources that a dry-run intentionally did not fetch.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unrefreshed_tracking_sources: Vec<String>,
     /// Enabled catalogs with available skills but no explicit selection.
     pub unselected_catalogs: Vec<UnselectedCatalog>,
 }
@@ -295,6 +298,7 @@ pub fn materialize_with_degraded_sources_rollback(
             operations,
             resolution,
             degraded_sources: degraded_sources.to_vec(),
+            unrefreshed_tracking_sources: Vec::new(),
             unselected_catalogs: Vec::new(),
         },
         rollback,

@@ -2551,6 +2551,69 @@ fn sync_dry_run_should_not_create_symlink() {
 }
 
 #[test]
+fn sync_dry_run_should_disclose_unrefreshed_tracking_sources() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo(&repo);
+    setup_store_with_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "company"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    let upstream_skill = repo.join("skills/newbie/SKILL.md");
+    std::fs::create_dir_all(upstream_skill.parent().expect("skill should have a parent"))
+        .expect("upstream skill directory should be created");
+    std::fs::write(&upstream_skill, "# Newbie\n").expect("upstream skill should be written");
+    run_git(&repo, &["add", "."]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "add newbie",
+            "-q",
+        ],
+    );
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--dry-run", "sync"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "note: --dry-run did not refresh tracking source `company`; upstream changes are not reflected; run `dalo sync` to fetch it",
+        ))
+        .stdout(predicate::str::contains("newbie").not());
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "--dry-run", "sync"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"unrefreshed_tracking_sources\""));
+    assert!(!target.join("newbie").exists());
+}
+
+#[test]
 fn sync_should_create_directory_symlink() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

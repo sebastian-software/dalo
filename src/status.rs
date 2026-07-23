@@ -885,6 +885,17 @@ pub fn print_sync_report(report: &SyncReport) {
     for source in &report.degraded_sources {
         println!("{prefix}degraded source: {} ({})", source.id, source.reason);
     }
+    if !report.unrefreshed_tracking_sources.is_empty() {
+        println!(
+            "{prefix}note: --dry-run did not refresh tracking {}; upstream changes are not reflected; run `dalo sync` to fetch {}",
+            pluralized_source_list(&report.unrefreshed_tracking_sources),
+            if report.unrefreshed_tracking_sources.len() == 1 {
+                "it"
+            } else {
+                "them"
+            }
+        );
+    }
     for diagnostic in &report.resolution.diagnostics {
         println!(
             "{prefix}diagnostic: {}: {}",
@@ -895,6 +906,17 @@ pub fn print_sync_report(report: &SyncReport) {
     println!(
         "{prefix}security preflight: deterministic checks and compatible cached findings only; sync did not run an agent reviewer; passing is not a safety guarantee"
     );
+}
+
+fn pluralized_source_list(ids: &[String]) -> String {
+    let source_word = if ids.len() == 1 { "source" } else { "sources" };
+    format!(
+        "{source_word} {}",
+        ids.iter()
+            .map(|id| format!("`{id}`"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
 }
 
 /// Print a human-readable source add report.

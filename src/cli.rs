@@ -14,6 +14,7 @@ use crate::approval;
 use crate::audit;
 use crate::autosync;
 use crate::catalog;
+use crate::config;
 use crate::doctor;
 use crate::error::{DaloError, DaloResult};
 use crate::instructions;
@@ -1455,6 +1456,11 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
         Some(store::read_user_lock(&paths)?)
     };
     let config = store::read_config(&paths)?;
+    let unrefreshed_tracking_sources = if options.dry_run {
+        tracking_team_source_ids(&config)
+    } else {
+        Vec::new()
+    };
     let refresh_failures = if options.dry_run {
         Vec::new()
     } else {
@@ -1485,6 +1491,7 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
             &degraded_sources,
         )?;
         report.unselected_catalogs = unselected_catalogs(&live);
+        report.unrefreshed_tracking_sources = unrefreshed_tracking_sources;
         if !options.dry_run {
             let previous = previous
                 .as_ref()
@@ -1534,6 +1541,19 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
     }
 
     Ok(())
+}
+
+fn tracking_team_source_ids(config: &config::UserConfig) -> Vec<String> {
+    config
+        .sources
+        .iter()
+        .filter(|source| {
+            source.enabled
+                && source.kind == source::SourceKind::Team
+                && source.update_policy.as_deref() == Some("track")
+        })
+        .map(|source| source.id.clone())
+        .collect()
 }
 
 fn run_autosync(options: &GlobalOptions, command: AutosyncCommand) -> DaloResult<()> {
