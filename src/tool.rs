@@ -459,6 +459,12 @@ fn verify_staged(tool: &ToolRecord, root: &Path) -> bool {
     })
 }
 
+/// Verify a staged immutable tool closure before dispatcher execution.
+#[must_use]
+pub(crate) fn verify_staged_contract(tool: &ToolRecord, root: &Path) -> bool {
+    verify_staged(tool, root)
+}
+
 fn collect_staged_paths(root: &Path, current: &Path, paths: &mut BTreeSet<String>) -> bool {
     let Ok(entries) = fs::read_dir(current) else {
         return false;

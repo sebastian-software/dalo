@@ -7,6 +7,7 @@ use serde::Serialize;
 
 use crate::agent::{self, AgentProvider, CompatibilityResult};
 use crate::error::{DaloError, DaloResult};
+use crate::hook::{HookProvider, HookRequirement, HookStatusReport, HookTrustState};
 use crate::inventory::SourceInventory;
 use crate::materialize::{self, MaterializeOperation, MaterializeOperationStatus};
 use crate::plugin::{
@@ -32,6 +33,8 @@ pub struct InstallationPlan {
     pub inventory_warnings: Vec<PluginInventoryWarning>,
     /// Local-tool trust and availability facts; planning never executes them.
     pub tools: Vec<ToolStatusReport>,
+    /// Hook trust, binding, and referenced-tool facts; planning never executes them.
+    pub hooks: Vec<HookStatusReport>,
     /// Physical destinations, each retaining all logical target explanations.
     pub destinations: Vec<DestinationPlan>,
 }
@@ -241,6 +244,7 @@ pub fn build_installation_plan(
         target_filter,
     );
     attach_tool_status(&mut plan, &paths)?;
+    attach_hook_status(&mut plan, &paths)?;
     Ok(plan)
 }
 
@@ -277,8 +281,146 @@ pub fn build_from_facts(
         canonical_plugins: plugins.clone(),
         inventory_warnings,
         tools: Vec::new(),
+        hooks: Vec::new(),
         destinations,
     }
+}
+
+/// Attach independently approved hook facts and target adapter compatibility.
+pub fn attach_hook_status(plan: &mut InstallationPlan, paths: &StorePaths) -> DaloResult<()> {
+    plan.hooks = crate::hook::list(paths)?.hooks;
+    for destination in &mut plan.destinations {
+        for target in &mut destination.logical_targets {
+            for plugin in &mut target.plugins {
+                let prefix = format!("{}#hook:", plugin.source_ref);
+                for status in plan
+                    .hooks
+                    .iter()
+                    .filter(|status| status.hook.source_ref.starts_with(&prefix))
+                {
+                    let requirement = match status.hook.descriptor.requirement {
+                        HookRequirement::Required => MemberRequirement::Required,
+                        HookRequirement::Optional => MemberRequirement::Optional,
+                    };
+                    let provider = match target.id.as_str() {
+                        "codex" => Some(HookProvider::Codex),
+                        "claude" => Some(HookProvider::Claude),
+                        _ => None,
+                    };
+                    let supported = provider.is_some_and(|provider| {
+                        crate::hook::provider_supports_descriptor(provider, &status.hook.descriptor)
+                    });
+                    let suppressed = matches!(
+                        plugin.state,
+                        TargetPluginState::Declined | TargetPluginState::Shadowed
+                    );
+                    let optional_omit = requirement == MemberRequirement::Optional
+                        && status.hook.descriptor.fallback == Some(crate::hook::HookFallback::Omit);
+                    let (canonical_state, state, compatibility, blocker, remediation) = if status
+                        .state
+                        == HookTrustState::Ready
+                        && supported
+                    {
+                        (
+                            PluginComponentState::Active,
+                            TargetComponentState::Active,
+                            if status.hook.descriptor.subject == crate::hook::HookSubject::Session {
+                                PlanCompatibility::Exact
+                            } else {
+                                PlanCompatibility::Mapped
+                            },
+                            None,
+                            None,
+                        )
+                    } else if !supported && optional_omit {
+                        (
+                            PluginComponentState::Active,
+                            TargetComponentState::IntentionallyOmitted,
+                            PlanCompatibility::Unsupported,
+                            None,
+                            None,
+                        )
+                    } else {
+                        let (source, remediation) = match status.state {
+                            HookTrustState::PendingApproval => (
+                                PlanBlockerSource::MissingApproval,
+                                Some(format!("dalo approve hook {}", status.hook.source_ref)),
+                            ),
+                            HookTrustState::ToolUnavailable => (
+                                PlanBlockerSource::MissingApproval,
+                                Some(format!("dalo approve tool {}", status.hook.tool_source_ref)),
+                            ),
+                            HookTrustState::HashDrift => (
+                                PlanBlockerSource::Drift,
+                                Some(format!("dalo hook show {}", status.hook.source_ref)),
+                            ),
+                            HookTrustState::Ready => (PlanBlockerSource::UnsupportedBehavior, None),
+                        };
+                        (
+                            PluginComponentState::Blocked,
+                            TargetComponentState::Blocked,
+                            PlanCompatibility::Blocked,
+                            Some(PlanBlocker {
+                                source,
+                                message: if supported {
+                                    status.diagnostic.clone()
+                                } else {
+                                    format!(
+                                        "target `{}` cannot preserve required hook `{}`",
+                                        target.id, status.hook.source_ref
+                                    )
+                                },
+                            }),
+                            remediation,
+                        )
+                    };
+                    if !suppressed
+                        && requirement == MemberRequirement::Required
+                        && let Some(blocker) = blocker.clone()
+                    {
+                        plugin.blockers.push(blocker);
+                    }
+                    plugin.components.push(TargetComponentPlan {
+                        reference: status.hook.source_ref.clone(),
+                        requirement,
+                        canonical_state,
+                        state: if suppressed {
+                            if plugin.state == TargetPluginState::Shadowed {
+                                TargetComponentState::Shadowed
+                            } else {
+                                TargetComponentState::IntentionallyOmitted
+                            }
+                        } else {
+                            state
+                        },
+                        compatibility,
+                        authored_fallback: optional_omit.then(|| "omit".to_owned()),
+                        selected_fallback: (!supported && optional_omit).then(|| "omit".to_owned()),
+                        proposed_artifact: match target.id.as_str() {
+                            "codex" => "~/.codex/hooks.json (Dalo-owned hook groups)",
+                            "claude" => "~/.claude/settings.json (Dalo-owned hook groups)",
+                            _ => "no verified native hook sidecar",
+                        }
+                        .to_owned(),
+                        blocker: if suppressed { None } else { blocker },
+                        remediation,
+                    });
+                }
+                plugin
+                    .components
+                    .sort_by(|left, right| left.reference.cmp(&right.reference));
+                plugin
+                    .blockers
+                    .sort_by(|left, right| left.message.cmp(&right.message));
+                plugin.blockers.dedup();
+                if plugin.state == TargetPluginState::Active && !plugin.blockers.is_empty() {
+                    plugin.state = TargetPluginState::Blocked;
+                    plugin.compatibility = PlanCompatibility::Blocked;
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Attach read-only local-tool facts to a plan composed from shared live data.

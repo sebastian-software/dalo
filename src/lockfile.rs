@@ -567,6 +567,7 @@ mod tests {
             unrefreshed_tracking_sources: Vec::new(),
             unselected_catalogs: Vec::new(),
             installation_plan: None,
+            hook_targets: Vec::new(),
         };
 
         let lock = build_user_lock(&[], &resolution, Some(&report), None);
