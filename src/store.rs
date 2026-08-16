@@ -53,6 +53,8 @@ pub struct StorePaths {
     pub local_instructions_dir: PathBuf,
     /// Local canonical agent package directory.
     pub local_agents_dir: PathBuf,
+    /// Immutable content-addressed approved local-tool closures.
+    pub tools_dir: PathBuf,
     /// Source checkout root.
     pub sources_dir: PathBuf,
     /// Catalog source lock path (pinned commits, selections, inventory snapshot).
@@ -88,6 +90,7 @@ impl StorePaths {
             local_skills_dir: local_dir.join("skills"),
             local_instructions_dir: local_dir.join("instructions"),
             local_agents_dir: local_dir.join("agents"),
+            tools_dir: root.join("tools"),
             sources_dir: root.join("sources"),
             source_lock_file: root.join("source-lock.toml"),
             catalog_advance_file: root.join("catalog-advance.toml"),
@@ -284,7 +287,7 @@ pub struct ApprovalsFile {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ApprovalRecord {
-    /// Approval scope, such as `skill`, `source`, `author`, or `org`.
+    /// Approval scope, such as `skill`, `agent`, `tool`, `source`, `author`, or `org`.
     pub scope: String,
     /// Approved identifier.
     pub value: String,
@@ -544,6 +547,7 @@ pub fn init_store(store_root: PathBuf, dry_run: bool) -> DaloResult<InitReport> 
         &paths.local_skills_dir,
         &paths.local_instructions_dir,
         &paths.local_agents_dir,
+        &paths.tools_dir,
         &paths.sources_dir,
         &paths.audits_dir,
     ] {

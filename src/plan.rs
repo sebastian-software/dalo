@@ -14,6 +14,7 @@ use crate::plugin::{
     PluginResolution, PluginState, ResolvedPluginDependency, SelectionOrigin,
 };
 use crate::store::{self, MaterializationDirState, StateFile, StorePaths};
+use crate::tool::{ToolState, ToolStatusReport};
 
 /// Current JSON schema version for read-only installation plans.
 pub const INSTALLATION_PLAN_SCHEMA_VERSION: u32 = 1;
@@ -29,6 +30,8 @@ pub struct InstallationPlan {
     pub canonical_plugins: PluginResolution,
     /// Malformed package findings kept visible without erasing valid siblings.
     pub inventory_warnings: Vec<PluginInventoryWarning>,
+    /// Local-tool trust and availability facts; planning never executes them.
+    pub tools: Vec<ToolStatusReport>,
     /// Physical destinations, each retaining all logical target explanations.
     pub destinations: Vec<DestinationPlan>,
 }
@@ -229,14 +232,16 @@ pub fn build_installation_plan(
         .iter()
         .filter_map(|scan| scan.inventory.clone())
         .collect::<Vec<_>>();
-    Ok(build_from_facts(
+    let mut plan = build_from_facts(
         store_root,
         &state,
         &live.plugins,
         &inventories,
         &materialization.operations,
         target_filter,
-    ))
+    );
+    attach_tool_status(&mut plan, &paths)?;
+    Ok(plan)
 }
 
 /// Compose typed planning facts already loaded by status or dry-run paths.
@@ -271,8 +276,128 @@ pub fn build_from_facts(
         store: store_root.to_path_buf(),
         canonical_plugins: plugins.clone(),
         inventory_warnings,
+        tools: Vec::new(),
         destinations,
     }
+}
+
+/// Attach read-only local-tool facts to a plan composed from shared live data.
+pub fn attach_tool_status(plan: &mut InstallationPlan, paths: &StorePaths) -> DaloResult<()> {
+    plan.tools = crate::tool::list(paths)?.tools;
+    for destination in &mut plan.destinations {
+        for target in &mut destination.logical_targets {
+            for plugin in &mut target.plugins {
+                let prefix = format!("{}#tool:", plugin.source_ref);
+                for status in plan
+                    .tools
+                    .iter()
+                    .filter(|status| status.tool.source_ref.starts_with(&prefix))
+                {
+                    let requirement = match status.tool.availability {
+                        crate::plugin::ToolAvailability::Required => MemberRequirement::Required,
+                        crate::plugin::ToolAvailability::Optional => MemberRequirement::Optional,
+                    };
+                    let (canonical_state, mut component_state, compatibility, blocker, remediation) =
+                        tool_plan_facts(status);
+                    let suppressed = matches!(
+                        plugin.state,
+                        TargetPluginState::Declined | TargetPluginState::Shadowed
+                    );
+                    if plugin.state == TargetPluginState::Declined {
+                        component_state = TargetComponentState::IntentionallyOmitted;
+                    } else if plugin.state == TargetPluginState::Shadowed {
+                        component_state = TargetComponentState::Shadowed;
+                    }
+                    if !suppressed
+                        && requirement == MemberRequirement::Required
+                        && let Some(blocker) = blocker.clone()
+                    {
+                        plugin.blockers.push(blocker);
+                    }
+                    plugin.components.push(TargetComponentPlan {
+                        reference: status.tool.source_ref.clone(),
+                        requirement,
+                        canonical_state,
+                        state: component_state,
+                        compatibility,
+                        authored_fallback: None,
+                        selected_fallback: None,
+                        proposed_artifact: status.staged_path.as_ref().map_or_else(
+                            || format!("immutable tool root sha256:{}", status.tool.contract_hash),
+                            |path| path.display().to_string(),
+                        ),
+                        blocker: if suppressed { None } else { blocker },
+                        remediation,
+                    });
+                }
+                plugin
+                    .components
+                    .sort_by(|left, right| left.reference.cmp(&right.reference));
+                plugin
+                    .blockers
+                    .sort_by(|left, right| left.message.cmp(&right.message));
+                plugin.blockers.dedup();
+                if plugin.state == TargetPluginState::Active && !plugin.blockers.is_empty() {
+                    plugin.state = TargetPluginState::Blocked;
+                    plugin.compatibility = PlanCompatibility::Blocked;
+                } else if plugin.state == TargetPluginState::Active
+                    && plugin.components.iter().any(|component| {
+                        component.requirement == MemberRequirement::Optional
+                            && component.state != TargetComponentState::Active
+                    })
+                {
+                    plugin.state = TargetPluginState::Degraded;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn tool_plan_facts(
+    status: &ToolStatusReport,
+) -> (
+    PluginComponentState,
+    TargetComponentState,
+    PlanCompatibility,
+    Option<PlanBlocker>,
+    Option<String>,
+) {
+    let (canonical, state, compatibility, source, remediation) = match status.state {
+        ToolState::Ready => (
+            PluginComponentState::Active,
+            TargetComponentState::Active,
+            PlanCompatibility::Exact,
+            None,
+            None,
+        ),
+        ToolState::PendingApproval | ToolState::Revoked | ToolState::ApprovedNotStaged => (
+            PluginComponentState::PendingApproval,
+            TargetComponentState::PendingApproval,
+            PlanCompatibility::Blocked,
+            Some(PlanBlockerSource::MissingApproval),
+            Some(format!("dalo approve tool {}", status.tool.source_ref)),
+        ),
+        ToolState::HashDrift | ToolState::AuditFailure => (
+            PluginComponentState::Blocked,
+            TargetComponentState::Blocked,
+            PlanCompatibility::Blocked,
+            Some(PlanBlockerSource::Drift),
+            Some(format!("dalo tool audit {}", status.tool.source_ref)),
+        ),
+        ToolState::RuntimeMissing | ToolState::PlatformMismatch => (
+            PluginComponentState::Blocked,
+            TargetComponentState::Blocked,
+            PlanCompatibility::Unsupported,
+            Some(PlanBlockerSource::UnsupportedBehavior),
+            None,
+        ),
+    };
+    let blocker = source.map(|source| PlanBlocker {
+        source,
+        message: status.diagnostic.clone(),
+    });
+    (canonical, state, compatibility, blocker, remediation)
 }
 
 fn destination_plan(

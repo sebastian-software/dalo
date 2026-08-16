@@ -244,6 +244,46 @@ explicit `dalo instructions enable` flow has completed. A direct local
 selection is additive (`dalo plugin select ...`); `plugin unselect` removes
 only that local origin and never edits the source-authored stack.
 
+Plugin packages may also declare a narrowly typed local executable. Discovery,
+`status`, `doctor`, `plan`, and `sync --dry-run` only inventory and hash it; they
+never run it. Execution trust is a separate, exact contract approval:
+
+```toml
+[[tool]]
+schema_version = 1
+id = "detector"
+entry = "tools/detect.py"
+runtime = "python"
+runtime_version = ">=3.11"
+platforms = ["macos", "linux"]
+argv = ["--path", "${input.path}"]
+files = ["tools/rules.json"]
+cwd = "tool_root"
+env = ["DALO_LOG"]
+capabilities = ["filesystem_read"]
+availability = "required"
+
+[[tool.inputs]]
+name = "path"
+type = "path"
+required = true
+```
+
+```sh
+dalo tool list
+dalo tool show company:review-workflow#tool:detector
+dalo tool audit company:review-workflow#tool:detector
+dalo approve tool company:review-workflow#tool:detector
+dalo approve revoke tool company:review-workflow#tool:detector
+```
+
+Approval records include the deterministic tool-contract hash. Approved bytes
+are atomically promoted below Dalo's immutable content-addressed tool root;
+changing the entry, referenced files, runtime, input/argv contract, environment,
+working directory, platform, availability, or capabilities requires approval
+again. An unrelated plugin README change retains the approval and is still
+visible through the changed whole-package provenance hash.
+
 ### Adopt what works locally
 
 Agents often create useful skills directly in their own folders. Dalo can copy

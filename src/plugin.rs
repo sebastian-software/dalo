@@ -69,12 +69,155 @@ pub struct PluginRecord {
     pub manifest_file: PathBuf,
     /// Ordered passive component declarations.
     pub members: Vec<PluginMember>,
+    /// Validated active local-tool descriptors. Discovery remains inert.
+    pub tools: Vec<ToolRecord>,
     /// Ordered plugin dependency declarations.
     pub requires: Vec<PluginDependency>,
     /// Inert provider overlays retained for adapter-specific validation.
     pub providers: BTreeMap<String, toml::Value>,
     /// SHA-256 over the complete bounded package tree.
     pub package_hash: String,
+}
+
+/// One validated plugin-local executable contract. Inventory never executes it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ToolRecord {
+    /// Descriptor schema version.
+    pub schema_version: u32,
+    /// Plugin-local ID.
+    pub id: String,
+    /// Source-qualified identity, `<source>:<plugin>#tool:<id>`.
+    pub source_ref: String,
+    /// Plugin-root-relative executable entry path.
+    pub entry: String,
+    /// Runtime used to invoke the entry.
+    pub runtime: ToolRuntime,
+    /// Optional authored runtime version requirement.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_version: Option<String>,
+    /// Explicit supported operating systems; empty means every Dalo platform.
+    pub platforms: Vec<ToolPlatform>,
+    /// Event-independent named input schema.
+    pub inputs: Vec<ToolInput>,
+    /// Canonical exec-style argument template.
+    pub argv: Vec<String>,
+    /// Working-directory policy.
+    pub cwd: ToolCwd,
+    /// Environment variable names admitted into the invocation.
+    pub env: Vec<String>,
+    /// Portable capability claims.
+    pub capabilities: Vec<ToolCapability>,
+    /// Whether missing availability blocks the plugin.
+    pub availability: ToolAvailability,
+    /// Files in the bounded security-relevant closure.
+    pub files: Vec<ToolFileRecord>,
+    /// Deterministic invocation-contract hash; excludes whole-package provenance.
+    pub contract_hash: String,
+}
+
+/// Supported local-tool runtime kinds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolRuntime {
+    /// Execute the immutable entry directly, without a shell.
+    Executable,
+    /// Invoke the immutable entry with `python3`.
+    Python,
+    /// Invoke the immutable entry with `node`.
+    Node,
+}
+
+impl ToolRuntime {
+    /// Runtime executable required on PATH, if any.
+    #[must_use]
+    pub const fn executable(self) -> Option<&'static str> {
+        match self {
+            Self::Executable => None,
+            Self::Python => Some("python3"),
+            Self::Node => Some("node"),
+        }
+    }
+}
+
+/// Portable operating-system requirements.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolPlatform {
+    /// Apple macOS.
+    Macos,
+    /// Linux.
+    Linux,
+}
+
+/// One named input admitted by the tool-owned argv template.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ToolInput {
+    /// Stable lower-snake input name.
+    pub name: String,
+    /// Primitive value type.
+    #[serde(rename = "type")]
+    pub kind: ToolInputType,
+    /// Whether callers must supply a value.
+    #[serde(default = "default_true")]
+    pub required: bool,
+}
+
+/// Primitive named-input types supported by descriptor v1.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolInputType {
+    /// UTF-8 text.
+    String,
+    /// Filesystem path passed as opaque argument data.
+    Path,
+    /// Signed integer.
+    Integer,
+    /// Boolean rendered as `true` or `false`.
+    Boolean,
+}
+
+/// Working directory used for execution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolCwd {
+    /// Root of the immutable staged tool closure.
+    ToolRoot,
+}
+
+/// Portable active-code capability claims.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolCapability {
+    /// Read files outside the immutable closure.
+    FilesystemRead,
+    /// Write files outside the immutable closure.
+    FilesystemWrite,
+    /// Start child processes.
+    Subprocess,
+    /// Access the network.
+    Network,
+}
+
+/// Required versus optional tool availability.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolAvailability {
+    /// Unavailable or unapproved blocks coherent activation.
+    Required,
+    /// Unavailable or unapproved is a visible omission.
+    Optional,
+}
+
+/// One regular file participating in the tool contract closure.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ToolFileRecord {
+    /// Plugin-root-relative path.
+    pub path: String,
+    /// Whether the source file had any executable bit.
+    pub executable: bool,
+    /// SHA-256 of the exact bytes.
+    pub content_hash: String,
 }
 
 /// One passive plugin member.
@@ -234,7 +377,7 @@ struct Manifest {
     #[serde(default)]
     providers: BTreeMap<String, toml::Value>,
     #[serde(default, rename = "tool")]
-    tools: Vec<toml::Value>,
+    tools: Vec<ManifestTool>,
     #[serde(default, rename = "hook")]
     hooks: Vec<toml::Value>,
 }
@@ -277,6 +420,34 @@ struct ManifestDependency {
 struct ManifestFallback {
     kind: String,
     skill: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ManifestTool {
+    schema_version: u32,
+    id: String,
+    entry: String,
+    runtime: ToolRuntime,
+    #[serde(default)]
+    runtime_version: Option<String>,
+    #[serde(default)]
+    platforms: Vec<ToolPlatform>,
+    #[serde(default)]
+    inputs: Vec<ToolInput>,
+    argv: Vec<String>,
+    #[serde(default)]
+    files: Vec<String>,
+    cwd: ToolCwd,
+    #[serde(default)]
+    env: Vec<String>,
+    #[serde(default)]
+    capabilities: Vec<ToolCapability>,
+    availability: ToolAvailability,
+}
+
+const fn default_true() -> bool {
+    true
 }
 
 /// Scan only exact `plugins/<name>/PLUGIN.toml` packages in one source.
@@ -437,10 +608,10 @@ fn scan_package(
             manifest.schema_version
         )));
     }
-    if !manifest.tools.is_empty() || !manifest.hooks.is_empty() {
+    if !manifest.hooks.is_empty() {
         return Err((
             PluginInventoryWarningCode::UnsupportedActiveComponentSchema,
-            "tool and hook descriptors require their active-code implementation".to_owned(),
+            "hook descriptors require their active-code implementation".to_owned(),
         ));
     }
     validate_manifest(package_name, &manifest)?;
@@ -457,11 +628,13 @@ fn scan_package(
         .map(parse_dependency)
         .collect::<Result<Vec<_>, _>>()?;
     validate_member_closure(&members)?;
+    let plugin_ref = format!("{source_id}:{package_name}");
+    let tools = parse_tools(&plugin_ref, &manifest.tools, &entries)?;
     let package_hash = hash_package_files(&entries);
 
     Ok(PluginRecord {
         source_id: source_id.to_owned(),
-        source_ref: format!("{source_id}:{package_name}"),
+        source_ref: plugin_ref,
         slot_name: package_name.to_owned(),
         id: manifest.plugin.id,
         description: manifest.plugin.description,
@@ -469,6 +642,7 @@ fn scan_package(
         path: package_path.to_path_buf(),
         manifest_file,
         members,
+        tools,
         requires,
         providers: manifest.providers,
         package_hash,
@@ -631,6 +805,271 @@ fn validate_member_closure(
         }
     }
     Ok(())
+}
+
+fn parse_tools(
+    plugin_ref: &str,
+    descriptors: &[ManifestTool],
+    package_files: &PackageFiles,
+) -> Result<Vec<ToolRecord>, (PluginInventoryWarningCode, String)> {
+    if descriptors.len() > MAX_LIST_ENTRIES {
+        return Err(invalid(format!(
+            "plugin declares more than {MAX_LIST_ENTRIES} tools"
+        )));
+    }
+    let mut ids = BTreeSet::new();
+    let mut tools = Vec::with_capacity(descriptors.len());
+    for descriptor in descriptors {
+        if descriptor.schema_version != 1 {
+            return Err((
+                PluginInventoryWarningCode::UnsupportedActiveComponentSchema,
+                format!(
+                    "tool `{}` uses unsupported descriptor schema {} (supported: 1)",
+                    descriptor.id, descriptor.schema_version
+                ),
+            ));
+        }
+        if !is_plugin_name(&descriptor.id) {
+            return Err(invalid("tool.id must use lower kebab-case"));
+        }
+        if !ids.insert(descriptor.id.as_str()) {
+            return Err(invalid(format!(
+                "plugin contains duplicate tool ID `{}`",
+                descriptor.id
+            )));
+        }
+        let entry = validate_tool_path(&descriptor.entry)?;
+        if descriptor.files.len() > MAX_LIST_ENTRIES {
+            return Err(invalid(format!(
+                "tool `{}` declares too many closure files",
+                descriptor.id
+            )));
+        }
+        if descriptor.argv.len() > MAX_LIST_ENTRIES {
+            return Err(invalid(format!(
+                "tool `{}` argv template is too large",
+                descriptor.id
+            )));
+        }
+        let mut input_names = BTreeSet::new();
+        for input in &descriptor.inputs {
+            if !is_input_name(&input.name) || !input_names.insert(input.name.as_str()) {
+                return Err(invalid(format!(
+                    "tool `{}` input names must be unique lower_snake_case values",
+                    descriptor.id
+                )));
+            }
+        }
+        for argument in &descriptor.argv {
+            if argument.len() > MAX_STRING_BYTES {
+                return Err(invalid(format!(
+                    "tool `{}` contains an oversized argv element",
+                    descriptor.id
+                )));
+            }
+            if let Some(name) = argument
+                .strip_prefix("${input.")
+                .and_then(|value| value.strip_suffix('}'))
+            {
+                if !input_names.contains(name) {
+                    return Err(invalid(format!(
+                        "tool `{}` argv references unknown input `{name}`",
+                        descriptor.id
+                    )));
+                }
+            } else if argument.contains("${") {
+                return Err(invalid(format!(
+                    "tool `{}` uses an unsafe placeholder; v1 accepts only whole-token `${{input.name}}` values",
+                    descriptor.id
+                )));
+            }
+        }
+        if let Some(version) = &descriptor.runtime_version
+            && (version.is_empty()
+                || version.len() > 128
+                || !version.bytes().all(|byte| {
+                    byte.is_ascii_alphanumeric()
+                        || matches!(byte, b'.' | b'-' | b'+' | b'<' | b'>' | b'=' | b' ')
+                }))
+        {
+            return Err(invalid(format!(
+                "tool `{}` has an invalid runtime_version requirement",
+                descriptor.id
+            )));
+        }
+        let mut platforms = descriptor.platforms.clone();
+        platforms.sort();
+        platforms.dedup();
+        let mut env = descriptor.env.clone();
+        env.sort();
+        env.dedup();
+        if env.len() != descriptor.env.len() || env.iter().any(|name| !is_env_name(name)) {
+            return Err(invalid(format!(
+                "tool `{}` env values must be unique portable environment names",
+                descriptor.id
+            )));
+        }
+        let mut capabilities = descriptor.capabilities.clone();
+        capabilities.sort();
+        capabilities.dedup();
+
+        let mut closure_paths = BTreeSet::from([entry.clone()]);
+        for path in &descriptor.files {
+            let path = validate_tool_path(path)?;
+            if !closure_paths.insert(path) {
+                return Err(invalid(format!(
+                    "tool `{}` contains a duplicate closure path",
+                    descriptor.id
+                )));
+            }
+        }
+        let mut files = Vec::with_capacity(closure_paths.len());
+        for path in closure_paths {
+            let package_file = package_files
+                .iter()
+                .find(|candidate| candidate.path == path)
+                .ok_or_else(|| {
+                    invalid(format!(
+                        "tool `{}` references missing regular file `{path}`",
+                        descriptor.id
+                    ))
+                })?;
+            files.push(ToolFileRecord {
+                path,
+                executable: package_file.executable,
+                content_hash: hash_bytes(&package_file.bytes),
+            });
+        }
+        if descriptor.runtime == ToolRuntime::Executable
+            && !files
+                .iter()
+                .find(|file| file.path == entry)
+                .is_some_and(|file| file.executable)
+        {
+            return Err(invalid(format!(
+                "tool `{}` executable entry is not marked executable",
+                descriptor.id
+            )));
+        }
+        let source_ref = format!("{plugin_ref}#tool:{}", descriptor.id);
+        let mut record = ToolRecord {
+            schema_version: descriptor.schema_version,
+            id: descriptor.id.clone(),
+            source_ref,
+            entry,
+            runtime: descriptor.runtime,
+            runtime_version: descriptor.runtime_version.clone(),
+            platforms,
+            inputs: descriptor.inputs.clone(),
+            argv: descriptor.argv.clone(),
+            cwd: descriptor.cwd,
+            env,
+            capabilities,
+            availability: descriptor.availability,
+            files,
+            contract_hash: String::new(),
+        };
+        record.contract_hash = hash_tool_contract(&record);
+        tools.push(record);
+    }
+    tools.sort_by(|left, right| left.id.cmp(&right.id));
+    Ok(tools)
+}
+
+fn validate_tool_path(path: &str) -> Result<String, (PluginInventoryWarningCode, String)> {
+    if path.is_empty() || path.len() > MAX_STRING_BYTES || path.contains('\\') {
+        return Err(invalid(
+            "tool paths must be non-empty portable relative paths",
+        ));
+    }
+    let candidate = Path::new(path);
+    if candidate.is_absolute()
+        || candidate.components().any(|part| {
+            !matches!(part, std::path::Component::Normal(_)) || part.as_os_str().to_str().is_none()
+        })
+    {
+        return Err(invalid(format!(
+            "tool path `{path}` must stay lexically inside the plugin package"
+        )));
+    }
+    Ok(candidate
+        .components()
+        .map(|part| part.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/"))
+}
+
+fn is_input_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+        && value.as_bytes()[0].is_ascii_lowercase()
+        && !value.ends_with('_')
+        && !value.contains("__")
+}
+
+fn is_env_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && (value.as_bytes()[0].is_ascii_uppercase() || value.as_bytes()[0] == b'_')
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
+}
+
+fn hash_bytes(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn hash_tool_contract(tool: &ToolRecord) -> String {
+    let mut hash = Sha256::new();
+    hash.update(b"dalo-tool-contract-v1\0");
+    hash_contract_value(&mut hash, &tool.source_ref);
+    hash_contract_value(&mut hash, &tool.schema_version.to_string());
+    hash_contract_value(&mut hash, &tool.entry);
+    hash_contract_value(&mut hash, &format!("{:?}", tool.runtime));
+    hash_contract_value(&mut hash, tool.runtime_version.as_deref().unwrap_or(""));
+    for platform in &tool.platforms {
+        hash_contract_value(&mut hash, &format!("platform:{platform:?}"));
+    }
+    for input in &tool.inputs {
+        hash_contract_value(
+            &mut hash,
+            &format!("input:{}:{:?}:{}", input.name, input.kind, input.required),
+        );
+    }
+    for argument in &tool.argv {
+        hash_contract_value(&mut hash, &format!("argv:{argument}"));
+    }
+    hash_contract_value(&mut hash, &format!("cwd:{:?}", tool.cwd));
+    for name in &tool.env {
+        hash_contract_value(&mut hash, &format!("env:{name}"));
+    }
+    for capability in &tool.capabilities {
+        hash_contract_value(&mut hash, &format!("capability:{capability:?}"));
+    }
+    hash_contract_value(&mut hash, &format!("availability:{:?}", tool.availability));
+    for file in &tool.files {
+        hash_contract_value(
+            &mut hash,
+            &format!(
+                "file:{}:{}:{}",
+                file.path, file.executable, file.content_hash
+            ),
+        );
+    }
+    hash.finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+fn hash_contract_value(hash: &mut Sha256, value: &str) {
+    hash.update((value.len() as u64).to_be_bytes());
+    hash.update(value.as_bytes());
 }
 
 fn validate_toml_bounds(
@@ -1132,6 +1571,8 @@ pub struct PluginCandidate {
     pub package_hash: String,
     /// Passive members.
     pub members: Vec<PluginMember>,
+    /// Inert validated local-tool contracts.
+    pub tools: Vec<ToolRecord>,
     /// Plugin dependencies.
     pub requires: Vec<PluginDependency>,
     /// Provider overlay names; overlay values remain adapter-private.
@@ -1232,6 +1673,7 @@ fn candidate_summary(record: &PluginRecord) -> PluginCandidate {
         path: record.path.clone(),
         package_hash: record.package_hash.clone(),
         members: record.members.clone(),
+        tools: record.tools.clone(),
         requires: record.requires.clone(),
         provider_overlays: record.providers.keys().cloned().collect(),
     }
@@ -2236,10 +2678,10 @@ requirement = "optional"
     }
 
     #[test]
-    fn active_descriptors_block_passive_package() {
+    fn unsupported_hook_descriptors_block_package() {
         let temp = TempDir::new().unwrap();
         let manifest = format!(
-            "{}\n[[tool]]\nschema_version = 1\n",
+            "{}\n[[hook]]\nschema_version = 1\n",
             valid_manifest("example")
         );
         write_plugin(temp.path(), "example", &manifest);
@@ -2249,6 +2691,119 @@ requirement = "optional"
             inventory.warnings[0].code,
             PluginInventoryWarningCode::UnsupportedActiveComponentSchema
         );
+    }
+
+    fn tool_manifest(name: &str, argv: &str) -> String {
+        format!(
+            r#"{}
+[[tool]]
+schema_version = 1
+id = "detector"
+entry = "bin/detect.py"
+runtime = "python"
+runtime_version = ">=3.11"
+platforms = ["macos", "linux"]
+argv = ["--path", {argv}]
+files = ["lib/rules.txt"]
+cwd = "tool_root"
+env = ["DALO_LOG"]
+capabilities = ["filesystem_read"]
+availability = "required"
+
+[[tool.inputs]]
+name = "path"
+type = "path"
+required = true
+"#,
+            valid_manifest(name)
+        )
+    }
+
+    fn write_tool_files(package: &Path) {
+        fs::create_dir_all(package.join("bin")).unwrap();
+        fs::create_dir_all(package.join("lib")).unwrap();
+        fs::write(package.join("bin/detect.py"), b"print('ok')\n").unwrap();
+        fs::write(package.join("lib/rules.txt"), b"rules\n").unwrap();
+    }
+
+    #[test]
+    fn discovers_tool_and_hashes_only_security_relevant_closure() {
+        let temp = TempDir::new().unwrap();
+        let package = write_plugin(
+            temp.path(),
+            "example",
+            &tool_manifest("example", r#""${input.path}""#),
+        );
+        write_tool_files(&package);
+        fs::write(package.join("README.md"), "one").unwrap();
+        let first = scan_source_plugins("team", temp.path());
+        assert!(first.warnings.is_empty(), "{:?}", first.warnings);
+        assert_eq!(first.plugins[0].tools.len(), 1);
+        let contract = first.plugins[0].tools[0].contract_hash.clone();
+        let package_hash = first.plugins[0].package_hash.clone();
+
+        fs::write(package.join("README.md"), "two").unwrap();
+        let second = scan_source_plugins("team", temp.path());
+        assert_eq!(second.plugins[0].tools[0].contract_hash, contract);
+        assert_ne!(second.plugins[0].package_hash, package_hash);
+
+        fs::write(package.join("lib/rules.txt"), "changed").unwrap();
+        let third = scan_source_plugins("team", temp.path());
+        assert_ne!(third.plugins[0].tools[0].contract_hash, contract);
+    }
+
+    #[test]
+    fn rejects_path_escape_and_partial_or_unknown_placeholders() {
+        let temp = TempDir::new().unwrap();
+        let package = write_plugin(
+            temp.path(),
+            "escape",
+            &tool_manifest("escape", r#""prefix-${input.path}""#),
+        );
+        write_tool_files(&package);
+        let placeholder = scan_source_plugins("team", temp.path());
+        assert!(placeholder.plugins.is_empty());
+        assert!(
+            placeholder.warnings[0]
+                .message
+                .contains("unsafe placeholder")
+        );
+
+        let package = write_plugin(
+            temp.path(),
+            "outside",
+            &tool_manifest("outside", r#""${input.path}""#)
+                .replace("bin/detect.py", "../detect.py"),
+        );
+        write_tool_files(&package);
+        let escaped = scan_source_plugins("team", temp.path());
+        assert!(
+            escaped
+                .warnings
+                .iter()
+                .any(|warning| warning.path.ends_with("outside")
+                    && warning.message.contains("inside"))
+        );
+    }
+
+    #[test]
+    fn descriptor_input_or_argv_drift_invalidates_contract() {
+        let temp = TempDir::new().unwrap();
+        let package = write_plugin(
+            temp.path(),
+            "example",
+            &tool_manifest("example", r#""${input.path}""#),
+        );
+        write_tool_files(&package);
+        let first = scan_source_plugins("team", temp.path());
+        let contract = first.plugins[0].tools[0].contract_hash.clone();
+        fs::write(
+            package.join(PLUGIN_FILE),
+            tool_manifest("example", r#""${input.path}", "--strict""#),
+        )
+        .unwrap();
+        let second = scan_source_plugins("team", temp.path());
+        assert_ne!(second.plugins[0].tools[0].contract_hash, contract);
     }
 
     #[test]

@@ -37,6 +37,7 @@ pub mod store;
 pub mod target;
 pub mod team_manifest;
 pub mod term;
+pub mod tool;
 pub mod update;
 
 pub use error::{DaloError, DaloResult};

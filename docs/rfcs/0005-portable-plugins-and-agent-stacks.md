@@ -756,6 +756,45 @@ The containing source revision and whole plugin-package hash remain audit and
 provenance facts; unrelated plugin changes must not invalidate an unchanged
 tool closure.
 
+Tool descriptor schema version 1 is exact and closed:
+
+```toml
+[[tool]]
+schema_version = 1
+id = "detector"                         # lower kebab-case, plugin-local
+entry = "tools/detect.py"               # plugin-root-relative regular file
+runtime = "python"                      # executable | python | node
+runtime_version = ">=3.11"              # optional authored requirement
+platforms = ["macos", "linux"]         # optional; empty means both
+argv = ["--path", "${input.path}"]     # one argv element per value
+files = ["tools/rules.json"]            # optional explicit closure files
+cwd = "tool_root"                       # the only v1 working-directory policy
+env = ["DALO_LOG"]                      # names only, never values
+capabilities = ["filesystem_read"]      # filesystem_read, filesystem_write,
+                                         # subprocess, network
+availability = "required"               # required | optional
+
+[[tool.inputs]]
+name = "path"                            # unique lower_snake_case
+type = "path"                            # string | path | integer | boolean
+required = true                          # defaults to true
+```
+
+Every placeholder must occupy the complete argument element and use the exact
+`${input.<name>}` form. Partial interpolation, undeclared inputs, shell command
+fields, unknown descriptor fields, runtimes, platforms, capabilities, paths,
+or schema versions fail closed. The runtime executable and immutable entry are
+prepended by Dalo; `argv` therefore never contains either a shell or an
+executable selector. Optional missing values retain their argument position as
+an empty data value in version 1.
+
+The `dalo-tool-contract-v1` hash covers the source-qualified tool identity,
+every descriptor field above, normalized closure paths, executable bits, and
+the exact bytes of `entry` plus `files`. It deliberately excludes source
+revision, publisher metadata, and the complete plugin-package hash. Exact
+approval values are stored as
+`<source>:<plugin>#tool:<id>@sha256:<contract-hash>`.
+
 Provider adapters should prefer stable plugin-root substitutions over
 hard-coded harness skill paths. Generated commands must resolve inside the
 owned projection or immutable source tree and must never interpolate untrusted

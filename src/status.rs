@@ -36,6 +36,7 @@ use crate::team_manifest::{
     TeamCatalogUpdateReport, TeamManifestAction, TeamManifestMutationReport, TeamManifestView,
 };
 use crate::term;
+use crate::tool::ToolListReport;
 
 /// Full status report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -57,6 +58,8 @@ pub struct StatusReport {
     /// Shared typed multi-target planning facts when plugins are selected.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub installation_plan: Option<InstallationPlan>,
+    /// Discovered plugin-local executable contracts and exact trust state.
+    pub tools: ToolListReport,
     /// Resolution output.
     pub resolution: Resolution,
     /// Dry-run materialization operations that expose target-level blockers.
@@ -311,7 +314,8 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         true,
         &audit_degraded_sources,
     )?;
-    let installation_plan = (!plugins.plugins.is_empty()).then(|| {
+    let tools = crate::tool::list(&paths)?;
+    let mut installation_plan = (!plugins.plugins.is_empty()).then(|| {
         crate::plan::build_from_facts(
             store_root,
             &state,
@@ -321,6 +325,9 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
             None,
         )
     });
+    if let Some(plan) = installation_plan.as_mut() {
+        crate::plan::attach_tool_status(plan, &paths)?;
+    }
     let resolution = materialization.resolution;
     let live_lock =
         lockfile::build_user_lock(&config.sources, &live_resolution, None, Some(&plugins));
@@ -373,6 +380,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         plugin_inventory_warnings,
         plugins,
         installation_plan,
+        tools,
         resolution,
         materialization: materialization.operations,
         blocking_audits: audits.blocking,
@@ -755,6 +763,16 @@ fn print_audit_finding(layer: &str, finding: &crate::audit::AuditFinding) {
 /// Print a human-readable status report.
 pub fn print_status_report(report: &StatusReport) {
     println!("dalo store: {}", report.store.display());
+    if !report.tools.tools.is_empty() {
+        println!("local tools (inert inventory):");
+        for tool in &report.tools.tools {
+            println!(
+                "  {} state={:?} contract=sha256:{}",
+                tool.tool.source_ref, tool.state, tool.tool.contract_hash
+            );
+            println!("    {}", tool.diagnostic);
+        }
+    }
     print_autosync_status_report(&report.autosync);
     println!("sources:");
     if report.sources.is_empty() {
