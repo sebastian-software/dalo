@@ -6668,7 +6668,7 @@ fn status_json_should_expose_lock_schema_version_field() {
     let report: StatusReportSchema =
         serde_json::from_slice(&output).expect("status JSON should match the status schema");
 
-    assert_eq!(report.lock.schema_version, 1);
+    assert_eq!(report.lock.schema_version, 2);
 }
 
 #[test]
@@ -8959,4 +8959,97 @@ fn status_json_should_report_instruction_pack_topic_overlap() {
         .stdout(predicate::str::contains("instruction_pack_overlaps"))
         .stdout(predicate::str::contains("local:style"))
         .stdout(predicate::str::contains("local:format"));
+}
+
+#[test]
+fn plugin_select_list_decline_and_unselect_should_preserve_separate_intent() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    let skill = store.join("local/skills/core");
+    std::fs::create_dir_all(&skill).expect("local skill should be created");
+    std::fs::write(skill.join("SKILL.md"), "# Core\n").expect("skill should be written");
+    let plugin = store.join("local/plugins/demo");
+    std::fs::create_dir_all(&plugin).expect("plugin package should be created");
+    std::fs::write(
+        plugin.join("PLUGIN.toml"),
+        r#"schema_version = 1
+[plugin]
+name = "demo"
+description = "Demo plugin"
+
+[[plugin.members]]
+ref = "skill:core"
+requirement = "required"
+"#,
+    )
+    .expect("plugin manifest should be written");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["plugin", "select", "local:demo"])
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "plugin", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("local:demo"))
+        .stdout(predicate::str::contains("\"selected\""))
+        .stdout(predicate::str::contains("\"active\""));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["sync"])
+        .assert()
+        .success();
+    let lock =
+        std::fs::read_to_string(store.join("lock.toml")).expect("user lock should be readable");
+    assert!(lock.contains("source_ref = \"local:demo\""));
+    assert!(lock.contains("closure_hash"));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args([
+            "plugin",
+            "decline",
+            "local:demo",
+            "--rule-id",
+            "skip-demo",
+            "--reason",
+            "not needed here",
+        ])
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "plugin", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"declined\""))
+        .stdout(predicate::str::contains("skip-demo"));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["plugin", "unselect", "local:demo"])
+        .assert()
+        .success();
+    let config =
+        std::fs::read_to_string(store.join("config.toml")).expect("config should be readable");
+    assert!(config.contains("version = 2"));
+    assert!(!config.contains("direct = [\"local:demo\"]"));
+    assert!(config.contains("rule_id = \"skip-demo\""));
 }

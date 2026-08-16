@@ -678,16 +678,83 @@ pub fn read_config(paths: &StorePaths) -> DaloResult<UserConfig> {
     }
 
     let content = fs::read_to_string(&paths.config_file)?;
-    let config: UserConfig = parse_store_toml(&paths.config_file, &content)?;
-    if config.version != CONFIG_VERSION {
+    let mut config: UserConfig = parse_store_toml(&paths.config_file, &content)?;
+    if config.version != 1 && config.version != CONFIG_VERSION {
         return Err(DaloError::UnsupportedSchema {
             path: paths.config_file.clone(),
             version: config.version,
             supported: CONFIG_VERSION,
         });
     }
+    // Version 1 had no plugin selection fields. Its in-memory representation is
+    // losslessly upgraded; the next normal config mutation persists version 2.
+    config.version = CONFIG_VERSION;
     ensure_unique_source_ids(&paths.config_file, &config)?;
+    validate_plugin_config(&paths.config_file, &config)?;
     Ok(config)
+}
+
+fn validate_plugin_config(path: &Path, config: &UserConfig) -> DaloResult<()> {
+    let mut direct = std::collections::BTreeSet::new();
+    for reference in &config.plugins.direct {
+        if !valid_source_qualified_plugin_ref(reference) || !direct.insert(reference) {
+            return Err(DaloError::FileParse {
+                path: path.to_path_buf(),
+                reason: format!("invalid or duplicate direct plugin reference `{reference}`"),
+            });
+        }
+    }
+    if !config
+        .plugins
+        .direct
+        .windows(2)
+        .all(|pair| pair[0] < pair[1])
+    {
+        return Err(DaloError::FileParse {
+            path: path.to_path_buf(),
+            reason: "plugins.direct must be sorted".to_owned(),
+        });
+    }
+    let mut rule_ids = std::collections::BTreeSet::new();
+    for policy in &config.plugin_policy {
+        if !valid_plugin_name(&policy.rule_id) || !rule_ids.insert(policy.rule_id.as_str()) {
+            return Err(DaloError::FileParse {
+                path: path.to_path_buf(),
+                reason: format!(
+                    "invalid or duplicate plugin policy rule_id `{}`",
+                    policy.rule_id
+                ),
+            });
+        }
+        if !valid_source_qualified_plugin_ref(&policy.plugin) || policy.reason.trim().is_empty() {
+            return Err(DaloError::FileParse {
+                path: path.to_path_buf(),
+                reason: format!("invalid plugin policy `{}`", policy.rule_id),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn valid_source_qualified_plugin_ref(reference: &str) -> bool {
+    let mut parts = reference.split(':');
+    let (Some(source), Some(selector), None) = (parts.next(), parts.next(), parts.next()) else {
+        return false;
+    };
+    !source.is_empty()
+        && !selector.is_empty()
+        && !source.contains(['#', '/', '\\'])
+        && !selector.contains(['#', '/', '\\'])
+}
+
+fn valid_plugin_name(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+        && !value.starts_with('-')
+        && !value.ends_with('-')
+        && !value.contains("--")
 }
 
 /// Reject a hand-edited config that declares the same source id twice.
@@ -718,14 +785,16 @@ pub fn read_user_lock(paths: &StorePaths) -> DaloResult<UserLock> {
     }
 
     let content = fs::read_to_string(&paths.lock_file)?;
-    let lock: UserLock = parse_store_toml(&paths.lock_file, &content)?;
-    if lock.schema_version != USER_LOCK_SCHEMA_VERSION {
+    let mut lock: UserLock = parse_store_toml(&paths.lock_file, &content)?;
+    if lock.schema_version != 1 && lock.schema_version != USER_LOCK_SCHEMA_VERSION {
         return Err(DaloError::UnsupportedSchema {
             path: paths.lock_file.clone(),
             version: lock.schema_version,
             supported: USER_LOCK_SCHEMA_VERSION,
         });
     }
+
+    lock.schema_version = USER_LOCK_SCHEMA_VERSION;
 
     Ok(lock)
 }

@@ -1917,8 +1917,10 @@ mod tests {
             source_id: source_id.to_owned(),
             skills: Vec::new(),
             agents: agent_inventory.agents,
+            plugins: Vec::new(),
             warnings: Vec::new(),
             agent_warnings: agent_inventory.warnings,
+            plugin_warnings: Vec::new(),
         }
     }
 }

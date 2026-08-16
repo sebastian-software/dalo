@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::source::{SourceConfig, SourceKind};
 
 /// Current persisted config schema version.
-pub const CONFIG_VERSION: u32 = 1;
+pub const CONFIG_VERSION: u32 = 2;
 
 /// User-authored dalo configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -19,6 +19,52 @@ pub struct UserConfig {
     pub settings: Settings,
     /// Configured sources in priority order.
     pub sources: Vec<SourceConfig>,
+    /// Direct user plugin selections.
+    #[serde(default)]
+    pub plugins: PluginConfig,
+    /// Explicit local plugin policy decisions.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub plugin_policy: Vec<PluginPolicy>,
+}
+
+/// Local plugin selection settings.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct PluginConfig {
+    /// Sorted set of canonical `<source-id>:<selector>` references.
+    pub direct: Vec<String>,
+}
+
+/// Explicit user-local plugin policy decision.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PluginPolicy {
+    /// Policy layer; version 2 accepts only `user_local`.
+    pub layer: PluginPolicyLayer,
+    /// Stable lower-kebab rule identity.
+    pub rule_id: String,
+    /// Canonical source-qualified plugin reference.
+    pub plugin: String,
+    /// Version 2 accepts only decline.
+    pub decision: PluginPolicyDecision,
+    /// Required human audit context.
+    pub reason: String,
+}
+
+/// Supported plugin policy layer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PluginPolicyLayer {
+    /// Policy authored in the local user config.
+    UserLocal,
+}
+
+/// Supported plugin policy decision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PluginPolicyDecision {
+    /// Keep intent and origins visible but suppress plugin activation.
+    Decline,
 }
 
 /// User-level settings.
@@ -58,6 +104,8 @@ impl UserConfig {
                 declared_by: None,
                 declared_ref: None,
             }],
+            plugins: PluginConfig::default(),
+            plugin_policy: Vec::new(),
         }
     }
 }

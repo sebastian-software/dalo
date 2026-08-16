@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::agent::{self, AgentInventoryWarning, AgentRecord};
 use crate::error::DaloResult;
+use crate::plugin::{self, PluginInventoryWarning, PluginRecord};
 
 const SKILL_FILE: &str = "SKILL.md";
 const MAX_FRONTMATTER_BYTES: usize = 64 * 1024;
@@ -24,10 +25,14 @@ pub struct SourceInventory {
     pub skills: Vec<SkillRecord>,
     /// Scanned canonical agent packages.
     pub agents: Vec<AgentRecord>,
+    /// Scanned passive portable plugins.
+    pub plugins: Vec<PluginRecord>,
     /// Non-fatal scan warnings.
     pub warnings: Vec<InventoryWarning>,
     /// Non-fatal canonical-agent package warnings.
     pub agent_warnings: Vec<AgentInventoryWarning>,
+    /// Non-fatal portable-plugin package warnings.
+    pub plugin_warnings: Vec<PluginInventoryWarning>,
 }
 
 /// One discovered skill.
@@ -136,13 +141,16 @@ pub fn scan_source(source_id: &str, source_root: &Path) -> DaloResult<SourceInve
     });
 
     let agent_inventory = agent::scan_source_agents(source_id, source_root);
+    let plugin_inventory = plugin::scan_source_plugins(source_id, source_root);
 
     Ok(SourceInventory {
         source_id: source_id.to_owned(),
         skills,
         agents: agent_inventory.agents,
+        plugins: plugin_inventory.plugins,
         warnings,
         agent_warnings: agent_inventory.warnings,
+        plugin_warnings: plugin_inventory.warnings,
     })
 }
 
@@ -152,9 +160,15 @@ fn find_skill_dirs(
 ) -> DaloResult<Vec<PathBuf>> {
     let mut found = Vec::new();
     let mut pending = vec![source_root.to_path_buf()];
+    let plugins_root = source_root.join("plugins");
     let canonical_source_root = fs::canonicalize(source_root).ok();
 
     while let Some(dir) = pending.pop() {
+        if dir == plugins_root {
+            // Plugin-owned support files are inert inventory and must never be
+            // rediscovered as standalone managed skills.
+            continue;
+        }
         if dir.file_name().is_some_and(|name| name == ".git") {
             continue;
         }

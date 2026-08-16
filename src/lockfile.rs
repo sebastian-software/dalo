@@ -7,11 +7,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::git;
 use crate::materialize::SyncReport;
+use crate::plugin::{
+    AppliedPluginPolicy, PluginResolution, PluginState, ResolvedPluginMember, SelectionOrigin,
+};
 use crate::resolver::{Resolution, UnlinkedReason};
 use crate::source::{SourceConfig, SourceKind};
 
 /// Current persisted user-lock schema version.
-pub const USER_LOCK_SCHEMA_VERSION: u32 = 1;
+pub const USER_LOCK_SCHEMA_VERSION: u32 = 2;
 
 /// Resolved user lock.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -37,6 +40,39 @@ pub struct UserLock {
     /// Active instruction packs rendered into instruction-file targets.
     #[serde(default)]
     pub active_instruction_packs: Vec<LockedInstructionPack>,
+    /// Canonical target-independent passive plugin resolution.
+    #[serde(default)]
+    pub plugins: Vec<LockedPlugin>,
+}
+
+/// Canonical passive plugin state retained in the user lock.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LockedPlugin {
+    /// Canonical `<source-id>:<slot-name>` identity.
+    pub source_ref: String,
+    /// Plugin slot name.
+    pub slot_name: String,
+    /// Optional stable identity.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// Complete package-tree hash.
+    pub package_hash: String,
+    /// Effective closure hash excluding provenance.
+    pub closure_hash: String,
+    /// Structurally compared selection provenance.
+    pub origins: Vec<SelectionOrigin>,
+    /// Applied decisions and their provenance, compared structurally.
+    pub policies: Vec<AppliedPluginPolicy>,
+    /// Canonical state after local policy.
+    pub state: PluginState,
+    /// Winning plugin when this candidate is shadowed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shadowed_by: Option<String>,
+    /// Resolved passive member states.
+    pub members: Vec<ResolvedPluginMember>,
+    /// Deterministic coherence blockers.
+    pub blocking_reasons: Vec<String>,
 }
 
 /// Source identity captured in the user lock.
@@ -143,6 +179,12 @@ pub enum LockDriftCode {
     PendingApprovalRemoved,
     /// A skill is now pending approval but was not pending in the lock.
     PendingApprovalAdded,
+    /// A selected plugin appeared in the live canonical graph.
+    PluginAdded,
+    /// A previously selected plugin left the live canonical graph.
+    PluginRemoved,
+    /// Plugin package, closure, state, origins, or member outcomes changed.
+    PluginChanged,
 }
 
 impl UserLock {
@@ -157,6 +199,7 @@ impl UserLock {
             unlinked_skills: Vec::new(),
             target_materializations: Vec::new(),
             active_instruction_packs: Vec::new(),
+            plugins: Vec::new(),
         }
     }
 }
@@ -167,6 +210,7 @@ pub fn build_user_lock(
     sources: &[SourceConfig],
     resolution: &Resolution,
     sync_report: Option<&SyncReport>,
+    plugins: Option<&PluginResolution>,
 ) -> UserLock {
     let mut lock = UserLock {
         schema_version: USER_LOCK_SCHEMA_VERSION,
@@ -223,6 +267,25 @@ pub fn build_user_lock(
         // Instruction packs are managed by the `instructions` command, not by sync;
         // the caller restores the previous lock's packs after rebuilding.
         active_instruction_packs: Vec::new(),
+        plugins: plugins.map_or_else(Vec::new, |resolution| {
+            resolution
+                .plugins
+                .iter()
+                .map(|plugin| LockedPlugin {
+                    source_ref: plugin.source_ref.clone(),
+                    slot_name: plugin.slot_name.clone(),
+                    id: plugin.id.clone(),
+                    package_hash: plugin.package_hash.clone(),
+                    closure_hash: plugin.closure_hash.clone(),
+                    origins: plugin.origins.clone(),
+                    policies: plugin.policies.clone(),
+                    state: plugin.state,
+                    shadowed_by: plugin.shadowed_by.clone(),
+                    members: plugin.members.clone(),
+                    blocking_reasons: plugin.blocking_reasons.clone(),
+                })
+                .collect()
+        }),
     };
     sort_user_lock(&mut lock);
     lock
@@ -242,6 +305,7 @@ pub fn compare_user_lock(previous: &UserLock, current: &UserLock) -> Vec<LockDri
         &current.active_skills,
         &mut drift,
     );
+    compare_plugins(previous, current, &mut drift);
     compare_skill_refs(
         LockDriftCode::UnlinkedRemoved,
         LockDriftCode::UnlinkedAdded,
@@ -296,6 +360,49 @@ fn sort_user_lock(lock: &mut UserLock) {
             .cmp(&right.link_path)
             .then_with(|| left.kind.cmp(&right.kind))
     });
+    lock.plugins
+        .sort_by(|left, right| left.source_ref.cmp(&right.source_ref));
+}
+
+fn compare_plugins(previous: &UserLock, current: &UserLock, drift: &mut Vec<LockDrift>) {
+    let previous_plugins = previous
+        .plugins
+        .iter()
+        .map(|plugin| (plugin.source_ref.as_str(), plugin))
+        .collect::<BTreeMap<_, _>>();
+    let current_plugins = current
+        .plugins
+        .iter()
+        .map(|plugin| (plugin.source_ref.as_str(), plugin))
+        .collect::<BTreeMap<_, _>>();
+    let identities = previous_plugins
+        .keys()
+        .chain(current_plugins.keys())
+        .copied()
+        .collect::<BTreeSet<_>>();
+    for identity in identities {
+        match (
+            previous_plugins.get(identity),
+            current_plugins.get(identity),
+        ) {
+            (Some(previous), Some(current)) if previous != current => drift.push(LockDrift {
+                code: LockDriftCode::PluginChanged,
+                subject: identity.to_owned(),
+                message: format!("plugin `{identity}` canonical state differs from lock"),
+            }),
+            (Some(_), None) => drift.push(LockDrift {
+                code: LockDriftCode::PluginRemoved,
+                subject: identity.to_owned(),
+                message: format!("plugin `{identity}` is no longer selected"),
+            }),
+            (None, Some(_)) => drift.push(LockDrift {
+                code: LockDriftCode::PluginAdded,
+                subject: identity.to_owned(),
+                message: format!("plugin `{identity}` is not present in the lock"),
+            }),
+            _ => {}
+        }
+    }
 }
 
 fn sort_locked_skills(skills: &mut [LockedSkill]) {
@@ -409,6 +516,9 @@ fn drift_code_name(code: LockDriftCode) -> &'static str {
         LockDriftCode::UnlinkedAdded => "unlinked_added",
         LockDriftCode::PendingApprovalRemoved => "pending_approval_removed",
         LockDriftCode::PendingApprovalAdded => "pending_approval_added",
+        LockDriftCode::PluginAdded => "plugin_added",
+        LockDriftCode::PluginRemoved => "plugin_removed",
+        LockDriftCode::PluginChanged => "plugin_changed",
     }
 }
 
@@ -453,7 +563,7 @@ mod tests {
             unselected_catalogs: Vec::new(),
         };
 
-        let lock = build_user_lock(&[], &resolution, Some(&report));
+        let lock = build_user_lock(&[], &resolution, Some(&report), None);
 
         assert_eq!(lock.active_skills[0].source_ref, "team:a");
         assert_eq!(

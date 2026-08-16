@@ -48,6 +48,38 @@ pub struct TeamManifest {
     /// External multi-skill repositories composed into this team source.
     #[serde(default, rename = "catalog")]
     pub catalogs: Vec<ManifestCatalog>,
+    /// Passive portable plugin selections authored by this stack.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection: Option<ManifestSelection>,
+}
+
+/// Authored stack selections.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ManifestSelection {
+    /// Source-qualified plugin selections.
+    pub plugins: Vec<ManifestPluginSelection>,
+}
+
+/// One source-qualified plugin selected by an authored stack.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ManifestPluginSelection {
+    /// `<source-id>:<selector>` reference.
+    #[serde(rename = "ref")]
+    pub reference: String,
+    /// Stack requirement strength.
+    pub requirement: StackRequirement,
+}
+
+/// Authored stack selection strength.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StackRequirement {
+    /// Absence or decline makes the stack incomplete.
+    Required,
+    /// Absence or decline remains visible but does not invalidate the stack.
+    Recommended,
 }
 
 /// Optional descriptive metadata retained for RFC compatibility.
@@ -307,6 +339,7 @@ pub fn init_team_manifest(
             kind: Some("team".to_owned()),
         }),
         catalogs: Vec::new(),
+        selection: None,
     };
     if !dry_run {
         write_manifest_atomic(&path, &manifest)?;
@@ -971,7 +1004,8 @@ fn rollback_checkouts(checkouts: &[(PathBuf, String)]) {
     }
 }
 
-fn read_manifest(path: &Path) -> DaloResult<Option<TeamManifest>> {
+/// Read one bounded team manifest without mutating source or store state.
+pub fn read_manifest(path: &Path) -> DaloResult<Option<TeamManifest>> {
     if !path.exists() {
         return Ok(None);
     }
@@ -1030,6 +1064,34 @@ fn validate_manifest(team_id: &str, path: &Path, manifest: &TeamManifest) -> Dal
             ),
         });
     }
+    if let Some(selection) = &manifest.selection {
+        let declared_id = manifest
+            .source
+            .as_ref()
+            .and_then(|source| source.id.as_deref());
+        if declared_id != Some(team_id) {
+            return Err(DaloError::FileParse {
+                path: path.to_path_buf(),
+                reason: format!(
+                    "[source].id must equal configured source `{team_id}` when [selection] is present"
+                ),
+            });
+        }
+        let mut seen = BTreeSet::new();
+        for selected in &selection.plugins {
+            if !valid_qualified_plugin_ref(&selected.reference)
+                || !seen.insert(selected.reference.as_str())
+            {
+                return Err(DaloError::FileParse {
+                    path: path.to_path_buf(),
+                    reason: format!(
+                        "invalid or duplicate plugin selection `{}`",
+                        selected.reference
+                    ),
+                });
+            }
+        }
+    }
     let mut ids = BTreeSet::new();
     for catalog in &manifest.catalogs {
         if !source::is_valid_source_id(&catalog.id) {
@@ -1059,6 +1121,17 @@ fn validate_manifest(team_id: &str, path: &Path, manifest: &TeamManifest) -> Dal
         validate_filters(&catalog.skills)?;
     }
     Ok(())
+}
+
+fn valid_qualified_plugin_ref(reference: &str) -> bool {
+    let mut parts = reference.split(':');
+    let (Some(source), Some(selector), None) = (parts.next(), parts.next(), parts.next()) else {
+        return false;
+    };
+    !source.is_empty()
+        && !selector.is_empty()
+        && !source.contains(['#', '/', '\\'])
+        && !selector.contains(['#', '/', '\\'])
 }
 
 fn validate_filters(filters: &[String]) -> DaloResult<()> {
@@ -1768,6 +1841,8 @@ mod tests {
                 sync_interval: None,
             },
             sources: vec![team.clone(), derived],
+            plugins: crate::config::PluginConfig::default(),
+            plugin_policy: Vec::new(),
         };
         let mut lock = catalog::SourceLock::empty();
         lock.catalogs.push(CatalogLock {
@@ -1836,6 +1911,7 @@ mod tests {
                 skills: Vec::new(),
                 priority: None,
             }],
+            selection: None,
         };
         fs::write(
             existing_root.join(TEAM_MANIFEST_FILE),
@@ -1886,6 +1962,8 @@ mod tests {
                 sync_interval: None,
             },
             sources: vec![existing_team, incoming_team.clone(), existing.clone()],
+            plugins: crate::config::PluginConfig::default(),
+            plugin_policy: Vec::new(),
         };
         assert!(source_matches_owned_declaration(&existing, "x.y"));
         assert!(!source_matches_owned_declaration(&existing, "y"));

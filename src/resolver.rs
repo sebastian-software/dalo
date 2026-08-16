@@ -5,8 +5,10 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 
+use crate::agent::{self, AgentResolution};
 use crate::config::UserConfig;
 use crate::inventory::{self, InventoryWarningCode, SkillRecord, SourceInventory};
+use crate::plugin::{self, PluginResolution, PluginState};
 use crate::source::{SourceConfig, SourceKind};
 use crate::store::ApprovalRecord;
 
@@ -42,6 +44,10 @@ pub struct LiveResolution {
     pub scans: Vec<SourceScan>,
     /// Resolution computed from the successful inventories.
     pub resolution: Resolution,
+    /// Target-independent passive plugin resolution from the same inventories.
+    pub plugins: PluginResolution,
+    /// Independent canonical agent resolution used for plugin member states.
+    pub agents: AgentResolution,
 }
 
 /// Final resolution result.
@@ -237,13 +243,52 @@ pub fn resolve_from_config(config: &UserConfig, approvals: Vec<ApprovalRecord>) 
         }
     }
 
+    let mut plugins = plugin::resolve_plugins(config, &inventories);
+    let mut effective_sources = enabled;
+    for resolved in &plugins.plugins {
+        if matches!(
+            resolved.state,
+            PluginState::Shadowed | PluginState::Declined
+        ) {
+            continue;
+        }
+        for member in &resolved.members {
+            if !member.reference.starts_with("skill:") {
+                continue;
+            }
+            let Some(component_ref) = &member.resolved_ref else {
+                continue;
+            };
+            let Some((source_id, slot_name)) = component_ref.split_once(':') else {
+                continue;
+            };
+            if let Some(source) = effective_sources
+                .iter_mut()
+                .find(|source| source.id == source_id && source.kind == SourceKind::Catalog)
+                && !source
+                    .selection
+                    .iter()
+                    .any(|selected| selected == slot_name)
+            {
+                source.selection.push(slot_name.to_owned());
+                source.selection.sort();
+            }
+        }
+    }
     let resolution = resolve(&ResolutionInput {
-        sources: &enabled,
-        inventories,
-        approvals,
+        sources: &effective_sources,
+        inventories: inventories.clone(),
+        approvals: approvals.clone(),
     });
+    let agents = agent::resolve_agents(&effective_sources, &inventories, &approvals);
+    plugin::apply_component_resolution(&mut plugins, &resolution, &agents, &BTreeSet::new());
 
-    LiveResolution { scans, resolution }
+    LiveResolution {
+        scans,
+        resolution,
+        plugins,
+        agents,
+    }
 }
 
 /// Scan one enabled source, returning a human-readable error on failure.
@@ -1065,12 +1110,14 @@ mod tests {
             source_id: "company".to_owned(),
             skills: vec![skill("company", "review")],
             agents: Vec::new(),
+            plugins: Vec::new(),
             warnings: vec![InventoryWarning {
                 code: InventoryWarningCode::UnreadablePath,
                 path: PathBuf::from("/repo/skills/private"),
                 message: "permission denied".to_owned(),
             }],
             agent_warnings: Vec::new(),
+            plugin_warnings: Vec::new(),
         };
 
         assert!(inventory_degrades_source_for_removal(&inventory));
@@ -1082,12 +1129,14 @@ mod tests {
             source_id: "company".to_owned(),
             skills: Vec::new(),
             agents: Vec::new(),
+            plugins: Vec::new(),
             warnings: vec![InventoryWarning {
                 code: InventoryWarningCode::InvalidSlotName,
                 path: PathBuf::from("/repo/skills/Review/SKILL.md"),
                 message: "folder name `Review` is not a valid slot name".to_owned(),
             }],
             agent_warnings: Vec::new(),
+            plugin_warnings: Vec::new(),
         };
 
         assert!(inventory_degrades_source_for_removal(&inventory));
@@ -1450,8 +1499,10 @@ mod tests {
             source_id: source_id.to_owned(),
             skills,
             agents: Vec::new(),
+            plugins: Vec::new(),
             warnings: Vec::new(),
             agent_warnings: Vec::new(),
+            plugin_warnings: Vec::new(),
         }
     }
 
