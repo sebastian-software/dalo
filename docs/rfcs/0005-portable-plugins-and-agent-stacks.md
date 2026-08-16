@@ -318,15 +318,21 @@ behavioral capability, but never a required isolation, permission, or other
 safety boundary. A fallback on any other member kind, an unknown fallback kind,
 or a fallback that widens a portable safety boundary is invalid.
 
-Plugin-local `[[tool]]` and `[[hook]]` arrays are the reserved declaration
-points for the active-code slices. A declaration itself establishes membership;
+Plugin-local `[[tool]]` and `[[hook]]` arrays are reserved, independently
+versioned extension points for the active-code slices. Every descriptor carries
+its own integer `schema_version`; #499 owns tool descriptor version 1 and #500
+owns hook descriptor version 1. This lets the passive `PLUGIN.toml` schema stay
+at version 1 without silently changing the meaning of an already accepted
+descriptor. An implementation that does not support the exact descriptor kind
+and version reports `unsupported_active_component_schema` and cannot partially
+activate the package as a passive plugin. Unknown descriptor versions are
+blocking and are never interpreted as the closest known version.
+
+A `[[tool]]` or `[[hook]]` declaration itself establishes membership;
 `plugin.tools`, `plugin.hooks`, or any second membership list is invalid. Local
 IDs use the plugin-name grammar and are unique per component kind inside the
 plugin. Paths resolve from the directory containing `PLUGIN.toml` and must stay
-inside that package after lexical and filesystem containment checks. Before
-#499/#500 define their exact descriptor schemas, a package containing either
-array is reported as `unsupported_active_component_schema` and cannot be
-partially activated as a passive plugin.
+inside that package after lexical and filesystem containment checks.
 
 When those schemas land, the tool owns the event-independent named-input schema
 and the only canonical exec-style argument template. A hook may bind typed
@@ -429,6 +435,7 @@ version = 2
 direct = ["design-platform:impeccable"]
 
 [[plugin_policy]]
+layer = "user_local"
 rule_id = "decline-design-docs"
 plugin = "design-platform:design-docs"
 decision = "decline"
@@ -438,10 +445,11 @@ reason = "Not used on this workstation"
 `plugins.direct` is a sorted set of canonical source-qualified plugin
 references. Version 2 initially accepts only the `decline` user-policy decision;
 fallback selection is added only when a concrete target policy schema exists.
-`rule_id` is unique in user configuration and uses the plugin-name grammar.
-`reason` is required non-empty audit context but does not participate in
-winner selection. CLI commands own these mutations so `unselect` and `decline`
-cannot be confused accidentally.
+`layer` must be `user_local`; unknown layers are rejected. `rule_id` is unique
+in user configuration and uses the plugin-name grammar. `reason` is required
+non-empty audit context but does not participate in winner selection. CLI
+commands own these mutations so `unselect` and `decline` cannot be confused
+accidentally.
 
 ### Selection closure and policy precedence
 
@@ -473,23 +481,30 @@ identity, source revision when available, and requirement. A policy decision is
 stored separately with `layer`, `rule_id`, provenance, decision, reason, and
 optional recorded-at metadata. It is never encoded as a fourth origin.
 
-Policy layers are evaluated from portable constraint to increasingly local
-choice:
+Version 1 deliberately has no plugin-target-policy or authored-stack-policy
+schema. Its complete precedence is limited to mechanisms that have an on-disk
+grammar:
 
-```text
-portable safety requirement
-  < component membership policy
-  < plugin target policy
-  < authored-stack policy
-  < user-local policy
-```
+1. portable safety requirements are non-overridable;
+2. a component's declared `required`, `optional`, or `recommended` membership
+   and its optional inline fallback determine component coherence;
+3. a stack selection's `required` or `recommended` strength determines whether
+   a visible decline makes the wider stack incomplete;
+4. a user-local `decline` may suppress activation but cannot erase intent,
+   select a different fallback, or weaken steps 1–3.
 
-Later layers may strengthen constraints, explicitly decline intent, or choose
-among fallbacks already declared by an earlier layer. They cannot weaken a
-portable safety requirement, invent undeclared executable behavior, turn an
-inactive instruction recommendation into activation, or relabel an unsupported
-mapping as safe. `blocked` dominates every fallback. At one layer, conflicting
-decisions are blocking rather than order-dependent.
+For version 1, a persisted policy decision therefore has
+`layer = "user_local"` and `decision = "decline"`. Component fallback is
+authored membership data, and stack selection strength is origin data; neither
+is serialized as a policy decision. Provider overlays are adapter inputs, not a
+policy layer. Plugin-target policy, stack-target policy, or user fallback
+selection requires a future RFC amendment with an exact schema and total
+precedence before it can affect resolution.
+
+No policy may invent undeclared executable behavior, turn an inactive
+instruction recommendation into activation, relabel an unsupported mapping as
+safe, or weaken a portable safety boundary. `blocked` dominates every declared
+fallback.
 
 An explicit decline preserves the selected identity and all origins with a
 `declined` policy result. Declining required stack or dependency intent makes
@@ -565,19 +580,20 @@ bound produces a typed malformed-package diagnostic; content is never truncated
 and accepted. One malformed plugin remains visible but does not erase valid
 siblings from the source inventory.
 
-Three hashes remain distinct:
+Three hash boundaries remain distinct:
 
 1. `package_hash` covers every regular file below the plugin directory in
    lexicographic relative-path order. Each entry contributes path bytes, file
    kind, executable bit, byte length, and exact bytes. It includes
    `PLUGIN.toml`, native overlays, and support files, but not referenced skills,
    agents, or instructions outside the package.
-2. `resolution_hash` covers the canonical plugin identity, package hash,
-   normalized selection origins, dependency identities, resolved member
-   identities and content hashes, requirements, and semantic policy fields
-   (`layer`, `rule_id`, subject, and decision). Human reasons, timestamps,
-   linked targets, and adapter state remain provenance but do not affect this
-   hash.
+2. `closure_hash` covers the canonical plugin identity, package hash, reachable
+   dependency identities, resolved member identities and content hashes,
+   requirements, effective inclusion or decline outcomes, and the selected
+   fallback identity when one changes the effective closure. It excludes why an
+   identical result was selected: origins, policy layer, rule ID, provenance,
+   reason, and timestamps do not participate. Linked targets and adapter state
+   are also excluded.
 3. component approval hashes cover only the security-relevant closure defined
    by that component RFC. In particular, a tool approval does not churn because
    an unrelated plugin README or member changes.
@@ -585,6 +601,11 @@ Three hashes remain distinct:
 Source ID, source kind, immutable commit when available, package relative path,
 slot name, stable ID, and both canonical hashes are retained as provenance.
 Line endings and TOML formatting are not normalized before package hashing.
+Selection origins and policy provenance are compared structurally in the user
+lock and produce their own drift findings; adding an equivalent second origin
+or renaming a policy rule cannot invalidate a native projection. A target
+projection fingerprint derives from `closure_hash`, target ID, adapter version,
+and relevant native inputs rather than from provenance metadata.
 
 Unknown `schema_version` values and unknown portable fields block that package.
 Dalo does not guess, downgrade, or rewrite source manifests. Additive native
@@ -599,11 +620,11 @@ The persisted boundary is field-level:
 
 | Store | Owned facts |
 | --- | --- |
-| Root `dalo.toml` | Authored stack selections and authored stack policy references |
+| Root `dalo.toml` | Authored stack selections |
 | User config | Direct selections and explicit user-local policy decisions |
 | `source-lock.toml` | Catalog pins plus plugin inventory snapshots used for drift comparison |
 | `approvals.toml` and audits | Existing per-asset and future component-specific trust records |
-| User `lock.toml` | Canonical plugin identity/provenance, package and resolution hashes, all selection origins, dependency closure, resolved members, requirements, policy-decision provenance, approval state, and canonical blocked reasons |
+| User `lock.toml` | Canonical plugin identity/provenance, package and closure hashes, all selection origins, dependency closure, resolved members, requirements, policy-decision provenance, approval state, and canonical blocked reasons |
 | Internal target state | Target ID, adapter and verification version, compatibility findings, chosen fallback, owned paths, staged/native fingerprints, apply status, and rollback metadata |
 
 The user lock contains no native path, provider version, or target-specific
@@ -634,12 +655,14 @@ plugins = [{ ref = "impeccable" }]
 tools = ["detector"]
 
 [[tool]]
+schema_version = 1
 id = "detector"
 ```
 
 ```toml
 # Hooks bind named inputs; they never own another argv surface.
 [[hook]]
+schema_version = 1
 id = "after-ui-write"
 tool = "detector"
 argv = ["--path", "${event.path}"]
@@ -700,17 +723,18 @@ When a target cannot provide an isolated native subagent, the first plugin
 slice may declare an `inline` execution fallback on that plugin's agent
 membership. This is composition policy, not an implicit field added to RFC
 0004's `AGENT.md` schema. The membership must reference canonical authored
-fallback behavior, such as a required skill or bounded prompt asset; Dalo must
-not invent behavioral text during projection. The long-form membership grammar
-and total fallback precedence are defined in the canonical contract above. A
-reusable fallback intrinsic to every use of an agent would require a focused
-RFC 0004 amendment.
+fallback behavior and Dalo must not invent behavioral text during projection.
+Version 1 permits only the required-skill inline fallback and precedence
+defined in the canonical contract above. Broader target-policy fallbacks
+require a later RFC amendment. A reusable fallback intrinsic to every use of an
+agent would require a focused RFC 0004 amendment.
 
 ### Local tools
 
 A local tool is an executable entry point declared inside a reviewed portable
-plugin package. Its local ID is unique inside that plugin and its canonical
-identity is derived from the source-qualified plugin identity, for example
+plugin package. Its descriptor has an independently versioned schema owned by
+#499. Its local ID is unique inside that plugin and its canonical identity is
+derived from the source-qualified plugin identity, for example
 `company:impeccable#tool:detector`. The first vocabulary should be intentionally
 narrow:
 
@@ -739,8 +763,9 @@ event data through a shell string.
 
 ### Hooks
 
-Hooks are plugin-local descriptors in the first active-code slice. A hook has a
-local ID, receives a source-qualified identity such as
+Hooks are independently versioned plugin-local descriptors in the first
+active-code slice; #500 owns their descriptor schema. A hook has a local ID,
+receives a source-qualified identity such as
 `company:impeccable#hook:after-ui-write`, and references an approved tool from
 the same plugin by local logical ID. Cross-plugin executable references are
 reserved until concrete reuse cases justify a separate publication model.
@@ -1096,7 +1121,9 @@ Unknown native values never become portable by accident.
 3. Is MCP configuration part of the portable-plugin manifest's eventual stable
    schema, or a separate RFC that only references portable-plugin IDs?
 4. Which concrete reuse case would justify standalone executable packages,
-    cross-plugin tool/hook references, or an additional named `STACK` manifest?
+   cross-plugin tool/hook references, or an additional named `STACK` manifest?
+5. Which concrete workflow would justify adding plugin-target, stack-target, or
+   user fallback-selection policy beyond version 1's explicit local decline?
 
 ## References
 
