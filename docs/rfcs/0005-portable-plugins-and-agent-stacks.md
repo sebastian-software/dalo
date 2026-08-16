@@ -809,13 +809,53 @@ receives a source-qualified identity such as
 the same plugin by local logical ID. Cross-plugin executable references are
 reserved until concrete reuse cases justify a separate publication model.
 
-The normative portable hook vocabulary belongs to #500 rather than this parent
-RFC. It must model semantic subject, phase, requested effect, typed input and
-output, timeout, failure policy, and composition behavior. #500 publishes typed
-event payload fields; #501 validates hook bindings against the generic tool
-input contract from #499 and derives the invariant effective invocation shape.
+Hook descriptor schema version 1 is a semantic contract, not a native event
+name. It keeps subject, phase, and effect independent:
 
-At minimum, the vocabulary must keep these concepts distinct:
+```toml
+[[hook]]
+schema_version = 1
+id = "check-before-tool"              # plugin-local lower kebab-case
+tool = "detector"                     # same-plugin tool ID from #499
+subject = "tool_call"                 # session | user_prompt | tool_call | workflow
+phase = "before"                      # before | after | end | completion_attempt
+effect = "allow_deny"                 # see the effect table below
+requirement = "required"              # required | optional
+timeout_ms = 2000                      # 100..120000; adapter may impose a lower cap
+failure_policy = "fail_closed"        # fail_open | fail_closed | report
+retry = "never"                       # the only v1 retry policy
+error_visibility = "model_and_user"   # user | model_and_user
+fallback = "omit"                     # optional only; must be authored
+```
+
+Unknown fields and values fail closed. `fallback` is absent for required hooks;
+version 1 accepts only the explicit `omit` fallback for optional behavior. An
+optional hook without a representable native mapping and without this authored
+fallback is blocked rather than silently omitted. `fail_closed` is valid only
+for `before` or `completion_attempt` control effects. `report` is required for
+pure observation and post-action effects because those events cannot be undone.
+`retry = "never"` prevents adapters from replaying handlers whose side effects
+are unknown. A future retry vocabulary needs idempotency keys and a separate RFC
+amendment.
+
+The descriptor contains no argument template and no event-to-tool binding.
+#499 owns the referenced tool's only argv template and named inputs. #501 may
+bind the event fields below to those named inputs, validates the values, and
+hashes that invariant binding shape into hook approval.
+
+#### Version 1 event vocabulary
+
+The closed subject/phase pairs are:
+
+| Subject | Phase | Canonical event | Valid effects |
+| --- | --- | --- | --- |
+| `session` | `end` | `session.end` | `observe` |
+| `user_prompt` | `before` | `user-prompt.before` | `observe`, `add_context`, `allow_deny` |
+| `tool_call` | `before` | `tool-call.before` | `observe`, `add_context`, `allow_deny`, `rewrite_input` |
+| `tool_call` | `after` | `tool-call.after` | `observe`, `add_context`; `replace_output` only where the verified adapter supports it |
+| `workflow` | `completion_attempt` | `workflow.completion-attempt` | `observe`, `continue_workflow` |
+
+The vocabulary deliberately keeps these concepts distinct:
 
 ```text
 session.end                  # observational final lifecycle event
@@ -827,11 +867,141 @@ names. A target's completion-attempt hook must never be presented as final
 session termination, and an advisory session-end hook cannot satisfy required
 completion enforcement.
 
+`workflow.completion-attempt` means that the current agent turn produced a
+candidate final response. `continue_workflow` requests another model turn with
+a reason. It is not a generic process block, does not claim to keep a detached
+process alive, and must honor provider recursion guards such as
+`stop_hook_active`. `session.end` is the final main-session observation and has
+no control output. It is main-session-only in version 1; `SubagentStop` is not
+misreported as a subagent `session.end`.
+
+#### Addressable event fields
+
+Every payload is a closed typed object. Unknown native fields are retained only
+as adapter diagnostics and cannot be bound by #501 until this table is amended.
+`sensitive` means values must be redacted from normal status/plan output.
+
+| Field | Type | Cardinality | Events | Constraint / sensitivity |
+| --- | --- | --- | --- | --- |
+| `session.id` | string | exactly one | all | opaque, sensitive, max 256 bytes |
+| `session.cwd` | path | exactly one | all | absolute normalized path, sensitive |
+| `session.permission_mode` | enum | zero or one | all except `session.end` | provider value normalized to `default`, `plan`, `accept_edits`, `dont_ask`, or `bypass_permissions`; informational only |
+| `actor.kind` | enum | exactly one | all | `root` or `subagent` |
+| `actor.id` | string | zero or one | subagent events | opaque, sensitive, max 256 bytes |
+| `transcript.path` | path | zero or one | `session.end`, `workflow.completion-attempt` | absolute contained provider path, sensitive; transcript contents are not stable API |
+| `session.end_reason` | enum | zero or one | `session.end` | `normal`, `archived`, `deleted`, `idle`, `other`, or `unknown` |
+| `prompt.text` | string | exactly one | `user-prompt.before` | sensitive, max 1 MiB |
+| `tool.call_id` | string | exactly one | tool events | opaque, sensitive, max 256 bytes |
+| `tool.name` | string | exactly one | tool events | provider tool identifier, max 512 bytes |
+| `tool.input` | JSON object | exactly one | tool events | sensitive, max 1 MiB, maximum nesting 32 |
+| `tool.output` | JSON value | zero or one | `tool-call.after` | sensitive, max 4 MiB, maximum nesting 32 |
+| `tool.outcome` | enum | exactly one | `tool-call.after` | `success`, `failure`, or `unknown` |
+| `tool.affected_paths` | path list | zero to 256 | tool events | present only when operation and absolute normalized paths are deterministic; sensitive |
+| `workflow.already_continued` | boolean | exactly one | `workflow.completion-attempt` | recursion guard normalized from provider state |
+| `workflow.last_message` | string | zero or one | `workflow.completion-attempt` | sensitive, max 1 MiB |
+
+Paths are data, never native match expressions or shell fragments. Cardinality,
+size, type, path normalization, and sensitivity checks happen before a binding
+or handler invocation. Missing required fields make that event instance
+malformed; a controlling required hook follows `fail_closed`, while post-action
+and observational hooks report the failure without inventing data.
+
+#### Effect outputs, failure, and composition
+
+A future adapter must register one Dalo dispatcher per native event. Native
+providers may start several matching hooks concurrently, but the dispatcher
+collects Dalo-owned portable hooks and composes them in source-qualified hook
+identity order. This keeps outcomes independent of provider completion order.
+
+| Effect | Typed output | Composition | Failure semantics |
+| --- | --- | --- | --- |
+| `observe` | `{}` | every matching handler runs; audit records sort by hook identity | `report`; never blocks or steers |
+| `add_context` | `{ context: string }` (max 16 KiB) | concatenate in hook-identity order with source labels | optional failure is visible and omitted; required missing context blocks the projection before installation |
+| `allow_deny` | `{ decision: abstain|allow|deny, reason?: string }` | any deny wins; reasons sort by hook identity; allow never bypasses native permission policy | required gates need `fail_closed`; timeout/malformed output denies in the dispatcher |
+| `rewrite_input` | `{ input: object }` | identical complete rewrites coalesce; divergent rewrites are a fail-closed conflict | required and `fail_closed`; rewrite does not grant native permission |
+| `replace_output` | `{ output: JSON }` | identical replacements coalesce; divergent replacements stop normal result consumption and report conflict | side effects already happened; replacement cannot claim rollback |
+| `continue_workflow` | `{ continue: boolean, reason?: string }` | any `true` requests one continuation; reasons sort by hook identity | timeout/malformed required outcome requests one bounded continuation with an error reason; recursion guard prevents loops |
+
+`error_visibility = "user"` keeps failure out of model context;
+`model_and_user` exposes a bounded redacted message to both. Secret values,
+transcript content, raw environment, and unbounded provider errors are never
+included. Cancellation terminates only the Dalo-owned handler process tree; it
+does not imply cancellation of a provider action that already started.
+
+#### Verified adapter baselines and fixtures
+
+The initial matrix was verified on 2026-08-17 against stable
+[Codex CLI 0.147.0](https://github.com/openai/codex/releases/tag/rust-v0.147.0)
+and [Claude Code 2.1.233](https://github.com/anthropics/claude-code/releases/tag/v2.1.233).
+The normative provider behavior references are the official
+[Codex hook documentation](https://developers.openai.com/codex/hooks) and
+[Claude Code hook reference](https://code.claude.com/docs/en/hooks). Executable
+fixtures live in
+[`tests/fixtures/hooks/codex-0.147.0.json`](../../tests/fixtures/hooks/codex-0.147.0.json)
+and
+[`tests/fixtures/hooks/claude-2.1.233.json`](../../tests/fixtures/hooks/claude-2.1.233.json);
+`src/hook.rs` parses and evaluates every claim in CI.
+
+| Portable contract | Codex 0.147.0 | Claude 2.1.233 |
+| --- | --- | --- |
+| `session.end` + `observe` (root) | `exact` → `SessionEnd` (`codex-session-end-observe`) | `exact` → `SessionEnd` (`claude-session-end-observe`) |
+| `workflow.completion-attempt` + `continue_workflow` | `mapped` → `Stop`; creates another prompt, not process blocking (`codex-completion-continue`) | `mapped` → `Stop`; prevents turn completion within provider recursion limit (`claude-completion-continue`) |
+| `user-prompt.before` + `allow_deny` | `mapped` → `UserPromptSubmit` (`codex-prompt-deny`) | `mapped` → `UserPromptSubmit` (`claude-prompt-deny`) |
+| covered `tool-call.before` + `allow_deny` | `mapped` → `PreToolUse`; denial remains meaningful in bypass mode (`codex-pre-tool-allow`, `codex-pre-tool-deny-bypass-mode`) | `mapped` → `PreToolUse`; deny outranks other decisions and remains subject to provider safety policy (`claude-pre-tool-allow`, `claude-pre-tool-deny-bypass-mode`) |
+| covered `tool-call.before` + `rewrite_input` | `mapped`; complete `updatedInput`, native permission still applies (`codex-pre-tool-rewrite`) | `mapped`; complete `updatedInput`, deny/ask rules still apply (`claude-pre-tool-rewrite`) |
+| covered `tool-call.after` + `observe` | `mapped` → `PostToolUse`; cannot undo effects (`codex-post-tool-observe`) | `mapped` → `PostToolUse` / `PostToolUseFailure`; cannot undo effects (`claude-malformed-optional-observer` also verifies failure handling) |
+| covered `tool-call.after` + `replace_output` | `unsupported`; feedback replacement is not the portable arbitrary typed output contract | `mapped` → `updatedToolOutput` (`claude-post-tool-replace`) |
+
+Every `exact` or `mapped` cell names at least one executable fixture. Any
+provider version other than the exact baseline becomes `unverified_version`.
+Required enforcement is then unsatisfied and must plan as blocked until the
+fixtures are revalidated; optional behavior may use only its authored fallback.
+
+#### Coverage and safety boundaries
+
+- Codex `PreToolUse`/`PostToolUse` covers shell/unified exec, `apply_patch`, MCP,
+  and most local function tools, but not hosted tools such as `WebSearch`;
+  specialized paths may opt out. `write_stdin` does not trigger another pre-use
+  event. Fixtures `codex-hosted-tool-uncovered` and
+  `codex-specialized-tool-uncovered-optional` keep those gaps visible.
+- Claude `PreToolUse`/`PostToolUse` does not cover `EndConversation`, prompt `@`
+  file references are not tool calls, and provider tool availability differs by
+  platform. Fixture `claude-end-conversation-uncovered` prevents a universal
+  enforcement claim.
+- Hook allow results never weaken provider permissions, sandbox rules, managed
+  policy, or interactive-tool requirements. Permission mode is payload data,
+  not Dalo authorization.
+- Codex `[features].hooks = false` and `allow_managed_hooks_only = true`, plus
+  Claude `disableAllHooks`, safe/bare modes, workspace trust, and managed policy,
+  can suppress plugin hooks. Disabled and managed-only fixtures block required
+  behavior.
+- Session-end hooks are root-only. Tool hooks may run for subagents only on
+  documented covered tool paths; no subagent lifecycle equivalence is inferred.
+- Native command-hook timeout and malformed-output behavior is fail-open in
+  relevant provider paths. A required fail-closed gate therefore remains
+  blocked until #501 can install a verified Dalo dispatcher whose own shorter
+  timeout returns a valid denial. Timeout and malformed-output fixtures enforce
+  this rule.
+
+Tool-hook coverage is a useful guardrail, not a sandbox or complete enforcement
+boundary. Required enforcement can be reported only as `exact`, `mapped`, or
+`blocked`; `observe`, `add_context`, or `guidance_only` never satisfies it.
+
 A file event may be derived from a tool event only when the adapter can
 deterministically identify the affected path and operation. Otherwise the
 mapping is degraded or unsupported, never assumed exact. Hook outputs,
 blocking behavior, timeouts, and user-visible messages remain part of the
 adapter contract.
+
+Version 1 does not model `file.after-write`, filesystem watchers, generic
+`session.stop`, permission-request escalation, HTTP/MCP/prompt/agent handlers,
+async controlling hooks, subagent lifecycle control, arbitrary process
+supervision, or provider-native events outside the table. A pre-tool edit is a
+covered `tool-call.before` and may deny or rewrite only that tool invocation. A
+post-tool result is `tool-call.after`; it cannot undo an edit. Claude
+`FileChanged` or an external watcher observes a different event and is not a
+portable substitute. Adding any omitted capability requires a schema/version
+amendment and fixtures.
 
 ### MCP servers
 
