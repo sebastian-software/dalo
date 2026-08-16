@@ -24,6 +24,7 @@ pub mod config;
 pub mod doctor;
 pub mod error;
 pub mod git;
+pub mod hook;
 pub mod instructions;
 pub mod inventory;
 pub mod lockfile;
