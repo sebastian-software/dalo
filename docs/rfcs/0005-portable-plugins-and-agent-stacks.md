@@ -217,118 +217,456 @@ authored agent stack  -> portable plugins + standalone assets + shared policy
 resolution + approval -> effective target plan and installation state
 ```
 
-## Proposed source model
+## Canonical source and activation contract
 
-A portable plugin uses a bounded package such as
-`plugins/impeccable/PLUGIN.toml`, while the root `dalo.toml` remains focused
-on authored stack and source composition. Issue #496 owns the exact grammar,
-identity, and migration contract. The illustrative shape below is not yet a
-committed schema:
+This section is normative for the passive first slice in #496–#498. Later
+active-code issues may add optional descriptor fields, but they may not change
+the identity, containment, selection, dependency, or activation rules defined
+here without amending this RFC.
+
+### Package boundary and layout
+
+A portable plugin is exactly one bounded package at:
+
+```text
+plugins/<plugin-name>/
+  PLUGIN.toml
+  ...                       # plugin-owned support and future active-code files
+```
+
+Discovery checks only this exact shape below each enabled source root. It does
+not recursively search for plugin-looking manifests. `<plugin-name>` is the
+plugin slot name and must match `^[a-z0-9]+(?:-[a-z0-9]+)*$`.
+
+`PLUGIN.toml` is UTF-8 TOML. The passive version-1 schema is:
 
 ```toml
 schema_version = 1
 
 [plugin]
-id = "impeccable"
-name = "Impeccable"
+name = "impeccable"
+id = "dev.impeccable.plugin"
 description = "Frontend design, review, and quality workflows."
-skills = ["impeccable"]
-agents = [
-  "impeccable-finish-reviewer",
-  "impeccable-documenter",
-  "impeccable-asset-producer",
+version = "1.0.0"
+
+[[plugin.members]]
+ref = "skill:impeccable"
+requirement = "required"
+
+[[plugin.members]]
+ref = "agent:impeccable-finish-reviewer"
+requirement = "optional"
+
+[plugin.members.fallback]
+kind = "inline"
+skill = "skill:impeccable"
+
+[[plugin.members]]
+ref = "instruction:engineering-defaults"
+requirement = "recommended"
+
+[[plugin.requires]]
+ref = "plugin:company-engineering"
+requirement = "required"
+
+[providers.codex]
+interface = "providers/codex/interface.toml"
+```
+
+The fields have these meanings:
+
+| Field | Contract |
+| --- | --- |
+| `schema_version` | Required integer. The first slice accepts exactly `1`. |
+| `plugin.name` | Required slot name; it equals the package directory byte for byte. |
+| `plugin.id` | Optional stable move-detection identity, unique among plugins in one source. |
+| `plugin.description` | Required non-empty human-facing description. |
+| `plugin.version` | Optional informational authored version. Resolution still pins source provenance and hashes. |
+| `plugin.members[]` | Ordered declarations of existing passive managed components. Order is retained for display only and never changes resolution. |
+| `plugin.requires[]` | Plugin dependency declarations. Dependencies do not imply approval. |
+| `providers.<provider>` | Optional provider-native overlay owned and validated by that adapter. |
+
+`plugin.id`, when present, is 1–128 ASCII characters matching
+`^[a-z0-9]+(?:[.-][a-z0-9]+)*$`. It cannot contain `:`, `#`, `/`, or `\\`.
+Two packages in one source with the same stable ID are both invalid inventory
+candidates even when their slot names differ. Stable IDs support move detection
+and exact references; slot names remain conflict and native-package keys.
+
+Version 1 accepts these passive member kinds:
+
+| Reference kind | Allowed requirement | Activation consequence |
+| --- | --- | --- |
+| `skill` | `required`, `optional` | Becomes desired resolver input; existing content approval and audit still apply. |
+| `agent` | `required`, `optional` | Becomes desired resolver input; agent-specific approval and audit still apply. |
+| `instruction` | `required`, `optional`, `recommended` | Never enables a block. It only checks or recommends an independently enabled instruction pack. |
+
+`requirement` is mandatory; there is no implicit default in the persisted
+schema. `required` means that a missing, blocked, inactive, or incompatible
+component blocks the plugin for the affected target. `optional` permits a
+visible omission without blocking the plugin. `recommended` is valid only for
+instructions and always remains visibly inactive until the existing explicit
+instruction activation flow from #468 succeeds.
+
+An agent member may use the long-form `fallback` table shown above. Version 1
+accepts only `kind = "inline"` with one skill reference. That skill must also be
+a `required` member of the same plugin, so fallback closure is explicit and
+cannot pull in behavior through a hidden second path. The fallback identifies
+authored canonical behavior for targets without an isolated subagent. It does
+not change the referenced `AGENT.md`, does not invent prompt text, and does not
+make the fallback skill optional. A valid fallback may satisfy a required
+behavioral capability, but never a required isolation, permission, or other
+safety boundary. A fallback on any other member kind, an unknown fallback kind,
+or a fallback that widens a portable safety boundary is invalid.
+
+Plugin-local `[[tool]]` and `[[hook]]` arrays are the reserved declaration
+points for the active-code slices. A declaration itself establishes membership;
+`plugin.tools`, `plugin.hooks`, or any second membership list is invalid. Local
+IDs use the plugin-name grammar and are unique per component kind inside the
+plugin. Paths resolve from the directory containing `PLUGIN.toml` and must stay
+inside that package after lexical and filesystem containment checks. Before
+#499/#500 define their exact descriptor schemas, a package containing either
+array is reported as `unsupported_active_component_schema` and cannot be
+partially activated as a passive plugin.
+
+When those schemas land, the tool owns the event-independent named-input schema
+and the only canonical exec-style argument template. A hook may bind typed
+event fields to named inputs but cannot append, replace, or reinterpret the
+argument vector. Tool approval covers the invocation envelope; hook approval
+covers the binding and referenced tool invocation-contract hash. Runtime values
+are validated inputs, not approval identities.
+
+### Reference and component identity grammar
+
+Source IDs, slot names, and stable IDs cannot contain `:` or `#`. Portable
+component references therefore have an unambiguous grammar:
+
+```text
+<kind>:<selector>                    # declaring source only
+<kind>:<source-id>:<selector>        # exact cross-source reference
+```
+
+`<kind>` is `plugin`, `skill`, `agent`, or `instruction`. `<selector>` matches
+first by exact slot name and then by exact stable ID where that component type
+supports one. If those two lookups identify different candidates, the reference
+is ambiguous and blocking. References never fall back to a same-named asset in
+another source.
+
+Examples:
+
+```text
+skill:impeccable                     # same source
+agent:design-platform:reviewer       # exact cross-source source and agent
+plugin:company-engineering           # same-source plugin dependency
+plugin:platform:company-engineering  # exact cross-source plugin dependency
+```
+
+The canonical identities are:
+
+```text
+plugin                 <source-id>:<plugin-name>
+plugin-local tool      <source-id>:<plugin-name>#tool:<local-id>
+plugin-local hook      <source-id>:<plugin-name>#hook:<local-id>
+```
+
+The source-qualified plugin identity remains stable for the selected slot.
+`plugin.id` is retained separately for move detection and selector matching; it
+never replaces the visible source-qualified identity silently.
+
+### Authored-stack selection grammar
+
+The root `dalo.toml` remains the authored-stack and source-composition manifest.
+It references plugins without embedding their definitions:
+
+```toml
+schema_version = 1
+
+[source]
+id = "design-platform"
+name = "Design Platform"
+kind = "team"
+
+[selection]
+plugins = [
+  { ref = "design-platform:impeccable", requirement = "required" },
+  { ref = "design-platform:design-docs", requirement = "recommended" },
 ]
+```
+
+Every stack selection is source-qualified as `<source-id>:<selector>`. The
+declaring manifest's `[source].id`, when present, must match its configured
+source ID before its selections are accepted. `[source].id` is required when a
+manifest contains `[selection]`. This makes self-references stable without a
+magic `self` alias and keeps cross-source references auditable.
+Catalog-derived source IDs use the existing deterministic team/catalog
+namespacing before matching.
+
+`requirement` is required and is either `required` or `recommended`:
+
+- `required` contributes selected intent whose absence or policy decline makes
+  the authored stack incomplete;
+- `recommended` contributes selected intent that may be explicitly declined or
+  degraded without making the entire stack invalid, but the decline remains
+  visible.
+
+An identical selection repeated in one manifest is invalid. If independent
+stack manifests select the same qualified plugin, Dalo retains every stack
+origin and uses the strongest requirement (`required` over `recommended`). It
+does not let source traversal order choose the result.
+
+`dalo plugin select <source-id>:<selector>` records an additive direct-user
+origin with required intent in local user configuration. `plugin unselect`
+removes only that direct origin. It does not edit a source manifest, remove a
+stack or dependency origin, or create an implicit decline. A separate explicit
+policy operation is required to decline stack-selected intent.
+
+The first implementation bumps user configuration to version 2 and persists
+that local intent separately from sources:
+
+```toml
+version = 2
+
+[plugins]
+direct = ["design-platform:impeccable"]
+
+[[plugin_policy]]
+rule_id = "decline-design-docs"
+plugin = "design-platform:design-docs"
+decision = "decline"
+reason = "Not used on this workstation"
+```
+
+`plugins.direct` is a sorted set of canonical source-qualified plugin
+references. Version 2 initially accepts only the `decline` user-policy decision;
+fallback selection is added only when a concrete target policy schema exists.
+`rule_id` is unique in user configuration and uses the plugin-name grammar.
+`reason` is required non-empty audit context but does not participate in
+winner selection. CLI commands own these mutations so `unselect` and `decline`
+cannot be confused accidentally.
+
+### Selection closure and policy precedence
+
+Selection is a deterministic graph computation, not last-writer-wins:
+
+1. normalize all valid authored-stack and direct-user references to canonical
+   plugin identities;
+2. union their origins and retain provenance for every origin;
+3. choose provisional plugin winners by slot using
+   `(source priority asc, source ID asc)`;
+4. expand only provisional winners' dependencies, then recompute winners and
+   reachability from the original stack/direct roots;
+5. repeat step 4 until the reachable identity set and winners are stable;
+6. if a previous graph state repeats, report `dependency_winner_cycle` and
+   block the involved slots instead of choosing by iteration order;
+7. union dependency origins from the stable reachable graph and keep the
+   strongest requirement;
+8. apply policy decisions without deleting selection origins;
+9. resolve members in their own component namespaces.
+
+Only selected plugin candidates participate in plugin slot conflicts. A
+non-selected same-name package cannot shadow selected intent. Two selected
+same-slot plugins follow normal deterministic winner selection and the loser is
+reported with its still-visible origins.
+
+Selection origins are exactly `stack`, `direct`, and `dependency`. Each origin
+record includes its declaring source or local configuration, manifest/plugin
+identity, source revision when available, and requirement. A policy decision is
+stored separately with `layer`, `rule_id`, provenance, decision, reason, and
+optional recorded-at metadata. It is never encoded as a fourth origin.
+
+Policy layers are evaluated from portable constraint to increasingly local
+choice:
+
+```text
+portable safety requirement
+  < component membership policy
+  < plugin target policy
+  < authored-stack policy
+  < user-local policy
+```
+
+Later layers may strengthen constraints, explicitly decline intent, or choose
+among fallbacks already declared by an earlier layer. They cannot weaken a
+portable safety requirement, invent undeclared executable behavior, turn an
+inactive instruction recommendation into activation, or relabel an unsupported
+mapping as safe. `blocked` dominates every fallback. At one layer, conflicting
+decisions are blocking rather than order-dependent.
+
+An explicit decline preserves the selected identity and all origins with a
+`declined` policy result. Declining required stack or dependency intent makes
+that stack/plugin incomplete; declining recommended intent is a visible
+non-blocking omission. This is how local choice can override activation without
+silently rewriting authored intent.
+
+### Dependency and target coherence
+
+`plugin.requires[]` accepts `required` or `optional`. Dependencies are expanded
+only from a selected plugin winner. An unqualified dependency resolves only in
+the declaring source. A cross-source dependency must name the exact source and
+never selects a matching asset from an unrelated source. A missing or cyclic
+required dependency is blocking. Cycles are reported as one deterministic
+strongly connected component; they are never broken by traversal order.
+
+Canonical plugin and member resolution is target-independent. Target adapters
+consume that result only after winners, dependency closure, approvals, and
+policy facts are fixed.
+
+Coherence is atomic per `(canonical plugin, target)`:
+
+- a blocked required member, dependency, safety capability, or required active
+  instruction blocks all native writes owned by that plugin for that target;
+- optional members may be omitted only with an explicit compatibility finding;
+- recommended instructions remain inactive and do not block;
+- already active independently managed assets are not removed merely because a
+  plugin projection blocks;
+- another target or unrelated plugin may still reconcile safely.
+
+Adapters stage the complete owned projection before changing target state. A
+failed or interrupted apply restores the previous projection for that
+plugin-target pair and never leaves a silently partial native plugin.
+
+### Activation and trust matrix
+
+Selecting a plugin authorizes resolution of inert intent only. It grants no
+content, agent, instruction, execution, hook, generator, source, author, or
+organization approval.
+
+| Component | Effect of selected membership | Additional activation boundary |
+| --- | --- | --- |
+| Skill | Desired resolver candidate | Existing skill approval, audit, and target materialization rules |
+| Agent | Desired resolver candidate | RFC 0004 agent approval, audit, dependency, and projection rules |
+| Instruction | Availability/requirement check only | Existing explicit `instructions enable` flow; never automatic |
+| Tool | Visible pending active component | #499 component-specific audit and execution approval |
+| Hook | Visible pending active component | Approved tool plus #500/#501 hook-scope approval |
+| Generator | Visible delivery requirement | #494 exact recipe/tool/revision approval |
+
+A source-level content approval may continue to match skills according to the
+existing approval schema, but it does not become plugin, agent, tool, or hook
+approval. There is no universal plugin approval record. Revocation changes only
+the matching component state, then recomputes plugin-target coherence.
+
+### Bounded parsing, hashing, and diagnostics
+
+The package parser is bounded and fail-closed:
+
+- `PLUGIN.toml` is valid UTF-8 and at most 1 MiB;
+- strings are at most 16 KiB, lists at most 1,024 entries, and nested TOML
+  tables at most 32 levels;
+- one package contains at most 4,096 filesystem entries, at most 32 directory
+  levels, at most 64 MiB per regular file, and at most 256 MiB total regular
+  file content;
+- duplicate TOML keys, duplicate local component IDs, duplicate member
+  declarations, unknown portable keys, absolute paths, parent traversal,
+  symlinks, sockets, devices, and escaping paths are blocking;
+- unknown keys are allowed only below `providers.<provider>`, remain inert, and
+  are retained for the owning adapter to validate.
+
+Bounds are checked before allocation or full reads where possible. Exceeding a
+bound produces a typed malformed-package diagnostic; content is never truncated
+and accepted. One malformed plugin remains visible but does not erase valid
+siblings from the source inventory.
+
+Three hashes remain distinct:
+
+1. `package_hash` covers every regular file below the plugin directory in
+   lexicographic relative-path order. Each entry contributes path bytes, file
+   kind, executable bit, byte length, and exact bytes. It includes
+   `PLUGIN.toml`, native overlays, and support files, but not referenced skills,
+   agents, or instructions outside the package.
+2. `resolution_hash` covers the canonical plugin identity, package hash,
+   normalized selection origins, dependency identities, resolved member
+   identities and content hashes, requirements, and semantic policy fields
+   (`layer`, `rule_id`, subject, and decision). Human reasons, timestamps,
+   linked targets, and adapter state remain provenance but do not affect this
+   hash.
+3. component approval hashes cover only the security-relevant closure defined
+   by that component RFC. In particular, a tool approval does not churn because
+   an unrelated plugin README or member changes.
+
+Source ID, source kind, immutable commit when available, package relative path,
+slot name, stable ID, and both canonical hashes are retained as provenance.
+Line endings and TOML formatting are not normalized before package hashing.
+
+Unknown `schema_version` values and unknown portable fields block that package.
+Dalo does not guess, downgrade, or rewrite source manifests. Additive native
+overlay data may be preserved only through an adapter that understands its
+ownership rules. Persisted local config, lock, and target-state schema changes
+use explicit version bumps and reviewed migrations; source content is never
+silently migrated in place.
+
+### Canonical lock and target-state ownership
+
+The persisted boundary is field-level:
+
+| Store | Owned facts |
+| --- | --- |
+| Root `dalo.toml` | Authored stack selections and authored stack policy references |
+| User config | Direct selections and explicit user-local policy decisions |
+| `source-lock.toml` | Catalog pins plus plugin inventory snapshots used for drift comparison |
+| `approvals.toml` and audits | Existing per-asset and future component-specific trust records |
+| User `lock.toml` | Canonical plugin identity/provenance, package and resolution hashes, all selection origins, dependency closure, resolved members, requirements, policy-decision provenance, approval state, and canonical blocked reasons |
+| Internal target state | Target ID, adapter and verification version, compatibility findings, chosen fallback, owned paths, staged/native fingerprints, apply status, and rollback metadata |
+
+The user lock contains no native path, provider version, or target-specific
+winner. Target state cannot introduce a different canonical component winner or
+erase an origin recorded in the user lock. `status`, `doctor`, `plan`, dry-run,
+and JSON join both stores without pretending target drift changed authored
+intent.
+
+### Invalid examples
+
+All of these fail closed:
+
+```toml
+# Directory is plugins/impeccable but the slot name differs.
+[plugin]
+name = "impeccable-codex"
+```
+
+```toml
+# Root stack selections must be source-qualified and explicit about strength.
+[selection]
+plugins = [{ ref = "impeccable" }]
+```
+
+```toml
+# A duplicate member list cannot grant tool membership a second way.
+[plugin]
+tools = ["detector"]
 
 [[tool]]
 id = "detector"
-runtime = "node"
-entry = "./tools/detector/detect.mjs"
-capabilities = ["read-files"]
-inputs = { changed_file = "path" }
-argv = ["--changed-file", "${input.changed_file}"]
+```
 
+```toml
+# Hooks bind named inputs; they never own another argv surface.
 [[hook]]
 id = "after-ui-write"
-event = "file.after-write"
 tool = "detector"
-bindings = { changed_file = "${event.path}" }
-
-[hook.filter]
-paths = ["**/*.{html,css,scss,jsx,tsx,vue,svelte}"]
-
-[hook.fallback]
-kind = "workflow-completion-attempt"
-required = false
+argv = ["--path", "${event.path}"]
 ```
 
-Skills, instruction packs, and agents remain canonical assets referenced by
-ID; their prompts, frontmatter, and permission declarations are not duplicated.
-Tool and hook descriptors are plugin-local in the first active-code slice and
-receive derived, source-qualified identities plus separate approvals. Declaring
-one `[[tool]]` or `[[hook]]` descriptor establishes that component's plugin
-membership; a second top-level membership list is neither needed nor allowed.
-Descriptor and entry paths resolve from the directory containing `PLUGIN.toml`.
+A dependency `plugin:company-engineering` in source `design-platform` means
+`design-platform:company-engineering`; it cannot be satisfied by
+`public:company-engineering`. The latter must be written exactly as
+`plugin:public:company-engineering`.
 
-The tool owns an event-independent named-input schema and the only canonical
-exec-style argument template. A hook may bind typed event fields to those named
-inputs, but it cannot append, replace, or reinterpret the tool's argument
-vector. Tool approval covers the permitted invocation envelope; hook approval
-covers the binding plus the referenced tool invocation-contract hash. Runtime
-values are validated against that contract but are not themselves approval
-identities.
+### First-slice acceptance matrix
 
-### Stack composition
-
-The root `dalo.toml` may select portable plugins by qualified reference without
-embedding their definitions:
-
-```toml
-[selection]
-plugins = ["design-platform:impeccable"]
-```
-
-The exact syntax and required/recommended semantics belong to #496. Authored
-stack selection is reproducible source intent. `dalo plugin select` records a
-separate direct user selection overlay; it does not edit or erase the authored
-stack.
-
-### Plugin dependencies
-
-A plugin may require other plugins or individual assets:
-
-```toml
-[plugin]
-id = "frontend-quality"
-skills = ["frontend-review"]
-requires = [
-  "plugin:company-engineering",
-  "skill:accessibility-audit",
-]
-```
-
-Dependencies participate in deterministic closure, approval, lock, audit, and
-provenance handling. Unqualified typed references resolve only within the
-declaring plugin's source. Cross-source dependencies must use the exact
-source-qualified reference grammar selected by #496; they are never satisfied
-by matching an unrelated source's slot name. Dependencies do not silently
-approve active code from another source.
+| Fixture | Canonical result | Target result | Mutation rule |
+| --- | --- | --- | --- |
+| Passive plugin with one approved skill and agent | One selected plugin with two resolved required members | `exact` or verified `mapped` per adapter | Stage and apply one coherent plugin-target projection |
+| Required plugin dependency chain A → B → C | Fixed-point closure with three identities and dependency origins | Each target plans from the same canonical closure | Never select by traversal order or unrelated slot match |
+| Optional agent unsupported on Cursor | Plugin remains selected; agent omission is recorded | `unsupported`, plugin degraded but not blocked | Apply remaining coherent optional projection |
+| Required blocking hook mapping on one target | Canonical plugin remains selected | Affected plugin-target pair is `blocked` | Write nothing for that pair; other targets may proceed |
+| Recommended instruction pack not enabled | Recommendation and inactive state remain visible | Non-blocking `inactive` finding | Never write an instruction block implicitly |
 
 ### Target overlays
 
-Portable declarations are the default. Native overlays are an explicit escape
-hatch:
-
-```toml
-[plugin.providers.codex]
-interface = "./providers/codex/interface.toml"
-
-[hook.providers.claude]
-timeout_seconds = 30
-```
-
-An overlay may select or strengthen a native representation. It may not weaken
-portable safety boundaries. Provider conditionals should not spread through
-portable skill bodies merely because an overlay exists.
+Portable declarations are the default. Native overlays may select or strengthen
+a native representation. They may not weaken portable safety boundaries, alter
+canonical identity, create a provider-specific winner, or spread provider
+conditionals through canonical skill and agent bodies. Unknown overlay values
+remain inert until the owning adapter can validate and safely re-emit them.
 
 ## Component model
 
@@ -363,9 +701,10 @@ slice may declare an `inline` execution fallback on that plugin's agent
 membership. This is composition policy, not an implicit field added to RFC
 0004's `AGENT.md` schema. The membership must reference canonical authored
 fallback behavior, such as a required skill or bounded prompt asset; Dalo must
-not invent behavioral text during projection. #496 owns the long-form
-membership grammar and total fallback precedence. A reusable fallback intrinsic
-to every use of an agent would require a focused RFC 0004 amendment.
+not invent behavioral text during projection. The long-form membership grammar
+and total fallback precedence are defined in the canonical contract above. A
+reusable fallback intrinsic to every use of an agent would require a focused
+RFC 0004 amendment.
 
 ### Local tools
 
@@ -584,18 +923,11 @@ Linked targets and adapter capabilities may change compatibility findings and
 native operations. They must never change canonical plugin, skill, instruction,
 or agent winner selection.
 
-The lock and target state should record:
-
-- authored stack/source identity and revisions where applicable;
-- selected portable-plugin identities and source revisions;
-- canonical component hashes;
-- dependency closure;
-- target adapter and verification version;
-- compatibility summary;
-- active fallback choices;
-- native projection fingerprints;
-- approval provenance;
-- blocked or intentionally omitted components.
+The user lock records the canonical identities, origins, hashes, dependency and
+member closure, policy provenance, approval state, and canonical blockers
+defined above. Internal target state records adapter versions, compatibility,
+fallbacks, owned paths, projection fingerprints, rollback facts, and
+target-specific omissions. Neither store may absorb the other's authority.
 
 The resolved result remains inspectable state, not a second kind of authored
 stack.
@@ -670,8 +1002,9 @@ Unknown native values never become portable by accident.
 
 ### Slice 0: RFC and terminology
 
-- Agree on component, portable-plugin, authored-stack, projection, and adapter boundaries.
-- Decide how a bounded portable-plugin manifest composes with the stack-level root `dalo.toml`.
+- Freeze component, portable-plugin, authored-stack, projection, and adapter boundaries.
+- Specify how the bounded `PLUGIN.toml` package composes with root `dalo.toml`.
+- Specify identity, selection, policy, hashing, activation, and state ownership.
 - Document how this RFC composes RFC 0004, #468, and #494.
 
 ### Slice 1: portable plugins with existing passive assets
@@ -756,26 +1089,13 @@ Unknown native values never become portable by accident.
 
 ## Open questions
 
-1. What exact root-`dalo.toml` grammar expresses required or recommended
-   portable-plugin stack selections?
-2. What explicit local policy can decline or suppress a stack-selected plugin
-   without rewriting authored intent or hiding the omission?
-3. What is the complete inventory hash and migration contract for one bounded
-   `PLUGIN.toml` package, distinct from each security-relevant component
-   approval closure?
-4. What is the smallest semantic hook vocabulary that Codex and Claude can
+1. What is the smallest semantic hook vocabulary that Codex and Claude can
    both support without overstating equivalence?
-5. Should fallback behavior live on each component, on a plugin or stack target
-   policy, or at several layers with a total precedence rule?
-6. How should a plugin recommend an instruction pack without silently enabling
-   always-loaded guidance?
-7. Which provider version and acceptance fixtures are required before an
+2. Which provider version and acceptance fixtures are required before an
    adapter can claim hook enforcement?
-8. Which canonical facts belong in the user lock versus target-specific
-   projection state?
-9. Is MCP configuration part of the portable-plugin manifest's eventual stable
+3. Is MCP configuration part of the portable-plugin manifest's eventual stable
    schema, or a separate RFC that only references portable-plugin IDs?
-10. Which concrete reuse case would justify standalone executable packages,
+4. Which concrete reuse case would justify standalone executable packages,
     cross-plugin tool/hook references, or an additional named `STACK` manifest?
 
 ## References
