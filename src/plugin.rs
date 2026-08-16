@@ -993,6 +993,39 @@ pub struct ResolvedPluginMember {
     /// Canonical source-qualified component identity when resolved.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resolved_ref: Option<String>,
+    /// Authored required-skill inline fallback for an agent member.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback: Option<String>,
+}
+
+/// Canonical dependency outcome retained for planning and display.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResolvedPluginDependency {
+    /// Authored plugin reference.
+    pub reference: String,
+    /// Dependency requirement.
+    pub requirement: DependencyRequirement,
+    /// Exact dependency outcome.
+    pub state: PluginDependencyState,
+    /// Canonical identity when reference lookup succeeded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_ref: Option<String>,
+}
+
+/// Canonical plugin dependency state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PluginDependencyState {
+    /// Dependency is the selected winner of its plugin slot.
+    Selected,
+    /// Dependency candidate exists but lost its plugin slot.
+    Shadowed,
+    /// Dependency is suppressed by explicit local policy.
+    Declined,
+    /// Exact source contained no matching plugin.
+    Missing,
+    /// Slot and stable-ID lookup selected different packages.
+    Ambiguous,
 }
 
 /// One canonical selected or shadowed plugin.
@@ -1021,6 +1054,8 @@ pub struct ResolvedPlugin {
     pub shadowed_by: Option<String>,
     /// Passive component findings.
     pub members: Vec<ResolvedPluginMember>,
+    /// Canonical dependency outcomes.
+    pub dependencies: Vec<ResolvedPluginDependency>,
     /// Deterministic blocking reasons.
     pub blocking_reasons: Vec<String>,
 }
@@ -1076,6 +1111,130 @@ pub struct PluginResolution {
     pub plugins: Vec<ResolvedPlugin>,
     /// Typed graph and coherence diagnostics.
     pub diagnostics: Vec<PluginDiagnostic>,
+}
+
+/// Safe read-only candidate summary used by plugin list/show.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PluginCandidate {
+    /// Canonical source-qualified identity.
+    pub source_ref: String,
+    /// Plugin slot name.
+    pub slot_name: String,
+    /// Optional stable identity.
+    pub id: Option<String>,
+    /// Human-facing description.
+    pub description: String,
+    /// Optional authored version.
+    pub version: Option<String>,
+    /// Package directory.
+    pub path: PathBuf,
+    /// Complete bounded package hash.
+    pub package_hash: String,
+    /// Passive members.
+    pub members: Vec<PluginMember>,
+    /// Plugin dependencies.
+    pub requires: Vec<PluginDependency>,
+    /// Provider overlay names; overlay values remain adapter-private.
+    pub provider_overlays: Vec<String>,
+}
+
+/// Read-only plugin list report including unselected offers and selected state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PluginListReport {
+    /// Every valid candidate in enabled source order, then identity order.
+    pub candidates: Vec<PluginCandidate>,
+    /// Canonical selected graph.
+    pub resolution: PluginResolution,
+}
+
+/// Read-only detail for one exact candidate.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PluginShowReport {
+    /// Candidate package metadata.
+    pub candidate: PluginCandidate,
+    /// Selected state when the candidate is reachable, otherwise `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected: Option<ResolvedPlugin>,
+}
+
+/// Build a deterministic safe candidate list without exposing provider overlay
+/// values that may contain source-authored secrets.
+#[must_use]
+pub fn list_report(
+    sources: &[SourceConfig],
+    inventories: &[SourceInventory],
+    resolution: PluginResolution,
+) -> PluginListReport {
+    let priorities = sources
+        .iter()
+        .filter(|source| source.enabled)
+        .map(|source| (source.id.as_str(), source.priority))
+        .collect::<BTreeMap<_, _>>();
+    let mut candidates = inventories
+        .iter()
+        .flat_map(|inventory| &inventory.plugins)
+        .map(candidate_summary)
+        .collect::<Vec<_>>();
+    candidates.sort_by(|left, right| {
+        priorities
+            .get(
+                left.source_ref
+                    .split_once(':')
+                    .map_or("", |(source, _)| source),
+            )
+            .unwrap_or(&i32::MAX)
+            .cmp(
+                priorities
+                    .get(
+                        right
+                            .source_ref
+                            .split_once(':')
+                            .map_or("", |(source, _)| source),
+                    )
+                    .unwrap_or(&i32::MAX),
+            )
+            .then_with(|| left.source_ref.cmp(&right.source_ref))
+    });
+    PluginListReport {
+        candidates,
+        resolution,
+    }
+}
+
+/// Build read-only detail for a normalized candidate identity.
+#[must_use]
+pub fn show_report(
+    identity: &str,
+    inventories: &[SourceInventory],
+    resolution: &PluginResolution,
+) -> Option<PluginShowReport> {
+    let record = inventories
+        .iter()
+        .flat_map(|inventory| &inventory.plugins)
+        .find(|plugin| plugin.source_ref == identity)?;
+    Some(PluginShowReport {
+        candidate: candidate_summary(record),
+        selected: resolution
+            .plugins
+            .iter()
+            .find(|plugin| plugin.source_ref == identity)
+            .cloned(),
+    })
+}
+
+fn candidate_summary(record: &PluginRecord) -> PluginCandidate {
+    PluginCandidate {
+        source_ref: record.source_ref.clone(),
+        slot_name: record.slot_name.clone(),
+        id: record.id.clone(),
+        description: record.description.clone(),
+        version: record.version.clone(),
+        path: record.path.clone(),
+        package_hash: record.package_hash.clone(),
+        members: record.members.clone(),
+        requires: record.requires.clone(),
+        provider_overlays: record.providers.keys().cloned().collect(),
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1240,6 +1399,7 @@ pub fn resolve_plugins(config: &UserConfig, inventories: &[SourceInventory]) -> 
     }
     let cycle_nodes = cycles.iter().flatten().cloned().collect::<BTreeSet<_>>();
     let mut policies = applied_policies(config, &index, &mut diagnostics);
+    let declined = policies.keys().cloned().collect::<BTreeSet<_>>();
     let mut resolved = Vec::new();
     for identity in &reachable {
         let Some(plugin) = plugin_by_identity(identity, &index) else {
@@ -1259,19 +1419,47 @@ pub fn resolve_plugins(config: &UserConfig, inventories: &[SourceInventory]) -> 
                 message: reason.clone(),
             });
         }
-        for dependency in &plugin.requires {
-            if dependency.requirement == DependencyRequirement::Required
-                && !matches!(
-                    resolve_component_reference(&dependency.reference, &plugin.source_id, &index),
-                    ReferenceMatch::One(_)
-                )
-            {
-                blocking_reasons.push(format!(
-                    "required dependency `{}` is unresolved",
-                    dependency.reference.as_string()
-                ));
-            }
-        }
+        let dependencies = plugin
+            .requires
+            .iter()
+            .map(|dependency| {
+                let (state, resolved_ref) = match resolve_component_reference(
+                    &dependency.reference,
+                    &plugin.source_id,
+                    &index,
+                ) {
+                    ReferenceMatch::One(target) => {
+                        let state = if winners.get(&target.slot_name) != Some(&target.source_ref) {
+                            PluginDependencyState::Shadowed
+                        } else if declined.contains(&target.source_ref) {
+                            PluginDependencyState::Declined
+                        } else {
+                            PluginDependencyState::Selected
+                        };
+                        (state, Some(target.source_ref.clone()))
+                    }
+                    ReferenceMatch::Missing => (PluginDependencyState::Missing, None),
+                    ReferenceMatch::Ambiguous => (PluginDependencyState::Ambiguous, None),
+                };
+                if dependency.requirement == DependencyRequirement::Required
+                    && state != PluginDependencyState::Selected
+                {
+                    blocking_reasons.push(
+                        format!(
+                            "required dependency `{}` is {state:?}",
+                            dependency.reference.as_string()
+                        )
+                        .to_lowercase(),
+                    );
+                }
+                ResolvedPluginDependency {
+                    reference: dependency.reference.as_string(),
+                    requirement: dependency.requirement,
+                    state,
+                    resolved_ref,
+                }
+            })
+            .collect::<Vec<_>>();
         if cycle_nodes.contains(identity) {
             blocking_reasons.push("required dependency cycle".to_owned());
         }
@@ -1291,8 +1479,15 @@ pub fn resolve_plugins(config: &UserConfig, inventories: &[SourceInventory]) -> 
                 message: format!("selected plugin is shadowed by `{winner}`"),
             });
         }
-        let closure_hash =
-            closure_hash(plugin, &members, &blocking_reasons, state, &winners, &index);
+        let closure_hash = closure_hash(
+            plugin,
+            &members,
+            &dependencies,
+            &blocking_reasons,
+            state,
+            &winners,
+            &index,
+        );
         resolved.push(ResolvedPlugin {
             source_ref: identity.clone(),
             slot_name: plugin.slot_name.clone(),
@@ -1312,6 +1507,7 @@ pub fn resolve_plugins(config: &UserConfig, inventories: &[SourceInventory]) -> 
             state,
             shadowed_by,
             members,
+            dependencies,
             blocking_reasons,
         });
     }
@@ -1818,6 +2014,10 @@ fn evaluate_members(
                 requirement: member.requirement,
                 state,
                 resolved_ref,
+                fallback: member
+                    .fallback
+                    .as_ref()
+                    .map(|fallback| fallback.skill.as_string()),
             }
         })
         .collect()
@@ -1859,6 +2059,7 @@ where
 fn closure_hash(
     plugin: &PluginRecord,
     members: &[ResolvedPluginMember],
+    dependencies: &[ResolvedPluginDependency],
     blocking: &[String],
     state: PluginState,
     winners: &BTreeMap<String, String>,
@@ -1887,6 +2088,17 @@ fn closure_hash(
         hash.update(&member.reference);
         hash.update(format!("{:?}{:?}", member.requirement, member.state));
         if let Some(identity) = &member.resolved_ref {
+            hash.update(identity);
+        }
+    }
+    for dependency in dependencies {
+        hash.update([0]);
+        hash.update(&dependency.reference);
+        hash.update(format!(
+            "{:?}{:?}",
+            dependency.requirement, dependency.state
+        ));
+        if let Some(identity) = &dependency.resolved_ref {
             hash.update(identity);
         }
     }

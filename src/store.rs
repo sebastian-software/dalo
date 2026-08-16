@@ -786,7 +786,7 @@ pub fn read_user_lock(paths: &StorePaths) -> DaloResult<UserLock> {
 
     let content = fs::read_to_string(&paths.lock_file)?;
     let mut lock: UserLock = parse_store_toml(&paths.lock_file, &content)?;
-    if lock.schema_version != 1 && lock.schema_version != USER_LOCK_SCHEMA_VERSION {
+    if !matches!(lock.schema_version, 1 | 2) && lock.schema_version != USER_LOCK_SCHEMA_VERSION {
         return Err(DaloError::UnsupportedSchema {
             path: paths.lock_file.clone(),
             version: lock.schema_version,
@@ -1615,6 +1615,25 @@ mod tests {
         let error = read_user_lock(&paths).expect_err("read should reject the unsupported schema");
 
         assert!(matches!(error, DaloError::UnsupportedSchema { .. }));
+    }
+
+    #[test]
+    fn read_user_lock_should_migrate_version_two_plugin_lock_in_memory() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        init_store(store_root.clone(), false).expect("init should succeed");
+        let paths = StorePaths::new(store_root);
+        fs::write(
+            &paths.lock_file,
+            "schema_version = 2\n\n[[plugins]]\nsource_ref = \"local:demo\"\nslot_name = \"demo\"\npackage_hash = \"package\"\nclosure_hash = \"closure\"\norigins = []\npolicies = []\nstate = \"selected\"\nmembers = []\nblocking_reasons = []\n",
+        )
+        .expect("version two lock should be written");
+
+        let lock = read_user_lock(&paths).expect("version two lock should migrate");
+
+        assert_eq!(lock.schema_version, USER_LOCK_SCHEMA_VERSION);
+        assert_eq!(lock.plugins.len(), 1);
+        assert!(lock.plugins[0].dependencies.is_empty());
     }
 
     #[test]

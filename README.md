@@ -190,6 +190,60 @@ priority, and selection remain owned by the team manifest, while security
 approval remains personal. After the first sync, each team member reviews the
 pending skills and approves an appropriate scope before they are linked.
 
+#### Compose passive portable plugins
+
+A source can group existing skills, canonical agents, and instruction packs in
+an inert `plugins/<name>/PLUGIN.toml` package. Selection resolves intent only:
+it never grants a skill or agent approval and never enables instructions.
+
+```toml
+schema_version = 1
+
+[plugin]
+name = "review-workflow"
+description = "Shared review behavior across supported agents."
+
+[[plugin.members]]
+ref = "skill:review"
+requirement = "required"
+
+[[plugin.members]]
+ref = "agent:reviewer"
+requirement = "optional"
+[plugin.members.fallback]
+kind = "inline"
+skill = "skill:review"
+
+[[plugin.members]]
+ref = "instruction:engineering-defaults"
+requirement = "recommended"
+```
+
+The source root `dalo.toml` selects it by reference:
+
+```toml
+[source]
+id = "company"
+
+[selection]
+plugins = [{ ref = "company:review-workflow", requirement = "required" }]
+```
+
+Inspect candidates and preview every linked target without writing provider
+state:
+
+```sh
+dalo plugin list
+dalo plugin show company:review-workflow
+dalo plan
+dalo plan --target codex --json
+```
+
+The plan reports the recommended instruction as inactive until the existing
+explicit `dalo instructions enable` flow has completed. A direct local
+selection is additive (`dalo plugin select ...`); `plugin unselect` removes
+only that local origin and never edits the source-authored stack.
+
 ### Adopt what works locally
 
 Agents often create useful skills directly in their own folders. Dalo can copy

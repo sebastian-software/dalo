@@ -52,6 +52,9 @@ pub struct SyncReport {
     pub unrefreshed_tracking_sources: Vec<String>,
     /// Enabled catalogs with available skills but no explicit selection.
     pub unselected_catalogs: Vec<UnselectedCatalog>,
+    /// Typed plugin installation plan for read-only sync previews.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub installation_plan: Option<crate::plan::InstallationPlan>,
 }
 
 /// A catalog that needs an explicit skill selection before it can contribute to sync.
@@ -300,6 +303,7 @@ pub fn materialize_with_degraded_sources_rollback(
             degraded_sources: degraded_sources.to_vec(),
             unrefreshed_tracking_sources: Vec::new(),
             unselected_catalogs: Vec::new(),
+            installation_plan: None,
         },
         rollback,
     ))

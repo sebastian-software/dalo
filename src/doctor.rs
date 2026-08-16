@@ -18,6 +18,7 @@ use crate::error::shell_quote_path;
 use crate::git;
 use crate::instructions;
 use crate::inventory::{InventoryWarning, InventoryWarningCode};
+use crate::plan::InstallationPlan;
 use crate::resolver;
 use crate::source::{self, SourceConfig, SourceKind};
 use crate::store::{self, ApprovalsFile, OwnedSkillState, StateFile, StorePaths};
@@ -34,6 +35,9 @@ pub struct DoctorReport {
     pub findings: Vec<DoctorFinding>,
     /// Summary counts by severity.
     pub summary: DoctorSummary,
+    /// Shared typed planning facts when plugins are selected and inputs parse.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub installation_plan: Option<InstallationPlan>,
 }
 
 /// Count of findings by severity.
@@ -194,13 +198,13 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
 
     check_store_layout(&paths, &mut findings);
     if !paths.root.is_dir() {
-        return finish_report(store_root, findings);
+        return finish_report(store_root, findings, None);
     }
     check_commands(&mut findings);
 
     let config = read_config(&paths, &mut findings);
     let state = read_state(&paths, &mut findings);
-    read_lock(&paths, &mut findings);
+    let lock = read_lock(&paths, &mut findings);
     let source_lock = read_source_lock(&paths, &mut findings);
     let approvals = read_approvals(&paths, &mut findings);
 
@@ -223,13 +227,26 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
         check_protected_skills(state, &mut findings);
     }
 
-    let live_resolution = config.as_ref().map(|config| {
+    let mut live_resolution = config.as_ref().map(|config| {
         let approval_records = approvals
             .as_ref()
             .map(|approvals| approvals.approvals.clone())
             .unwrap_or_default();
         resolver::resolve_from_config(config, approval_records)
     });
+    if let (Some(live), Some(lock)) = (live_resolution.as_mut(), lock.as_ref()) {
+        let active_instructions = lock
+            .active_instruction_packs
+            .iter()
+            .map(|pack| format!("{}:{}", pack.source_id, pack.pack_id))
+            .collect::<BTreeSet<_>>();
+        crate::plugin::apply_component_resolution(
+            &mut live.plugins,
+            &live.resolution,
+            &live.agents,
+            &active_instructions,
+        );
+    }
 
     if let Some(config) = config.as_ref() {
         check_sources(config, &source_lock, &mut findings);
@@ -254,10 +271,36 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
     }
     check_autosync(&paths, &mut findings);
 
-    finish_report(store_root, findings)
+    let installation_plan = match (state.as_ref(), live_resolution.as_ref()) {
+        (Some(state), Some(live)) if !live.plugins.plugins.is_empty() => {
+            let inventories = live
+                .scans
+                .iter()
+                .filter_map(|scan| scan.inventory.clone())
+                .collect::<Vec<_>>();
+            crate::materialize::materialize(&paths, &live.resolution, true)
+                .ok()
+                .map(|materialization| {
+                    crate::plan::build_from_facts(
+                        store_root,
+                        state,
+                        &live.plugins,
+                        &inventories,
+                        &materialization.operations,
+                        None,
+                    )
+                })
+        }
+        _ => None,
+    };
+    finish_report(store_root, findings, installation_plan)
 }
 
-fn finish_report(store_root: &Path, mut findings: Vec<DoctorFinding>) -> DoctorReport {
+fn finish_report(
+    store_root: &Path,
+    mut findings: Vec<DoctorFinding>,
+    installation_plan: Option<InstallationPlan>,
+) -> DoctorReport {
     for finding in &mut findings {
         finding.message = store::contextualize_dalo_commands(store_root, &finding.message);
         if let Some(next_command) = &mut finding.next_command {
@@ -276,6 +319,7 @@ fn finish_report(store_root: &Path, mut findings: Vec<DoctorFinding>) -> DoctorR
         store: store_root.to_path_buf(),
         findings,
         summary,
+        installation_plan,
     }
 }
 
@@ -463,15 +507,18 @@ fn read_state(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) -> Option<S
     }
 }
 
-fn read_lock(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) -> bool {
+fn read_lock(
+    paths: &StorePaths,
+    findings: &mut Vec<DoctorFinding>,
+) -> Option<crate::lockfile::UserLock> {
     // A missing file is already surfaced as `store_layout_missing`.
     if !paths.lock_file.exists() {
-        return false;
+        return None;
     }
     match store::read_user_lock(paths) {
-        Ok(_) => {
+        Ok(lock) => {
             findings.push(ok(DoctorCode::LockOk, "user lock parses"));
-            true
+            Some(lock)
         }
         Err(error) => {
             findings.push(finding_error(
@@ -479,7 +526,7 @@ fn read_lock(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) -> bool {
                 format!("user lock could not be read: {error}"),
                 Some("dalo sync".to_owned()),
             ));
-            false
+            None
         }
     }
 }
