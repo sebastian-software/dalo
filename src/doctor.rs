@@ -1730,6 +1730,8 @@ mod tests {
                 declared_by: Some("team".to_owned()),
                 declared_ref: Some("main".to_owned()),
             }],
+            plugins: crate::config::PluginConfig::default(),
+            plugin_policy: Vec::new(),
         };
         store::write_config(&paths, &config).expect("config should be written");
         fs::write(&paths.source_lock_file, "schema_version = ")
@@ -2198,6 +2200,8 @@ mod tests {
                 declared_by: None,
                 declared_ref: None,
             }],
+            plugins: crate::config::PluginConfig::default(),
+            plugin_policy: Vec::new(),
         };
         store::write_config(&paths, &config).expect("config should be written");
     }
@@ -2244,6 +2248,8 @@ mod tests {
                 sync_interval: None,
             },
             sources,
+            plugins: crate::config::PluginConfig::default(),
+            plugin_policy: Vec::new(),
         };
         store::write_config(&paths, &config).expect("config should be written");
     }

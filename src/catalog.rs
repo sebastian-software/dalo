@@ -1117,6 +1117,7 @@ fn advance_catalog_candidate(
         }
     }
 
+    let candidate_plugins = live.plugins;
     let mut candidate_resolution = live.resolution;
     rebase_resolution_paths(&mut candidate_resolution, worktree, &source.path);
     let preview = materialize::materialize(paths, &candidate_resolution, true)?;
@@ -1249,6 +1250,7 @@ fn advance_catalog_candidate(
         &persisted_config.sources,
         &applied.resolution,
         Some(&applied),
+        Some(&candidate_plugins),
     );
     next_user_lock.active_instruction_packs = original_user_lock.active_instruction_packs.clone();
 

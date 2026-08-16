@@ -1284,6 +1284,8 @@ mod tests {
                 declared_by: None,
                 declared_ref: None,
             }],
+            plugins: crate::config::PluginConfig::default(),
+            plugin_policy: Vec::new(),
         };
 
         let failures = refresh_tracking_team_sources_with(
@@ -1321,6 +1323,8 @@ mod tests {
                 declared_by: None,
                 declared_ref: None,
             }],
+            plugins: crate::config::PluginConfig::default(),
+            plugin_policy: Vec::new(),
         };
 
         let error = refresh_tracking_team_sources_with(&config, |_| Ok(true), |_| Ok(()))

@@ -21,6 +21,7 @@ use crate::instructions;
 use crate::inventory;
 use crate::lockfile;
 use crate::materialize;
+use crate::plugin;
 use crate::resolver;
 use crate::source;
 use crate::status;
@@ -101,6 +102,8 @@ pub enum Command {
     Source(SourceCommand),
     /// Inspect portable canonical agent packages and provider projections.
     Agent(AgentCommand),
+    /// Inspect and select passive portable plugins.
+    Plugin(PluginCommand),
     /// Author and maintain a team repository's `dalo.toml`.
     #[command(
         after_help = "Team commands act on a repository selected with --repo (default: the current directory). The global --store flag is accepted but has no effect here.\n\nExamples:\n  dalo team init company\n  dalo team catalog add marketing https://github.com/coreyhaines31/marketingskills.git --version <commit> --skill +copywriting\n  dalo team catalog skills marketing +copywriting +launch -seo-audit\n  dalo --dry-run team catalog update marketing --from main\n  dalo team show"
@@ -161,6 +164,47 @@ pub struct InstructionsCommand {
     /// Instructions subcommand.
     #[command(subcommand)]
     pub command: InstructionsSubcommand,
+}
+
+/// `plugin` command group.
+#[derive(Debug, Args)]
+pub struct PluginCommand {
+    /// Plugin selection subcommand.
+    #[command(subcommand)]
+    pub command: PluginSubcommand,
+}
+
+/// Passive plugin selection commands.
+#[derive(Debug, Subcommand)]
+pub enum PluginSubcommand {
+    /// List canonical selected plugin state.
+    List,
+    /// Add one required direct-user selection.
+    Select(PluginReferenceArgs),
+    /// Remove only the matching direct-user selection.
+    Unselect(PluginReferenceArgs),
+    /// Retain selected intent but suppress it with an explicit local policy.
+    Decline(PluginDeclineArgs),
+}
+
+/// One source-qualified plugin reference.
+#[derive(Debug, Args)]
+pub struct PluginReferenceArgs {
+    /// Plugin in `<source-id>:<slot-or-stable-id>` form.
+    pub plugin: String,
+}
+
+/// Explicit local decline policy.
+#[derive(Debug, Args)]
+pub struct PluginDeclineArgs {
+    /// Plugin in `<source-id>:<slot-or-stable-id>` form.
+    pub plugin: String,
+    /// Stable lower-kebab policy rule ID.
+    #[arg(long)]
+    pub rule_id: String,
+    /// Required audit context.
+    #[arg(long)]
+    pub reason: String,
 }
 
 /// `instructions` subcommands.
@@ -866,6 +910,7 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         Command::Target(command) => run_target(&options, command),
         Command::Source(command) => run_source(&options, command),
         Command::Agent(command) => run_agent(&options, command),
+        Command::Plugin(command) => run_plugin(&options, command),
         Command::Team(command) => run_team(&options, command),
         Command::Status(args) => run_status(&options, args),
         Command::Next => run_next(&options),
@@ -911,6 +956,9 @@ fn command_ignores_dry_run(command: &Command) -> bool {
         }) | Command::Agent(AgentCommand {
             command: AgentSubcommand::List | AgentSubcommand::Show(_)
         }) | Command::Status(_)
+            | Command::Plugin(PluginCommand {
+                command: PluginSubcommand::List
+            })
             | Command::Next
             | Command::Doctor(_)
             | Command::Approve(ApproveCommand {
@@ -1094,6 +1142,164 @@ fn print_agent_show_report(report: &agent::AgentShowReport) {
     }
 }
 
+#[derive(Debug, serde::Serialize)]
+struct PluginMutationReport {
+    plugin: String,
+    action: &'static str,
+    changed: bool,
+    dry_run: bool,
+}
+
+fn run_plugin(options: &GlobalOptions, command: PluginCommand) -> DaloResult<()> {
+    let paths = store::StorePaths::new(options.store.clone());
+    ensure_initialized(&paths)?;
+    if matches!(command.command, PluginSubcommand::List) {
+        let config = store::read_config(&paths)?;
+        let approvals = store::read_approvals(&paths)?;
+        let live = resolver::resolve_from_config(&config, approvals.approvals);
+        if options.json {
+            return print_json(&live.plugins);
+        }
+        if live.plugins.plugins.is_empty() {
+            println!("no plugins selected");
+        } else {
+            for resolved in &live.plugins.plugins {
+                println!("{} state={:?}", resolved.source_ref, resolved.state);
+            }
+        }
+        for diagnostic in &live.plugins.diagnostics {
+            println!(
+                "warning {:?} {}: {}",
+                diagnostic.code, diagnostic.subject, diagnostic.message
+            );
+        }
+        return Ok(());
+    }
+
+    let _lock = if options.dry_run {
+        None
+    } else {
+        Some(store::StoreLock::acquire(&paths)?)
+    };
+    let mut config = store::read_config(&paths)?;
+    let approvals = store::read_approvals(&paths)?;
+    let live = resolver::resolve_from_config(&config, approvals.approvals);
+    let inventories = live
+        .scans
+        .iter()
+        .filter_map(|scan| scan.inventory.clone())
+        .collect::<Vec<_>>();
+    let report = match command.command {
+        PluginSubcommand::Select(args) => {
+            let canonical = plugin::normalize_plugin_reference(&config, &inventories, &args.plugin)
+                .map_err(|reason| DaloError::StateError { reason })?;
+            let changed = !config
+                .plugins
+                .direct
+                .iter()
+                .any(|value| value == &canonical);
+            if changed {
+                config.plugins.direct.push(canonical.clone());
+                config.plugins.direct.sort();
+            }
+            PluginMutationReport {
+                plugin: canonical,
+                action: "selected",
+                changed,
+                dry_run: options.dry_run,
+            }
+        }
+        PluginSubcommand::Unselect(args) => {
+            let canonical = plugin::normalize_plugin_reference(&config, &inventories, &args.plugin)
+                .unwrap_or_else(|_| args.plugin.clone());
+            let before = config.plugins.direct.len();
+            config
+                .plugins
+                .direct
+                .retain(|value| value != &canonical && value != &args.plugin);
+            PluginMutationReport {
+                plugin: canonical,
+                action: "unselected",
+                changed: before != config.plugins.direct.len(),
+                dry_run: options.dry_run,
+            }
+        }
+        PluginSubcommand::Decline(args) => {
+            if !valid_plugin_rule_id(&args.rule_id) || args.reason.trim().is_empty() {
+                return Err(DaloError::StateError {
+                    reason:
+                        "plugin decline requires a lower-kebab --rule-id and non-empty --reason"
+                            .to_owned(),
+                });
+            }
+            if config
+                .plugin_policy
+                .iter()
+                .any(|policy| policy.rule_id == args.rule_id)
+            {
+                return Err(DaloError::StateError {
+                    reason: format!("plugin policy rule `{}` already exists", args.rule_id),
+                });
+            }
+            let canonical = plugin::normalize_plugin_reference(&config, &inventories, &args.plugin)
+                .map_err(|reason| DaloError::StateError { reason })?;
+            if !live
+                .plugins
+                .plugins
+                .iter()
+                .any(|resolved| resolved.source_ref == canonical)
+            {
+                return Err(DaloError::StateError {
+                    reason: format!(
+                        "plugin `{canonical}` is not selected; select it before declining it"
+                    ),
+                });
+            }
+            config.plugin_policy.push(crate::config::PluginPolicy {
+                layer: crate::config::PluginPolicyLayer::UserLocal,
+                rule_id: args.rule_id,
+                plugin: canonical.clone(),
+                decision: crate::config::PluginPolicyDecision::Decline,
+                reason: args.reason,
+            });
+            config
+                .plugin_policy
+                .sort_by(|left, right| left.rule_id.cmp(&right.rule_id));
+            PluginMutationReport {
+                plugin: canonical,
+                action: "declined",
+                changed: true,
+                dry_run: options.dry_run,
+            }
+        }
+        PluginSubcommand::List => unreachable!("handled as read-only above"),
+    };
+    if !options.dry_run && report.changed {
+        store::write_config(&paths, &config)?;
+    }
+    if options.json {
+        print_json(&report)?;
+    } else {
+        println!(
+            "{} {}{}",
+            report.action,
+            report.plugin,
+            if report.changed { "" } else { " (unchanged)" }
+        );
+    }
+    Ok(())
+}
+
+fn valid_plugin_rule_id(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+        && !value.starts_with('-')
+        && !value.ends_with('-')
+        && !value.contains("--")
+}
+
 fn run_instructions(options: &GlobalOptions, command: InstructionsCommand) -> DaloResult<()> {
     let paths = store::StorePaths::new(options.store.clone());
     match command.command {
@@ -1232,6 +1438,39 @@ fn status_review_reason(report: &status::StatusReport) -> Option<String> {
                 .agent_inventory_warnings
                 .iter()
                 .map(|warning| warning.path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+
+    if !report.plugin_inventory_warnings.is_empty() {
+        let count = report.plugin_inventory_warnings.len();
+        reasons.push(format!(
+            "{count} plugin inventory warning{} ({})",
+            if count == 1 { "" } else { "s" },
+            report
+                .plugin_inventory_warnings
+                .iter()
+                .map(|warning| warning.path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+
+    let blocked_plugins = report
+        .plugins
+        .plugins
+        .iter()
+        .filter(|plugin| plugin.state == crate::plugin::PluginState::Blocked)
+        .collect::<Vec<_>>();
+    if !blocked_plugins.is_empty() {
+        reasons.push(format!(
+            "{} blocked plugin{} ({})",
+            blocked_plugins.len(),
+            if blocked_plugins.len() == 1 { "" } else { "s" },
+            blocked_plugins
+                .iter()
+                .map(|plugin| plugin.source_ref.as_str())
                 .collect::<Vec<_>>()
                 .join(", ")
         ));
@@ -1524,6 +1763,21 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
         let audits = audit::audit_active_skills(&paths, &live.resolution, !options.dry_run);
         ensure_no_blocking_audits(&audits.blocking)?;
         resolver::degrade_audit_failures(&mut live.resolution, &audits.failures);
+        let active_instruction_refs = previous
+            .as_ref()
+            .map(|lock| {
+                lock.active_instruction_packs
+                    .iter()
+                    .map(|pack| format!("{}:{}", pack.source_id, pack.pack_id))
+                    .collect::<std::collections::BTreeSet<_>>()
+            })
+            .unwrap_or_default();
+        plugin::apply_component_resolution(
+            &mut live.plugins,
+            &live.resolution,
+            &live.agents,
+            &active_instruction_refs,
+        );
         let degraded_sources = collect_degraded_sources(&live, refresh_failures, &audits.failures);
         let (mut report, rollback) = materialize::materialize_with_degraded_sources_rollback(
             &paths,
@@ -1537,8 +1791,12 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
             let previous = previous
                 .as_ref()
                 .expect("non-dry-run sync reads the user lock before materializing");
-            let mut lock =
-                lockfile::build_user_lock(&config.sources, &live.resolution, Some(&report));
+            let mut lock = lockfile::build_user_lock(
+                &config.sources,
+                &live.resolution,
+                Some(&report),
+                Some(&live.plugins),
+            );
             // Instruction packs are owned by the `instructions` command; preserve them
             // across a sync instead of dropping them.
             lock.active_instruction_packs = previous.active_instruction_packs.clone();
@@ -2265,6 +2523,7 @@ fn run_source_remove(
         &plan.config.sources,
         &live.resolution,
         Some(&materialization),
+        Some(&live.plugins),
     );
     user_lock.active_instruction_packs = previous_user_lock.active_instruction_packs.clone();
 
