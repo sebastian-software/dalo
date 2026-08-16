@@ -55,6 +55,10 @@ pub struct StorePaths {
     pub local_agents_dir: PathBuf,
     /// Immutable content-addressed approved local-tool closures.
     pub tools_dir: PathBuf,
+    /// Owned hook projections, dispatcher manifests, and reconciliation state.
+    pub hooks_dir: PathBuf,
+    /// Durable hook sidecar ownership state.
+    pub hook_state_file: PathBuf,
     /// Source checkout root.
     pub sources_dir: PathBuf,
     /// Catalog source lock path (pinned commits, selections, inventory snapshot).
@@ -91,6 +95,8 @@ impl StorePaths {
             local_instructions_dir: local_dir.join("instructions"),
             local_agents_dir: local_dir.join("agents"),
             tools_dir: root.join("tools"),
+            hooks_dir: root.join("hooks"),
+            hook_state_file: root.join("hooks/state.json"),
             sources_dir: root.join("sources"),
             source_lock_file: root.join("source-lock.toml"),
             catalog_advance_file: root.join("catalog-advance.toml"),

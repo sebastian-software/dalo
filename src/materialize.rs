@@ -55,6 +55,9 @@ pub struct SyncReport {
     /// Typed plugin installation plan for read-only sync previews.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub installation_plan: Option<crate::plan::InstallationPlan>,
+    /// Target-local native hook sidecar plans and results.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hook_targets: Vec<crate::hook_sync::HookTargetReport>,
 }
 
 /// A catalog that needs an explicit skill selection before it can contribute to sync.
@@ -304,6 +307,7 @@ pub fn materialize_with_degraded_sources_rollback(
             unrefreshed_tracking_sources: Vec::new(),
             unselected_catalogs: Vec::new(),
             installation_plan: None,
+            hook_targets: Vec::new(),
         },
         rollback,
     ))

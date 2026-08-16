@@ -825,7 +825,11 @@ timeout_ms = 2000                      # 100..120000; adapter may impose a lower
 failure_policy = "fail_closed"        # fail_open | fail_closed | report
 retry = "never"                       # the only v1 retry policy
 error_visibility = "model_and_user"   # user | model_and_user
-fallback = "omit"                     # optional only; must be authored
+blocking_scope = "matched_event"      # only the matched native event instance
+bindings = [
+  { input = "cwd", field = "session.cwd" },
+]
+matcher = { tool_names = ["Bash"] }   # exact names; tool-call events only
 ```
 
 Unknown fields and values fail closed. `fallback` is absent for required hooks;
@@ -838,10 +842,16 @@ pure observation and post-action effects because those events cannot be undone.
 are unknown. A future retry vocabulary needs idempotency keys and a separate RFC
 amendment.
 
-The descriptor contains no argument template and no event-to-tool binding.
-#499 owns the referenced tool's only argv template and named inputs. #501 may
-bind the event fields below to those named inputs, validates the values, and
-hashes that invariant binding shape into hook approval.
+The descriptor contains no argument template. #499 owns the referenced tool's
+only argv template and named inputs. Each #501 `bindings` entry maps one typed
+event field below to one same-plugin tool input. Required tool inputs must all
+be bound, binding input names are unique, and field/input primitive types must
+match. Bindings cannot append, replace, or reinterpret argv tokens. The
+`matcher.tool_names` values are exact provider tool names, not regular
+expressions or shell fragments; adapters escape and anchor the native matcher.
+Matcher, binding shape, `blocking_scope`, the exact referenced tool contract
+hash, and every prior descriptor field participate in
+`dalo-hook-contract-v1`.
 
 #### Version 1 event vocabulary
 
@@ -1002,6 +1012,46 @@ post-tool result is `tool-call.after`; it cannot undo an edit. Claude
 `FileChanged` or an external watcher observes a different event and is not a
 portable substitute. Adding any omitted capability requires a schema/version
 amendment and fixtures.
+
+#### Owned native projection and dispatcher
+
+#501 installs the narrowest user-level structures currently verified:
+
+| Provider | Owned native structure | Command transport |
+| --- | --- | --- |
+| Codex 0.147.0 | Dalo-owned groups inside `$CODEX_HOME/hooks.json` (default `~/.codex/hooks.json`) | fixed Dalo command string on POSIX; fixed PowerShell `-EncodedCommand` launcher on Windows |
+| Claude Code 2.1.233 | Dalo-owned groups inside `$CLAUDE_CONFIG_DIR/settings.json` (default `~/.claude/settings.json`) | `command` plus `args` exec form |
+
+Foreign root keys, hook events, groups, and handlers are retained structurally.
+Dalo records the exact JSON values it owns in `<store>/hooks/state.json` and
+removes or replaces only an exact prior value. A missing, duplicated, malformed,
+or externally changed owned value is `conflict`; it is never guessed or
+overwritten. Each mutation is planned from an observed file hash, rechecks that
+hash immediately before an atomic replacement, fsyncs file and parent, and
+rolls the native file back if ownership-state persistence fails. Revocation,
+unselection, provider disablement, or managed-only policy compiles an empty
+desired projection and removes only Dalo-owned groups. Foreign concurrent edits
+outside those groups survive the next structural merge.
+
+Native groups call the current Dalo executable with a hash-addressed projection
+stored below `<store>/hooks/projections/<sha256>.json`. Provider event JSON is
+passed only through stdin. The dispatcher re-hashes its manifest, validates the
+provider/event/group and complete hook/tool contract, re-audits the immutable
+tool root, derives a fixed argv through #499's template, and executes without a
+shell. Event data never enters a native command string. On Windows, Codex uses a
+UTF-16LE Base64 PowerShell launcher containing only fixed Dalo paths and
+contract identifiers; version 1 never generates `cmd.exe` interpolation and
+blocks when the required interpreter/provider runtime is unavailable. Fixtures
+cover spaces, single/double quotes, shell metacharacters, newlines, Unicode, and
+encoded-command-shaped path data.
+
+`dalo hook list/show`, `dalo approve hook`, and
+`dalo approve revoke hook` expose the independent review boundary. `plan`,
+`sync --dry-run`, `sync`, `status`, `doctor`, and JSON retain separate tool
+trust, hook trust, provider version/runtime, disabled, managed-only, native
+conflict, and operation states. Planning and dry-run may inspect provider
+versions and native configuration but never execute a declared tool or hook and
+never write provider or store state.
 
 ### MCP servers
 

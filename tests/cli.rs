@@ -28,6 +28,7 @@ fn help_should_list_planned_top_level_commands() {
         .stdout(predicate::str::contains("target"))
         .stdout(predicate::str::contains("source"))
         .stdout(predicate::str::contains("tool"))
+        .stdout(predicate::str::contains("hook"))
         .stdout(predicate::str::contains("team"))
         .stdout(predicate::str::contains("status"))
         .stdout(predicate::str::contains("next"))
@@ -85,6 +86,21 @@ argv = ["--check"]
 cwd = "tool_root"
 capabilities = ["filesystem_read"]
 availability = "required"
+
+[[hook]]
+schema_version = 1
+id = "protect-shell"
+tool = "detector"
+subject = "tool_call"
+phase = "before"
+effect = "allow_deny"
+requirement = "required"
+timeout_ms = 2000
+failure_policy = "fail_closed"
+retry = "never"
+error_visibility = "model_and_user"
+blocking_scope = "matched_event"
+matcher = { tool_names = ["Bash"] }
 "#,
     )
     .unwrap();
@@ -92,6 +108,7 @@ availability = "required"
     std::fs::write(&entry, "#!/bin/sh\necho EXECUTED > should-not-exist\n").unwrap();
     std::fs::set_permissions(&entry, std::fs::Permissions::from_mode(0o755)).unwrap();
     let identity = "local:quality#tool:detector";
+    let hook_identity = "local:quality#hook:protect-shell";
 
     dalo_command()
         .args(["--store"])
@@ -102,6 +119,13 @@ availability = "required"
         .stdout(predicate::str::contains(identity))
         .stdout(predicate::str::contains("PendingApproval"));
     assert!(!package.join("should-not-exist").exists());
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["hook", "show", hook_identity])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("state: ToolUnavailable"));
 
     dalo_command()
         .args(["--store"])
@@ -133,6 +157,33 @@ availability = "required"
         .assert()
         .success()
         .stdout(predicate::str::contains("state: Ready"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["hook", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(hook_identity))
+        .stdout(predicate::str::contains("PendingApproval"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "hook", hook_identity])
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["hook", "show", hook_identity])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("state: Ready"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "revoke", "hook", hook_identity])
+        .assert()
+        .success();
     assert!(!package.join("should-not-exist").exists());
 
     dalo_command()
@@ -165,6 +216,216 @@ availability = "required"
         .stdout(predicate::str::contains("state: RuntimeMissing"));
 
     // Restore owner permissions so the temporary test store remains removable.
+    let tools = store.join("tools");
+    for path in [tools.join("sha256"), tools] {
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755));
+    }
+}
+
+#[test]
+fn sync_should_project_and_revoke_owned_codex_hooks_without_touching_foreign_settings() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = store::comparable_path(&temp.path().join("store"));
+    let target = temp.path().join("skills");
+    let codex_home = temp.path().join("codex-home");
+    let fake_bin = temp.path().join("bin");
+    std::fs::create_dir_all(&fake_bin).unwrap();
+    let codex = fake_bin.join("codex");
+    std::fs::write(&codex, "#!/bin/sh\nprintf '%s\\n' 'codex-cli 0.147.0'\n").unwrap();
+    std::fs::set_permissions(&codex, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let path = std::env::join_paths(std::iter::once(fake_bin).chain(std::env::split_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    )))
+    .unwrap();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "link", "codex"])
+        .arg(&target)
+        .assert()
+        .success();
+    let package = store.join("local/plugins/policy");
+    std::fs::create_dir_all(package.join("bin")).unwrap();
+    std::fs::write(
+        package.join("PLUGIN.toml"),
+        r#"schema_version = 1
+[plugin]
+name = "policy"
+description = "Shell policy"
+
+[[tool]]
+schema_version = 1
+id = "check"
+entry = "bin/check"
+runtime = "executable"
+platforms = ["macos", "linux"]
+argv = []
+cwd = "tool_root"
+capabilities = []
+availability = "required"
+
+[[hook]]
+schema_version = 1
+id = "protect-shell"
+tool = "check"
+subject = "tool_call"
+phase = "before"
+effect = "allow_deny"
+requirement = "required"
+timeout_ms = 2000
+failure_policy = "fail_closed"
+retry = "never"
+error_visibility = "model_and_user"
+blocking_scope = "matched_event"
+matcher = { tool_names = ["Bash"] }
+"#,
+    )
+    .unwrap();
+    let entry = package.join("bin/check");
+    std::fs::write(
+        &entry,
+        "#!/bin/sh\nprintf '%s' '{\"kind\":\"deny\",\"reason\":\"blocked\"}'\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&entry, std::fs::Permissions::from_mode(0o755)).unwrap();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["plugin", "select", "local:policy"])
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "tool", "local:policy#tool:check"])
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "hook", "local:policy#hook:protect-shell"])
+        .assert()
+        .success();
+
+    let mut dry_run = dalo_command();
+    dry_run
+        .env("PATH", &path)
+        .env("HOME", temp.path())
+        .env("CODEX_HOME", &codex_home)
+        .args(["--store"])
+        .arg(&store)
+        .args(["--dry-run", "--json", "sync"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"state\": \"planned\""))
+        .stdout(predicate::str::contains("\"action\": \"create\""));
+    assert!(!codex_home.join("hooks.json").exists());
+
+    let mut apply = dalo_command();
+    apply
+        .env("PATH", &path)
+        .env("HOME", temp.path())
+        .env("CODEX_HOME", &codex_home)
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    let sidecar = codex_home.join("hooks.json");
+    let mut native: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&sidecar).unwrap()).unwrap();
+    assert_eq!(native["hooks"]["PreToolUse"][0]["matcher"], "^(?:Bash)$");
+    native["foreign"] = serde_json::json!({"retained": true});
+    std::fs::write(&sidecar, serde_json::to_vec_pretty(&native).unwrap()).unwrap();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args([
+            "approve",
+            "revoke",
+            "hook",
+            "local:policy#hook:protect-shell",
+        ])
+        .assert()
+        .success();
+    let mut revoke_sync = dalo_command();
+    revoke_sync
+        .env("PATH", &path)
+        .env("HOME", temp.path())
+        .env("CODEX_HOME", &codex_home)
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    let native: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&sidecar).unwrap()).unwrap();
+    assert_eq!(native["foreign"]["retained"], true);
+    assert!(native.get("hooks").is_none());
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "hook", "local:policy#hook:protect-shell"])
+        .assert()
+        .success();
+    std::fs::write(
+        codex_home.join("config.toml"),
+        "[features]\nhooks = false\n",
+    )
+    .unwrap();
+    let mut disabled = dalo_command();
+    disabled
+        .env("PATH", &path)
+        .env("HOME", temp.path())
+        .env("CODEX_HOME", &codex_home)
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "sync"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"state\": \"disabled\""));
+    std::fs::write(
+        codex_home.join("config.toml"),
+        "allow_managed_hooks_only = true\n[features]\nhooks = true\n",
+    )
+    .unwrap();
+    let mut managed_only = dalo_command();
+    managed_only
+        .env("PATH", &path)
+        .env("HOME", temp.path())
+        .env("CODEX_HOME", &codex_home)
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "sync"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"state\": \"managed_only\""));
+
+    std::fs::write(&codex, "#!/bin/sh\nprintf '%s\\n' 'codex-cli 0.148.0'\n").unwrap();
+    std::fs::write(codex_home.join("config.toml"), "[features]\nhooks = true\n").unwrap();
+    let mut unverified = dalo_command();
+    unverified
+        .env("PATH", &path)
+        .env("HOME", temp.path())
+        .env("CODEX_HOME", &codex_home)
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "sync"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "\"state\": \"unverified_version\"",
+        ));
+
     let tools = store.join("tools");
     for path in [tools.join("sha256"), tools] {
         let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755));
@@ -1894,7 +2155,7 @@ fn approval_validation_errors_should_match_the_selected_scope() {
         .code(2)
         .stderr(predicate::str::contains("invalid value 'banana'"))
         .stderr(predicate::str::contains(
-            "possible values: skill, agent, tool, source, author, org",
+            "possible values: skill, agent, tool, hook, source, author, org",
         ))
         .stderr(predicate::str::contains("check failed").not());
 

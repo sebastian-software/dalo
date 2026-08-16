@@ -4,12 +4,253 @@
 //! execute hooks. It defines the versioned semantic boundary that later
 //! adapter work must satisfy before producing native configuration.
 
+use std::collections::BTreeMap;
+use std::path::Path;
+
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
+
+use crate::error::{DaloError, DaloResult};
+use crate::plugin::{self, HookRecord, PluginInventoryWarning, ToolRecord};
+use crate::source::SourceProvenance;
+use crate::store::{self, ApprovalRecord, StorePaths};
+use crate::tool::{self, ToolState};
 
 /// Codex release against which every fixture claim was verified.
 pub const CODEX_HOOK_BASELINE: &str = "0.147.0";
 /// Claude Code release against which every fixture claim was verified.
 pub const CLAUDE_HOOK_BASELINE: &str = "2.1.233";
+
+/// Stable approval scope for exact hook contracts.
+pub const APPROVAL_SCOPE: &str = "hook";
+
+/// Complete inert hook inventory and approval state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HookListReport {
+    /// Validated hooks in deterministic identity order.
+    pub hooks: Vec<HookStatusReport>,
+    /// Rejected plugin packages encountered during discovery.
+    pub warnings: Vec<PluginInventoryWarning>,
+}
+
+/// One hook joined with its independent approval and referenced tool state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HookStatusReport {
+    /// Validated hook and content-bound contract hash.
+    pub hook: HookRecord,
+    /// Whole plugin package hash retained as non-approval provenance.
+    pub plugin_package_hash: String,
+    /// Source revision and origin provenance.
+    pub source_provenance: SourceProvenance,
+    /// Exact approval record value.
+    pub approval_value: String,
+    /// Referenced tool state; only `ready` can be projected.
+    pub tool_state: ToolState,
+    /// Referenced same-plugin tool contract used by the dispatcher.
+    pub tool: ToolRecord,
+    /// Independent hook trust state.
+    pub state: HookTrustState,
+    /// Actionable, stable explanation.
+    pub diagnostic: String,
+}
+
+/// Independent hook approval state before provider compatibility is applied.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HookTrustState {
+    /// Referenced tool is not exactly approved, staged, and audited.
+    ToolUnavailable,
+    /// Current hook contract has never been approved.
+    PendingApproval,
+    /// A prior contract for this identity was approved but security inputs changed.
+    HashDrift,
+    /// Exact hook contract and exact referenced tool contract are ready.
+    Ready,
+}
+
+/// Result of granting or revoking exact hook trust.
+#[derive(Debug, Clone, Serialize)]
+pub struct HookApprovalReport {
+    /// Source-qualified hook identity.
+    pub hook: String,
+    /// Content-bound approval value.
+    pub approval_value: String,
+    /// `granted`, `revoked`, or `unchanged`.
+    pub action: String,
+    /// Whether mutation was suppressed.
+    pub dry_run: bool,
+}
+
+/// Discover every valid hook without executing or installing anything.
+pub fn list(paths: &StorePaths) -> DaloResult<HookListReport> {
+    let config = store::read_config(paths)?;
+    let approvals = store::read_approvals(paths)?;
+    let source_lock = crate::catalog::read_source_lock(paths).ok();
+    let mut hooks = Vec::new();
+    let mut warnings = Vec::new();
+    for source in config.sources.iter().filter(|source| source.enabled) {
+        let inventory = plugin::scan_source_plugins(&source.id, &source.path);
+        warnings.extend(inventory.warnings);
+        if inventory
+            .plugins
+            .iter()
+            .all(|plugin| plugin.hooks.is_empty())
+        {
+            continue;
+        }
+        let provenance = crate::source::source_provenance(source, source_lock.as_ref());
+        for plugin in inventory.plugins {
+            for hook in plugin.hooks {
+                let tool = tool::show(paths, &hook.tool_source_ref)?;
+                hooks.push(status_for(
+                    hook,
+                    plugin.package_hash.clone(),
+                    provenance.clone(),
+                    tool,
+                    &approvals.approvals,
+                ));
+            }
+        }
+    }
+    hooks.sort_by(|left, right| left.hook.source_ref.cmp(&right.hook.source_ref));
+    warnings.sort_by(|left, right| left.path.cmp(&right.path));
+    Ok(HookListReport { hooks, warnings })
+}
+
+/// Find one exact source-qualified hook.
+pub fn show(paths: &StorePaths, value: &str) -> DaloResult<HookStatusReport> {
+    list(paths)?
+        .hooks
+        .into_iter()
+        .find(|candidate| candidate.hook.source_ref == value)
+        .ok_or_else(|| DaloError::InvalidArgument {
+            reason: format!(
+                "unknown hook `{value}`; use `dalo hook list` and an exact `<source>:<plugin>#hook:<id>` identity"
+            ),
+        })
+}
+
+/// Grant exact hook trust only after its separately approved tool is ready.
+pub fn approve(paths: &StorePaths, value: &str, dry_run: bool) -> DaloResult<HookApprovalReport> {
+    let status = show(paths, value)?;
+    if status.tool_state != ToolState::Ready {
+        return Err(DaloError::StateError {
+            reason: format!(
+                "hook `{}` references tool `{}` in state {:?}; approve and stage the exact tool first",
+                status.hook.source_ref, status.hook.tool_source_ref, status.tool_state
+            ),
+        });
+    }
+    let mut approvals = store::read_approvals(paths)?;
+    let record = ApprovalRecord {
+        scope: APPROVAL_SCOPE.to_owned(),
+        value: status.approval_value.clone(),
+    };
+    let exists = approvals.approvals.contains(&record);
+    if !exists && !dry_run {
+        approvals.approvals.push(record);
+        approvals.approvals.sort_by(|left, right| {
+            left.scope
+                .cmp(&right.scope)
+                .then(left.value.cmp(&right.value))
+        });
+        store::write_approvals(paths, &approvals)?;
+    }
+    Ok(HookApprovalReport {
+        hook: status.hook.source_ref,
+        approval_value: status.approval_value,
+        action: if exists { "unchanged" } else { "granted" }.to_owned(),
+        dry_run,
+    })
+}
+
+/// Revoke every approved contract hash for one exact hook identity.
+pub fn revoke(paths: &StorePaths, value: &str, dry_run: bool) -> DaloResult<HookApprovalReport> {
+    validate_identity_shape(value)?;
+    let mut approvals = store::read_approvals(paths)?;
+    let prefix = format!("{value}@sha256:");
+    let mut removed = None;
+    approvals.approvals.retain(|record| {
+        let matches = record.scope == APPROVAL_SCOPE && record.value.starts_with(&prefix);
+        if matches {
+            removed = Some(record.value.clone());
+        }
+        !matches
+    });
+    let changed = removed.is_some();
+    if changed && !dry_run {
+        store::write_approvals(paths, &approvals)?;
+    }
+    Ok(HookApprovalReport {
+        hook: value.to_owned(),
+        approval_value: removed.unwrap_or(prefix),
+        action: if changed { "revoked" } else { "unchanged" }.to_owned(),
+        dry_run,
+    })
+}
+
+fn status_for(
+    hook: HookRecord,
+    plugin_package_hash: String,
+    source_provenance: SourceProvenance,
+    tool: tool::ToolStatusReport,
+    approvals: &[ApprovalRecord],
+) -> HookStatusReport {
+    let tool_state = tool.state;
+    let approval_value = format!("{}@sha256:{}", hook.source_ref, hook.contract_hash);
+    let exact = approvals
+        .iter()
+        .any(|record| record.scope == APPROVAL_SCOPE && record.value == approval_value);
+    let prefix = format!("{}@sha256:", hook.source_ref);
+    let prior = approvals
+        .iter()
+        .any(|record| record.scope == APPROVAL_SCOPE && record.value.starts_with(&prefix));
+    let (state, diagnostic) = if tool_state != ToolState::Ready {
+        (
+            HookTrustState::ToolUnavailable,
+            "referenced tool is not exactly approved, staged, and audited".to_owned(),
+        )
+    } else if exact {
+        (
+            HookTrustState::Ready,
+            "exact hook contract and referenced tool contract are approved".to_owned(),
+        )
+    } else if prior {
+        (
+            HookTrustState::HashDrift,
+            "security-relevant hook or referenced tool contract changed".to_owned(),
+        )
+    } else {
+        (
+            HookTrustState::PendingApproval,
+            format!("run `dalo approve hook {}`", hook.source_ref),
+        )
+    };
+    HookStatusReport {
+        hook,
+        plugin_package_hash,
+        source_provenance,
+        approval_value,
+        tool_state,
+        tool: tool.tool,
+        state,
+        diagnostic,
+    }
+}
+
+fn validate_identity_shape(value: &str) -> DaloResult<()> {
+    if value
+        .split_once("#hook:")
+        .is_some_and(|(plugin, hook)| plugin.contains(':') && !hook.is_empty())
+    {
+        Ok(())
+    } else {
+        Err(DaloError::InvalidArgument {
+            reason: "hook values must use `<source>:<plugin>#hook:<id>`".to_owned(),
+        })
+    }
+}
 
 /// Provider adapters covered by the first hook contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -61,7 +302,7 @@ pub enum HookPhase {
 }
 
 /// Requested portable effect. Event identity never implies an effect.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HookEffect {
     /// Observe the event without influencing provider behavior.
@@ -134,6 +375,117 @@ pub enum HookFallback {
     Omit,
 }
 
+/// Exact event field admitted by hook descriptor version 1 bindings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum HookEventField {
+    /// Opaque provider session identity.
+    #[serde(rename = "session.id")]
+    SessionId,
+    /// Absolute normalized session working directory.
+    #[serde(rename = "session.cwd")]
+    SessionCwd,
+    /// Normalized informational permission mode.
+    #[serde(rename = "session.permission_mode")]
+    SessionPermissionMode,
+    /// Root or subagent actor kind.
+    #[serde(rename = "actor.kind")]
+    ActorKind,
+    /// Optional opaque subagent identity.
+    #[serde(rename = "actor.id")]
+    ActorId,
+    /// Optional absolute provider transcript path.
+    #[serde(rename = "transcript.path")]
+    TranscriptPath,
+    /// Normalized final session reason.
+    #[serde(rename = "session.end_reason")]
+    SessionEndReason,
+    /// Submitted user prompt.
+    #[serde(rename = "prompt.text")]
+    PromptText,
+    /// Opaque provider tool-call identity.
+    #[serde(rename = "tool.call_id")]
+    ToolCallId,
+    /// Provider tool identifier.
+    #[serde(rename = "tool.name")]
+    ToolName,
+    /// Whether the completion hook already continued the workflow.
+    #[serde(rename = "workflow.already_continued")]
+    WorkflowAlreadyContinued,
+    /// Optional last assistant message at a completion attempt.
+    #[serde(rename = "workflow.last_message")]
+    WorkflowLastMessage,
+}
+
+impl HookEventField {
+    /// Stable field spelling used by descriptor hashes and dispatcher payloads.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::SessionId => "session.id",
+            Self::SessionCwd => "session.cwd",
+            Self::SessionPermissionMode => "session.permission_mode",
+            Self::ActorKind => "actor.kind",
+            Self::ActorId => "actor.id",
+            Self::TranscriptPath => "transcript.path",
+            Self::SessionEndReason => "session.end_reason",
+            Self::PromptText => "prompt.text",
+            Self::ToolCallId => "tool.call_id",
+            Self::ToolName => "tool.name",
+            Self::WorkflowAlreadyContinued => "workflow.already_continued",
+            Self::WorkflowLastMessage => "workflow.last_message",
+        }
+    }
+
+    /// Primitive input type required from the referenced local tool.
+    #[must_use]
+    pub const fn input_type(self) -> HookBindingType {
+        match self {
+            Self::SessionCwd | Self::TranscriptPath => HookBindingType::Path,
+            Self::WorkflowAlreadyContinued => HookBindingType::Boolean,
+            _ => HookBindingType::String,
+        }
+    }
+}
+
+/// Provider-independent primitive type used to validate a hook binding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HookBindingType {
+    /// UTF-8 scalar text.
+    String,
+    /// Absolute normalized filesystem path.
+    Path,
+    /// Boolean scalar.
+    Boolean,
+}
+
+/// One event-field to local-tool input binding.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HookBindingV1 {
+    /// Referenced local-tool named input.
+    pub input: String,
+    /// Typed portable event field.
+    pub field: HookEventField,
+}
+
+/// Closed portable matcher. Empty tool names match every covered tool call.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HookMatcherV1 {
+    /// Exact provider tool names, combined as an escaped adapter regex.
+    #[serde(default)]
+    pub tool_names: Vec<String>,
+}
+
+/// Scope over which a controlling result is authoritative.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HookBlockingScope {
+    /// Only the one native event instance matched by this descriptor.
+    MatchedEvent,
+}
+
 /// Exact closed portable hook descriptor schema version 1.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -160,6 +512,14 @@ pub struct HookDescriptorV1 {
     pub retry: HookRetryPolicy,
     /// Failure audience.
     pub error_visibility: HookErrorVisibility,
+    /// Portable exact-name filter.
+    #[serde(default)]
+    pub matcher: HookMatcherV1,
+    /// Typed event fields mapped to the referenced tool's named inputs.
+    #[serde(default)]
+    pub bindings: Vec<HookBindingV1>,
+    /// Bounded scope for controlling decisions.
+    pub blocking_scope: HookBlockingScope,
     /// Explicit optional fallback; absent for required hooks.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fallback: Option<HookFallback>,
@@ -178,6 +538,46 @@ pub fn validate_descriptor(descriptor: &HookDescriptorV1) -> Result<(), String> 
     }
     if !(100..=120_000).contains(&descriptor.timeout_ms) {
         return Err("hook.timeout_ms must be between 100 and 120000".to_owned());
+    }
+    if descriptor.matcher.tool_names.len() > 256 || descriptor.bindings.len() > 256 {
+        return Err("hook matcher and bindings accept at most 256 entries".to_owned());
+    }
+    let mut tool_names = descriptor.matcher.tool_names.clone();
+    tool_names.sort();
+    tool_names.dedup();
+    if tool_names.len() != descriptor.matcher.tool_names.len()
+        || tool_names.iter().any(|name| {
+            name.is_empty()
+                || name.len() > 512
+                || name.chars().any(|character| character.is_control())
+        })
+    {
+        return Err("hook matcher tool_names must be unique bounded exact names".to_owned());
+    }
+    if descriptor.subject != HookSubject::ToolCall && !tool_names.is_empty() {
+        return Err("hook matcher tool_names are valid only for tool_call events".to_owned());
+    }
+    let mut inputs = descriptor
+        .bindings
+        .iter()
+        .map(|binding| binding.input.as_str())
+        .collect::<Vec<_>>();
+    inputs.sort_unstable();
+    if inputs.windows(2).any(|pair| pair[0] == pair[1])
+        || descriptor
+            .bindings
+            .iter()
+            .any(|binding| !is_input_name(&binding.input))
+    {
+        return Err("hook binding inputs must be unique lower snake-case values".to_owned());
+    }
+    for binding in &descriptor.bindings {
+        if !field_available(descriptor.subject, descriptor.phase, binding.field) {
+            return Err(format!(
+                "hook field `{}` is unavailable for this event",
+                binding.field.as_str()
+            ));
+        }
     }
     if !effect_supported(
         HookProvider::Claude,
@@ -220,6 +620,25 @@ pub fn validate_descriptor(descriptor: &HookDescriptorV1) -> Result<(), String> 
     Ok(())
 }
 
+fn field_available(subject: HookSubject, phase: HookPhase, field: HookEventField) -> bool {
+    match field {
+        HookEventField::SessionId | HookEventField::SessionCwd | HookEventField::ActorKind => true,
+        HookEventField::SessionPermissionMode => phase != HookPhase::End,
+        HookEventField::ActorId => true,
+        HookEventField::TranscriptPath => {
+            matches!(subject, HookSubject::Session | HookSubject::Workflow)
+        }
+        HookEventField::SessionEndReason => {
+            subject == HookSubject::Session && phase == HookPhase::End
+        }
+        HookEventField::PromptText => subject == HookSubject::UserPrompt,
+        HookEventField::ToolCallId | HookEventField::ToolName => subject == HookSubject::ToolCall,
+        HookEventField::WorkflowAlreadyContinued | HookEventField::WorkflowLastMessage => {
+            subject == HookSubject::Workflow && phase == HookPhase::CompletionAttempt
+        }
+    }
+}
+
 fn is_local_id(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 128
@@ -229,6 +648,65 @@ fn is_local_id(value: &str) -> bool {
         && !value.starts_with('-')
         && !value.ends_with('-')
         && !value.contains("--")
+}
+
+fn is_input_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.as_bytes()[0].is_ascii_lowercase()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+        && !value.ends_with('_')
+        && !value.contains("__")
+}
+
+/// Compute the complete hook-specific approval contract.
+#[must_use]
+pub fn contract_hash(
+    source_ref: &str,
+    descriptor: &HookDescriptorV1,
+    tool_source_ref: &str,
+    tool_contract_hash: &str,
+) -> String {
+    let mut hash = Sha256::new();
+    hash.update(b"dalo-hook-contract-v1\0");
+    hash_value(&mut hash, source_ref);
+    hash_value(&mut hash, tool_source_ref);
+    hash_value(&mut hash, tool_contract_hash);
+    hash_value(&mut hash, &descriptor.schema_version.to_string());
+    hash_value(&mut hash, &format!("{:?}", descriptor.subject));
+    hash_value(&mut hash, &format!("{:?}", descriptor.phase));
+    hash_value(&mut hash, &format!("{:?}", descriptor.effect));
+    hash_value(&mut hash, &format!("{:?}", descriptor.requirement));
+    hash_value(&mut hash, &descriptor.timeout_ms.to_string());
+    hash_value(&mut hash, &format!("{:?}", descriptor.failure_policy));
+    hash_value(&mut hash, &format!("{:?}", descriptor.retry));
+    hash_value(&mut hash, &format!("{:?}", descriptor.error_visibility));
+    hash_value(&mut hash, &format!("{:?}", descriptor.blocking_scope));
+    hash_value(&mut hash, &format!("{:?}", descriptor.fallback));
+    let mut tool_names = descriptor.matcher.tool_names.clone();
+    tool_names.sort();
+    for name in tool_names {
+        hash_value(&mut hash, &format!("matcher:{name}"));
+    }
+    let mut bindings = descriptor.bindings.clone();
+    bindings.sort();
+    for binding in bindings {
+        hash_value(
+            &mut hash,
+            &format!("binding:{}:{}", binding.input, binding.field.as_str()),
+        );
+    }
+    hash.finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+fn hash_value(hash: &mut Sha256, value: &str) {
+    hash.update((value.len() as u64).to_le_bytes());
+    hash.update(value.as_bytes());
 }
 
 /// Provider mapping quality retained by plans and fixtures.
@@ -500,6 +978,18 @@ fn effect_supported(
     }
 }
 
+/// Whether one verified provider adapter preserves this descriptor's event/effect pair.
+#[must_use]
+pub fn provider_supports_descriptor(provider: HookProvider, descriptor: &HookDescriptorV1) -> bool {
+    native_event(provider, descriptor.subject, descriptor.phase).is_some()
+        && effect_supported(
+            provider,
+            descriptor.subject,
+            descriptor.phase,
+            descriptor.effect,
+        )
+}
+
 fn native_event(
     provider: HookProvider,
     subject: HookSubject,
@@ -536,7 +1026,7 @@ pub struct PortableHookResult {
 }
 
 /// Bounded effect output vocabulary.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PortableHookOutput {
     /// No control output.
@@ -586,6 +1076,269 @@ pub struct ComposedHookOutcome {
     pub continue_workflow: bool,
     /// Composition conflicts that fail closed for controlling effects.
     pub conflicts: Vec<String>,
+}
+
+/// Provider-native hook entries plus the immutable dispatcher manifest.
+#[derive(Debug, Clone, Serialize)]
+pub struct NativeHookProjection {
+    /// Provider receiving the native entries.
+    pub provider: HookProvider,
+    /// Exact verified provider baseline.
+    pub provider_version: String,
+    /// Hash-addressed dispatcher projection identity.
+    pub fingerprint: String,
+    /// Number of independently approved portable hooks represented.
+    pub portable_hooks: usize,
+    /// Native hook groups keyed by provider event name.
+    pub hooks: BTreeMap<String, Vec<Value>>,
+    /// Closed dispatcher manifest stored under the Dalo store.
+    pub dispatcher_manifest: Value,
+}
+
+/// Compile approved hook contracts without writing or running anything.
+pub fn compile_native_projection(
+    paths: &StorePaths,
+    provider: HookProvider,
+    provider_version: &str,
+    dalo_executable: &Path,
+    statuses: &[HookStatusReport],
+) -> DaloResult<NativeHookProjection> {
+    if provider_version != provider.baseline() {
+        return Err(DaloError::StateError {
+            reason: format!(
+                "{provider:?} version `{provider_version}` is unverified; expected `{}`",
+                provider.baseline()
+            ),
+        });
+    }
+    let mut approved = statuses.iter().collect::<Vec<_>>();
+    approved.sort_by(|left, right| left.hook.source_ref.cmp(&right.hook.source_ref));
+    if let Some(status) = approved
+        .iter()
+        .find(|status| status.state != HookTrustState::Ready)
+    {
+        return Err(DaloError::StateError {
+            reason: format!(
+                "hook `{}` is not projectable: {}",
+                status.hook.source_ref, status.diagnostic
+            ),
+        });
+    }
+    let mut grouped: BTreeMap<(String, Option<String>), Vec<&HookStatusReport>> = BTreeMap::new();
+    for status in &approved {
+        let descriptor = &status.hook.descriptor;
+        if !effect_supported(
+            provider,
+            descriptor.subject,
+            descriptor.phase,
+            descriptor.effect,
+        ) {
+            if descriptor.requirement == HookRequirement::Optional
+                && descriptor.fallback == Some(HookFallback::Omit)
+            {
+                continue;
+            }
+            return Err(DaloError::StateError {
+                reason: format!(
+                    "hook `{}` has no verified {provider:?} mapping",
+                    status.hook.source_ref
+                ),
+            });
+        }
+        let matcher = exact_matcher(&descriptor.matcher.tool_names);
+        for event in native_event(provider, descriptor.subject, descriptor.phase)
+            .expect("supported descriptor has a native event")
+            .split('|')
+        {
+            grouped
+                .entry((event.to_owned(), matcher.clone()))
+                .or_default()
+                .push(status);
+        }
+    }
+    let represented = grouped
+        .values()
+        .flat_map(|statuses| {
+            statuses
+                .iter()
+                .map(|status| status.hook.source_ref.as_str())
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    let manifest_hooks = approved
+        .iter()
+        .filter(|status| represented.contains(status.hook.source_ref.as_str()))
+        .map(|status| {
+            let descriptor = &status.hook.descriptor;
+            json!({
+                "identity": status.hook.source_ref,
+                "contract_hash": status.hook.contract_hash,
+                "tool": status.hook.tool_source_ref,
+                "tool_contract_hash": status.hook.tool_contract_hash,
+                "tool_root": paths.tools_dir.join("sha256").join(&status.hook.tool_contract_hash),
+                "tool_contract": status.tool,
+                "descriptor": descriptor,
+            })
+        })
+        .collect::<Vec<_>>();
+    let groups = grouped
+        .iter()
+        .enumerate()
+        .map(|(index, ((event, matcher), statuses))| {
+            json!({
+                "id": format!("group-{index:04}"),
+                "event": event,
+                "matcher": matcher,
+                "hooks": statuses
+                    .iter()
+                    .map(|status| status.hook.source_ref.as_str())
+                    .collect::<Vec<_>>(),
+            })
+        })
+        .collect::<Vec<_>>();
+    let dispatcher_manifest = json!({
+        "schema_version": 1,
+        "provider": provider,
+        "provider_version": provider_version,
+        "hooks": manifest_hooks,
+        "groups": groups,
+    });
+    let manifest_bytes = serde_json::to_vec(&dispatcher_manifest)?;
+    let fingerprint = Sha256::digest(&manifest_bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    let mut hooks: BTreeMap<String, Vec<Value>> = BTreeMap::new();
+    for (index, ((event, matcher), event_hooks)) in grouped.into_iter().enumerate() {
+        let timeout_ms = event_hooks
+            .iter()
+            .map(|status| status.hook.descriptor.timeout_ms)
+            .min()
+            .unwrap_or(100);
+        let timeout_seconds = timeout_ms.div_ceil(1_000).max(1);
+        let arguments = vec![
+            "--store".to_owned(),
+            paths.root.to_string_lossy().into_owned(),
+            "hook".to_owned(),
+            "dispatch".to_owned(),
+            "--provider".to_owned(),
+            match provider {
+                HookProvider::Codex => "codex".to_owned(),
+                HookProvider::Claude => "claude".to_owned(),
+            },
+            "--projection".to_owned(),
+            fingerprint.clone(),
+            "--event".to_owned(),
+            event.clone(),
+            "--group".to_owned(),
+            format!("group-{index:04}"),
+        ];
+        let handler = match provider {
+            HookProvider::Claude => json!({
+                "type": "command",
+                "command": dalo_executable,
+                "args": arguments,
+                "timeout": timeout_seconds,
+            }),
+            HookProvider::Codex => {
+                let mut posix = vec![crate::error::shell_quote_path(dalo_executable)];
+                posix.extend(arguments.iter().map(|argument| shell_quote_data(argument)));
+                json!({
+                    "type": "command",
+                    "command": posix.join(" "),
+                    "commandWindows": powershell_encoded_command(dalo_executable, &arguments),
+                    "timeout": timeout_seconds,
+                })
+            }
+        };
+        let mut group = serde_json::Map::new();
+        if let Some(matcher) = matcher {
+            group.insert("matcher".to_owned(), Value::String(matcher));
+        }
+        group.insert("hooks".to_owned(), Value::Array(vec![handler]));
+        hooks.entry(event).or_default().push(Value::Object(group));
+    }
+    Ok(NativeHookProjection {
+        provider,
+        provider_version: provider_version.to_owned(),
+        fingerprint,
+        portable_hooks: represented.len(),
+        hooks,
+        dispatcher_manifest,
+    })
+}
+
+fn exact_matcher(names: &[String]) -> Option<String> {
+    if names.is_empty() {
+        return None;
+    }
+    let mut names = names.to_vec();
+    names.sort();
+    Some(format!(
+        "^(?:{})$",
+        names
+            .iter()
+            .map(|name| regex_escape(name))
+            .collect::<Vec<_>>()
+            .join("|")
+    ))
+}
+
+fn regex_escape(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        if matches!(
+            character,
+            '.' | '+' | '*' | '?' | '(' | ')' | '|' | '[' | ']' | '{' | '}' | '^' | '$' | '\\'
+        ) {
+            escaped.push('\\');
+        }
+        escaped.push(character);
+    }
+    escaped
+}
+
+fn shell_quote_data(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn powershell_encoded_command(executable: &Path, arguments: &[String]) -> String {
+    let mut script = format!("& '{}'", executable.to_string_lossy().replace('\'', "''"));
+    for argument in arguments {
+        script.push_str(" '");
+        script.push_str(&argument.replace('\'', "''"));
+        script.push('\'');
+    }
+    let bytes = script
+        .encode_utf16()
+        .flat_map(u16::to_le_bytes)
+        .collect::<Vec<_>>();
+    format!(
+        "powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand {}",
+        base64(&bytes)
+    )
+}
+
+fn base64(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut output = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let first = chunk[0];
+        let second = chunk.get(1).copied().unwrap_or(0);
+        let third = chunk.get(2).copied().unwrap_or(0);
+        output.push(ALPHABET[(first >> 2) as usize] as char);
+        output.push(ALPHABET[(((first & 0x03) << 4) | (second >> 4)) as usize] as char);
+        output.push(if chunk.len() > 1 {
+            ALPHABET[(((second & 0x0f) << 2) | (third >> 6)) as usize] as char
+        } else {
+            '='
+        });
+        output.push(if chunk.len() > 2 {
+            ALPHABET[(third & 0x3f) as usize] as char
+        } else {
+            '='
+        });
+    }
+    output
 }
 
 /// Compose matching outputs independently of provider completion order.
@@ -653,6 +1406,10 @@ pub fn compose_results(effect: HookEffect, results: &[PortableHookResult]) -> Co
 mod tests {
     use super::*;
     use std::collections::BTreeSet;
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::PathBuf;
+    use tempfile::TempDir;
 
     fn valid_descriptor() -> HookDescriptorV1 {
         HookDescriptorV1 {
@@ -667,8 +1424,71 @@ mod tests {
             failure_policy: HookFailurePolicy::FailClosed,
             retry: HookRetryPolicy::Never,
             error_visibility: HookErrorVisibility::ModelAndUser,
+            matcher: HookMatcherV1 {
+                tool_names: vec!["Bash".to_owned()],
+            },
+            bindings: vec![HookBindingV1 {
+                input: "tool_name".to_owned(),
+                field: HookEventField::ToolName,
+            }],
+            blocking_scope: HookBlockingScope::MatchedEvent,
             fallback: None,
         }
+    }
+
+    fn approval_fixture() -> (TempDir, StorePaths, PathBuf) {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let root = temp.path().join("store");
+        store::init_store(root.clone(), false).expect("store should initialize");
+        let paths = StorePaths::new(root);
+        let package = paths.local_dir.join("plugins/quality");
+        fs::create_dir_all(package.join("bin")).expect("tool directory should exist");
+        fs::write(
+            package.join(crate::plugin::PLUGIN_FILE),
+            r#"schema_version = 1
+[plugin]
+name = "quality"
+description = "Quality policy"
+
+[[tool]]
+schema_version = 1
+id = "detector"
+entry = "bin/detect"
+runtime = "executable"
+platforms = ["macos", "linux"]
+argv = ["--cwd", "${input.cwd}"]
+cwd = "tool_root"
+capabilities = ["filesystem_read"]
+availability = "required"
+
+[[tool.inputs]]
+name = "cwd"
+type = "path"
+required = true
+
+[[hook]]
+schema_version = 1
+id = "protect-shell"
+tool = "detector"
+subject = "tool_call"
+phase = "before"
+effect = "allow_deny"
+requirement = "required"
+timeout_ms = 2000
+failure_policy = "fail_closed"
+retry = "never"
+error_visibility = "model_and_user"
+blocking_scope = "matched_event"
+bindings = [{ input = "cwd", field = "session.cwd" }]
+matcher = { tool_names = ["Bash"] }
+"#,
+        )
+        .expect("manifest should write");
+        let entry = package.join("bin/detect");
+        fs::write(&entry, b"#!/bin/sh\nexit 0\n").expect("entry should write");
+        fs::set_permissions(&entry, fs::Permissions::from_mode(0o755))
+            .expect("entry should be executable");
+        (temp, paths, package)
     }
 
     fn assert_fixture_document(document: &str, provider: HookProvider) {
@@ -799,6 +1619,8 @@ mod tests {
         descriptor.subject = HookSubject::Session;
         descriptor.phase = HookPhase::End;
         descriptor.effect = HookEffect::Observe;
+        descriptor.matcher = HookMatcherV1::default();
+        descriptor.bindings.clear();
         assert!(validate_descriptor(&descriptor).is_err());
         descriptor.failure_policy = HookFailurePolicy::Report;
         validate_descriptor(&descriptor).expect("session observation should report failures");
@@ -810,5 +1632,200 @@ mod tests {
         descriptor.subject = HookSubject::Session;
         descriptor.phase = HookPhase::Before;
         assert!(validate_descriptor(&descriptor).is_err());
+    }
+
+    #[test]
+    fn hook_approval_is_separate_and_invalidated_by_matcher_drift() {
+        let (_temp, paths, package) = approval_fixture();
+        let hook_id = "local:quality#hook:protect-shell";
+        let tool_id = "local:quality#tool:detector";
+
+        assert_eq!(
+            show(&paths, hook_id).unwrap().state,
+            HookTrustState::ToolUnavailable
+        );
+        assert!(approve(&paths, hook_id, false).is_err());
+        tool::approve(&paths, tool_id, false).expect("tool should be separately approved");
+        assert_eq!(
+            show(&paths, hook_id).unwrap().state,
+            HookTrustState::PendingApproval
+        );
+        approve(&paths, hook_id, false).expect("hook should be independently approved");
+        assert_eq!(show(&paths, hook_id).unwrap().state, HookTrustState::Ready);
+
+        let manifest_path = package.join(crate::plugin::PLUGIN_FILE);
+        let manifest = fs::read_to_string(&manifest_path).unwrap();
+        fs::write(
+            &manifest_path,
+            manifest.replace("[\"Bash\"]", "[\"Write\"]"),
+        )
+        .unwrap();
+        assert_eq!(
+            show(&paths, hook_id).unwrap().state,
+            HookTrustState::HashDrift
+        );
+    }
+
+    #[test]
+    fn hook_approval_dry_run_and_revocation_are_scoped() {
+        let (_temp, paths, _package) = approval_fixture();
+        let hook_id = "local:quality#hook:protect-shell";
+        let tool_id = "local:quality#tool:detector";
+        tool::approve(&paths, tool_id, false).unwrap();
+
+        let dry_run = approve(&paths, hook_id, true).unwrap();
+        assert!(dry_run.dry_run);
+        assert_eq!(
+            show(&paths, hook_id).unwrap().state,
+            HookTrustState::PendingApproval
+        );
+        approve(&paths, hook_id, false).unwrap();
+        revoke(&paths, hook_id, false).unwrap();
+        assert_eq!(
+            show(&paths, hook_id).unwrap().state,
+            HookTrustState::PendingApproval
+        );
+        assert_eq!(tool::show(&paths, tool_id).unwrap().state, ToolState::Ready);
+    }
+
+    #[test]
+    fn source_advancement_of_the_tool_invalidates_both_approval_boundaries() {
+        let (_temp, paths, package) = approval_fixture();
+        let hook_id = "local:quality#hook:protect-shell";
+        let tool_id = "local:quality#tool:detector";
+        tool::approve(&paths, tool_id, false).unwrap();
+        approve(&paths, hook_id, false).unwrap();
+
+        fs::write(package.join("bin/detect"), b"#!/bin/sh\nexit 7\n").unwrap();
+        assert_eq!(
+            tool::show(&paths, tool_id).unwrap().state,
+            ToolState::HashDrift
+        );
+        assert_eq!(
+            show(&paths, hook_id).unwrap().state,
+            HookTrustState::ToolUnavailable
+        );
+
+        tool::approve(&paths, tool_id, false).unwrap();
+        assert_eq!(
+            show(&paths, hook_id).unwrap().state,
+            HookTrustState::HashDrift
+        );
+    }
+
+    #[test]
+    fn one_approved_hook_projects_to_codex_and_claude_without_data_interpolation() {
+        let (_temp, paths, _package) = approval_fixture();
+        let hook_id = "local:quality#hook:protect-shell";
+        tool::approve(&paths, "local:quality#tool:detector", false).unwrap();
+        approve(&paths, hook_id, false).unwrap();
+        let mut status = show(&paths, hook_id).unwrap();
+        status.hook.descriptor.matcher.tool_names =
+            vec!["PowerShell|Bash $(touch nope); \"quoted\" Ω".to_owned()];
+        let executable = Path::new("/Program Files/Dalo & Co/dalo.exe");
+
+        let codex = compile_native_projection(
+            &paths,
+            HookProvider::Codex,
+            CODEX_HOOK_BASELINE,
+            executable,
+            &[status.clone()],
+        )
+        .unwrap();
+        let claude = compile_native_projection(
+            &paths,
+            HookProvider::Claude,
+            CLAUDE_HOOK_BASELINE,
+            executable,
+            &[status],
+        )
+        .unwrap();
+
+        let codex_group = &codex.hooks["PreToolUse"][0];
+        assert_eq!(
+            codex_group["matcher"],
+            "^(?:PowerShell\\|Bash \\$\\(touch nope\\); \"quoted\" Ω)$"
+        );
+        let codex_handler = &codex_group["hooks"][0];
+        assert!(
+            codex_handler["command"]
+                .as_str()
+                .unwrap()
+                .starts_with("'/Program Files/Dalo & Co/dalo.exe' ")
+        );
+        assert!(
+            codex_handler["commandWindows"]
+                .as_str()
+                .unwrap()
+                .starts_with("powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand ")
+        );
+        assert!(
+            !codex_handler["commandWindows"]
+                .as_str()
+                .unwrap()
+                .contains("Dalo & Co")
+        );
+        assert!(
+            !codex_handler["command"]
+                .as_str()
+                .unwrap()
+                .contains("touch nope")
+        );
+
+        let claude_handler = &claude.hooks["PreToolUse"][0]["hooks"][0];
+        assert_eq!(
+            claude_handler["command"],
+            executable.to_string_lossy().as_ref()
+        );
+        assert!(claude_handler["args"].is_array());
+        assert!(
+            !claude_handler["args"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|argument| argument
+                    .as_str()
+                    .is_some_and(|value| value.contains("touch nope")))
+        );
+    }
+
+    #[test]
+    fn unverified_provider_version_blocks_projection() {
+        let (_temp, paths, _package) = approval_fixture();
+        let error = compile_native_projection(
+            &paths,
+            HookProvider::Codex,
+            "0.148.0",
+            Path::new("/usr/bin/dalo"),
+            &[],
+        )
+        .expect_err("version drift must block");
+        assert!(error.to_string().contains("unverified"));
+    }
+
+    #[test]
+    fn windows_launcher_encodes_spaces_quotes_metacharacters_newlines_and_unicode() {
+        let cases = [
+            r#"C:\Program Files\Dalo\dalo.exe"#,
+            r#"C:\quote'and\"double.exe"#,
+            r#"C:\meta&|<>^%!\dalo.exe"#,
+            "C:\\line\nbreak\\dalo.exe",
+            r#"C:\Unicode Ω 雪\dalo.exe"#,
+            r#"C:\-EncodedCommand-shaped\dalo.exe"#,
+        ];
+        for executable in cases {
+            let command = powershell_encoded_command(
+                Path::new(executable),
+                &["--projection".to_owned(), "aa".repeat(32)],
+            );
+            let encoded = command
+                .strip_prefix("powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand ")
+                .unwrap();
+            assert!(encoded.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/' | b'=')
+            }));
+            assert!(!command.contains(executable));
+            assert!(!command.contains("cmd.exe"));
+        }
     }
 }

@@ -284,6 +284,44 @@ working directory, platform, availability, or capabilities requires approval
 again. An unrelated plugin README change retains the approval and is still
 visible through the changed whole-package provenance hash.
 
+An approved tool can be bound to a portable hook through a second, independent
+approval. The binding is typed and cannot change the tool-owned argv template:
+
+```toml
+[[hook]]
+schema_version = 1
+id = "check-shell"
+tool = "detector"
+subject = "tool_call"
+phase = "before"
+effect = "allow_deny"
+requirement = "required"
+timeout_ms = 2000
+failure_policy = "fail_closed"
+retry = "never"
+error_visibility = "model_and_user"
+blocking_scope = "matched_event"
+bindings = [{ input = "path", field = "session.cwd" }]
+matcher = { tool_names = ["Bash"] }
+```
+
+```sh
+dalo hook list
+dalo hook show company:review-workflow#hook:check-shell
+dalo approve hook company:review-workflow#hook:check-shell
+dalo sync --dry-run
+dalo sync
+dalo approve revoke hook company:review-workflow#hook:check-shell
+```
+
+The hook approval covers the exact tool hash, event, effect, matcher, typed
+bindings, timeout, failure behavior, and blocking scope. Sync projects only
+selected and independently approved hooks into structurally owned Codex or
+Claude entries. Provider event JSON travels over stdin to Dalo's dispatcher;
+it is never interpolated into a shell command. Native files use compare-and-swap
+and preserve foreign settings, while `status` and `doctor` report disabled,
+managed-only, unverified, drifted, conflicted, and revoked states separately.
+
 ### Adopt what works locally
 
 Agents often create useful skills directly in their own folders. Dalo can copy

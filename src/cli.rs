@@ -1,7 +1,7 @@
 //! Command-line parser and handlers.
 
 use std::fs;
-use std::io::{self, IsTerminal};
+use std::io::{self, IsTerminal, Read};
 use std::path::PathBuf;
 
 use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
@@ -17,6 +17,9 @@ use crate::catalog;
 use crate::config;
 use crate::doctor;
 use crate::error::{DaloError, DaloResult};
+use crate::hook;
+use crate::hook_dispatch;
+use crate::hook_sync;
 use crate::instructions;
 use crate::inventory;
 use crate::lockfile;
@@ -108,6 +111,8 @@ pub enum Command {
     Plugin(PluginCommand),
     /// Inspect and audit inert plugin-local executable contracts.
     Tool(ToolCommand),
+    /// Inspect inert plugin-local hook contracts and independent trust state.
+    Hook(HookCommand),
     /// Explain the read-only effective plugin configuration for linked targets.
     Plan(PlanArgs),
     /// Author and maintain a team repository's `dalo.toml`.
@@ -204,6 +209,68 @@ pub enum ToolSubcommand {
 pub struct ToolReferenceArgs {
     /// Tool in `<source>:<plugin>#tool:<id>` form.
     pub tool: String,
+}
+
+/// `hook` command group.
+#[derive(Debug, Args)]
+pub struct HookCommand {
+    /// Read-only hook-contract subcommand.
+    #[command(subcommand)]
+    pub command: HookSubcommand,
+}
+
+/// Inert hook inspection commands. None install or execute a hook.
+#[derive(Debug, Subcommand)]
+pub enum HookSubcommand {
+    /// List validated plugin-local hooks and trust state.
+    List,
+    /// Show one exact source-qualified hook contract.
+    Show(HookReferenceArgs),
+    /// Execute one verified hash-addressed native hook projection.
+    #[command(hide = true)]
+    Dispatch(HookDispatchArgs),
+}
+
+/// One source-qualified plugin-local hook identity.
+#[derive(Debug, Args)]
+pub struct HookReferenceArgs {
+    /// Hook in `<source>:<plugin>#hook:<id>` form.
+    pub hook: String,
+}
+
+/// Internal native-provider dispatcher arguments.
+#[derive(Debug, Args)]
+pub struct HookDispatchArgs {
+    /// Provider that emitted the native event.
+    #[arg(long, value_enum)]
+    pub provider: HookProviderArg,
+    /// Exact projection content hash.
+    #[arg(long)]
+    pub projection: String,
+    /// Native event name.
+    #[arg(long)]
+    pub event: String,
+    /// Exact native matcher group.
+    #[arg(long)]
+    pub group: String,
+}
+
+/// Provider names accepted by the internal hook dispatcher.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum HookProviderArg {
+    /// OpenAI Codex CLI.
+    Codex,
+    /// Anthropic Claude Code.
+    Claude,
+}
+
+impl From<HookProviderArg> for hook::HookProvider {
+    fn from(value: HookProviderArg) -> Self {
+        match value {
+            HookProviderArg::Codex => Self::Codex,
+            HookProviderArg::Claude => Self::Claude,
+        }
+    }
 }
 
 /// Passive plugin selection commands.
@@ -327,6 +394,8 @@ pub enum ApproveSubcommand {
     Agent(AgentApprovalArgs),
     /// Approve and immutably stage one exact plugin-local tool contract.
     Tool(ToolApprovalArgs),
+    /// Approve one exact hook contract after its tool is ready.
+    Hook(HookApprovalArgs),
     /// Trust every skill from one configured source.
     Source(SourceApprovalArgs),
     /// Trust skills owned by one source-qualified author.
@@ -369,6 +438,14 @@ pub struct AgentApprovalArgs {
 #[derive(Debug, Args)]
 pub struct ToolApprovalArgs {
     /// Tool in `<source>:<plugin>#tool:<id>` form.
+    #[arg(value_name = "VALUE")]
+    pub value: String,
+}
+
+/// One exact plugin-local hook approval.
+#[derive(Debug, Args)]
+pub struct HookApprovalArgs {
+    /// Hook in `<source>:<plugin>#hook:<id>` form.
     #[arg(value_name = "VALUE")]
     pub value: String,
 }
@@ -474,7 +551,7 @@ pub struct OrgApprovalArgs {
 /// One approval to revoke.
 #[derive(Debug, Args)]
 pub struct ApprovalRevokeArgs {
-    /// Approval scope: skill, agent, tool, source, author, or org.
+    /// Approval scope: skill, agent, tool, hook, source, author, or org.
     #[arg(value_enum)]
     pub scope: ApprovalScopeArg,
     /// Approval value in the format required by the selected scope.
@@ -490,6 +567,8 @@ pub enum ApprovalScopeArg {
     Agent,
     /// One exact content-bound plugin-local tool contract.
     Tool,
+    /// One exact content-bound plugin-local hook contract.
+    Hook,
     /// Every skill from one configured source.
     Source,
     /// One source-qualified author.
@@ -504,6 +583,7 @@ impl ApprovalScopeArg {
             Self::Skill => "skill",
             Self::Agent => "agent",
             Self::Tool => "tool",
+            Self::Hook => "hook",
             Self::Source => "source",
             Self::Author => "author",
             Self::Org => "org",
@@ -967,6 +1047,7 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         Command::Agent(command) => run_agent(&options, command),
         Command::Plugin(command) => run_plugin(&options, command),
         Command::Tool(command) => run_tool(&options, command),
+        Command::Hook(command) => run_hook(&options, command),
         Command::Plan(args) => run_plan(&options, args),
         Command::Team(command) => run_team(&options, command),
         Command::Status(args) => run_status(&options, args),
@@ -1017,6 +1098,7 @@ fn command_ignores_dry_run(command: &Command) -> bool {
                 command: PluginSubcommand::List | PluginSubcommand::Show(_)
             })
             | Command::Tool(_)
+            | Command::Hook(_)
             | Command::Plan(_)
             | Command::Next
             | Command::Doctor(_)
@@ -1464,6 +1546,77 @@ fn run_tool(options: &GlobalOptions, command: ToolCommand) -> DaloResult<()> {
     Ok(())
 }
 
+fn run_hook(options: &GlobalOptions, command: HookCommand) -> DaloResult<()> {
+    let paths = store::StorePaths::new(options.store.clone());
+    ensure_initialized(&paths)?;
+    match command.command {
+        HookSubcommand::List => {
+            let report = hook::list(&paths)?;
+            if options.json {
+                return print_json(&report);
+            }
+            if report.hooks.is_empty() {
+                println!("no plugin-local hooks discovered");
+            }
+            for item in report.hooks {
+                println!(
+                    "{} state={:?} tool_state={:?} contract=sha256:{}",
+                    item.hook.source_ref, item.state, item.tool_state, item.hook.contract_hash
+                );
+                println!("  {}", item.diagnostic);
+            }
+            for warning in report.warnings {
+                println!("warning {}: {}", warning.path.display(), warning.message);
+            }
+        }
+        HookSubcommand::Show(args) => {
+            let report = hook::show(&paths, &args.hook)?;
+            if options.json {
+                return print_json(&report);
+            }
+            println!("{}", report.hook.source_ref);
+            println!("state: {:?}", report.state);
+            println!("tool state: {:?}", report.tool_state);
+            println!("contract hash: {}", report.hook.contract_hash);
+            println!("tool: {}", report.hook.tool_source_ref);
+            println!("tool contract hash: {}", report.hook.tool_contract_hash);
+            println!(
+                "event: {:?}.{:?} effect={:?}",
+                report.hook.descriptor.subject,
+                report.hook.descriptor.phase,
+                report.hook.descriptor.effect
+            );
+            println!("matcher: {:?}", report.hook.descriptor.matcher);
+            println!("bindings: {:?}", report.hook.descriptor.bindings);
+            println!("diagnostic: {}", report.diagnostic);
+        }
+        HookSubcommand::Dispatch(args) => {
+            let mut input = Vec::new();
+            io::stdin()
+                .take(4 * 1024 * 1024 + 1)
+                .read_to_end(&mut input)?;
+            if input.len() > 4 * 1024 * 1024 {
+                return Err(DaloError::StateError {
+                    reason: "native hook input exceeds 4 MiB".to_owned(),
+                });
+            }
+            let output = hook_dispatch::dispatch(
+                &paths,
+                &hook_dispatch::DispatchRequest {
+                    provider: args.provider.into(),
+                    projection: &args.projection,
+                    event: &args.event,
+                    group: &args.group,
+                },
+                &input,
+            )?;
+            serde_json::to_writer(io::stdout(), &output)?;
+            println!();
+        }
+    }
+    Ok(())
+}
+
 fn run_plan(options: &GlobalOptions, args: PlanArgs) -> DaloResult<()> {
     let report = plan::build_installation_plan(&options.store, args.target.as_deref())?;
     if options.json {
@@ -1481,6 +1634,16 @@ fn run_plan(options: &GlobalOptions, args: PlanArgs) -> DaloResult<()> {
                 tool.tool.source_ref, tool.state, tool.tool.contract_hash
             );
             println!("    {}", tool.diagnostic);
+        }
+    }
+    if !report.hooks.is_empty() {
+        println!("portable hooks (never executed by planning):");
+        for hook in &report.hooks {
+            println!(
+                "  {} state={:?} tool_state={:?} contract=sha256:{}",
+                hook.hook.source_ref, hook.state, hook.tool_state, hook.hook.contract_hash
+            );
+            println!("    {}", hook.diagnostic);
         }
     }
     if report.canonical_plugins.plugins.is_empty() {
@@ -2034,6 +2197,7 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
                 None,
             );
             plan::attach_tool_status(&mut installation_plan, &paths)?;
+            plan::attach_hook_status(&mut installation_plan, &paths)?;
             report.installation_plan = Some(installation_plan);
         }
         if !options.dry_run {
@@ -2057,6 +2221,16 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
                 store::write_user_lock,
             )?;
         }
+        let selected_plugins = live
+            .plugins
+            .plugins
+            .iter()
+            .filter(|plugin| plugin.state == crate::plugin::PluginState::Selected)
+            .map(|plugin| plugin.source_ref.clone())
+            .collect::<Vec<_>>();
+        let target_state = store::read_state(&paths)?;
+        report.hook_targets =
+            hook_sync::reconcile(&paths, &target_state, &selected_plugins, options.dry_run)?;
         Ok(report)
     })();
     let report = match sync_result {
@@ -2392,6 +2566,29 @@ fn sync_review_reason(report: &materialize::SyncReport) -> Option<String> {
             blocked_skills
                 .iter()
                 .map(|blocked| blocked.skill.source_ref.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+
+    let hook_attention = report
+        .hook_targets
+        .iter()
+        .filter(|target| {
+            !matches!(
+                target.state,
+                hook_sync::HookTargetState::Ready | hook_sync::HookTargetState::Planned
+            )
+        })
+        .collect::<Vec<_>>();
+    if !hook_attention.is_empty() {
+        reasons.push(format!(
+            "{} hook target{} need attention ({})",
+            hook_attention.len(),
+            if hook_attention.len() == 1 { "" } else { "s" },
+            hook_attention
+                .iter()
+                .map(|target| target.target.as_str())
                 .collect::<Vec<_>>()
                 .join(", ")
         ));
@@ -3184,6 +3381,20 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
                 }
             }
         }
+        ApproveSubcommand::Hook(args) => {
+            let report = hook::approve(&paths, &args.value, options.dry_run)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                println!(
+                    "{} hook {} (contract {}){}",
+                    report.action,
+                    report.hook,
+                    report.approval_value,
+                    if report.dry_run { " [dry-run]" } else { "" }
+                );
+            }
+        }
         ApproveSubcommand::Source(args) => print_approval_result(
             options,
             approval::grant(&paths, "source", &args.value, options.dry_run)?,
@@ -3203,6 +3414,13 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
                     print_json(&report)?;
                 } else {
                     println!("{} tool {}", report.action, report.tool);
+                }
+            } else if args.scope == ApprovalScopeArg::Hook {
+                let report = hook::revoke(&paths, &args.value, options.dry_run)?;
+                if options.json {
+                    print_json(&report)?;
+                } else {
+                    println!("{} hook {}", report.action, report.hook);
                 }
             } else {
                 print_approval_result(

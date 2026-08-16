@@ -17,6 +17,7 @@ use crate::catalog::{
 };
 use crate::doctor::{DoctorReport, DoctorSeverity};
 use crate::error::DaloResult;
+use crate::hook::HookListReport;
 use crate::instructions::{
     self, DiscoveredPack, InstructionBlockDrift, InstructionPackReport, TopicOverlap,
 };
@@ -60,6 +61,10 @@ pub struct StatusReport {
     pub installation_plan: Option<InstallationPlan>,
     /// Discovered plugin-local executable contracts and exact trust state.
     pub tools: ToolListReport,
+    /// Discovered plugin-local hook contracts and independent trust state.
+    pub hooks: HookListReport,
+    /// Read-only native hook sidecar reconciliation state per linked provider.
+    pub hook_targets: Vec<crate::hook_sync::HookTargetReport>,
     /// Resolution output.
     pub resolution: Resolution,
     /// Dry-run materialization operations that expose target-level blockers.
@@ -315,6 +320,14 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         &audit_degraded_sources,
     )?;
     let tools = crate::tool::list(&paths)?;
+    let hooks = crate::hook::list(&paths)?;
+    let selected_plugin_refs = plugins
+        .plugins
+        .iter()
+        .filter(|plugin| plugin.state == crate::plugin::PluginState::Selected)
+        .map(|plugin| plugin.source_ref.clone())
+        .collect::<Vec<_>>();
+    let hook_targets = crate::hook_sync::reconcile(&paths, &state, &selected_plugin_refs, true)?;
     let mut installation_plan = (!plugins.plugins.is_empty()).then(|| {
         crate::plan::build_from_facts(
             store_root,
@@ -327,6 +340,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
     });
     if let Some(plan) = installation_plan.as_mut() {
         crate::plan::attach_tool_status(plan, &paths)?;
+        crate::plan::attach_hook_status(plan, &paths)?;
     }
     let resolution = materialization.resolution;
     let live_lock =
@@ -381,6 +395,8 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         plugins,
         installation_plan,
         tools,
+        hooks,
+        hook_targets,
         resolution,
         materialization: materialization.operations,
         blocking_audits: audits.blocking,
@@ -772,6 +788,26 @@ pub fn print_status_report(report: &StatusReport) {
             );
             println!("    {}", tool.diagnostic);
         }
+    }
+    if !report.hooks.hooks.is_empty() {
+        println!("portable hooks (inert until sync):");
+        for hook in &report.hooks.hooks {
+            println!(
+                "  {} state={:?} tool_state={:?} contract=sha256:{}",
+                hook.hook.source_ref, hook.state, hook.tool_state, hook.hook.contract_hash
+            );
+            println!("    {}", hook.diagnostic);
+        }
+    }
+    for target in &report.hook_targets {
+        println!(
+            "native hooks {}: state={:?} action={:?} path={} ({})",
+            target.target,
+            target.state,
+            target.action,
+            target.path.display(),
+            target.diagnostic
+        );
     }
     print_autosync_status_report(&report.autosync);
     println!("sources:");
@@ -1223,6 +1259,12 @@ pub fn print_sync_report(report: &SyncReport) {
     } else {
         ""
     };
+    for target in &report.hook_targets {
+        println!(
+            "{prefix}hooks {}: state={:?} action={:?} projected={} ({})",
+            target.target, target.state, target.action, target.projected_hooks, target.diagnostic
+        );
+    }
     for skill in &report.resolution.pending_approval_skills {
         println!(
             "{prefix}pending approval: {} (run: {})",

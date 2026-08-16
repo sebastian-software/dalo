@@ -185,6 +185,20 @@ pub enum DoctorCode {
     ToolReady,
     /// Interrupted tool staging debris is safely outside promoted hashes.
     ToolStagingDebris,
+    /// A hook awaits its independent exact contract approval.
+    HookPendingApproval,
+    /// A hook or its referenced tool contract changed.
+    HookHashDrift,
+    /// A hook's separately approved tool is unavailable.
+    HookToolUnavailable,
+    /// A hook and its referenced tool are independently ready.
+    HookReady,
+    /// A native provider disabled or excludes plugin hook projection.
+    HookProviderDisabled,
+    /// A native provider version/runtime is unavailable or unverified.
+    HookProviderUnverified,
+    /// Native sidecar content conflicts with Dalo ownership state.
+    HookNativeConflict,
     /// Two active instruction packs declare overlapping topics.
     InstructionPackTopicOverlap,
     /// An active instruction pack's rendered block is missing, malformed, or stale.
@@ -270,6 +284,7 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
         check_source_store_debris(&paths, config, &mut findings);
     }
     check_tools(&paths, &mut findings);
+    check_hooks(&paths, &mut findings);
 
     // A corrupt lock is reported by `read_lock`, but resolution/instruction/
     // blocker checks do not depend on it (they re-derive from config/state and
@@ -285,6 +300,9 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
             approvals.is_some(),
             &mut findings,
         );
+    }
+    if let (Some(state), Some(live)) = (state.as_ref(), live_resolution.as_ref()) {
+        check_hook_targets(&paths, state, live, &mut findings);
     }
     check_autosync(&paths, &mut findings);
 
@@ -307,12 +325,91 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
                         None,
                     );
                     let _ = crate::plan::attach_tool_status(&mut plan, &paths);
+                    let _ = crate::plan::attach_hook_status(&mut plan, &paths);
                     plan
                 })
         }
         _ => None,
     };
     finish_report(store_root, findings, installation_plan)
+}
+
+fn check_hooks(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) {
+    let Ok(report) = crate::hook::list(paths) else {
+        return;
+    };
+    for hook in report.hooks {
+        let identity = &hook.hook.source_ref;
+        match hook.state {
+            crate::hook::HookTrustState::Ready => findings.push(ok(
+                DoctorCode::HookReady,
+                format!("hook `{identity}` and its referenced tool are exactly approved"),
+            )),
+            crate::hook::HookTrustState::PendingApproval => findings.push(finding_warning(
+                DoctorCode::HookPendingApproval,
+                format!("hook `{identity}` is pending independent approval"),
+                Some(format!("dalo approve hook {identity}")),
+            )),
+            crate::hook::HookTrustState::HashDrift => findings.push(finding_error(
+                DoctorCode::HookHashDrift,
+                format!("hook `{identity}` changed its security-relevant contract"),
+                Some(format!("dalo hook show {identity}")),
+            )),
+            crate::hook::HookTrustState::ToolUnavailable => findings.push(finding_error(
+                DoctorCode::HookToolUnavailable,
+                format!("hook `{identity}`: {}", hook.diagnostic),
+                Some(format!("dalo approve tool {}", hook.hook.tool_source_ref)),
+            )),
+        }
+    }
+}
+
+fn check_hook_targets(
+    paths: &StorePaths,
+    state: &crate::store::StateFile,
+    live: &crate::resolver::LiveResolution,
+    findings: &mut Vec<DoctorFinding>,
+) {
+    let selected = live
+        .plugins
+        .plugins
+        .iter()
+        .filter(|plugin| plugin.state == crate::plugin::PluginState::Selected)
+        .map(|plugin| plugin.source_ref.clone())
+        .collect::<Vec<_>>();
+    let Ok(reports) = crate::hook_sync::reconcile(paths, state, &selected, true) else {
+        return;
+    };
+    for report in reports {
+        use crate::hook_sync::HookTargetState;
+        match report.state {
+            HookTargetState::Ready | HookTargetState::Planned => {}
+            HookTargetState::Disabled | HookTargetState::ManagedOnly => {
+                findings.push(finding_warning(
+                    DoctorCode::HookProviderDisabled,
+                    format!("{} hooks: {}", report.target, report.diagnostic),
+                    None,
+                ));
+            }
+            HookTargetState::RuntimeMissing | HookTargetState::UnverifiedVersion => {
+                findings.push(finding_error(
+                    DoctorCode::HookProviderUnverified,
+                    format!("{} hooks: {}", report.target, report.diagnostic),
+                    None,
+                ));
+            }
+            HookTargetState::Conflict => findings.push(finding_error(
+                DoctorCode::HookNativeConflict,
+                format!("{} hooks: {}", report.target, report.diagnostic),
+                None,
+            )),
+            HookTargetState::Blocked => findings.push(finding_error(
+                DoctorCode::HookPendingApproval,
+                format!("{} hooks: {}", report.target, report.diagnostic),
+                None,
+            )),
+        }
+    }
 }
 
 fn check_tools(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) {
@@ -1527,6 +1624,13 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::ToolAuditFailed => "tool_audit_failed",
         DoctorCode::ToolReady => "tool_ready",
         DoctorCode::ToolStagingDebris => "tool_staging_debris",
+        DoctorCode::HookPendingApproval => "hook_pending_approval",
+        DoctorCode::HookHashDrift => "hook_hash_drift",
+        DoctorCode::HookToolUnavailable => "hook_tool_unavailable",
+        DoctorCode::HookReady => "hook_ready",
+        DoctorCode::HookProviderDisabled => "hook_provider_disabled",
+        DoctorCode::HookProviderUnverified => "hook_provider_unverified",
+        DoctorCode::HookNativeConflict => "hook_native_conflict",
         DoctorCode::InstructionPackTopicOverlap => "instruction_pack_topic_overlap",
         DoctorCode::InstructionBlockDrift => "instruction_block_drift",
         DoctorCode::CloudSyncedTarget => "cloud_synced_target",

@@ -13,6 +13,7 @@ use sha2::{Digest, Sha256};
 
 use crate::agent::AgentResolution;
 use crate::config::{PluginPolicyDecision, PluginPolicyLayer, UserConfig};
+use crate::hook::{self, HookBindingType, HookDescriptorV1};
 use crate::inventory::SourceInventory;
 use crate::resolver::Resolution;
 use crate::source::SourceConfig;
@@ -71,6 +72,8 @@ pub struct PluginRecord {
     pub members: Vec<PluginMember>,
     /// Validated active local-tool descriptors. Discovery remains inert.
     pub tools: Vec<ToolRecord>,
+    /// Validated hook contracts bound to same-plugin local tools.
+    pub hooks: Vec<HookRecord>,
     /// Ordered plugin dependency declarations.
     pub requires: Vec<PluginDependency>,
     /// Inert provider overlays retained for adapter-specific validation.
@@ -79,8 +82,23 @@ pub struct PluginRecord {
     pub package_hash: String,
 }
 
-/// One validated plugin-local executable contract. Inventory never executes it.
+/// One inert plugin-local hook contract with its exact approval identity.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HookRecord {
+    /// Source-qualified identity, `<source>:<plugin>#hook:<id>`.
+    pub source_ref: String,
+    /// Closed portable hook descriptor.
+    pub descriptor: HookDescriptorV1,
+    /// Exact same-plugin tool identity.
+    pub tool_source_ref: String,
+    /// Referenced invocation-contract hash from #499.
+    pub tool_contract_hash: String,
+    /// Complete security-relevant hook contract hash.
+    pub contract_hash: String,
+}
+
+/// One validated plugin-local executable contract. Inventory never executes it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolRecord {
     /// Descriptor schema version.
     pub schema_version: u32,
@@ -210,7 +228,7 @@ pub enum ToolAvailability {
 }
 
 /// One regular file participating in the tool contract closure.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolFileRecord {
     /// Plugin-root-relative path.
     pub path: String,
@@ -379,7 +397,7 @@ struct Manifest {
     #[serde(default, rename = "tool")]
     tools: Vec<ManifestTool>,
     #[serde(default, rename = "hook")]
-    hooks: Vec<toml::Value>,
+    hooks: Vec<HookDescriptorV1>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -608,12 +626,6 @@ fn scan_package(
             manifest.schema_version
         )));
     }
-    if !manifest.hooks.is_empty() {
-        return Err((
-            PluginInventoryWarningCode::UnsupportedActiveComponentSchema,
-            "hook descriptors require their active-code implementation".to_owned(),
-        ));
-    }
     validate_manifest(package_name, &manifest)?;
     let members = manifest
         .plugin
@@ -630,6 +642,7 @@ fn scan_package(
     validate_member_closure(&members)?;
     let plugin_ref = format!("{source_id}:{package_name}");
     let tools = parse_tools(&plugin_ref, &manifest.tools, &entries)?;
+    let hooks = parse_hooks(&plugin_ref, &manifest.hooks, &tools)?;
     let package_hash = hash_package_files(&entries);
 
     Ok(PluginRecord {
@@ -643,10 +656,107 @@ fn scan_package(
         manifest_file,
         members,
         tools,
+        hooks,
         requires,
         providers: manifest.providers,
         package_hash,
     })
+}
+
+fn parse_hooks(
+    plugin_ref: &str,
+    descriptors: &[HookDescriptorV1],
+    tools: &[ToolRecord],
+) -> Result<Vec<HookRecord>, (PluginInventoryWarningCode, String)> {
+    if descriptors.len() > MAX_LIST_ENTRIES {
+        return Err(invalid(format!(
+            "plugin declares more than {MAX_LIST_ENTRIES} hooks"
+        )));
+    }
+    let mut ids = BTreeSet::new();
+    let mut hooks = Vec::with_capacity(descriptors.len());
+    for descriptor in descriptors {
+        if descriptor.schema_version != 1 {
+            return Err((
+                PluginInventoryWarningCode::UnsupportedActiveComponentSchema,
+                format!(
+                    "hook `{}` uses unsupported descriptor schema {} (supported: 1)",
+                    descriptor.id, descriptor.schema_version
+                ),
+            ));
+        }
+        hook::validate_descriptor(descriptor).map_err(invalid)?;
+        if !ids.insert(descriptor.id.as_str()) {
+            return Err(invalid(format!(
+                "plugin contains duplicate hook ID `{}`",
+                descriptor.id
+            )));
+        }
+        let tool = tools
+            .iter()
+            .find(|candidate| candidate.id == descriptor.tool)
+            .ok_or_else(|| {
+                invalid(format!(
+                    "hook `{}` references missing same-plugin tool `{}`",
+                    descriptor.id, descriptor.tool
+                ))
+            })?;
+        let tool_inputs = tool
+            .inputs
+            .iter()
+            .map(|input| (input.name.as_str(), input))
+            .collect::<BTreeMap<_, _>>();
+        for binding in &descriptor.bindings {
+            let input = tool_inputs.get(binding.input.as_str()).ok_or_else(|| {
+                invalid(format!(
+                    "hook `{}` binds unknown tool input `{}`",
+                    descriptor.id, binding.input
+                ))
+            })?;
+            let expected = match input.kind {
+                ToolInputType::String => Some(HookBindingType::String),
+                ToolInputType::Path => Some(HookBindingType::Path),
+                ToolInputType::Boolean => Some(HookBindingType::Boolean),
+                ToolInputType::Integer => None,
+            };
+            if expected != Some(binding.field.input_type()) {
+                return Err(invalid(format!(
+                    "hook `{}` field `{}` is incompatible with tool input `{}`",
+                    descriptor.id,
+                    binding.field.as_str(),
+                    binding.input
+                )));
+            }
+        }
+        for input in tool.inputs.iter().filter(|input| input.required) {
+            if !descriptor
+                .bindings
+                .iter()
+                .any(|binding| binding.input == input.name)
+            {
+                return Err(invalid(format!(
+                    "hook `{}` does not bind required tool input `{}`",
+                    descriptor.id, input.name
+                )));
+            }
+        }
+        let source_ref = format!("{plugin_ref}#hook:{}", descriptor.id);
+        let contract_hash = hook::contract_hash(
+            &source_ref,
+            descriptor,
+            &tool.source_ref,
+            &tool.contract_hash,
+        );
+        hooks.push(HookRecord {
+            source_ref,
+            descriptor: descriptor.clone(),
+            tool_source_ref: tool.source_ref.clone(),
+            tool_contract_hash: tool.contract_hash.clone(),
+            contract_hash,
+        });
+    }
+    hooks.sort_by(|left, right| left.source_ref.cmp(&right.source_ref));
+    Ok(hooks)
 }
 
 fn invalid(message: impl Into<String>) -> (PluginInventoryWarningCode, String) {
@@ -1573,6 +1683,8 @@ pub struct PluginCandidate {
     pub members: Vec<PluginMember>,
     /// Inert validated local-tool contracts.
     pub tools: Vec<ToolRecord>,
+    /// Inert validated hook contracts.
+    pub hooks: Vec<HookRecord>,
     /// Plugin dependencies.
     pub requires: Vec<PluginDependency>,
     /// Provider overlay names; overlay values remain adapter-private.
@@ -1674,6 +1786,7 @@ fn candidate_summary(record: &PluginRecord) -> PluginCandidate {
         package_hash: record.package_hash.clone(),
         members: record.members.clone(),
         tools: record.tools.clone(),
+        hooks: record.hooks.clone(),
         requires: record.requires.clone(),
         provider_overlays: record.providers.keys().cloned().collect(),
     }
@@ -2678,10 +2791,10 @@ requirement = "optional"
     }
 
     #[test]
-    fn unsupported_hook_descriptors_block_package() {
+    fn unsupported_hook_descriptor_versions_block_package() {
         let temp = TempDir::new().unwrap();
         let manifest = format!(
-            "{}\n[[hook]]\nschema_version = 1\n",
+            "{}\n[[hook]]\nschema_version = 99\nid = \"future\"\ntool = \"detector\"\nsubject = \"tool_call\"\nphase = \"before\"\neffect = \"allow_deny\"\nrequirement = \"required\"\ntimeout_ms = 2000\nfailure_policy = \"fail_closed\"\nretry = \"never\"\nerror_visibility = \"model_and_user\"\nblocking_scope = \"matched_event\"\n",
             valid_manifest("example")
         );
         write_plugin(temp.path(), "example", &manifest);
@@ -2691,6 +2804,41 @@ requirement = "optional"
             inventory.warnings[0].code,
             PluginInventoryWarningCode::UnsupportedActiveComponentSchema
         );
+    }
+
+    #[test]
+    fn hook_descriptor_binds_an_exact_same_plugin_tool_contract() {
+        let temp = TempDir::new().unwrap();
+        let manifest = format!(
+            r#"{}
+
+[[hook]]
+schema_version = 1
+id = "protect-bash"
+tool = "detector"
+subject = "tool_call"
+phase = "before"
+effect = "allow_deny"
+requirement = "required"
+timeout_ms = 2000
+failure_policy = "fail_closed"
+retry = "never"
+error_visibility = "model_and_user"
+blocking_scope = "matched_event"
+bindings = [{{ input = "path", field = "session.cwd" }}]
+matcher = {{ tool_names = ["Bash"] }}
+"#,
+            tool_manifest("example", "\"${input.path}\"")
+        );
+        let package = write_plugin(temp.path(), "example", &manifest);
+        write_tool_files(&package);
+
+        let inventory = scan_source_plugins("team", temp.path());
+        assert!(inventory.warnings.is_empty(), "{:?}", inventory.warnings);
+        let hook = &inventory.plugins[0].hooks[0];
+        assert_eq!(hook.source_ref, "team:example#hook:protect-bash");
+        assert_eq!(hook.tool_source_ref, "team:example#tool:detector");
+        assert_eq!(hook.contract_hash.len(), 64);
     }
 
     fn tool_manifest(name: &str, argv: &str) -> String {
