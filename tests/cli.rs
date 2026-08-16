@@ -6668,7 +6668,7 @@ fn status_json_should_expose_lock_schema_version_field() {
     let report: StatusReportSchema =
         serde_json::from_slice(&output).expect("status JSON should match the status schema");
 
-    assert_eq!(report.lock.schema_version, 2);
+    assert_eq!(report.lock.schema_version, 3);
 }
 
 #[test]
@@ -8991,6 +8991,17 @@ requirement = "required"
     )
     .expect("plugin manifest should be written");
 
+    let before_dry_run = std::fs::read(store.join("config.toml")).unwrap();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--dry-run", "plugin", "select", "local:demo"])
+        .assert()
+        .success();
+    assert_eq!(
+        std::fs::read(store.join("config.toml")).unwrap(),
+        before_dry_run
+    );
     dalo_command()
         .args(["--store"])
         .arg(&store)
@@ -9047,9 +9058,162 @@ requirement = "required"
         .args(["plugin", "unselect", "local:demo"])
         .assert()
         .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["plugin", "unselect", "local:demo"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("unchanged"));
     let config =
         std::fs::read_to_string(store.join("config.toml")).expect("config should be readable");
     assert!(config.contains("version = 2"));
     assert!(!config.contains("direct = [\"local:demo\"]"));
     assert!(config.contains("rule_id = \"skip-demo\""));
+}
+
+#[test]
+fn plugin_plan_should_be_read_only_deterministic_and_explain_shared_codex_claude_target() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let shared_target = temp_dir.path().join("shared-skills");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    for target in ["codex", "claude"] {
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .args(["target", "link", target])
+            .arg(&shared_target)
+            .assert()
+            .success();
+    }
+    let skill = store.join("local/skills/core");
+    std::fs::create_dir_all(&skill).expect("local skill should be created");
+    std::fs::write(skill.join("SKILL.md"), "# Core\n").expect("skill should be written");
+    let agent = store.join("local/agents/reviewer");
+    std::fs::create_dir_all(&agent).expect("local agent should be created");
+    std::fs::write(
+        agent.join("AGENT.md"),
+        "---\nschema_version: 1\nname: reviewer\ndescription: Reviews changes\n---\nReview carefully.\n",
+    )
+    .expect("agent should be written");
+    std::fs::write(
+        store.join("local/instructions/style.md"),
+        "topics: style\n\nKeep changes focused.\n",
+    )
+    .expect("instruction pack should be written");
+    let plugin = store.join("local/plugins/demo");
+    std::fs::create_dir_all(&plugin).expect("plugin should be created");
+    std::fs::write(
+        plugin.join("PLUGIN.toml"),
+        r#"schema_version = 1
+[plugin]
+name = "demo"
+description = "Full passive demo"
+
+[[plugin.members]]
+ref = "skill:core"
+requirement = "required"
+
+[[plugin.members]]
+ref = "agent:reviewer"
+requirement = "optional"
+[plugin.members.fallback]
+kind = "inline"
+skill = "skill:core"
+
+[[plugin.members]]
+ref = "instruction:style"
+requirement = "recommended"
+"#,
+    )
+    .expect("plugin manifest should be written");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["plugin", "select", "local:demo"])
+        .assert()
+        .success();
+
+    let before_config = std::fs::read(store.join("config.toml")).unwrap();
+    let before_lock = std::fs::read(store.join("lock.toml")).unwrap();
+    let before_state = std::fs::read(store.join("state.toml")).unwrap();
+    let first = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "plan"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let second = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "plan"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    assert_eq!(first, second, "plan JSON must be byte-identical");
+    let json: serde_json::Value = serde_json::from_slice(&first).unwrap();
+    assert_eq!(json["schema_version"], 1);
+    assert_eq!(json["destinations"].as_array().unwrap().len(), 1);
+    let logical = json["destinations"][0]["logical_targets"]
+        .as_array()
+        .unwrap();
+    assert_eq!(logical.len(), 2);
+    assert_eq!(logical[0]["id"], "claude");
+    assert_eq!(logical[1]["id"], "codex");
+    assert!(
+        first
+            .windows(b"inactive".len())
+            .any(|bytes| bytes == b"inactive")
+    );
+    assert!(
+        first
+            .windows(b"skill:core".len())
+            .any(|bytes| bytes == b"skill:core")
+    );
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "plugin", "show", "local:demo"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("skill:core"))
+        .stdout(predicate::str::contains("agent:reviewer"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "sync", "--dry-run"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("installation_plan"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("installation_plan"));
+
+    assert_eq!(
+        std::fs::read(store.join("config.toml")).unwrap(),
+        before_config
+    );
+    assert_eq!(std::fs::read(store.join("lock.toml")).unwrap(), before_lock);
+    assert_eq!(
+        std::fs::read(store.join("state.toml")).unwrap(),
+        before_state
+    );
+    assert_eq!(std::fs::read_dir(&shared_target).unwrap().count(), 0);
 }

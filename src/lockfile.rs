@@ -8,13 +8,14 @@ use serde::{Deserialize, Serialize};
 use crate::git;
 use crate::materialize::SyncReport;
 use crate::plugin::{
-    AppliedPluginPolicy, PluginResolution, PluginState, ResolvedPluginMember, SelectionOrigin,
+    AppliedPluginPolicy, PluginResolution, PluginState, ResolvedPluginDependency,
+    ResolvedPluginMember, SelectionOrigin,
 };
 use crate::resolver::{Resolution, UnlinkedReason};
 use crate::source::{SourceConfig, SourceKind};
 
 /// Current persisted user-lock schema version.
-pub const USER_LOCK_SCHEMA_VERSION: u32 = 2;
+pub const USER_LOCK_SCHEMA_VERSION: u32 = 3;
 
 /// Resolved user lock.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -71,6 +72,9 @@ pub struct LockedPlugin {
     pub shadowed_by: Option<String>,
     /// Resolved passive member states.
     pub members: Vec<ResolvedPluginMember>,
+    /// Canonical dependency outcomes.
+    #[serde(default)]
+    pub dependencies: Vec<ResolvedPluginDependency>,
     /// Deterministic coherence blockers.
     pub blocking_reasons: Vec<String>,
 }
@@ -282,6 +286,7 @@ pub fn build_user_lock(
                     state: plugin.state,
                     shadowed_by: plugin.shadowed_by.clone(),
                     members: plugin.members.clone(),
+                    dependencies: plugin.dependencies.clone(),
                     blocking_reasons: plugin.blocking_reasons.clone(),
                 })
                 .collect()
@@ -561,6 +566,7 @@ mod tests {
             degraded_sources: Vec::new(),
             unrefreshed_tracking_sources: Vec::new(),
             unselected_catalogs: Vec::new(),
+            installation_plan: None,
         };
 
         let lock = build_user_lock(&[], &resolution, Some(&report), None);

@@ -28,6 +28,7 @@ pub mod instructions;
 pub mod inventory;
 pub mod lockfile;
 pub mod materialize;
+pub mod plan;
 pub mod plugin;
 pub mod resolver;
 pub mod source;

@@ -23,6 +23,7 @@ use crate::instructions::{
 use crate::inventory::{InventoryWarning, InventoryWarningCode};
 use crate::lockfile::{self, LockDrift, LockDriftCode};
 use crate::materialize::{self, MaterializeOperation, MaterializeOperationStatus, SyncReport};
+use crate::plan::InstallationPlan;
 use crate::plugin::{PluginInventoryWarning, PluginResolution};
 use crate::resolver::{self, Resolution};
 use crate::source::{
@@ -53,6 +54,9 @@ pub struct StatusReport {
     pub plugin_inventory_warnings: Vec<PluginInventoryWarning>,
     /// Target-independent passive plugin resolution.
     pub plugins: PluginResolution,
+    /// Shared typed multi-target planning facts when plugins are selected.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub installation_plan: Option<InstallationPlan>,
     /// Resolution output.
     pub resolution: Resolution,
     /// Dry-run materialization operations that expose target-level blockers.
@@ -263,6 +267,11 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         .collect::<Vec<_>>();
     targets.sort_by(|left, right| left.id.cmp(&right.id));
 
+    let inventories = live
+        .scans
+        .iter()
+        .filter_map(|scan| scan.inventory.clone())
+        .collect::<Vec<_>>();
     let mut plugins = live.plugins;
     let mut live_resolution = live.resolution;
     let audits = audit::audit_active_skills(&paths, &live_resolution, false);
@@ -302,6 +311,16 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         true,
         &audit_degraded_sources,
     )?;
+    let installation_plan = (!plugins.plugins.is_empty()).then(|| {
+        crate::plan::build_from_facts(
+            store_root,
+            &state,
+            &plugins,
+            &inventories,
+            &materialization.operations,
+            None,
+        )
+    });
     let resolution = materialization.resolution;
     let live_lock =
         lockfile::build_user_lock(&config.sources, &live_resolution, None, Some(&plugins));
@@ -353,6 +372,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         agent_inventory_warnings,
         plugin_inventory_warnings,
         plugins,
+        installation_plan,
         resolution,
         materialization: materialization.operations,
         blocking_audits: audits.blocking,

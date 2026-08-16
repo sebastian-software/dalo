@@ -21,6 +21,7 @@ use crate::instructions;
 use crate::inventory;
 use crate::lockfile;
 use crate::materialize;
+use crate::plan;
 use crate::plugin;
 use crate::resolver;
 use crate::source;
@@ -104,6 +105,8 @@ pub enum Command {
     Agent(AgentCommand),
     /// Inspect and select passive portable plugins.
     Plugin(PluginCommand),
+    /// Explain the read-only effective plugin configuration for linked targets.
+    Plan(PlanArgs),
     /// Author and maintain a team repository's `dalo.toml`.
     #[command(
         after_help = "Team commands act on a repository selected with --repo (default: the current directory). The global --store flag is accepted but has no effect here.\n\nExamples:\n  dalo team init company\n  dalo team catalog add marketing https://github.com/coreyhaines31/marketingskills.git --version <commit> --skill +copywriting\n  dalo team catalog skills marketing +copywriting +launch -seo-audit\n  dalo --dry-run team catalog update marketing --from main\n  dalo team show"
@@ -179,12 +182,22 @@ pub struct PluginCommand {
 pub enum PluginSubcommand {
     /// List canonical selected plugin state.
     List,
+    /// Show one exact candidate and its selected closure state.
+    Show(PluginReferenceArgs),
     /// Add one required direct-user selection.
     Select(PluginReferenceArgs),
     /// Remove only the matching direct-user selection.
     Unselect(PluginReferenceArgs),
     /// Retain selected intent but suppress it with an explicit local policy.
     Decline(PluginDeclineArgs),
+}
+
+/// Read-only multi-target installation-plan arguments.
+#[derive(Debug, Args)]
+pub struct PlanArgs {
+    /// Restrict the explanation to one linked logical target.
+    #[arg(long)]
+    pub target: Option<String>,
 }
 
 /// One source-qualified plugin reference.
@@ -911,6 +924,7 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         Command::Source(command) => run_source(&options, command),
         Command::Agent(command) => run_agent(&options, command),
         Command::Plugin(command) => run_plugin(&options, command),
+        Command::Plan(args) => run_plan(&options, args),
         Command::Team(command) => run_team(&options, command),
         Command::Status(args) => run_status(&options, args),
         Command::Next => run_next(&options),
@@ -957,8 +971,9 @@ fn command_ignores_dry_run(command: &Command) -> bool {
             command: AgentSubcommand::List | AgentSubcommand::Show(_)
         }) | Command::Status(_)
             | Command::Plugin(PluginCommand {
-                command: PluginSubcommand::List
+                command: PluginSubcommand::List | PluginSubcommand::Show(_)
             })
+            | Command::Plan(_)
             | Command::Next
             | Command::Doctor(_)
             | Command::Approve(ApproveCommand {
@@ -1153,25 +1168,77 @@ struct PluginMutationReport {
 fn run_plugin(options: &GlobalOptions, command: PluginCommand) -> DaloResult<()> {
     let paths = store::StorePaths::new(options.store.clone());
     ensure_initialized(&paths)?;
-    if matches!(command.command, PluginSubcommand::List) {
+    if matches!(
+        &command.command,
+        PluginSubcommand::List | PluginSubcommand::Show(_)
+    ) {
         let config = store::read_config(&paths)?;
         let approvals = store::read_approvals(&paths)?;
         let live = resolver::resolve_from_config(&config, approvals.approvals);
-        if options.json {
-            return print_json(&live.plugins);
-        }
-        if live.plugins.plugins.is_empty() {
-            println!("no plugins selected");
-        } else {
-            for resolved in &live.plugins.plugins {
-                println!("{} state={:?}", resolved.source_ref, resolved.state);
+        let inventories = live
+            .scans
+            .iter()
+            .filter_map(|scan| scan.inventory.clone())
+            .collect::<Vec<_>>();
+        match command.command {
+            PluginSubcommand::List => {
+                let report = plugin::list_report(&config.sources, &inventories, live.plugins);
+                if options.json {
+                    return print_json(&report);
+                }
+                if report.candidates.is_empty() {
+                    println!("no plugin candidates discovered");
+                }
+                for candidate in &report.candidates {
+                    let state = report
+                        .resolution
+                        .plugins
+                        .iter()
+                        .find(|selected| selected.source_ref == candidate.source_ref)
+                        .map_or("available".to_owned(), |selected| {
+                            format!("{:?}", selected.state).to_lowercase()
+                        });
+                    println!("{} state={state}", candidate.source_ref);
+                }
+                for diagnostic in &report.resolution.diagnostics {
+                    println!(
+                        "warning {:?} {}: {}",
+                        diagnostic.code, diagnostic.subject, diagnostic.message
+                    );
+                }
             }
-        }
-        for diagnostic in &live.plugins.diagnostics {
-            println!(
-                "warning {:?} {}: {}",
-                diagnostic.code, diagnostic.subject, diagnostic.message
-            );
+            PluginSubcommand::Show(args) => {
+                let canonical =
+                    plugin::normalize_plugin_reference(&config, &inventories, &args.plugin)
+                        .map_err(|reason| DaloError::StateError { reason })?;
+                let report = plugin::show_report(&canonical, &inventories, &live.plugins)
+                    .ok_or_else(|| DaloError::StateError {
+                        reason: format!("plugin `{canonical}` disappeared during inventory"),
+                    })?;
+                if options.json {
+                    return print_json(&report);
+                }
+                println!("{}", report.candidate.source_ref);
+                println!("description: {}", report.candidate.description);
+                println!("package hash: {}", report.candidate.package_hash);
+                println!(
+                    "selected: {}",
+                    report
+                        .selected
+                        .as_ref()
+                        .map_or("no".to_owned(), |selected| {
+                            format!("yes ({:?})", selected.state).to_lowercase()
+                        })
+                );
+                for member in &report.candidate.members {
+                    println!(
+                        "  member {} requirement={:?}",
+                        member.reference.as_string(),
+                        member.requirement
+                    );
+                }
+            }
+            _ => unreachable!("read-only plugin command matched above"),
         }
         return Ok(());
     }
@@ -1272,7 +1339,9 @@ fn run_plugin(options: &GlobalOptions, command: PluginCommand) -> DaloResult<()>
                 dry_run: options.dry_run,
             }
         }
-        PluginSubcommand::List => unreachable!("handled as read-only above"),
+        PluginSubcommand::List | PluginSubcommand::Show(_) => {
+            unreachable!("handled as read-only above")
+        }
     };
     if !options.dry_run && report.changed {
         store::write_config(&paths, &config)?;
@@ -1286,6 +1355,50 @@ fn run_plugin(options: &GlobalOptions, command: PluginCommand) -> DaloResult<()>
             report.plugin,
             if report.changed { "" } else { " (unchanged)" }
         );
+    }
+    Ok(())
+}
+
+fn run_plan(options: &GlobalOptions, args: PlanArgs) -> DaloResult<()> {
+    let report = plan::build_installation_plan(&options.store, args.target.as_deref())?;
+    if options.json {
+        return print_json(&report);
+    }
+    println!(
+        "plugin installation plan (schema {}):",
+        report.schema_version
+    );
+    if report.canonical_plugins.plugins.is_empty() {
+        println!("  no plugins selected");
+        return Ok(());
+    }
+    if report.destinations.is_empty() {
+        println!("  no linked target destinations");
+        return Ok(());
+    }
+    for destination in &report.destinations {
+        println!("destination {}:", destination.path.display());
+        for target in &destination.logical_targets {
+            println!("  target {} [{}]", target.id, target.verification_baseline);
+            for plugin in &target.plugins {
+                println!(
+                    "    {} state={:?} compatibility={:?}",
+                    plugin.source_ref, plugin.state, plugin.compatibility
+                );
+                for component in &plugin.components {
+                    println!(
+                        "      {} requirement={:?} state={:?} compatibility={:?}",
+                        component.reference,
+                        component.requirement,
+                        component.canonical_state,
+                        component.compatibility
+                    );
+                    if let Some(remediation) = &component.remediation {
+                        println!("        remediation: {remediation}");
+                    }
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -1763,15 +1876,18 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
         let audits = audit::audit_active_skills(&paths, &live.resolution, !options.dry_run);
         ensure_no_blocking_audits(&audits.blocking)?;
         resolver::degrade_audit_failures(&mut live.resolution, &audits.failures);
-        let active_instruction_refs = previous
-            .as_ref()
-            .map(|lock| {
-                lock.active_instruction_packs
-                    .iter()
-                    .map(|pack| format!("{}:{}", pack.source_id, pack.pack_id))
-                    .collect::<std::collections::BTreeSet<_>>()
-            })
-            .unwrap_or_default();
+        let planning_lock;
+        let lock_for_instructions = if let Some(previous) = previous.as_ref() {
+            previous
+        } else {
+            planning_lock = store::read_user_lock(&paths)?;
+            &planning_lock
+        };
+        let active_instruction_refs = lock_for_instructions
+            .active_instruction_packs
+            .iter()
+            .map(|pack| format!("{}:{}", pack.source_id, pack.pack_id))
+            .collect::<std::collections::BTreeSet<_>>();
         plugin::apply_component_resolution(
             &mut live.plugins,
             &live.resolution,
@@ -1787,6 +1903,22 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
         )?;
         report.unselected_catalogs = unselected_catalogs(&live);
         report.unrefreshed_tracking_sources = unrefreshed_tracking_sources;
+        if options.dry_run && !live.plugins.plugins.is_empty() {
+            let state = store::read_state(&paths)?;
+            let inventories = live
+                .scans
+                .iter()
+                .filter_map(|scan| scan.inventory.clone())
+                .collect::<Vec<_>>();
+            report.installation_plan = Some(plan::build_from_facts(
+                &options.store,
+                &state,
+                &live.plugins,
+                &inventories,
+                &report.operations,
+                None,
+            ));
+        }
         if !options.dry_run {
             let previous = previous
                 .as_ref()
