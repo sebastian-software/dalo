@@ -169,6 +169,22 @@ pub enum DoctorCode {
     SecurityAuditBlocked,
     /// An active skill's deterministic security audit could not be completed.
     SecurityAuditFailed,
+    /// A local tool is awaiting an exact executable-contract approval.
+    ToolPendingApproval,
+    /// A previously approved local-tool contract changed.
+    ToolHashDrift,
+    /// A local tool's required runtime is absent.
+    ToolRuntimeMissing,
+    /// A local tool excludes the current platform.
+    ToolPlatformMismatch,
+    /// A local tool approval was revoked while immutable bytes remain.
+    ToolApprovalRevoked,
+    /// A local tool's immutable staged closure failed verification.
+    ToolAuditFailed,
+    /// A local tool is exactly approved and immutably staged.
+    ToolReady,
+    /// Interrupted tool staging debris is safely outside promoted hashes.
+    ToolStagingDebris,
     /// Two active instruction packs declare overlapping topics.
     InstructionPackTopicOverlap,
     /// An active instruction pack's rendered block is missing, malformed, or stale.
@@ -253,6 +269,7 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
         check_source_inventories(live_resolution.as_ref(), &mut findings);
         check_source_store_debris(&paths, config, &mut findings);
     }
+    check_tools(&paths, &mut findings);
 
     // A corrupt lock is reported by `read_lock`, but resolution/instruction/
     // blocker checks do not depend on it (they re-derive from config/state and
@@ -281,19 +298,91 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
             crate::materialize::materialize(&paths, &live.resolution, true)
                 .ok()
                 .map(|materialization| {
-                    crate::plan::build_from_facts(
+                    let mut plan = crate::plan::build_from_facts(
                         store_root,
                         state,
                         &live.plugins,
                         &inventories,
                         &materialization.operations,
                         None,
-                    )
+                    );
+                    let _ = crate::plan::attach_tool_status(&mut plan, &paths);
+                    plan
                 })
         }
         _ => None,
     };
     finish_report(store_root, findings, installation_plan)
+}
+
+fn check_tools(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) {
+    let Ok(report) = crate::tool::list(paths) else {
+        return;
+    };
+    for tool in report.tools {
+        use crate::tool::ToolState;
+        let identity = &tool.tool.source_ref;
+        match tool.state {
+            ToolState::Ready => findings.push(ok(
+                DoctorCode::ToolReady,
+                format!("tool `{identity}` is exactly approved and immutably staged"),
+            )),
+            ToolState::PendingApproval => findings.push(finding_warning(
+                DoctorCode::ToolPendingApproval,
+                format!("tool `{identity}` is pending exact execution approval"),
+                Some(format!("dalo approve tool {identity}")),
+            )),
+            ToolState::HashDrift => findings.push(finding_error(
+                DoctorCode::ToolHashDrift,
+                format!("tool `{identity}` changed its executable contract"),
+                Some(format!("dalo tool audit {identity}")),
+            )),
+            ToolState::RuntimeMissing => findings.push(finding_error(
+                DoctorCode::ToolRuntimeMissing,
+                format!("tool `{identity}`: {}", tool.diagnostic),
+                None,
+            )),
+            ToolState::PlatformMismatch => findings.push(finding_warning(
+                DoctorCode::ToolPlatformMismatch,
+                format!("tool `{identity}`: {}", tool.diagnostic),
+                None,
+            )),
+            ToolState::Revoked => findings.push(finding_warning(
+                DoctorCode::ToolApprovalRevoked,
+                format!("tool `{identity}` no longer has execution approval"),
+                Some(format!("dalo approve tool {identity}")),
+            )),
+            ToolState::AuditFailure => findings.push(finding_error(
+                DoctorCode::ToolAuditFailed,
+                format!("tool `{identity}` failed immutable closure verification"),
+                Some(format!("dalo tool audit {identity}")),
+            )),
+            ToolState::ApprovedNotStaged => findings.push(finding_error(
+                DoctorCode::ToolAuditFailed,
+                format!("tool `{identity}` is approved but immutable staging is incomplete"),
+                Some(format!("dalo approve tool {identity}")),
+            )),
+        }
+    }
+    let staging_parent = paths.tools_dir.join("sha256");
+    if let Ok(entries) = fs::read_dir(&staging_parent) {
+        for entry in entries.flatten() {
+            if entry
+                .file_name()
+                .to_str()
+                .is_some_and(|name| name.starts_with(".tool-stage-"))
+            {
+                findings.push(finding_warning(
+                    DoctorCode::ToolStagingDebris,
+                    format!(
+                        "interrupted tool staging debris exists at `{}`; it was never promoted or approved",
+                        entry.path().display()
+                    ),
+                    None,
+                ));
+            }
+        }
+    }
 }
 
 fn finish_report(
@@ -1430,6 +1519,14 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::RequiredClosureBlocked => "required_closure_blocked",
         DoctorCode::SecurityAuditBlocked => "security_audit_blocked",
         DoctorCode::SecurityAuditFailed => "security_audit_failed",
+        DoctorCode::ToolPendingApproval => "tool_pending_approval",
+        DoctorCode::ToolHashDrift => "tool_hash_drift",
+        DoctorCode::ToolRuntimeMissing => "tool_runtime_missing",
+        DoctorCode::ToolPlatformMismatch => "tool_platform_mismatch",
+        DoctorCode::ToolApprovalRevoked => "tool_approval_revoked",
+        DoctorCode::ToolAuditFailed => "tool_audit_failed",
+        DoctorCode::ToolReady => "tool_ready",
+        DoctorCode::ToolStagingDebris => "tool_staging_debris",
         DoctorCode::InstructionPackTopicOverlap => "instruction_pack_topic_overlap",
         DoctorCode::InstructionBlockDrift => "instruction_block_drift",
         DoctorCode::CloudSyncedTarget => "cloud_synced_target",

@@ -27,6 +27,7 @@ fn help_should_list_planned_top_level_commands() {
         .stdout(predicate::str::contains("init"))
         .stdout(predicate::str::contains("target"))
         .stdout(predicate::str::contains("source"))
+        .stdout(predicate::str::contains("tool"))
         .stdout(predicate::str::contains("team"))
         .stdout(predicate::str::contains("status"))
         .stdout(predicate::str::contains("next"))
@@ -45,6 +46,129 @@ fn help_should_list_planned_top_level_commands() {
         .stdout(predicate::str::contains(
             "ignored in JSON mode and otherwise noted",
         ));
+}
+
+#[test]
+fn plugin_tool_cli_should_inventory_plan_approve_stage_and_revoke_without_execution() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = store::comparable_path(&temp.path().join("store"));
+    let target = temp.path().join("target");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "link", "generic"])
+        .arg(&target)
+        .assert()
+        .success();
+    let package = store.join("local/plugins/quality");
+    std::fs::create_dir_all(package.join("bin")).unwrap();
+    std::fs::write(
+        package.join("PLUGIN.toml"),
+        r#"schema_version = 1
+[plugin]
+name = "quality"
+description = "Quality tools"
+
+[[tool]]
+schema_version = 1
+id = "detector"
+entry = "bin/detect"
+runtime = "executable"
+platforms = ["macos", "linux"]
+argv = ["--check"]
+cwd = "tool_root"
+capabilities = ["filesystem_read"]
+availability = "required"
+"#,
+    )
+    .unwrap();
+    let entry = package.join("bin/detect");
+    std::fs::write(&entry, "#!/bin/sh\necho EXECUTED > should-not-exist\n").unwrap();
+    std::fs::set_permissions(&entry, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let identity = "local:quality#tool:detector";
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["tool", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(identity))
+        .stdout(predicate::str::contains("PendingApproval"));
+    assert!(!package.join("should-not-exist").exists());
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["plugin", "select", "local:quality"])
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "plan"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(identity))
+        .stdout(predicate::str::contains("pending_approval"));
+    assert!(!package.join("should-not-exist").exists());
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "tool", identity])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("immutable tool root"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["tool", "show", identity])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("state: Ready"));
+    assert!(!package.join("should-not-exist").exists());
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "revoke", "tool", identity])
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["tool", "show", identity])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("state: Revoked"));
+
+    let manifest = std::fs::read_to_string(package.join("PLUGIN.toml")).unwrap();
+    std::fs::write(
+        package.join("PLUGIN.toml"),
+        manifest.replace("runtime = \"executable\"", "runtime = \"node\""),
+    )
+    .unwrap();
+    dalo_command()
+        .env("PATH", "")
+        .args(["--store"])
+        .arg(&store)
+        .args(["tool", "show", identity])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("state: RuntimeMissing"));
+
+    // Restore owner permissions so the temporary test store remains removable.
+    let tools = store.join("tools");
+    for path in [tools.join("sha256"), tools] {
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755));
+    }
 }
 
 #[test]
@@ -1770,7 +1894,7 @@ fn approval_validation_errors_should_match_the_selected_scope() {
         .code(2)
         .stderr(predicate::str::contains("invalid value 'banana'"))
         .stderr(predicate::str::contains(
-            "possible values: skill, agent, source, author, org",
+            "possible values: skill, agent, tool, source, author, org",
         ))
         .stderr(predicate::str::contains("check failed").not());
 

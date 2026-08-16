@@ -29,6 +29,7 @@ use crate::status;
 use crate::store;
 use crate::target;
 use crate::team_manifest;
+use crate::tool;
 use crate::update;
 
 /// Parsed command-line arguments.
@@ -105,6 +106,8 @@ pub enum Command {
     Agent(AgentCommand),
     /// Inspect and select passive portable plugins.
     Plugin(PluginCommand),
+    /// Inspect and audit inert plugin-local executable contracts.
+    Tool(ToolCommand),
     /// Explain the read-only effective plugin configuration for linked targets.
     Plan(PlanArgs),
     /// Author and maintain a team repository's `dalo.toml`.
@@ -142,7 +145,7 @@ pub enum Command {
     Audit(AuditCommand),
     /// Grant, list, and revoke scoped approval records.
     #[command(
-        after_help = "Examples:\n  dalo approve list\n  dalo approve skill public:review-helper\n  dalo approve agent team:reviewer\n  dalo approve source team\n  dalo approve author public:maintainers\n  dalo approve org public:example-org\n  dalo approve revoke skill public:review-helper"
+        after_help = "Examples:\n  dalo approve list\n  dalo approve skill public:review-helper\n  dalo approve agent team:reviewer\n  dalo approve tool team:quality#tool:detector\n  dalo approve source team\n  dalo approve author public:maintainers\n  dalo approve org public:example-org\n  dalo approve revoke tool team:quality#tool:detector"
     )]
     Approve(ApproveCommand),
     /// Manage instruction packs rendered into instruction files.
@@ -175,6 +178,32 @@ pub struct PluginCommand {
     /// Plugin selection subcommand.
     #[command(subcommand)]
     pub command: PluginSubcommand,
+}
+
+/// `tool` command group.
+#[derive(Debug, Args)]
+pub struct ToolCommand {
+    /// Read-only local-tool subcommand.
+    #[command(subcommand)]
+    pub command: ToolSubcommand,
+}
+
+/// Inert tool inspection commands. None of these execute a tool.
+#[derive(Debug, Subcommand)]
+pub enum ToolSubcommand {
+    /// List validated plugin-local tools and trust state.
+    List,
+    /// Show one exact source-qualified tool contract.
+    Show(ToolReferenceArgs),
+    /// Re-read and hash the executable closure without running it.
+    Audit(ToolReferenceArgs),
+}
+
+/// One source-qualified plugin-local tool identity.
+#[derive(Debug, Args)]
+pub struct ToolReferenceArgs {
+    /// Tool in `<source>:<plugin>#tool:<id>` form.
+    pub tool: String,
 }
 
 /// Passive plugin selection commands.
@@ -296,6 +325,8 @@ pub enum ApproveSubcommand {
     Skill(SkillApprovalArgs),
     /// Approve one source-qualified canonical agent package.
     Agent(AgentApprovalArgs),
+    /// Approve and immutably stage one exact plugin-local tool contract.
+    Tool(ToolApprovalArgs),
     /// Trust every skill from one configured source.
     Source(SourceApprovalArgs),
     /// Trust skills owned by one source-qualified author.
@@ -330,6 +361,14 @@ pub struct SkillApprovalArgs {
 #[derive(Debug, Args)]
 pub struct AgentApprovalArgs {
     /// Agent in `<source>:<name>` format, for example `team:reviewer`.
+    #[arg(value_name = "VALUE")]
+    pub value: String,
+}
+
+/// One exact local-tool execution approval.
+#[derive(Debug, Args)]
+pub struct ToolApprovalArgs {
+    /// Tool in `<source>:<plugin>#tool:<id>` form.
     #[arg(value_name = "VALUE")]
     pub value: String,
 }
@@ -435,7 +474,7 @@ pub struct OrgApprovalArgs {
 /// One approval to revoke.
 #[derive(Debug, Args)]
 pub struct ApprovalRevokeArgs {
-    /// Approval scope: skill, agent, source, author, or org.
+    /// Approval scope: skill, agent, tool, source, author, or org.
     #[arg(value_enum)]
     pub scope: ApprovalScopeArg,
     /// Approval value in the format required by the selected scope.
@@ -449,6 +488,8 @@ pub enum ApprovalScopeArg {
     Skill,
     /// One source-qualified canonical agent package.
     Agent,
+    /// One exact content-bound plugin-local tool contract.
+    Tool,
     /// Every skill from one configured source.
     Source,
     /// One source-qualified author.
@@ -462,6 +503,7 @@ impl ApprovalScopeArg {
         match self {
             Self::Skill => "skill",
             Self::Agent => "agent",
+            Self::Tool => "tool",
             Self::Source => "source",
             Self::Author => "author",
             Self::Org => "org",
@@ -924,6 +966,7 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         Command::Source(command) => run_source(&options, command),
         Command::Agent(command) => run_agent(&options, command),
         Command::Plugin(command) => run_plugin(&options, command),
+        Command::Tool(command) => run_tool(&options, command),
         Command::Plan(args) => run_plan(&options, args),
         Command::Team(command) => run_team(&options, command),
         Command::Status(args) => run_status(&options, args),
@@ -973,6 +1016,7 @@ fn command_ignores_dry_run(command: &Command) -> bool {
             | Command::Plugin(PluginCommand {
                 command: PluginSubcommand::List | PluginSubcommand::Show(_)
             })
+            | Command::Tool(_)
             | Command::Plan(_)
             | Command::Next
             | Command::Doctor(_)
@@ -1237,6 +1281,12 @@ fn run_plugin(options: &GlobalOptions, command: PluginCommand) -> DaloResult<()>
                         member.requirement
                     );
                 }
+                for tool in &report.candidate.tools {
+                    println!(
+                        "  tool {} runtime={:?} contract=sha256:{}",
+                        tool.source_ref, tool.runtime, tool.contract_hash
+                    );
+                }
             }
             _ => unreachable!("read-only plugin command matched above"),
         }
@@ -1359,6 +1409,61 @@ fn run_plugin(options: &GlobalOptions, command: PluginCommand) -> DaloResult<()>
     Ok(())
 }
 
+fn run_tool(options: &GlobalOptions, command: ToolCommand) -> DaloResult<()> {
+    let paths = store::StorePaths::new(options.store.clone());
+    ensure_initialized(&paths)?;
+    match command.command {
+        ToolSubcommand::List => {
+            let report = tool::list(&paths)?;
+            if options.json {
+                return print_json(&report);
+            }
+            if report.tools.is_empty() {
+                println!("no plugin-local tools discovered");
+            }
+            for item in report.tools {
+                println!(
+                    "{} state={:?} contract=sha256:{}",
+                    item.tool.source_ref, item.state, item.tool.contract_hash
+                );
+                println!("  {}", item.diagnostic);
+            }
+            for warning in report.warnings {
+                println!("warning {}: {}", warning.path.display(), warning.message);
+            }
+        }
+        ToolSubcommand::Show(args) => {
+            let report = tool::show(&paths, &args.tool)?;
+            if options.json {
+                return print_json(&report);
+            }
+            println!("{}", report.tool.source_ref);
+            println!("state: {:?}", report.state);
+            println!("contract hash: {}", report.tool.contract_hash);
+            println!("plugin package hash: {}", report.plugin_package_hash);
+            println!("entry: {} ({:?})", report.tool.entry, report.tool.runtime);
+            println!("argv: {:?}", report.tool.argv);
+            println!("capabilities: {:?}", report.tool.capabilities);
+            println!("diagnostic: {}", report.diagnostic);
+        }
+        ToolSubcommand::Audit(args) => {
+            let report = tool::audit(&paths, &args.tool)?;
+            if options.json {
+                return print_json(&report);
+            }
+            println!(
+                "tool audit {}: {}",
+                report.tool,
+                if report.passed { "passed" } else { "failed" }
+            );
+            for finding in report.findings {
+                println!("  {finding}");
+            }
+        }
+    }
+    Ok(())
+}
+
 fn run_plan(options: &GlobalOptions, args: PlanArgs) -> DaloResult<()> {
     let report = plan::build_installation_plan(&options.store, args.target.as_deref())?;
     if options.json {
@@ -1368,6 +1473,16 @@ fn run_plan(options: &GlobalOptions, args: PlanArgs) -> DaloResult<()> {
         "plugin installation plan (schema {}):",
         report.schema_version
     );
+    if !report.tools.is_empty() {
+        println!("local tools (never executed by planning):");
+        for tool in &report.tools {
+            println!(
+                "  {} state={:?} contract=sha256:{}",
+                tool.tool.source_ref, tool.state, tool.tool.contract_hash
+            );
+            println!("    {}", tool.diagnostic);
+        }
+    }
     if report.canonical_plugins.plugins.is_empty() {
         println!("  no plugins selected");
         return Ok(());
@@ -1910,14 +2025,16 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
                 .iter()
                 .filter_map(|scan| scan.inventory.clone())
                 .collect::<Vec<_>>();
-            report.installation_plan = Some(plan::build_from_facts(
+            let mut installation_plan = plan::build_from_facts(
                 &options.store,
                 &state,
                 &live.plugins,
                 &inventories,
                 &report.operations,
                 None,
-            ));
+            );
+            plan::attach_tool_status(&mut installation_plan, &paths)?;
+            report.installation_plan = Some(installation_plan);
         }
         if !options.dry_run {
             let previous = previous
@@ -3050,6 +3167,23 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
             options,
             approval::grant(&paths, "agent", &args.value, options.dry_run)?,
         )?,
+        ApproveSubcommand::Tool(args) => {
+            let report = tool::approve(&paths, &args.value, options.dry_run)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                println!(
+                    "{} tool {} (contract {}){}",
+                    report.action,
+                    report.tool,
+                    report.approval_value,
+                    if report.dry_run { " [dry-run]" } else { "" }
+                );
+                if let Some(path) = report.staged_path {
+                    println!("immutable tool root: {}", path.display());
+                }
+            }
+        }
         ApproveSubcommand::Source(args) => print_approval_result(
             options,
             approval::grant(&paths, "source", &args.value, options.dry_run)?,
@@ -3062,10 +3196,21 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
             options,
             approval::grant(&paths, "org", &args.value, options.dry_run)?,
         )?,
-        ApproveSubcommand::Revoke(args) => print_approval_result(
-            options,
-            approval::revoke(&paths, args.scope.as_str(), &args.value, options.dry_run)?,
-        )?,
+        ApproveSubcommand::Revoke(args) => {
+            if args.scope == ApprovalScopeArg::Tool {
+                let report = tool::revoke(&paths, &args.value, options.dry_run)?;
+                if options.json {
+                    print_json(&report)?;
+                } else {
+                    println!("{} tool {}", report.action, report.tool);
+                }
+            } else {
+                print_approval_result(
+                    options,
+                    approval::revoke(&paths, args.scope.as_str(), &args.value, options.dry_run)?,
+                )?;
+            }
+        }
     }
     Ok(())
 }
