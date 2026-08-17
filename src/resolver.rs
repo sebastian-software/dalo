@@ -7,7 +7,7 @@ use serde::Serialize;
 
 use crate::agent::{self, AgentResolution};
 use crate::config::UserConfig;
-use crate::inventory::{self, InventoryWarningCode, SkillRecord, SourceInventory};
+use crate::inventory::{self, InventoryWarningCode, SkillDelivery, SkillRecord, SourceInventory};
 use crate::plugin::{self, PluginResolution, PluginState};
 use crate::source::{SourceConfig, SourceKind};
 use crate::store::ApprovalRecord;
@@ -82,6 +82,8 @@ pub struct ResolvedSkill {
     pub source_priority: i32,
     /// Skill directory path.
     pub path: PathBuf,
+    /// Target-aware delivery strategy retained from inventory.
+    pub delivery: SkillDelivery,
     /// Whether this is a local override over another source.
     pub local_override: bool,
     /// Same-source requirements retained for link-time closure checks.
@@ -312,6 +314,7 @@ pub fn inventory_degrades_source_for_removal(inventory: &SourceInventory) -> boo
             InventoryWarningCode::UnreadablePath
                 | InventoryWarningCode::InvalidSlotName
                 | InventoryWarningCode::SkippedSymlink
+                | InventoryWarningCode::InvalidDelivery
         )
     })
 }
@@ -356,6 +359,7 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
                     source_kind: source.kind,
                     source_priority: source.priority,
                     path: skill.path.clone(),
+                    delivery: skill.delivery.clone(),
                     local_override: false,
                     requires: skill.requires.clone(),
                 },
@@ -1514,6 +1518,7 @@ mod tests {
             slot_name: slot_name.to_owned(),
             path: PathBuf::from(format!("/tmp/{source_id}/{slot_name}")),
             skill_file: PathBuf::from(format!("/tmp/{source_id}/{slot_name}/SKILL.md")),
+            delivery: SkillDelivery::Direct,
             description: None,
             requires: Vec::new(),
             owners: Vec::new(),

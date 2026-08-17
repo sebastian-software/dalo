@@ -483,7 +483,9 @@ dalo --dry-run sync
 dalo --json sync
 ```
 
-JSON output shape: `SyncReport`.
+JSON output shape: `SyncReport`. `deliveries[]` records each logical skill and
+physical target slot with `target_ids`, `mode`, optional `provider`, selected
+`artifact_path`, content `fingerprint`, and any fail-closed `reason`.
 
 `dalo --dry-run sync` does not fetch tracking team sources, so it prints a
 note when upstream changes are not reflected in its plan. Run a real
@@ -1192,7 +1194,7 @@ normal approval workflows.
 
 ## `lock.toml`
 
-Schema version: `schema_version = 1`.
+Schema version: `schema_version = 4`.
 
 This file is Dalo's resolved user lock. `sync` rewrites source snapshots, active skills, pending approvals, unlinked skills, and target materialization summaries. Instruction commands preserve and update active instruction-pack entries.
 
@@ -1212,7 +1214,7 @@ Important record fields:
 | Record | Fields |
 | --- | --- |
 | `LockedSource` | `id`, `kind`, `path`, optional `commit` |
-| `LockedSkill` | `source_ref`, `slot_name`, optional `id`, `source_id`, `source_kind`, optional `reason` |
+| `LockedSkill` | `source_ref`, `slot_name`, optional `id`, `source_id`, `source_kind`, optional `delivery` provenance/fingerprints, optional `reason` |
 | `LockedTargetMaterialization` | `link_path`, optional `desired_path`, `kind`, `status`, optional `reason` |
 | `LockedInstructionPack` | `pack_id`, `target`, `source_id`, optional `commit`, optional `version` |
 
@@ -1228,7 +1230,7 @@ Top-level fields:
 | --- | --- |
 | `targets[]` | Logical target links with `id`, `path`, `canonical_path`, and `enabled`. |
 | `materialization_dirs[]` | Canonical physical directories and the logical target IDs sharing each directory. |
-| `owned_skills[]` | Symlinks Dalo owns: `target_id`, `slot_name`, `link_path`, `store_path`. |
+| `owned_skills[]` | Symlinks Dalo owns: `target_id`, `slot_name`, `link_path`, `store_path`, plus additive delivery mode/provider/fingerprint provenance. |
 | `protected_skills[]` | Unmanaged target slots kept by the user: `target_id`, `slot_name`. Legacy path-based entries migrate on read. |
 
 Unknown fields in this internal state model are retained across reads and writes for downgrade safety after additive changes. Breaking changes still require a schema-version bump. User-authored configuration remains strict.
@@ -1295,6 +1297,43 @@ If `name` is absent, the directory name is the slot name. Duplicate slot names w
 metadata symlink whose resolved target escapes the checkout is skipped and
 reported as `skipped_symlink`. This keeps skill identity and approval metadata
 contained within the source being scanned.
+
+## `DELIVERY.toml` Provider Builds
+
+Direct delivery remains the default: without a `DELIVERY.toml`, Dalo links the
+discovered skill directory unchanged to every target.
+
+A logical skill can instead select existing, provider-specific build artifacts
+from the same pinned source checkout:
+
+```toml
+schema_version = 1
+kind = "prebuilt"
+universal_fallback = false
+
+[providers]
+codex = ".agents/skills/impeccable"
+claude = ".claude/skills/impeccable"
+cursor = ".cursor/skills/impeccable"
+```
+
+Provider paths are relative to the source checkout. Each artifact must be a
+real directory inside that checkout, contain `SKILL.md`, and contain no
+symlinks or special filesystem entries. Dalo fingerprints every artifact,
+audits it, and links the matching artifact for each logical target. Artifact
+directories referenced by a delivery manifest are not inventoried again as
+independent logical skills.
+
+An omitted provider mapping blocks that target. Set `universal_fallback = true`
+only when the logical skill directory is intentionally valid for every unmapped
+provider. When multiple logical targets share one physical target directory,
+their selected artifact must be identical; otherwise Dalo reports a conflict
+instead of choosing one implicitly.
+
+`sync`, `status`, and `doctor` expose delivery selections in JSON. Human-readable
+`sync` and `status` output lists prebuilt selections and blocked mappings. The
+user lock records the manifest, provider paths, and fingerprints; changing a
+provider artifact therefore appears as `skill_delivery_changed` lock drift.
 
 ## `AGENT.md` Canonical Packages
 
