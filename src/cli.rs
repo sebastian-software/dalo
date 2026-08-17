@@ -3273,7 +3273,35 @@ fn run_source_remove(
         options.dry_run,
         &degraded_sources,
     )?;
+    let removed_source_ids = std::iter::once(plan.report.source_id.clone())
+        .chain(plan.report.cascaded_sources.iter().cloned())
+        .collect::<std::collections::BTreeSet<_>>();
+    let instruction_removal = match instructions::remove_active_packs_for_sources(
+        paths,
+        &previous_user_lock.active_instruction_packs,
+        &removed_source_ids,
+        options.dry_run,
+    ) {
+        Ok(removal) => removal,
+        Err(error) => {
+            if let Some(rollback) = rollback
+                && let Err(rollback_error) = rollback.restore(paths)
+            {
+                return Err(DaloError::Io(std::io::Error::other(format!(
+                    "{error}; additionally failed to roll back source removal: {rollback_error}"
+                ))));
+            }
+            return Err(error);
+        }
+    };
     populate_source_remove_report(&mut plan.report, &materialization, &previous_user_lock);
+    plan.report.deactivated_instruction_packs = instruction_removal.operations;
+    for operation in &plan.report.deactivated_instruction_packs {
+        if !plan.report.affected_paths.contains(&operation.target) {
+            plan.report.affected_paths.push(operation.target.clone());
+        }
+    }
+    plan.report.affected_paths.sort();
 
     if options.dry_run {
         if options.json {
@@ -3290,7 +3318,7 @@ fn run_source_remove(
         Some(&materialization),
         Some(&live.plugins),
     );
-    user_lock.active_instruction_packs = previous_user_lock.active_instruction_packs.clone();
+    user_lock.active_instruction_packs = instruction_removal.active_instruction_packs;
 
     let commit = (|| -> DaloResult<()> {
         source_remove_boundary("config")?;
@@ -3304,7 +3332,14 @@ fn run_source_remove(
         Ok(())
     })();
     if let Err(error) = commit {
-        return rollback_remove(paths, &plan, &previous_user_lock, rollback, error);
+        return rollback_remove(
+            paths,
+            &plan,
+            &previous_user_lock,
+            rollback,
+            instruction_removal.rollback,
+            error,
+        );
     }
 
     // Metadata and materialization are committed. Checkout deletion is garbage
@@ -3428,9 +3463,15 @@ fn rollback_remove(
     plan: &source::SourceRemovalPlan,
     original_user_lock: &lockfile::UserLock,
     rollback: Option<materialize::MaterializationRollback>,
+    instruction_rollback: Option<instructions::InstructionRefreshRollback>,
     error: DaloError,
 ) -> DaloResult<()> {
     let mut rollback_errors = Vec::new();
+    if let Some(rollback) = instruction_rollback
+        && let Err(restore_error) = rollback.restore()
+    {
+        rollback_errors.push(restore_error.to_string());
+    }
     if let Err(restore_error) = store::write_config(paths, &plan.original_config) {
         rollback_errors.push(restore_error.to_string());
     }
