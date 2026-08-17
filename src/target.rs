@@ -208,24 +208,29 @@ pub fn registry() -> &'static [TargetRegistryEntry] {
 pub fn resolve_instruction_files(
     target_ids: &[String],
 ) -> DaloResult<Vec<InstructionFileDestination>> {
-    let home = env::var_os("HOME")
-        .map(PathBuf::from)
-        .ok_or_else(|| DaloError::StateError {
-            reason: "HOME is required to resolve native instruction files".to_owned(),
-        })?;
+    let default_config_dir = |name: &str| {
+        env::var_os("HOME")
+            .map(PathBuf::from)
+            .map(|home| home.join(name))
+            .ok_or_else(|| DaloError::StateError {
+                reason: "HOME is required to resolve native instruction files".to_owned(),
+            })
+    };
     let mut destinations = BTreeMap::<PathBuf, Vec<String>>::new();
 
     for target_id in target_ids {
         registry_entry(target_id)?;
         let path = match target_id.as_str() {
-            "codex" => env::var_os("CODEX_HOME")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| home.join(".codex"))
-                .join("AGENTS.md"),
-            "claude" => env::var_os("CLAUDE_CONFIG_DIR")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| home.join(".claude"))
-                .join("CLAUDE.md"),
+            "codex" => match env::var_os("CODEX_HOME") {
+                Some(path) => PathBuf::from(path),
+                None => default_config_dir(".codex")?,
+            }
+            .join("AGENTS.md"),
+            "claude" => match env::var_os("CLAUDE_CONFIG_DIR") {
+                Some(path) => PathBuf::from(path),
+                None => default_config_dir(".claude")?,
+            }
+            .join("CLAUDE.md"),
             _ => {
                 return Err(DaloError::InvalidArgument {
                     reason: format!(
