@@ -1322,7 +1322,9 @@ real directory inside that checkout, contain `SKILL.md`, and contain no
 symlinks or special filesystem entries. Dalo fingerprints every artifact,
 audits it, and links the matching artifact for each logical target. Artifact
 directories referenced by a delivery manifest are not inventoried again as
-independent logical skills.
+independent logical skills. The provider ID `universal` is reserved for the
+canonical artifact selected by `universal_fallback` and cannot be declared in
+the `providers` table.
 
 An omitted provider mapping blocks that target. Set `universal_fallback = true`
 only when the logical skill directory is intentionally valid for every unmapped

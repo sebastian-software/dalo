@@ -611,7 +611,13 @@ pub fn degrade_audit_failures(
 
     let failure_by_ref = failures
         .iter()
-        .map(|failure| (failure.source_ref.as_str(), failure.reason.as_str()))
+        .map(|failure| {
+            let logical_ref = failure
+                .source_ref
+                .rsplit_once('@')
+                .map_or(failure.source_ref.as_str(), |(logical_ref, _)| logical_ref);
+            (logical_ref, failure.reason.as_str())
+        })
         .collect::<BTreeMap<_, _>>();
     let mut unavailable = Vec::new();
     let mut active = Vec::new();
@@ -1105,6 +1111,31 @@ mod tests {
         assert!(resolution.diagnostics.iter().any(|diagnostic| {
             diagnostic.code == ResolutionDiagnosticCode::AuditFailed
                 && diagnostic.source_ref.as_deref() == Some("local:beta")
+        }));
+    }
+
+    #[test]
+    fn provider_audit_failure_should_remove_the_logical_skill() {
+        let mut resolution = resolve_with(
+            vec![source("local", SourceKind::Local, 0)],
+            vec![inventory("local", vec![skill("local", "review")])],
+            Vec::new(),
+        );
+
+        degrade_audit_failures(
+            &mut resolution,
+            &[crate::audit::ActiveAuditFailure {
+                source_ref: "local:review@codex".to_owned(),
+                source_id: "local".to_owned(),
+                reason: "provider `codex`: permission denied".to_owned(),
+            }],
+        );
+
+        assert!(resolution.active_skills.is_empty());
+        assert!(resolution.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == ResolutionDiagnosticCode::AuditFailed
+                && diagnostic.source_ref.as_deref() == Some("local:review")
+                && diagnostic.message.contains("provider `codex`")
         }));
     }
 
