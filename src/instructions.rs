@@ -512,10 +512,10 @@ pub fn refresh_active_packs(
 
 /// Remove active managed blocks and lock entries for sources being deleted.
 ///
-/// Malformed or missing blocks are left untouched while their orphan-prone
-/// lock entries are still removed, matching explicit instruction-disable
-/// recovery semantics. Valid blocks across the same physical target are
-/// removed in one conditional write.
+/// Missing blocks drop their stale lock entries. Malformed blocks abort before
+/// any write so the source and lock retain the ownership provenance needed for
+/// recovery. Valid blocks across the same physical target are removed in one
+/// conditional write.
 pub fn remove_active_packs_for_sources(
     paths: &StorePaths,
     active: &[LockedInstructionPack],
@@ -557,12 +557,7 @@ pub fn remove_active_packs_for_sources(
                     "lock_removed".to_owned(),
                     Some("managed block was already missing; removed its lock entry".to_owned()),
                 ),
-                Err(error) => (
-                    "lock_removed".to_owned(),
-                    Some(format!(
-                        "{error}; malformed target left untouched and lock entry removed"
-                    )),
-                ),
+                Err(error) => return Err(error),
             };
             operations.push(InstructionRemovalOperation {
                 source_id: entry.source_id.clone(),

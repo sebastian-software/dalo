@@ -6092,6 +6092,56 @@ fn source_remove_should_deactivate_instruction_packs_without_blocking_future_syn
 }
 
 #[test]
+fn source_remove_should_fail_closed_on_malformed_instruction_block() {
+    let temp = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp.path().join("store");
+    let instruction_target = temp.path().join("AGENTS.md");
+    let repo = temp.path().join("team-repo");
+    std::fs::create_dir_all(repo.join("instructions")).unwrap();
+    std::fs::write(repo.join("instructions/policy.md"), "Team policy.\n").unwrap();
+    create_git_skill_repo(&repo);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    add_source(&store, "company", &repo);
+    std::fs::write(&instruction_target, "# User instructions\n").unwrap();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "company:policy"])
+        .arg(&instruction_target)
+        .assert()
+        .success();
+
+    let malformed = "# User instructions\n\n<!-- dalo:start company:policy -->\nTeam policy.\n";
+    std::fs::write(&instruction_target, malformed).unwrap();
+    let lock_before = read_user_lock(&store);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "remove", "company"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "malformed instruction block for `company:policy`",
+        ));
+
+    assert_eq!(
+        std::fs::read_to_string(&instruction_target).unwrap(),
+        malformed
+    );
+    assert_eq!(read_user_lock(&store), lock_before);
+    let paths = store::StorePaths::new(store.clone());
+    let config = store::read_config(&paths).expect("config should be readable");
+    assert!(config.sources.iter().any(|source| source.id == "company"));
+    assert!(store.join("sources/company").exists());
+}
+
+#[test]
 fn source_remove_failure_should_restore_instruction_target_and_lock() {
     let temp = tempfile::tempdir().expect("tempdir should be created");
     let store = temp.path().join("store");
