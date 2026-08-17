@@ -263,6 +263,11 @@ pub fn scan_source(source_id: &str, source_root: &Path) -> DaloResult<SourceInve
         })
         .collect::<std::collections::BTreeSet<_>>();
     skills.retain(|skill| !provider_artifact_paths.contains(&skill.path));
+    warnings.retain(|warning| {
+        !provider_artifact_paths
+            .iter()
+            .any(|artifact| warning.path.starts_with(artifact))
+    });
 
     skills.sort_by(|left, right| {
         left.slot_name
@@ -1007,6 +1012,11 @@ mod tests {
             fs::write(directory.join(SKILL_FILE), "# Impeccable\n")
                 .expect("skill file should be written");
         }
+        fs::write(
+            claude.join(SKILL_FILE),
+            "---\nprovider-specific: [frontmatter\n---\n# Claude Impeccable\n",
+        )
+        .expect("provider-specific skill file should be written");
         fs::write(
             logical.join(DELIVERY_FILE),
             "schema_version = 1\nkind = \"prebuilt\"\n\n[providers]\ncodex = \"builds/codex/impeccable\"\nclaude = \"builds/claude/impeccable\"\n",
