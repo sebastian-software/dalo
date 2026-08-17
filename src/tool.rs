@@ -160,8 +160,20 @@ pub fn audit(paths: &StorePaths, value: &str) -> DaloResult<ToolAuditReport> {
 /// Aggregated reviews use this as a prepare phase before committing all
 /// separately scoped approval records with one atomic ledger write. The
 /// staged bytes remain inert until the matching content-bound approval exists.
-pub fn prepare_approval(paths: &StorePaths, value: &str) -> DaloResult<PathBuf> {
+pub fn prepare_approval(
+    paths: &StorePaths,
+    value: &str,
+    expected_approval_value: &str,
+) -> DaloResult<PathBuf> {
     let status = show(paths, value)?;
+    if status.approval_value != expected_approval_value {
+        return Err(DaloError::StateError {
+            reason: format!(
+                "tool `{}` changed after review: expected `{expected_approval_value}`, found `{}`",
+                status.tool.source_ref, status.approval_value
+            ),
+        });
+    }
     let audit = audit_status(&status);
     if !audit.passed {
         return Err(DaloError::StateError {

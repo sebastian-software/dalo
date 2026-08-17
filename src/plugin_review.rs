@@ -313,7 +313,14 @@ pub fn commit(
     for id in selected {
         let decision = pending[id.as_str()];
         if decision.kind == ReviewDecisionKind::ToolExecution {
-            crate::tool::prepare_approval(&paths, &decision.component)?;
+            crate::tool::prepare_approval(
+                &paths,
+                &decision.component,
+                decision
+                    .approval_value
+                    .as_deref()
+                    .expect("pending tool approval value"),
+            )?;
         }
     }
 
@@ -409,7 +416,27 @@ fn filter_plan(plan: &mut InstallationPlan, closure: &BTreeSet<String>) {
     });
     plan.native_plugins
         .retain(|report| closure.contains(&report.plugin));
+    // A malformed package cannot be part of the resolved selected closure.
+    // Keeping global warnings here would leak unrelated source inventory into
+    // a root-specific review and make its JSON churn for unrelated plugins.
+    plan.inventory_warnings.clear();
+    let skill_slots = plan
+        .canonical_plugins
+        .plugins
+        .iter()
+        .flat_map(|plugin| &plugin.members)
+        .filter(|member| member.reference.starts_with("skill:"))
+        .filter_map(|member| member.resolved_ref.as_deref())
+        .filter_map(|identity| identity.split_once(':').map(|(_, slot)| slot.to_owned()))
+        .collect::<BTreeSet<_>>();
     for destination in &mut plan.destinations {
+        let allowed_links = skill_slots
+            .iter()
+            .map(|slot| destination.path.join(slot))
+            .collect::<BTreeSet<_>>();
+        destination
+            .portable_operations
+            .retain(|operation| allowed_links.contains(&operation.link_path));
         for target in &mut destination.logical_targets {
             target
                 .plugins
