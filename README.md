@@ -399,12 +399,14 @@ Instruction packs keep reusable team conventions in versioned Markdown and
 render them as clearly marked managed blocks inside agent instruction files.
 
 ```sh
-dalo instructions enable engineering-defaults ~/.agents/AGENTS.md
+dalo instructions enable company:engineering-defaults --target codex --target claude
 dalo instructions list
 ```
 
 Dalo only owns the marked block. Everything else in the file remains untouched,
-and overlapping topics are reported as advisory warnings.
+and overlapping topics are reported as advisory warnings. Codex and Claude
+resolve to their verified user-level instruction files; other agents require an
+explicit file path until their native mapping is verified.
 
 ## Safe by design
 

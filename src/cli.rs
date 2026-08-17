@@ -336,8 +336,22 @@ pub struct InstructionsFileArgs {
     /// Local pack ID or source-qualified `<source>:<pack>` reference.
     pub pack: String,
 
-    /// Target instruction file to render into.
-    pub file: PathBuf,
+    /// Explicit target instruction file to render into.
+    #[arg(
+        value_name = "FILE",
+        required_unless_present = "targets",
+        conflicts_with = "targets"
+    )]
+    pub file: Option<PathBuf>,
+
+    /// Verified logical agent target. Repeat to fan out to several agents.
+    #[arg(
+        long = "target",
+        value_name = "TARGET",
+        required_unless_present = "file",
+        conflicts_with = "file"
+    )]
+    pub targets: Vec<String>,
 }
 
 /// Optional automation check behavior for report commands.
@@ -1894,12 +1908,26 @@ fn run_instructions(options: &GlobalOptions, command: InstructionsCommand) -> Da
             } else {
                 Some(store::StoreLock::acquire(&paths)?)
             };
-            let report =
-                instructions::enable_pack(&paths, &args.pack, &args.file, options.dry_run)?;
-            if options.json {
-                print_json(&report)?;
+            if let Some(file) = args.file {
+                let report = instructions::enable_pack(&paths, &args.pack, &file, options.dry_run)?;
+                if options.json {
+                    print_json(&report)?;
+                } else {
+                    status::print_instruction_pack_report(&report);
+                }
             } else {
-                status::print_instruction_pack_report(&report);
+                let destinations = target::resolve_instruction_files(&args.targets)?;
+                let report = instructions::enable_pack_for_targets(
+                    &paths,
+                    &args.pack,
+                    &destinations,
+                    options.dry_run,
+                )?;
+                if options.json {
+                    print_json(&report)?;
+                } else {
+                    print_instruction_pack_batch_report(&report);
+                }
             }
             Ok(())
         }
@@ -1910,12 +1938,27 @@ fn run_instructions(options: &GlobalOptions, command: InstructionsCommand) -> Da
             } else {
                 Some(store::StoreLock::acquire(&paths)?)
             };
-            let report =
-                instructions::disable_pack(&paths, &args.pack, &args.file, options.dry_run)?;
-            if options.json {
-                print_json(&report)?;
+            if let Some(file) = args.file {
+                let report =
+                    instructions::disable_pack(&paths, &args.pack, &file, options.dry_run)?;
+                if options.json {
+                    print_json(&report)?;
+                } else {
+                    status::print_instruction_pack_report(&report);
+                }
             } else {
-                status::print_instruction_pack_report(&report);
+                let destinations = target::resolve_instruction_files(&args.targets)?;
+                let report = instructions::disable_pack_for_targets(
+                    &paths,
+                    &args.pack,
+                    &destinations,
+                    options.dry_run,
+                )?;
+                if options.json {
+                    print_json(&report)?;
+                } else {
+                    print_instruction_pack_batch_report(&report);
+                }
             }
             Ok(())
         }
@@ -1938,6 +1981,25 @@ fn run_instructions(options: &GlobalOptions, command: InstructionsCommand) -> Da
                 }
             }
             Ok(())
+        }
+    }
+}
+
+fn print_instruction_pack_batch_report(report: &instructions::InstructionPackBatchReport) {
+    for operation in &report.operations {
+        let targets = operation.logical_targets.join(", ");
+        let dry_run = if report.dry_run { " (dry-run)" } else { "" };
+        println!(
+            "{}:{} -> {} [{}]: {}{}",
+            report.source_id,
+            report.pack_id,
+            operation.target.display(),
+            targets,
+            operation.action,
+            dry_run
+        );
+        if let Some(warning) = &operation.warning {
+            println!("  warning: {warning}");
         }
     }
 }
@@ -3843,6 +3905,7 @@ mod tests {
                 source_id: "local".to_owned(),
                 pack_id: "old".to_owned(),
                 target: PathBuf::from("/tmp/old"),
+                logical_targets: Vec::new(),
                 commit: None,
                 version: Some("1".to_owned()),
             }],

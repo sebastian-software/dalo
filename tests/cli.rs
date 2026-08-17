@@ -7497,7 +7497,7 @@ fn status_json_should_expose_lock_schema_version_field() {
     let report: StatusReportSchema =
         serde_json::from_slice(&output).expect("status JSON should match the status schema");
 
-    assert_eq!(report.lock.schema_version, 4);
+    assert_eq!(report.lock.schema_version, 5);
 }
 
 #[test]
@@ -9424,6 +9424,322 @@ fn instructions_enable_should_render_source_qualified_pack_with_commit_provenanc
 }
 
 #[test]
+fn instructions_enable_should_fan_out_source_pack_to_verified_agent_targets() {
+    let temp = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp.path().join("store");
+    let home = temp.path().join("home");
+    let codex_home = home.join("custom-codex");
+    let claude_home = home.join("custom-claude");
+    let repo = temp.path().join("team-repo");
+    std::fs::create_dir_all(&codex_home).expect("codex home should be created");
+    std::fs::create_dir_all(&claude_home).expect("claude home should be created");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::create_dir_all(repo.join("instructions"))
+        .expect("instruction directory should be created");
+    std::fs::write(
+        repo.join("instructions/engineering-defaults.md"),
+        "version: 2\n\nReview security boundaries first.\n",
+    )
+    .expect("source pack should be written");
+    create_git_skill_repo(&repo);
+    add_source(&store, "team", &repo);
+
+    dalo_command()
+        .env("HOME", &home)
+        .env("CODEX_HOME", &codex_home)
+        .env("CLAUDE_CONFIG_DIR", &claude_home)
+        .args(["--store"])
+        .arg(&store)
+        .args([
+            "instructions",
+            "enable",
+            "team:engineering-defaults",
+            "--target",
+            "codex",
+            "--target",
+            "claude",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[claude]"))
+        .stdout(predicate::str::contains("[codex]"));
+
+    for target in [codex_home.join("AGENTS.md"), claude_home.join("CLAUDE.md")] {
+        let rendered = std::fs::read_to_string(target).expect("target should be rendered");
+        assert!(rendered.contains("<!-- dalo:start team:engineering-defaults -->"));
+        assert!(rendered.contains("Review security boundaries first."));
+    }
+    let lock = read_user_lock(&store);
+    assert_eq!(lock.active_instruction_packs.len(), 2);
+    assert!(
+        lock.active_instruction_packs
+            .iter()
+            .all(|entry| entry.source_id == "team" && entry.commit.is_some())
+    );
+    assert_eq!(
+        lock.active_instruction_packs
+            .iter()
+            .map(|entry| entry.logical_targets.clone())
+            .collect::<Vec<_>>(),
+        vec![vec!["claude".to_owned()], vec!["codex".to_owned()]]
+    );
+
+    dalo_command()
+        .env("HOME", &home)
+        .env("CODEX_HOME", &codex_home)
+        .env("CLAUDE_CONFIG_DIR", &claude_home)
+        .args(["--store"])
+        .arg(&store)
+        .args([
+            "instructions",
+            "disable",
+            "team:engineering-defaults",
+            "--target",
+            "codex",
+            "--target",
+            "claude",
+        ])
+        .assert()
+        .success();
+    assert!(read_user_lock(&store).active_instruction_packs.is_empty());
+}
+
+#[test]
+fn instructions_target_dry_run_json_should_show_exact_planned_destinations() {
+    let temp = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp.path().join("store");
+    let home = temp.path().join("home");
+    let codex_home = home.join(".codex");
+    let claude_home = home.join(".claude");
+    std::fs::create_dir_all(&codex_home).expect("codex home should be created");
+    std::fs::create_dir_all(&claude_home).expect("claude home should be created");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::write(
+        store.join("local/instructions/review.md"),
+        "Review carefully.\n",
+    )
+    .expect("local pack should be written");
+
+    let output = dalo_command()
+        .env("HOME", &home)
+        .env_remove("CODEX_HOME")
+        .env_remove("CLAUDE_CONFIG_DIR")
+        .args(["--store"])
+        .arg(&store)
+        .args([
+            "--dry-run",
+            "--json",
+            "instructions",
+            "enable",
+            "review",
+            "--target",
+            "codex",
+            "--target",
+            "claude",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value =
+        serde_json::from_slice(&output).expect("batch report should be valid JSON");
+    let operations = report["operations"]
+        .as_array()
+        .expect("operations should be an array");
+    assert_eq!(operations.len(), 2);
+    let expected_codex = store::comparable_path(&codex_home.join("AGENTS.md"));
+    let expected_claude = store::comparable_path(&claude_home.join("CLAUDE.md"));
+    assert!(operations.iter().any(|operation| {
+        operation["target"] == expected_codex.to_string_lossy().as_ref()
+            && operation["logical_targets"] == serde_json::json!(["codex"])
+    }));
+    assert!(operations.iter().any(|operation| {
+        operation["target"] == expected_claude.to_string_lossy().as_ref()
+            && operation["logical_targets"] == serde_json::json!(["claude"])
+    }));
+    assert!(!codex_home.join("AGENTS.md").exists());
+    assert!(!claude_home.join("CLAUDE.md").exists());
+    assert!(read_user_lock(&store).active_instruction_packs.is_empty());
+}
+
+#[test]
+fn instructions_targets_should_dedupe_a_shared_physical_destination() {
+    let temp = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp.path().join("store");
+    let home = temp.path().join("home");
+    let codex_home = home.join(".codex");
+    let claude_home = home.join(".claude");
+    let shared = home.join("shared-instructions.md");
+    std::fs::create_dir_all(&codex_home).expect("codex home should be created");
+    std::fs::create_dir_all(&claude_home).expect("claude home should be created");
+    std::fs::write(&shared, "# User content\n").expect("shared target should be written");
+    std::os::unix::fs::symlink(&shared, codex_home.join("AGENTS.md"))
+        .expect("codex alias should be created");
+    std::os::unix::fs::symlink(&shared, claude_home.join("CLAUDE.md"))
+        .expect("claude alias should be created");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::write(
+        store.join("local/instructions/review.md"),
+        "Review carefully.\n",
+    )
+    .expect("local pack should be written");
+
+    let output = dalo_command()
+        .env("HOME", &home)
+        .env_remove("CODEX_HOME")
+        .env_remove("CLAUDE_CONFIG_DIR")
+        .args(["--store"])
+        .arg(&store)
+        .args([
+            "--json",
+            "instructions",
+            "enable",
+            "review",
+            "--target",
+            "codex",
+            "--target",
+            "claude",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value =
+        serde_json::from_slice(&output).expect("batch report should be valid JSON");
+    assert_eq!(report["operations"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        report["operations"][0]["logical_targets"],
+        serde_json::json!(["claude", "codex"])
+    );
+    assert_eq!(
+        report["operations"][0]["target"],
+        store::comparable_path(&shared).to_string_lossy().as_ref()
+    );
+    let lock = read_user_lock(&store);
+    assert_eq!(lock.active_instruction_packs.len(), 1);
+    assert_eq!(
+        lock.active_instruction_packs[0].logical_targets,
+        ["claude", "codex"]
+    );
+    let rendered = std::fs::read_to_string(&shared).expect("shared target should be readable");
+    assert_eq!(rendered.matches("<!-- dalo:start review -->").count(), 1);
+}
+
+#[test]
+fn instructions_target_should_fail_closed_without_a_verified_mapping() {
+    let temp = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::write(
+        store.join("local/instructions/review.md"),
+        "Review carefully.\n",
+    )
+    .expect("local pack should be written");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args([
+            "instructions",
+            "enable",
+            "review",
+            "--target",
+            "generic",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "target `generic` has no verified native instruction-file mapping; use an explicit file instead",
+        ));
+    assert!(read_user_lock(&store).active_instruction_packs.is_empty());
+}
+
+#[test]
+fn instructions_target_batch_should_validate_every_destination_before_writing() {
+    let temp = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp.path().join("store");
+    let home = temp.path().join("home");
+    let codex_home = home.join(".codex");
+    let claude_home = home.join(".claude");
+    std::fs::create_dir_all(&codex_home).expect("codex home should be created");
+    std::fs::create_dir_all(&claude_home).expect("claude home should be created");
+    let codex_target = codex_home.join("AGENTS.md");
+    let claude_target = claude_home.join("CLAUDE.md");
+    std::fs::write(
+        &codex_target,
+        "<!-- dalo:start review -->\nmissing end marker\n",
+    )
+    .expect("malformed later target should be written");
+    std::fs::write(&claude_target, "claude user content\n")
+        .expect("clean earlier target should be written");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::write(
+        store.join("local/instructions/review.md"),
+        "Review carefully.\n",
+    )
+    .expect("local pack should be written");
+
+    dalo_command()
+        .env("HOME", &home)
+        .env_remove("CODEX_HOME")
+        .env_remove("CLAUDE_CONFIG_DIR")
+        .args(["--store"])
+        .arg(&store)
+        .args([
+            "instructions",
+            "enable",
+            "review",
+            "--target",
+            "claude",
+            "--target",
+            "codex",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "start marker exists without a matching end marker",
+        ));
+
+    assert_eq!(
+        std::fs::read_to_string(&claude_target).unwrap(),
+        "claude user content\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&codex_target).unwrap(),
+        "<!-- dalo:start review -->\nmissing end marker\n"
+    );
+    assert!(read_user_lock(&store).active_instruction_packs.is_empty());
+}
+
+#[test]
 fn instructions_enable_should_reject_dirty_or_untracked_source_pack() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -9678,6 +9994,7 @@ fn instructions_disable_should_match_legacy_relative_lock_target() {
     lock.active_instruction_packs.push(LockedInstructionPack {
         pack_id: "house-style".to_owned(),
         target: std::path::PathBuf::from("AGENTS.md"),
+        logical_targets: Vec::new(),
         source_id: "local".to_owned(),
         commit: None,
         version: Some("1.0".to_owned()),
@@ -9727,6 +10044,7 @@ fn status_should_report_legacy_relative_instruction_target_independent_of_cwd() 
     lock.active_instruction_packs.push(LockedInstructionPack {
         pack_id: "house-style".to_owned(),
         target: std::path::PathBuf::from("AGENTS.md"),
+        logical_targets: Vec::new(),
         source_id: "local".to_owned(),
         commit: None,
         version: Some("1.0".to_owned()),

@@ -56,6 +56,269 @@ pub struct InstructionPackReport {
     pub warning: Option<String>,
 }
 
+/// Report from enabling or disabling one pack across logical agent targets.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct InstructionPackBatchReport {
+    /// Pack ID.
+    pub pack_id: String,
+    /// Source that owns the pack.
+    pub source_id: String,
+    /// De-duplicated physical destination operations.
+    pub operations: Vec<InstructionTargetOperationReport>,
+    /// Whether the command ran as dry-run.
+    pub dry_run: bool,
+}
+
+/// One de-duplicated instruction-file operation in a batch report.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct InstructionTargetOperationReport {
+    /// Logical target IDs mapped to this physical destination.
+    pub logical_targets: Vec<String>,
+    /// Effective physical instruction-file path.
+    pub target: PathBuf,
+    /// What happened: `enabled`, `disabled`, or `unchanged`.
+    pub action: String,
+    /// Non-fatal recovery detail, such as a malformed block left untouched.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
+}
+
+/// Enable one pack across de-duplicated logical target destinations.
+pub fn enable_pack_for_targets(
+    paths: &StorePaths,
+    selector: &str,
+    destinations: &[crate::target::InstructionFileDestination],
+    dry_run: bool,
+) -> DaloResult<InstructionPackBatchReport> {
+    if destinations.is_empty() {
+        return Err(DaloError::InvalidArgument {
+            reason: "at least one instruction target is required".to_owned(),
+        });
+    }
+    let resolved = resolve_pack(paths, selector)?;
+    let marker_id = marker_id(&resolved.source_id, &resolved.pack.id);
+    let mut prepared = Vec::with_capacity(destinations.len());
+    let mut target_locks = Vec::with_capacity(destinations.len());
+    for destination in destinations {
+        let target = normalize_target_path(&destination.path)?;
+        target_locks.push(acquire_target_lock(paths, &target)?);
+        let snapshot = target_snapshot(&target)?;
+        let existing = snapshot.content.clone().unwrap_or_default();
+        let rendered = render_block(&existing, &marker_id, &resolved.pack.body)?;
+        prepared.push(PreparedInstructionMutation {
+            logical_targets: destination.logical_targets.clone(),
+            target,
+            snapshot,
+            rendered: Some(rendered),
+            action: "enabled".to_owned(),
+            warning: None,
+        });
+    }
+    let mut lock = store::read_user_lock(paths)?;
+    for mutation in &prepared {
+        lock.active_instruction_packs.retain(|entry| {
+            !(entry.source_id == resolved.source_id
+                && entry.pack_id == resolved.pack.id
+                && targets_match(entry, &mutation.target))
+        });
+        lock.active_instruction_packs.push(LockedInstructionPack {
+            pack_id: resolved.pack.id.clone(),
+            target: mutation.target.clone(),
+            logical_targets: mutation.logical_targets.clone(),
+            source_id: resolved.source_id.clone(),
+            commit: resolved.commit.clone(),
+            version: resolved.pack.version.clone(),
+        });
+    }
+    sort_instruction_lock_entries(&mut lock.active_instruction_packs);
+    if !dry_run {
+        apply_prepared_instruction_mutations(paths, prepared.as_mut_slice(), &lock)?;
+    }
+    let operations = prepared
+        .into_iter()
+        .map(PreparedInstructionMutation::into_report)
+        .collect();
+    drop(target_locks);
+    Ok(InstructionPackBatchReport {
+        pack_id: resolved.pack.id,
+        source_id: resolved.source_id,
+        operations,
+        dry_run,
+    })
+}
+
+/// Disable one pack across de-duplicated logical target destinations.
+pub fn disable_pack_for_targets(
+    paths: &StorePaths,
+    selector: &str,
+    destinations: &[crate::target::InstructionFileDestination],
+    dry_run: bool,
+) -> DaloResult<InstructionPackBatchReport> {
+    if destinations.is_empty() {
+        return Err(DaloError::InvalidArgument {
+            reason: "at least one instruction target is required".to_owned(),
+        });
+    }
+    let (source_id, pack_id) = parse_pack_selector(selector)?;
+    let marker_id = marker_id(&source_id, &pack_id);
+    let mut lock = store::read_user_lock(paths)?;
+    let mut prepared = Vec::with_capacity(destinations.len());
+    let mut target_locks = Vec::with_capacity(destinations.len());
+    for destination in destinations {
+        let target = normalize_target_path(&destination.path)?;
+        target_locks.push(acquire_target_lock(paths, &target)?);
+        let snapshot = target_snapshot(&target)?;
+        let existing = snapshot.content.clone().unwrap_or_default();
+        let (block, malformed_error) = match find_block(&existing, &marker_id) {
+            Ok(block) => (block, None),
+            Err(error) => (None, Some(error.to_string())),
+        };
+        let has_block = block.is_some();
+        let has_lock_entry = lock.active_instruction_packs.iter().any(|entry| {
+            entry.source_id == source_id
+                && entry.pack_id == pack_id
+                && targets_match(entry, &target)
+        });
+        let warning = malformed_error.map(|error| {
+            let lock_action = if has_lock_entry {
+                if dry_run {
+                    "the lock entry would be removed"
+                } else {
+                    "the lock entry was removed"
+                }
+            } else {
+                "no matching lock entry was found"
+            };
+            format!("{error}; target left untouched and {lock_action}")
+        });
+        let rendered = if warning.is_none() && has_block {
+            Some(remove_block(&existing, &marker_id)?)
+        } else {
+            None
+        };
+        prepared.push(PreparedInstructionMutation {
+            logical_targets: destination.logical_targets.clone(),
+            target,
+            snapshot,
+            rendered,
+            action: if has_block || has_lock_entry {
+                "disabled".to_owned()
+            } else {
+                "unchanged".to_owned()
+            },
+            warning,
+        });
+    }
+    let lock_changed = lock.active_instruction_packs.iter().any(|entry| {
+        entry.source_id == source_id
+            && entry.pack_id == pack_id
+            && prepared
+                .iter()
+                .any(|mutation| targets_match(entry, &mutation.target))
+    });
+    lock.active_instruction_packs.retain(|entry| {
+        !(entry.source_id == source_id
+            && entry.pack_id == pack_id
+            && prepared
+                .iter()
+                .any(|mutation| targets_match(entry, &mutation.target)))
+    });
+    if !dry_run {
+        if lock_changed {
+            apply_prepared_instruction_mutations(paths, prepared.as_mut_slice(), &lock)?;
+        } else {
+            apply_prepared_target_writes(prepared.as_mut_slice())?;
+        }
+    }
+    let operations = prepared
+        .into_iter()
+        .map(PreparedInstructionMutation::into_report)
+        .collect();
+    drop(target_locks);
+    Ok(InstructionPackBatchReport {
+        pack_id,
+        source_id,
+        operations,
+        dry_run,
+    })
+}
+
+#[derive(Debug)]
+struct PreparedInstructionMutation {
+    logical_targets: Vec<String>,
+    target: PathBuf,
+    snapshot: TargetSnapshot,
+    rendered: Option<String>,
+    action: String,
+    warning: Option<String>,
+}
+
+impl PreparedInstructionMutation {
+    fn into_report(self) -> InstructionTargetOperationReport {
+        InstructionTargetOperationReport {
+            logical_targets: self.logical_targets,
+            target: self.target,
+            action: self.action,
+            warning: self.warning,
+        }
+    }
+}
+
+fn apply_prepared_instruction_mutations(
+    paths: &StorePaths,
+    prepared: &mut [PreparedInstructionMutation],
+    lock: &crate::lockfile::UserLock,
+) -> DaloResult<()> {
+    let written = apply_prepared_target_writes(prepared)?;
+    if let Err(error) = store::write_user_lock(paths, lock) {
+        return Err(rollback_prepared_target_writes(prepared, &written, error));
+    }
+    Ok(())
+}
+
+fn apply_prepared_target_writes(
+    prepared: &mut [PreparedInstructionMutation],
+) -> DaloResult<Vec<(usize, TargetIdentity)>> {
+    let mut written = Vec::new();
+    for (index, mutation) in prepared.iter().enumerate() {
+        let Some(rendered) = mutation.rendered.as_deref() else {
+            continue;
+        };
+        match write_target_if_unchanged(&mutation.snapshot, rendered) {
+            Ok(identity) => written.push((index, identity)),
+            Err(error) => {
+                return Err(rollback_prepared_target_writes(prepared, &written, error));
+            }
+        }
+    }
+    Ok(written)
+}
+
+fn rollback_prepared_target_writes(
+    prepared: &[PreparedInstructionMutation],
+    written: &[(usize, TargetIdentity)],
+    mut error: DaloError,
+) -> DaloError {
+    for (index, identity) in written.iter().rev() {
+        let mutation = &prepared[*index];
+        let snapshot = TargetSnapshot {
+            target: mutation.snapshot.target.clone(),
+            content: mutation.snapshot.content.clone(),
+            identity: mutation.snapshot.identity,
+        };
+        error = restore_target_after_error(
+            snapshot,
+            mutation
+                .rendered
+                .as_deref()
+                .expect("only rendered mutations are recorded as written"),
+            *identity,
+            error,
+        );
+    }
+    error
+}
+
 /// Active instruction packs returned by `instructions list`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct InstructionPackListReport {
@@ -611,13 +874,31 @@ pub fn enable_pack(
     target: &Path,
     dry_run: bool,
 ) -> DaloResult<InstructionPackReport> {
-    enable_pack_with_lock_writer(paths, selector, target, dry_run, store::write_user_lock)
+    enable_pack_with_logical_targets(paths, selector, target, &[], dry_run)
+}
+
+fn enable_pack_with_logical_targets(
+    paths: &StorePaths,
+    selector: &str,
+    target: &Path,
+    logical_targets: &[String],
+    dry_run: bool,
+) -> DaloResult<InstructionPackReport> {
+    enable_pack_with_lock_writer(
+        paths,
+        selector,
+        target,
+        logical_targets,
+        dry_run,
+        store::write_user_lock,
+    )
 }
 
 fn enable_pack_with_lock_writer<F>(
     paths: &StorePaths,
     selector: &str,
     target: &Path,
+    logical_targets: &[String],
     dry_run: bool,
     write_lock: F,
 ) -> DaloResult<InstructionPackReport>
@@ -642,16 +923,12 @@ where
         lock.active_instruction_packs.push(LockedInstructionPack {
             pack_id: pack.id.clone(),
             target: target.clone(),
+            logical_targets: logical_targets.to_vec(),
             source_id: resolved.source_id.clone(),
             commit: resolved.commit,
             version: pack.version,
         });
-        lock.active_instruction_packs.sort_by(|left, right| {
-            left.source_id
-                .cmp(&right.source_id)
-                .then_with(|| left.pack_id.cmp(&right.pack_id))
-                .then(left.target.cmp(&right.target))
-        });
+        sort_instruction_lock_entries(&mut lock.active_instruction_packs);
         let written_identity = write_target_if_unchanged(&snapshot, &rendered)?;
         if let Err(error) = write_lock(paths, &lock) {
             return Err(restore_target_after_error(
@@ -671,6 +948,15 @@ where
         dry_run,
         warning: None,
     })
+}
+
+fn sort_instruction_lock_entries(entries: &mut [LockedInstructionPack]) {
+    entries.sort_by(|left, right| {
+        left.source_id
+            .cmp(&right.source_id)
+            .then_with(|| left.pack_id.cmp(&right.pack_id))
+            .then(left.target.cmp(&right.target))
+    });
 }
 
 /// Disable a pack: remove its managed block from `target` and drop its lock entry.
@@ -1395,7 +1681,7 @@ mod tests {
         .expect("pack should be written");
         fs::write(&target, "user-owned content\n").expect("target should be seeded");
 
-        let error = enable_pack_with_lock_writer(&paths, PACK, &target, false, |_, _| {
+        let error = enable_pack_with_lock_writer(&paths, PACK, &target, &[], false, |_, _| {
             Err(DaloError::Io(std::io::Error::other("lock write failed")))
         })
         .expect_err("lock write failure should fail enable");
@@ -1512,6 +1798,43 @@ mod tests {
         assert!(message.contains("lock write failed"));
         assert!(message.contains("also failed to restore instruction target"));
         assert!(message.contains(&occupied_target.display().to_string()));
+    }
+
+    #[test]
+    fn batch_write_should_roll_back_earlier_targets_after_a_later_concurrent_edit() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let first = temp.path().join("AGENTS.md");
+        let second = temp.path().join("CLAUDE.md");
+        fs::write(&first, "first before\n").expect("first target should be seeded");
+        fs::write(&second, "second before\n").expect("second target should be seeded");
+        let first_snapshot = target_snapshot(&first).expect("first snapshot should be readable");
+        let second_snapshot = target_snapshot(&second).expect("second snapshot should be readable");
+        fs::write(&second, "external edit\n").expect("second target should be edited");
+        let mut prepared = vec![
+            PreparedInstructionMutation {
+                logical_targets: vec!["codex".to_owned()],
+                target: first.clone(),
+                snapshot: first_snapshot,
+                rendered: Some("first after\n".to_owned()),
+                action: "enabled".to_owned(),
+                warning: None,
+            },
+            PreparedInstructionMutation {
+                logical_targets: vec!["claude".to_owned()],
+                target: second.clone(),
+                snapshot: second_snapshot,
+                rendered: Some("second after\n".to_owned()),
+                action: "enabled".to_owned(),
+                warning: None,
+            },
+        ];
+
+        let error = apply_prepared_target_writes(&mut prepared)
+            .expect_err("concurrent edit should fail the batch");
+
+        assert!(matches!(error, DaloError::InstructionTargetChanged { .. }));
+        assert_eq!(fs::read_to_string(first).unwrap(), "first before\n");
+        assert_eq!(fs::read_to_string(second).unwrap(), "external edit\n");
     }
 
     #[test]
@@ -1679,6 +2002,7 @@ mod tests {
         let active = vec![LockedInstructionPack {
             pack_id: "house".to_owned(),
             target: PathBuf::from("/tmp/AGENTS.md"),
+            logical_targets: Vec::new(),
             source_id: "local".to_owned(),
             commit: None,
             version: None,

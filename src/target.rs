@@ -1,5 +1,7 @@
 //! Agent target registry and detection.
 
+use std::collections::BTreeMap;
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -64,6 +66,15 @@ pub struct TargetDetection {
 pub struct TargetDetectReport {
     /// Detected targets.
     pub targets: Vec<TargetDetection>,
+}
+
+/// One verified native instruction-file destination shared by logical targets.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct InstructionFileDestination {
+    /// Logical target IDs that resolve to this physical file.
+    pub logical_targets: Vec<String>,
+    /// Effective physical instruction-file path.
+    pub path: PathBuf,
 }
 
 /// Target link status.
@@ -188,6 +199,59 @@ pub fn registry() -> &'static [TargetRegistryEntry] {
             support: TargetSupport::Experimental,
         },
     ]
+}
+
+/// Resolve logical agent targets to verified native user-level instruction files.
+///
+/// Physical destinations are de-duplicated after resolving existing symlinks.
+/// Targets without a verified native mapping fail closed instead of guessing.
+pub fn resolve_instruction_files(
+    target_ids: &[String],
+) -> DaloResult<Vec<InstructionFileDestination>> {
+    let home = env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or_else(|| DaloError::StateError {
+            reason: "HOME is required to resolve native instruction files".to_owned(),
+        })?;
+    let mut destinations = BTreeMap::<PathBuf, Vec<String>>::new();
+
+    for target_id in target_ids {
+        registry_entry(target_id)?;
+        let path = match target_id.as_str() {
+            "codex" => env::var_os("CODEX_HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| home.join(".codex"))
+                .join("AGENTS.md"),
+            "claude" => env::var_os("CLAUDE_CONFIG_DIR")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| home.join(".claude"))
+                .join("CLAUDE.md"),
+            _ => {
+                return Err(DaloError::InvalidArgument {
+                    reason: format!(
+                        "target `{target_id}` has no verified native instruction-file mapping; use an explicit file instead"
+                    ),
+                });
+            }
+        };
+        let path = store::comparable_path(&store::absolute_path(&path)?);
+        destinations
+            .entry(path)
+            .or_default()
+            .push(target_id.clone());
+    }
+
+    Ok(destinations
+        .into_iter()
+        .map(|(path, mut logical_targets)| {
+            logical_targets.sort();
+            logical_targets.dedup();
+            InstructionFileDestination {
+                logical_targets,
+                path,
+            }
+        })
+        .collect())
 }
 
 /// Detect target paths and current link state.

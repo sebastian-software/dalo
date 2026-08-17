@@ -828,7 +828,7 @@ output is `{ "audit": AuditReport, "approval": ApprovalReport }`; `agent`,
 skill audit blocks approval, Dalo prints only the blocking `AuditReport` and
 exits non-zero.
 
-### `dalo instructions enable <pack-ref> <file>`
+### `dalo instructions enable <pack-ref> <file|--target agent...>`
 
 Render a local pack from `local/instructions/<pack>.md`, or a source-backed pack
 selected as `<source>:<pack>`, into an instruction file as a managed block. The
@@ -838,19 +838,29 @@ checkout; Dalo records the exact source commit and declared pack version in the
 user lock. Running `instructions enable` is the explicit activation boundary:
 discovering or refreshing a source never activates a new pack automatically.
 
+Repeat `--target` to resolve one pack to several verified native user files in
+one operation. `codex` maps to `$CODEX_HOME/AGENTS.md` (default
+`~/.codex/AGENTS.md`) and `claude` maps to
+`$CLAUDE_CONFIG_DIR/CLAUDE.md` (default `~/.claude/CLAUDE.md`). Existing
+symlinks are resolved before planning, so aliases of the same physical file are
+written once. Targets without a verified mapping fail closed and require an
+explicit file.
+
 Examples:
 
 ```sh
 dalo instructions enable team-style ~/.codex/AGENTS.md
 dalo instructions enable company:engineering-defaults ~/.claude/CLAUDE.md
+dalo instructions enable company:engineering-defaults --target codex --target claude
 dalo --dry-run instructions enable team-style ./AGENTS.md
 ```
 
-JSON output shape: `InstructionPackReport` with `source_id`, `pack_id`, `target`,
-`action`, `dry_run`, and an optional `warning` when recovery leaves a malformed
-target block untouched.
+Explicit-file JSON output uses `InstructionPackReport`. Target-aware output uses
+`InstructionPackBatchReport` with `source_id`, `pack_id`, `dry_run`, and
+de-duplicated `operations[]`; every operation includes `logical_targets[]`, the
+effective physical `target`, `action`, and an optional `warning`.
 
-### `dalo instructions disable <pack-ref> <file>`
+### `dalo instructions disable <pack-ref> <file|--target agent...>`
 
 Remove a pack's managed block from an instruction file and remove its active lock entry.
 
@@ -859,6 +869,7 @@ Examples:
 ```sh
 dalo instructions disable team-style ~/.codex/AGENTS.md
 dalo instructions disable company:engineering-defaults ~/.claude/CLAUDE.md
+dalo instructions disable company:engineering-defaults --target codex --target claude
 dalo --json instructions disable team-style ./AGENTS.md
 ```
 
@@ -967,8 +978,9 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `resolve unkeep` | `UnkeepReport` | `selector`, `removed[]`, `dry_run` |
 | `resolve remove-owned` | `RemoveOwnedReport` | `id`, `link_path`, `status` |
 | `doctor` | `DoctorReport` | `store`, `findings[]`, `summary` |
-| `instructions enable` / `disable` | `InstructionPackReport` | `source_id`, `pack_id`, `target`, `action`, `dry_run`, optional `warning` |
-| `instructions list` | `InstructionPackListReport` | `active_instruction_packs[]` with `pack_id`, `target`, `source_id`, optional `commit`, optional `version` |
+| `instructions enable` / `disable` with explicit file | `InstructionPackReport` | `source_id`, `pack_id`, `target`, `action`, `dry_run`, optional `warning` |
+| `instructions enable` / `disable` with logical targets | `InstructionPackBatchReport` | `source_id`, `pack_id`, `dry_run`, de-duplicated `operations[]` with `logical_targets[]`, effective `target`, `action`, optional `warning` |
+| `instructions list` | `InstructionPackListReport` | `active_instruction_packs[]` with `pack_id`, `target`, optional `logical_targets[]`, `source_id`, optional `commit`, optional `version` |
 
 Each `AuditReport.static_findings[]` entry contains `id`, `severity`,
 `category`, `path`, optional `line`, `message`, and optional bounded `evidence`.
@@ -1202,7 +1214,7 @@ normal approval workflows.
 
 ## `lock.toml`
 
-Schema version: `schema_version = 4`.
+Schema version: `schema_version = 5`.
 
 This file is Dalo's resolved user lock. `sync` rewrites source snapshots, active skills, pending approvals, unlinked skills, and target materialization summaries. Instruction commands preserve and update active instruction-pack entries.
 
@@ -1224,7 +1236,7 @@ Important record fields:
 | `LockedSource` | `id`, `kind`, `path`, optional `commit` |
 | `LockedSkill` | `source_ref`, `slot_name`, optional `id`, `source_id`, `source_kind`, optional `delivery` provenance/fingerprints, optional `reason` |
 | `LockedTargetMaterialization` | `link_path`, optional `desired_path`, `kind`, `status`, optional `reason` |
-| `LockedInstructionPack` | `pack_id`, `target`, `source_id`, optional `commit`, optional `version` |
+| `LockedInstructionPack` | `pack_id`, `target`, optional `logical_targets[]`, `source_id`, optional `commit`, optional `version` |
 
 ## `state.toml`
 

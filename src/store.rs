@@ -802,7 +802,7 @@ pub fn read_user_lock(paths: &StorePaths) -> DaloResult<UserLock> {
 
     let content = fs::read_to_string(&paths.lock_file)?;
     let mut lock: UserLock = parse_store_toml(&paths.lock_file, &content)?;
-    if !matches!(lock.schema_version, 1..=3) && lock.schema_version != USER_LOCK_SCHEMA_VERSION {
+    if !matches!(lock.schema_version, 1..=4) && lock.schema_version != USER_LOCK_SCHEMA_VERSION {
         return Err(DaloError::UnsupportedSchema {
             path: paths.lock_file.clone(),
             version: lock.schema_version,

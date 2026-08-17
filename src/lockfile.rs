@@ -16,7 +16,7 @@ use crate::resolver::{Resolution, UnlinkedReason};
 use crate::source::{SourceConfig, SourceKind};
 
 /// Current persisted user-lock schema version.
-pub const USER_LOCK_SCHEMA_VERSION: u32 = 4;
+pub const USER_LOCK_SCHEMA_VERSION: u32 = 5;
 
 /// Resolved user lock.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -144,6 +144,9 @@ pub struct LockedInstructionPack {
     pub pack_id: String,
     /// Instruction-file target the block was rendered into.
     pub target: PathBuf,
+    /// Logical target IDs that resolved to this effective destination.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub logical_targets: Vec<String>,
     /// Source ID the pack came from.
     pub source_id: String,
     /// Source commit the pack was rendered from, when available.
