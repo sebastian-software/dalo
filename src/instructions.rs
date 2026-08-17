@@ -19,6 +19,7 @@ use sha2::{Digest, Sha256};
 use tempfile::NamedTempFile;
 
 use crate::error::{DaloError, DaloResult};
+use crate::git;
 use crate::lockfile::LockedInstructionPack;
 use crate::source::{SourceConfig, SourceKind};
 use crate::store::{self, StorePaths};
@@ -42,6 +43,8 @@ pub struct InstructionPack {
 pub struct InstructionPackReport {
     /// Pack ID.
     pub pack_id: String,
+    /// Source that owns the pack.
+    pub source_id: String,
     /// Instruction-file target affected.
     pub target: PathBuf,
     /// What happened: `enabled`, `disabled`, or `unchanged`.
@@ -95,6 +98,22 @@ fn start_marker(pack_id: &str) -> String {
 
 fn end_marker(pack_id: &str) -> String {
     format!("{END_MARKER_PREFIX}{pack_id} -->")
+}
+
+fn pack_ref(source_id: &str, pack_id: &str) -> String {
+    format!("{source_id}:{pack_id}")
+}
+
+fn marker_id(source_id: &str, pack_id: &str) -> String {
+    if source_id == "local" {
+        pack_id.to_owned()
+    } else {
+        pack_ref(source_id, pack_id)
+    }
+}
+
+fn lock_marker_id(entry: &LockedInstructionPack) -> String {
+    marker_id(&entry.source_id, &entry.pack_id)
 }
 
 /// Byte offsets `(start, end)` spanning a pack's managed block, markers included.
@@ -237,8 +256,9 @@ fn instruction_block_drift(
             });
         }
     };
+    let marker_id = lock_marker_id(entry);
     let expected = match render_managed_block_with_line_ending(
-        &entry.pack_id,
+        &marker_id,
         &pack.body,
         line_ending_for(&content),
     ) {
@@ -253,7 +273,7 @@ fn instruction_block_drift(
             });
         }
     };
-    match find_block(&content, &entry.pack_id) {
+    match find_block(&content, &marker_id) {
         Ok(Some((start_idx, end_idx))) if content[start_idx..end_idx] == expected => None,
         Ok(Some(_)) => Some(InstructionBlockDrift {
             source_id: entry.source_id.clone(),
@@ -302,6 +322,12 @@ fn read_pack_for_lock_entry(
             sources.iter().map(|source| source.id.clone()).collect(),
         ));
     };
+    if !source.enabled {
+        return Err(DaloError::StateError {
+            reason: format!("instruction pack source `{}` is disabled", source.id),
+        });
+    }
+    validate_source_pack(paths, source, &entry.pack_id, entry.commit.as_deref())?;
     read_pack_from_dir(&source.path.join("instructions"), &entry.pack_id)
 }
 
@@ -430,6 +456,139 @@ pub fn read_local_pack(paths: &StorePaths, pack_id: &str) -> DaloResult<Instruct
     read_pack_from_dir(&paths.local_instructions_dir, pack_id)
 }
 
+#[derive(Debug)]
+struct ResolvedInstructionPack {
+    pack: InstructionPack,
+    source_id: String,
+    commit: Option<String>,
+}
+
+fn parse_pack_selector(selector: &str) -> DaloResult<(String, String)> {
+    let (source_id, pack_id) = selector
+        .split_once(':')
+        .map_or(("local", selector), |(source_id, pack_id)| {
+            (source_id, pack_id)
+        });
+    if source_id.is_empty() || !is_valid_pack_id(pack_id) {
+        return Err(DaloError::InvalidArgument {
+            reason: "instruction pack references must use `<source>:<pack>` or a local `<pack>`; pack IDs must match `[A-Za-z0-9._-]` and not be `.`/`..`"
+                .to_owned(),
+        });
+    }
+    Ok((source_id.to_owned(), pack_id.to_owned()))
+}
+
+fn resolve_pack(paths: &StorePaths, selector: &str) -> DaloResult<ResolvedInstructionPack> {
+    let (source_id, pack_id) = parse_pack_selector(selector)?;
+    if source_id == "local" {
+        return Ok(ResolvedInstructionPack {
+            pack: read_local_pack(paths, &pack_id)?,
+            source_id,
+            commit: None,
+        });
+    }
+
+    let config = store::read_config(paths)?;
+    let source = config
+        .sources
+        .iter()
+        .find(|source| source.id == source_id)
+        .ok_or_else(|| {
+            DaloError::unknown_source(
+                source_id.clone(),
+                config
+                    .sources
+                    .iter()
+                    .map(|source| source.id.clone())
+                    .collect(),
+            )
+        })?;
+    if !source.enabled {
+        return Err(DaloError::StateError {
+            reason: format!(
+                "instruction pack source `{source_id}` is disabled; enable the source before activating `{selector}`"
+            ),
+        });
+    }
+    let commit = validate_source_pack(paths, source, &pack_id, None)?;
+    Ok(ResolvedInstructionPack {
+        pack: read_pack_from_dir(&source.path.join("instructions"), &pack_id)?,
+        source_id,
+        commit: Some(commit),
+    })
+}
+
+fn validate_source_pack(
+    paths: &StorePaths,
+    source: &SourceConfig,
+    pack_id: &str,
+    expected_commit: Option<&str>,
+) -> DaloResult<String> {
+    if git::is_dirty(&source.path)? {
+        return Err(DaloError::DirtySource {
+            source_id: source.id.clone(),
+            path: source.path.clone(),
+        });
+    }
+    let pack_path = source
+        .path
+        .join("instructions")
+        .join(format!("{pack_id}.md"));
+    let metadata =
+        fs::symlink_metadata(&pack_path).map_err(|_| DaloError::InstructionPackNotFound {
+            pack_id: pack_id.to_owned(),
+            path: pack_path.clone(),
+        })?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(DaloError::StateError {
+            reason: format!(
+                "instruction pack `{}` must be a regular, non-symlink file",
+                pack_ref(&source.id, pack_id)
+            ),
+        });
+    }
+    if !git::is_tracked_file(&source.path, &pack_path)? {
+        return Err(DaloError::StateError {
+            reason: format!(
+                "instruction pack `{}` is not tracked by its source commit; commit it before enabling the pack",
+                pack_ref(&source.id, pack_id)
+            ),
+        });
+    }
+    let commit = git::rev_parse_head(&source.path)?;
+    if let Some(expected) = expected_commit
+        && expected != commit
+    {
+        return Err(DaloError::StateError {
+            reason: format!(
+                "instruction pack `{}` was enabled from commit `{expected}`, but the source checkout is now `{commit}`; review and re-enable the pack",
+                pack_ref(&source.id, pack_id)
+            ),
+        });
+    }
+    if source.kind == SourceKind::Catalog {
+        let source_lock = crate::catalog::read_source_lock(paths)?;
+        let locked_commit = source_lock
+            .catalog(&source.id)
+            .map(|locked| locked.commit.as_str())
+            .ok_or_else(|| DaloError::StateError {
+                reason: format!(
+                    "catalog source `{}` has no pinned source-lock entry; run `dalo source refresh {}` before enabling instructions",
+                    source.id, source.id
+                ),
+            })?;
+        if locked_commit != commit {
+            return Err(DaloError::StateError {
+                reason: format!(
+                    "catalog source `{}` checkout `{commit}` does not match its pinned commit `{locked_commit}`",
+                    source.id
+                ),
+            });
+        }
+    }
+    Ok(commit)
+}
+
 fn read_pack_from_dir(dir: &Path, pack_id: &str) -> DaloResult<InstructionPack> {
     let path = dir.join(format!("{pack_id}.md"));
     let body = fs::read_to_string(&path).map_err(|_| DaloError::InstructionPackNotFound {
@@ -443,21 +602,21 @@ fn read_pack_from_dir(dir: &Path, pack_id: &str) -> DaloResult<InstructionPack> 
     })
 }
 
-/// Enable a local pack: render its managed block into `target` and record it in
+/// Enable a local or source-qualified pack: render its managed block into `target` and record it in
 /// the user lock. Idempotent: enabling an already-active pack re-renders the block
 /// and updates the lock entry in place.
 pub fn enable_pack(
     paths: &StorePaths,
-    pack_id: &str,
+    selector: &str,
     target: &Path,
     dry_run: bool,
 ) -> DaloResult<InstructionPackReport> {
-    enable_pack_with_lock_writer(paths, pack_id, target, dry_run, store::write_user_lock)
+    enable_pack_with_lock_writer(paths, selector, target, dry_run, store::write_user_lock)
 }
 
 fn enable_pack_with_lock_writer<F>(
     paths: &StorePaths,
-    pack_id: &str,
+    selector: &str,
     target: &Path,
     dry_run: bool,
     write_lock: F,
@@ -466,25 +625,31 @@ where
     F: FnOnce(&StorePaths, &crate::lockfile::UserLock) -> DaloResult<()>,
 {
     let target = normalize_target_path(target)?;
-    let pack = read_local_pack(paths, pack_id)?;
+    let resolved = resolve_pack(paths, selector)?;
+    let pack = resolved.pack;
+    let marker_id = marker_id(&resolved.source_id, &pack.id);
     let mut lock = store::read_user_lock(paths)?;
     let _target_lock = acquire_target_lock(paths, &target)?;
     let snapshot = target_snapshot(&target)?;
     let existing = snapshot.content.clone().unwrap_or_default();
-    let rendered = render_block(&existing, &pack.id, &pack.body)?;
+    let rendered = render_block(&existing, &marker_id, &pack.body)?;
     if !dry_run {
-        lock.active_instruction_packs
-            .retain(|entry| !(entry.pack_id == pack.id && targets_match(entry, &target)));
+        lock.active_instruction_packs.retain(|entry| {
+            !(entry.source_id == resolved.source_id
+                && entry.pack_id == pack.id
+                && targets_match(entry, &target))
+        });
         lock.active_instruction_packs.push(LockedInstructionPack {
             pack_id: pack.id.clone(),
             target: target.clone(),
-            source_id: "local".to_owned(),
-            commit: None,
+            source_id: resolved.source_id.clone(),
+            commit: resolved.commit,
             version: pack.version,
         });
         lock.active_instruction_packs.sort_by(|left, right| {
-            left.pack_id
-                .cmp(&right.pack_id)
+            left.source_id
+                .cmp(&right.source_id)
+                .then_with(|| left.pack_id.cmp(&right.pack_id))
                 .then(left.target.cmp(&right.target))
         });
         let written_identity = write_target_if_unchanged(&snapshot, &rendered)?;
@@ -500,6 +665,7 @@ where
 
     Ok(InstructionPackReport {
         pack_id: pack.id,
+        source_id: resolved.source_id,
         target,
         action: "enabled".to_owned(),
         dry_run,
@@ -510,16 +676,16 @@ where
 /// Disable a pack: remove its managed block from `target` and drop its lock entry.
 pub fn disable_pack(
     paths: &StorePaths,
-    pack_id: &str,
+    selector: &str,
     target: &Path,
     dry_run: bool,
 ) -> DaloResult<InstructionPackReport> {
-    disable_pack_with_lock_writer(paths, pack_id, target, dry_run, store::write_user_lock)
+    disable_pack_with_lock_writer(paths, selector, target, dry_run, store::write_user_lock)
 }
 
 fn disable_pack_with_lock_writer<F>(
     paths: &StorePaths,
-    pack_id: &str,
+    selector: &str,
     target: &Path,
     dry_run: bool,
     write_lock: F,
@@ -527,21 +693,22 @@ fn disable_pack_with_lock_writer<F>(
 where
     F: FnOnce(&StorePaths, &crate::lockfile::UserLock) -> DaloResult<()>,
 {
+    let (source_id, pack_id) = parse_pack_selector(selector)?;
+    let marker_id = marker_id(&source_id, &pack_id);
     let target = normalize_target_path(target)?;
     let mut lock = store::read_user_lock(paths)?;
     let _target_lock = acquire_target_lock(paths, &target)?;
     let snapshot = target_snapshot(&target)?;
     let existing = snapshot.content.clone().unwrap_or_default();
-    let (block, malformed_error) = match find_block(&existing, pack_id) {
+    let (block, malformed_error) = match find_block(&existing, &marker_id) {
         Ok(block) => (block, None),
         Err(error) => (None, Some(error.to_string())),
     };
     let has_block = block.is_some();
     let before = lock.active_instruction_packs.len();
-    let has_lock_entry = lock
-        .active_instruction_packs
-        .iter()
-        .any(|entry| entry.pack_id == pack_id && targets_match(entry, &target));
+    let has_lock_entry = lock.active_instruction_packs.iter().any(|entry| {
+        entry.source_id == source_id && entry.pack_id == pack_id && targets_match(entry, &target)
+    });
     let warning = malformed_error.map(|error| {
         let lock_action = if has_lock_entry {
             if dry_run {
@@ -556,7 +723,7 @@ where
     });
 
     let updated = if warning.is_none() && has_block {
-        Some(remove_block(&existing, pack_id)?)
+        Some(remove_block(&existing, &marker_id)?)
     } else {
         None
     };
@@ -566,8 +733,9 @@ where
         "unchanged"
     };
 
-    lock.active_instruction_packs
-        .retain(|entry| !(entry.pack_id == pack_id && targets_match(entry, &target)));
+    lock.active_instruction_packs.retain(|entry| {
+        !(entry.source_id == source_id && entry.pack_id == pack_id && targets_match(entry, &target))
+    });
     if !dry_run {
         if let Some(updated) = updated {
             let written_identity = write_target_if_unchanged(&snapshot, &updated)?;
@@ -587,7 +755,8 @@ where
     }
 
     Ok(InstructionPackReport {
-        pack_id: pack_id.to_owned(),
+        pack_id,
+        source_id,
         target,
         action: action.to_owned(),
         dry_run,

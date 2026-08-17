@@ -1731,7 +1731,11 @@ pub fn print_instruction_pack_report(report: &InstructionPackReport) {
     println!(
         "{} pack {} -> {}",
         action,
-        report.pack_id,
+        if report.source_id == "local" {
+            report.pack_id.clone()
+        } else {
+            format!("{}:{}", report.source_id, report.pack_id)
+        },
         report.target.display()
     );
     if let Some(warning) = &report.warning {
