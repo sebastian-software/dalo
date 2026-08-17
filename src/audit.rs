@@ -362,6 +362,9 @@ pub fn audit_active_skills(
                 }
                 artifacts
             }
+            crate::inventory::SkillDelivery::Generated { .. } => {
+                vec![(None, skill.path.clone())]
+            }
         };
         for (provider, artifact_path) in artifacts {
             let audit_ref = provider.as_ref().map_or_else(
@@ -642,7 +645,8 @@ fn resolve_target(paths: &StorePaths, target: &str) -> DaloResult<(String, PathB
                     .or_else(|| {
                         (provider == "universal" && *universal_fallback).then(|| skill.path.clone())
                     }),
-                crate::inventory::SkillDelivery::Direct => None,
+                crate::inventory::SkillDelivery::Direct
+                | crate::inventory::SkillDelivery::Generated { .. } => None,
             }
             .ok_or_else(|| DaloError::InvalidArgument {
                 reason: format!(

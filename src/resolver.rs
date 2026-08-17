@@ -341,6 +341,13 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
         let selection = effective_selection
             .get(source.id.as_str())
             .map_or(source.selection.as_slice(), Vec::as_slice);
+        let has_generated_delivery = inventory
+            .skills
+            .iter()
+            .any(|skill| matches!(skill.delivery, SkillDelivery::Generated { .. }));
+        let source_commit = (source.kind != SourceKind::Local && has_generated_delivery)
+            .then(|| crate::git::rev_parse_head(&source.path).ok())
+            .flatten();
 
         for skill in &inventory.skills {
             if source.kind == SourceKind::Catalog
@@ -350,6 +357,12 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
                 // set; they surface through `source inspect`.
                 continue;
             }
+            let mut delivery = skill.delivery.clone();
+            delivery.bind_generated_approvals(
+                &skill.source_ref,
+                source_commit.clone(),
+                &input.approvals,
+            );
             candidates.push(Candidate {
                 skill: ResolvedSkill {
                     source_ref: skill.source_ref.clone(),
@@ -359,7 +372,7 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
                     source_kind: source.kind,
                     source_priority: source.priority,
                     path: skill.path.clone(),
-                    delivery: skill.delivery.clone(),
+                    delivery,
                     local_override: false,
                     requires: skill.requires.clone(),
                 },

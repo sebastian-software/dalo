@@ -1214,7 +1214,7 @@ normal approval workflows.
 
 ## `lock.toml`
 
-Schema version: `schema_version = 5`.
+Schema version: `schema_version = 6`.
 
 This file is Dalo's resolved user lock. `sync` rewrites source snapshots, active skills, pending approvals, unlinked skills, and target materialization summaries. Instruction commands preserve and update active instruction-pack entries.
 
@@ -1359,6 +1359,40 @@ provider artifact therefore appears as `skill_delivery_changed` lock drift.
 Audit reports use provider-qualified selectors such as
 `dalo audit impeccable:impeccable@codex`, so findings, risk acceptance, and
 persisted provenance stay bound to the exact provider artifact.
+
+A generated delivery declares a same-source plugin tool and the relative
+output directory expected for each provider:
+
+```toml
+schema_version = 1
+kind = "generated"
+generator = "company:builder#tool:build"
+output_input = "output_dir"
+
+[providers]
+codex = "codex/review"
+claude = "claude/review"
+```
+
+The referenced tool must be required, declare `filesystem_write`, and expose
+the named required `path` input in its argument contract. The delivery
+manifest, plugin manifest, and every file in the tool closure must be tracked
+by the same clean Git source commit. Dalo binds the recipe fingerprint to that
+commit and the exact tool contract.
+
+Generated delivery has two independent approvals:
+
+```text
+dalo approve delivery company:review
+dalo approve tool company:builder#tool:build
+```
+
+The first approves only the exact revision-bound recipe; the second approves
+the generator tool contract. A new source commit or changed recipe invalidates
+the recipe approval. In schema version 1 Dalo only validates, reports, and
+persists this plan. Even with both approvals present it does not invoke the
+tool or create generated output; `sync`, `status`, and `doctor` report the
+delivery as blocked with execution intentionally unavailable.
 
 ## `AGENT.md` Canonical Packages
 

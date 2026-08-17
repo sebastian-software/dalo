@@ -411,6 +411,8 @@ pub enum ApproveSubcommand {
     Agent(AgentApprovalArgs),
     /// Approve and immutably stage one exact plugin-local tool contract.
     Tool(ToolApprovalArgs),
+    /// Approve one exact generated-delivery recipe without executing it.
+    Delivery(DeliveryApprovalArgs),
     /// Approve one exact hook contract after its tool is ready.
     Hook(HookApprovalArgs),
     /// Trust every skill from one configured source.
@@ -455,6 +457,14 @@ pub struct AgentApprovalArgs {
 #[derive(Debug, Args)]
 pub struct ToolApprovalArgs {
     /// Tool in `<source>:<plugin>#tool:<id>` form.
+    #[arg(value_name = "VALUE")]
+    pub value: String,
+}
+
+/// One exact generated-delivery recipe approval.
+#[derive(Debug, Args)]
+pub struct DeliveryApprovalArgs {
+    /// Logical skill in `<source>:<slot>` form.
     #[arg(value_name = "VALUE")]
     pub value: String,
 }
@@ -568,7 +578,7 @@ pub struct OrgApprovalArgs {
 /// One approval to revoke.
 #[derive(Debug, Args)]
 pub struct ApprovalRevokeArgs {
-    /// Approval scope: skill, agent, tool, hook, source, author, or org.
+    /// Approval scope: skill, agent, tool, delivery, hook, source, author, or org.
     #[arg(value_enum)]
     pub scope: ApprovalScopeArg,
     /// Approval value in the format required by the selected scope.
@@ -584,6 +594,8 @@ pub enum ApprovalScopeArg {
     Agent,
     /// One exact content-bound plugin-local tool contract.
     Tool,
+    /// One exact revision- and content-bound generated-delivery recipe.
+    Delivery,
     /// One exact content-bound plugin-local hook contract.
     Hook,
     /// Every skill from one configured source.
@@ -600,6 +612,7 @@ impl ApprovalScopeArg {
             Self::Skill => "skill",
             Self::Agent => "agent",
             Self::Tool => "tool",
+            Self::Delivery => "delivery",
             Self::Hook => "hook",
             Self::Source => "source",
             Self::Author => "author",
@@ -3764,6 +3777,22 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
                 }
             }
         }
+        ApproveSubcommand::Delivery(args) => {
+            let report = crate::delivery::approve(&paths, &args.value, options.dry_run)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                println!(
+                    "{} generated delivery {} (recipe {}){}",
+                    report.action,
+                    report.skill,
+                    report.approval_value,
+                    if report.dry_run { " [dry-run]" } else { "" }
+                );
+                println!("generator: {}", report.generator);
+                println!("execution: {}", report.execution);
+            }
+        }
         ApproveSubcommand::Hook(args) => {
             let report = hook::approve(&paths, &args.value, options.dry_run)?;
             if options.json {
@@ -3797,6 +3826,13 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
                     print_json(&report)?;
                 } else {
                     println!("{} tool {}", report.action, report.tool);
+                }
+            } else if args.scope == ApprovalScopeArg::Delivery {
+                let report = crate::delivery::revoke(&paths, &args.value, options.dry_run)?;
+                if options.json {
+                    print_json(&report)?;
+                } else {
+                    println!("{} generated delivery {}", report.action, report.skill);
                 }
             } else if args.scope == ApprovalScopeArg::Hook {
                 let report = hook::revoke(&paths, &args.value, options.dry_run)?;

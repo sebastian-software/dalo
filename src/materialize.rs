@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::error::{DaloError, DaloResult};
-use crate::inventory::SkillDeliveryMode;
+use crate::inventory::{SkillDelivery, SkillDeliveryMode};
 use crate::resolver::{
     BlockedSkill, ClosureBlockReason, Resolution, ResolutionDiagnostic, ResolutionDiagnosticCode,
     ResolvedSkill, closure_block_reason_name,
@@ -90,6 +90,9 @@ pub struct SkillDeliveryReport {
     /// Selected provider artifact path.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub artifact_path: Option<PathBuf>,
+    /// Declared generated output relative to the future staging root.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub planned_output: Option<PathBuf>,
     /// Selected provider artifact fingerprint.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fingerprint: Option<String>,
@@ -212,6 +215,7 @@ struct DesiredLink {
     delivery_mode: SkillDeliveryMode,
     provider: Option<String>,
     fingerprint: Option<String>,
+    planned_output: Option<PathBuf>,
     blocked_reason: Option<String>,
 }
 
@@ -385,7 +389,10 @@ fn delivery_reports(
                 mode: desired.delivery_mode,
                 provider: (!blocked).then(|| desired.provider.clone()).flatten(),
                 artifact_path: (!blocked).then(|| desired.store_path.clone()),
-                fingerprint: (!blocked).then(|| desired.fingerprint.clone()).flatten(),
+                planned_output: desired.planned_output.clone(),
+                fingerprint: (desired.delivery_mode == SkillDeliveryMode::Generated || !blocked)
+                    .then(|| desired.fingerprint.clone())
+                    .flatten(),
                 blocked,
                 reason: desired.blocked_reason.clone().or_else(|| {
                     operation
@@ -736,6 +743,81 @@ fn desired_links(state: &StateFile, resolution: &Resolution) -> Vec<DesiredLink>
             continue;
         };
         for skill in &resolution.active_skills {
+            if let SkillDelivery::Generated {
+                providers,
+                recipe_hash,
+                source_commit,
+                recipe_approved,
+                generator_approved,
+                generator,
+                ..
+            } = &skill.delivery
+            {
+                let selected = dir
+                    .logical_targets
+                    .iter()
+                    .map(|target| (target, providers.get(target)))
+                    .collect::<Vec<_>>();
+                let missing = selected
+                    .iter()
+                    .filter(|(_, output)| output.is_none())
+                    .map(|(target, _)| (*target).clone())
+                    .collect::<Vec<_>>();
+                let outputs = selected
+                    .iter()
+                    .filter_map(|(_, output)| output.as_ref().copied())
+                    .collect::<BTreeSet<_>>();
+                let blocked_reason = if !missing.is_empty() {
+                    format!(
+                        "generated delivery for `{}` has no output mapping for target{} {}",
+                        skill.source_ref,
+                        if missing.len() == 1 { "" } else { "s" },
+                        missing.join(", ")
+                    )
+                } else if outputs.len() > 1 {
+                    format!(
+                        "logical targets {} share one physical directory but `{}` declares different generated outputs",
+                        dir.logical_targets.join(", "),
+                        skill.source_ref
+                    )
+                } else if source_commit.is_none() {
+                    format!(
+                        "generated delivery for `{}` requires immutable Git source provenance",
+                        skill.source_ref
+                    )
+                } else if !recipe_approved {
+                    format!(
+                        "generated delivery recipe for `{}` requires approval; run `dalo approve delivery {}`",
+                        skill.source_ref, skill.source_ref
+                    )
+                } else if !generator_approved {
+                    format!(
+                        "generated delivery for `{}` requires approval of generator tool `{generator}`; run `dalo approve tool {generator}`",
+                        skill.source_ref,
+                    )
+                } else {
+                    format!(
+                        "generated delivery for `{}` is validated and approved but execution is intentionally unavailable in this release; no generator was run",
+                        skill.source_ref
+                    )
+                };
+                links.push(DesiredLink {
+                    target_id: target_id.clone(),
+                    target_ids: dir.logical_targets.clone(),
+                    source_ref: skill.source_ref.clone(),
+                    slot_name: skill.slot_name.clone(),
+                    link_path: dir.path.join(&skill.slot_name),
+                    store_path: skill.path.clone(),
+                    delivery_mode: SkillDeliveryMode::Generated,
+                    provider: selected
+                        .first()
+                        .and_then(|(target, output)| output.map(|_| (*target).clone())),
+                    fingerprint: Some(format!("sha256:{recipe_hash}")),
+                    planned_output: outputs.first().map(|path| (*path).clone()),
+                    blocked_reason: Some(blocked_reason),
+                });
+                continue;
+            }
             let selected = dir
                 .logical_targets
                 .iter()
@@ -789,6 +871,7 @@ fn desired_links(state: &StateFile, resolution: &Resolution) -> Vec<DesiredLink>
                 delivery_mode: skill.delivery.mode(),
                 provider,
                 fingerprint: artifact.and_then(|item| item.fingerprint.clone()),
+                planned_output: None,
                 blocked_reason,
             });
         }
@@ -1223,6 +1306,7 @@ fn should_preserve_recorded_operation(operation: &MaterializeOperation) -> bool 
                 && operation.status == MaterializeOperationStatus::Blocked
                 && (reason.starts_with("could not inspect recorded slot")
                     || reason.starts_with("prebuilt delivery")
+                    || reason.starts_with("generated delivery")
                     || reason.starts_with("logical targets"))
         })
 }
@@ -1995,6 +2079,7 @@ mod tests {
             delivery_mode: SkillDeliveryMode::Direct,
             provider: None,
             fingerprint: None,
+            planned_output: None,
             blocked_reason: None,
         };
 
