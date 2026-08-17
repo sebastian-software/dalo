@@ -3786,6 +3786,91 @@ fn sync_should_create_directory_symlink() {
 }
 
 #[test]
+fn sync_json_should_materialize_prebuilt_provider_artifacts_and_record_provenance() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let codex_target = temp_dir.path().join("codex-skills");
+    let claude_target = temp_dir.path().join("claude-skills");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    for (target_id, target_path) in [("codex", &codex_target), ("claude", &claude_target)] {
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .args(["target", "link", target_id])
+            .arg(target_path)
+            .assert()
+            .success();
+    }
+    let logical = store.join("local/skills/impeccable");
+    let codex_artifact = store.join("local/builds/codex/impeccable");
+    let claude_artifact = store.join("local/builds/claude/impeccable");
+    for (directory, body) in [
+        (&logical, "# Canonical Impeccable\n"),
+        (&codex_artifact, "# Codex Impeccable\n"),
+        (&claude_artifact, "# Claude Impeccable\n"),
+    ] {
+        std::fs::create_dir_all(directory).expect("skill directory should be created");
+        std::fs::write(directory.join("SKILL.md"), body).expect("skill should be written");
+    }
+    std::fs::write(
+        logical.join("DELIVERY.toml"),
+        "schema_version = 1\nkind = \"prebuilt\"\n\n[providers]\ncodex = \"builds/codex/impeccable\"\nclaude = \"builds/claude/impeccable\"\n",
+    )
+    .expect("delivery manifest should be written");
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "sync"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value =
+        serde_json::from_slice(&output).expect("sync should emit valid JSON");
+
+    assert_eq!(report["deliveries"].as_array().map(Vec::len), Some(2));
+    assert!(report["deliveries"].as_array().is_some_and(|deliveries| {
+        deliveries.iter().all(|delivery| {
+            delivery["mode"] == "prebuilt"
+                && delivery["fingerprint"]
+                    .as_str()
+                    .is_some_and(|fingerprint| fingerprint.starts_with("sha256:"))
+        })
+    }));
+    assert_eq!(
+        std::fs::read_link(codex_target.join("impeccable")).expect("codex link should exist"),
+        codex_artifact
+    );
+    assert_eq!(
+        std::fs::read_link(claude_target.join("impeccable")).expect("claude link should exist"),
+        claude_artifact
+    );
+    let lock = read_user_lock(&store);
+    assert!(lock.active_skills[0].delivery.is_some());
+    let state =
+        store::read_state(&store::StorePaths::new(store)).expect("state should remain readable");
+    assert!(state.owned_skills.iter().all(|owned| {
+        owned
+            .extra
+            .get("delivery_mode")
+            .and_then(toml::Value::as_str)
+            == Some("prebuilt")
+            && owned
+                .extra
+                .get("delivery_fingerprint")
+                .and_then(toml::Value::as_str)
+                .is_some_and(|fingerprint| fingerprint.starts_with("sha256:"))
+    }));
+}
+
+#[test]
 fn sync_check_should_allow_informational_local_override_diagnostics() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -7412,7 +7497,7 @@ fn status_json_should_expose_lock_schema_version_field() {
     let report: StatusReportSchema =
         serde_json::from_slice(&output).expect("status JSON should match the status schema");
 
-    assert_eq!(report.lock.schema_version, 3);
+    assert_eq!(report.lock.schema_version, 4);
 }
 
 #[test]

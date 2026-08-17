@@ -35,6 +35,9 @@ pub struct DoctorReport {
     pub findings: Vec<DoctorFinding>,
     /// Summary counts by severity.
     pub summary: DoctorSummary,
+    /// Read-only provider-aware skill delivery selections.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deliveries: Vec<crate::materialize::SkillDeliveryReport>,
     /// Shared typed planning facts when plugins are selected and inputs parse.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub installation_plan: Option<InstallationPlan>,
@@ -232,7 +235,7 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
 
     check_store_layout(&paths, &mut findings);
     if !paths.root.is_dir() {
-        return finish_report(store_root, findings, None);
+        return finish_report(store_root, findings, None, Vec::new());
     }
     check_commands(&mut findings);
 
@@ -311,32 +314,36 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
     }
     check_autosync(&paths, &mut findings);
 
-    let installation_plan = match (state.as_ref(), live_resolution.as_ref()) {
-        (Some(state), Some(live)) if !live.plugins.plugins.is_empty() => {
+    let materialization = live_resolution
+        .as_ref()
+        .and_then(|live| crate::materialize::materialize(&paths, &live.resolution, true).ok());
+    let installation_plan = match (
+        state.as_ref(),
+        live_resolution.as_ref(),
+        materialization.as_ref(),
+    ) {
+        (Some(state), Some(live), Some(materialization)) if !live.plugins.plugins.is_empty() => {
             let inventories = live
                 .scans
                 .iter()
                 .filter_map(|scan| scan.inventory.clone())
                 .collect::<Vec<_>>();
-            crate::materialize::materialize(&paths, &live.resolution, true)
-                .ok()
-                .map(|materialization| {
-                    let mut plan = crate::plan::build_from_facts(
-                        store_root,
-                        state,
-                        &live.plugins,
-                        &inventories,
-                        &materialization.operations,
-                        None,
-                    );
-                    let _ = crate::plan::attach_tool_status(&mut plan, &paths);
-                    let _ = crate::plan::attach_hook_status(&mut plan, &paths);
-                    plan
-                })
+            let mut plan = crate::plan::build_from_facts(
+                store_root,
+                state,
+                &live.plugins,
+                &inventories,
+                &materialization.operations,
+                None,
+            );
+            let _ = crate::plan::attach_tool_status(&mut plan, &paths);
+            let _ = crate::plan::attach_hook_status(&mut plan, &paths);
+            Some(plan)
         }
         _ => None,
     };
-    finish_report(store_root, findings, installation_plan)
+    let deliveries = materialization.map_or_else(Vec::new, |report| report.deliveries);
+    finish_report(store_root, findings, installation_plan, deliveries)
 }
 
 fn check_plugin_targets(
@@ -551,6 +558,7 @@ fn finish_report(
     store_root: &Path,
     mut findings: Vec<DoctorFinding>,
     installation_plan: Option<InstallationPlan>,
+    deliveries: Vec<crate::materialize::SkillDeliveryReport>,
 ) -> DoctorReport {
     for finding in &mut findings {
         finding.message = store::contextualize_dalo_commands(store_root, &finding.message);
@@ -570,6 +578,7 @@ fn finish_report(
         store: store_root.to_path_buf(),
         findings,
         summary,
+        deliveries,
         installation_plan,
     }
 }

@@ -1685,6 +1685,7 @@ mod tests {
             skill_file: std::path::PathBuf::from("/catalog")
                 .join(path)
                 .join("SKILL.md"),
+            delivery: crate::inventory::SkillDelivery::Direct,
             description: None,
             requires: Vec::new(),
             owners: Vec::new(),

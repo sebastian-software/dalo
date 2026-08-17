@@ -23,7 +23,9 @@ use crate::instructions::{
 };
 use crate::inventory::{InventoryWarning, InventoryWarningCode};
 use crate::lockfile::{self, LockDrift, LockDriftCode};
-use crate::materialize::{self, MaterializeOperation, MaterializeOperationStatus, SyncReport};
+use crate::materialize::{
+    self, MaterializeOperation, MaterializeOperationStatus, SkillDeliveryReport, SyncReport,
+};
 use crate::plan::InstallationPlan;
 use crate::plugin::{PluginInventoryWarning, PluginResolution};
 use crate::resolver::{self, Resolution};
@@ -71,6 +73,8 @@ pub struct StatusReport {
     pub resolution: Resolution,
     /// Dry-run materialization operations that expose target-level blockers.
     pub materialization: Vec<MaterializeOperation>,
+    /// Target-aware delivery selections and provider artifact provenance.
+    pub deliveries: Vec<SkillDeliveryReport>,
     /// Active skills whose deterministic security audit blocks sync.
     pub blocking_audits: Vec<String>,
     /// Active skills whose security audit could not be completed.
@@ -354,6 +358,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         crate::plan::attach_hook_status(plan, &paths)?;
         plan.native_plugins = plugin_targets.clone();
     }
+    let deliveries = materialization.deliveries;
     let resolution = materialization.resolution;
     let live_lock =
         lockfile::build_user_lock(&config.sources, &live_resolution, None, Some(&plugins));
@@ -412,6 +417,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         plugin_targets,
         resolution,
         materialization: materialization.operations,
+        deliveries,
         blocking_audits: audits.blocking,
         audit_failures: audits.failures,
         lock,
@@ -792,6 +798,7 @@ fn print_audit_finding(layer: &str, finding: &crate::audit::AuditFinding) {
 /// Print a human-readable status report.
 pub fn print_status_report(report: &StatusReport) {
     println!("dalo store: {}", report.store.display());
+    print_delivery_reports(&report.deliveries);
     if !report.tools.tools.is_empty() {
         println!("local tools (inert inventory):");
         for tool in &report.tools.tools {
@@ -1125,6 +1132,38 @@ pub fn print_status_report(report: &StatusReport) {
     }
 }
 
+fn print_delivery_reports(deliveries: &[SkillDeliveryReport]) {
+    let visible = deliveries
+        .iter()
+        .filter(|delivery| {
+            delivery.mode == crate::inventory::SkillDeliveryMode::Prebuilt || delivery.blocked
+        })
+        .collect::<Vec<_>>();
+    if visible.is_empty() {
+        return;
+    }
+    println!("skill delivery:");
+    for delivery in visible {
+        let provider = delivery.provider.as_deref().unwrap_or("-");
+        let artifact = delivery
+            .artifact_path
+            .as_ref()
+            .map_or_else(|| "-".to_owned(), |path| path.display().to_string());
+        println!(
+            "  {} targets={} mode={} provider={} artifact={}{}",
+            delivery.source_ref,
+            delivery.target_ids.join(","),
+            delivery.mode.as_str(),
+            provider,
+            artifact,
+            if delivery.blocked { " blocked" } else { "" }
+        );
+        if let Some(reason) = &delivery.reason {
+            println!("    {reason}");
+        }
+    }
+}
+
 /// Format a Unix timestamp (seconds) as a UTC calendar time such as
 /// `2026-07-17 09:34:09 UTC`, avoiding a calendar dependency.
 fn format_unix_utc(secs: u64) -> String {
@@ -1219,6 +1258,7 @@ pub fn print_autosync_mutation_report(report: &AutosyncMutationReport) {
 /// Print a human-readable sync report.
 pub fn print_sync_report(report: &SyncReport) {
     println!("dalo store: {}", report.store.display());
+    print_delivery_reports(&report.deliveries);
     if report.operations.is_empty() {
         if report.linked_targets == 0 && !report.resolution.active_skills.is_empty() {
             println!(
@@ -1920,6 +1960,7 @@ pub fn print_remove_owned_report(report: &RemoveOwnedReport) {
 /// Print a human-readable doctor report.
 pub fn print_doctor_report(report: &DoctorReport) {
     println!("dalo store: {}", report.store.display());
+    print_delivery_reports(&report.deliveries);
     println!(
         "summary: errors={} warnings={} info={} ok={}",
         report.summary.errors, report.summary.warnings, report.summary.info, report.summary.ok

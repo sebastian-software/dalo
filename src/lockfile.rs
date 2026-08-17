@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::git;
+use crate::inventory::SkillDelivery;
 use crate::materialize::SyncReport;
 use crate::plugin::{
     AppliedPluginPolicy, PluginResolution, PluginState, ResolvedPluginDependency,
@@ -15,7 +16,7 @@ use crate::resolver::{Resolution, UnlinkedReason};
 use crate::source::{SourceConfig, SourceKind};
 
 /// Current persisted user-lock schema version.
-pub const USER_LOCK_SCHEMA_VERSION: u32 = 3;
+pub const USER_LOCK_SCHEMA_VERSION: u32 = 4;
 
 /// Resolved user lock.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -109,6 +110,9 @@ pub struct LockedSkill {
     pub source_id: String,
     /// Source kind.
     pub source_kind: SourceKind,
+    /// Provider-aware delivery manifest and artifact fingerprints.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery: Option<SkillDelivery>,
     /// Optional reason when the skill is unlinked.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
@@ -183,6 +187,8 @@ pub enum LockDriftCode {
     PendingApprovalRemoved,
     /// A skill is now pending approval but was not pending in the lock.
     PendingApprovalAdded,
+    /// Provider mapping, manifest provenance, or artifact fingerprint changed.
+    SkillDeliveryChanged,
     /// A selected plugin appeared in the live canonical graph.
     PluginAdded,
     /// A previously selected plugin left the live canonical graph.
@@ -228,6 +234,7 @@ pub fn build_user_lock(
                 id: skill.id.clone(),
                 source_id: skill.source_id.clone(),
                 source_kind: skill.source_kind,
+                delivery: locked_delivery(skill),
                 reason: None,
             })
             .collect(),
@@ -240,6 +247,7 @@ pub fn build_user_lock(
                 id: skill.id.clone(),
                 source_id: skill.source_id.clone(),
                 source_kind: skill.source_kind,
+                delivery: locked_delivery(skill),
                 reason: Some("pending_approval".to_owned()),
             })
             .collect(),
@@ -252,6 +260,7 @@ pub fn build_user_lock(
                 id: unlinked.skill.id.clone(),
                 source_id: unlinked.skill.source_id.clone(),
                 source_kind: unlinked.skill.source_kind,
+                delivery: locked_delivery(&unlinked.skill),
                 reason: Some(unlinked_reason_name(unlinked.reason).to_owned()),
             })
             .collect(),
@@ -310,6 +319,7 @@ pub fn compare_user_lock(previous: &UserLock, current: &UserLock) -> Vec<LockDri
         &current.active_skills,
         &mut drift,
     );
+    compare_skill_delivery(previous, current, &mut drift);
     compare_plugins(previous, current, &mut drift);
     compare_skill_refs(
         LockDriftCode::UnlinkedRemoved,
@@ -334,6 +344,40 @@ pub fn compare_user_lock(previous: &UserLock, current: &UserLock) -> Vec<LockDri
             .then_with(|| left.subject.cmp(&right.subject))
     });
     drift
+}
+
+fn locked_delivery(skill: &crate::resolver::ResolvedSkill) -> Option<SkillDelivery> {
+    match &skill.delivery {
+        SkillDelivery::Direct => None,
+        delivery @ SkillDelivery::Prebuilt { .. } => Some(delivery.clone()),
+    }
+}
+
+fn compare_skill_delivery(previous: &UserLock, current: &UserLock, drift: &mut Vec<LockDrift>) {
+    let previous = previous
+        .active_skills
+        .iter()
+        .map(|skill| (skill.source_ref.as_str(), &skill.delivery))
+        .collect::<BTreeMap<_, _>>();
+    let current = current
+        .active_skills
+        .iter()
+        .map(|skill| (skill.source_ref.as_str(), &skill.delivery))
+        .collect::<BTreeMap<_, _>>();
+    for source_ref in previous
+        .keys()
+        .filter(|source_ref| current.contains_key(**source_ref))
+    {
+        if previous[source_ref] != current[source_ref] {
+            drift.push(LockDrift {
+                code: LockDriftCode::SkillDeliveryChanged,
+                subject: (*source_ref).to_owned(),
+                message: format!(
+                    "active skill `{source_ref}` delivery mapping or artifact fingerprint changed"
+                ),
+            });
+        }
+    }
 }
 
 fn locked_sources(sources: &[SourceConfig]) -> Vec<LockedSource> {
@@ -521,6 +565,7 @@ fn drift_code_name(code: LockDriftCode) -> &'static str {
         LockDriftCode::UnlinkedAdded => "unlinked_added",
         LockDriftCode::PendingApprovalRemoved => "pending_approval_removed",
         LockDriftCode::PendingApprovalAdded => "pending_approval_added",
+        LockDriftCode::SkillDeliveryChanged => "skill_delivery_changed",
         LockDriftCode::PluginAdded => "plugin_added",
         LockDriftCode::PluginRemoved => "plugin_removed",
         LockDriftCode::PluginChanged => "plugin_changed",
@@ -562,6 +607,7 @@ mod tests {
             dry_run: false,
             linked_targets: 1,
             operations: vec![operation("/target/b"), operation("/target/a")],
+            deliveries: Vec::new(),
             resolution: resolution.clone(),
             degraded_sources: Vec::new(),
             unrefreshed_tracking_sources: Vec::new(),
@@ -604,6 +650,29 @@ mod tests {
                 .iter()
                 .any(|entry| entry.code == LockDriftCode::ActiveAdded)
         );
+    }
+
+    #[test]
+    fn compare_user_lock_should_report_prebuilt_artifact_drift() {
+        let mut old = locked_skill("catalog:impeccable");
+        old.delivery = Some(prebuilt_delivery("sha256:old"));
+        let mut changed = old.clone();
+        changed.delivery = Some(prebuilt_delivery("sha256:new"));
+        let previous = UserLock {
+            active_skills: vec![old],
+            ..UserLock::empty()
+        };
+        let current = UserLock {
+            active_skills: vec![changed],
+            ..UserLock::empty()
+        };
+
+        let drift = compare_user_lock(&previous, &current);
+
+        assert!(drift.iter().any(|entry| {
+            entry.code == LockDriftCode::SkillDeliveryChanged
+                && entry.subject == "catalog:impeccable"
+        }));
     }
 
     #[test]
@@ -802,6 +871,7 @@ mod tests {
             source_kind: SourceKind::Team,
             source_priority: 10,
             path: PathBuf::from(format!("/store/{slot_name}")),
+            delivery: crate::inventory::SkillDelivery::Direct,
             local_override: false,
             requires: Vec::new(),
         }
@@ -827,7 +897,25 @@ mod tests {
             id: None,
             source_id: "local".to_owned(),
             source_kind: SourceKind::Local,
+            delivery: None,
             reason: None,
+        }
+    }
+
+    fn prebuilt_delivery(fingerprint: &str) -> SkillDelivery {
+        SkillDelivery::Prebuilt {
+            providers: [(
+                "codex".to_owned(),
+                crate::inventory::PrebuiltSkillArtifact {
+                    path: PathBuf::from("/source/builds/codex/impeccable"),
+                    fingerprint: fingerprint.to_owned(),
+                },
+            )]
+            .into_iter()
+            .collect(),
+            universal_fallback: false,
+            fallback_fingerprint: None,
+            manifest_path: PathBuf::from("/source/skills/impeccable/DELIVERY.toml"),
         }
     }
 

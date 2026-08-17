@@ -344,24 +344,51 @@ pub fn audit_active_skills(
 ) -> ActiveAuditOutcome {
     let mut outcome = ActiveAuditOutcome::default();
     for skill in &resolution.active_skills {
-        match audit_skill(
-            paths,
-            &skill.source_ref,
-            &skill.path,
-            &AuditOptions {
-                persist,
-                ..AuditOptions::default()
-            },
-        ) {
-            Ok(report) if report.is_blocking() => {
-                outcome.blocking.push(skill.source_ref.clone());
+        let artifacts = match &skill.delivery {
+            crate::inventory::SkillDelivery::Direct => {
+                vec![(None, skill.path.clone())]
             }
-            Ok(_) => {}
-            Err(error) => outcome.failures.push(ActiveAuditFailure {
-                source_ref: skill.source_ref.clone(),
-                source_id: skill.source_id.clone(),
-                reason: error.to_string(),
-            }),
+            crate::inventory::SkillDelivery::Prebuilt {
+                providers,
+                universal_fallback,
+                ..
+            } => {
+                let mut artifacts = providers
+                    .iter()
+                    .map(|(provider, artifact)| (Some(provider.clone()), artifact.path.clone()))
+                    .collect::<Vec<_>>();
+                if *universal_fallback {
+                    artifacts.push((Some("universal".to_owned()), skill.path.clone()));
+                }
+                artifacts
+            }
+        };
+        for (provider, artifact_path) in artifacts {
+            match audit_skill(
+                paths,
+                &skill.source_ref,
+                &artifact_path,
+                &AuditOptions {
+                    persist,
+                    ..AuditOptions::default()
+                },
+            ) {
+                Ok(report) if report.is_blocking() => {
+                    outcome.blocking.push(provider.map_or_else(
+                        || skill.source_ref.clone(),
+                        |provider| format!("{}[{provider}]", skill.source_ref),
+                    ));
+                }
+                Ok(_) => {}
+                Err(error) => outcome.failures.push(ActiveAuditFailure {
+                    source_ref: skill.source_ref.clone(),
+                    source_id: skill.source_id.clone(),
+                    reason: provider.map_or_else(
+                        || error.to_string(),
+                        |provider| format!("provider `{provider}`: {error}"),
+                    ),
+                }),
+            }
         }
     }
     outcome

@@ -3,15 +3,18 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::{self, Read};
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::agent::{self, AgentInventoryWarning, AgentRecord};
 use crate::error::DaloResult;
 use crate::plugin::{self, PluginInventoryWarning, PluginRecord};
 
 const SKILL_FILE: &str = "SKILL.md";
+const DELIVERY_FILE: &str = "DELIVERY.toml";
 const MAX_FRONTMATTER_BYTES: usize = 64 * 1024;
 const MAX_SKILL_METADATA_BYTES: usize = MAX_FRONTMATTER_BYTES + 16;
 const MAX_FRONTMATTER_FLOW_DEPTH: usize = 64;
@@ -36,11 +39,7 @@ pub struct SourceInventory {
 }
 
 /// One discovered skill.
-///
-/// V1.1 (drift detection) will reintroduce content/metadata fingerprints here,
-/// computed once and ideally persisted into the user lock so `status`/`doctor`
-/// can detect drift without re-hashing every skill directory on each run.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkillRecord {
     /// Source ID.
     pub source_id: String,
@@ -54,6 +53,8 @@ pub struct SkillRecord {
     pub path: PathBuf,
     /// `SKILL.md` path.
     pub skill_file: PathBuf,
+    /// Target-aware delivery strategy.
+    pub delivery: SkillDelivery,
     /// Optional description.
     pub description: Option<String>,
     /// Declared dependencies.
@@ -62,6 +63,116 @@ pub struct SkillRecord {
     pub owners: Vec<String>,
     /// Declared tags.
     pub tags: Vec<String>,
+}
+
+/// How one logical skill is delivered to linked targets.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SkillDelivery {
+    /// Link the discovered skill directory unchanged.
+    Direct,
+    /// Select an existing provider-specific directory from the source checkout.
+    Prebuilt {
+        /// Provider artifacts keyed by logical target ID.
+        providers: BTreeMap<String, PrebuiltSkillArtifact>,
+        /// Whether an unmapped target may use the logical skill directory.
+        universal_fallback: bool,
+        /// Fingerprint of the fallback directory when enabled.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        fallback_fingerprint: Option<String>,
+        /// Delivery manifest path used as provenance.
+        manifest_path: PathBuf,
+    },
+}
+
+impl SkillDelivery {
+    /// Select the immutable directory and fingerprint for one logical target.
+    #[must_use]
+    pub fn artifact_for(&self, target_id: &str, direct_path: &Path) -> Option<SkillArtifact> {
+        match self {
+            Self::Direct => Some(SkillArtifact {
+                path: direct_path.to_path_buf(),
+                fingerprint: None,
+                mode: SkillDeliveryMode::Direct,
+                provider: None,
+            }),
+            Self::Prebuilt {
+                providers,
+                universal_fallback,
+                fallback_fingerprint,
+                ..
+            } => providers.get(target_id).map_or_else(
+                || {
+                    universal_fallback.then(|| SkillArtifact {
+                        path: direct_path.to_path_buf(),
+                        fingerprint: fallback_fingerprint.clone(),
+                        mode: SkillDeliveryMode::Prebuilt,
+                        provider: Some("universal".to_owned()),
+                    })
+                },
+                |artifact| {
+                    Some(SkillArtifact {
+                        path: artifact.path.clone(),
+                        fingerprint: Some(artifact.fingerprint.clone()),
+                        mode: SkillDeliveryMode::Prebuilt,
+                        provider: Some(target_id.to_owned()),
+                    })
+                },
+            ),
+        }
+    }
+
+    /// Stable delivery mode label.
+    #[must_use]
+    pub const fn mode(&self) -> SkillDeliveryMode {
+        match self {
+            Self::Direct => SkillDeliveryMode::Direct,
+            Self::Prebuilt { .. } => SkillDeliveryMode::Prebuilt,
+        }
+    }
+}
+
+/// Selected delivery artifact for one logical target.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SkillArtifact {
+    /// Directory linked into the target.
+    pub path: PathBuf,
+    /// Deterministic content fingerprint.
+    pub fingerprint: Option<String>,
+    /// Delivery mode.
+    pub mode: SkillDeliveryMode,
+    /// Provider mapping key, or `universal` for an explicit fallback.
+    pub provider: Option<String>,
+}
+
+/// Stable skill delivery mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkillDeliveryMode {
+    /// The canonical skill directory is linked unchanged.
+    Direct,
+    /// A declared provider-specific prebuilt directory is linked.
+    Prebuilt,
+}
+
+impl SkillDeliveryMode {
+    /// Text label used in persisted provenance.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Direct => "direct",
+            Self::Prebuilt => "prebuilt",
+        }
+    }
+}
+
+/// One validated prebuilt provider artifact.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PrebuiltSkillArtifact {
+    /// Absolute directory path inside the source checkout.
+    pub path: PathBuf,
+    /// Deterministic content fingerprint.
+    pub fingerprint: String,
 }
 
 /// Non-fatal inventory warning.
@@ -90,6 +201,18 @@ pub enum InventoryWarningCode {
     /// A symlinked directory was skipped to avoid traversing outside the source
     /// or looping through a cycle.
     SkippedSymlink,
+    /// A delivery manifest or provider artifact was invalid or unsafe.
+    InvalidDelivery,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DeliveryManifest {
+    schema_version: u32,
+    kind: String,
+    #[serde(default)]
+    universal_fallback: bool,
+    providers: BTreeMap<String, PathBuf>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -110,7 +233,7 @@ pub fn scan_source(source_id: &str, source_root: &Path) -> DaloResult<SourceInve
     let mut skills = Vec::new();
 
     for skill_dir in skill_dirs {
-        match scan_skill(source_id, &skill_dir) {
+        match scan_skill(source_id, source_root, &skill_dir) {
             Ok((skill, mut skill_warnings)) => {
                 // `skill` is `None` when the slot name could not be resolved; the
                 // skill is dropped while its warning is still collected.
@@ -126,6 +249,20 @@ pub fn scan_source(source_id: &str, source_root: &Path) -> DaloResult<SourceInve
             }),
         }
     }
+
+    // Provider builds are artifacts of another logical skill, not additional
+    // independently selectable skills even when they contain their own SKILL.md.
+    let provider_artifact_paths = skills
+        .iter()
+        .flat_map(|skill| match &skill.delivery {
+            SkillDelivery::Prebuilt { providers, .. } => providers
+                .values()
+                .map(|artifact| artifact.path.clone())
+                .collect::<Vec<_>>(),
+            SkillDelivery::Direct => Vec::new(),
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    skills.retain(|skill| !provider_artifact_paths.contains(&skill.path));
 
     skills.sort_by(|left, right| {
         left.slot_name
@@ -267,6 +404,7 @@ fn is_adoption_staging_dir_name(name: &std::ffi::OsStr) -> bool {
 
 fn scan_skill(
     source_id: &str,
+    source_root: &Path,
     skill_dir: &Path,
 ) -> DaloResult<(Option<SkillRecord>, Vec<InventoryWarning>)> {
     let skill_file = skill_dir.join(SKILL_FILE);
@@ -289,6 +427,17 @@ fn scan_skill(
         return Ok((None, warnings));
     };
     let source_ref = format!("{source_id}:{slot_name}");
+    let delivery = match scan_delivery(source_root, skill_dir) {
+        Ok(delivery) => delivery,
+        Err(message) => {
+            warnings.push(InventoryWarning {
+                code: InventoryWarningCode::InvalidDelivery,
+                path: skill_dir.join(DELIVERY_FILE),
+                message,
+            });
+            return Ok((None, warnings));
+        }
+    };
 
     Ok((
         Some(SkillRecord {
@@ -298,6 +447,7 @@ fn scan_skill(
             slot_name,
             path: skill_dir.to_path_buf(),
             skill_file,
+            delivery,
             description: frontmatter.description,
             requires: frontmatter.requires,
             owners: frontmatter.owners,
@@ -307,12 +457,191 @@ fn scan_skill(
     ))
 }
 
+fn scan_delivery(source_root: &Path, skill_dir: &Path) -> Result<SkillDelivery, String> {
+    let manifest_path = skill_dir.join(DELIVERY_FILE);
+    if !manifest_path.exists() {
+        return Ok(SkillDelivery::Direct);
+    }
+    if fs::symlink_metadata(&manifest_path)
+        .map_err(|error| format!("cannot inspect delivery manifest: {error}"))?
+        .file_type()
+        .is_symlink()
+    {
+        return Err("delivery manifest must not be a symlink".to_owned());
+    }
+
+    let content = fs::read_to_string(&manifest_path)
+        .map_err(|error| format!("cannot read delivery manifest: {error}"))?;
+    let manifest: DeliveryManifest = toml::from_str(&content)
+        .map_err(|error| format!("cannot parse delivery manifest: {error}"))?;
+    if manifest.schema_version != 1 {
+        return Err(format!(
+            "unsupported delivery schema version {} (supported: 1)",
+            manifest.schema_version
+        ));
+    }
+    if manifest.kind != "prebuilt" {
+        return Err(format!(
+            "unsupported delivery kind `{}` (supported: prebuilt)",
+            manifest.kind
+        ));
+    }
+    if manifest.providers.is_empty() {
+        return Err("prebuilt delivery requires at least one provider mapping".to_owned());
+    }
+
+    let canonical_source = fs::canonicalize(source_root)
+        .map_err(|error| format!("cannot resolve source checkout: {error}"))?;
+    let canonical_skill = fs::canonicalize(skill_dir)
+        .map_err(|error| format!("cannot resolve logical skill directory: {error}"))?;
+    let mut providers = BTreeMap::new();
+    for (provider, relative_path) in manifest.providers {
+        if !valid_provider_id(&provider) {
+            return Err(format!("invalid provider target ID `{provider}`"));
+        }
+        if relative_path.is_absolute()
+            || relative_path.components().any(|component| {
+                matches!(
+                    component,
+                    std::path::Component::ParentDir
+                        | std::path::Component::RootDir
+                        | std::path::Component::Prefix(_)
+                )
+            })
+        {
+            return Err(format!(
+                "provider `{provider}` path must be relative and stay inside the source checkout"
+            ));
+        }
+        let artifact_path = source_root.join(&relative_path);
+        let canonical_artifact = fs::canonicalize(&artifact_path).map_err(|error| {
+            format!(
+                "provider `{provider}` artifact `{}` cannot be resolved: {error}",
+                relative_path.display()
+            )
+        })?;
+        if !canonical_artifact.starts_with(&canonical_source) {
+            return Err(format!(
+                "provider `{provider}` artifact must stay inside the source checkout"
+            ));
+        }
+        if canonical_artifact == canonical_skill {
+            return Err(format!(
+                "provider `{provider}` artifact must differ from the logical skill; use universal_fallback for the canonical directory"
+            ));
+        }
+        if !canonical_artifact.join(SKILL_FILE).is_file() {
+            return Err(format!(
+                "provider `{provider}` artifact `{}` does not contain SKILL.md",
+                relative_path.display()
+            ));
+        }
+        let fingerprint = fingerprint_directory(&artifact_path)
+            .map_err(|error| format!("provider `{provider}` artifact is unsafe: {error}"))?;
+        providers.insert(
+            provider,
+            PrebuiltSkillArtifact {
+                path: artifact_path,
+                fingerprint,
+            },
+        );
+    }
+
+    let fallback_fingerprint = manifest
+        .universal_fallback
+        .then(|| fingerprint_directory(skill_dir))
+        .transpose()?;
+    Ok(SkillDelivery::Prebuilt {
+        providers,
+        universal_fallback: manifest.universal_fallback,
+        fallback_fingerprint,
+        manifest_path,
+    })
+}
+
+fn valid_provider_id(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+}
+
+fn fingerprint_directory(root: &Path) -> Result<String, String> {
+    let metadata = fs::symlink_metadata(root)
+        .map_err(|error| format!("cannot inspect `{}`: {error}", root.display()))?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(format!("`{}` must be a real directory", root.display()));
+    }
+
+    let mut entries = Vec::new();
+    collect_fingerprint_entries(root, root, &mut entries)?;
+    entries.sort_by(|left, right| left.0.cmp(&right.0));
+    let mut hash = Sha256::new();
+    for (relative, kind, mode, content) in entries {
+        hash.update(relative.as_os_str().as_encoded_bytes());
+        hash.update([0]);
+        hash.update([kind]);
+        hash.update(mode.to_be_bytes());
+        hash.update((content.len() as u64).to_be_bytes());
+        hash.update(content);
+    }
+    let digest = hash.finalize();
+    let hex = digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    Ok(format!("sha256:{hex}"))
+}
+
+fn collect_fingerprint_entries(
+    root: &Path,
+    directory: &Path,
+    entries: &mut Vec<(PathBuf, u8, u32, Vec<u8>)>,
+) -> Result<(), String> {
+    let children = fs::read_dir(directory)
+        .map_err(|error| format!("cannot read `{}`: {error}", directory.display()))?;
+    for child in children {
+        let child = child.map_err(|error| {
+            format!("cannot read entry below `{}`: {error}", directory.display())
+        })?;
+        let path = child.path();
+        let relative = path
+            .strip_prefix(root)
+            .expect("descendant must stay below fingerprint root")
+            .to_path_buf();
+        let metadata = fs::symlink_metadata(&path)
+            .map_err(|error| format!("cannot inspect `{}`: {error}", path.display()))?;
+        if metadata.file_type().is_symlink() {
+            return Err(format!("symlink `{}` is not allowed", relative.display()));
+        }
+        if metadata.is_dir() {
+            entries.push((relative, b'd', 0, Vec::new()));
+            collect_fingerprint_entries(root, &path, entries)?;
+        } else if metadata.is_file() {
+            let content = fs::read(&path)
+                .map_err(|error| format!("cannot read `{}`: {error}", path.display()))?;
+            entries.push((
+                relative,
+                b'f',
+                metadata.permissions().mode() & 0o111,
+                content,
+            ));
+        } else {
+            return Err(format!(
+                "special filesystem entry `{}` is not allowed",
+                relative.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Return an invalid-slot warning for one skill directory, if present.
 ///
 /// This reuses the source-inventory parser so callers that copy skills into a
 /// managed source can reject names which the next sync would otherwise reject.
 pub(crate) fn invalid_slot_name_warning(skill_dir: &Path) -> DaloResult<Option<InventoryWarning>> {
-    let (_, warnings) = scan_skill("adopt", skill_dir)?;
+    let (_, warnings) = scan_skill("adopt", skill_dir, skill_dir)?;
     Ok(warnings
         .into_iter()
         .find(|warning| warning.code == InventoryWarningCode::InvalidSlotName))
@@ -652,6 +981,7 @@ fn warning_code_name(code: InventoryWarningCode) -> &'static str {
         InventoryWarningCode::DuplicateSlotName => "duplicate_slot_name",
         InventoryWarningCode::UnreadablePath => "unreadable_path",
         InventoryWarningCode::SkippedSymlink => "skipped_symlink",
+        InventoryWarningCode::InvalidDelivery => "invalid_delivery",
     }
 }
 
@@ -665,6 +995,61 @@ impl std::fmt::Display for InventoryWarningCode {
 mod tests {
     use super::*;
     use proptest::prelude::*;
+
+    #[test]
+    fn scan_source_should_resolve_prebuilt_provider_artifacts_once() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let logical = temp_dir.path().join("skills/impeccable");
+        let codex = temp_dir.path().join("builds/codex/impeccable");
+        let claude = temp_dir.path().join("builds/claude/impeccable");
+        for directory in [&logical, &codex, &claude] {
+            fs::create_dir_all(directory).expect("skill directory should be created");
+            fs::write(directory.join(SKILL_FILE), "# Impeccable\n")
+                .expect("skill file should be written");
+        }
+        fs::write(
+            logical.join(DELIVERY_FILE),
+            "schema_version = 1\nkind = \"prebuilt\"\n\n[providers]\ncodex = \"builds/codex/impeccable\"\nclaude = \"builds/claude/impeccable\"\n",
+        )
+        .expect("delivery manifest should be written");
+
+        let inventory = scan_source("catalog", temp_dir.path()).expect("scan should succeed");
+
+        assert_eq!(inventory.skills.len(), 1);
+        let SkillDelivery::Prebuilt { providers, .. } = &inventory.skills[0].delivery else {
+            panic!("logical skill should use prebuilt delivery");
+        };
+        assert_eq!(providers["codex"].path, codex);
+        assert_eq!(providers["claude"].path, claude);
+        assert!(providers["codex"].fingerprint.starts_with("sha256:"));
+        assert!(inventory.warnings.is_empty());
+    }
+
+    #[test]
+    fn scan_source_should_fail_closed_for_unsafe_prebuilt_artifact() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let outside = tempfile::tempdir().expect("outside tempdir should be created");
+        let logical = temp_dir.path().join("review");
+        fs::create_dir_all(&logical).expect("skill directory should be created");
+        fs::write(logical.join(SKILL_FILE), "# Review\n").expect("skill should be written");
+        fs::write(outside.path().join(SKILL_FILE), "# Outside\n")
+            .expect("outside skill should be written");
+        std::os::unix::fs::symlink(outside.path(), temp_dir.path().join("escaped"))
+            .expect("escape symlink should be created");
+        fs::write(
+            logical.join(DELIVERY_FILE),
+            "schema_version = 1\nkind = \"prebuilt\"\n\n[providers]\ncodex = \"escaped\"\n",
+        )
+        .expect("delivery manifest should be written");
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should succeed");
+
+        assert!(inventory.skills.is_empty());
+        assert!(inventory.warnings.iter().any(|warning| {
+            warning.code == InventoryWarningCode::InvalidDelivery
+                && warning.message.contains("inside the source checkout")
+        }));
+    }
 
     #[test]
     fn scan_source_should_find_skill_with_frontmatter() {

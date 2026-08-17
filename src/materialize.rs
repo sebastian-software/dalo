@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::error::{DaloError, DaloResult};
+use crate::inventory::SkillDeliveryMode;
 use crate::resolver::{
     BlockedSkill, ClosureBlockReason, Resolution, ResolutionDiagnostic, ResolutionDiagnosticCode,
     ResolvedSkill, closure_block_reason_name,
@@ -43,6 +44,9 @@ pub struct SyncReport {
     pub linked_targets: usize,
     /// Planned and applied operations.
     pub operations: Vec<MaterializeOperation>,
+    /// Target-aware delivery selections and blocked mappings.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deliveries: Vec<SkillDeliveryReport>,
     /// Resolution used to build this plan, including pending and blocked skills.
     pub resolution: Resolution,
     /// Sources whose scan was incomplete, so stale links were preserved.
@@ -61,6 +65,33 @@ pub struct SyncReport {
     /// Independently owned provider-native plugin package projections.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub plugin_targets: Vec<crate::plugin_projection::PluginTargetReport>,
+}
+
+/// Delivery selection for one materialized physical slot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SkillDeliveryReport {
+    /// Logical targets sharing this physical slot.
+    pub target_ids: Vec<String>,
+    /// Logical skill identity.
+    pub source_ref: String,
+    /// Target slot path.
+    pub link_path: PathBuf,
+    /// Selected delivery mode.
+    pub mode: SkillDeliveryMode,
+    /// Provider key, including `universal` for explicit fallback.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    /// Selected provider artifact path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact_path: Option<PathBuf>,
+    /// Selected provider artifact fingerprint.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fingerprint: Option<String>,
+    /// Whether target-aware selection was blocked.
+    pub blocked: bool,
+    /// Actionable reason when selection was blocked.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 /// A catalog that needs an explicit skill selection before it can contribute to sync.
@@ -167,9 +198,15 @@ impl MaterializeOperationStatus {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct DesiredLink {
     target_id: String,
+    target_ids: Vec<String>,
+    source_ref: String,
     slot_name: String,
     link_path: PathBuf,
     store_path: PathBuf,
+    delivery_mode: SkillDeliveryMode,
+    provider: Option<String>,
+    fingerprint: Option<String>,
+    blocked_reason: Option<String>,
 }
 
 /// Materialize resolved skills into configured target directories.
@@ -298,6 +335,7 @@ pub fn materialize_with_degraded_sources_rollback(
         &protected_suppressed_links,
         &suppressed_link_reasons,
     );
+    let deliveries = delivery_reports(&all_links, &operations);
 
     Ok((
         SyncReport {
@@ -305,6 +343,7 @@ pub fn materialize_with_degraded_sources_rollback(
             dry_run,
             linked_targets: state.targets.iter().filter(|target| target.enabled).count(),
             operations,
+            deliveries,
             resolution,
             degraded_sources: degraded_sources.to_vec(),
             unrefreshed_tracking_sources: Vec::new(),
@@ -315,6 +354,41 @@ pub fn materialize_with_degraded_sources_rollback(
         },
         rollback,
     ))
+}
+
+fn delivery_reports(
+    desired_links: &[DesiredLink],
+    operations: &[MaterializeOperation],
+) -> Vec<SkillDeliveryReport> {
+    let mut reports = desired_links
+        .iter()
+        .map(|desired| {
+            let operation = operations
+                .iter()
+                .find(|operation| operation.link_path == desired.link_path);
+            let blocked = desired.blocked_reason.is_some()
+                || operation.is_some_and(|operation| {
+                    operation.status == MaterializeOperationStatus::Blocked
+                });
+            SkillDeliveryReport {
+                target_ids: desired.target_ids.clone(),
+                source_ref: desired.source_ref.clone(),
+                link_path: desired.link_path.clone(),
+                mode: desired.delivery_mode,
+                provider: (!blocked).then(|| desired.provider.clone()).flatten(),
+                artifact_path: (!blocked).then(|| desired.store_path.clone()),
+                fingerprint: (!blocked).then(|| desired.fingerprint.clone()).flatten(),
+                blocked,
+                reason: desired.blocked_reason.clone().or_else(|| {
+                    operation
+                        .filter(|operation| operation.status == MaterializeOperationStatus::Blocked)
+                        .and_then(|operation| operation.reason.clone())
+                }),
+            }
+        })
+        .collect::<Vec<_>>();
+    reports.sort_by(|left, right| left.link_path.cmp(&right.link_path));
+    reports
 }
 
 impl MaterializationRollback {
@@ -654,11 +728,60 @@ fn desired_links(state: &StateFile, resolution: &Resolution) -> Vec<DesiredLink>
             continue;
         };
         for skill in &resolution.active_skills {
+            let selected = dir
+                .logical_targets
+                .iter()
+                .map(|target| (target, skill.delivery.artifact_for(target, &skill.path)))
+                .collect::<Vec<_>>();
+            let missing = selected
+                .iter()
+                .filter(|(_, artifact)| artifact.is_none())
+                .map(|(target, _)| (*target).clone())
+                .collect::<Vec<_>>();
+            let artifacts = selected
+                .iter()
+                .filter_map(|(_, artifact)| artifact.as_ref())
+                .collect::<Vec<_>>();
+            let artifact_paths = artifacts
+                .iter()
+                .map(|artifact| artifact.path.clone())
+                .collect::<BTreeSet<_>>();
+            let blocked_reason = if !missing.is_empty() {
+                Some(format!(
+                    "prebuilt delivery for `{}` has no mapping for target{} {}; add provider mapping{} or enable universal_fallback",
+                    skill.source_ref,
+                    if missing.len() == 1 { "" } else { "s" },
+                    missing.join(", "),
+                    if missing.len() == 1 { "" } else { "s" }
+                ))
+            } else if artifact_paths.len() > 1 {
+                Some(format!(
+                    "logical targets {} share one physical directory but `{}` selects different provider artifacts",
+                    dir.logical_targets.join(", "),
+                    skill.source_ref
+                ))
+            } else {
+                None
+            };
+            let artifact = artifacts.first().copied();
+            let provider = artifact.and_then(|first| {
+                artifacts
+                    .iter()
+                    .all(|artifact| artifact.provider == first.provider)
+                    .then(|| first.provider.clone())
+                    .flatten()
+            });
             links.push(DesiredLink {
                 target_id: target_id.clone(),
+                target_ids: dir.logical_targets.clone(),
+                source_ref: skill.source_ref.clone(),
                 slot_name: skill.slot_name.clone(),
                 link_path: dir.path.join(&skill.slot_name),
-                store_path: skill.path.clone(),
+                store_path: artifact.map_or_else(|| skill.path.clone(), |item| item.path.clone()),
+                delivery_mode: skill.delivery.mode(),
+                provider,
+                fingerprint: artifact.and_then(|item| item.fingerprint.clone()),
+                blocked_reason,
             });
         }
     }
@@ -690,6 +813,18 @@ fn build_plan(
     let mut operations = Vec::new();
 
     for link_path in all_links {
+        if let Some(desired) = desired_by_link.get(&link_path)
+            && let Some(reason) = &desired.blocked_reason
+        {
+            operations.push(MaterializeOperation {
+                kind: MaterializeOperationKind::Conflict,
+                link_path: desired.link_path.clone(),
+                desired_path: None,
+                status: MaterializeOperationStatus::Blocked,
+                reason: Some(reason.clone()),
+            });
+            continue;
+        }
         match (
             desired_by_link.get(&link_path),
             recorded_by_link.get(&link_path),
@@ -936,16 +1071,43 @@ fn apply_plan(
                     )
             })
         })
-        .map(|desired| OwnedSkillState {
-            target_id: desired.target_id.clone(),
-            slot_name: desired.slot_name.clone(),
-            link_path: desired.link_path.clone(),
-            store_path: desired.store_path.clone(),
-            extra: previous_owned_skills
+        .map(|desired| {
+            let mut extra = previous_owned_skills
                 .iter()
                 .find(|record| record.link_path == desired.link_path)
                 .map(|record| record.extra.clone())
-                .unwrap_or_default(),
+                .unwrap_or_default();
+            extra.insert(
+                "delivery_mode".to_owned(),
+                toml::Value::String(desired.delivery_mode.as_str().to_owned()),
+            );
+            extra.insert(
+                "source_ref".to_owned(),
+                toml::Value::String(desired.source_ref.clone()),
+            );
+            if let Some(provider) = &desired.provider {
+                extra.insert(
+                    "delivery_provider".to_owned(),
+                    toml::Value::String(provider.clone()),
+                );
+            } else {
+                extra.remove("delivery_provider");
+            }
+            if let Some(fingerprint) = &desired.fingerprint {
+                extra.insert(
+                    "delivery_fingerprint".to_owned(),
+                    toml::Value::String(fingerprint.clone()),
+                );
+            } else {
+                extra.remove("delivery_fingerprint");
+            }
+            OwnedSkillState {
+                target_id: desired.target_id.clone(),
+                slot_name: desired.slot_name.clone(),
+                link_path: desired.link_path.clone(),
+                store_path: desired.store_path.clone(),
+                extra,
+            }
         })
         .collect();
     for operation in operations
@@ -1051,7 +1213,9 @@ fn should_preserve_recorded_operation(operation: &MaterializeOperation) -> bool 
         || operation.reason.as_deref().is_some_and(|reason| {
             operation.kind == MaterializeOperationKind::Conflict
                 && operation.status == MaterializeOperationStatus::Blocked
-                && reason.starts_with("could not inspect recorded slot")
+                && (reason.starts_with("could not inspect recorded slot")
+                    || reason.starts_with("prebuilt delivery")
+                    || reason.starts_with("logical targets"))
         })
 }
 
@@ -1168,6 +1332,182 @@ mod tests {
                 .expect("link should exist")
                 .file_type()
                 .is_symlink()
+        );
+    }
+
+    #[test]
+    fn materialize_should_select_prebuilt_artifact_per_logical_target() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        let logical = store_root.join("sources/catalog/impeccable");
+        let codex_artifact = store_root.join("sources/catalog/builds/codex/impeccable");
+        let claude_artifact = store_root.join("sources/catalog/builds/claude/impeccable");
+        for directory in [&logical, &codex_artifact, &claude_artifact] {
+            fs::create_dir_all(directory).expect("artifact directory should be created");
+        }
+        let codex_target = temp_dir.path().join("codex-skills");
+        let claude_target = temp_dir.path().join("claude-skills");
+        fs::create_dir_all(&codex_target).expect("codex target should be created");
+        fs::create_dir_all(&claude_target).expect("claude target should be created");
+        let paths = StorePaths::new(store_root);
+        let mut state = store::read_state(&paths).expect("state should be readable");
+        state.materialization_dirs = vec![
+            MaterializationDirState {
+                path: codex_target.clone(),
+                logical_targets: vec!["codex".to_owned()],
+                extra: Default::default(),
+            },
+            MaterializationDirState {
+                path: claude_target.clone(),
+                logical_targets: vec!["claude".to_owned()],
+                extra: Default::default(),
+            },
+        ];
+        state.targets = vec![
+            TargetState {
+                id: "codex".to_owned(),
+                path: codex_target.clone(),
+                canonical_path: codex_target.clone(),
+                enabled: true,
+                extra: Default::default(),
+            },
+            TargetState {
+                id: "claude".to_owned(),
+                path: claude_target.clone(),
+                canonical_path: claude_target.clone(),
+                enabled: true,
+                extra: Default::default(),
+            },
+        ];
+        store::write_state(&paths, &state).expect("state should be written");
+        let mut resolution = resolution_with_skill("impeccable", &logical);
+        resolution.active_skills[0].delivery =
+            prebuilt_delivery(&[("codex", &codex_artifact), ("claude", &claude_artifact)]);
+
+        let report = materialize(&paths, &resolution, false).expect("materialize should succeed");
+
+        assert_eq!(
+            fs::read_link(codex_target.join("impeccable")).expect("codex link should exist"),
+            codex_artifact
+        );
+        assert_eq!(
+            fs::read_link(claude_target.join("impeccable")).expect("claude link should exist"),
+            claude_artifact
+        );
+        assert_eq!(report.deliveries.len(), 2);
+        assert!(
+            report.deliveries.iter().all(|delivery| {
+                delivery.mode == SkillDeliveryMode::Prebuilt && !delivery.blocked
+            })
+        );
+    }
+
+    #[test]
+    fn materialize_should_block_missing_prebuilt_target_mapping() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let target = temp_dir.path().join("claude-skills");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        fs::create_dir_all(&target).expect("target should be created");
+        write_state_with_target_id(&store_root, &target, "claude");
+        let logical = store_root.join("sources/catalog/impeccable");
+        let codex_artifact = store_root.join("sources/catalog/builds/codex/impeccable");
+        fs::create_dir_all(&logical).expect("logical skill should be created");
+        fs::create_dir_all(&codex_artifact).expect("artifact should be created");
+        let mut resolution = resolution_with_skill("impeccable", &logical);
+        resolution.active_skills[0].delivery = prebuilt_delivery(&[("codex", &codex_artifact)]);
+
+        let report = materialize(&StorePaths::new(store_root), &resolution, true)
+            .expect("dry run should report the block");
+
+        assert_eq!(
+            report.operations[0].kind,
+            MaterializeOperationKind::Conflict
+        );
+        assert_eq!(
+            report.operations[0].status,
+            MaterializeOperationStatus::Blocked
+        );
+        assert!(
+            report.operations[0]
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("no mapping for target claude"))
+        );
+        assert!(report.deliveries[0].blocked);
+        assert!(!target.join("impeccable").exists());
+    }
+
+    #[test]
+    fn materialize_should_preserve_owned_link_when_prebuilt_mapping_becomes_missing() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let target = temp_dir.path().join("skills");
+        let logical = store_root.join("local/skills/review");
+        let link = target.join("review");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        fs::create_dir_all(&logical).expect("logical skill should be created");
+        fs::create_dir_all(&target).expect("target should be created");
+        unix_fs::symlink(&logical, &link).expect("old owned link should be created");
+        write_state_with_owned_skill(&store_root, &target, &link, &logical);
+        let mut resolution = resolution_with_skill("review", &logical);
+        resolution.active_skills[0].delivery =
+            prebuilt_delivery(&[("codex", &store_root.join("local/builds/codex/review"))]);
+        let paths = StorePaths::new(store_root);
+
+        let report = materialize(&paths, &resolution, false)
+            .expect("sync should report the blocked mapping safely");
+
+        assert_eq!(
+            report.operations[0].status,
+            MaterializeOperationStatus::Blocked
+        );
+        assert_eq!(
+            fs::read_link(&link).expect("old link should survive"),
+            logical
+        );
+        let state = store::read_state(&paths).expect("state should remain readable");
+        assert_eq!(state.owned_skills.len(), 1);
+        assert_eq!(state.owned_skills[0].link_path, link);
+    }
+
+    #[test]
+    fn materialize_should_block_different_artifacts_in_a_shared_target_directory() {
+        let shared = PathBuf::from("/agents/skills");
+        let state = StateFile {
+            schema_version: store::STATE_SCHEMA_VERSION,
+            targets: Vec::new(),
+            materialization_dirs: vec![MaterializationDirState {
+                path: shared,
+                logical_targets: vec!["codex".to_owned(), "openclaw".to_owned()],
+                extra: Default::default(),
+            }],
+            owned_skills: Vec::new(),
+            protected_skills: Vec::new(),
+            extra: Default::default(),
+        };
+        let mut resolution = resolution_with_skill("review", Path::new("/source/review"));
+        resolution.active_skills[0].delivery = prebuilt_delivery(&[
+            ("codex", &PathBuf::from("/source/builds/codex/review")),
+            ("openclaw", &PathBuf::from("/source/builds/openclaw/review")),
+        ]);
+
+        let links = desired_links(&state, &resolution);
+        let operations = build_plan(
+            &StorePaths::new(PathBuf::from("/store")),
+            &state,
+            &links,
+            &[],
+        )
+        .expect("planning should succeed");
+
+        assert_eq!(operations[0].kind, MaterializeOperationKind::Conflict);
+        assert!(
+            operations[0]
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("different provider artifacts"))
         );
     }
 
@@ -1639,9 +1979,15 @@ mod tests {
         };
         let desired = DesiredLink {
             target_id: "generic".to_owned(),
+            target_ids: vec!["generic".to_owned()],
+            source_ref: "local:review".to_owned(),
             slot_name: "review".to_owned(),
             link_path: link_path.clone(),
             store_path,
+            delivery_mode: SkillDeliveryMode::Direct,
+            provider: None,
+            fingerprint: None,
+            blocked_reason: None,
         };
 
         let paths = StorePaths::new(temp_dir.path().join("store"));
@@ -1861,10 +2207,14 @@ mod tests {
     }
 
     fn write_state_with_target(store_root: &Path, target_dir: &Path) {
+        write_state_with_target_id(store_root, target_dir, "generic");
+    }
+
+    fn write_state_with_target_id(store_root: &Path, target_dir: &Path, target_id: &str) {
         let paths = StorePaths::new(store_root.to_path_buf());
         let mut state = store::read_state(&paths).expect("state should be readable");
         state.targets = vec![TargetState {
-            id: "generic".to_owned(),
+            id: target_id.to_owned(),
             path: target_dir.to_path_buf(),
             canonical_path: target_dir.to_path_buf(),
             enabled: true,
@@ -1872,10 +2222,30 @@ mod tests {
         }];
         state.materialization_dirs = vec![MaterializationDirState {
             path: target_dir.to_path_buf(),
-            logical_targets: vec!["generic".to_owned()],
+            logical_targets: vec![target_id.to_owned()],
             extra: Default::default(),
         }];
         store::write_state(&paths, &state).expect("state should be written");
+    }
+
+    fn prebuilt_delivery(providers: &[(&str, &PathBuf)]) -> crate::inventory::SkillDelivery {
+        crate::inventory::SkillDelivery::Prebuilt {
+            providers: providers
+                .iter()
+                .map(|(provider, path)| {
+                    (
+                        (*provider).to_owned(),
+                        crate::inventory::PrebuiltSkillArtifact {
+                            path: (*path).clone(),
+                            fingerprint: format!("sha256:{provider}"),
+                        },
+                    )
+                })
+                .collect(),
+            universal_fallback: false,
+            fallback_fingerprint: None,
+            manifest_path: PathBuf::from("/source/DELIVERY.toml"),
+        }
     }
 
     fn write_state_with_owned_skill(
@@ -1918,6 +2288,7 @@ mod tests {
                 source_kind: SourceKind::Local,
                 source_priority: 0,
                 path: path.to_path_buf(),
+                delivery: crate::inventory::SkillDelivery::Direct,
                 local_override: false,
                 requires: Vec::new(),
             }],
@@ -1939,6 +2310,7 @@ mod tests {
                     source_kind: SourceKind::Team,
                     source_priority: 10,
                     path: alpha_path.to_path_buf(),
+                    delivery: crate::inventory::SkillDelivery::Direct,
                     local_override: false,
                     requires: vec!["beta".to_owned()],
                 },
@@ -1950,6 +2322,7 @@ mod tests {
                     source_kind: SourceKind::Team,
                     source_priority: 10,
                     path: beta_path.to_path_buf(),
+                    delivery: crate::inventory::SkillDelivery::Direct,
                     local_override: false,
                     requires: Vec::new(),
                 },
