@@ -9424,6 +9424,250 @@ fn instructions_enable_should_render_source_qualified_pack_with_commit_provenanc
 }
 
 #[test]
+fn sync_should_refresh_already_active_tracking_instruction_pack() {
+    let temp = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp.path().join("store");
+    let repo = temp.path().join("team-repo");
+    let target = temp.path().join("AGENTS.md");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::create_dir_all(repo.join("instructions")).unwrap();
+    std::fs::write(
+        repo.join("instructions/engineering-defaults.md"),
+        "version: 1\n\nReview boundaries.\n",
+    )
+    .unwrap();
+    create_git_skill_repo(&repo);
+    add_source(&store, "team", &repo);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "team:engineering-defaults"])
+        .arg(&target)
+        .assert()
+        .success();
+    let previous_commit = read_user_lock(&store).active_instruction_packs[0]
+        .commit
+        .clone()
+        .unwrap();
+
+    std::fs::write(
+        repo.join("instructions/engineering-defaults.md"),
+        "version: 2\n\nReview changed boundaries.\n",
+    )
+    .unwrap();
+    run_git(&repo, &["add", "instructions/engineering-defaults.md"]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "advance instructions",
+            "-q",
+        ],
+    );
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "sync"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(report["instruction_operations"][0]["source_id"], "team");
+    assert_eq!(
+        report["instruction_operations"][0]["pack_id"],
+        "engineering-defaults"
+    );
+    assert_eq!(report["instruction_operations"][0]["action"], "refreshed");
+    assert_eq!(
+        report["instruction_operations"][0]["previous_commit"],
+        previous_commit
+    );
+    let rendered = std::fs::read_to_string(&target).unwrap();
+    assert!(rendered.contains("Review changed boundaries."));
+    assert!(!rendered.contains("Review boundaries."));
+    let lock = read_user_lock(&store);
+    assert_eq!(
+        lock.active_instruction_packs[0].version.as_deref(),
+        Some("2")
+    );
+    assert_ne!(
+        lock.active_instruction_packs[0].commit.as_deref(),
+        Some(previous_commit.as_str())
+    );
+}
+
+#[test]
+fn sync_should_block_active_instruction_pack_after_source_approval_is_revoked() {
+    let temp = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp.path().join("store");
+    let repo = temp.path().join("team-repo");
+    let target = temp.path().join("AGENTS.md");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::create_dir_all(repo.join("instructions")).unwrap();
+    std::fs::write(
+        repo.join("instructions/policy.md"),
+        "version: 1\n\nReview boundaries.\n",
+    )
+    .unwrap();
+    create_git_skill_repo(&repo);
+    add_source(&store, "team", &repo);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "team:policy"])
+        .arg(&target)
+        .assert()
+        .success();
+    set_source_untrusted(&store, "team");
+    let target_before = std::fs::read(&target).unwrap();
+    let lock_before = std::fs::read(store.join("lock.toml")).unwrap();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "approval for instruction pack `team:policy` is missing or was revoked",
+        ));
+
+    assert_eq!(std::fs::read(&target).unwrap(), target_before);
+    assert_eq!(std::fs::read(store.join("lock.toml")).unwrap(), lock_before);
+
+    approve_source(&store, "team");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+}
+
+#[test]
+fn instructions_enable_should_require_source_approval_for_untrusted_source() {
+    let temp = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp.path().join("store");
+    let repo = temp.path().join("team-repo");
+    let target = temp.path().join("AGENTS.md");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::create_dir_all(repo.join("instructions")).unwrap();
+    std::fs::write(repo.join("instructions/policy.md"), "Review boundaries.\n").unwrap();
+    create_git_skill_repo(&repo);
+    add_source(&store, "team", &repo);
+    set_source_untrusted(&store, "team");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "team:policy"])
+        .arg(&target)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "approval for instruction pack `team:policy` is missing or was revoked",
+        ));
+    assert!(!target.exists());
+    assert!(read_user_lock(&store).active_instruction_packs.is_empty());
+
+    approve_source(&store, "team");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "team:policy"])
+        .arg(&target)
+        .assert()
+        .success();
+}
+
+#[test]
+fn sync_should_not_overwrite_externally_changed_instruction_block() {
+    let temp = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp.path().join("store");
+    let repo = temp.path().join("team-repo");
+    let target = temp.path().join("AGENTS.md");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::create_dir_all(repo.join("instructions")).unwrap();
+    std::fs::write(repo.join("instructions/policy.md"), "Old policy.\n").unwrap();
+    create_git_skill_repo(&repo);
+    add_source(&store, "team", &repo);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "team:policy"])
+        .arg(&target)
+        .assert()
+        .success();
+    let lock_before = std::fs::read(store.join("lock.toml")).unwrap();
+    let external = std::fs::read_to_string(&target)
+        .unwrap()
+        .replace("Old policy.", "External policy edit.");
+    std::fs::write(&target, &external).unwrap();
+    std::fs::write(repo.join("instructions/policy.md"), "New policy.\n").unwrap();
+    run_git(&repo, &["add", "instructions/policy.md"]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "advance policy",
+            "-q",
+        ],
+    );
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("changed outside Dalo"));
+
+    assert_eq!(std::fs::read_to_string(&target).unwrap(), external);
+    assert_eq!(std::fs::read(store.join("lock.toml")).unwrap(), lock_before);
+}
+
+#[test]
 fn instructions_enable_should_fan_out_source_pack_to_verified_agent_targets() {
     let temp = tempfile::tempdir().expect("tempdir should be created");
     let store = temp.path().join("store");

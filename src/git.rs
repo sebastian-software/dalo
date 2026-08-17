@@ -104,6 +104,35 @@ pub fn rev_parse_head(path: &Path) -> DaloResult<String> {
     run_git(path, &["rev-parse", "HEAD"]).map(|output| output.trim().to_owned())
 }
 
+/// Read one UTF-8 file from an immutable commit without changing the checkout.
+///
+/// Persisted instruction provenance uses full commit hashes. Restricting both
+/// the revision and path keeps the resulting `git show <commit>:<path>` object
+/// spec unambiguous even when lock data has been edited externally.
+pub fn read_file_at_commit(repo: &Path, commit: &str, relative_path: &Path) -> DaloResult<String> {
+    if !matches!(commit.len(), 40 | 64)
+        || !commit.bytes().all(|byte| byte.is_ascii_hexdigit())
+        || relative_path.as_os_str().is_empty()
+        || relative_path
+            .components()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+    {
+        return Err(DaloError::StateError {
+            reason: "instruction lock contains invalid Git provenance".to_owned(),
+        });
+    }
+    let relative = relative_path
+        .to_str()
+        .ok_or_else(|| DaloError::StateError {
+            reason: format!(
+                "instruction source path `{}` is not UTF-8",
+                relative_path.display()
+            ),
+        })?;
+    let object = format!("{commit}:{relative}");
+    run_git(repo, &["show", &object])
+}
+
 /// Resolve a fixed revision (such as `FETCH_HEAD`) to a commit hash.
 pub fn rev_parse(path: &Path, revision: &str) -> DaloResult<String> {
     run_git(path, &["rev-parse", revision]).map(|output| output.trim().to_owned())

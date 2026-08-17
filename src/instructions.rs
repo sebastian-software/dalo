@@ -5,7 +5,7 @@
 //! bytes between a pack's markers are ever rewritten; everything outside any
 //! managed block is preserved.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -22,7 +22,7 @@ use crate::error::{DaloError, DaloResult};
 use crate::git;
 use crate::lockfile::LockedInstructionPack;
 use crate::source::{SourceConfig, SourceKind};
-use crate::store::{self, StorePaths};
+use crate::store::{self, ApprovalRecord, StorePaths};
 
 const START_MARKER_PREFIX: &str = "<!-- dalo:start ";
 const END_MARKER_PREFIX: &str = "<!-- dalo:end ";
@@ -81,6 +81,72 @@ pub struct InstructionTargetOperationReport {
     /// Non-fatal recovery detail, such as a malformed block left untouched.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub warning: Option<String>,
+}
+
+/// One source-backed instruction update performed as part of `dalo sync`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct InstructionSyncOperation {
+    /// Source that owns the already-active pack.
+    pub source_id: String,
+    /// Pack ID.
+    pub pack_id: String,
+    /// Effective physical instruction-file path.
+    pub target: PathBuf,
+    /// What happened: `refreshed` or `unchanged`.
+    pub action: String,
+    /// Previously rendered immutable source commit.
+    pub previous_commit: String,
+    /// Newly rendered immutable source commit.
+    pub commit: String,
+}
+
+/// Result of reconciling already-active source-backed packs during sync.
+#[derive(Debug)]
+pub struct InstructionSyncResult {
+    /// Updated lock entries, preserving local packs unchanged.
+    pub active_instruction_packs: Vec<LockedInstructionPack>,
+    /// Source revisions considered by this sync.
+    pub operations: Vec<InstructionSyncOperation>,
+    /// Target snapshots retained until the companion user lock is committed.
+    pub rollback: Option<InstructionRefreshRollback>,
+}
+
+/// In-memory rollback for instruction target writes awaiting lock commit.
+#[derive(Debug)]
+pub struct InstructionRefreshRollback {
+    prepared: Vec<PreparedInstructionMutation>,
+    written: Vec<(usize, TargetIdentity)>,
+    _target_locks: Vec<TargetLock>,
+}
+
+impl InstructionRefreshRollback {
+    /// Restore every instruction target written by the pending sync.
+    pub fn restore(self) -> DaloResult<()> {
+        let mut failures = Vec::new();
+        for (index, identity) in self.written.iter().rev() {
+            let mutation = &self.prepared[*index];
+            let snapshot = TargetSnapshot {
+                target: mutation.snapshot.target.clone(),
+                content: mutation.snapshot.content.clone(),
+                identity: mutation.snapshot.identity,
+            };
+            if let Err(error) = restore_target(
+                snapshot,
+                mutation
+                    .rendered
+                    .as_deref()
+                    .expect("only rendered mutations are recorded as written"),
+                *identity,
+            ) {
+                failures.push(error.to_string());
+            }
+        }
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(DaloError::Io(std::io::Error::other(failures.join("; "))))
+        }
+    }
 }
 
 /// Enable one pack across de-duplicated logical target destinations.
@@ -240,6 +306,180 @@ pub fn disable_pack_for_targets(
         source_id,
         operations,
         dry_run,
+    })
+}
+
+#[derive(Debug)]
+struct PendingPackRefresh {
+    entry_index: usize,
+    previous_commit: String,
+    commit: String,
+    old_body: String,
+    pack: InstructionPack,
+}
+
+/// Refresh only source-backed packs that are already active in the user lock.
+///
+/// Source approval is checked again on every sync. The previously rendered
+/// managed block must still match its immutable source revision before Dalo
+/// will replace it, so revoked trust or external block edits fail closed.
+pub fn refresh_active_packs(
+    paths: &StorePaths,
+    sources: &[SourceConfig],
+    approvals: &[ApprovalRecord],
+    active: &[LockedInstructionPack],
+    dry_run: bool,
+) -> DaloResult<InstructionSyncResult> {
+    let mut updated = active.to_vec();
+    let mut grouped = BTreeMap::<PathBuf, Vec<PendingPackRefresh>>::new();
+
+    for (entry_index, entry) in active.iter().enumerate() {
+        if entry.source_id == "local" {
+            continue;
+        }
+        let source = sources
+            .iter()
+            .find(|source| source.id == entry.source_id)
+            .ok_or_else(|| {
+                DaloError::StateError {
+                    reason: format!(
+                        "active instruction pack `{}` references missing source `{}`; restore the source or disable the pack",
+                        pack_ref(&entry.source_id, &entry.pack_id),
+                        entry.source_id
+                    ),
+                }
+            })?;
+        if !source.enabled {
+            return Err(DaloError::StateError {
+                reason: format!(
+                    "active instruction pack `{}` references disabled source `{}`; enable the source or disable the pack",
+                    pack_ref(&entry.source_id, &entry.pack_id),
+                    entry.source_id
+                ),
+            });
+        }
+        ensure_instruction_source_approved(source, approvals, Some(&entry.pack_id))?;
+
+        let previous_commit = entry.commit.clone().ok_or_else(|| DaloError::StateError {
+            reason: format!(
+                "active instruction pack `{}` has no immutable source provenance; review and re-enable the pack",
+                pack_ref(&entry.source_id, &entry.pack_id)
+            ),
+        })?;
+        let commit = validate_source_pack(paths, source, &entry.pack_id, None)?;
+        let pack = read_pack_from_dir(&source.path.join("instructions"), &entry.pack_id)?;
+        let relative_path = PathBuf::from("instructions").join(format!("{}.md", entry.pack_id));
+        let old_body = if previous_commit == commit {
+            pack.body.clone()
+        } else {
+            git::read_file_at_commit(&source.path, &previous_commit, &relative_path).map_err(
+                |error| DaloError::StateError {
+                    reason: format!(
+                        "could not verify the previously rendered revision of `{}`: {error}; restore the source history or review and re-enable the pack",
+                        pack_ref(&entry.source_id, &entry.pack_id)
+                    ),
+                },
+            )?
+        };
+        let target = lock_entry_target_path(paths, &entry.target);
+        grouped.entry(target).or_default().push(PendingPackRefresh {
+            entry_index,
+            previous_commit,
+            commit,
+            old_body,
+            pack,
+        });
+    }
+
+    let mut operations = Vec::new();
+    let mut prepared = Vec::with_capacity(grouped.len());
+    let mut target_locks = Vec::with_capacity(grouped.len());
+    for (target, refreshes) in grouped {
+        target_locks.push(acquire_target_lock(paths, &target)?);
+        let snapshot = target_snapshot(&target)?;
+        let existing = snapshot.content.clone().unwrap_or_default();
+        let mut rendered = existing.clone();
+        let line_ending = line_ending_for(&existing);
+
+        for refresh in refreshes {
+            let entry = &active[refresh.entry_index];
+            let marker = lock_marker_id(entry);
+            let expected =
+                render_managed_block_with_line_ending(&marker, &refresh.old_body, line_ending)?;
+            let Some((start, end)) = find_block(&existing, &marker)? else {
+                return Err(DaloError::StateError {
+                    reason: format!(
+                        "managed block for `{}` is missing from `{}`; run `dalo status` and review or re-enable the pack",
+                        pack_ref(&entry.source_id, &entry.pack_id),
+                        target.display()
+                    ),
+                });
+            };
+            if existing[start..end] != expected {
+                return Err(DaloError::StateError {
+                    reason: format!(
+                        "managed block for `{}` in `{}` changed outside Dalo; run `dalo status` and review or re-enable the pack",
+                        pack_ref(&entry.source_id, &entry.pack_id),
+                        target.display()
+                    ),
+                });
+            }
+
+            if refresh.previous_commit != refresh.commit {
+                let next_block = render_managed_block_with_line_ending(
+                    &marker,
+                    &refresh.pack.body,
+                    line_ending,
+                )?;
+                rendered = render_block(&rendered, &marker, &refresh.pack.body)?;
+                updated[refresh.entry_index].commit = Some(refresh.commit.clone());
+                updated[refresh.entry_index].version = refresh.pack.version.clone();
+                operations.push(InstructionSyncOperation {
+                    source_id: entry.source_id.clone(),
+                    pack_id: entry.pack_id.clone(),
+                    target: target.clone(),
+                    action: if next_block == expected {
+                        "unchanged".to_owned()
+                    } else {
+                        "refreshed".to_owned()
+                    },
+                    previous_commit: refresh.previous_commit,
+                    commit: refresh.commit,
+                });
+            }
+        }
+
+        prepared.push(PreparedInstructionMutation {
+            logical_targets: Vec::new(),
+            target,
+            snapshot,
+            rendered: (rendered != existing).then_some(rendered),
+            action: "refreshed".to_owned(),
+            warning: None,
+        });
+    }
+    sort_instruction_lock_entries(&mut updated);
+    operations.sort_by(|left, right| {
+        left.target
+            .cmp(&right.target)
+            .then_with(|| left.source_id.cmp(&right.source_id))
+            .then_with(|| left.pack_id.cmp(&right.pack_id))
+    });
+
+    let rollback = if dry_run {
+        None
+    } else {
+        let written = apply_prepared_target_writes(prepared.as_mut_slice())?;
+        Some(InstructionRefreshRollback {
+            prepared,
+            written,
+            _target_locks: target_locks,
+        })
+    };
+    Ok(InstructionSyncResult {
+        active_instruction_packs: updated,
+        operations,
+        rollback,
     })
 }
 
@@ -773,11 +1013,37 @@ fn resolve_pack(paths: &StorePaths, selector: &str) -> DaloResult<ResolvedInstru
             ),
         });
     }
+    let approvals = store::read_approvals(paths)?;
+    ensure_instruction_source_approved(source, &approvals.approvals, Some(&pack_id))?;
     let commit = validate_source_pack(paths, source, &pack_id, None)?;
     Ok(ResolvedInstructionPack {
         pack: read_pack_from_dir(&source.path.join("instructions"), &pack_id)?,
         source_id,
         commit: Some(commit),
+    })
+}
+
+fn ensure_instruction_source_approved(
+    source: &SourceConfig,
+    approvals: &[ApprovalRecord],
+    pack_id: Option<&str>,
+) -> DaloResult<()> {
+    if source.trusted
+        || approvals
+            .iter()
+            .any(|approval| approval.scope == "source" && approval.value == source.id)
+    {
+        return Ok(());
+    }
+    let subject = pack_id.map_or_else(
+        || format!("source `{}`", source.id),
+        |pack_id| format!("instruction pack `{}`", pack_ref(&source.id, pack_id)),
+    );
+    Err(DaloError::StateError {
+        reason: format!(
+            "approval for {subject} is missing or was revoked; review the source and run `dalo approve source {}`",
+            source.id
+        ),
     })
 }
 
@@ -1245,7 +1511,22 @@ fn restore_target_after_error(
     original_error: DaloError,
 ) -> DaloError {
     let target = snapshot.target.clone();
-    let restore = match OpenOptions::new().read(true).write(true).open(&target) {
+    match restore_target(snapshot, written_content, written_identity) {
+        Ok(()) => original_error,
+        Err(restore_error) => DaloError::Io(std::io::Error::other(format!(
+            "{original_error}; also failed to restore instruction target `{}`: {restore_error}",
+            target.display()
+        ))),
+    }
+}
+
+fn restore_target(
+    snapshot: TargetSnapshot,
+    written_content: &str,
+    written_identity: TargetIdentity,
+) -> DaloResult<()> {
+    let target = snapshot.target.clone();
+    match OpenOptions::new().read(true).write(true).open(&target) {
         Ok(mut file) => (|| -> DaloResult<()> {
             file.lock()?;
             if target_identity(&file.metadata()?) != written_identity
@@ -1272,13 +1553,6 @@ fn restore_target_after_error(
             Ok(())
         }
         Err(error) => Err(error.into()),
-    };
-    match restore {
-        Ok(()) => original_error,
-        Err(restore_error) => DaloError::Io(std::io::Error::other(format!(
-            "{original_error}; also failed to restore instruction target `{}`: {restore_error}",
-            target.display()
-        ))),
     }
 }
 
@@ -1798,6 +2072,33 @@ mod tests {
         assert!(message.contains("lock write failed"));
         assert!(message.contains("also failed to restore instruction target"));
         assert!(message.contains(&occupied_target.display().to_string()));
+    }
+
+    #[test]
+    fn instruction_refresh_rollback_should_restore_written_targets() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let target = temp.path().join("AGENTS.md");
+        fs::write(&target, "before\n").expect("target should be seeded");
+        let snapshot = target_snapshot(&target).expect("snapshot should be readable");
+        let mut prepared = vec![PreparedInstructionMutation {
+            logical_targets: Vec::new(),
+            target: target.clone(),
+            snapshot,
+            rendered: Some("after\n".to_owned()),
+            action: "refreshed".to_owned(),
+            warning: None,
+        }];
+        let written = apply_prepared_target_writes(&mut prepared)
+            .expect("instruction refresh should be written");
+        let rollback = InstructionRefreshRollback {
+            prepared,
+            written,
+            _target_locks: Vec::new(),
+        };
+
+        rollback.restore().expect("rollback should restore target");
+
+        assert_eq!(fs::read_to_string(target).unwrap(), "before\n");
     }
 
     #[test]
