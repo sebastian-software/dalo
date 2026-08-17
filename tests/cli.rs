@@ -9377,9 +9377,11 @@ fn instructions_enable_should_render_source_qualified_pack_with_commit_provenanc
         .get_output()
         .stdout
         .clone();
-    assert!(!String::from_utf8(clean_status)
-        .expect("status should be utf-8")
-        .contains("instruction block drift"));
+    assert!(
+        !String::from_utf8(clean_status)
+            .expect("status should be utf-8")
+            .contains("instruction block drift")
+    );
     dalo_command()
         .args(["--store"])
         .arg(&store)
@@ -9393,7 +9395,10 @@ fn instructions_enable_should_render_source_qualified_pack_with_commit_provenanc
         "version: 3\n\nReview changed policy.\n",
     )
     .expect("source pack should advance");
-    run_git(&source.path, &["add", "instructions/engineering-defaults.md"]);
+    run_git(
+        &source.path,
+        &["add", "instructions/engineering-defaults.md"],
+    );
     run_git(
         &source.path,
         &[
