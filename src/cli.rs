@@ -3789,7 +3789,9 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
                     report.approval_value,
                     if report.dry_run { " [dry-run]" } else { "" }
                 );
-                println!("generator: {}", report.generator);
+                if let Some(generator) = report.generator {
+                    println!("generator: {generator}");
+                }
                 println!("execution: {}", report.execution);
             }
         }

@@ -4039,6 +4039,20 @@ required = true
     assert!(!target.join("review").exists());
     assert!(!repo.join("plugins/builder/EXECUTED").exists());
 
+    std::fs::write(
+        skill.join("DELIVERY.toml"),
+        "schema_version = 1\nkind = \"generated\"\ngenerator = \"company:missing#tool:build\"\noutput_input = \"output_dir\"\n\n[providers]\ncodex = \"codex/review\"\n",
+    )
+    .unwrap();
+    run_git(&repo, &["add", "skills/review/DELIVERY.toml"]);
+    commit_test_repo(&repo, "invalidate generated delivery recipe");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
     dalo_command()
         .args(["--store"])
         .arg(&store)
@@ -4046,6 +4060,8 @@ required = true
         .assert()
         .success()
         .stdout(predicate::str::contains("revoked generated delivery"));
+    let approvals = std::fs::read_to_string(store.join("approvals.toml")).unwrap();
+    assert!(!approvals.contains("scope = \"delivery\""));
 }
 
 #[test]

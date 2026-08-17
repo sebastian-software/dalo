@@ -23,9 +23,11 @@ pub struct DeliveryApprovalReport {
     /// Exact revision- and recipe-bound approval value.
     pub approval_value: String,
     /// Same-source generator tool identity.
-    pub generator: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generator: Option<String>,
     /// Exact generator invocation-contract hash.
-    pub generator_contract_hash: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generator_contract_hash: Option<String>,
     /// Expected outputs keyed by logical target ID.
     pub providers: std::collections::BTreeMap<String, PathBuf>,
     /// `granted`, `revoked`, or `unchanged`.
@@ -69,12 +71,25 @@ pub fn revoke(
     value: &str,
     dry_run: bool,
 ) -> DaloResult<DeliveryApprovalReport> {
-    let canonical = crate::approval::canonical_skill(paths, value)?;
+    validate_identity_shape(value)?;
+    // Trust withdrawal must not depend on the current recipe remaining valid or
+    // even present. Resolve a stable ID when possible, but always retain the
+    // exact source-qualified value as a stale-record escape hatch.
+    let canonical = crate::approval::canonical_skill(paths, value).ok();
+    let skill = canonical.as_deref().unwrap_or(value).to_owned();
     let mut approvals = store::read_approvals(paths)?;
-    let prefix = format!("{canonical}@");
+    let mut prefixes = vec![format!("{value}@")];
+    if let Some(canonical) = &canonical
+        && canonical != value
+    {
+        prefixes.push(format!("{canonical}@"));
+    }
     let mut removed = None;
     approvals.approvals.retain(|record| {
-        let matches = record.scope == APPROVAL_SCOPE && record.value.starts_with(&prefix);
+        let matches = record.scope == APPROVAL_SCOPE
+            && prefixes
+                .iter()
+                .any(|prefix| record.value.starts_with(prefix));
         if matches {
             removed = Some(record.value.clone());
         }
@@ -84,11 +99,32 @@ pub fn revoke(
     if changed && !dry_run {
         store::write_approvals(paths, &approvals)?;
     }
-    let mut report = inspect(paths, &canonical)?;
-    report.approval_value = removed.unwrap_or(report.approval_value);
-    report.action = if changed { "revoked" } else { "unchanged" }.to_owned();
-    report.dry_run = dry_run;
-    Ok(report)
+    Ok(DeliveryApprovalReport {
+        skill,
+        approval_value: removed.unwrap_or_else(|| prefixes[0].clone()),
+        generator: None,
+        generator_contract_hash: None,
+        providers: std::collections::BTreeMap::new(),
+        action: if changed { "revoked" } else { "unchanged" }.to_owned(),
+        dry_run,
+        execution: "not_run".to_owned(),
+    })
+}
+
+fn validate_identity_shape(value: &str) -> DaloResult<()> {
+    let valid = value.split_once(':').is_some_and(|(source, selector)| {
+        !source.is_empty()
+            && !selector.is_empty()
+            && !source.contains(['@', '#', '/', '\\'])
+            && !selector.contains(['@', '#', '/', '\\'])
+    });
+    if valid {
+        Ok(())
+    } else {
+        Err(DaloError::InvalidArgument {
+            reason: "generated delivery values must use `<source>:<slot>`".to_owned(),
+        })
+    }
 }
 
 fn inspect(paths: &StorePaths, value: &str) -> DaloResult<DeliveryApprovalReport> {
@@ -200,8 +236,8 @@ fn inspect(paths: &StorePaths, value: &str) -> DaloResult<DeliveryApprovalReport
     Ok(DeliveryApprovalReport {
         skill: canonical,
         approval_value,
-        generator,
-        generator_contract_hash,
+        generator: Some(generator),
+        generator_contract_hash: Some(generator_contract_hash),
         providers,
         action: String::new(),
         dry_run: false,
