@@ -181,6 +181,37 @@ fallback = "omit"
         .args(["plugin", "select", "team:review-suite"])
         .assert()
         .success();
+    let unrelated_skill = store.join("local/skills/unrelated");
+    std::fs::create_dir_all(&unrelated_skill).unwrap();
+    std::fs::write(unrelated_skill.join("SKILL.md"), "# Unrelated\n").unwrap();
+    let unrelated_plugin = store.join("local/plugins/unrelated-plugin");
+    std::fs::create_dir_all(&unrelated_plugin).unwrap();
+    std::fs::write(
+        unrelated_plugin.join("PLUGIN.toml"),
+        r#"schema_version = 1
+[plugin]
+name = "unrelated-plugin"
+description = "Must not leak into another root review"
+
+[[plugin.members]]
+ref = "skill:unrelated"
+requirement = "required"
+"#,
+    )
+    .unwrap();
+    let malformed_plugin = store.join("local/plugins/malformed-unrelated");
+    std::fs::create_dir_all(&malformed_plugin).unwrap();
+    std::fs::write(
+        malformed_plugin.join("PLUGIN.toml"),
+        "schema_version = 99\n",
+    )
+    .unwrap();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["plugin", "select", "local:unrelated-plugin"])
+        .assert()
+        .success();
 
     let approvals_before = std::fs::read(store.join("approvals.toml")).unwrap();
     let first = dalo_command()
@@ -206,6 +237,9 @@ fallback = "omit"
     assert_eq!(json["schema_version"], 1);
     assert_eq!(json["root_plugin"], "team:review-suite");
     assert_eq!(json["read_only"], true);
+    let json_text = String::from_utf8_lossy(&first);
+    assert!(!json_text.contains("unrelated-plugin"));
+    assert!(!json_text.contains("malformed-unrelated"));
     let decisions = json["decisions"].as_array().unwrap();
     assert_eq!(decisions.len(), 8);
     assert_eq!(
@@ -255,6 +289,17 @@ fallback = "omit"
     );
     std::fs::write(&checkout_entry, original_entry).unwrap();
     std::fs::set_permissions(&checkout_entry, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let binding_error = dalo::tool::prepare_approval(
+        &paths,
+        "team:review-suite#tool:inspect",
+        "team:review-suite#tool:inspect@sha256:not-the-reviewed-contract",
+    )
+    .expect_err("staging must remain bound to the displayed contract");
+    assert!(binding_error.to_string().contains("changed after review"));
+    assert_eq!(
+        std::fs::read(store.join("approvals.toml")).unwrap(),
+        approvals_before
+    );
 
     dalo_command()
         .args(["--store"])
