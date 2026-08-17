@@ -1334,6 +1334,9 @@ instead of choosing one implicitly.
 `sync` and `status` output lists prebuilt selections and blocked mappings. The
 user lock records the manifest, provider paths, and fingerprints; changing a
 provider artifact therefore appears as `skill_delivery_changed` lock drift.
+Audit reports use provider-qualified selectors such as
+`dalo audit impeccable:impeccable@codex`, so findings, risk acceptance, and
+persisted provenance stay bound to the exact provider artifact.
 
 ## `AGENT.md` Canonical Packages
 

@@ -364,9 +364,13 @@ pub fn audit_active_skills(
             }
         };
         for (provider, artifact_path) in artifacts {
+            let audit_ref = provider.as_ref().map_or_else(
+                || skill.source_ref.clone(),
+                |provider| format!("{}@{provider}", skill.source_ref),
+            );
             match audit_skill(
                 paths,
-                &skill.source_ref,
+                &audit_ref,
                 &artifact_path,
                 &AuditOptions {
                     persist,
@@ -374,14 +378,11 @@ pub fn audit_active_skills(
                 },
             ) {
                 Ok(report) if report.is_blocking() => {
-                    outcome.blocking.push(provider.map_or_else(
-                        || skill.source_ref.clone(),
-                        |provider| format!("{}[{provider}]", skill.source_ref),
-                    ));
+                    outcome.blocking.push(audit_ref);
                 }
                 Ok(_) => {}
                 Err(error) => outcome.failures.push(ActiveAuditFailure {
-                    source_ref: skill.source_ref.clone(),
+                    source_ref: audit_ref,
                     source_id: skill.source_id.clone(),
                     reason: provider.map_or_else(
                         || error.to_string(),
@@ -599,7 +600,13 @@ pub fn read_report(
 }
 
 fn resolve_target(paths: &StorePaths, target: &str) -> DaloResult<(String, PathBuf)> {
-    let parsed_selector = target
+    let (logical_target, provider) = target
+        .rsplit_once('@')
+        .filter(|(logical, provider)| !logical.is_empty() && !provider.is_empty())
+        .map_or((target, None), |(logical, provider)| {
+            (logical, Some(provider))
+        });
+    let parsed_selector = logical_target
         .split_once(':')
         .filter(|(source, selector)| !source.is_empty() && !selector.is_empty());
     let config = store::read_config(paths)?;
@@ -623,6 +630,28 @@ fn resolve_target(paths: &StorePaths, target: &str) -> DaloResult<(String, PathB
                     format!("dalo source inspect {source_id}"),
                 )
             })?;
+        if let Some(provider) = provider {
+            let artifact_path = match &skill.delivery {
+                crate::inventory::SkillDelivery::Prebuilt {
+                    providers,
+                    universal_fallback,
+                    ..
+                } => providers
+                    .get(provider)
+                    .map(|artifact| artifact.path.clone())
+                    .or_else(|| {
+                        (provider == "universal" && *universal_fallback).then(|| skill.path.clone())
+                    }),
+                crate::inventory::SkillDelivery::Direct => None,
+            }
+            .ok_or_else(|| DaloError::InvalidArgument {
+                reason: format!(
+                    "skill `{}` has no auditable delivery artifact for provider `{provider}`",
+                    skill.source_ref
+                ),
+            })?;
+            return Ok((format!("{}@{provider}", skill.source_ref), artifact_path));
+        }
         return Ok((skill.source_ref, skill.path));
     }
 
@@ -1979,6 +2008,40 @@ mod tests {
             .expect("staged skill should resolve");
 
         assert_eq!(source_ref, "local:review");
+    }
+
+    #[test]
+    fn provider_audit_selector_should_resolve_exact_artifact_and_identity() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp.path().join("store");
+        store::init_store(store_root.clone(), false).expect("store should initialize");
+        let paths = StorePaths::new(store_root);
+        let logical = paths.local_dir.join("skills/impeccable");
+        let artifact = paths.local_dir.join("builds/codex/impeccable");
+        fs::create_dir_all(&logical).expect("logical skill should be created");
+        fs::create_dir_all(&artifact).expect("provider artifact should be created");
+        fs::write(logical.join("SKILL.md"), "# Canonical\n")
+            .expect("logical skill should be written");
+        fs::write(artifact.join("SKILL.md"), "# Codex\n")
+            .expect("provider artifact should be written");
+        fs::write(
+            logical.join("DELIVERY.toml"),
+            "schema_version = 1\nkind = \"prebuilt\"\n\n[providers]\ncodex = \"builds/codex/impeccable\"\n",
+        )
+        .expect("delivery manifest should be written");
+
+        let report = audit_target(
+            &paths,
+            "local:impeccable@codex",
+            &AuditOptions {
+                persist: false,
+                ..AuditOptions::default()
+            },
+        )
+        .expect("provider selector should audit the provider artifact");
+
+        assert_eq!(report.source_ref, "local:impeccable@codex");
+        assert_eq!(report.skill_path, artifact);
     }
 
     #[test]
