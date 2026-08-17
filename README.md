@@ -237,12 +237,24 @@ dalo plugin list
 dalo plugin show company:review-workflow
 dalo plan
 dalo plan --target codex --json
+dalo plugin review company:review-workflow
 ```
 
 The plan reports the recommended instruction as inactive until the existing
 explicit `dalo instructions enable` flow has completed. A direct local
 selection is additive (`dalo plugin select ...`); `plugin unselect` removes
 only that local origin and never edits the source-authored stack.
+
+`plugin review` turns the selected plugin and its dependency closure into one
+coherent session. It still asks separately for each pending skill, agent, tool,
+and hook contract, shows exact hashes and Codex/Claude mappings, and then asks
+once more before committing that explicit set with one atomic approval-ledger
+write. It never creates plugin-, source-, author-, organization-, or wildcard
+trust. `--json plugin review ...` and `--dry-run plugin review ...` are strictly
+read-only and never prompt, stage executable bytes, run external reviewers, or
+write provider targets. Use the individual `dalo approve ...` commands when
+reviewing just one known boundary or when a blocking skill audit needs an
+explicit `--accept-risk` reason.
 
 Plugin packages may also declare a narrowly typed local executable. Discovery,
 `status`, `doctor`, `plan`, and `sync --dry-run` only inventory and hash it; they

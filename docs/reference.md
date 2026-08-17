@@ -760,6 +760,38 @@ are best-effort observations, not a security certification.
 
 JSON output shape: `AuditReport`.
 
+### `dalo plugin review <source:plugin>`
+
+Review every component decision for one selected portable plugin and its
+selected dependency closure in deterministic plugin/component/target order:
+
+```sh
+dalo plugin review company:review-workflow
+dalo --dry-run plugin review company:review-workflow
+dalo --json plugin review company:review-workflow
+```
+
+The report embeds the same typed installation-plan facts as `dalo plan`, plus
+package provenance, content/contract hashes, agent activation, inactive
+instruction recommendations, tool capabilities, hook event/effect/matcher/
+timeout/failure semantics, and provider mappings or fallbacks. Existing exact
+approvals are marked `reused`; changed hash-bound contracts are `invalidated`;
+blocked, unsupported, and inactive boundaries stay distinct.
+
+Interactive mode collects `y`/`n` answers in memory and requires a final
+confirmation before one atomic approval-ledger write. EOF, `q`, or declining
+the final confirmation grants nothing. The displayed review token is rebuilt
+under the store lock immediately before commit, so source, approval, audit, or
+target drift requires a fresh review. Only the displayed exact `skill`,
+`agent`, `tool`, and `hook` values can be committed—never a plugin/source/
+author/org/wildcard approval. Tool bytes may be content-addressed and staged as
+an inert prepare step; tools, hooks, generators, semantic reviewers, and target
+mutations are never executed by review.
+
+JSON and dry-run modes are read-only and do not prompt. Prefer the individual
+commands below for a single known component, for revocation, or when a skill's
+blocking findings require `--accept-risk`.
+
 ### `dalo approve`
 
 Grant, list, and revoke approval records without editing `approvals.toml`.

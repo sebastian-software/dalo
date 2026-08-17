@@ -26,6 +26,7 @@ use crate::lockfile;
 use crate::materialize;
 use crate::plan;
 use crate::plugin;
+use crate::plugin_review;
 use crate::resolver;
 use crate::source;
 use crate::status;
@@ -286,6 +287,8 @@ pub enum PluginSubcommand {
     Unselect(PluginReferenceArgs),
     /// Retain selected intent but suppress it with an explicit local policy.
     Decline(PluginDeclineArgs),
+    /// Review every pending boundary in one session, retaining exact identities.
+    Review(PluginReferenceArgs),
 }
 
 /// Read-only multi-target installation-plan arguments.
@@ -1294,6 +1297,9 @@ struct PluginMutationReport {
 fn run_plugin(options: &GlobalOptions, command: PluginCommand) -> DaloResult<()> {
     let paths = store::StorePaths::new(options.store.clone());
     ensure_initialized(&paths)?;
+    if let PluginSubcommand::Review(args) = &command.command {
+        return run_plugin_review(options, &paths, &args.plugin);
+    }
     if matches!(
         &command.command,
         PluginSubcommand::List | PluginSubcommand::Show(_)
@@ -1471,7 +1477,7 @@ fn run_plugin(options: &GlobalOptions, command: PluginCommand) -> DaloResult<()>
                 dry_run: options.dry_run,
             }
         }
-        PluginSubcommand::List | PluginSubcommand::Show(_) => {
+        PluginSubcommand::List | PluginSubcommand::Show(_) | PluginSubcommand::Review(_) => {
             unreachable!("handled as read-only above")
         }
     };
@@ -1489,6 +1495,170 @@ fn run_plugin(options: &GlobalOptions, command: PluginCommand) -> DaloResult<()>
         );
     }
     Ok(())
+}
+
+fn run_plugin_review(
+    options: &GlobalOptions,
+    paths: &store::StorePaths,
+    plugin: &str,
+) -> DaloResult<()> {
+    let report = plugin_review::build(&options.store, plugin)?;
+    if options.json {
+        return print_json(&report);
+    }
+    print_plugin_review(&report);
+    if options.dry_run {
+        println!("dry-run: no prompts, approvals, executable staging, or target mutations");
+        return Ok(());
+    }
+
+    let approvable = report
+        .decisions
+        .iter()
+        .filter(|decision| {
+            matches!(
+                decision.state,
+                plugin_review::ReviewDecisionState::Pending
+                    | plugin_review::ReviewDecisionState::Invalidated
+            ) && decision.approval_value.is_some()
+        })
+        .collect::<Vec<_>>();
+    if approvable.is_empty() {
+        println!("no pending component approvals");
+        return Ok(());
+    }
+    let mut selected = std::collections::BTreeSet::new();
+    for decision in &approvable {
+        println!();
+        println!("decision: {}", decision.id);
+        println!("  boundary: {:?}", decision.kind);
+        println!("  component: {}", decision.component);
+        if let Some(hash) = &decision.content_hash {
+            println!("  reviewed hash: {hash}");
+        }
+        if let Some(value) = &decision.approval_value {
+            println!(
+                "  exact approval: {} = {}",
+                decision.approval_scope.as_deref().unwrap_or(""),
+                value
+            );
+        }
+        for fact in &decision.facts {
+            println!("  {}: {}", fact.label, fact.value);
+        }
+        for target in &decision.targets {
+            println!(
+                "  target {}: {:?}/{:?} -> {}",
+                target.target, target.state, target.compatibility, target.mapping
+            );
+        }
+        match read_review_answer("Approve only this displayed component contract? [y/N/q] ")? {
+            ReviewAnswer::Yes => {
+                selected.insert(decision.id.clone());
+            }
+            ReviewAnswer::No => {}
+            ReviewAnswer::Cancel => {
+                println!("review cancelled; no approvals were granted");
+                return Ok(());
+            }
+        }
+    }
+    println!();
+    println!("selected exact decisions: {}", selected.len());
+    for id in &selected {
+        println!("  {id}");
+    }
+    if selected.is_empty() {
+        println!("review completed without grants");
+        return Ok(());
+    }
+    if read_review_answer("Commit this exact set with one atomic approval write? [y/N] ")?
+        != ReviewAnswer::Yes
+    {
+        println!("review cancelled; no approvals were granted");
+        return Ok(());
+    }
+    let _lock = store::StoreLock::acquire(paths)?;
+    let committed = plugin_review::commit(
+        &options.store,
+        &report.root_plugin,
+        &report.review_token,
+        &selected,
+    )?;
+    println!(
+        "committed {} separately scoped approval{}",
+        committed.granted.len(),
+        if committed.granted.len() == 1 {
+            ""
+        } else {
+            "s"
+        }
+    );
+    for approval in committed.granted {
+        println!("  {} = {}", approval.scope, approval.value);
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReviewAnswer {
+    Yes,
+    No,
+    Cancel,
+}
+
+fn read_review_answer(prompt: &str) -> DaloResult<ReviewAnswer> {
+    use std::io::Write;
+
+    print!("{prompt}");
+    io::stdout().flush()?;
+    let mut answer = String::new();
+    if io::stdin().read_line(&mut answer)? == 0 {
+        return Ok(ReviewAnswer::Cancel);
+    }
+    match answer.trim().to_ascii_lowercase().as_str() {
+        "y" | "yes" => Ok(ReviewAnswer::Yes),
+        "q" | "quit" | "cancel" => Ok(ReviewAnswer::Cancel),
+        _ => Ok(ReviewAnswer::No),
+    }
+}
+
+fn print_plugin_review(report: &plugin_review::PluginReviewReport) {
+    println!("plugin review {}", report.root_plugin);
+    println!("review token: {}", report.review_token);
+    println!("dependency closure:");
+    for plugin in &report.plugin_closure {
+        println!(
+            "  {} state={:?} package=sha256:{} closure=sha256:{}",
+            plugin.source_ref, plugin.state, plugin.package_hash, plugin.closure_hash
+        );
+        for reason in &plugin.blocking_reasons {
+            println!("    blocked: {reason}");
+        }
+    }
+    println!("component decisions:");
+    for decision in &report.decisions {
+        println!(
+            "  {} state={:?} component={}",
+            decision.id, decision.state, decision.component
+        );
+        println!("    {}", decision.diagnostic);
+        if let Some(hash) = &decision.content_hash {
+            println!("    hash: {hash}");
+        }
+        if decision.approval_reused {
+            println!("    exact existing approval reused");
+        }
+        for target in &decision.targets {
+            println!(
+                "    target {}: {:?}/{:?} -> {}",
+                target.target, target.state, target.compatibility, target.mapping
+            );
+            if let Some(fallback) = &target.fallback {
+                println!("      fallback: {fallback}");
+            }
+        }
+    }
 }
 
 fn run_tool(options: &GlobalOptions, command: ToolCommand) -> DaloResult<()> {
