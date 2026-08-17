@@ -9367,6 +9367,55 @@ fn instructions_enable_should_render_source_qualified_pack_with_commit_provenanc
         lock.active_instruction_packs[0].version.as_deref(),
         Some("2")
     );
+
+    let clean_status = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("status")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    assert!(!String::from_utf8(clean_status)
+        .expect("status should be utf-8")
+        .contains("instruction block drift"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("team:engineering-defaults"));
+
+    std::fs::write(
+        source.path.join("instructions/engineering-defaults.md"),
+        "version: 3\n\nReview changed policy.\n",
+    )
+    .expect("source pack should advance");
+    run_git(&source.path, &["add", "instructions/engineering-defaults.md"]);
+    run_git(
+        &source.path,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "advance instructions",
+            "-q",
+        ],
+    );
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("instruction block drift"));
 }
 
 #[test]
