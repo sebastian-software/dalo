@@ -1260,7 +1260,9 @@ pub fn print_sync_report(report: &SyncReport) {
     println!("dalo store: {}", report.store.display());
     print_delivery_reports(&report.deliveries);
     if report.operations.is_empty() {
-        if !report.instruction_operations.is_empty() {
+        if !report.instruction_operations.is_empty()
+            || !report.instruction_removal_operations.is_empty()
+        {
             println!("skill links unchanged");
         } else if report.linked_targets == 0 && !report.resolution.active_skills.is_empty() {
             println!(
@@ -1379,6 +1381,18 @@ pub fn print_sync_report(report: &SyncReport) {
             operation.target.display(),
             operation.commit
         );
+    }
+    for operation in &report.instruction_removal_operations {
+        println!(
+            "{prefix}instruction {}: {}:{} -> {}",
+            operation.action,
+            operation.source_id,
+            operation.pack_id,
+            operation.target.display()
+        );
+        if let Some(warning) = &operation.warning {
+            println!("{prefix}  warning: {warning}");
+        }
     }
     if !report.unrefreshed_tracking_sources.is_empty() {
         println!(

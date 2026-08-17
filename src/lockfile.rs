@@ -615,6 +615,7 @@ mod tests {
             degraded_sources: Vec::new(),
             unrefreshed_tracking_sources: Vec::new(),
             instruction_operations: Vec::new(),
+            instruction_removal_operations: Vec::new(),
             unselected_catalogs: Vec::new(),
             installation_plan: None,
             hook_targets: Vec::new(),
