@@ -967,7 +967,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `autosync install` / `uninstall` | `AutosyncMutationReport` | `action`, `dry_run`, resulting `status` |
 | `autosync status` | `AutosyncStatusReport` | `configured`, `installed`, `enabled`, backend, schedule, executable, store, artifacts, optional `scheduler_error`, optional `disabled_reason`, and optional `last_run` |
 | `status` | `StatusReport` | `store`, `sources[]` with `skill_count`, `agent_count`, and `provenance`, `targets[]`, `inventory_warnings[]`, `agent_inventory_warnings[]`, `resolution`, dry-run `materialization[]`, `blocking_audits[]`, `audit_failures[]`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]`, `autosync` |
-| `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, `operations[]`, `resolution`, `degraded_sources[]` (`id`, `path`, `reason`), `unselected_catalogs[]` (`source_id`, `available_skills`) |
+| `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, skill `operations[]`, optional `instruction_operations[]` (`source_id`, `pack_id`, `target`, `action`, `previous_commit`, `commit`), `resolution`, `degraded_sources[]` (`id`, `path`, `reason`), optional `unrefreshed_tracking_sources[]`, `unselected_catalogs[]` (`source_id`, `available_skills`) |
 | `audit` | `AuditReport` | `schema_version`, `source_ref`, `skill_path`, `content_hash`, `static_engine_version`, `scanned_at_unix`, `coverage`, `status`, optional `max_severity`, `static_findings[]`, optional `agent_review`, optional `risk_acceptance` |
 | `approve list` | `ApprovalsFile` | `schema_version`, `approvals[]` |
 | `approve skill` | audited approval outcome | `audit` (`AuditReport`), `approval` (`ApprovalReport`) |
@@ -1400,8 +1400,15 @@ Local managed-block markers retain their existing bare pack ID. Source-backed
 markers use the full source-qualified reference, allowing same-named packs from
 different sources to coexist in one instruction file. Source-backed lock entries
 bind the activation to the exact clean Git commit. If that checkout advances,
-becomes dirty, or no longer contains the tracked pack, status and sync report
-drift until the pack is explicitly reviewed and re-enabled.
+normal `dalo sync` refreshes only packs already present in the user lock and
+updates their commit and version provenance. Newly discovered packs remain
+inactive. Refresh requires the source to remain trusted or source-approved and
+the existing managed block to match the previously rendered immutable commit.
+Revoked approval, dirty or missing sources, missing Git history, untracked pack
+files, malformed markers, and externally edited managed blocks fail closed with
+an actionable error instead of overwriting the target. Tracking team sources
+advance through normal sync; catalog sources retain their explicit pinned
+advancement workflow.
 
 Dalo reads an optional `version:` entry from the first five lines and optional
 `topics:` or `tags:` metadata from the first eight lines:

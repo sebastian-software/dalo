@@ -2410,7 +2410,7 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
     };
     let sync_result = (|| -> DaloResult<materialize::SyncReport> {
         let approvals = store::read_approvals(&paths)?;
-        let mut live = resolver::resolve_from_config(&config, approvals.approvals);
+        let mut live = resolver::resolve_from_config(&config, approvals.approvals.clone());
         let audits = audit::audit_active_skills(&paths, &live.resolution, !options.dry_run);
         ensure_no_blocking_audits(&audits.blocking)?;
         resolver::degrade_audit_failures(&mut live.resolution, &audits.failures);
@@ -2444,6 +2444,26 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
             options.dry_run,
             &degraded_sources,
         )?;
+        let instruction_sync = match instructions::refresh_active_packs(
+            &paths,
+            &config.sources,
+            &approvals.approvals,
+            &lock_for_instructions.active_instruction_packs,
+            options.dry_run,
+        ) {
+            Ok(sync) => sync,
+            Err(error) => {
+                if let Some(rollback) = rollback
+                    && let Err(rollback_error) = rollback.restore(&paths)
+                {
+                    return Err(DaloError::Io(std::io::Error::other(format!(
+                        "{error}; additionally failed to roll back sync: {rollback_error}"
+                    ))));
+                }
+                return Err(error);
+            }
+        };
+        report.instruction_operations = instruction_sync.operations;
         report.unselected_catalogs = unselected_catalogs(&live);
         report.unrefreshed_tracking_sources = unrefreshed_tracking_sources;
         if options.dry_run && !live.plugins.plugins.is_empty() {
@@ -2470,14 +2490,13 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
                 Some(&report),
                 Some(&live.plugins),
             );
-            // Instruction packs are owned by the `instructions` command; preserve them
-            // across a sync instead of dropping them.
-            lock.active_instruction_packs = previous.active_instruction_packs.clone();
+            lock.active_instruction_packs = instruction_sync.active_instruction_packs;
             write_sync_lock_with_rollback(
                 &paths,
                 previous,
                 &lock,
                 rollback,
+                instruction_sync.rollback,
                 store::write_user_lock,
             )?;
         }
@@ -2799,6 +2818,7 @@ fn write_sync_lock_with_rollback<F>(
     previous: &lockfile::UserLock,
     next: &lockfile::UserLock,
     rollback: Option<materialize::MaterializationRollback>,
+    instruction_rollback: Option<instructions::InstructionRefreshRollback>,
     mut write_lock: F,
 ) -> DaloResult<()>
 where
@@ -2809,6 +2829,11 @@ where
     };
 
     let mut recovery_errors = Vec::new();
+    if let Some(rollback) = instruction_rollback
+        && let Err(rollback_error) = rollback.restore()
+    {
+        recovery_errors.push(format!("roll back instruction refresh: {rollback_error}"));
+    }
     if let Some(rollback) = rollback
         && let Err(rollback_error) = rollback.restore(paths)
     {
@@ -3918,15 +3943,16 @@ mod tests {
         store::write_user_lock(&paths, &previous).expect("previous lock should be written");
         let writes = Cell::new(0);
 
-        let error = write_sync_lock_with_rollback(&paths, &previous, &next, None, |paths, lock| {
-            if writes.get() == 0 {
-                writes.set(1);
-                store::write_user_lock(paths, lock)?;
-                return Err(DaloError::Io(std::io::Error::other("late lock failure")));
-            }
-            store::write_user_lock(paths, lock)
-        })
-        .expect_err("late lock failure should restore the previous lock");
+        let error =
+            write_sync_lock_with_rollback(&paths, &previous, &next, None, None, |paths, lock| {
+                if writes.get() == 0 {
+                    writes.set(1);
+                    store::write_user_lock(paths, lock)?;
+                    return Err(DaloError::Io(std::io::Error::other("late lock failure")));
+                }
+                store::write_user_lock(paths, lock)
+            })
+            .expect_err("late lock failure should restore the previous lock");
 
         assert!(error.to_string().contains("late lock failure"));
         assert_eq!(

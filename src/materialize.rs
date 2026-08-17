@@ -54,6 +54,9 @@ pub struct SyncReport {
     /// Tracking team sources that a dry-run intentionally did not fetch.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub unrefreshed_tracking_sources: Vec<String>,
+    /// Already-active source-backed instruction packs refreshed by sync.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub instruction_operations: Vec<crate::instructions::InstructionSyncOperation>,
     /// Enabled catalogs with available skills but no explicit selection.
     pub unselected_catalogs: Vec<UnselectedCatalog>,
     /// Typed plugin installation plan for read-only sync previews.
@@ -347,6 +350,7 @@ pub fn materialize_with_degraded_sources_rollback(
             resolution,
             degraded_sources: degraded_sources.to_vec(),
             unrefreshed_tracking_sources: Vec::new(),
+            instruction_operations: Vec::new(),
             unselected_catalogs: Vec::new(),
             installation_plan: None,
             hook_targets: Vec::new(),

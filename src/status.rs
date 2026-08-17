@@ -1260,7 +1260,9 @@ pub fn print_sync_report(report: &SyncReport) {
     println!("dalo store: {}", report.store.display());
     print_delivery_reports(&report.deliveries);
     if report.operations.is_empty() {
-        if report.linked_targets == 0 && !report.resolution.active_skills.is_empty() {
+        if !report.instruction_operations.is_empty() {
+            println!("skill links unchanged");
+        } else if report.linked_targets == 0 && !report.resolution.active_skills.is_empty() {
             println!(
                 "nothing materialized: {} skills resolved but no targets are linked; run `{}`",
                 report.resolution.active_skills.len(),
@@ -1367,6 +1369,16 @@ pub fn print_sync_report(report: &SyncReport) {
     }
     for source in &report.degraded_sources {
         println!("{prefix}degraded source: {} ({})", source.id, source.reason);
+    }
+    for operation in &report.instruction_operations {
+        println!(
+            "{prefix}instruction {}: {}:{} -> {} ({})",
+            operation.action,
+            operation.source_id,
+            operation.pack_id,
+            operation.target.display(),
+            operation.commit
+        );
     }
     if !report.unrefreshed_tracking_sources.is_empty() {
         println!(
