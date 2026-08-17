@@ -35,6 +35,9 @@ pub struct InstallationPlan {
     pub tools: Vec<ToolStatusReport>,
     /// Hook trust, binding, and referenced-tool facts; planning never executes them.
     pub hooks: Vec<HookStatusReport>,
+    /// Read-only native package reconciliation for selected plugins.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub native_plugins: Vec<crate::plugin_projection::PluginTargetReport>,
     /// Physical destinations, each retaining all logical target explanations.
     pub destinations: Vec<DestinationPlan>,
 }
@@ -245,6 +248,18 @@ pub fn build_installation_plan(
     );
     attach_tool_status(&mut plan, &paths)?;
     attach_hook_status(&mut plan, &paths)?;
+    plan.native_plugins = crate::plugin_projection::reconcile(
+        &paths,
+        &state,
+        &live.plugins,
+        &inventories,
+        &plan.tools,
+        &plan.hooks,
+        true,
+    )?;
+    if let Some(target) = target_filter {
+        plan.native_plugins.retain(|report| report.target == target);
+    }
     Ok(plan)
 }
 
@@ -282,6 +297,7 @@ pub fn build_from_facts(
         inventory_warnings,
         tools: Vec::new(),
         hooks: Vec::new(),
+        native_plugins: Vec::new(),
         destinations,
     }
 }

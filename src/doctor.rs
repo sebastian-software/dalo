@@ -199,6 +199,10 @@ pub enum DoctorCode {
     HookProviderUnverified,
     /// Native sidecar content conflicts with Dalo ownership state.
     HookNativeConflict,
+    /// A selected portable plugin cannot produce a coherent native package.
+    PluginProjectionBlocked,
+    /// A native plugin path or ownership record has drifted.
+    PluginProjectionConflict,
     /// Two active instruction packs declare overlapping topics.
     InstructionPackTopicOverlap,
     /// An active instruction pack's rendered block is missing, malformed, or stale.
@@ -303,6 +307,7 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
     }
     if let (Some(state), Some(live)) = (state.as_ref(), live_resolution.as_ref()) {
         check_hook_targets(&paths, state, live, &mut findings);
+        check_plugin_targets(&paths, state, live, &mut findings);
     }
     check_autosync(&paths, &mut findings);
 
@@ -332,6 +337,66 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
         _ => None,
     };
     finish_report(store_root, findings, installation_plan)
+}
+
+fn check_plugin_targets(
+    paths: &StorePaths,
+    state: &crate::store::StateFile,
+    live: &crate::resolver::LiveResolution,
+    findings: &mut Vec<DoctorFinding>,
+) {
+    let inventories = live
+        .scans
+        .iter()
+        .filter_map(|scan| scan.inventory.clone())
+        .collect::<Vec<_>>();
+    let tools = crate::tool::list(paths).map_or_else(|_| Vec::new(), |report| report.tools);
+    let hooks = crate::hook::list(paths).map_or_else(|_| Vec::new(), |report| report.hooks);
+    let reports = match crate::plugin_projection::reconcile(
+        paths,
+        state,
+        &live.plugins,
+        &inventories,
+        &tools,
+        &hooks,
+        true,
+    ) {
+        Ok(reports) => reports,
+        Err(error) => {
+            findings.push(finding_error(
+                DoctorCode::PluginProjectionConflict,
+                format!("native plugin projection: {error}"),
+                Some(
+                    "review `dalo status` and restore or remove the drifted native plugin path"
+                        .to_owned(),
+                ),
+            ));
+            return;
+        }
+    };
+    for report in reports {
+        match report.state {
+            crate::plugin_projection::PluginProjectionState::Ready
+            | crate::plugin_projection::PluginProjectionState::Planned => {}
+            crate::plugin_projection::PluginProjectionState::Blocked => {
+                findings.push(finding_error(
+                    DoctorCode::PluginProjectionBlocked,
+                    format!(
+                        "{} plugin `{}`: {}",
+                        report.target, report.plugin, report.diagnostic
+                    ),
+                    Some("run `dalo plan` and resolve the required component blocker".to_owned()),
+                ));
+            }
+            crate::plugin_projection::PluginProjectionState::Conflict => {
+                findings.push(finding_error(
+                    DoctorCode::PluginProjectionConflict,
+                    format!("{} plugin `{}`: {}", report.target, report.plugin, report.diagnostic),
+                    Some("restore the Dalo-owned link or move foreign provider content out of the target path".to_owned()),
+                ));
+            }
+        }
+    }
 }
 
 fn check_hooks(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) {
@@ -1631,6 +1696,8 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::HookProviderDisabled => "hook_provider_disabled",
         DoctorCode::HookProviderUnverified => "hook_provider_unverified",
         DoctorCode::HookNativeConflict => "hook_native_conflict",
+        DoctorCode::PluginProjectionBlocked => "plugin_projection_blocked",
+        DoctorCode::PluginProjectionConflict => "plugin_projection_conflict",
         DoctorCode::InstructionPackTopicOverlap => "instruction_pack_topic_overlap",
         DoctorCode::InstructionBlockDrift => "instruction_block_drift",
         DoctorCode::CloudSyncedTarget => "cloud_synced_target",

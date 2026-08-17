@@ -322,6 +322,25 @@ it is never interpolated into a shell command. Native files use compare-and-swap
 and preserve foreign settings, while `status` and `doctor` report disabled,
 managed-only, unverified, drifted, conflicted, and revoked states separately.
 
+Selected coherent plugins are also rendered as one independently owned native
+package per linked provider. The same `company:review-workflow` selection
+produces a Codex package with `.codex-plugin/plugin.json` and a Claude package
+with `.claude-plugin/plugin.json`; both contain supported `skills/`, while
+Claude can additionally contain compiled `agents/`. Codex agents and standing
+instruction packs remain explicit external projections because those concepts
+do not belong in the Codex plugin layout. Dalo records every omission,
+component fingerprint, adapter baseline, immutable artifact hash, and owned
+provider path in `plugins/state.json`.
+
+Claude's package is linked into its configured skills directory, where
+skills-directory plugin loading can discover it. The Codex package is kept
+below the Codex configuration root at `plugins/dalo/<native-name>`; Dalo does
+not silently rewrite a user's marketplace catalog or plugin enablement.
+`dalo plan`, `status`, `doctor`, and `sync --dry-run` show both paths and every
+component outcome before mutation. Required tools and hooks must retain their
+separate exact approvals or the package projection is blocked. Ordinary
+harness-neutral skills still use the existing byte-identical direct symlinks.
+
 ### Adopt what works locally
 
 Agents often create useful skills directly in their own folders. Dalo can copy

@@ -1324,13 +1324,21 @@ Unknown native values never become portable by accident.
 
 ### Slice 4: native plugin projection
 
-- Render a selected passive plugin as a Codex plugin and at least one other
-  native provider plugin after #497/#498.
-- Keep tool/hook components visible as pending or blocked until #499/#501 are
-  available; active-code integration retains those dependencies.
-- Keep ordinary skill-only installs on the direct path.
-- Integrate target-aware derivation from #494 without making generator
-  execution implicit.
+- Implemented by #502: one selected portable plugin renders to one
+  content-addressed Codex package and one content-addressed Claude package,
+  each with its own stable native namespace, owned activation path, adapter
+  baseline, component fingerprints, drift checks, and rollback boundary.
+- Codex packages use `.codex-plugin/plugin.json`; Claude packages use
+  `.claude-plugin/plugin.json`. Supported skills are copied as reviewed direct
+  artifacts, Claude agents use RFC 0004's compiler, and unsupported agents or
+  instruction packs remain explicit external projections.
+- Approved tools and hooks retain #499/#501's source-qualified identities and
+  exact approval hashes. Required active components block projection when
+  unavailable; packaging never grants execution authority.
+- Ordinary skill-only installs remain on the byte-identical direct symlink
+  path. #494's future prebuilt/generated delivery artifacts can replace the
+  direct skill artifact input without changing native package ownership, and
+  no generator is executed implicitly.
 
 ### Later slices
 
