@@ -9575,6 +9575,49 @@ fn instructions_target_dry_run_json_should_show_exact_planned_destinations() {
 }
 
 #[test]
+fn instructions_targets_should_honor_provider_overrides_without_home() {
+    let temp = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp.path().join("store");
+    let codex_home = temp.path().join("custom-codex");
+    let claude_home = temp.path().join("custom-claude");
+    std::fs::create_dir_all(&codex_home).expect("codex home should be created");
+    std::fs::create_dir_all(&claude_home).expect("claude home should be created");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::write(
+        store.join("local/instructions/review.md"),
+        "Review carefully.\n",
+    )
+    .expect("local pack should be written");
+
+    dalo_command()
+        .env_remove("HOME")
+        .env("CODEX_HOME", &codex_home)
+        .env("CLAUDE_CONFIG_DIR", &claude_home)
+        .args(["--store"])
+        .arg(&store)
+        .args([
+            "instructions",
+            "enable",
+            "review",
+            "--target",
+            "codex",
+            "--target",
+            "claude",
+        ])
+        .assert()
+        .success();
+
+    assert!(codex_home.join("AGENTS.md").is_file());
+    assert!(claude_home.join("CLAUDE.md").is_file());
+    assert_eq!(read_user_lock(&store).active_instruction_packs.len(), 2);
+}
+
+#[test]
 fn instructions_targets_should_dedupe_a_shared_physical_destination() {
     let temp = tempfile::tempdir().expect("tempdir should be created");
     let store = temp.path().join("store");
