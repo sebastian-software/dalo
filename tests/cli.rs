@@ -8,13 +8,317 @@ use std::os::unix::process::ExitStatusExt;
 mod common;
 
 use common::{
-    approve_source, create_git_catalog_repo, create_git_catalog_repo_with_duplicate_slots,
-    create_git_skill_repo, create_git_skill_repo_with_required_pair,
-    create_git_skill_repo_with_skill, create_unmanaged_skill, create_unmanaged_skill_with_body,
-    dalo_command, git_command_succeeds, git_rev_parse_logger, read_source_lock, read_user_lock,
-    remove_source_update_policy, run_git, set_source_untrusted, setup_store_with_skill_and_target,
-    setup_store_with_target, write_local_only_config, write_source_lock,
+    add_source, approve_source, create_git_catalog_repo,
+    create_git_catalog_repo_with_duplicate_slots, create_git_skill_repo,
+    create_git_skill_repo_with_required_pair, create_git_skill_repo_with_skill,
+    create_unmanaged_skill, create_unmanaged_skill_with_body, dalo_command, git_command_succeeds,
+    git_rev_parse_logger, read_source_lock, read_user_lock, remove_source_update_policy, run_git,
+    set_source_untrusted, setup_store_with_skill_and_target, setup_store_with_target,
+    write_local_only_config, write_source_lock,
 };
+
+#[test]
+fn plugin_review_should_be_deterministic_read_only_and_commit_only_exact_displayed_boundaries() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = store::comparable_path(&temp.path().join("store"));
+    let repo = temp.path().join("team-repo");
+    let shared_target = temp.path().join("shared-skills");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    for target in ["codex", "claude"] {
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .args(["target", "link", target])
+            .arg(&shared_target)
+            .assert()
+            .success();
+    }
+    create_git_skill_repo_with_skill(
+        &repo,
+        "review",
+        "# Review\nInspect changes without executing anything.\n",
+    );
+    for name in ["reviewer", "security-reviewer", "release-reviewer"] {
+        let dir = repo.join("agents").join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("AGENT.md"),
+            format!(
+                "---\nschema_version: 1\nname: {name}\ndescription: {name} agent\nskills:\n  - skill:review\ntargets:\n  - codex\n  - claude\n---\nReview carefully.\n"
+            ),
+        )
+        .unwrap();
+    }
+    std::fs::create_dir_all(repo.join("instructions")).unwrap();
+    std::fs::write(
+        repo.join("instructions/house-style.md"),
+        "topics: style\n\nKeep reviews focused.\n",
+    )
+    .unwrap();
+    let package = repo.join("plugins/review-suite");
+    std::fs::create_dir_all(package.join("bin")).unwrap();
+    std::fs::write(
+        package.join("PLUGIN.toml"),
+        r#"schema_version = 1
+[plugin]
+name = "review-suite"
+description = "Aggregated review fixture"
+
+[[plugin.members]]
+ref = "skill:review"
+requirement = "required"
+
+[[plugin.members]]
+ref = "agent:reviewer"
+requirement = "optional"
+
+[[plugin.members]]
+ref = "agent:security-reviewer"
+requirement = "optional"
+
+[[plugin.members]]
+ref = "agent:release-reviewer"
+requirement = "optional"
+
+[[plugin.members]]
+ref = "instruction:house-style"
+requirement = "recommended"
+
+[[tool]]
+schema_version = 1
+id = "inspect"
+entry = "bin/inspect"
+runtime = "executable"
+platforms = ["macos", "linux"]
+argv = []
+cwd = "tool_root"
+capabilities = ["filesystem_read"]
+availability = "required"
+
+[[hook]]
+schema_version = 1
+id = "before-shell"
+tool = "inspect"
+subject = "tool_call"
+phase = "before"
+effect = "allow_deny"
+requirement = "required"
+timeout_ms = 2000
+failure_policy = "fail_closed"
+retry = "never"
+error_visibility = "model_and_user"
+blocking_scope = "matched_event"
+matcher = { tool_names = ["Bash"] }
+
+[[hook]]
+schema_version = 1
+id = "after-shell"
+tool = "inspect"
+subject = "tool_call"
+phase = "after"
+effect = "observe"
+requirement = "optional"
+timeout_ms = 1500
+failure_policy = "report"
+retry = "never"
+error_visibility = "user"
+blocking_scope = "matched_event"
+matcher = { tool_names = ["Bash"] }
+fallback = "omit"
+"#,
+    )
+    .unwrap();
+    let executable = package.join("bin/inspect");
+    std::fs::write(&executable, "#!/bin/sh\necho SHOULD_NOT_RUN > executed\n").unwrap();
+    std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o755)).unwrap();
+    run_git(&repo, &["add", "-f", "agents", "instructions", "plugins"]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "add review plugin",
+            "-q",
+        ],
+    );
+    add_source(&store, "team", &repo);
+    set_source_untrusted(&store, "team");
+    let paths = store::StorePaths::new(store.clone());
+    let config = store::read_config(&paths).unwrap();
+    let team_path = &config
+        .sources
+        .iter()
+        .find(|source| source.id == "team")
+        .unwrap()
+        .path;
+    let plugin_inventory = dalo::plugin::scan_source_plugins("team", team_path);
+    assert!(
+        !plugin_inventory.plugins.is_empty(),
+        "plugin warnings: {:?}",
+        plugin_inventory.warnings
+    );
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "plugin", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("review-suite"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["plugin", "select", "team:review-suite"])
+        .assert()
+        .success();
+
+    let approvals_before = std::fs::read(store.join("approvals.toml")).unwrap();
+    let first = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "plugin", "review", "team:review-suite"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let second = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "plugin", "review", "team:review-suite"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    assert_eq!(first, second, "review JSON must be byte-identical");
+    let json: serde_json::Value = serde_json::from_slice(&first).unwrap();
+    assert_eq!(json["schema_version"], 1);
+    assert_eq!(json["root_plugin"], "team:review-suite");
+    assert_eq!(json["read_only"], true);
+    let decisions = json["decisions"].as_array().unwrap();
+    assert_eq!(decisions.len(), 8);
+    assert_eq!(
+        decisions
+            .iter()
+            .filter(|decision| decision["kind"] == "agent_activation")
+            .count(),
+        3
+    );
+    assert!(decisions.iter().any(|decision| {
+        decision["kind"] == "instruction_recommendation" && decision["state"] == "inactive"
+    }));
+    assert_eq!(
+        std::fs::read(store.join("approvals.toml")).unwrap(),
+        approvals_before
+    );
+    assert!(!package.join("executed").exists());
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--dry-run", "plugin", "review", "team:review-suite"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "no prompts, approvals, executable staging",
+        ));
+    assert_eq!(
+        std::fs::read(store.join("approvals.toml")).unwrap(),
+        approvals_before
+    );
+
+    let stale = dalo::plugin_review::build(&store, "team:review-suite").unwrap();
+    let checkout_entry = team_path.join("plugins/review-suite/bin/inspect");
+    let original_entry = std::fs::read(&checkout_entry).unwrap();
+    std::fs::write(&checkout_entry, "#!/bin/sh\necho CHANGED\n").unwrap();
+    std::fs::set_permissions(&checkout_entry, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let selected =
+        std::collections::BTreeSet::from(["tool:team:review-suite#tool:inspect".to_owned()]);
+    let error =
+        dalo::plugin_review::commit(&store, "team:review-suite", &stale.review_token, &selected)
+            .expect_err("changed bytes must invalidate the displayed review");
+    assert!(error.to_string().contains("review changed after display"));
+    assert_eq!(
+        std::fs::read(store.join("approvals.toml")).unwrap(),
+        approvals_before
+    );
+    std::fs::write(&checkout_entry, original_entry).unwrap();
+    std::fs::set_permissions(&checkout_entry, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["plugin", "review", "team:review-suite"])
+        .write_stdin("q\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("no approvals were granted"));
+    assert_eq!(
+        std::fs::read(store.join("approvals.toml")).unwrap(),
+        approvals_before
+    );
+
+    // Seven approvable decisions: skill, three agents, tool, and two hooks,
+    // followed by one explicit transaction confirmation.
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["plugin", "review", "team:review-suite"])
+        .write_stdin("y\ny\ny\ny\ny\ny\ny\ny\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "committed 7 separately scoped approvals",
+        ));
+    let approvals = store::read_approvals(&store::StorePaths::new(store)).unwrap();
+    assert_eq!(
+        approvals
+            .approvals
+            .iter()
+            .filter(|record| record.scope == "skill")
+            .count(),
+        1
+    );
+    assert_eq!(
+        approvals
+            .approvals
+            .iter()
+            .filter(|record| record.scope == "agent")
+            .count(),
+        3
+    );
+    assert_eq!(
+        approvals
+            .approvals
+            .iter()
+            .filter(|record| record.scope == "tool")
+            .count(),
+        1
+    );
+    assert_eq!(
+        approvals
+            .approvals
+            .iter()
+            .filter(|record| record.scope == "hook")
+            .count(),
+        2
+    );
+    assert!(!approvals.approvals.iter().any(|record| {
+        matches!(record.scope.as_str(), "source" | "author" | "org") || record.value.contains('*')
+    }));
+    assert!(!package.join("executed").exists());
+}
 
 #[test]
 fn help_should_list_planned_top_level_commands() {

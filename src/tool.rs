@@ -155,6 +155,35 @@ pub fn audit(paths: &StorePaths, value: &str) -> DaloResult<ToolAuditReport> {
     Ok(audit_status(&status))
 }
 
+/// Audit and stage one exact tool contract without granting execution trust.
+///
+/// Aggregated reviews use this as a prepare phase before committing all
+/// separately scoped approval records with one atomic ledger write. The
+/// staged bytes remain inert until the matching content-bound approval exists.
+pub fn prepare_approval(paths: &StorePaths, value: &str) -> DaloResult<PathBuf> {
+    let status = show(paths, value)?;
+    let audit = audit_status(&status);
+    if !audit.passed {
+        return Err(DaloError::StateError {
+            reason: format!(
+                "tool `{}` failed its executable-closure audit: {}",
+                status.tool.source_ref,
+                audit.findings.join("; ")
+            ),
+        });
+    }
+    if matches!(
+        status.state,
+        ToolState::PlatformMismatch | ToolState::RuntimeMissing
+    ) {
+        return Err(DaloError::StateError {
+            reason: status.diagnostic,
+        });
+    }
+    stage(paths, &status)?;
+    Ok(staged_root(paths, &status.tool.contract_hash))
+}
+
 /// Grant exact tool trust and atomically stage the reviewed bytes.
 pub fn approve(paths: &StorePaths, value: &str, dry_run: bool) -> DaloResult<ToolApprovalReport> {
     let status = show(paths, value)?;

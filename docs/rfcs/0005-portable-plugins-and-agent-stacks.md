@@ -1149,11 +1149,15 @@ must never point at a mutable direct skill path and therefore needs immutable
 bytes plus Dalo-owned component approval. This distinction preserves current
 direct-linked skills rather than deprecating their support scripts.
 
-The safe interaction should still be coherent. #503 adds an aggregated
-`dalo plugin review <ref>` session that presents every pending decision and can
+The safe interaction is coherent through the aggregated
+`dalo plugin review <ref>` session. It presents every pending decision and can
 record the explicitly reviewed set together, while preserving separate content,
-agent, tool, and hook approval identities. It must not create a blanket plugin,
-source, author, or organization execution grant.
+agent, tool, and hook approval identities. A schema-versioned read-only report
+shares target facts with `dalo plan`; JSON and dry-run never prompt or mutate.
+Interactive answers remain in memory until a final confirmation, then the
+displayed review token is revalidated and the exact records are committed with
+one atomic ledger write. The command cannot create a blanket plugin, source,
+author, organization, or wildcard execution grant.
 
 Required properties:
 
