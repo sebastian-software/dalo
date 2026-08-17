@@ -724,6 +724,9 @@ Lists sources, priority, trust, sync status, head commit, and dirty state.
 ### 17.7 `dalo source remove`
 
 Disables or removes a source. On the next sync, only dalo-owned symlinks are removed.
+Active instruction blocks owned by the source are removed transactionally. If
+one of their marker pairs is malformed, removal fails closed and retains the
+source and lock entry so ownership provenance remains available for recovery.
 
 ### 17.8 `dalo source priority`
 
