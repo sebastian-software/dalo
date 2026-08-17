@@ -9309,6 +9309,223 @@ fn instructions_enable_disable_should_manage_block_idempotently() {
 }
 
 #[test]
+fn instructions_enable_should_render_source_qualified_pack_with_commit_provenance() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let repo = temp_dir.path().join("team-repo");
+    let target_file = temp_dir.path().join("AGENTS.md");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::create_dir_all(repo.join("instructions"))
+        .expect("instruction directory should be created");
+    std::fs::write(
+        repo.join("instructions/engineering-defaults.md"),
+        "version: 2\n\nReview security boundaries first.\n",
+    )
+    .expect("source pack should be written");
+    create_git_skill_repo(&repo);
+    add_source(&store, "team", &repo);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "team:engineering-defaults"])
+        .arg(&target_file)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("team:engineering-defaults"));
+
+    let rendered = std::fs::read_to_string(&target_file).expect("target should be readable");
+    assert!(rendered.contains("<!-- dalo:start team:engineering-defaults -->"));
+    assert!(rendered.contains("Review security boundaries first."));
+    let paths = store::StorePaths::new(store.clone());
+    let config = store::read_config(&paths).expect("config should be readable");
+    let source = config
+        .sources
+        .iter()
+        .find(|source| source.id == "team")
+        .expect("team source should exist");
+    let expected_commit =
+        dalo::git::rev_parse_head(&source.path).expect("source commit should resolve");
+    let lock = read_user_lock(&store);
+    assert_eq!(lock.active_instruction_packs.len(), 1);
+    assert_eq!(lock.active_instruction_packs[0].source_id, "team");
+    assert_eq!(
+        lock.active_instruction_packs[0].pack_id,
+        "engineering-defaults"
+    );
+    assert_eq!(
+        lock.active_instruction_packs[0].commit.as_deref(),
+        Some(expected_commit.as_str())
+    );
+    assert_eq!(
+        lock.active_instruction_packs[0].version.as_deref(),
+        Some("2")
+    );
+}
+
+#[test]
+fn instructions_enable_should_reject_dirty_or_untracked_source_pack() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let repo = temp_dir.path().join("team-repo");
+    let target_file = temp_dir.path().join("AGENTS.md");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::create_dir_all(repo.join("instructions"))
+        .expect("instruction directory should be created");
+    std::fs::write(repo.join("instructions/review.md"), "Committed body.\n")
+        .expect("source pack should be written");
+    create_git_skill_repo(&repo);
+    add_source(&store, "team", &repo);
+
+    let paths = store::StorePaths::new(store.clone());
+    let config = store::read_config(&paths).expect("config should be readable");
+    let source_path = config
+        .sources
+        .iter()
+        .find(|source| source.id == "team")
+        .expect("team source should exist")
+        .path
+        .clone();
+    std::fs::write(
+        source_path.join("instructions/review.md"),
+        "Locally modified body.\n",
+    )
+    .expect("tracked pack should be modified");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "team:review"])
+        .arg(&target_file)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("has local changes"));
+    assert!(!target_file.exists());
+
+    run_git(&source_path, &["checkout", "--", "instructions/review.md"]);
+    std::fs::write(
+        source_path.join("instructions/untracked.md"),
+        "Untracked body.\n",
+    )
+    .expect("untracked pack should be written");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "team:untracked"])
+        .arg(&target_file)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not tracked by its source commit"));
+    assert!(!target_file.exists());
+    assert!(read_user_lock(&store).active_instruction_packs.is_empty());
+}
+
+#[test]
+fn instructions_source_qualified_markers_should_allow_same_named_packs_to_coexist() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let repo = temp_dir.path().join("team-repo");
+    let target_file = temp_dir.path().join("AGENTS.md");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::write(
+        store.join("local/instructions/review.md"),
+        "Local review policy.\n",
+    )
+    .expect("local pack should be written");
+    std::fs::create_dir_all(repo.join("instructions"))
+        .expect("instruction directory should be created");
+    std::fs::write(repo.join("instructions/review.md"), "Team review policy.\n")
+        .expect("source pack should be written");
+    create_git_skill_repo(&repo);
+    add_source(&store, "team", &repo);
+
+    for selector in ["review", "team:review"] {
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .args(["instructions", "enable", selector])
+            .arg(&target_file)
+            .assert()
+            .success();
+    }
+    let rendered = std::fs::read_to_string(&target_file).expect("target should be readable");
+    assert!(rendered.contains("<!-- dalo:start review -->"));
+    assert!(rendered.contains("<!-- dalo:start team:review -->"));
+    assert!(rendered.contains("Local review policy."));
+    assert!(rendered.contains("Team review policy."));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "disable", "team:review"])
+        .arg(&target_file)
+        .assert()
+        .success();
+    let rendered = std::fs::read_to_string(&target_file).expect("target should be readable");
+    assert!(rendered.contains("<!-- dalo:start review -->"));
+    assert!(!rendered.contains("team:review"));
+    assert!(rendered.contains("Local review policy."));
+    assert!(!rendered.contains("Team review policy."));
+    let lock = read_user_lock(&store);
+    assert_eq!(lock.active_instruction_packs.len(), 1);
+    assert_eq!(lock.active_instruction_packs[0].source_id, "local");
+}
+
+#[test]
+fn instructions_enable_should_reject_a_committed_source_pack_symlink() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let repo = temp_dir.path().join("team-repo");
+    let outside = temp_dir.path().join("outside.md");
+    let target_file = temp_dir.path().join("AGENTS.md");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::write(&outside, "Outside policy.\n").expect("outside file should be written");
+    std::fs::create_dir_all(repo.join("instructions"))
+        .expect("instruction directory should be created");
+    std::os::unix::fs::symlink(&outside, repo.join("instructions/review.md"))
+        .expect("source pack symlink should be created");
+    create_git_skill_repo(&repo);
+    add_source(&store, "team", &repo);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "team:review"])
+        .arg(&target_file)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "must be a regular, non-symlink file",
+        ));
+    assert!(!target_file.exists());
+    assert!(read_user_lock(&store).active_instruction_packs.is_empty());
+}
+
+#[test]
 fn instructions_disable_should_match_normalized_absolute_target() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

@@ -828,22 +828,29 @@ output is `{ "audit": AuditReport, "approval": ApprovalReport }`; `agent`,
 skill audit blocks approval, Dalo prints only the blocking `AuditReport` and
 exits non-zero.
 
-### `dalo instructions enable <pack> <file>`
+### `dalo instructions enable <pack-ref> <file>`
 
-Render a local instruction pack from `local/instructions/<pack>.md` into an instruction file as a managed block. The target file is created if missing. Enabling the same pack again is idempotent and refreshes the block.
+Render a local pack from `local/instructions/<pack>.md`, or a source-backed pack
+selected as `<source>:<pack>`, into an instruction file as a managed block. The
+target file is created if missing. Enabling the same pack again is idempotent
+and refreshes the block. Source-backed packs must be tracked in a clean Git
+checkout; Dalo records the exact source commit and declared pack version in the
+user lock. Running `instructions enable` is the explicit activation boundary:
+discovering or refreshing a source never activates a new pack automatically.
 
 Examples:
 
 ```sh
 dalo instructions enable team-style ~/.codex/AGENTS.md
+dalo instructions enable company:engineering-defaults ~/.claude/CLAUDE.md
 dalo --dry-run instructions enable team-style ./AGENTS.md
 ```
 
-JSON output shape: `InstructionPackReport` with `pack_id`, `target`, `action`,
-`dry_run`, and an optional `warning` when recovery leaves a malformed target
-block untouched.
+JSON output shape: `InstructionPackReport` with `source_id`, `pack_id`, `target`,
+`action`, `dry_run`, and an optional `warning` when recovery leaves a malformed
+target block untouched.
 
-### `dalo instructions disable <pack> <file>`
+### `dalo instructions disable <pack-ref> <file>`
 
 Remove a pack's managed block from an instruction file and remove its active lock entry.
 
@@ -851,12 +858,13 @@ Examples:
 
 ```sh
 dalo instructions disable team-style ~/.codex/AGENTS.md
+dalo instructions disable company:engineering-defaults ~/.claude/CLAUDE.md
 dalo --json instructions disable team-style ./AGENTS.md
 ```
 
-JSON output shape: `InstructionPackReport` with `pack_id`, `target`, `action`,
-`dry_run`, and an optional `warning` when recovery leaves a malformed target
-block untouched. Disabling a pack removes its lock entry even when its managed
+JSON output shape: `InstructionPackReport` with `source_id`, `pack_id`, `target`,
+`action`, `dry_run`, and an optional `warning` when recovery leaves a malformed
+target block untouched. Disabling a pack removes its lock entry even when its managed
 markers are malformed; the target file is left unchanged and the warning
 explains the remaining drift. Mutations abort if the target changed on disk
 after it was read. Target updates lock the opened inode and verify both its
@@ -959,7 +967,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `resolve unkeep` | `UnkeepReport` | `selector`, `removed[]`, `dry_run` |
 | `resolve remove-owned` | `RemoveOwnedReport` | `id`, `link_path`, `status` |
 | `doctor` | `DoctorReport` | `store`, `findings[]`, `summary` |
-| `instructions enable` / `disable` | `InstructionPackReport` | `pack_id`, `target`, `action`, `dry_run`, optional `warning` |
+| `instructions enable` / `disable` | `InstructionPackReport` | `source_id`, `pack_id`, `target`, `action`, `dry_run`, optional `warning` |
 | `instructions list` | `InstructionPackListReport` | `active_instruction_packs[]` with `pack_id`, `target`, `source_id`, optional `commit`, optional `version` |
 
 Each `AuditReport.static_findings[]` entry contains `id`, `severity`,
@@ -1371,10 +1379,17 @@ Symlinks and unsupported special files are rejected.
 ## Instruction Packs
 
 Instruction packs are Markdown files in `local/instructions/<id>.md` or
-`<source>/instructions/<id>.md`. Dalo discovers both locations, but
-`instructions enable` currently reads only local packs; source packs are
-discovery-only. Pack IDs use the same safe token rule as source IDs: letters,
-digits, `.`, `_`, and `-`, excluding `.` and `..`.
+`<source>/instructions/<id>.md`. Dalo discovers both locations. Bare IDs select
+local packs; source packs use an explicit source-qualified reference such as
+`company:engineering-defaults`. Pack IDs use the same safe token rule as source
+IDs: letters, digits, `.`, `_`, and `-`, excluding `.` and `..`.
+
+Local managed-block markers retain their existing bare pack ID. Source-backed
+markers use the full source-qualified reference, allowing same-named packs from
+different sources to coexist in one instruction file. Source-backed lock entries
+bind the activation to the exact clean Git commit. If that checkout advances,
+becomes dirty, or no longer contains the tracked pack, status and sync report
+drift until the pack is explicitly reviewed and re-enabled.
 
 Dalo reads an optional `version:` entry from the first five lines and optional
 `topics:` or `tags:` metadata from the first eight lines:

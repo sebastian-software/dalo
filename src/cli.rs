@@ -322,7 +322,7 @@ pub struct PluginDeclineArgs {
 /// `instructions` subcommands.
 #[derive(Debug, Subcommand)]
 pub enum InstructionsSubcommand {
-    /// Render a local instruction pack into a target file as a managed block.
+    /// Render a local or source-qualified instruction pack into a target file.
     Enable(InstructionsFileArgs),
     /// Remove a pack's managed block from a target file.
     Disable(InstructionsFileArgs),
@@ -333,7 +333,7 @@ pub enum InstructionsSubcommand {
 /// Arguments for `instructions enable`/`disable`.
 #[derive(Debug, Args)]
 pub struct InstructionsFileArgs {
-    /// Instruction pack ID (a `local/instructions/<id>.md` file).
+    /// Local pack ID or source-qualified `<source>:<pack>` reference.
     pub pack: String,
 
     /// Target instruction file to render into.
@@ -1929,7 +1929,12 @@ fn run_instructions(options: &GlobalOptions, command: InstructionsCommand) -> Da
                 println!("no active instruction packs");
             } else {
                 for pack in &lock.active_instruction_packs {
-                    println!("{} -> {}", pack.pack_id, pack.target.display());
+                    let pack_ref = if pack.source_id == "local" {
+                        pack.pack_id.clone()
+                    } else {
+                        format!("{}:{}", pack.source_id, pack.pack_id)
+                    };
+                    println!("{} -> {}", pack_ref, pack.target.display());
                 }
             }
             Ok(())

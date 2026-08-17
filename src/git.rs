@@ -73,6 +73,32 @@ pub fn is_dirty(path: &Path) -> DaloResult<bool> {
     Ok(!output.trim().is_empty())
 }
 
+/// Return whether `file` is tracked by the checkout's current index.
+///
+/// Callers that bind persisted provenance to `HEAD` must reject untracked
+/// files even though [`is_dirty`] intentionally ignores them for refreshes.
+pub fn is_tracked_file(repo: &Path, file: &Path) -> DaloResult<bool> {
+    let relative = file
+        .strip_prefix(repo)
+        .map_err(|_| DaloError::InvalidArgument {
+            reason: format!(
+                "path `{}` is outside source checkout `{}`",
+                file.display(),
+                repo.display()
+            ),
+        })?;
+    let relative = relative
+        .to_str()
+        .ok_or_else(|| DaloError::InvalidArgument {
+            reason: format!("source-relative path `{}` is not UTF-8", relative.display()),
+        })?;
+    match run_git(repo, &["ls-files", "--error-unmatch", "--", relative]) {
+        Ok(_) => Ok(true),
+        Err(DaloError::CommandFailed { status, .. }) if status == "1" => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
 /// Return the current HEAD commit.
 pub fn rev_parse_head(path: &Path) -> DaloResult<String> {
     run_git(path, &["rev-parse", "HEAD"]).map(|output| output.trim().to_owned())
