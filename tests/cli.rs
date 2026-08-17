@@ -4019,7 +4019,7 @@ required = true
     assert!(!repo.join("plugins/builder/EXECUTED").exists());
     let approvals = std::fs::read_to_string(store.join("approvals.toml")).unwrap();
     assert!(approvals.contains("scope = \"delivery\""));
-    assert!(approvals.contains("company:review.skill@"));
+    assert!(approvals.contains("company:review@id:company:review.skill@"));
     assert!(approvals.contains("@sha256:"));
 
     std::fs::write(
@@ -4081,6 +4081,45 @@ required = true
         .args(["--store"])
         .arg(&store)
         .args(["approve", "revoke", "delivery", "company:review.skill"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("revoked generated delivery"));
+    let approvals = std::fs::read_to_string(store.join("approvals.toml")).unwrap();
+    assert!(!approvals.contains("scope = \"delivery\""));
+
+    std::fs::write(
+        renamed_skill.join("DELIVERY.toml"),
+        "schema_version = 1\nkind = \"generated\"\ngenerator = \"company:builder#tool:build\"\noutput_input = \"output_dir\"\n\n[providers]\ncodex = \"codex/review\"\n",
+    )
+    .unwrap();
+    run_git(&repo, &["add", "skills/review-renamed/DELIVERY.toml"]);
+    commit_test_repo(&repo, "restore generated delivery recipe");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "delivery", "company:review-renamed"])
+        .assert()
+        .success();
+
+    std::fs::remove_dir_all(&renamed_skill).unwrap();
+    run_git(&repo, &["add", "-A"]);
+    commit_test_repo(&repo, "delete generated delivery skill");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "revoke", "delivery", "company:review-renamed"])
         .assert()
         .success()
         .stdout(predicate::str::contains("revoked generated delivery"));

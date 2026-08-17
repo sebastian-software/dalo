@@ -1360,8 +1360,9 @@ Audit reports use provider-qualified selectors such as
 `dalo audit impeccable:impeccable@codex`, so findings, risk acceptance, and
 persisted provenance stay bound to the exact provider artifact.
 
-A generated delivery declares a same-source plugin tool and the relative
-output directory expected for each provider:
+A generated delivery requires a stable skill frontmatter `id`, declares a
+same-source plugin tool, and names the relative output directory expected for
+each provider:
 
 ```toml
 schema_version = 1
@@ -1389,10 +1390,10 @@ dalo approve tool company:builder#tool:build
 
 The first approves only the exact revision-bound recipe; the second approves
 the generator tool contract. A new source commit or changed recipe invalidates
-the recipe approval. When the skill declares a stable frontmatter `id`, Dalo
-uses that ID for the approval key so stale trust remains revocable after a slot
-rename; otherwise `approve list` preserves the former exact slot reference for
-revocation. In schema version 1 Dalo only validates, reports, and
+the recipe approval. The approval key records both the current slot and the
+required stable ID, so stale trust remains revocable after a rename, deletion,
+or invalid recipe through either historical identity. In schema version 1 Dalo
+only validates, reports, and
 persists this plan. Even with both approvals present it does not invoke the
 tool or create generated output; `sync`, `status`, and `doctor` report the
 delivery as blocked with execution intentionally unavailable.
