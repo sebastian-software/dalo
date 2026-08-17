@@ -3876,7 +3876,7 @@ fn generated_delivery_approval_should_remain_inert_and_content_bound() {
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("codex-skills");
     let repo = temp_dir.path().join("team-repo");
-    create_git_skill_repo_with_skill(&repo, "review", "# Review\n");
+    create_git_skill_repo_with_skill(&repo, "review", "---\nid: review.skill\n---\n# Review\n");
     let skill = repo.join("skills/review");
     std::fs::write(
         skill.join("DELIVERY.toml"),
@@ -4019,12 +4019,12 @@ required = true
     assert!(!repo.join("plugins/builder/EXECUTED").exists());
     let approvals = std::fs::read_to_string(store.join("approvals.toml")).unwrap();
     assert!(approvals.contains("scope = \"delivery\""));
-    assert!(approvals.contains("company:review@"));
+    assert!(approvals.contains("company:review.skill@"));
     assert!(approvals.contains("@sha256:"));
 
     std::fs::write(
         skill.join("SKILL.md"),
-        "# Review\n\nUpdated recipe source.\n",
+        "---\nid: review.skill\n---\n# Review\n\nUpdated recipe source.\n",
     )
     .unwrap();
     run_git(&repo, &["add", "skills/review/SKILL.md"]);
@@ -4039,12 +4039,36 @@ required = true
     assert!(!target.join("review").exists());
     assert!(!repo.join("plugins/builder/EXECUTED").exists());
 
+    let renamed_skill = repo.join("skills/review-renamed");
+    std::fs::rename(&skill, &renamed_skill).unwrap();
+    run_git(&repo, &["add", "-A"]);
+    commit_test_repo(&repo, "rename generated delivery skill");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "revoke", "delivery", "company:review-renamed"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("revoked generated delivery"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "delivery", "company:review-renamed"])
+        .assert()
+        .success();
+
     std::fs::write(
-        skill.join("DELIVERY.toml"),
+        renamed_skill.join("DELIVERY.toml"),
         "schema_version = 1\nkind = \"generated\"\ngenerator = \"company:missing#tool:build\"\noutput_input = \"output_dir\"\n\n[providers]\ncodex = \"codex/review\"\n",
     )
     .unwrap();
-    run_git(&repo, &["add", "skills/review/DELIVERY.toml"]);
+    run_git(&repo, &["add", "skills/review-renamed/DELIVERY.toml"]);
     commit_test_repo(&repo, "invalidate generated delivery recipe");
     dalo_command()
         .args(["--store"])
@@ -4056,7 +4080,7 @@ required = true
     dalo_command()
         .args(["--store"])
         .arg(&store)
-        .args(["approve", "revoke", "delivery", "company:review"])
+        .args(["approve", "revoke", "delivery", "company:review.skill"])
         .assert()
         .success()
         .stdout(predicate::str::contains("revoked generated delivery"));

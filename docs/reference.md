@@ -1389,7 +1389,10 @@ dalo approve tool company:builder#tool:build
 
 The first approves only the exact revision-bound recipe; the second approves
 the generator tool contract. A new source commit or changed recipe invalidates
-the recipe approval. In schema version 1 Dalo only validates, reports, and
+the recipe approval. When the skill declares a stable frontmatter `id`, Dalo
+uses that ID for the approval key so stale trust remains revocable after a slot
+rename; otherwise `approve list` preserves the former exact slot reference for
+revocation. In schema version 1 Dalo only validates, reports, and
 persists this plan. Even with both approvals present it does not invoke the
 tool or create generated output; `sync`, `status`, and `doctor` report the
 delivery as blocked with execution intentionally unavailable.

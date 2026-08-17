@@ -358,8 +358,9 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
                 continue;
             }
             let mut delivery = skill.delivery.clone();
+            let approval_ref = skill.approval_ref();
             delivery.bind_generated_approvals(
-                &skill.source_ref,
+                &approval_ref,
                 source_commit.clone(),
                 &input.approvals,
             );

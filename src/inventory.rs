@@ -68,6 +68,17 @@ pub struct SkillRecord {
     pub tags: Vec<String>,
 }
 
+impl SkillRecord {
+    /// Stable approval identity, preferring the authored ID over the install slot.
+    #[must_use]
+    pub(crate) fn approval_ref(&self) -> String {
+        self.id.as_ref().map_or_else(
+            || self.source_ref.clone(),
+            |id| format!("{}:{id}", self.source_id),
+        )
+    }
+}
+
 /// How one logical skill is delivered to linked targets.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -161,7 +172,7 @@ impl SkillDelivery {
     /// Bind a generated recipe to the current source revision and local approvals.
     pub fn bind_generated_approvals(
         &mut self,
-        source_ref: &str,
+        approval_ref: &str,
         source_commit: Option<String>,
         approvals: &[ApprovalRecord],
     ) {
@@ -179,7 +190,7 @@ impl SkillDelivery {
         };
         *bound_commit = source_commit;
         *recipe_approved = bound_commit.as_deref().is_some_and(|commit| {
-            let value = generated_approval_value(source_ref, commit, recipe_hash);
+            let value = generated_approval_value(approval_ref, commit, recipe_hash);
             approvals
                 .iter()
                 .any(|record| record.scope == "delivery" && record.value == value)
@@ -192,7 +203,7 @@ impl SkillDelivery {
 
     /// Exact content- and revision-bound approval value for a generated recipe.
     #[must_use]
-    pub fn generated_approval_value(&self, source_ref: &str) -> Option<String> {
+    pub fn generated_approval_value(&self, approval_ref: &str) -> Option<String> {
         let Self::Generated {
             recipe_hash,
             source_commit: Some(source_commit),
@@ -202,15 +213,15 @@ impl SkillDelivery {
             return None;
         };
         Some(generated_approval_value(
-            source_ref,
+            approval_ref,
             source_commit,
             recipe_hash,
         ))
     }
 }
 
-fn generated_approval_value(source_ref: &str, source_commit: &str, recipe_hash: &str) -> String {
-    format!("{source_ref}@{source_commit}@sha256:{recipe_hash}")
+fn generated_approval_value(approval_ref: &str, source_commit: &str, recipe_hash: &str) -> String {
+    format!("{approval_ref}@{source_commit}@sha256:{recipe_hash}")
 }
 
 /// Selected delivery artifact for one logical target.

@@ -75,14 +75,19 @@ pub fn revoke(
     // Trust withdrawal must not depend on the current recipe remaining valid or
     // even present. Resolve a stable ID when possible, but always retain the
     // exact source-qualified value as a stale-record escape hatch.
-    let canonical = crate::approval::canonical_skill(paths, value).ok();
-    let skill = canonical.as_deref().unwrap_or(value).to_owned();
+    let current_identity = current_identity(paths, value);
+    let skill = current_identity
+        .as_ref()
+        .map_or_else(|| value.to_owned(), |(canonical, _)| canonical.clone());
     let mut approvals = store::read_approvals(paths)?;
     let mut prefixes = vec![format!("{value}@")];
-    if let Some(canonical) = &canonical
-        && canonical != value
-    {
-        prefixes.push(format!("{canonical}@"));
+    if let Some((canonical, approval_ref)) = &current_identity {
+        for identity in [canonical, approval_ref] {
+            let prefix = format!("{identity}@");
+            if !prefixes.contains(&prefix) {
+                prefixes.push(prefix);
+            }
+        }
     }
     let mut removed = None;
     approvals.approvals.retain(|record| {
@@ -109,6 +114,21 @@ pub fn revoke(
         dry_run,
         execution: "not_run".to_owned(),
     })
+}
+
+fn current_identity(paths: &StorePaths, value: &str) -> Option<(String, String)> {
+    let (source_id, selector) = value.split_once(':')?;
+    let config = store::read_config(paths).ok()?;
+    let source = config
+        .sources
+        .iter()
+        .find(|source| source.id == source_id)?;
+    let inventory = crate::inventory::scan_source(source_id, &source.path).ok()?;
+    let skill = inventory
+        .skills
+        .iter()
+        .find(|skill| skill.slot_name == selector || skill.id.as_deref() == Some(selector))?;
+    Some((skill.source_ref.clone(), skill.approval_ref()))
 }
 
 fn validate_identity_shape(value: &str) -> DaloResult<()> {
@@ -173,9 +193,10 @@ fn inspect(paths: &StorePaths, value: &str) -> DaloResult<DeliveryApprovalReport
             .iter_mut()
             .find(|skill| skill.source_ref == canonical)
             .expect("canonical skill remains present in the same inventory");
+        let approval_ref = skill.approval_ref();
         skill
             .delivery
-            .bind_generated_approvals(&canonical, Some(commit), &[]);
+            .bind_generated_approvals(&approval_ref, Some(commit), &[]);
         let SkillDelivery::Generated {
             generator,
             generator_contract_hash,
@@ -190,7 +211,7 @@ fn inspect(paths: &StorePaths, value: &str) -> DaloResult<DeliveryApprovalReport
         };
         let approval_value = skill
             .delivery
-            .generated_approval_value(&canonical)
+            .generated_approval_value(&approval_ref)
             .expect("non-local generated delivery has bound commit provenance");
         (
             generator.clone(),
