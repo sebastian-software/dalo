@@ -6045,6 +6045,97 @@ fn source_remove_should_reconcile_team_links_and_remove_source_state() {
 }
 
 #[test]
+fn source_remove_should_deactivate_instruction_packs_without_blocking_future_syncs() {
+    let temp = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp.path().join("store");
+    let skills_target = temp.path().join("skills");
+    let instruction_target = temp.path().join("AGENTS.md");
+    let repo = temp.path().join("team-repo");
+    std::fs::create_dir_all(repo.join("instructions")).unwrap();
+    std::fs::write(
+        repo.join("instructions/policy.md"),
+        "Keep security boundaries explicit.\n",
+    )
+    .unwrap();
+    create_git_skill_repo(&repo);
+    setup_store_with_target(&store, &skills_target);
+    add_source(&store, "company", &repo);
+    std::fs::write(&instruction_target, "# User instructions\n").unwrap();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "company:policy"])
+        .arg(&instruction_target)
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "remove", "company"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("deactivated instruction packs:"))
+        .stdout(predicate::str::contains("company:policy"));
+
+    let rendered = std::fs::read_to_string(&instruction_target).unwrap();
+    assert!(rendered.contains("# User instructions"));
+    assert!(!rendered.contains("dalo:start"));
+    assert!(!rendered.contains("Keep security boundaries explicit."));
+    assert!(read_user_lock(&store).active_instruction_packs.is_empty());
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+}
+
+#[test]
+fn source_remove_failure_should_restore_instruction_target_and_lock() {
+    let temp = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp.path().join("store");
+    let instruction_target = temp.path().join("AGENTS.md");
+    let repo = temp.path().join("team-repo");
+    std::fs::create_dir_all(repo.join("instructions")).unwrap();
+    std::fs::write(repo.join("instructions/policy.md"), "Team policy.\n").unwrap();
+    create_git_skill_repo(&repo);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    add_source(&store, "company", &repo);
+    std::fs::write(&instruction_target, "# User instructions\n").unwrap();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "company:policy"])
+        .arg(&instruction_target)
+        .assert()
+        .success();
+    let target_before = std::fs::read(&instruction_target).unwrap();
+    let lock_before = read_user_lock(&store);
+
+    dalo_command()
+        .env("DALO_SOURCE_REMOVE_FAIL_AT", "user_lock")
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "remove", "company"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "injected source-removal failure at user_lock",
+        ));
+
+    assert_eq!(std::fs::read(&instruction_target).unwrap(), target_before);
+    assert_eq!(read_user_lock(&store), lock_before);
+    let config = store::read_config(&store::StorePaths::new(store)).unwrap();
+    assert!(config.sources.iter().any(|source| source.id == "company"));
+}
+
+#[test]
 fn source_remove_should_not_materialize_audit_blocked_skills() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

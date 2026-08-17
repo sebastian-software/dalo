@@ -111,6 +111,33 @@ pub struct InstructionSyncResult {
     pub rollback: Option<InstructionRefreshRollback>,
 }
 
+/// One active instruction pack removed with its owning source.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct InstructionRemovalOperation {
+    /// Source that owned the pack.
+    pub source_id: String,
+    /// Pack ID.
+    pub pack_id: String,
+    /// Effective physical instruction-file path.
+    pub target: PathBuf,
+    /// What happened: `removed` or `lock_removed`.
+    pub action: String,
+    /// Recovery detail when the managed block could not be removed safely.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
+}
+
+/// Result of removing active packs whose owning sources are being removed.
+#[derive(Debug)]
+pub struct InstructionSourceRemovalResult {
+    /// Lock entries that remain active after removal.
+    pub active_instruction_packs: Vec<LockedInstructionPack>,
+    /// Pack removals for human and JSON reporting.
+    pub operations: Vec<InstructionRemovalOperation>,
+    /// Target snapshots retained until source-removal metadata commits.
+    pub rollback: Option<InstructionRefreshRollback>,
+}
+
 /// In-memory rollback for instruction target writes awaiting lock commit.
 #[derive(Debug)]
 pub struct InstructionRefreshRollback {
@@ -478,6 +505,101 @@ pub fn refresh_active_packs(
     };
     Ok(InstructionSyncResult {
         active_instruction_packs: updated,
+        operations,
+        rollback,
+    })
+}
+
+/// Remove active managed blocks and lock entries for sources being deleted.
+///
+/// Malformed or missing blocks are left untouched while their orphan-prone
+/// lock entries are still removed, matching explicit instruction-disable
+/// recovery semantics. Valid blocks across the same physical target are
+/// removed in one conditional write.
+pub fn remove_active_packs_for_sources(
+    paths: &StorePaths,
+    active: &[LockedInstructionPack],
+    removed_source_ids: &BTreeSet<String>,
+    dry_run: bool,
+) -> DaloResult<InstructionSourceRemovalResult> {
+    let mut retained = active
+        .iter()
+        .filter(|entry| !removed_source_ids.contains(&entry.source_id))
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut grouped = BTreeMap::<PathBuf, Vec<&LockedInstructionPack>>::new();
+    for entry in active
+        .iter()
+        .filter(|entry| removed_source_ids.contains(&entry.source_id))
+    {
+        grouped
+            .entry(lock_entry_target_path(paths, &entry.target))
+            .or_default()
+            .push(entry);
+    }
+
+    let mut operations = Vec::new();
+    let mut prepared = Vec::with_capacity(grouped.len());
+    let mut target_locks = Vec::with_capacity(grouped.len());
+    for (target, entries) in grouped {
+        target_locks.push(acquire_target_lock(paths, &target)?);
+        let snapshot = target_snapshot(&target)?;
+        let existing = snapshot.content.clone().unwrap_or_default();
+        let mut rendered = existing.clone();
+        for entry in entries {
+            let marker = lock_marker_id(entry);
+            let (action, warning) = match find_block(&rendered, &marker) {
+                Ok(Some(_)) => {
+                    rendered = remove_block(&rendered, &marker)?;
+                    ("removed".to_owned(), None)
+                }
+                Ok(None) => (
+                    "lock_removed".to_owned(),
+                    Some("managed block was already missing; removed its lock entry".to_owned()),
+                ),
+                Err(error) => (
+                    "lock_removed".to_owned(),
+                    Some(format!(
+                        "{error}; malformed target left untouched and lock entry removed"
+                    )),
+                ),
+            };
+            operations.push(InstructionRemovalOperation {
+                source_id: entry.source_id.clone(),
+                pack_id: entry.pack_id.clone(),
+                target: target.clone(),
+                action,
+                warning,
+            });
+        }
+        prepared.push(PreparedInstructionMutation {
+            logical_targets: Vec::new(),
+            target,
+            snapshot,
+            rendered: (rendered != existing).then_some(rendered),
+            action: "removed".to_owned(),
+            warning: None,
+        });
+    }
+    sort_instruction_lock_entries(&mut retained);
+    operations.sort_by(|left, right| {
+        left.target
+            .cmp(&right.target)
+            .then_with(|| left.source_id.cmp(&right.source_id))
+            .then_with(|| left.pack_id.cmp(&right.pack_id))
+    });
+    let rollback = if dry_run {
+        None
+    } else {
+        let written = apply_prepared_target_writes(prepared.as_mut_slice())?;
+        Some(InstructionRefreshRollback {
+            prepared,
+            written,
+            _target_locks: target_locks,
+        })
+    };
+    Ok(InstructionSourceRemovalResult {
+        active_instruction_packs: retained,
         operations,
         rollback,
     })

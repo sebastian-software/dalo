@@ -1542,6 +1542,25 @@ pub fn print_source_remove_report(report: &SourceRemoveReport) {
             println!("    {skill}");
         }
     }
+    if !report.deactivated_instruction_packs.is_empty() {
+        println!("  deactivated instruction packs:");
+        for operation in &report.deactivated_instruction_packs {
+            let verb = if report.dry_run {
+                "would remove"
+            } else {
+                operation.action.as_str()
+            };
+            println!(
+                "    {verb:<12} {}:{} -> {}",
+                operation.source_id,
+                operation.pack_id,
+                operation.target.display()
+            );
+            if let Some(warning) = &operation.warning {
+                println!("      warning: {warning}");
+            }
+        }
+    }
     if !report.reconciled_links.is_empty() {
         println!("  reconciled links:");
         for link in &report.reconciled_links {

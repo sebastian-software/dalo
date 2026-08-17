@@ -222,6 +222,8 @@ pub struct SourceRemoveReport {
     pub reconciled_links: Vec<SourceRemoveLink>,
     /// Previously active skills deactivated by removing this source.
     pub deactivated_skills: Vec<String>,
+    /// Active instruction packs removed with this source.
+    pub deactivated_instruction_packs: Vec<crate::instructions::InstructionRemovalOperation>,
     /// Non-fatal checkout cleanup failures after metadata committed.
     pub cleanup_warnings: Vec<String>,
     /// Durable store artifacts that the removal updates or cleans up.
@@ -348,6 +350,7 @@ pub fn plan_remove_source(
             removed_catalog_lock,
             reconciled_links: Vec::new(),
             deactivated_skills: Vec::new(),
+            deactivated_instruction_packs: Vec::new(),
             cleanup_warnings: Vec::new(),
             affected_paths,
             dry_run,
