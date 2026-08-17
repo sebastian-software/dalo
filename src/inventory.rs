@@ -499,6 +499,11 @@ fn scan_delivery(source_root: &Path, skill_dir: &Path) -> Result<SkillDelivery, 
         .map_err(|error| format!("cannot resolve logical skill directory: {error}"))?;
     let mut providers = BTreeMap::new();
     for (provider, relative_path) in manifest.providers {
+        if provider == "universal" {
+            return Err(
+                "provider target ID `universal` is reserved for universal_fallback".to_owned(),
+            );
+        }
         if !valid_provider_id(&provider) {
             return Err(format!("invalid provider target ID `{provider}`"));
         }
@@ -1074,6 +1079,27 @@ mod tests {
             warning.code == InventoryWarningCode::InvalidDelivery
                 && warning.message.contains("must be a regular file")
         }));
+    }
+
+    #[test]
+    fn delivery_manifest_should_reserve_universal_for_the_fallback_artifact() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let logical = temp_dir.path().join("review");
+        let universal = temp_dir.path().join("builds/universal/review");
+        for directory in [&logical, &universal] {
+            fs::create_dir_all(directory).expect("skill directory should be created");
+            fs::write(directory.join(SKILL_FILE), "# Review\n").expect("skill should be written");
+        }
+        fs::write(
+            logical.join(DELIVERY_FILE),
+            "schema_version = 1\nkind = \"prebuilt\"\nuniversal_fallback = true\n\n[providers]\nuniversal = \"builds/universal/review\"\n",
+        )
+        .expect("delivery manifest should be written");
+
+        let error = scan_delivery(temp_dir.path(), &logical)
+            .expect_err("the fallback identity must not collide with a provider mapping");
+
+        assert!(error.contains("`universal` is reserved"));
     }
 
     #[test]
