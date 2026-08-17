@@ -467,12 +467,10 @@ fn scan_delivery(source_root: &Path, skill_dir: &Path) -> Result<SkillDelivery, 
     if !manifest_path.exists() {
         return Ok(SkillDelivery::Direct);
     }
-    if fs::symlink_metadata(&manifest_path)
-        .map_err(|error| format!("cannot inspect delivery manifest: {error}"))?
-        .file_type()
-        .is_symlink()
-    {
-        return Err("delivery manifest must not be a symlink".to_owned());
+    let manifest_metadata = fs::symlink_metadata(&manifest_path)
+        .map_err(|error| format!("cannot inspect delivery manifest: {error}"))?;
+    if !manifest_metadata.is_file() || manifest_metadata.file_type().is_symlink() {
+        return Err("delivery manifest must be a regular file".to_owned());
     }
 
     let content = fs::read_to_string(&manifest_path)
@@ -1058,6 +1056,23 @@ mod tests {
         assert!(inventory.warnings.iter().any(|warning| {
             warning.code == InventoryWarningCode::InvalidDelivery
                 && warning.message.contains("inside the source checkout")
+        }));
+    }
+
+    #[test]
+    fn scan_source_should_reject_a_non_regular_delivery_manifest_without_opening_it() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let logical = temp_dir.path().join("review");
+        fs::create_dir_all(logical.join(DELIVERY_FILE))
+            .expect("directory-shaped manifest should be created");
+        fs::write(logical.join(SKILL_FILE), "# Review\n").expect("skill should be written");
+
+        let inventory = scan_source("local", temp_dir.path()).expect("scan should complete");
+
+        assert!(inventory.skills.is_empty());
+        assert!(inventory.warnings.iter().any(|warning| {
+            warning.code == InventoryWarningCode::InvalidDelivery
+                && warning.message.contains("must be a regular file")
         }));
     }
 
