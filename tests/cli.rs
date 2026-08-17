@@ -6142,6 +6142,109 @@ fn source_remove_should_fail_closed_on_malformed_instruction_block() {
 }
 
 #[test]
+fn sync_should_deactivate_packs_from_removed_manifest_sources() {
+    let temp = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp.path().join("store");
+    let instruction_target = temp.path().join("AGENTS.md");
+    let repo = temp.path().join("catalog-repo");
+    std::fs::create_dir_all(repo.join("instructions")).unwrap();
+    std::fs::write(repo.join("instructions/policy.md"), "Catalog policy.\n").unwrap();
+    create_git_skill_repo(&repo);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    add_source(&store, "company.marketing", &repo);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "company.marketing:policy"])
+        .arg(&instruction_target)
+        .assert()
+        .success();
+
+    let paths = store::StorePaths::new(store.clone());
+    let mut config = store::read_config(&paths).expect("config should be readable");
+    let source = config
+        .sources
+        .iter_mut()
+        .find(|source| source.id == "company.marketing")
+        .expect("derived source should exist");
+    source.declared_by = Some("company".to_owned());
+    source.declared_ref = Some("v1".to_owned());
+    store::write_config(&paths, &config).expect("config should be writable");
+
+    let valid_target = std::fs::read_to_string(&instruction_target).unwrap();
+    let malformed_target = valid_target.replace(
+        "<!-- dalo:end company.marketing:policy -->",
+        "<!-- missing end marker -->",
+    );
+    std::fs::write(&instruction_target, &malformed_target).unwrap();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "malformed instruction block for `company.marketing:policy`",
+        ));
+    assert_eq!(
+        std::fs::read_to_string(&instruction_target).unwrap(),
+        malformed_target
+    );
+    assert_eq!(read_user_lock(&store).active_instruction_packs.len(), 1);
+    let rolled_back_config = store::read_config(&paths).expect("config should be readable");
+    assert!(
+        rolled_back_config
+            .sources
+            .iter()
+            .any(|source| source.id == "company.marketing")
+    );
+    std::fs::write(&instruction_target, valid_target).unwrap();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--dry-run", "sync"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "instruction removed: company.marketing:policy",
+        ));
+    assert!(
+        std::fs::read_to_string(&instruction_target)
+            .unwrap()
+            .contains("Catalog policy.")
+    );
+    assert_eq!(read_user_lock(&store).active_instruction_packs.len(), 1);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "instruction removed: company.marketing:policy",
+        ));
+
+    let rendered = std::fs::read_to_string(&instruction_target).unwrap();
+    assert!(!rendered.contains("dalo:start"));
+    assert!(!rendered.contains("Catalog policy."));
+    assert!(read_user_lock(&store).active_instruction_packs.is_empty());
+    let config = store::read_config(&paths).expect("config should be readable");
+    assert!(
+        config
+            .sources
+            .iter()
+            .all(|source| source.id != "company.marketing")
+    );
+}
+
+#[test]
 fn source_remove_failure_should_restore_instruction_target_and_lock() {
     let temp = tempfile::tempdir().expect("tempdir should be created");
     let store = temp.path().join("store");

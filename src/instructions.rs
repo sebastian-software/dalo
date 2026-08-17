@@ -107,6 +107,8 @@ pub struct InstructionSyncResult {
     pub active_instruction_packs: Vec<LockedInstructionPack>,
     /// Source revisions considered by this sync.
     pub operations: Vec<InstructionSyncOperation>,
+    /// Packs deactivated because their manifest-derived source was removed.
+    pub removal_operations: Vec<InstructionRemovalOperation>,
     /// Target snapshots retained until the companion user lock is committed.
     pub rollback: Option<InstructionRefreshRollback>,
 }
@@ -339,28 +341,50 @@ pub fn disable_pack_for_targets(
 #[derive(Debug)]
 struct PendingPackRefresh {
     entry_index: usize,
+    updated_entry_index: usize,
     previous_commit: String,
     commit: String,
     old_body: String,
     pack: InstructionPack,
 }
 
-/// Refresh only source-backed packs that are already active in the user lock.
+#[derive(Debug, Default)]
+struct PendingInstructionTargetSync {
+    refreshes: Vec<PendingPackRefresh>,
+    removal_entry_indexes: Vec<usize>,
+}
+
+/// Reconcile source-backed packs that are already active in the user lock.
 ///
 /// Source approval is checked again on every sync. The previously rendered
 /// managed block must still match its immutable source revision before Dalo
 /// will replace it, so revoked trust or external block edits fail closed.
+/// Packs owned by manifest-derived sources removed in the same sync are
+/// deactivated inside the same target-and-lock transaction.
 pub fn refresh_active_packs(
     paths: &StorePaths,
     sources: &[SourceConfig],
     approvals: &[ApprovalRecord],
     active: &[LockedInstructionPack],
+    removed_source_ids: &BTreeSet<String>,
     dry_run: bool,
 ) -> DaloResult<InstructionSyncResult> {
-    let mut updated = active.to_vec();
-    let mut grouped = BTreeMap::<PathBuf, Vec<PendingPackRefresh>>::new();
+    let mut updated = active
+        .iter()
+        .filter(|entry| !removed_source_ids.contains(&entry.source_id))
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut grouped = BTreeMap::<PathBuf, PendingInstructionTargetSync>::new();
 
     for (entry_index, entry) in active.iter().enumerate() {
+        if removed_source_ids.contains(&entry.source_id) {
+            grouped
+                .entry(lock_entry_target_path(paths, &entry.target))
+                .or_default()
+                .removal_entry_indexes
+                .push(entry_index);
+            continue;
+        }
         if entry.source_id == "local" {
             continue;
         }
@@ -409,26 +433,59 @@ pub fn refresh_active_packs(
             )?
         };
         let target = lock_entry_target_path(paths, &entry.target);
-        grouped.entry(target).or_default().push(PendingPackRefresh {
-            entry_index,
-            previous_commit,
-            commit,
-            old_body,
-            pack,
-        });
+        let updated_entry_index = active[..entry_index]
+            .iter()
+            .filter(|candidate| !removed_source_ids.contains(&candidate.source_id))
+            .count();
+        grouped
+            .entry(target)
+            .or_default()
+            .refreshes
+            .push(PendingPackRefresh {
+                entry_index,
+                updated_entry_index,
+                previous_commit,
+                commit,
+                old_body,
+                pack,
+            });
     }
 
     let mut operations = Vec::new();
+    let mut removal_operations = Vec::new();
     let mut prepared = Vec::with_capacity(grouped.len());
     let mut target_locks = Vec::with_capacity(grouped.len());
-    for (target, refreshes) in grouped {
+    for (target, pending) in grouped {
         target_locks.push(acquire_target_lock(paths, &target)?);
         let snapshot = target_snapshot(&target)?;
         let existing = snapshot.content.clone().unwrap_or_default();
         let mut rendered = existing.clone();
         let line_ending = line_ending_for(&existing);
 
-        for refresh in refreshes {
+        for entry_index in pending.removal_entry_indexes {
+            let entry = &active[entry_index];
+            let marker = lock_marker_id(entry);
+            let (action, warning) = match find_block(&rendered, &marker) {
+                Ok(Some(_)) => {
+                    rendered = remove_block(&rendered, &marker)?;
+                    ("removed".to_owned(), None)
+                }
+                Ok(None) => (
+                    "lock_removed".to_owned(),
+                    Some("managed block was already missing; removed its lock entry".to_owned()),
+                ),
+                Err(error) => return Err(error),
+            };
+            removal_operations.push(InstructionRemovalOperation {
+                source_id: entry.source_id.clone(),
+                pack_id: entry.pack_id.clone(),
+                target: target.clone(),
+                action,
+                warning,
+            });
+        }
+
+        for refresh in pending.refreshes {
             let entry = &active[refresh.entry_index];
             let marker = lock_marker_id(entry);
             let expected =
@@ -459,8 +516,8 @@ pub fn refresh_active_packs(
                     line_ending,
                 )?;
                 rendered = render_block(&rendered, &marker, &refresh.pack.body)?;
-                updated[refresh.entry_index].commit = Some(refresh.commit.clone());
-                updated[refresh.entry_index].version = refresh.pack.version.clone();
+                updated[refresh.updated_entry_index].commit = Some(refresh.commit.clone());
+                updated[refresh.updated_entry_index].version = refresh.pack.version.clone();
                 operations.push(InstructionSyncOperation {
                     source_id: entry.source_id.clone(),
                     pack_id: entry.pack_id.clone(),
@@ -492,6 +549,12 @@ pub fn refresh_active_packs(
             .then_with(|| left.source_id.cmp(&right.source_id))
             .then_with(|| left.pack_id.cmp(&right.pack_id))
     });
+    removal_operations.sort_by(|left, right| {
+        left.target
+            .cmp(&right.target)
+            .then_with(|| left.source_id.cmp(&right.source_id))
+            .then_with(|| left.pack_id.cmp(&right.pack_id))
+    });
 
     let rollback = if dry_run {
         None
@@ -506,6 +569,7 @@ pub fn refresh_active_packs(
     Ok(InstructionSyncResult {
         active_instruction_packs: updated,
         operations,
+        removal_operations,
         rollback,
     })
 }

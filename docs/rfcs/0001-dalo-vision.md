@@ -727,6 +727,8 @@ Disables or removes a source. On the next sync, only dalo-owned symlinks are rem
 Active instruction blocks owned by the source are removed transactionally. If
 one of their marker pairs is malformed, removal fails closed and retains the
 source and lock entry so ownership provenance remains available for recovery.
+The same cleanup applies when team-manifest reconciliation removes a derived
+catalog source during sync.
 
 ### 17.8 `dalo source priority`
 

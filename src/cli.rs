@@ -2386,16 +2386,16 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
     } else {
         Some(store::read_user_lock(&paths)?)
     };
-    let config = store::read_config(&paths)?;
+    let config_before_manifests = store::read_config(&paths)?;
     let unrefreshed_tracking_sources = if options.dry_run {
-        tracking_team_source_ids(&config)
+        tracking_team_source_ids(&config_before_manifests)
     } else {
         Vec::new()
     };
     let refresh_failures = if options.dry_run {
         Vec::new()
     } else {
-        source::refresh_tracking_team_sources_from_config(&paths, &config)?
+        source::refresh_tracking_team_sources_from_config(&paths, &config_before_manifests)?
     };
     let (manifest_report, manifest_rollback) = if options.dry_run {
         (None, None)
@@ -2407,6 +2407,27 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
         team_manifest::preview_team_manifests(&paths)?
     } else {
         store::read_config(&paths)?
+    };
+    let removed_manifest_source_ids = if let Some(report) = &manifest_report {
+        report
+            .removed
+            .iter()
+            .cloned()
+            .collect::<std::collections::BTreeSet<_>>()
+    } else {
+        let configured = config
+            .sources
+            .iter()
+            .map(|source| source.id.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        config_before_manifests
+            .sources
+            .iter()
+            .filter(|source| {
+                source.declared_by.is_some() && !configured.contains(source.id.as_str())
+            })
+            .map(|source| source.id.clone())
+            .collect()
     };
     let sync_result = (|| -> DaloResult<materialize::SyncReport> {
         let approvals = store::read_approvals(&paths)?;
@@ -2449,6 +2470,7 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
             &config.sources,
             &approvals.approvals,
             &lock_for_instructions.active_instruction_packs,
+            &removed_manifest_source_ids,
             options.dry_run,
         ) {
             Ok(sync) => sync,
@@ -2464,6 +2486,7 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
             }
         };
         report.instruction_operations = instruction_sync.operations;
+        report.instruction_removal_operations = instruction_sync.removal_operations;
         report.unselected_catalogs = unselected_catalogs(&live);
         report.unrefreshed_tracking_sources = unrefreshed_tracking_sources;
         if options.dry_run && !live.plugins.plugins.is_empty() {
