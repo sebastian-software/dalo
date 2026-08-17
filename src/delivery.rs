@@ -73,28 +73,29 @@ pub fn revoke(
 ) -> DaloResult<DeliveryApprovalReport> {
     validate_identity_shape(value)?;
     // Trust withdrawal must not depend on the current recipe remaining valid or
-    // even present. Resolve a stable ID when possible, but always retain the
-    // exact source-qualified value as a stale-record escape hatch.
+    // even present. Every generated approval persists both the grant-time slot
+    // and stable ID, so either historical identity can withdraw stale trust.
     let current_identity = current_identity(paths, value);
     let skill = current_identity
         .as_ref()
         .map_or_else(|| value.to_owned(), |(canonical, _)| canonical.clone());
     let mut approvals = store::read_approvals(paths)?;
-    let mut prefixes = vec![format!("{value}@")];
+    let mut identities = vec![value.to_owned()];
     if let Some((canonical, approval_ref)) = &current_identity {
         for identity in [canonical, approval_ref] {
-            let prefix = format!("{identity}@");
-            if !prefixes.contains(&prefix) {
-                prefixes.push(prefix);
+            if !identities.contains(identity) {
+                identities.push(identity.clone());
             }
         }
     }
     let mut removed = None;
     approvals.approvals.retain(|record| {
         let matches = record.scope == APPROVAL_SCOPE
-            && prefixes
-                .iter()
-                .any(|prefix| record.value.starts_with(prefix));
+            && delivery_approval_aliases(&record.value).is_some_and(|(slot_ref, stable_ref)| {
+                identities
+                    .iter()
+                    .any(|identity| identity == slot_ref || identity == stable_ref)
+            });
         if matches {
             removed = Some(record.value.clone());
         }
@@ -106,7 +107,7 @@ pub fn revoke(
     }
     Ok(DeliveryApprovalReport {
         skill,
-        approval_value: removed.unwrap_or_else(|| prefixes[0].clone()),
+        approval_value: removed.unwrap_or_else(|| format!("{value}@")),
         generator: None,
         generator_contract_hash: None,
         providers: std::collections::BTreeMap::new(),
@@ -128,7 +129,14 @@ fn current_identity(paths: &StorePaths, value: &str) -> Option<(String, String)>
         .skills
         .iter()
         .find(|skill| skill.slot_name == selector || skill.id.as_deref() == Some(selector))?;
-    Some((skill.source_ref.clone(), skill.approval_ref()))
+    let stable_ref = format!("{}:{}", skill.source_id, skill.id.as_ref()?);
+    Some((skill.source_ref.clone(), stable_ref))
+}
+
+fn delivery_approval_aliases(value: &str) -> Option<(&str, &str)> {
+    let (slot_ref, remainder) = value.split_once("@id:")?;
+    let (stable_ref, _) = remainder.split_once('@')?;
+    Some((slot_ref, stable_ref))
 }
 
 fn validate_identity_shape(value: &str) -> DaloResult<()> {
@@ -193,10 +201,17 @@ fn inspect(paths: &StorePaths, value: &str) -> DaloResult<DeliveryApprovalReport
             .iter_mut()
             .find(|skill| skill.source_ref == canonical)
             .expect("canonical skill remains present in the same inventory");
-        let approval_ref = skill.approval_ref();
+        let stable_ref = format!(
+            "{}:{}",
+            skill.source_id,
+            skill
+                .id
+                .as_ref()
+                .expect("generated delivery requires a stable skill ID")
+        );
         skill
             .delivery
-            .bind_generated_approvals(&approval_ref, Some(commit), &[]);
+            .bind_generated_approvals(&canonical, &stable_ref, Some(commit), &[]);
         let SkillDelivery::Generated {
             generator,
             generator_contract_hash,
@@ -211,7 +226,7 @@ fn inspect(paths: &StorePaths, value: &str) -> DaloResult<DeliveryApprovalReport
         };
         let approval_value = skill
             .delivery
-            .generated_approval_value(&approval_ref)
+            .generated_approval_value(&canonical, &stable_ref)
             .expect("non-local generated delivery has bound commit provenance");
         (
             generator.clone(),

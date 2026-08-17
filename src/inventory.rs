@@ -68,17 +68,6 @@ pub struct SkillRecord {
     pub tags: Vec<String>,
 }
 
-impl SkillRecord {
-    /// Stable approval identity, preferring the authored ID over the install slot.
-    #[must_use]
-    pub(crate) fn approval_ref(&self) -> String {
-        self.id.as_ref().map_or_else(
-            || self.source_ref.clone(),
-            |id| format!("{}:{id}", self.source_id),
-        )
-    }
-}
-
 /// How one logical skill is delivered to linked targets.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -172,7 +161,8 @@ impl SkillDelivery {
     /// Bind a generated recipe to the current source revision and local approvals.
     pub fn bind_generated_approvals(
         &mut self,
-        approval_ref: &str,
+        source_ref: &str,
+        stable_ref: &str,
         source_commit: Option<String>,
         approvals: &[ApprovalRecord],
     ) {
@@ -190,7 +180,7 @@ impl SkillDelivery {
         };
         *bound_commit = source_commit;
         *recipe_approved = bound_commit.as_deref().is_some_and(|commit| {
-            let value = generated_approval_value(approval_ref, commit, recipe_hash);
+            let value = generated_approval_value(source_ref, stable_ref, commit, recipe_hash);
             approvals
                 .iter()
                 .any(|record| record.scope == "delivery" && record.value == value)
@@ -203,7 +193,7 @@ impl SkillDelivery {
 
     /// Exact content- and revision-bound approval value for a generated recipe.
     #[must_use]
-    pub fn generated_approval_value(&self, approval_ref: &str) -> Option<String> {
+    pub fn generated_approval_value(&self, source_ref: &str, stable_ref: &str) -> Option<String> {
         let Self::Generated {
             recipe_hash,
             source_commit: Some(source_commit),
@@ -213,15 +203,21 @@ impl SkillDelivery {
             return None;
         };
         Some(generated_approval_value(
-            approval_ref,
+            source_ref,
+            stable_ref,
             source_commit,
             recipe_hash,
         ))
     }
 }
 
-fn generated_approval_value(approval_ref: &str, source_commit: &str, recipe_hash: &str) -> String {
-    format!("{approval_ref}@{source_commit}@sha256:{recipe_hash}")
+fn generated_approval_value(
+    source_ref: &str,
+    stable_ref: &str,
+    source_commit: &str,
+    recipe_hash: &str,
+) -> String {
+    format!("{source_ref}@id:{stable_ref}@{source_commit}@sha256:{recipe_hash}")
 }
 
 /// Selected delivery artifact for one logical target.
@@ -535,7 +531,14 @@ fn scan_skill(
         return Ok((None, warnings));
     };
     let source_ref = format!("{source_id}:{slot_name}");
-    let delivery = match scan_delivery(source_id, &source_ref, source_root, skill_dir, plugins) {
+    let delivery = match scan_delivery(
+        source_id,
+        &source_ref,
+        frontmatter.id.as_deref(),
+        source_root,
+        skill_dir,
+        plugins,
+    ) {
         Ok(delivery) => delivery,
         Err(message) => {
             warnings.push(InventoryWarning {
@@ -568,6 +571,7 @@ fn scan_skill(
 fn scan_delivery(
     source_id: &str,
     source_ref: &str,
+    skill_id: Option<&str>,
     source_root: &Path,
     skill_dir: &Path,
     plugins: &[PluginRecord],
@@ -594,9 +598,14 @@ fn scan_delivery(
     }
     match manifest.kind.as_str() {
         "prebuilt" => scan_prebuilt_delivery(source_root, skill_dir, manifest_path, manifest),
-        "generated" => {
-            scan_generated_delivery(source_id, source_ref, manifest_path, manifest, plugins)
-        }
+        "generated" => scan_generated_delivery(
+            source_id,
+            source_ref,
+            skill_id,
+            manifest_path,
+            manifest,
+            plugins,
+        ),
         kind => Err(format!(
             "unsupported delivery kind `{kind}` (supported: prebuilt, generated)"
         )),
@@ -693,10 +702,14 @@ fn scan_prebuilt_delivery(
 fn scan_generated_delivery(
     source_id: &str,
     source_ref: &str,
+    skill_id: Option<&str>,
     manifest_path: PathBuf,
     manifest: DeliveryManifest,
     plugins: &[PluginRecord],
 ) -> Result<SkillDelivery, String> {
+    if skill_id.is_none() {
+        return Err("generated delivery requires a stable skill frontmatter `id`".to_owned());
+    }
     if manifest.universal_fallback {
         return Err("generated delivery does not support universal_fallback".to_owned());
     }
@@ -1298,7 +1311,11 @@ required = true
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
         let logical = temp_dir.path().join("skills/impeccable");
         fs::create_dir_all(&logical).unwrap();
-        fs::write(logical.join(SKILL_FILE), "# Impeccable\n").unwrap();
+        fs::write(
+            logical.join(SKILL_FILE),
+            "---\nid: impeccable.skill\n---\n# Impeccable\n",
+        )
+        .unwrap();
         fs::write(
             logical.join(DELIVERY_FILE),
             "schema_version = 1\nkind = \"generated\"\ngenerator = \"company:builder#tool:build\"\noutput_input = \"output_dir\"\n\n[providers]\ncodex = \"codex/impeccable\"\nclaude = \"claude/impeccable\"\n",
@@ -1336,7 +1353,11 @@ required = true
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
         let logical = temp_dir.path().join("review");
         fs::create_dir_all(&logical).unwrap();
-        fs::write(logical.join(SKILL_FILE), "# Review\n").unwrap();
+        fs::write(
+            logical.join(SKILL_FILE),
+            "---\nid: review.skill\n---\n# Review\n",
+        )
+        .unwrap();
         fs::write(
             logical.join(DELIVERY_FILE),
             "schema_version = 1\nkind = \"generated\"\ngenerator = \"company:builder#tool:build\"\noutput_input = \"missing\"\n\n[providers]\ncodex = \"codex/review\"\n",
@@ -1352,6 +1373,30 @@ required = true
                 && warning
                     .message
                     .contains("does not declare output input `missing`")
+        }));
+    }
+
+    #[test]
+    fn scan_source_should_reject_generated_recipe_without_stable_skill_id() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let logical = temp_dir.path().join("review");
+        fs::create_dir_all(&logical).unwrap();
+        fs::write(logical.join(SKILL_FILE), "# Review\n").unwrap();
+        fs::write(
+            logical.join(DELIVERY_FILE),
+            "schema_version = 1\nkind = \"generated\"\ngenerator = \"company:builder#tool:build\"\noutput_input = \"output_dir\"\n\n[providers]\ncodex = \"codex/review\"\n",
+        )
+        .unwrap();
+        write_generator_plugin(temp_dir.path());
+
+        let inventory = scan_source("company", temp_dir.path()).expect("scan should succeed");
+
+        assert!(inventory.skills.is_empty());
+        assert!(inventory.warnings.iter().any(|warning| {
+            warning.code == InventoryWarningCode::InvalidDelivery
+                && warning
+                    .message
+                    .contains("requires a stable skill frontmatter `id`")
         }));
     }
 
@@ -1447,8 +1492,15 @@ required = true
         )
         .expect("delivery manifest should be written");
 
-        let error = scan_delivery("local", "local:review", temp_dir.path(), &logical, &[])
-            .expect_err("the fallback identity must not collide with a provider mapping");
+        let error = scan_delivery(
+            "local",
+            "local:review",
+            None,
+            temp_dir.path(),
+            &logical,
+            &[],
+        )
+        .expect_err("the fallback identity must not collide with a provider mapping");
 
         assert!(error.contains("`universal` is reserved"));
     }
