@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.12.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.11.0...dalo-v0.12.0) (2026-08-17)
+
+
+### Features
+
+* add aggregated plugin review flow ([aaeec5e](https://github.com/sebastian-software/dalo/commit/aaeec5eb09bf9d493d119200ebfc5d60dd9ab90d))
+* add content-addressed plugin tool trust ([aedb216](https://github.com/sebastian-software/dalo/commit/aedb2168fd45775e20d9493380a117d369c714ed))
+* add provider-specific prebuilt skill delivery ([b52b46e](https://github.com/sebastian-software/dalo/commit/b52b46ee667713e2acd68d350b5964961e6e3515))
+* define portable hook contracts ([01e9789](https://github.com/sebastian-software/dalo/commit/01e978984a8fbaa8a1148c1dd99ac72d571b55b1))
+* **plugin:** add read-only target plan ([c46571c](https://github.com/sebastian-software/dalo/commit/c46571c2514ab7fc14ced250782900453a99d643))
+* **plugin:** resolve passive portable plugins ([16201d7](https://github.com/sebastian-software/dalo/commit/16201d7f8ef096e3052f29e1cb91eb4a549b9bd7))
+* project approved portable hooks ([067f6b9](https://github.com/sebastian-software/dalo/commit/067f6b92ce1749f68b86990315a9a09931641742))
+* project portable plugins into native packages ([fc6b53e](https://github.com/sebastian-software/dalo/commit/fc6b53e4e4f7fd9c46957753b5f1045399093fc2))
+
+
+### Bug Fixes
+
+* bind plugin review staging and scope plan output ([b233bed](https://github.com/sebastian-software/dalo/commit/b233bedcfcfc4c0ee722e6e3626e0c32e1757316))
+* bind provider audits to exact artifacts ([a6e14b0](https://github.com/sebastian-software/dalo/commit/a6e14b0a924689158055462c8598cd1ad0d44b1a))
+* fail closed on provider audit boundaries ([b7ac019](https://github.com/sebastian-software/dalo/commit/b7ac019ceaf2a4281f91d6a83abc4eb2eeaac2fa))
+* keep provider artifacts out of logical inventory diagnostics ([09f1b08](https://github.com/sebastian-software/dalo/commit/09f1b08040210b53f7f2dbd61b65b7a09977d7b1))
+
 ## [0.11.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.10.1...dalo-v0.11.0) (2026-07-23)
 
 
