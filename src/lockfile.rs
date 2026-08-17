@@ -16,7 +16,7 @@ use crate::resolver::{Resolution, UnlinkedReason};
 use crate::source::{SourceConfig, SourceKind};
 
 /// Current persisted user-lock schema version.
-pub const USER_LOCK_SCHEMA_VERSION: u32 = 5;
+pub const USER_LOCK_SCHEMA_VERSION: u32 = 6;
 
 /// Resolved user lock.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -227,7 +227,7 @@ pub fn build_user_lock(
 ) -> UserLock {
     let mut lock = UserLock {
         schema_version: USER_LOCK_SCHEMA_VERSION,
-        sources: locked_sources(sources),
+        sources: locked_sources(sources, resolution),
         active_skills: resolution
             .active_skills
             .iter()
@@ -352,7 +352,9 @@ pub fn compare_user_lock(previous: &UserLock, current: &UserLock) -> Vec<LockDri
 fn locked_delivery(skill: &crate::resolver::ResolvedSkill) -> Option<SkillDelivery> {
     match &skill.delivery {
         SkillDelivery::Direct => None,
-        delivery @ SkillDelivery::Prebuilt { .. } => Some(delivery.clone()),
+        delivery @ (SkillDelivery::Prebuilt { .. } | SkillDelivery::Generated { .. }) => {
+            Some(delivery.clone())
+        }
     }
 }
 
@@ -383,7 +385,7 @@ fn compare_skill_delivery(previous: &UserLock, current: &UserLock, drift: &mut V
     }
 }
 
-fn locked_sources(sources: &[SourceConfig]) -> Vec<LockedSource> {
+fn locked_sources(sources: &[SourceConfig], resolution: &Resolution) -> Vec<LockedSource> {
     let mut locked = sources
         .iter()
         .filter(|source| source.enabled)
@@ -394,12 +396,39 @@ fn locked_sources(sources: &[SourceConfig]) -> Vec<LockedSource> {
             // Catalog pins and inventory fingerprints are tracked in source-lock.toml.
             // Their checkout HEAD is intentionally not a user-lock drift signal.
             commit: (source.kind != SourceKind::Catalog)
-                .then(|| git::rev_parse_head(&source.path).ok())
+                .then(|| {
+                    resolved_generated_commit(resolution, &source.id)
+                        .or_else(|| git::rev_parse_head(&source.path).ok())
+                })
                 .flatten(),
         })
         .collect::<Vec<_>>();
     locked.sort_by(|left, right| left.id.cmp(&right.id));
     locked
+}
+
+fn resolved_generated_commit(resolution: &Resolution, source_id: &str) -> Option<String> {
+    resolution
+        .active_skills
+        .iter()
+        .chain(&resolution.pending_approval_skills)
+        .chain(
+            resolution
+                .unlinked_skills
+                .iter()
+                .map(|unlinked| &unlinked.skill),
+        )
+        .chain(
+            resolution
+                .blocked_skills
+                .iter()
+                .map(|blocked| &blocked.skill),
+        )
+        .filter(|skill| skill.source_id == source_id)
+        .find_map(|skill| match &skill.delivery {
+            SkillDelivery::Generated { source_commit, .. } => source_commit.clone(),
+            SkillDelivery::Direct | SkillDelivery::Prebuilt { .. } => None,
+        })
 }
 
 fn sort_user_lock(lock: &mut UserLock) {

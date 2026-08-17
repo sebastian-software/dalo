@@ -11,7 +11,10 @@ use sha2::{Digest, Sha256};
 
 use crate::agent::{self, AgentInventoryWarning, AgentRecord};
 use crate::error::DaloResult;
-use crate::plugin::{self, PluginInventoryWarning, PluginRecord};
+use crate::plugin::{
+    self, PluginInventoryWarning, PluginRecord, ToolAvailability, ToolCapability, ToolInputType,
+};
+use crate::store::ApprovalRecord;
 
 const SKILL_FILE: &str = "SKILL.md";
 const DELIVERY_FILE: &str = "DELIVERY.toml";
@@ -83,6 +86,28 @@ pub enum SkillDelivery {
         /// Delivery manifest path used as provenance.
         manifest_path: PathBuf,
     },
+    /// Describe a reviewed generator recipe without executing it.
+    Generated {
+        /// Same-source plugin-local generator tool identity.
+        generator: String,
+        /// Exact invocation-contract hash of the generator tool.
+        generator_contract_hash: String,
+        /// Required path input that will receive a Dalo-owned staging root.
+        output_input: String,
+        /// Expected provider outputs relative to the future staging root.
+        providers: BTreeMap<String, PathBuf>,
+        /// Content-bound generator recipe identity.
+        recipe_hash: String,
+        /// Delivery manifest path used as provenance.
+        manifest_path: PathBuf,
+        /// Immutable source revision bound during resolution.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        source_commit: Option<String>,
+        /// Whether the exact source revision and recipe were approved.
+        recipe_approved: bool,
+        /// Whether the exact generator tool contract has execution approval.
+        generator_approved: bool,
+    },
 }
 
 impl SkillDelivery {
@@ -119,6 +144,7 @@ impl SkillDelivery {
                     })
                 },
             ),
+            Self::Generated { .. } => None,
         }
     }
 
@@ -128,8 +154,63 @@ impl SkillDelivery {
         match self {
             Self::Direct => SkillDeliveryMode::Direct,
             Self::Prebuilt { .. } => SkillDeliveryMode::Prebuilt,
+            Self::Generated { .. } => SkillDeliveryMode::Generated,
         }
     }
+
+    /// Bind a generated recipe to the current source revision and local approvals.
+    pub fn bind_generated_approvals(
+        &mut self,
+        source_ref: &str,
+        source_commit: Option<String>,
+        approvals: &[ApprovalRecord],
+    ) {
+        let Self::Generated {
+            generator,
+            generator_contract_hash,
+            recipe_hash,
+            source_commit: bound_commit,
+            recipe_approved,
+            generator_approved,
+            ..
+        } = self
+        else {
+            return;
+        };
+        *bound_commit = source_commit;
+        *recipe_approved = bound_commit.as_deref().is_some_and(|commit| {
+            let value = generated_approval_value(source_ref, commit, recipe_hash);
+            approvals
+                .iter()
+                .any(|record| record.scope == "delivery" && record.value == value)
+        });
+        let tool_value = format!("{generator}@sha256:{generator_contract_hash}");
+        *generator_approved = approvals
+            .iter()
+            .any(|record| record.scope == "tool" && record.value == tool_value);
+    }
+
+    /// Exact content- and revision-bound approval value for a generated recipe.
+    #[must_use]
+    pub fn generated_approval_value(&self, source_ref: &str) -> Option<String> {
+        let Self::Generated {
+            recipe_hash,
+            source_commit: Some(source_commit),
+            ..
+        } = self
+        else {
+            return None;
+        };
+        Some(generated_approval_value(
+            source_ref,
+            source_commit,
+            recipe_hash,
+        ))
+    }
+}
+
+fn generated_approval_value(source_ref: &str, source_commit: &str, recipe_hash: &str) -> String {
+    format!("{source_ref}@{source_commit}@sha256:{recipe_hash}")
 }
 
 /// Selected delivery artifact for one logical target.
@@ -153,6 +234,8 @@ pub enum SkillDeliveryMode {
     Direct,
     /// A declared provider-specific prebuilt directory is linked.
     Prebuilt,
+    /// A validated generator recipe remains inert pending a later execution phase.
+    Generated,
 }
 
 impl SkillDeliveryMode {
@@ -162,6 +245,7 @@ impl SkillDeliveryMode {
         match self {
             Self::Direct => "direct",
             Self::Prebuilt => "prebuilt",
+            Self::Generated => "generated",
         }
     }
 }
@@ -212,7 +296,10 @@ struct DeliveryManifest {
     kind: String,
     #[serde(default)]
     universal_fallback: bool,
+    #[serde(default)]
     providers: BTreeMap<String, PathBuf>,
+    generator: Option<String>,
+    output_input: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -228,12 +315,19 @@ struct SkillFrontmatter {
 
 /// Scan a source checkout for skills.
 pub fn scan_source(source_id: &str, source_root: &Path) -> DaloResult<SourceInventory> {
+    let agent_inventory = agent::scan_source_agents(source_id, source_root);
+    let plugin_inventory = plugin::scan_source_plugins(source_id, source_root);
     let mut warnings = Vec::new();
     let skill_dirs = find_skill_dirs(source_root, &mut warnings)?;
     let mut skills = Vec::new();
 
     for skill_dir in skill_dirs {
-        match scan_skill(source_id, source_root, &skill_dir) {
+        match scan_skill(
+            source_id,
+            source_root,
+            &skill_dir,
+            &plugin_inventory.plugins,
+        ) {
             Ok((skill, mut skill_warnings)) => {
                 // `skill` is `None` when the slot name could not be resolved; the
                 // skill is dropped while its warning is still collected.
@@ -259,7 +353,7 @@ pub fn scan_source(source_id: &str, source_root: &Path) -> DaloResult<SourceInve
                 .values()
                 .map(|artifact| artifact.path.clone())
                 .collect::<Vec<_>>(),
-            SkillDelivery::Direct => Vec::new(),
+            SkillDelivery::Direct | SkillDelivery::Generated { .. } => Vec::new(),
         })
         .collect::<std::collections::BTreeSet<_>>();
     skills.retain(|skill| !provider_artifact_paths.contains(&skill.path));
@@ -281,9 +375,6 @@ pub fn scan_source(source_id: &str, source_root: &Path) -> DaloResult<SourceInve
             .cmp(&right.path)
             .then_with(|| warning_code_name(left.code).cmp(warning_code_name(right.code)))
     });
-
-    let agent_inventory = agent::scan_source_agents(source_id, source_root);
-    let plugin_inventory = plugin::scan_source_plugins(source_id, source_root);
 
     Ok(SourceInventory {
         source_id: source_id.to_owned(),
@@ -411,6 +502,7 @@ fn scan_skill(
     source_id: &str,
     source_root: &Path,
     skill_dir: &Path,
+    plugins: &[PluginRecord],
 ) -> DaloResult<(Option<SkillRecord>, Vec<InventoryWarning>)> {
     let skill_file = skill_dir.join(SKILL_FILE);
     let (skill_markdown, metadata_truncated) = read_skill_metadata(&skill_file)?;
@@ -432,7 +524,7 @@ fn scan_skill(
         return Ok((None, warnings));
     };
     let source_ref = format!("{source_id}:{slot_name}");
-    let delivery = match scan_delivery(source_root, skill_dir) {
+    let delivery = match scan_delivery(source_id, &source_ref, source_root, skill_dir, plugins) {
         Ok(delivery) => delivery,
         Err(message) => {
             warnings.push(InventoryWarning {
@@ -462,7 +554,13 @@ fn scan_skill(
     ))
 }
 
-fn scan_delivery(source_root: &Path, skill_dir: &Path) -> Result<SkillDelivery, String> {
+fn scan_delivery(
+    source_id: &str,
+    source_ref: &str,
+    source_root: &Path,
+    skill_dir: &Path,
+    plugins: &[PluginRecord],
+) -> Result<SkillDelivery, String> {
     let manifest_path = skill_dir.join(DELIVERY_FILE);
     if !manifest_path.exists() {
         return Ok(SkillDelivery::Direct);
@@ -483,11 +581,25 @@ fn scan_delivery(source_root: &Path, skill_dir: &Path) -> Result<SkillDelivery, 
             manifest.schema_version
         ));
     }
-    if manifest.kind != "prebuilt" {
-        return Err(format!(
-            "unsupported delivery kind `{}` (supported: prebuilt)",
-            manifest.kind
-        ));
+    match manifest.kind.as_str() {
+        "prebuilt" => scan_prebuilt_delivery(source_root, skill_dir, manifest_path, manifest),
+        "generated" => {
+            scan_generated_delivery(source_id, source_ref, manifest_path, manifest, plugins)
+        }
+        kind => Err(format!(
+            "unsupported delivery kind `{kind}` (supported: prebuilt, generated)"
+        )),
+    }
+}
+
+fn scan_prebuilt_delivery(
+    source_root: &Path,
+    skill_dir: &Path,
+    manifest_path: PathBuf,
+    manifest: DeliveryManifest,
+) -> Result<SkillDelivery, String> {
+    if manifest.generator.is_some() || manifest.output_input.is_some() {
+        return Err("prebuilt delivery must not declare generator fields".to_owned());
     }
     if manifest.providers.is_empty() {
         return Err("prebuilt delivery requires at least one provider mapping".to_owned());
@@ -565,6 +677,141 @@ fn scan_delivery(source_root: &Path, skill_dir: &Path) -> Result<SkillDelivery, 
         fallback_fingerprint,
         manifest_path,
     })
+}
+
+fn scan_generated_delivery(
+    source_id: &str,
+    source_ref: &str,
+    manifest_path: PathBuf,
+    manifest: DeliveryManifest,
+    plugins: &[PluginRecord],
+) -> Result<SkillDelivery, String> {
+    if manifest.universal_fallback {
+        return Err("generated delivery does not support universal_fallback".to_owned());
+    }
+    if manifest.providers.is_empty() {
+        return Err("generated delivery requires at least one provider output mapping".to_owned());
+    }
+    let generator = manifest
+        .generator
+        .ok_or_else(|| "generated delivery requires `generator`".to_owned())?;
+    if !generator.starts_with(&format!("{source_id}:")) {
+        return Err("generated delivery generator must be a tool from the same source".to_owned());
+    }
+    let tool = plugins
+        .iter()
+        .flat_map(|plugin| &plugin.tools)
+        .find(|tool| tool.source_ref == generator)
+        .ok_or_else(|| format!("generated delivery references unknown tool `{generator}`"))?;
+    let output_input = manifest
+        .output_input
+        .ok_or_else(|| "generated delivery requires `output_input`".to_owned())?;
+    let input = tool
+        .inputs
+        .iter()
+        .find(|input| input.name == output_input)
+        .ok_or_else(|| {
+            format!("generator `{generator}` does not declare output input `{output_input}`")
+        })?;
+    if input.kind != ToolInputType::Path || !input.required {
+        return Err(format!(
+            "generator output input `{output_input}` must be a required path"
+        ));
+    }
+    let placeholder = format!("${{input.{output_input}}}");
+    if !tool.argv.iter().any(|value| value == &placeholder) {
+        return Err(format!(
+            "generator `{generator}` argv must include `{placeholder}`"
+        ));
+    }
+    if !tool.capabilities.contains(&ToolCapability::FilesystemWrite) {
+        return Err(format!(
+            "generator `{generator}` must declare the filesystem_write capability"
+        ));
+    }
+    if tool.availability != ToolAvailability::Required {
+        return Err(format!(
+            "generator `{generator}` must declare required availability"
+        ));
+    }
+
+    let mut providers = BTreeMap::new();
+    for (provider, relative_path) in manifest.providers {
+        if provider == "universal" || !valid_provider_id(&provider) {
+            return Err(format!("invalid generated provider target ID `{provider}`"));
+        }
+        validate_relative_generated_path(&provider, &relative_path)?;
+        providers.insert(provider, relative_path);
+    }
+    let recipe_hash = generated_recipe_hash(
+        source_ref,
+        &generator,
+        &tool.contract_hash,
+        &output_input,
+        &providers,
+    );
+    Ok(SkillDelivery::Generated {
+        generator,
+        generator_contract_hash: tool.contract_hash.clone(),
+        output_input,
+        providers,
+        recipe_hash,
+        manifest_path,
+        source_commit: None,
+        recipe_approved: false,
+        generator_approved: false,
+    })
+}
+
+fn validate_relative_generated_path(provider: &str, path: &Path) -> Result<(), String> {
+    if path.as_os_str().is_empty()
+        || path == Path::new(".")
+        || path.is_absolute()
+        || path.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::ParentDir
+                    | std::path::Component::RootDir
+                    | std::path::Component::Prefix(_)
+            )
+        })
+    {
+        return Err(format!(
+            "generated provider `{provider}` output must be a non-empty relative path inside the staging root"
+        ));
+    }
+    Ok(())
+}
+
+fn generated_recipe_hash(
+    source_ref: &str,
+    generator: &str,
+    generator_contract_hash: &str,
+    output_input: &str,
+    providers: &BTreeMap<String, PathBuf>,
+) -> String {
+    let mut hash = Sha256::new();
+    for value in [
+        "dalo-generated-delivery-v1",
+        source_ref,
+        generator,
+        generator_contract_hash,
+        output_input,
+    ] {
+        hash.update((value.len() as u64).to_be_bytes());
+        hash.update(value.as_bytes());
+    }
+    for (provider, path) in providers {
+        hash.update((provider.len() as u64).to_be_bytes());
+        hash.update(provider.as_bytes());
+        let path = path.as_os_str().as_encoded_bytes();
+        hash.update((path.len() as u64).to_be_bytes());
+        hash.update(path);
+    }
+    hash.finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn valid_provider_id(value: &str) -> bool {
@@ -649,7 +896,7 @@ fn collect_fingerprint_entries(
 /// This reuses the source-inventory parser so callers that copy skills into a
 /// managed source can reject names which the next sync would otherwise reject.
 pub(crate) fn invalid_slot_name_warning(skill_dir: &Path) -> DaloResult<Option<InventoryWarning>> {
-    let (_, warnings) = scan_skill("adopt", skill_dir, skill_dir)?;
+    let (_, warnings) = scan_skill("adopt", skill_dir, skill_dir, &[])?;
     Ok(warnings
         .into_iter()
         .find(|warning| warning.code == InventoryWarningCode::InvalidSlotName))
@@ -1004,6 +1251,99 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
 
+    fn write_generator_plugin(root: &Path) {
+        let package = root.join("plugins/builder");
+        fs::create_dir_all(package.join("bin")).unwrap();
+        fs::write(package.join("bin/build.py"), "print('not executed')\n").unwrap();
+        fs::write(
+            package.join("PLUGIN.toml"),
+            r#"schema_version = 1
+[plugin]
+name = "builder"
+description = "Inert generator fixture"
+
+[[tool]]
+schema_version = 1
+id = "build"
+entry = "bin/build.py"
+runtime = "python"
+platforms = ["macos", "linux"]
+argv = ["${input.output_dir}"]
+cwd = "tool_root"
+capabilities = ["filesystem_write"]
+availability = "required"
+
+[[tool.inputs]]
+name = "output_dir"
+type = "path"
+required = true
+"#,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn scan_source_should_validate_generated_recipe_without_creating_outputs() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let logical = temp_dir.path().join("skills/impeccable");
+        fs::create_dir_all(&logical).unwrap();
+        fs::write(logical.join(SKILL_FILE), "# Impeccable\n").unwrap();
+        fs::write(
+            logical.join(DELIVERY_FILE),
+            "schema_version = 1\nkind = \"generated\"\ngenerator = \"company:builder#tool:build\"\noutput_input = \"output_dir\"\n\n[providers]\ncodex = \"codex/impeccable\"\nclaude = \"claude/impeccable\"\n",
+        )
+        .unwrap();
+        write_generator_plugin(temp_dir.path());
+
+        let inventory = scan_source("company", temp_dir.path()).expect("scan should succeed");
+
+        assert_eq!(inventory.skills.len(), 1);
+        let SkillDelivery::Generated {
+            generator,
+            generator_contract_hash,
+            providers,
+            recipe_hash,
+            recipe_approved,
+            generator_approved,
+            ..
+        } = &inventory.skills[0].delivery
+        else {
+            panic!("logical skill should retain an inert generated recipe");
+        };
+        assert_eq!(generator, "company:builder#tool:build");
+        assert_eq!(generator_contract_hash.len(), 64);
+        assert_eq!(providers["codex"], PathBuf::from("codex/impeccable"));
+        assert_eq!(recipe_hash.len(), 64);
+        assert!(!recipe_approved);
+        assert!(!generator_approved);
+        assert!(!temp_dir.path().join("codex/impeccable").exists());
+        assert!(inventory.warnings.is_empty());
+    }
+
+    #[test]
+    fn scan_source_should_reject_generated_recipe_without_bounded_output_input() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let logical = temp_dir.path().join("review");
+        fs::create_dir_all(&logical).unwrap();
+        fs::write(logical.join(SKILL_FILE), "# Review\n").unwrap();
+        fs::write(
+            logical.join(DELIVERY_FILE),
+            "schema_version = 1\nkind = \"generated\"\ngenerator = \"company:builder#tool:build\"\noutput_input = \"missing\"\n\n[providers]\ncodex = \"codex/review\"\n",
+        )
+        .unwrap();
+        write_generator_plugin(temp_dir.path());
+
+        let inventory = scan_source("company", temp_dir.path()).expect("scan should succeed");
+
+        assert!(inventory.skills.is_empty());
+        assert!(inventory.warnings.iter().any(|warning| {
+            warning.code == InventoryWarningCode::InvalidDelivery
+                && warning
+                    .message
+                    .contains("does not declare output input `missing`")
+        }));
+    }
+
     #[test]
     fn scan_source_should_resolve_prebuilt_provider_artifacts_once() {
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
@@ -1096,7 +1436,7 @@ mod tests {
         )
         .expect("delivery manifest should be written");
 
-        let error = scan_delivery(temp_dir.path(), &logical)
+        let error = scan_delivery("local", "local:review", temp_dir.path(), &logical, &[])
             .expect_err("the fallback identity must not collide with a provider mapping");
 
         assert!(error.contains("`universal` is reserved"));

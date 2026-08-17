@@ -1136,7 +1136,7 @@ fn print_delivery_reports(deliveries: &[SkillDeliveryReport]) {
     let visible = deliveries
         .iter()
         .filter(|delivery| {
-            delivery.mode == crate::inventory::SkillDeliveryMode::Prebuilt || delivery.blocked
+            delivery.mode != crate::inventory::SkillDeliveryMode::Direct || delivery.blocked
         })
         .collect::<Vec<_>>();
     if visible.is_empty() {
@@ -1160,6 +1160,9 @@ fn print_delivery_reports(deliveries: &[SkillDeliveryReport]) {
         );
         if let Some(reason) = &delivery.reason {
             println!("    {reason}");
+        }
+        if let Some(output) = &delivery.planned_output {
+            println!("    planned output: {}", output.display());
         }
     }
 }

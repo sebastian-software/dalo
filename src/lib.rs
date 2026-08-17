@@ -21,6 +21,7 @@ pub mod autosync;
 pub mod catalog;
 pub mod cli;
 pub mod config;
+pub mod delivery;
 pub mod doctor;
 pub mod error;
 pub mod git;

@@ -2514,7 +2514,7 @@ fn approval_validation_errors_should_match_the_selected_scope() {
         .code(2)
         .stderr(predicate::str::contains("invalid value 'banana'"))
         .stderr(predicate::str::contains(
-            "possible values: skill, agent, tool, hook, source, author, org",
+            "possible values: skill, agent, tool, delivery, hook, source, author, org",
         ))
         .stderr(predicate::str::contains("check failed").not());
 
@@ -3868,6 +3868,184 @@ fn sync_json_should_materialize_prebuilt_provider_artifacts_and_record_provenanc
                 .and_then(toml::Value::as_str)
                 .is_some_and(|fingerprint| fingerprint.starts_with("sha256:"))
     }));
+}
+
+#[test]
+fn generated_delivery_approval_should_remain_inert_and_content_bound() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("codex-skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo_with_skill(&repo, "review", "# Review\n");
+    let skill = repo.join("skills/review");
+    std::fs::write(
+        skill.join("DELIVERY.toml"),
+        "schema_version = 1\nkind = \"generated\"\ngenerator = \"company:builder#tool:build\"\noutput_input = \"output_dir\"\n\n[providers]\ncodex = \"codex/review\"\n",
+    )
+    .unwrap();
+    let plugin = repo.join("plugins/builder");
+    std::fs::create_dir_all(plugin.join("bin")).unwrap();
+    std::fs::write(
+        plugin.join("bin/build.py"),
+        "from pathlib import Path\nPath('EXECUTED').write_text('must not run')\n",
+    )
+    .unwrap();
+    std::fs::write(
+        plugin.join("PLUGIN.toml"),
+        r#"schema_version = 1
+[plugin]
+name = "builder"
+description = "Generated delivery fixture"
+
+[[tool]]
+schema_version = 1
+id = "build"
+entry = "bin/build.py"
+runtime = "python"
+platforms = ["macos", "linux"]
+argv = ["${input.output_dir}"]
+cwd = "tool_root"
+capabilities = ["filesystem_write"]
+availability = "required"
+
+[[tool.inputs]]
+name = "output_dir"
+type = "path"
+required = true
+"#,
+    )
+    .unwrap();
+    run_git(&repo, &["add", "."]);
+    commit_test_repo(&repo, "add generated delivery recipe");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "link", "codex"])
+        .arg(&target)
+        .assert()
+        .success();
+    add_source(&store, "company", &repo);
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "--dry-run", "sync"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(report["deliveries"][0]["mode"], "generated");
+    assert_eq!(report["deliveries"][0]["blocked"], true);
+    assert_eq!(report["deliveries"][0]["planned_output"], "codex/review");
+    assert!(
+        report["deliveries"][0]["fingerprint"]
+            .as_str()
+            .is_some_and(|fingerprint| fingerprint.starts_with("sha256:"))
+    );
+    assert!(
+        report["deliveries"][0]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("approve delivery company:review")
+    );
+    for command in ["status", "doctor"] {
+        let output = dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .args(["--json", command])
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+        let report: serde_json::Value = serde_json::from_slice(&output).unwrap();
+        assert_eq!(report["deliveries"][0]["mode"], "generated");
+        assert_eq!(report["deliveries"][0]["blocked"], true);
+        assert_eq!(report["deliveries"][0]["planned_output"], "codex/review");
+    }
+
+    let approvals_before = std::fs::read(store.join("approvals.toml")).unwrap();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args([
+            "--json",
+            "--dry-run",
+            "approve",
+            "delivery",
+            "company:review",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"execution\": \"not_run\""));
+    assert_eq!(
+        std::fs::read(store.join("approvals.toml")).unwrap(),
+        approvals_before
+    );
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "delivery", "company:review"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("execution: not_run"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "tool", "company:builder#tool:build"])
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--dry-run", "sync"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "execution is intentionally unavailable",
+        ));
+
+    assert!(!target.join("review").exists());
+    assert!(!repo.join("plugins/builder/EXECUTED").exists());
+    let approvals = std::fs::read_to_string(store.join("approvals.toml")).unwrap();
+    assert!(approvals.contains("scope = \"delivery\""));
+    assert!(approvals.contains("company:review@"));
+    assert!(approvals.contains("@sha256:"));
+
+    std::fs::write(
+        skill.join("SKILL.md"),
+        "# Review\n\nUpdated recipe source.\n",
+    )
+    .unwrap();
+    run_git(&repo, &["add", "skills/review/SKILL.md"]);
+    commit_test_repo(&repo, "advance generated delivery source");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("approve delivery company:review"));
+    assert!(!target.join("review").exists());
+    assert!(!repo.join("plugins/builder/EXECUTED").exists());
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "revoke", "delivery", "company:review"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("revoked generated delivery"));
 }
 
 #[test]
@@ -7741,7 +7919,7 @@ fn status_json_should_expose_lock_schema_version_field() {
     let report: StatusReportSchema =
         serde_json::from_slice(&output).expect("status JSON should match the status schema");
 
-    assert_eq!(report.lock.schema_version, 5);
+    assert_eq!(report.lock.schema_version, 6);
 }
 
 #[test]
