@@ -568,6 +568,7 @@ mod tests {
             unselected_catalogs: Vec::new(),
             installation_plan: None,
             hook_targets: Vec::new(),
+            plugin_targets: Vec::new(),
         };
 
         let lock = build_user_lock(&[], &resolution, Some(&report), None);

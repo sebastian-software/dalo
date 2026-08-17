@@ -1646,6 +1646,29 @@ fn run_plan(options: &GlobalOptions, args: PlanArgs) -> DaloResult<()> {
             println!("    {}", hook.diagnostic);
         }
     }
+    if !report.native_plugins.is_empty() {
+        println!("native package projections:");
+        for native in &report.native_plugins {
+            println!(
+                "  {} {} state={:?} path={} hash={}",
+                native.target,
+                native.plugin,
+                native.state,
+                native.path.display(),
+                if native.projection_hash.is_empty() {
+                    "-"
+                } else {
+                    &native.projection_hash
+                }
+            );
+            for component in &native.components {
+                println!(
+                    "    {} kind={} state={} ({})",
+                    component.identity, component.kind, component.state, component.diagnostic
+                );
+            }
+        }
+    }
     if report.canonical_plugins.plugins.is_empty() {
         println!("  no plugins selected");
         return Ok(());
@@ -2172,6 +2195,11 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
             &live.agents,
             &active_instruction_refs,
         );
+        let inventories = live
+            .scans
+            .iter()
+            .filter_map(|scan| scan.inventory.clone())
+            .collect::<Vec<_>>();
         let degraded_sources = collect_degraded_sources(&live, refresh_failures, &audits.failures);
         let (mut report, rollback) = materialize::materialize_with_degraded_sources_rollback(
             &paths,
@@ -2183,11 +2211,6 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
         report.unrefreshed_tracking_sources = unrefreshed_tracking_sources;
         if options.dry_run && !live.plugins.plugins.is_empty() {
             let state = store::read_state(&paths)?;
-            let inventories = live
-                .scans
-                .iter()
-                .filter_map(|scan| scan.inventory.clone())
-                .collect::<Vec<_>>();
             let mut installation_plan = plan::build_from_facts(
                 &options.store,
                 &state,
@@ -2229,6 +2252,40 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
             .map(|plugin| plugin.source_ref.clone())
             .collect::<Vec<_>>();
         let target_state = store::read_state(&paths)?;
+        let has_tools = inventories
+            .iter()
+            .flat_map(|inventory| &inventory.plugins)
+            .any(|plugin| {
+                selected_plugins.contains(&plugin.source_ref) && !plugin.tools.is_empty()
+            });
+        let has_hooks = inventories
+            .iter()
+            .flat_map(|inventory| &inventory.plugins)
+            .any(|plugin| {
+                selected_plugins.contains(&plugin.source_ref) && !plugin.hooks.is_empty()
+            });
+        let tools = if has_tools {
+            crate::tool::list(&paths)?.tools
+        } else {
+            Vec::new()
+        };
+        let hooks = if has_hooks {
+            crate::hook::list(&paths)?.hooks
+        } else {
+            Vec::new()
+        };
+        report.plugin_targets = crate::plugin_projection::reconcile(
+            &paths,
+            &target_state,
+            &live.plugins,
+            &inventories,
+            &tools,
+            &hooks,
+            options.dry_run,
+        )?;
+        if let Some(plan) = report.installation_plan.as_mut() {
+            plan.native_plugins = report.plugin_targets.clone();
+        }
         report.hook_targets =
             hook_sync::reconcile(&paths, &target_state, &selected_plugins, options.dry_run)?;
         Ok(report)

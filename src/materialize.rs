@@ -58,6 +58,9 @@ pub struct SyncReport {
     /// Target-local native hook sidecar plans and results.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hook_targets: Vec<crate::hook_sync::HookTargetReport>,
+    /// Independently owned provider-native plugin package projections.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub plugin_targets: Vec<crate::plugin_projection::PluginTargetReport>,
 }
 
 /// A catalog that needs an explicit skill selection before it can contribute to sync.
@@ -308,6 +311,7 @@ pub fn materialize_with_degraded_sources_rollback(
             unselected_catalogs: Vec::new(),
             installation_plan: None,
             hook_targets: Vec::new(),
+            plugin_targets: Vec::new(),
         },
         rollback,
     ))

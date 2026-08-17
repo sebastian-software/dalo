@@ -339,6 +339,15 @@ matcher = { tool_names = ["Bash"] }
         .assert()
         .success();
     let sidecar = codex_home.join("hooks.json");
+    let native_plugins = target.parent().expect("target parent").join("plugins/dalo");
+    let native_package = std::fs::read_dir(&native_plugins)
+        .expect("native plugin directory")
+        .next()
+        .expect("native plugin entry")
+        .expect("native plugin path")
+        .path();
+    assert!(native_package.join(".codex-plugin/plugin.json").is_file());
+    assert!(native_package.join("dalo-provenance.json").is_file());
     let mut native: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&sidecar).unwrap()).unwrap();
     assert_eq!(native["hooks"]["PreToolUse"][0]["matcher"], "^(?:Bash)$");
@@ -370,6 +379,7 @@ matcher = { tool_names = ["Bash"] }
         serde_json::from_slice(&std::fs::read(&sidecar).unwrap()).unwrap();
     assert_eq!(native["foreign"]["retained"], true);
     assert!(native.get("hooks").is_none());
+    assert!(!native_package.exists());
 
     dalo_command()
         .args(["--store"])
@@ -9601,4 +9611,55 @@ requirement = "recommended"
         before_state
     );
     assert_eq!(std::fs::read_dir(&shared_target).unwrap().count(), 0);
+
+    let native = json["native_plugins"].as_array().expect("native plans");
+    assert_eq!(native.len(), 2);
+    let native_paths = native
+        .iter()
+        .map(|projection| {
+            (
+                projection["target"].as_str().unwrap().to_owned(),
+                std::path::PathBuf::from(projection["path"].as_str().unwrap()),
+            )
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("plugin claude local:demo"))
+        .stdout(predicate::str::contains("plugin codex local:demo"));
+    let claude_package = &native_paths["claude"];
+    let codex_package = &native_paths["codex"];
+    assert!(claude_package.join(".claude-plugin/plugin.json").is_file());
+    assert!(claude_package.join("skills/core/SKILL.md").is_file());
+    assert!(claude_package.join("agents/reviewer.md").is_file());
+    assert!(codex_package.join(".codex-plugin/plugin.json").is_file());
+    assert!(codex_package.join("skills/core/SKILL.md").is_file());
+    assert!(!codex_package.join("agents/reviewer.md").exists());
+    assert!(store.join("plugins/state.json").is_file());
+    assert!(
+        std::fs::symlink_metadata(shared_target.join("core"))
+            .expect("direct skill link")
+            .file_type()
+            .is_symlink()
+    );
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["plugin", "unselect", "local:demo"])
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    assert!(!claude_package.exists());
+    assert!(!codex_package.exists());
+    assert!(shared_target.join("core").exists());
 }

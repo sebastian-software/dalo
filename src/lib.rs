@@ -34,6 +34,7 @@ pub mod lockfile;
 pub mod materialize;
 pub mod plan;
 pub mod plugin;
+pub mod plugin_projection;
 pub mod resolver;
 pub mod source;
 pub mod status;

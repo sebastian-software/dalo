@@ -59,6 +59,10 @@ pub struct StorePaths {
     pub hooks_dir: PathBuf,
     /// Durable hook sidecar ownership state.
     pub hook_state_file: PathBuf,
+    /// Immutable provider-native plugin artifacts and ownership state.
+    pub plugins_dir: PathBuf,
+    /// Durable provider-native plugin ownership state.
+    pub plugin_state_file: PathBuf,
     /// Source checkout root.
     pub sources_dir: PathBuf,
     /// Catalog source lock path (pinned commits, selections, inventory snapshot).
@@ -97,6 +101,8 @@ impl StorePaths {
             tools_dir: root.join("tools"),
             hooks_dir: root.join("hooks"),
             hook_state_file: root.join("hooks/state.json"),
+            plugins_dir: root.join("plugins"),
+            plugin_state_file: root.join("plugins/state.json"),
             sources_dir: root.join("sources"),
             source_lock_file: root.join("source-lock.toml"),
             catalog_advance_file: root.join("catalog-advance.toml"),

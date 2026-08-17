@@ -65,6 +65,8 @@ pub struct StatusReport {
     pub hooks: HookListReport,
     /// Read-only native hook sidecar reconciliation state per linked provider.
     pub hook_targets: Vec<crate::hook_sync::HookTargetReport>,
+    /// Read-only provider-native plugin package reconciliation state.
+    pub plugin_targets: Vec<crate::plugin_projection::PluginTargetReport>,
     /// Resolution output.
     pub resolution: Resolution,
     /// Dry-run materialization operations that expose target-level blockers.
@@ -328,6 +330,15 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         .map(|plugin| plugin.source_ref.clone())
         .collect::<Vec<_>>();
     let hook_targets = crate::hook_sync::reconcile(&paths, &state, &selected_plugin_refs, true)?;
+    let plugin_targets = crate::plugin_projection::reconcile(
+        &paths,
+        &state,
+        &plugins,
+        &inventories,
+        &tools.tools,
+        &hooks.hooks,
+        true,
+    )?;
     let mut installation_plan = (!plugins.plugins.is_empty()).then(|| {
         crate::plan::build_from_facts(
             store_root,
@@ -341,6 +352,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
     if let Some(plan) = installation_plan.as_mut() {
         crate::plan::attach_tool_status(plan, &paths)?;
         crate::plan::attach_hook_status(plan, &paths)?;
+        plan.native_plugins = plugin_targets.clone();
     }
     let resolution = materialization.resolution;
     let live_lock =
@@ -397,6 +409,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         tools,
         hooks,
         hook_targets,
+        plugin_targets,
         resolution,
         materialization: materialization.operations,
         blocking_audits: audits.blocking,
@@ -797,6 +810,27 @@ pub fn print_status_report(report: &StatusReport) {
                 hook.hook.source_ref, hook.state, hook.tool_state, hook.hook.contract_hash
             );
             println!("    {}", hook.diagnostic);
+        }
+    }
+    for target in &report.plugin_targets {
+        println!(
+            "native plugin {} {}: state={:?} path={} hash={} ({})",
+            target.target,
+            target.plugin,
+            target.state,
+            target.path.display(),
+            if target.projection_hash.is_empty() {
+                "-"
+            } else {
+                &target.projection_hash
+            },
+            target.diagnostic
+        );
+        for component in &target.components {
+            println!(
+                "  {} kind={} state={} ({})",
+                component.identity, component.kind, component.state, component.diagnostic
+            );
         }
     }
     for target in &report.hook_targets {
@@ -1263,6 +1297,16 @@ pub fn print_sync_report(report: &SyncReport) {
         println!(
             "{prefix}hooks {}: state={:?} action={:?} projected={} ({})",
             target.target, target.state, target.action, target.projected_hooks, target.diagnostic
+        );
+    }
+    for target in &report.plugin_targets {
+        println!(
+            "{prefix}plugin {} {}: state={:?} path={} ({})",
+            target.target,
+            target.plugin,
+            target.state,
+            target.path.display(),
+            target.diagnostic
         );
     }
     for skill in &report.resolution.pending_approval_skills {
