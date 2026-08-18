@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::io::Read;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -198,6 +198,9 @@ fn execute_and_promote(
     let staging = tempfile::Builder::new()
         .prefix(".delivery-stage-")
         .tempdir_in(parent)?;
+    for relative in providers.values() {
+        fs::create_dir_all(staging.path().join(relative))?;
+    }
     let mut inputs = BTreeMap::new();
     inputs.insert(
         output_input.to_owned(),
@@ -208,32 +211,31 @@ fn execute_and_promote(
     let source_snapshot = verify_source_snapshot(paths, source_ref, source_commit);
     source_snapshot?;
     execution?;
-    let artifacts =
-        validate_and_audit_outputs(paths, source_ref, staging.path(), providers, false, true)?;
-    make_tree_read_only(staging.path())?;
-    let staging_path = staging.keep();
-    if let Err(error) = fs::rename(&staging_path, destination) {
-        let _ = make_tree_writable(&staging_path);
-        let _ = fs::remove_dir_all(&staging_path);
+    validate_generated_tree(staging.path(), providers.values(), false)?;
+
+    // Never promote the tree whose path was disclosed to generator code. Copy
+    // only validated regular files into a fresh inode set, audit that snapshot,
+    // then verify it once more from its final immutable cache path.
+    let snapshot = tempfile::Builder::new()
+        .prefix(".delivery-stage-")
+        .tempdir_in(parent)?;
+    copy_generated_tree(staging.path(), snapshot.path())?;
+    validate_and_audit_outputs(paths, source_ref, snapshot.path(), providers, false, true)?;
+    make_tree_read_only(snapshot.path())?;
+    let snapshot_path = snapshot.keep();
+    if let Err(error) = fs::rename(&snapshot_path, destination) {
+        let _ = make_tree_writable(&snapshot_path);
+        let _ = fs::remove_dir_all(&snapshot_path);
         return Err(error.into());
     }
-    Ok(artifacts
-        .into_iter()
-        .map(|(provider, artifact)| {
-            let relative = artifact
-                .path
-                .strip_prefix(&staging_path)
-                .expect("validated generated artifact stays below staging")
-                .to_path_buf();
-            (
-                provider,
-                PrebuiltSkillArtifact {
-                    path: destination.join(relative),
-                    fingerprint: artifact.fingerprint,
-                },
-            )
-        })
-        .collect())
+    match validate_and_audit_outputs(paths, source_ref, destination, providers, true, false) {
+        Ok(artifacts) => Ok(artifacts),
+        Err(error) => {
+            let _ = make_tree_writable(destination);
+            let _ = fs::remove_dir_all(destination);
+            Err(error)
+        }
+    }
 }
 
 fn verify_source_snapshot(
@@ -294,8 +296,14 @@ fn run_generator(
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
-        .env_clear();
+        .env_clear()
+        .env("PATH", "");
     for name in &tool.env {
+        if name == "PATH" {
+            return Err(DaloError::StateError {
+                reason: "generated delivery cannot admit ambient PATH".to_owned(),
+            });
+        }
         if let Some(value) = env::var_os(name) {
             command.env(name, value);
         }
@@ -460,6 +468,14 @@ fn validate_generated_tree<'a>(
             if metadata.is_dir() {
                 pending.push(path);
             } else if metadata.is_file() {
+                if metadata.nlink() != 1 {
+                    return Err(DaloError::StateError {
+                        reason: format!(
+                            "generator created multiply linked file `{}`",
+                            relative.display()
+                        ),
+                    });
+                }
                 bytes = bytes.saturating_add(metadata.len());
                 if bytes > MAX_GENERATED_BYTES {
                     return Err(DaloError::StateError {
@@ -474,6 +490,46 @@ fn validate_generated_tree<'a>(
                     ),
                 });
             }
+        }
+    }
+    Ok(())
+}
+
+fn copy_generated_tree(source: &Path, destination: &Path) -> DaloResult<()> {
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let source_path = entry.path();
+        let destination_path = destination.join(entry.file_name());
+        let metadata = fs::symlink_metadata(&source_path)?;
+        if metadata.file_type().is_symlink() {
+            return Err(DaloError::StateError {
+                reason: format!(
+                    "generator output changed to symlink `{}` while snapshotting",
+                    source_path.display()
+                ),
+            });
+        }
+        if metadata.is_dir() {
+            fs::create_dir(&destination_path)?;
+            copy_generated_tree(&source_path, &destination_path)?;
+        } else if metadata.is_file() {
+            if metadata.nlink() != 1 {
+                return Err(DaloError::StateError {
+                    reason: format!(
+                        "generator output became multiply linked `{}` while snapshotting",
+                        source_path.display()
+                    ),
+                });
+            }
+            fs::copy(&source_path, &destination_path)?;
+            fs::set_permissions(&destination_path, metadata.permissions())?;
+        } else {
+            return Err(DaloError::StateError {
+                reason: format!(
+                    "generator output changed to a special entry `{}` while snapshotting",
+                    source_path.display()
+                ),
+            });
         }
     }
     Ok(())
@@ -588,6 +644,49 @@ fn read_bounded(reader: impl Read) -> std::io::Result<Vec<u8>> {
         output.extend_from_slice(&buffer[..read.min(remaining)]);
     }
     Ok(output)
+}
+
+#[cfg(test)]
+mod generated_tree_tests {
+    use super::*;
+
+    #[test]
+    fn generated_tree_should_reject_external_hard_link_aliases() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path().join("stage");
+        let provider = root.join("codex/review");
+        fs::create_dir_all(&provider).unwrap();
+        let external = temporary.path().join("external-skill.md");
+        fs::write(&external, "# External\n").unwrap();
+        fs::hard_link(&external, provider.join("SKILL.md")).unwrap();
+        let outputs = [PathBuf::from("codex/review")];
+
+        let error = validate_generated_tree(&root, outputs.iter(), false).unwrap_err();
+
+        assert!(error.to_string().contains("multiply linked file"));
+    }
+
+    #[test]
+    fn generated_snapshot_should_not_share_source_inodes() {
+        let temporary = tempfile::tempdir().unwrap();
+        let source = temporary.path().join("source");
+        let snapshot = temporary.path().join("snapshot");
+        fs::create_dir_all(&source).unwrap();
+        fs::create_dir_all(&snapshot).unwrap();
+        fs::write(source.join("SKILL.md"), "# Audited\n").unwrap();
+
+        copy_generated_tree(&source, &snapshot).unwrap();
+        fs::write(source.join("SKILL.md"), "# Mutated\n").unwrap();
+
+        assert_eq!(
+            fs::read_to_string(snapshot.join("SKILL.md")).unwrap(),
+            "# Audited\n"
+        );
+        assert_ne!(
+            fs::metadata(source.join("SKILL.md")).unwrap().ino(),
+            fs::metadata(snapshot.join("SKILL.md")).unwrap().ino()
+        );
+    }
 }
 
 /// Result of granting or revoking one generated recipe approval.
