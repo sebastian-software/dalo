@@ -2520,6 +2520,16 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
             let previous = previous
                 .as_ref()
                 .expect("non-dry-run sync reads the user lock before materializing");
+            if let Err(error) =
+                crate::delivery::verify_generated_source_snapshots(&paths, &report.resolution)
+            {
+                return Err(rollback_sync_before_lock(
+                    &paths,
+                    rollback,
+                    instruction_sync.rollback,
+                    error,
+                ));
+            }
             let mut lock = lockfile::build_user_lock(
                 &config.sources,
                 &live.resolution,
@@ -2885,6 +2895,32 @@ where
         "{error}; additionally failed to {}",
         recovery_errors.join("; ")
     ))))
+}
+
+fn rollback_sync_before_lock(
+    paths: &store::StorePaths,
+    rollback: Option<materialize::MaterializationRollback>,
+    instruction_rollback: Option<instructions::InstructionRefreshRollback>,
+    error: DaloError,
+) -> DaloError {
+    let mut recovery_errors = Vec::new();
+    if let Some(rollback) = instruction_rollback
+        && let Err(rollback_error) = rollback.restore()
+    {
+        recovery_errors.push(format!("roll back instruction refresh: {rollback_error}"));
+    }
+    if let Some(rollback) = rollback
+        && let Err(rollback_error) = rollback.restore(paths)
+    {
+        recovery_errors.push(format!("roll back sync: {rollback_error}"));
+    }
+    if recovery_errors.is_empty() {
+        return error;
+    }
+    DaloError::Io(std::io::Error::other(format!(
+        "{error}; additionally failed to {}",
+        recovery_errors.join("; ")
+    )))
 }
 
 fn sync_review_reason(report: &materialize::SyncReport) -> Option<String> {

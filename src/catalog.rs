@@ -1246,6 +1246,20 @@ fn advance_catalog_candidate(
             error,
         );
     }
+    if let Err(error) =
+        crate::delivery::verify_generated_source_snapshots(paths, &applied.resolution)
+    {
+        return rollback_catalog_advance(
+            paths,
+            source,
+            &report.old_lock.commit,
+            &original_config,
+            &persisted_source_lock,
+            &original_user_lock,
+            rollback,
+            error,
+        );
+    }
     let mut next_user_lock = lockfile::build_user_lock(
         &persisted_config.sources,
         &applied.resolution,

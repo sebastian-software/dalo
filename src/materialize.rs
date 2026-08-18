@@ -340,6 +340,9 @@ pub fn materialize_with_degraded_sources_rollback(
                 }
             };
         }
+        if let Err(error) = crate::delivery::verify_generated_source_snapshots(paths, &resolution) {
+            return Err(rollback_materialization_failure(paths, rollback, error));
+        }
         if let Err(error) = store::write_state(paths, &state) {
             if let Some(rollback) = rollback
                 && let Err(rollback_error) = rollback.restore(paths)
