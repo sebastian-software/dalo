@@ -8,6 +8,18 @@ use serde::Serialize;
 
 fn main() -> ExitCode {
     sigpipe::reset();
+    #[cfg(target_os = "linux")]
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("__delivery-sandbox")) {
+        return match dalo::delivery::run_linux_delivery_sandbox(
+            std::env::args_os().skip(2).collect(),
+        ) {
+            Ok(()) => DaloExitCode::Success.into(),
+            Err(error) => {
+                eprintln!("error: {error}");
+                DaloExitCode::UnsafeState.into()
+            }
+        };
+    }
     let cli = Cli::parse_args();
     let json = cli.json;
     let store_root = store::resolve_store_path(cli.store.as_deref()).ok();
