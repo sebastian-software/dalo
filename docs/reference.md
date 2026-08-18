@@ -1408,9 +1408,11 @@ source-checkout changes. Surviving members of the generator process group are
 terminated before Dalo copies the validated output into a fresh-inode snapshot.
 Dalo audits that snapshot, promotes it, and verifies and audits the immutable
 cache path again before it can reach materialization. The source commit and
-cleanliness are rechecked after that final cache verification, so source drift
-during generation prevents provenance from being committed. Blocking findings
-or a failed generator leave the last known-good target link unchanged.
+cleanliness are rechecked after that final cache verification, immediately
+before materialized state is persisted, and again immediately before the user
+lock commit. Source drift during generation therefore rolls back activation and
+prevents provenance from being committed. Blocking findings or a failed
+generator leave the last known-good target link unchanged.
 
 Successful output is made read-only and atomically promoted below
 `generated/sha256/<derivation-hash>`. The derivation identity binds the logical

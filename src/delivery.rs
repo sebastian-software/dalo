@@ -143,6 +143,25 @@ pub(crate) fn prepare_generated_artifacts(
     Ok(prepared)
 }
 
+/// Revalidate generated-delivery source provenance at a durable commit boundary.
+pub(crate) fn verify_generated_source_snapshots(
+    paths: &StorePaths,
+    resolution: &Resolution,
+) -> DaloResult<()> {
+    for skill in &resolution.active_skills {
+        if let SkillDelivery::Generated {
+            source_commit: Some(source_commit),
+            recipe_approved: true,
+            generator_approved: true,
+            ..
+        } = &skill.delivery
+        {
+            verify_source_snapshot(paths, &skill.source_ref, source_commit)?;
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn derivation_hash(source_ref: &str, source_commit: &str, recipe_hash: &str) -> String {
     let mut hash = Sha256::new();
     for value in [
@@ -220,6 +239,7 @@ fn execute_and_promote(
         .prefix(".delivery-stage-")
         .tempdir_in(parent)?;
     copy_generated_tree(staging.path(), snapshot.path())?;
+    staging.close()?;
     validate_and_audit_outputs(paths, source_ref, snapshot.path(), providers, false, true)?;
     make_tree_read_only(snapshot.path())?;
     let snapshot_path = snapshot.keep();
