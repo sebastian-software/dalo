@@ -423,7 +423,7 @@ fn sandboxed_generator_command(
 #[doc(hidden)]
 pub fn run_linux_delivery_sandbox(arguments: Vec<OsString>) -> Result<(), String> {
     use landlock::{
-        ABI, Access, AccessFs, CompatLevel, Compatible, PathBeneath, PathFd, Ruleset, RulesetAttr,
+        ABI, AccessFs, CompatLevel, Compatible, PathBeneath, PathFd, Ruleset, RulesetAttr,
         RulesetCreatedAttr, RulesetStatus,
     };
 
