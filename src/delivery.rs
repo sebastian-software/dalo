@@ -228,7 +228,11 @@ fn execute_and_promote(
         let _ = fs::remove_dir_all(&snapshot_path);
         return Err(error.into());
     }
-    match validate_and_audit_outputs(paths, source_ref, destination, providers, true, false) {
+    match validate_and_audit_outputs(paths, source_ref, destination, providers, true, false)
+        .and_then(|artifacts| {
+            verify_source_snapshot(paths, source_ref, source_commit)?;
+            Ok(artifacts)
+        }) {
         Ok(artifacts) => Ok(artifacts),
         Err(error) => {
             let _ = make_tree_writable(destination);
