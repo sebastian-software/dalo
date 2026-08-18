@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.13.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.12.0...dalo-v0.13.0) (2026-08-18)
+
+
+### Features
+
+* add target-aware instruction fan-out ([32d1078](https://github.com/sebastian-software/dalo/commit/32d107830da8c8112a448a55b7b19b98221e3826))
+* enable source-backed instruction packs ([b57f35f](https://github.com/sebastian-software/dalo/commit/b57f35f586aa7146c18fcb5a51d7c4388f986ebf))
+* refresh active instruction packs during sync ([ee43759](https://github.com/sebastian-software/dalo/commit/ee4375921b7e821904eff45e8e710f38ea39a2d6))
+
+
+### Bug Fixes
+
+* honor instruction target overrides without home ([a72be4d](https://github.com/sebastian-software/dalo/commit/a72be4de20ea85bd71ceaee3661a2b3dd39809f5))
+* reconcile manifest instruction removals ([f2484b9](https://github.com/sebastian-software/dalo/commit/f2484b9be42369ffd596a30672b1d81e5b6ec411))
+* remove instruction packs with deleted sources ([1310921](https://github.com/sebastian-software/dalo/commit/1310921fd69d065727794fda48f86bbb153c3292))
+* retain malformed instruction provenance ([1efb531](https://github.com/sebastian-software/dalo/commit/1efb531047659805bdeeb364a3e00f9c3bfe398f))
+
 ## [0.12.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.11.0...dalo-v0.12.0) (2026-08-17)
 
 
