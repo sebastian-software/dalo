@@ -16,7 +16,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 #[cfg(unix)]
-use rustix::process::{Pid, Signal, kill_process_group};
+use rustix::process::{Pid, Signal, kill_process_group, test_kill_process_group};
 
 use crate::error::{DaloError, DaloResult};
 use crate::inventory::{PrebuiltSkillArtifact, SkillDelivery};
@@ -25,6 +25,7 @@ use crate::source::SourceKind;
 use crate::store::{self, ApprovalRecord, StorePaths};
 
 const GENERATOR_TIMEOUT: Duration = Duration::from_secs(120);
+const GENERATOR_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_GENERATOR_STDERR: u64 = 1024 * 1024;
 const MAX_GENERATED_ENTRIES: usize = 4096;
 const MAX_GENERATED_BYTES: u64 = 256 * 1024 * 1024;
@@ -326,6 +327,7 @@ fn run_generator(
             }
         }
     };
+    terminate_generator_group(&mut child)?;
     let stderr = stderr_reader
         .join()
         .map_err(|_| std::io::Error::other("generator stderr reader panicked"))??;
@@ -519,14 +521,55 @@ fn make_tree_writable(root: &Path) -> DaloResult<()> {
     Ok(())
 }
 
-fn terminate_generator(child: &mut Child) {
+fn terminate_generator_group(child: &mut Child) -> DaloResult<()> {
     #[cfg(unix)]
     {
         let process_group = Pid::from_child(child);
-        if kill_process_group(process_group, Signal::KILL).is_ok() {
-            let _ = child.wait();
-            return;
+        match kill_process_group(process_group, Signal::KILL) {
+            Ok(()) | Err(rustix::io::Errno::SRCH) => {}
+            Err(error) => {
+                return Err(DaloError::StateError {
+                    reason: format!(
+                        "failed to terminate generated-delivery process group: {error}"
+                    ),
+                });
+            }
         }
+        let _ = child.wait();
+        let deadline = Instant::now() + GENERATOR_SHUTDOWN_TIMEOUT;
+        loop {
+            match test_kill_process_group(process_group) {
+                Err(rustix::io::Errno::SRCH) => return Ok(()),
+                Ok(()) if Instant::now() < deadline => {
+                    thread::sleep(Duration::from_millis(10));
+                }
+                Ok(()) => {
+                    return Err(DaloError::StateError {
+                        reason: "generated-delivery process group survived termination; output was not audited or promoted"
+                            .to_owned(),
+                    });
+                }
+                Err(error) => {
+                    return Err(DaloError::StateError {
+                        reason: format!(
+                            "failed to verify generated-delivery process-group termination: {error}"
+                        ),
+                    });
+                }
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        child.kill()?;
+        child.wait()?;
+        Ok(())
+    }
+}
+
+fn terminate_generator(child: &mut Child) {
+    if terminate_generator_group(child).is_ok() {
+        return;
     }
     let _ = child.kill();
     let _ = child.wait();
