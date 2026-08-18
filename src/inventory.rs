@@ -744,6 +744,11 @@ fn scan_generated_delivery(
             "generator `{generator}` must use the executable runtime so sync never selects an interpreter from ambient PATH"
         ));
     }
+    if tool.env.iter().any(|name| name == "PATH") {
+        return Err(format!(
+            "generator `{generator}` must not admit ambient PATH into generated delivery execution"
+        ));
+    }
     validate_generated_entry(&generator, &plugin.path.join(&tool.entry))?;
     let output_input = manifest
         .output_input
@@ -1518,6 +1523,38 @@ required = true
         assert!(inventory.warnings.iter().any(|warning| {
             warning.code == InventoryWarningCode::InvalidDelivery
                 && warning.message.contains("ambient PATH")
+        }));
+    }
+
+    #[test]
+    fn scan_source_should_reject_generated_ambient_path() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let logical = temp_dir.path().join("skills/review");
+        fs::create_dir_all(&logical).unwrap();
+        fs::write(
+            logical.join(SKILL_FILE),
+            "---\nid: review.skill\n---\n# Review\n",
+        )
+        .unwrap();
+        fs::write(
+            logical.join(DELIVERY_FILE),
+            "schema_version = 1\nkind = \"generated\"\ngenerator = \"company:builder#tool:build\"\noutput_input = \"output_dir\"\n\n[providers]\ncodex = \"codex/review\"\n",
+        )
+        .unwrap();
+        write_generator_plugin(temp_dir.path());
+        let manifest = temp_dir.path().join("plugins/builder/PLUGIN.toml");
+        let content = fs::read_to_string(&manifest).unwrap().replace(
+            "cwd = \"tool_root\"",
+            "cwd = \"tool_root\"\nenv = [\"PATH\"]",
+        );
+        fs::write(manifest, content).unwrap();
+
+        let inventory = scan_source("company", temp_dir.path()).expect("scan should succeed");
+
+        assert!(inventory.skills.is_empty());
+        assert!(inventory.warnings.iter().any(|warning| {
+            warning.code == InventoryWarningCode::InvalidDelivery
+                && warning.message.contains("must not admit ambient PATH")
         }));
     }
 

@@ -1383,7 +1383,9 @@ commit and the exact tool contract. Generated delivery schema v1 requires the
 tool runtime to be `executable`; Python and Node runtime lookup is rejected so
 sync never selects an interpreter from its ambient `PATH`. An executable script
 must use an absolute shebang such as `#!/bin/sh`; `/usr/bin/env` shebangs are
-rejected for the same reason.
+rejected for the same reason. Generated execution also rejects a declared
+`PATH` environment input and sets `PATH` to the empty string, so scripts must
+not resolve subprocesses through the invoking user's environment.
 
 Generated delivery has two independent approvals:
 
@@ -1401,9 +1403,12 @@ inert. Once both exact approvals exist, a real `sync` invokes the immutable
 staged tool closure with an empty environment except for explicitly declared
 variables. Dalo passes a newly created staging directory as the declared output
 input, enforces a bounded runtime and output tree, rejects undeclared paths,
-symlinks, special files, oversized output, and source-checkout changes, then
-audits every declared provider skill. Blocking findings or a failed generator
-leave the last known-good target link unchanged.
+symlinks, multiply linked or special files, oversized output, and
+source-checkout changes. Surviving members of the generator process group are
+terminated before Dalo copies the validated output into a fresh-inode snapshot.
+Dalo audits that snapshot, promotes it, and verifies and audits the immutable
+cache path again before it can reach materialization. Blocking findings or a
+failed generator leave the last known-good target link unchanged.
 
 Successful output is made read-only and atomically promoted below
 `generated/sha256/<derivation-hash>`. The derivation identity binds the logical
