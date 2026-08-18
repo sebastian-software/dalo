@@ -274,7 +274,18 @@ fn run_generator(
     let (program, args) = argv.split_first().ok_or_else(|| DaloError::StateError {
         reason: "generator produced an empty argv".to_owned(),
     })?;
-    let program = resolve_program(program)?;
+    let program = Path::new(program);
+    let approved_entry = tool_root.join(&tool.entry);
+    if tool.runtime != crate::plugin::ToolRuntime::Executable
+        || store::comparable_path(program) != store::comparable_path(&approved_entry)
+    {
+        return Err(DaloError::StateError {
+            reason: format!(
+                "generated delivery must execute the exact staged entry `{}`",
+                approved_entry.display()
+            ),
+        });
+    }
     let mut command = Command::new(program);
     command
         .args(args)
@@ -329,26 +340,6 @@ fn run_generator(
             format!("generated delivery `{source_ref}` failed with {status}: {diagnostic}")
         },
     })
-}
-
-fn resolve_program(program: &str) -> DaloResult<PathBuf> {
-    let path = Path::new(program);
-    if path.components().count() > 1 {
-        return Ok(path.to_path_buf());
-    }
-    env::var_os("PATH")
-        .and_then(|value| {
-            env::split_paths(&value)
-                .map(|directory| directory.join(program))
-                .find(|candidate| {
-                    fs::metadata(candidate).is_ok_and(|metadata| {
-                        metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
-                    })
-                })
-        })
-        .ok_or_else(|| DaloError::StateError {
-            reason: format!("generator runtime `{program}` is no longer available on PATH"),
-        })
 }
 
 fn validate_and_audit_outputs(

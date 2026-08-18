@@ -13,6 +13,7 @@ use crate::agent::{self, AgentInventoryWarning, AgentRecord};
 use crate::error::DaloResult;
 use crate::plugin::{
     self, PluginInventoryWarning, PluginRecord, ToolAvailability, ToolCapability, ToolInputType,
+    ToolRuntime,
 };
 use crate::store::ApprovalRecord;
 
@@ -728,11 +729,22 @@ fn scan_generated_delivery(
     if !generator.starts_with(&format!("{source_id}:")) {
         return Err("generated delivery generator must be a tool from the same source".to_owned());
     }
-    let tool = plugins
+    let (plugin, tool) = plugins
         .iter()
-        .flat_map(|plugin| &plugin.tools)
-        .find(|tool| tool.source_ref == generator)
+        .find_map(|plugin| {
+            plugin
+                .tools
+                .iter()
+                .find(|tool| tool.source_ref == generator)
+                .map(|tool| (plugin, tool))
+        })
         .ok_or_else(|| format!("generated delivery references unknown tool `{generator}`"))?;
+    if tool.runtime != ToolRuntime::Executable {
+        return Err(format!(
+            "generator `{generator}` must use the executable runtime so sync never selects an interpreter from ambient PATH"
+        ));
+    }
+    validate_generated_entry(&generator, &plugin.path.join(&tool.entry))?;
     let output_input = manifest
         .output_input
         .ok_or_else(|| "generated delivery requires `output_input`".to_owned())?;
@@ -812,6 +824,29 @@ fn scan_generated_delivery(
         output_fingerprints: BTreeMap::new(),
         derivation_hash: None,
     })
+}
+
+fn validate_generated_entry(generator: &str, entry: &Path) -> Result<(), String> {
+    let bytes = fs::read(entry)
+        .map_err(|error| format!("cannot inspect generator `{generator}` entry: {error}"))?;
+    let Some(shebang) = bytes.strip_prefix(b"#!") else {
+        return Ok(());
+    };
+    let line = shebang
+        .split(|byte| *byte == b'\n')
+        .next()
+        .unwrap_or_default();
+    let interpreter = line
+        .split(|byte| byte.is_ascii_whitespace())
+        .find(|part| !part.is_empty())
+        .and_then(|part| std::str::from_utf8(part).ok())
+        .unwrap_or_default();
+    if !interpreter.starts_with('/') || interpreter == "/usr/bin/env" {
+        return Err(format!(
+            "generator `{generator}` executable entry must use an absolute shebang and must not select an interpreter through /usr/bin/env"
+        ));
+    }
+    Ok(())
 }
 
 fn validate_relative_generated_path(provider: &str, path: &Path) -> Result<(), String> {
@@ -1305,7 +1340,9 @@ mod tests {
     fn write_generator_plugin(root: &Path) {
         let package = root.join("plugins/builder");
         fs::create_dir_all(package.join("bin")).unwrap();
-        fs::write(package.join("bin/build.py"), "print('not executed')\n").unwrap();
+        let entry = package.join("bin/build.sh");
+        fs::write(&entry, "#!/bin/sh\nprintf 'not executed\\n'\n").unwrap();
+        fs::set_permissions(&entry, fs::Permissions::from_mode(0o755)).unwrap();
         fs::write(
             package.join("PLUGIN.toml"),
             r#"schema_version = 1
@@ -1316,8 +1353,8 @@ description = "Inert generator fixture"
 [[tool]]
 schema_version = 1
 id = "build"
-entry = "bin/build.py"
-runtime = "python"
+entry = "bin/build.sh"
+runtime = "executable"
 platforms = ["macos", "linux"]
 argv = ["${input.output_dir}"]
 cwd = "tool_root"
@@ -1450,6 +1487,66 @@ required = true
         assert!(inventory.warnings.iter().any(|warning| {
             warning.code == InventoryWarningCode::InvalidDelivery
                 && warning.message.contains("must not overlap")
+        }));
+    }
+
+    #[test]
+    fn scan_source_should_reject_generated_runtime_selected_from_path() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let logical = temp_dir.path().join("skills/review");
+        fs::create_dir_all(&logical).unwrap();
+        fs::write(
+            logical.join(SKILL_FILE),
+            "---\nid: review.skill\n---\n# Review\n",
+        )
+        .unwrap();
+        fs::write(
+            logical.join(DELIVERY_FILE),
+            "schema_version = 1\nkind = \"generated\"\ngenerator = \"company:builder#tool:build\"\noutput_input = \"output_dir\"\n\n[providers]\ncodex = \"codex/review\"\n",
+        )
+        .unwrap();
+        write_generator_plugin(temp_dir.path());
+        let manifest = temp_dir.path().join("plugins/builder/PLUGIN.toml");
+        let content = fs::read_to_string(&manifest)
+            .unwrap()
+            .replace("runtime = \"executable\"", "runtime = \"python\"");
+        fs::write(manifest, content).unwrap();
+
+        let inventory = scan_source("company", temp_dir.path()).expect("scan should succeed");
+
+        assert!(inventory.skills.is_empty());
+        assert!(inventory.warnings.iter().any(|warning| {
+            warning.code == InventoryWarningCode::InvalidDelivery
+                && warning.message.contains("ambient PATH")
+        }));
+    }
+
+    #[test]
+    fn scan_source_should_reject_env_shebang_for_generated_entry() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let logical = temp_dir.path().join("skills/review");
+        fs::create_dir_all(&logical).unwrap();
+        fs::write(
+            logical.join(SKILL_FILE),
+            "---\nid: review.skill\n---\n# Review\n",
+        )
+        .unwrap();
+        fs::write(
+            logical.join(DELIVERY_FILE),
+            "schema_version = 1\nkind = \"generated\"\ngenerator = \"company:builder#tool:build\"\noutput_input = \"output_dir\"\n\n[providers]\ncodex = \"codex/review\"\n",
+        )
+        .unwrap();
+        write_generator_plugin(temp_dir.path());
+        let entry = temp_dir.path().join("plugins/builder/bin/build.sh");
+        fs::write(&entry, "#!/usr/bin/env sh\nprintf 'unsafe\\n'\n").unwrap();
+        fs::set_permissions(&entry, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let inventory = scan_source("company", temp_dir.path()).expect("scan should succeed");
+
+        assert!(inventory.skills.is_empty());
+        assert!(inventory.warnings.iter().any(|warning| {
+            warning.code == InventoryWarningCode::InvalidDelivery
+                && warning.message.contains("must not select an interpreter")
         }));
     }
 
