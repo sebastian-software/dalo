@@ -188,6 +188,10 @@ pub enum DoctorCode {
     ToolReady,
     /// Interrupted tool staging debris is safely outside promoted hashes.
     ToolStagingDebris,
+    /// A generated delivery cache or read-only planning pass failed verification.
+    GeneratedDeliveryInvalid,
+    /// Interrupted generated-delivery staging debris was never promoted.
+    GeneratedDeliveryStagingDebris,
     /// A hook awaits its independent exact contract approval.
     HookPendingApproval,
     /// A hook or its referenced tool contract changed.
@@ -291,6 +295,7 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
         check_source_store_debris(&paths, config, &mut findings);
     }
     check_tools(&paths, &mut findings);
+    check_generated_delivery_staging(&paths, &mut findings);
     check_hooks(&paths, &mut findings);
 
     // A corrupt lock is reported by `read_lock`, but resolution/instruction/
@@ -314,9 +319,19 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
     }
     check_autosync(&paths, &mut findings);
 
-    let materialization = live_resolution
-        .as_ref()
-        .and_then(|live| crate::materialize::materialize(&paths, &live.resolution, true).ok());
+    let materialization = live_resolution.as_ref().and_then(|live| {
+        match crate::materialize::materialize(&paths, &live.resolution, true) {
+            Ok(report) => Some(report),
+            Err(error) => {
+                findings.push(finding_error(
+                    DoctorCode::GeneratedDeliveryInvalid,
+                    format!("delivery planning or generated cache verification failed: {error}"),
+                    None,
+                ));
+                None
+            }
+        }
+    });
     let installation_plan = match (
         state.as_ref(),
         live_resolution.as_ref(),
@@ -550,6 +565,29 @@ fn check_tools(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) {
                     None,
                 ));
             }
+        }
+    }
+}
+
+fn check_generated_delivery_staging(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) {
+    let parent = paths.generated_dir.join("sha256");
+    let Ok(entries) = fs::read_dir(parent) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        if entry
+            .file_name()
+            .to_str()
+            .is_some_and(|name| name.starts_with(".delivery-stage-"))
+        {
+            findings.push(finding_warning(
+                DoctorCode::GeneratedDeliveryStagingDebris,
+                format!(
+                    "interrupted generated-delivery staging debris exists at `{}`; it was never promoted or activated",
+                    entry.path().display()
+                ),
+                None,
+            ));
         }
     }
 }
@@ -1698,6 +1736,8 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::ToolAuditFailed => "tool_audit_failed",
         DoctorCode::ToolReady => "tool_ready",
         DoctorCode::ToolStagingDebris => "tool_staging_debris",
+        DoctorCode::GeneratedDeliveryInvalid => "generated_delivery_invalid",
+        DoctorCode::GeneratedDeliveryStagingDebris => "generated_delivery_staging_debris",
         DoctorCode::HookPendingApproval => "hook_pending_approval",
         DoctorCode::HookHashDrift => "hook_hash_drift",
         DoctorCode::HookToolUnavailable => "hook_tool_unavailable",

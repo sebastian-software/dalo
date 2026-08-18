@@ -177,6 +177,8 @@ Doctor includes `ok` and `info` codes as well as warnings/errors. Codes not list
 | `required_closure_blocked` | error | Resolve the closure block reason shown in the message. |
 | `security_audit_blocked` | error | An active skill has an unaccepted high/critical audit finding; `sync` will refuse to link it. Review with `dalo audit <ref>` and accept the risk or remove/replace the skill. |
 | `security_audit_failed` | warning | An active skill's deterministic security audit could not be completed (for example unreadable content). Investigate with `dalo audit <ref>`. |
+| `generated_delivery_invalid` | error | Inspect the reported generated cache path. Move a corrupt hash directory out of `generated/sha256`, then rerun `dalo sync` so the approved derivation can be rebuilt. |
+| `generated_delivery_staging_debris` | warning | Inspect and remove the reported `.delivery-stage-*` directory after confirming no sync is running; staging debris was never activated. |
 | `instruction_pack_topic_overlap` | warning | Rename topics or disable one overlapping pack if the overlap is not intended. |
 | `instruction_block_drift` | error | Re-render or disable the pack. |
 | `autosync_installed` | ok | The native scheduler is installed and enabled. |
