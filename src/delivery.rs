@@ -2,6 +2,8 @@
 
 use std::collections::BTreeMap;
 use std::env;
+#[cfg(target_os = "linux")]
+use std::ffi::OsString;
 use std::fs;
 use std::io::Read;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
@@ -226,7 +228,7 @@ fn execute_and_promote(
         staging.path().to_string_lossy().into_owned(),
     );
     let argv = crate::tool::build_argv(&status.tool, &tool_root, &inputs)?;
-    let execution = run_generator(&status.tool, &tool_root, &argv, source_ref);
+    let execution = run_generator(&status.tool, &tool_root, staging.path(), &argv, source_ref);
     let source_snapshot = verify_source_snapshot(paths, source_ref, source_commit);
     source_snapshot?;
     execution?;
@@ -295,6 +297,7 @@ fn verify_source_snapshot(
 fn run_generator(
     tool: &crate::plugin::ToolRecord,
     tool_root: &Path,
+    write_root: &Path,
     argv: &[String],
     source_ref: &str,
 ) -> DaloResult<()> {
@@ -313,9 +316,8 @@ fn run_generator(
             ),
         });
     }
-    let mut command = Command::new(program);
+    let mut command = sandboxed_generator_command(program, args, write_root)?;
     command
-        .args(args)
         .current_dir(tool_root)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -374,6 +376,85 @@ fn run_generator(
             format!("generated delivery `{source_ref}` failed with {status}: {diagnostic}")
         },
     })
+}
+
+fn sandboxed_generator_command(
+    program: &Path,
+    args: &[String],
+    write_root: &Path,
+) -> DaloResult<Command> {
+    #[cfg(target_os = "linux")]
+    {
+        let executable = env::current_exe()?;
+        let mut command = Command::new(executable);
+        command
+            .arg("__delivery-sandbox")
+            .arg(write_root)
+            .arg(program)
+            .args(args);
+        Ok(command)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let canonical_write_root = fs::canonicalize(write_root)?;
+        let escaped = canonical_write_root
+            .to_string_lossy()
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"");
+        let profile = format!(
+            "(version 1)(allow default)(deny file-write*)(allow file-write* (subpath \"{escaped}\"))"
+        );
+        let mut command = Command::new("/usr/bin/sandbox-exec");
+        command.args(["-p", &profile]).arg(program).args(args);
+        Ok(command)
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    {
+        let _ = (program, args, write_root);
+        Err(DaloError::StateError {
+            reason: "generated delivery requires an enforced operating-system filesystem sandbox"
+                .to_owned(),
+        })
+    }
+}
+
+/// Internal Linux launcher that applies a descendant-inherited Landlock domain.
+#[cfg(target_os = "linux")]
+#[doc(hidden)]
+pub fn run_linux_delivery_sandbox(arguments: Vec<OsString>) -> Result<(), String> {
+    use landlock::{
+        ABI, Access, AccessFs, CompatLevel, Compatible, PathBeneath, PathFd, Ruleset, RulesetAttr,
+        RulesetCreatedAttr, RulesetStatus,
+    };
+
+    let mut arguments = arguments.into_iter();
+    let write_root = arguments
+        .next()
+        .ok_or_else(|| "delivery sandbox requires a write root".to_owned())?;
+    let program = arguments
+        .next()
+        .ok_or_else(|| "delivery sandbox requires a program".to_owned())?;
+    let abi = ABI::V3;
+    let write_access = AccessFs::from_write(abi);
+    let status = Ruleset::default()
+        .set_compatibility(CompatLevel::HardRequirement)
+        .handle_access(write_access)
+        .map_err(|error| format!("cannot declare Landlock write restrictions: {error}"))?
+        .create()
+        .map_err(|error| format!("cannot create Landlock ruleset: {error}"))?
+        .add_rule(PathBeneath::new(
+            PathFd::new(&write_root)
+                .map_err(|error| format!("cannot open delivery write root: {error}"))?,
+            write_access,
+        ))
+        .map_err(|error| format!("cannot allow delivery staging writes: {error}"))?
+        .restrict_self()
+        .map_err(|error| format!("cannot enforce Landlock delivery sandbox: {error}"))?;
+    if status.ruleset != RulesetStatus::FullyEnforced {
+        return Err("Landlock delivery sandbox was not fully enforced".to_owned());
+    }
+    let error = Command::new(program).args(arguments).exec();
+    Err(format!("cannot execute sandboxed generator: {error}"))
 }
 
 fn validate_and_audit_outputs(
