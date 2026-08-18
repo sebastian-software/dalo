@@ -1234,7 +1234,7 @@ Important record fields:
 | Record | Fields |
 | --- | --- |
 | `LockedSource` | `id`, `kind`, `path`, optional `commit` |
-| `LockedSkill` | `source_ref`, `slot_name`, optional `id`, `source_id`, `source_kind`, optional `delivery` provenance/fingerprints, optional `reason` |
+| `LockedSkill` | `source_ref`, `slot_name`, optional `id`, `source_id`, `source_kind`, optional `delivery` provenance/recipe/derivation/output fingerprints, optional `reason` |
 | `LockedTargetMaterialization` | `link_path`, optional `desired_path`, `kind`, `status`, optional `reason` |
 | `LockedInstructionPack` | `pack_id`, `target`, optional `logical_targets[]`, `source_id`, optional `commit`, optional `version` |
 
@@ -1250,7 +1250,7 @@ Top-level fields:
 | --- | --- |
 | `targets[]` | Logical target links with `id`, `path`, `canonical_path`, and `enabled`. |
 | `materialization_dirs[]` | Canonical physical directories and the logical target IDs sharing each directory. |
-| `owned_skills[]` | Symlinks Dalo owns: `target_id`, `slot_name`, `link_path`, `store_path`, plus additive delivery mode/provider/fingerprint provenance. |
+| `owned_skills[]` | Symlinks Dalo owns: `target_id`, `slot_name`, `link_path`, `store_path`, plus additive delivery mode/provider/fingerprint/derivation provenance. |
 | `protected_skills[]` | Unmanaged target slots kept by the user: `target_id`, `slot_name`. Legacy path-based entries migrate on read. |
 
 Unknown fields in this internal state model are retained across reads and writes for downgrade safety after additive changes. Breaking changes still require a schema-version bump. User-authored configuration remains strict.
@@ -1392,11 +1392,22 @@ The first approves only the exact revision-bound recipe; the second approves
 the generator tool contract. A new source commit or changed recipe invalidates
 the recipe approval. The approval key records both the current slot and the
 required stable ID, so stale trust remains revocable after a rename, deletion,
-or invalid recipe through either historical identity. In schema version 1 Dalo
-only validates, reports, and
-persists this plan. Even with both approvals present it does not invoke the
-tool or create generated output; `sync`, `status`, and `doctor` report the
-delivery as blocked with execution intentionally unavailable.
+or invalid recipe through either historical identity. Approval itself remains
+inert. Once both exact approvals exist, a real `sync` invokes the immutable
+staged tool closure with an empty environment except for explicitly declared
+variables. Dalo passes a newly created staging directory as the declared output
+input, enforces a bounded runtime and output tree, rejects undeclared paths,
+symlinks, special files, oversized output, and source-checkout changes, then
+audits every declared provider skill. Blocking findings or a failed generator
+leave the last known-good target link unchanged.
+
+Successful output is made read-only and atomically promoted below
+`generated/sha256/<derivation-hash>`. The derivation identity binds the logical
+skill, source commit, recipe, and exact tool contract; subsequent syncs verify
+and reuse that cache instead of executing again. Only after verification does
+the normal transactional materializer link provider outputs. Dry-run, JSON,
+`status`, and `doctor` expose `miss`, `generated`, or `hit` cache state,
+derivation identity, selected output fingerprint, and any blocking remediation.
 
 ## `AGENT.md` Canonical Packages
 

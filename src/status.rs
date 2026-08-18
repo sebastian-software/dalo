@@ -358,10 +358,14 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         crate::plan::attach_hook_status(plan, &paths)?;
         plan.native_plugins = plugin_targets.clone();
     }
+    let live_lock = lockfile::build_user_lock(
+        &config.sources,
+        &live_resolution,
+        Some(&materialization),
+        Some(&plugins),
+    );
     let deliveries = materialization.deliveries;
     let resolution = materialization.resolution;
-    let live_lock =
-        lockfile::build_user_lock(&config.sources, &live_resolution, None, Some(&plugins));
     let mut drift = lockfile::compare_user_lock(&previous_lock, &live_lock);
     suppress_initial_local_source_drift(&previous_lock, &mut drift);
     let lock = LockStatus {
@@ -1163,6 +1167,12 @@ fn print_delivery_reports(deliveries: &[SkillDeliveryReport]) {
         }
         if let Some(output) = &delivery.planned_output {
             println!("    planned output: {}", output.display());
+        }
+        if let Some(cache_state) = delivery.cache_state {
+            println!("    generated cache: {}", cache_state.as_str());
+        }
+        if let Some(derivation_hash) = &delivery.derivation_hash {
+            println!("    derivation: sha256:{derivation_hash}");
         }
     }
 }

@@ -237,7 +237,7 @@ pub fn build_user_lock(
                 id: skill.id.clone(),
                 source_id: skill.source_id.clone(),
                 source_kind: skill.source_kind,
-                delivery: locked_delivery(skill),
+                delivery: locked_delivery(skill, sync_report),
                 reason: None,
             })
             .collect(),
@@ -250,7 +250,7 @@ pub fn build_user_lock(
                 id: skill.id.clone(),
                 source_id: skill.source_id.clone(),
                 source_kind: skill.source_kind,
-                delivery: locked_delivery(skill),
+                delivery: locked_delivery(skill, None),
                 reason: Some("pending_approval".to_owned()),
             })
             .collect(),
@@ -263,7 +263,7 @@ pub fn build_user_lock(
                 id: unlinked.skill.id.clone(),
                 source_id: unlinked.skill.source_id.clone(),
                 source_kind: unlinked.skill.source_kind,
-                delivery: locked_delivery(&unlinked.skill),
+                delivery: locked_delivery(&unlinked.skill, None),
                 reason: Some(unlinked_reason_name(unlinked.reason).to_owned()),
             })
             .collect(),
@@ -349,11 +349,38 @@ pub fn compare_user_lock(previous: &UserLock, current: &UserLock) -> Vec<LockDri
     drift
 }
 
-fn locked_delivery(skill: &crate::resolver::ResolvedSkill) -> Option<SkillDelivery> {
+fn locked_delivery(
+    skill: &crate::resolver::ResolvedSkill,
+    sync_report: Option<&SyncReport>,
+) -> Option<SkillDelivery> {
     match &skill.delivery {
         SkillDelivery::Direct => None,
-        delivery @ (SkillDelivery::Prebuilt { .. } | SkillDelivery::Generated { .. }) => {
-            Some(delivery.clone())
+        delivery @ SkillDelivery::Prebuilt { .. } => Some(delivery.clone()),
+        SkillDelivery::Generated { .. } => {
+            let mut delivery = skill.delivery.clone();
+            if let SkillDelivery::Generated {
+                output_fingerprints,
+                derivation_hash,
+                ..
+            } = &mut delivery
+                && let Some(report) = sync_report
+            {
+                for generated in report.deliveries.iter().filter(|generated| {
+                    generated.source_ref == skill.source_ref
+                        && generated.mode == crate::inventory::SkillDeliveryMode::Generated
+                        && !generated.blocked
+                }) {
+                    if let (Some(provider), Some(fingerprint)) =
+                        (&generated.provider, &generated.fingerprint)
+                    {
+                        output_fingerprints.insert(provider.clone(), fingerprint.clone());
+                    }
+                    if derivation_hash.is_none() {
+                        *derivation_hash = generated.derivation_hash.clone();
+                    }
+                }
+            }
+            Some(delivery)
         }
     }
 }

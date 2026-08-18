@@ -96,6 +96,12 @@ pub struct SkillDeliveryReport {
     /// Selected provider artifact fingerprint.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fingerprint: Option<String>,
+    /// Generated derivation cache state.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_state: Option<crate::delivery::GeneratedCacheState>,
+    /// Content-addressed generated derivation identity.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub derivation_hash: Option<String>,
     /// Whether target-aware selection was blocked.
     pub blocked: bool,
     /// Actionable reason when selection was blocked.
@@ -215,6 +221,8 @@ struct DesiredLink {
     delivery_mode: SkillDeliveryMode,
     provider: Option<String>,
     fingerprint: Option<String>,
+    cache_state: Option<crate::delivery::GeneratedCacheState>,
+    derivation_hash: Option<String>,
     planned_output: Option<PathBuf>,
     blocked_reason: Option<String>,
 }
@@ -251,7 +259,14 @@ pub fn materialize_with_degraded_sources_rollback(
     let mut state = store::read_state(paths)?;
     let mut resolution = resolution.clone();
     let all_skills = resolution.active_skills.clone();
-    let all_links = desired_links(&state, &resolution);
+    let needed_generated = needed_generated_deliveries(&state, &resolution);
+    let generated = crate::delivery::prepare_generated_artifacts(
+        paths,
+        &resolution,
+        &needed_generated,
+        dry_run,
+    )?;
+    let all_links = desired_links(&state, &resolution, &generated);
     let mut suppressed_links = BTreeSet::new();
     let mut protected_suppressed_links = BTreeSet::new();
     let mut suppressed_link_reasons = BTreeMap::new();
@@ -266,7 +281,7 @@ pub fn materialize_with_degraded_sources_rollback(
         &mut protected_suppressed_links,
         &mut suppressed_link_reasons,
     ) {
-        links = desired_links(&state, &resolution)
+        links = desired_links(&state, &resolution, &generated)
             .into_iter()
             .filter(|link| !suppressed_links.contains(&link.link_path))
             .collect();
@@ -306,7 +321,7 @@ pub fn materialize_with_degraded_sources_rollback(
             ) {
                 break;
             }
-            links = desired_links(&state, &resolution)
+            links = desired_links(&state, &resolution, &generated)
                 .into_iter()
                 .filter(|link| !suppressed_links.contains(&link.link_path))
                 .collect();
@@ -393,6 +408,8 @@ fn delivery_reports(
                 fingerprint: (desired.delivery_mode == SkillDeliveryMode::Generated || !blocked)
                     .then(|| desired.fingerprint.clone())
                     .flatten(),
+                cache_state: desired.cache_state,
+                derivation_hash: desired.derivation_hash.clone(),
                 blocked,
                 reason: desired.blocked_reason.clone().or_else(|| {
                     operation
@@ -730,7 +747,31 @@ fn requirement_matches_skill(requirement: &str, skill: &ResolvedSkill) -> bool {
         || skill.id.as_deref() == Some(requirement)
 }
 
-fn desired_links(state: &StateFile, resolution: &Resolution) -> Vec<DesiredLink> {
+fn needed_generated_deliveries(state: &StateFile, resolution: &Resolution) -> BTreeSet<String> {
+    let mut needed = BTreeSet::new();
+    for dir in &state.materialization_dirs {
+        for skill in &resolution.active_skills {
+            let SkillDelivery::Generated { providers, .. } = &skill.delivery else {
+                continue;
+            };
+            let outputs = dir
+                .logical_targets
+                .iter()
+                .map(|target| providers.get(target))
+                .collect::<Option<BTreeSet<_>>>();
+            if outputs.is_some_and(|outputs| outputs.len() == 1) {
+                needed.insert(skill.source_ref.clone());
+            }
+        }
+    }
+    needed
+}
+
+fn desired_links(
+    state: &StateFile,
+    resolution: &Resolution,
+    generated: &BTreeMap<String, crate::delivery::GeneratedArtifactSet>,
+) -> Vec<DesiredLink> {
     let mut links = Vec::new();
 
     // Drive links from the canonical materialization directories, not from the raw
@@ -767,6 +808,10 @@ fn desired_links(state: &StateFile, resolution: &Resolution) -> Vec<DesiredLink>
                     .iter()
                     .filter_map(|(_, output)| output.as_ref().copied())
                     .collect::<BTreeSet<_>>();
+                let prepared = generated.get(&skill.source_ref);
+                let artifact = selected
+                    .first()
+                    .and_then(|(target, _)| prepared.and_then(|set| set.providers.get(*target)));
                 let blocked_reason = if !missing.is_empty() {
                     format!(
                         "generated delivery for `{}` has no output mapping for target{} {}",
@@ -795,11 +840,20 @@ fn desired_links(state: &StateFile, resolution: &Resolution) -> Vec<DesiredLink>
                         "generated delivery for `{}` requires approval of generator tool `{generator}`; run `dalo approve tool {generator}`",
                         skill.source_ref,
                     )
-                } else {
+                } else if prepared.is_some_and(|set| {
+                    set.cache_state == crate::delivery::GeneratedCacheState::Miss
+                }) {
                     format!(
-                        "generated delivery for `{}` is validated and approved but execution is intentionally unavailable in this release; no generator was run",
+                        "generated delivery for `{}` has no cached output; a real sync will execute the approved generator",
                         skill.source_ref
                     )
+                } else if artifact.is_none() {
+                    format!(
+                        "generated delivery for `{}` has no verified provider artifact",
+                        skill.source_ref
+                    )
+                } else {
+                    String::new()
                 };
                 links.push(DesiredLink {
                     target_id: target_id.clone(),
@@ -807,14 +861,21 @@ fn desired_links(state: &StateFile, resolution: &Resolution) -> Vec<DesiredLink>
                     source_ref: skill.source_ref.clone(),
                     slot_name: skill.slot_name.clone(),
                     link_path: dir.path.join(&skill.slot_name),
-                    store_path: skill.path.clone(),
+                    store_path: artifact.map_or_else(
+                        || prepared.map_or_else(|| skill.path.clone(), |set| set.root.clone()),
+                        |artifact| artifact.path.clone(),
+                    ),
                     delivery_mode: SkillDeliveryMode::Generated,
                     provider: selected
                         .first()
                         .and_then(|(target, output)| output.map(|_| (*target).clone())),
-                    fingerprint: Some(format!("sha256:{recipe_hash}")),
+                    fingerprint: artifact
+                        .map(|artifact| artifact.fingerprint.clone())
+                        .or_else(|| Some(format!("sha256:{recipe_hash}"))),
+                    cache_state: prepared.map(|set| set.cache_state),
+                    derivation_hash: prepared.map(|set| set.derivation_hash.clone()),
                     planned_output: outputs.first().map(|path| (*path).clone()),
-                    blocked_reason: Some(blocked_reason),
+                    blocked_reason: (!blocked_reason.is_empty()).then_some(blocked_reason),
                 });
                 continue;
             }
@@ -871,6 +932,8 @@ fn desired_links(state: &StateFile, resolution: &Resolution) -> Vec<DesiredLink>
                 delivery_mode: skill.delivery.mode(),
                 provider,
                 fingerprint: artifact.and_then(|item| item.fingerprint.clone()),
+                cache_state: None,
+                derivation_hash: None,
                 planned_output: None,
                 blocked_reason,
             });
@@ -1191,6 +1254,14 @@ fn apply_plan(
                 );
             } else {
                 extra.remove("delivery_fingerprint");
+            }
+            if let Some(derivation_hash) = &desired.derivation_hash {
+                extra.insert(
+                    "delivery_derivation".to_owned(),
+                    toml::Value::String(derivation_hash.clone()),
+                );
+            } else {
+                extra.remove("delivery_derivation");
             }
             OwnedSkillState {
                 target_id: desired.target_id.clone(),
@@ -1585,7 +1656,7 @@ mod tests {
             ("openclaw", &PathBuf::from("/source/builds/openclaw/review")),
         ]);
 
-        let links = desired_links(&state, &resolution);
+        let links = desired_links(&state, &resolution, &BTreeMap::new());
         let operations = build_plan(
             &StorePaths::new(PathBuf::from("/store")),
             &state,
@@ -2079,6 +2150,8 @@ mod tests {
             delivery_mode: SkillDeliveryMode::Direct,
             provider: None,
             fingerprint: None,
+            cache_state: None,
+            derivation_hash: None,
             planned_output: None,
             blocked_reason: None,
         };
@@ -2294,7 +2367,7 @@ mod tests {
         };
         let resolution = resolution_with_skill("review", Path::new("/store/review"));
 
-        let links = desired_links(&state, &resolution);
+        let links = desired_links(&state, &resolution, &BTreeMap::new());
 
         assert_eq!(links[0].target_id, "codex");
     }

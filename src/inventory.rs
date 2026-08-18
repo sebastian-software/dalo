@@ -86,7 +86,7 @@ pub enum SkillDelivery {
         /// Delivery manifest path used as provenance.
         manifest_path: PathBuf,
     },
-    /// Describe a reviewed generator recipe without executing it.
+    /// Describe an explicitly approved, content-bound generator recipe.
     Generated {
         /// Same-source plugin-local generator tool identity.
         generator: String,
@@ -94,7 +94,7 @@ pub enum SkillDelivery {
         generator_contract_hash: String,
         /// Required path input that will receive a Dalo-owned staging root.
         output_input: String,
-        /// Expected provider outputs relative to the future staging root.
+        /// Expected provider outputs relative to the Dalo-owned staging root.
         providers: BTreeMap<String, PathBuf>,
         /// Content-bound generator recipe identity.
         recipe_hash: String,
@@ -107,6 +107,12 @@ pub enum SkillDelivery {
         recipe_approved: bool,
         /// Whether the exact generator tool contract has execution approval.
         generator_approved: bool,
+        /// Audited output fingerprints keyed by provider after materialization.
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        output_fingerprints: BTreeMap<String, String>,
+        /// Content-addressed derivation identity after materialization.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        derivation_hash: Option<String>,
     },
 }
 
@@ -241,7 +247,7 @@ pub enum SkillDeliveryMode {
     Direct,
     /// A declared provider-specific prebuilt directory is linked.
     Prebuilt,
-    /// A validated generator recipe remains inert pending a later execution phase.
+    /// An approved generator produces audited immutable provider artifacts.
     Generated,
 }
 
@@ -629,7 +635,7 @@ fn scan_prebuilt_delivery(
         .map_err(|error| format!("cannot resolve source checkout: {error}"))?;
     let canonical_skill = fs::canonicalize(skill_dir)
         .map_err(|error| format!("cannot resolve logical skill directory: {error}"))?;
-    let mut providers = BTreeMap::new();
+    let mut providers: BTreeMap<String, PrebuiltSkillArtifact> = BTreeMap::new();
     for (provider, relative_path) in manifest.providers {
         if provider == "universal" {
             return Err(
@@ -742,6 +748,16 @@ fn scan_generated_delivery(
             "generator output input `{output_input}` must be a required path"
         ));
     }
+    if let Some(other) = tool
+        .inputs
+        .iter()
+        .find(|input| input.required && input.name != output_input)
+    {
+        return Err(format!(
+            "generator `{generator}` has unsupported required input `{}`; generated delivery v1 supplies only `{output_input}`",
+            other.name
+        ));
+    }
     let placeholder = format!("${{input.{output_input}}}");
     if !tool.argv.iter().any(|value| value == &placeholder) {
         return Err(format!(
@@ -759,12 +775,21 @@ fn scan_generated_delivery(
         ));
     }
 
-    let mut providers = BTreeMap::new();
+    let mut providers: BTreeMap<String, PathBuf> = BTreeMap::new();
     for (provider, relative_path) in manifest.providers {
         if provider == "universal" || !valid_provider_id(&provider) {
             return Err(format!("invalid generated provider target ID `{provider}`"));
         }
         validate_relative_generated_path(&provider, &relative_path)?;
+        if let Some((other_provider, other_path)) = providers.iter().find(|(_, other_path)| {
+            relative_path.starts_with(other_path) || other_path.starts_with(&relative_path)
+        }) {
+            return Err(format!(
+                "generated provider outputs `{provider}` ({}) and `{other_provider}` ({}) must not overlap",
+                relative_path.display(),
+                other_path.display()
+            ));
+        }
         providers.insert(provider, relative_path);
     }
     let recipe_hash = generated_recipe_hash(
@@ -784,6 +809,8 @@ fn scan_generated_delivery(
         source_commit: None,
         recipe_approved: false,
         generator_approved: false,
+        output_fingerprints: BTreeMap::new(),
+        derivation_hash: None,
     })
 }
 
@@ -845,7 +872,7 @@ fn valid_provider_id(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
 }
 
-fn fingerprint_directory(root: &Path) -> Result<String, String> {
+pub(crate) fn fingerprint_directory(root: &Path) -> Result<String, String> {
     let metadata = fs::symlink_metadata(root)
         .map_err(|error| format!("cannot inspect `{}`: {error}", root.display()))?;
     if metadata.file_type().is_symlink() || !metadata.is_dir() {
@@ -1397,6 +1424,32 @@ required = true
                 && warning
                     .message
                     .contains("requires a stable skill frontmatter `id`")
+        }));
+    }
+
+    #[test]
+    fn scan_source_should_reject_overlapping_generated_provider_outputs() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let logical = temp_dir.path().join("skills/review");
+        fs::create_dir_all(&logical).unwrap();
+        fs::write(
+            logical.join(SKILL_FILE),
+            "---\nid: review.skill\n---\n# Review\n",
+        )
+        .unwrap();
+        fs::write(
+            logical.join(DELIVERY_FILE),
+            "schema_version = 1\nkind = \"generated\"\ngenerator = \"company:builder#tool:build\"\noutput_input = \"output_dir\"\n\n[providers]\ncodex = \"shared\"\nclaude = \"shared/review\"\n",
+        )
+        .unwrap();
+        write_generator_plugin(temp_dir.path());
+
+        let inventory = scan_source("company", temp_dir.path()).expect("scan should succeed");
+
+        assert!(inventory.skills.is_empty());
+        assert!(inventory.warnings.iter().any(|warning| {
+            warning.code == InventoryWarningCode::InvalidDelivery
+                && warning.message.contains("must not overlap")
         }));
     }
 

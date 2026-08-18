@@ -55,6 +55,8 @@ pub struct StorePaths {
     pub local_agents_dir: PathBuf,
     /// Immutable content-addressed approved local-tool closures.
     pub tools_dir: PathBuf,
+    /// Immutable content-addressed generated skill derivations.
+    pub generated_dir: PathBuf,
     /// Owned hook projections, dispatcher manifests, and reconciliation state.
     pub hooks_dir: PathBuf,
     /// Durable hook sidecar ownership state.
@@ -99,6 +101,7 @@ impl StorePaths {
             local_instructions_dir: local_dir.join("instructions"),
             local_agents_dir: local_dir.join("agents"),
             tools_dir: root.join("tools"),
+            generated_dir: root.join("generated"),
             hooks_dir: root.join("hooks"),
             hook_state_file: root.join("hooks/state.json"),
             plugins_dir: root.join("plugins"),
@@ -560,6 +563,7 @@ pub fn init_store(store_root: PathBuf, dry_run: bool) -> DaloResult<InitReport> 
         &paths.local_instructions_dir,
         &paths.local_agents_dir,
         &paths.tools_dir,
+        &paths.generated_dir,
         &paths.sources_dir,
         &paths.audits_dir,
     ] {

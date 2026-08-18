@@ -1,19 +1,560 @@
-//! Inert generated-delivery recipe approval and provenance checks.
-//!
-//! This module validates and approves recipe metadata only. It never invokes a
-//! generator or creates derived output.
+//! Generated-delivery approval, execution, audit, and immutable promotion.
 
-use std::path::PathBuf;
+use std::collections::BTreeMap;
+use std::env;
+use std::fs;
+use std::io::Read;
+use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
+use sha2::{Digest, Sha256};
+
+#[cfg(unix)]
+use rustix::process::{Pid, Signal, kill_process_group};
 
 use crate::error::{DaloError, DaloResult};
-use crate::inventory::SkillDelivery;
+use crate::inventory::{PrebuiltSkillArtifact, SkillDelivery};
+use crate::resolver::Resolution;
 use crate::source::SourceKind;
 use crate::store::{self, ApprovalRecord, StorePaths};
 
+const GENERATOR_TIMEOUT: Duration = Duration::from_secs(120);
+const MAX_GENERATOR_STDERR: u64 = 1024 * 1024;
+const MAX_GENERATED_ENTRIES: usize = 4096;
+const MAX_GENERATED_BYTES: u64 = 256 * 1024 * 1024;
+const MAX_GENERATED_DEPTH: usize = 32;
+
 /// Stable approval scope for exact generated-delivery recipes.
 pub const APPROVAL_SCOPE: &str = "delivery";
+
+/// Cache disposition for one resolved generated derivation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GeneratedCacheState {
+    /// No immutable result exists; a real sync would run the generator.
+    Miss,
+    /// An existing immutable derivation passed verification and audit.
+    Hit,
+    /// This sync executed, audited, and promoted a new derivation.
+    Generated,
+}
+
+impl GeneratedCacheState {
+    /// Stable report label.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Miss => "miss",
+            Self::Hit => "hit",
+            Self::Generated => "generated",
+        }
+    }
+}
+
+/// Immutable provider artifacts prepared for one generated skill.
+#[derive(Debug, Clone)]
+pub(crate) struct GeneratedArtifactSet {
+    pub(crate) root: PathBuf,
+    pub(crate) providers: BTreeMap<String, PrebuiltSkillArtifact>,
+    pub(crate) derivation_hash: String,
+    pub(crate) cache_state: GeneratedCacheState,
+}
+
+struct GeneratedExecution<'a> {
+    source_ref: &'a str,
+    generator: &'a str,
+    generator_contract_hash: &'a str,
+    output_input: &'a str,
+    providers: &'a BTreeMap<String, PathBuf>,
+    source_commit: &'a str,
+}
+
+/// Prepare every fully approved generated delivery before link planning.
+pub(crate) fn prepare_generated_artifacts(
+    paths: &StorePaths,
+    resolution: &Resolution,
+    needed: &std::collections::BTreeSet<String>,
+    dry_run: bool,
+) -> DaloResult<BTreeMap<String, GeneratedArtifactSet>> {
+    let mut prepared = BTreeMap::new();
+    for skill in &resolution.active_skills {
+        if !needed.contains(&skill.source_ref) {
+            continue;
+        }
+        let SkillDelivery::Generated {
+            generator,
+            generator_contract_hash,
+            output_input,
+            providers,
+            recipe_hash,
+            source_commit: Some(source_commit),
+            recipe_approved: true,
+            generator_approved: true,
+            ..
+        } = &skill.delivery
+        else {
+            continue;
+        };
+        let derivation_hash = derivation_hash(&skill.source_ref, source_commit, recipe_hash);
+        let root = paths.generated_dir.join("sha256").join(&derivation_hash);
+        let (artifacts, cache_state) = if root.exists() {
+            (
+                validate_and_audit_outputs(
+                    paths,
+                    &skill.source_ref,
+                    &root,
+                    providers,
+                    true,
+                    !dry_run,
+                )?,
+                GeneratedCacheState::Hit,
+            )
+        } else if dry_run {
+            (BTreeMap::new(), GeneratedCacheState::Miss)
+        } else {
+            let execution = GeneratedExecution {
+                source_ref: &skill.source_ref,
+                generator,
+                generator_contract_hash,
+                output_input,
+                providers,
+                source_commit,
+            };
+            let artifacts = execute_and_promote(paths, &execution, &root)?;
+            (artifacts, GeneratedCacheState::Generated)
+        };
+        prepared.insert(
+            skill.source_ref.clone(),
+            GeneratedArtifactSet {
+                root,
+                providers: artifacts,
+                derivation_hash,
+                cache_state,
+            },
+        );
+    }
+    Ok(prepared)
+}
+
+pub(crate) fn derivation_hash(source_ref: &str, source_commit: &str, recipe_hash: &str) -> String {
+    let mut hash = Sha256::new();
+    for value in [
+        "dalo-generated-derivation-v1",
+        source_ref,
+        source_commit,
+        recipe_hash,
+    ] {
+        hash.update((value.len() as u64).to_be_bytes());
+        hash.update(value.as_bytes());
+    }
+    hash.finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+fn execute_and_promote(
+    paths: &StorePaths,
+    execution: &GeneratedExecution<'_>,
+    destination: &Path,
+) -> DaloResult<BTreeMap<String, PrebuiltSkillArtifact>> {
+    let source_ref = execution.source_ref;
+    let generator = execution.generator;
+    let generator_contract_hash = execution.generator_contract_hash;
+    let output_input = execution.output_input;
+    let providers = execution.providers;
+    let source_commit = execution.source_commit;
+    verify_source_snapshot(paths, source_ref, source_commit)?;
+    let status = crate::tool::show(paths, generator)?;
+    if status.tool.contract_hash != generator_contract_hash
+        || status.state != crate::tool::ToolState::Ready
+    {
+        return Err(DaloError::StateError {
+            reason: format!(
+                "generated delivery `{source_ref}` requires the exact approved and staged generator `{generator}`"
+            ),
+        });
+    }
+    let tool_root = status.staged_path.ok_or_else(|| DaloError::StateError {
+        reason: format!("generator `{generator}` has no immutable staged closure"),
+    })?;
+    if !crate::tool::verify_staged_contract(&status.tool, &tool_root) {
+        return Err(DaloError::StateError {
+            reason: format!("generator `{generator}` failed immutable closure verification"),
+        });
+    }
+
+    let parent = destination.parent().ok_or_else(|| DaloError::StateError {
+        reason: "generated delivery cache destination has no parent".to_owned(),
+    })?;
+    fs::create_dir_all(parent)?;
+    let staging = tempfile::Builder::new()
+        .prefix(".delivery-stage-")
+        .tempdir_in(parent)?;
+    let mut inputs = BTreeMap::new();
+    inputs.insert(
+        output_input.to_owned(),
+        staging.path().to_string_lossy().into_owned(),
+    );
+    let argv = crate::tool::build_argv(&status.tool, &tool_root, &inputs)?;
+    let execution = run_generator(&status.tool, &tool_root, &argv, source_ref);
+    let source_snapshot = verify_source_snapshot(paths, source_ref, source_commit);
+    source_snapshot?;
+    execution?;
+    let artifacts =
+        validate_and_audit_outputs(paths, source_ref, staging.path(), providers, false, true)?;
+    make_tree_read_only(staging.path())?;
+    let staging_path = staging.keep();
+    if let Err(error) = fs::rename(&staging_path, destination) {
+        let _ = make_tree_writable(&staging_path);
+        let _ = fs::remove_dir_all(&staging_path);
+        return Err(error.into());
+    }
+    Ok(artifacts
+        .into_iter()
+        .map(|(provider, artifact)| {
+            let relative = artifact
+                .path
+                .strip_prefix(&staging_path)
+                .expect("validated generated artifact stays below staging")
+                .to_path_buf();
+            (
+                provider,
+                PrebuiltSkillArtifact {
+                    path: destination.join(relative),
+                    fingerprint: artifact.fingerprint,
+                },
+            )
+        })
+        .collect())
+}
+
+fn verify_source_snapshot(
+    paths: &StorePaths,
+    source_ref: &str,
+    expected_commit: &str,
+) -> DaloResult<()> {
+    let source_id = source_ref
+        .split_once(':')
+        .map(|(source, _)| source)
+        .ok_or_else(|| DaloError::StateError {
+            reason: format!("generated delivery `{source_ref}` has no source identity"),
+        })?;
+    let config = store::read_config(paths)?;
+    let source = config
+        .sources
+        .iter()
+        .find(|source| source.id == source_id)
+        .ok_or_else(|| DaloError::StateError {
+            reason: format!("generated delivery source `{source_id}` is no longer configured"),
+        })?;
+    let actual_commit = crate::git::rev_parse_head(&source.path)?;
+    if actual_commit != expected_commit || crate::git::is_dirty(&source.path)? {
+        return Err(DaloError::StateError {
+            reason: format!(
+                "generated delivery source `{source_id}` changed during execution; output was not promoted"
+            ),
+        });
+    }
+    Ok(())
+}
+
+fn run_generator(
+    tool: &crate::plugin::ToolRecord,
+    tool_root: &Path,
+    argv: &[String],
+    source_ref: &str,
+) -> DaloResult<()> {
+    let (program, args) = argv.split_first().ok_or_else(|| DaloError::StateError {
+        reason: "generator produced an empty argv".to_owned(),
+    })?;
+    let program = resolve_program(program)?;
+    let mut command = Command::new(program);
+    command
+        .args(args)
+        .current_dir(tool_root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .env_clear();
+    for name in &tool.env {
+        if let Some(value) = env::var_os(name) {
+            command.env(name, value);
+        }
+    }
+    #[cfg(unix)]
+    command.process_group(0);
+    let mut child = command.spawn()?;
+    let stderr = child.stderr.take().expect("generator stderr is piped");
+    let stderr_reader = thread::spawn(move || read_bounded(stderr));
+    let deadline = Instant::now() + GENERATOR_TIMEOUT;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(20)),
+            Ok(None) => {
+                terminate_generator(&mut child);
+                let _ = stderr_reader.join();
+                return Err(DaloError::StateError {
+                    reason: format!(
+                        "generated delivery `{source_ref}` timed out after {} seconds",
+                        GENERATOR_TIMEOUT.as_secs()
+                    ),
+                });
+            }
+            Err(error) => {
+                terminate_generator(&mut child);
+                let _ = stderr_reader.join();
+                return Err(error.into());
+            }
+        }
+    };
+    let stderr = stderr_reader
+        .join()
+        .map_err(|_| std::io::Error::other("generator stderr reader panicked"))??;
+    if status.success() {
+        return Ok(());
+    }
+    let diagnostic = String::from_utf8_lossy(&stderr).trim().to_owned();
+    Err(DaloError::StateError {
+        reason: if diagnostic.is_empty() {
+            format!("generated delivery `{source_ref}` failed with {status}")
+        } else {
+            format!("generated delivery `{source_ref}` failed with {status}: {diagnostic}")
+        },
+    })
+}
+
+fn resolve_program(program: &str) -> DaloResult<PathBuf> {
+    let path = Path::new(program);
+    if path.components().count() > 1 {
+        return Ok(path.to_path_buf());
+    }
+    env::var_os("PATH")
+        .and_then(|value| {
+            env::split_paths(&value)
+                .map(|directory| directory.join(program))
+                .find(|candidate| {
+                    fs::metadata(candidate).is_ok_and(|metadata| {
+                        metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
+                    })
+                })
+        })
+        .ok_or_else(|| DaloError::StateError {
+            reason: format!("generator runtime `{program}` is no longer available on PATH"),
+        })
+}
+
+fn validate_and_audit_outputs(
+    paths: &StorePaths,
+    source_ref: &str,
+    root: &Path,
+    providers: &BTreeMap<String, PathBuf>,
+    require_immutable: bool,
+    persist_audit: bool,
+) -> DaloResult<BTreeMap<String, PrebuiltSkillArtifact>> {
+    validate_generated_tree(root, providers.values(), require_immutable)?;
+    let mut artifacts = BTreeMap::new();
+    for (provider, relative) in providers {
+        let path = root.join(relative);
+        if !path.join("SKILL.md").is_file() {
+            return Err(DaloError::StateError {
+                reason: format!(
+                    "generated provider `{provider}` output `{}` does not contain SKILL.md",
+                    relative.display()
+                ),
+            });
+        }
+        let fingerprint = crate::inventory::fingerprint_directory(&path).map_err(|reason| {
+            DaloError::StateError {
+                reason: format!("generated provider `{provider}` output is unsafe: {reason}"),
+            }
+        })?;
+        let audit_ref = format!("{source_ref}@{provider}");
+        let report = crate::audit::audit_skill(
+            paths,
+            &audit_ref,
+            &path,
+            &crate::audit::AuditOptions {
+                persist: persist_audit,
+                ..crate::audit::AuditOptions::default()
+            },
+        )?;
+        if report.is_blocking() {
+            return Err(DaloError::StateError {
+                reason: format!(
+                    "generated provider `{provider}` output for `{source_ref}` failed the security audit"
+                ),
+            });
+        }
+        artifacts.insert(
+            provider.clone(),
+            PrebuiltSkillArtifact { path, fingerprint },
+        );
+    }
+    Ok(artifacts)
+}
+
+fn validate_generated_tree<'a>(
+    root: &Path,
+    outputs: impl Iterator<Item = &'a PathBuf>,
+    require_immutable: bool,
+) -> DaloResult<()> {
+    let outputs = outputs.cloned().collect::<Vec<_>>();
+    let metadata = fs::symlink_metadata(root)?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err(DaloError::StateError {
+            reason: "generated delivery root must be a real directory".to_owned(),
+        });
+    }
+    if require_immutable && metadata.permissions().mode() & 0o222 != 0 {
+        return Err(DaloError::StateError {
+            reason: format!(
+                "generated cache root `{}` is unexpectedly writable",
+                root.display()
+            ),
+        });
+    }
+    let mut pending = vec![root.to_path_buf()];
+    let mut entries = 0_usize;
+    let mut bytes = 0_u64;
+    while let Some(directory) = pending.pop() {
+        for entry in fs::read_dir(&directory)? {
+            let entry = entry?;
+            let path = entry.path();
+            let relative = path
+                .strip_prefix(root)
+                .expect("generated entry stays below its root");
+            entries += 1;
+            if entries > MAX_GENERATED_ENTRIES
+                || relative.components().count() > MAX_GENERATED_DEPTH
+            {
+                return Err(DaloError::StateError {
+                    reason: "generated delivery exceeds the bounded tree limits".to_owned(),
+                });
+            }
+            if !outputs
+                .iter()
+                .any(|output| relative.starts_with(output) || output.starts_with(relative))
+            {
+                return Err(DaloError::StateError {
+                    reason: format!(
+                        "generator created undeclared output `{}`",
+                        relative.display()
+                    ),
+                });
+            }
+            let metadata = fs::symlink_metadata(&path)?;
+            if metadata.file_type().is_symlink() {
+                return Err(DaloError::StateError {
+                    reason: format!("generator created symlink `{}`", relative.display()),
+                });
+            }
+            if require_immutable && metadata.permissions().mode() & 0o222 != 0 {
+                return Err(DaloError::StateError {
+                    reason: format!(
+                        "generated cache entry `{}` is unexpectedly writable",
+                        relative.display()
+                    ),
+                });
+            }
+            if metadata.is_dir() {
+                pending.push(path);
+            } else if metadata.is_file() {
+                bytes = bytes.saturating_add(metadata.len());
+                if bytes > MAX_GENERATED_BYTES {
+                    return Err(DaloError::StateError {
+                        reason: "generated delivery exceeds the 256 MiB size limit".to_owned(),
+                    });
+                }
+            } else {
+                return Err(DaloError::StateError {
+                    reason: format!(
+                        "generator created special filesystem entry `{}`",
+                        relative.display()
+                    ),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+fn make_tree_read_only(root: &Path) -> DaloResult<()> {
+    let mut directories = vec![root.to_path_buf()];
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(directory) = pending.pop() {
+        for entry in fs::read_dir(&directory)? {
+            let path = entry?.path();
+            let metadata = fs::symlink_metadata(&path)?;
+            if metadata.is_dir() {
+                directories.push(path.clone());
+                pending.push(path);
+            } else {
+                let executable = metadata.permissions().mode() & 0o111 != 0;
+                fs::set_permissions(
+                    &path,
+                    fs::Permissions::from_mode(if executable { 0o555 } else { 0o444 }),
+                )?;
+            }
+        }
+    }
+    directories.sort_by_key(|path| std::cmp::Reverse(path.components().count()));
+    for directory in directories {
+        fs::set_permissions(directory, fs::Permissions::from_mode(0o555))?;
+    }
+    Ok(())
+}
+
+fn make_tree_writable(root: &Path) -> DaloResult<()> {
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(directory) = pending.pop() {
+        fs::set_permissions(&directory, fs::Permissions::from_mode(0o755))?;
+        for entry in fs::read_dir(&directory)? {
+            let path = entry?.path();
+            if path.is_dir() {
+                pending.push(path);
+            } else {
+                fs::set_permissions(&path, fs::Permissions::from_mode(0o644))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn terminate_generator(child: &mut Child) {
+    #[cfg(unix)]
+    {
+        let process_group = Pid::from_child(child);
+        if kill_process_group(process_group, Signal::KILL).is_ok() {
+            let _ = child.wait();
+            return;
+        }
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+fn read_bounded(reader: impl Read) -> std::io::Result<Vec<u8>> {
+    let mut output = Vec::new();
+    let mut reader = reader;
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let read = reader.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        let remaining = (MAX_GENERATOR_STDERR as usize).saturating_sub(output.len());
+        output.extend_from_slice(&buffer[..read.min(remaining)]);
+    }
+    Ok(output)
+}
 
 /// Result of granting or revoking one generated recipe approval.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

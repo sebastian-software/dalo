@@ -645,8 +645,22 @@ fn resolve_target(paths: &StorePaths, target: &str) -> DaloResult<(String, PathB
                     .or_else(|| {
                         (provider == "universal" && *universal_fallback).then(|| skill.path.clone())
                     }),
-                crate::inventory::SkillDelivery::Direct
-                | crate::inventory::SkillDelivery::Generated { .. } => None,
+                crate::inventory::SkillDelivery::Generated {
+                    providers,
+                    recipe_hash,
+                    ..
+                } => providers.get(provider).and_then(|relative| {
+                    let commit = crate::git::rev_parse_head(&source.path).ok()?;
+                    let derivation =
+                        crate::delivery::derivation_hash(&skill.source_ref, &commit, recipe_hash);
+                    let path = paths
+                        .generated_dir
+                        .join("sha256")
+                        .join(derivation)
+                        .join(relative);
+                    path.is_dir().then_some(path)
+                }),
+                crate::inventory::SkillDelivery::Direct => None,
             }
             .ok_or_else(|| DaloError::InvalidArgument {
                 reason: format!(
