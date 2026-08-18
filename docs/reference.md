@@ -1379,7 +1379,11 @@ The referenced tool must be required, declare `filesystem_write`, and expose
 the named required `path` input in its argument contract. The delivery
 manifest, plugin manifest, and every file in the tool closure must be tracked
 by the same clean Git source commit. Dalo binds the recipe fingerprint to that
-commit and the exact tool contract.
+commit and the exact tool contract. Generated delivery schema v1 requires the
+tool runtime to be `executable`; Python and Node runtime lookup is rejected so
+sync never selects an interpreter from its ambient `PATH`. An executable script
+must use an absolute shebang such as `#!/bin/sh`; `/usr/bin/env` shebangs are
+rejected for the same reason.
 
 Generated delivery has two independent approvals:
 
