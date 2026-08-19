@@ -580,7 +580,7 @@ fn block_link_time_dependents(
                 dependent.requires.iter().find_map(|requirement| {
                     let required = all_skills.iter().find(|candidate| {
                         candidate.source_id == dependent.source_id
-                            && requirement_matches_skill(requirement, candidate)
+                            && requirement_matches_skill(requirement, dependent, candidate)
                     })?;
                     let required_key = (scope.clone(), required.source_ref.clone());
                     if dependent.source_ref == required.source_ref
@@ -744,10 +744,18 @@ fn link_scope(desired: &DesiredLink) -> PathBuf {
         .map_or_else(PathBuf::new, Path::to_path_buf)
 }
 
-fn requirement_matches_skill(requirement: &str, skill: &ResolvedSkill) -> bool {
-    skill.slot_name == requirement
-        || skill.source_ref == requirement
-        || skill.id.as_deref() == Some(requirement)
+fn requirement_matches_skill(
+    requirement: &str,
+    dependent: &ResolvedSkill,
+    candidate: &ResolvedSkill,
+) -> bool {
+    candidate.slot_name
+        == crate::resolver::materialized_slot_name(
+            dependent.source_namespace.as_deref(),
+            requirement,
+        )
+        || candidate.source_ref == requirement
+        || candidate.id.as_deref() == Some(requirement)
 }
 
 fn needed_generated_deliveries(state: &StateFile, resolution: &Resolution) -> BTreeSet<String> {
@@ -1736,6 +1744,36 @@ mod tests {
         assert_eq!(
             report.resolution.blocked_skills[0].reason,
             ClosureBlockReason::SameNameBlocked
+        );
+    }
+
+    #[test]
+    fn materialize_should_block_namespaced_dependent_when_requirement_has_target_conflict() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let target_dir = temp_dir.path().join("target");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        fs::create_dir_all(target_dir.join("company__beta"))
+            .expect("unmanaged dir should be created");
+        let alpha_dir = store_root.join("team/skills/alpha");
+        let beta_dir = store_root.join("team/skills/beta");
+        fs::create_dir_all(&alpha_dir).expect("alpha should be created");
+        fs::create_dir_all(&beta_dir).expect("beta should be created");
+        write_state_with_target(&store_root, &target_dir);
+        let mut resolution = resolution_with_required_pair(&alpha_dir, &beta_dir);
+        for skill in &mut resolution.active_skills {
+            skill.slot_name = format!("company__{}", skill.slot_name);
+            skill.source_namespace = Some("company".to_owned());
+        }
+
+        let report = materialize(&StorePaths::new(store_root), &resolution, false)
+            .expect("materialize should succeed");
+
+        assert!(fs::symlink_metadata(target_dir.join("company__alpha")).is_err());
+        assert_eq!(report.resolution.blocked_skills.len(), 1);
+        assert_eq!(
+            report.resolution.blocked_skills[0].skill.source_ref,
+            "company:alpha"
         );
     }
 
