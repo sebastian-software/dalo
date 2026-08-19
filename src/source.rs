@@ -18,6 +18,8 @@ use crate::store::{self, ApprovalsFile, StorePaths};
 pub const MAX_SOURCE_ID_LENGTH: usize = 128;
 /// Error detail for an invalid source ID.
 pub const SOURCE_ID_REQUIREMENTS: &str = "source ids must be at most 128 characters; they must be non-empty, not `.`/`..`, and only contain `[A-Za-z0-9._-]`";
+/// Error detail for an invalid source namespace.
+pub const SOURCE_NAMESPACE_REQUIREMENTS: &str = "source namespaces must be portable skill names: lowercase ASCII letters, digits, `-`, `_`, or `.`, without leading or trailing dots";
 
 /// Source kind supported by the V1 config schema.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -62,6 +64,9 @@ pub struct SourceConfig {
     pub path: PathBuf,
     /// Source priority. Lower numbers win.
     pub priority: i32,
+    /// Optional prefix applied to every skill materialized from this source.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub namespace: Option<String>,
     /// Whether the source participates in resolution.
     pub enabled: bool,
     /// Whether this source is configured as trusted.
@@ -177,6 +182,17 @@ pub struct SourcePriorityReport {
     /// Updated source.
     pub source: SourceConfig,
     /// Whether the priority differs from its previous value.
+    pub changed: bool,
+    /// Whether the command ran as dry-run.
+    pub dry_run: bool,
+}
+
+/// Source namespace report.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SourceNamespaceReport {
+    /// Updated source.
+    pub source: SourceConfig,
+    /// Whether the namespace differs from its previous value.
     pub changed: bool,
     /// Whether the command ran as dry-run.
     pub dry_run: bool,
@@ -375,9 +391,10 @@ pub fn add_team_source(
     paths: &StorePaths,
     id: &str,
     url: &str,
+    namespace: Option<&str>,
     dry_run: bool,
 ) -> DaloResult<SourceAddReport> {
-    add_team_source_with_config_writer(paths, id, url, dry_run, store::write_config)
+    add_team_source_with_config_writer(paths, id, url, namespace, dry_run, store::write_config)
 }
 
 /// Resolve a local source location against the caller's working directory.
@@ -439,6 +456,7 @@ fn add_team_source_with_config_writer<F>(
     paths: &StorePaths,
     id: &str,
     url: &str,
+    namespace: Option<&str>,
     dry_run: bool,
     write_config: F,
 ) -> DaloResult<SourceAddReport>
@@ -449,6 +467,7 @@ where
         paths,
         id,
         url,
+        namespace,
         dry_run,
         write_config,
         git::clone_repo,
@@ -459,6 +478,7 @@ fn add_team_source_with_config_writer_and_cloner<F, C>(
     paths: &StorePaths,
     id: &str,
     url: &str,
+    namespace: Option<&str>,
     dry_run: bool,
     write_config: F,
     clone_repo: C,
@@ -476,6 +496,7 @@ where
             reason: SOURCE_ID_REQUIREMENTS.to_owned(),
         });
     }
+    let namespace = validate_source_namespace(namespace)?;
     git::validate_remote_url(url)?;
 
     let mut config = store::read_config(paths)?;
@@ -498,6 +519,7 @@ where
         kind: SourceKind::Team,
         path: checkout.clone(),
         priority,
+        namespace,
         enabled: true,
         trusted: true,
         url: Some(url.to_owned()),
@@ -536,6 +558,22 @@ where
         dry_run: false,
         audits,
     })
+}
+
+/// Validate an optional source namespace before it is written to config or used
+/// in a materialized target path.
+pub fn validate_source_namespace(namespace: Option<&str>) -> DaloResult<Option<String>> {
+    let Some(namespace) = namespace else {
+        return Ok(None);
+    };
+    let namespace = namespace.trim();
+    if crate::inventory::is_valid_slot_name(namespace) {
+        Ok(Some(namespace.to_owned()))
+    } else {
+        Err(DaloError::InvalidArgument {
+            reason: SOURCE_NAMESPACE_REQUIREMENTS.to_owned(),
+        })
+    }
 }
 
 fn audit_source_checkout(
@@ -769,6 +807,46 @@ pub fn set_source_priority(
     }
 
     Ok(SourcePriorityReport {
+        source,
+        changed,
+        dry_run,
+    })
+}
+
+/// Set or clear the optional namespace applied to all skills from one source.
+pub fn set_source_namespace(
+    paths: &StorePaths,
+    id: &str,
+    namespace: Option<&str>,
+    dry_run: bool,
+) -> DaloResult<SourceNamespaceReport> {
+    let namespace = validate_source_namespace(namespace)?;
+    let mut config = store::read_config(paths)?;
+    let Some(source) = config.sources.iter_mut().find(|source| source.id == id) else {
+        return Err(DaloError::unknown_source(
+            id,
+            config
+                .sources
+                .iter()
+                .map(|candidate| candidate.id.clone())
+                .collect(),
+        ));
+    };
+    if let Some(team) = &source.declared_by {
+        return Err(DaloError::StateError {
+            reason: format!(
+                "source `{id}` is managed by `{team}`; edit `{}` in that team repository",
+                crate::team_manifest::TEAM_MANIFEST_FILE
+            ),
+        });
+    }
+    let changed = source.namespace != namespace;
+    source.namespace = namespace;
+    let source = source.clone();
+    if changed && !dry_run {
+        store::write_config(paths, &config)?;
+    }
+    Ok(SourceNamespaceReport {
         source,
         changed,
         dry_run,
@@ -1065,6 +1143,7 @@ mod tests {
             &paths,
             "../../evil",
             "https://example.invalid/repo.git",
+            None,
             false,
         )
         .expect_err("traversal id should be rejected");
@@ -1098,6 +1177,7 @@ mod tests {
             &paths,
             "company",
             "https://octo:token-value@example.invalid/repo.git",
+            None,
             false,
         )
         .expect_err("credential-bearing URL should be rejected");
@@ -1122,6 +1202,7 @@ mod tests {
             &paths,
             "company",
             &repo.to_string_lossy(),
+            None,
             false,
             |_, _| Err(DaloError::Io(std::io::Error::other("persist failed"))),
         )
@@ -1147,6 +1228,7 @@ mod tests {
             &paths,
             "company",
             "https://example.invalid/repo.git",
+            None,
             false,
             store::write_config,
             |_, checkout| {
@@ -1185,7 +1267,7 @@ mod tests {
         std::fs::write(checkout.join("PARTIAL"), "interrupted clone")
             .expect("legacy marker should be written");
 
-        let report = add_team_source(&paths, "company", &repo.to_string_lossy(), false)
+        let report = add_team_source(&paths, "company", &repo.to_string_lossy(), None, false)
             .expect("orphaned checkout should not block a retry");
 
         assert!(report.source.path.join(".git").is_dir());
@@ -1207,6 +1289,7 @@ mod tests {
             &paths,
             "company",
             "https://example.invalid/company.git",
+            None,
             false,
             store::write_config,
             |_, _| panic!("a preserved checkout must not be replaced"),
@@ -1278,6 +1361,7 @@ mod tests {
                 kind: SourceKind::Team,
                 path: source_path.clone(),
                 priority: 10,
+                namespace: None,
                 enabled: true,
                 trusted: true,
                 url: Some("https://example.invalid/company.git".to_owned()),
@@ -1317,6 +1401,7 @@ mod tests {
                 kind: SourceKind::Team,
                 path: PathBuf::from("/store/sources/company/checkout"),
                 priority: 10,
+                namespace: None,
                 enabled: true,
                 trusted: true,
                 url: Some("https://example.invalid/company.git".to_owned()),
@@ -1343,6 +1428,7 @@ mod tests {
             kind: SourceKind::Catalog,
             path: PathBuf::from("/missing/checkout"),
             priority: 11,
+            namespace: None,
             enabled: true,
             trusted: false,
             url: Some("https://user:secret@example.com/marketing.git".to_owned()),
@@ -1393,13 +1479,13 @@ mod tests {
         store::init_store(store_root.clone(), false).expect("init should succeed");
         let paths = StorePaths::new(store_root);
 
-        let report = add_team_source(&paths, "company", &repo.to_string_lossy(), false)
+        let report = add_team_source(&paths, "company", &repo.to_string_lossy(), None, false)
             .expect("add should succeed against a local repo");
 
         // The checkout exists and a second add of the same id is rejected as a
         // clean duplicate rather than tripping over a stale checkout.
         assert!(report.source.path.join(".git").is_dir());
-        let second = add_team_source(&paths, "company", &repo.to_string_lossy(), false)
+        let second = add_team_source(&paths, "company", &repo.to_string_lossy(), None, false)
             .expect_err("a second add of the same id should be a clean duplicate error");
         assert!(matches!(second, DaloError::SourceAlreadyExists { .. }));
     }
@@ -1431,5 +1517,18 @@ mod tests {
             .status()
             .expect("git should run");
         assert!(status.success(), "git {args:?} should succeed");
+    }
+    #[test]
+    fn source_namespace_should_use_portable_skill_name_rules() {
+        assert_eq!(
+            validate_source_namespace(Some("company-tools")).expect("valid namespace"),
+            Some("company-tools".to_owned())
+        );
+        assert_eq!(
+            validate_source_namespace(None).expect("missing namespace is allowed"),
+            None
+        );
+        assert!(validate_source_namespace(Some("Company Tools")).is_err());
+        assert!(validate_source_namespace(Some(".company")).is_err());
     }
 }

@@ -1900,6 +1900,7 @@ mod tests {
             kind,
             path: path.to_path_buf(),
             priority,
+            namespace: None,
             enabled: true,
             trusted: false,
             url: None,

@@ -119,6 +119,23 @@ pub struct ManifestCatalog {
     /// declaring team source.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub priority: Option<i32>,
+    /// Optional prefix applied to every materialized skill from this catalog.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub namespace: Option<String>,
+}
+
+/// Inputs for adding one pinned catalog declaration to a team manifest.
+pub struct AddTeamCatalogOptions<'a> {
+    /// Git commit, tag, or ref to pin.
+    pub version: &'a str,
+    /// Include/exclude filters.
+    pub skills: &'a [String],
+    /// Optional global resolver priority.
+    pub priority: Option<i32>,
+    /// Optional materialization prefix for this catalog's skills.
+    pub namespace: Option<&'a str>,
+    /// Preview without writing the manifest.
+    pub dry_run: bool,
 }
 
 /// Team-manifest management action.
@@ -375,10 +392,7 @@ pub fn add_team_catalog(
     repo: &Path,
     id: &str,
     url: &str,
-    version: &str,
-    skills: &[String],
-    priority: Option<i32>,
-    dry_run: bool,
+    options: AddTeamCatalogOptions<'_>,
 ) -> DaloResult<TeamManifestMutationReport> {
     if !source::is_valid_source_id(id) {
         return Err(DaloError::InvalidSourceId {
@@ -387,13 +401,14 @@ pub fn add_team_catalog(
         });
     }
     git::validate_remote_url(url)?;
-    git::validate_manifest_revision(version)?;
-    validate_filters(skills)?;
+    git::validate_manifest_revision(options.version)?;
+    validate_filters(options.skills)?;
+    let namespace = source::validate_source_namespace(options.namespace)?;
     mutate_team_manifest(
         repo,
         TeamManifestAction::CatalogAdded,
         Some(id),
-        dry_run,
+        options.dry_run,
         |manifest| {
             if manifest.catalogs.iter().any(|catalog| catalog.id == id) {
                 return Err(DaloError::SourceAlreadyExists {
@@ -403,9 +418,10 @@ pub fn add_team_catalog(
             manifest.catalogs.push(ManifestCatalog {
                 id: id.to_owned(),
                 url: url.to_owned(),
-                version: version.to_owned(),
-                skills: deduplicate_filters(skills),
-                priority,
+                version: options.version.to_owned(),
+                skills: deduplicate_filters(options.skills),
+                priority: options.priority,
+                namespace,
             });
             manifest
                 .catalogs
@@ -820,6 +836,7 @@ pub fn preview_team_manifests(paths: &StorePaths) -> DaloResult<UserConfig> {
             )?;
             let mut preview = existing;
             preview.priority = declaration.priority.unwrap_or(team.priority + 1);
+            preview.namespace = declaration.namespace.clone();
             preview.selection = selection;
             upsert_derived_source(&mut config, preview, team, declaration)?;
         }
@@ -1119,6 +1136,7 @@ fn validate_manifest(team_id: &str, path: &Path, manifest: &TeamManifest) -> Dal
             });
         }
         validate_filters(&catalog.skills)?;
+        source::validate_source_namespace(catalog.namespace.as_deref())?;
     }
     Ok(())
 }
@@ -1407,6 +1425,7 @@ fn reconcile_catalog(
             kind: SourceKind::Catalog,
             path: checkout,
             priority: declaration.priority.unwrap_or(team.priority + 1),
+            namespace: declaration.namespace.clone(),
             enabled: true,
             trusted: false,
             url: Some(location),
@@ -1803,6 +1822,7 @@ mod tests {
             kind: SourceKind::Team,
             path: PathBuf::from("/team"),
             priority: 10,
+            namespace: None,
             enabled: true,
             trusted: true,
             url: None,
@@ -1818,6 +1838,7 @@ mod tests {
             version: "main".to_owned(),
             skills: Vec::new(),
             priority: None,
+            namespace: None,
         };
         let legacy_id = legacy_derived_source_id(&team.id, &declaration.id);
         let source_id = derived_source_id(&team.id, &declaration.id);
@@ -1826,6 +1847,7 @@ mod tests {
             kind: SourceKind::Catalog,
             path: PathBuf::from("/catalog"),
             priority: 11,
+            namespace: None,
             enabled: true,
             trusted: false,
             url: Some(declaration.url.clone()),
@@ -1911,6 +1933,7 @@ mod tests {
                 version: "main".to_owned(),
                 skills: Vec::new(),
                 priority: None,
+                namespace: None,
             }],
             selection: None,
         };
@@ -1924,6 +1947,7 @@ mod tests {
             kind: SourceKind::Team,
             path,
             priority: 10,
+            namespace: None,
             enabled: true,
             trusted: true,
             url: None,
@@ -1940,6 +1964,7 @@ mod tests {
             kind: SourceKind::Catalog,
             path: PathBuf::from("/catalog"),
             priority: 11,
+            namespace: None,
             enabled: true,
             trusted: false,
             url: Some("https://example.invalid/existing.git".to_owned()),
@@ -1955,6 +1980,7 @@ mod tests {
             version: "main".to_owned(),
             skills: Vec::new(),
             priority: None,
+            namespace: None,
         };
         let config = UserConfig {
             version: crate::config::CONFIG_VERSION,

@@ -72,6 +72,9 @@ pub struct ResolvedSkill {
     pub source_ref: String,
     /// Slot name.
     pub slot_name: String,
+    /// Optional source namespace used to derive the materialized slot name.
+    #[serde(skip)]
+    pub source_namespace: Option<String>,
     /// Optional stable ID.
     pub id: Option<String>,
     /// Source ID.
@@ -372,7 +375,11 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
             candidates.push(Candidate {
                 skill: ResolvedSkill {
                     source_ref: skill.source_ref.clone(),
-                    slot_name: skill.slot_name.clone(),
+                    slot_name: materialized_slot_name(
+                        source.namespace.as_deref(),
+                        &skill.slot_name,
+                    ),
+                    source_namespace: source.namespace.clone(),
                     id: skill.id.clone(),
                     source_id: source.id.clone(),
                     source_kind: source.kind,
@@ -615,6 +622,15 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
         blocked_skills,
         diagnostics,
     }
+}
+
+/// Derive the portable target-directory name for a source skill.
+#[must_use]
+pub fn materialized_slot_name(namespace: Option<&str>, slot_name: &str) -> String {
+    namespace.map_or_else(
+        || slot_name.to_owned(),
+        |namespace| format!("{namespace}__{slot_name}"),
+    )
 }
 
 /// Remove skills whose audit failed and propagate the block through same-source
@@ -917,12 +933,14 @@ enum RequirementStatus {
 fn requirement_status(
     requirement: &str,
     required: &SkillRecord,
+    source_namespace: Option<&str>,
     active: &[ResolvedSkill],
     pending_refs: &BTreeSet<&str>,
 ) -> RequirementStatus {
+    let required_slot_name = materialized_slot_name(source_namespace, &required.slot_name);
     let winner = active
         .iter()
-        .find(|skill| skill.slot_name == required.slot_name);
+        .find(|skill| skill.slot_name == required_slot_name);
     match winner {
         // The exact required skill, or an equivalent one (same stable ID), is active.
         Some(skill) if skill.source_ref == required.source_ref => RequirementStatus::Satisfied,
@@ -985,9 +1003,13 @@ fn find_blocked(
                     },
                 ));
             };
-            if let RequirementStatus::Block(reason) =
-                requirement_status(requirement, required, active, pending_refs)
-            {
+            if let RequirementStatus::Block(reason) = requirement_status(
+                requirement,
+                required,
+                dependent.source_namespace.as_deref(),
+                active,
+                pending_refs,
+            ) {
                 return Some((
                     index,
                     BlockedSkill {
@@ -1214,6 +1236,55 @@ mod tests {
             resolution.active_skills[0].source_ref,
             "team-a:copy-editing"
         );
+    }
+
+    #[test]
+    fn resolve_should_keep_same_named_skills_from_namespaced_sources() {
+        let mut company = source("company", SourceKind::Team, 10);
+        company.namespace = Some("company".to_owned());
+        let mut acme = source("acme", SourceKind::Team, 20);
+        acme.namespace = Some("acme".to_owned());
+
+        let resolution = resolve_with(
+            vec![company, acme],
+            vec![
+                inventory("company", vec![skill("company", "review")]),
+                inventory("acme", vec![skill("acme", "review")]),
+            ],
+            vec![approval("source", "company"), approval("source", "acme")],
+        );
+
+        assert_eq!(
+            active_slots(&resolution),
+            vec!["acme__review", "company__review"]
+        );
+        assert!(resolution.unlinked_skills.is_empty());
+        assert_eq!(resolution.active_skills[0].source_ref, "acme:review");
+        assert_eq!(resolution.active_skills[1].source_ref, "company:review");
+    }
+
+    #[test]
+    fn resolve_should_keep_same_source_requirements_inside_a_namespace() {
+        let mut company = source("company", SourceKind::Team, 10);
+        company.namespace = Some("company".to_owned());
+
+        let resolution = resolve_with(
+            vec![company],
+            vec![inventory(
+                "company",
+                vec![
+                    skill_req("company", "review", &["base"]),
+                    skill("company", "base"),
+                ],
+            )],
+            vec![approval("source", "company")],
+        );
+
+        assert_eq!(
+            active_slots(&resolution),
+            vec!["company__base", "company__review"]
+        );
+        assert!(resolution.blocked_skills.is_empty());
     }
 
     #[test]
@@ -1537,6 +1608,7 @@ mod tests {
             kind,
             path: PathBuf::from(format!("/tmp/{id}")),
             priority,
+            namespace: None,
             enabled: true,
             trusted: false,
             url: None,

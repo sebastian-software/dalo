@@ -95,6 +95,7 @@ impl UserConfig {
                 kind: SourceKind::Local,
                 path: local_path,
                 priority: 0,
+                namespace: None,
                 enabled: true,
                 trusted: true,
                 url: None,

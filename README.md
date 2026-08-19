@@ -121,8 +121,17 @@ dalo sync
 ```
 
 When multiple sources offer the same skill name, source priority decides which
-one is linked. The other candidates remain visible as shadowed; they are not
-silently discarded.
+one is linked by default. To keep intentional overlaps side by side, set an
+opt-in namespace on a source; its skills are installed as `namespace__skill`
+without changing the source checkout or its approval identity:
+
+```sh
+dalo source add company git@github.com:acme/company-skills.git --namespace company
+dalo source namespace public acme
+```
+
+Without a namespace, the other candidates remain visible as shadowed; they are
+not silently discarded.
 
 Install safe recurring synchronization with the native user scheduler:
 

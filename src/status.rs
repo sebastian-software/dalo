@@ -30,8 +30,8 @@ use crate::plan::InstallationPlan;
 use crate::plugin::{PluginInventoryWarning, PluginResolution};
 use crate::resolver::{self, Resolution};
 use crate::source::{
-    SourceAddReport, SourceConfig, SourceKind, SourceListReport, SourcePriorityReport,
-    SourceProvenance, SourceRemoveReport,
+    SourceAddReport, SourceConfig, SourceKind, SourceListReport, SourceNamespaceReport,
+    SourcePriorityReport, SourceProvenance, SourceRemoveReport,
 };
 use crate::store::{self, ApprovalsFile, InitReport, StorePaths};
 use crate::target::{TargetDetectReport, TargetLinkReport, TargetUnlinkReport};
@@ -160,6 +160,8 @@ pub struct SourceStatus {
     pub path: PathBuf,
     /// Priority.
     pub priority: i32,
+    /// Optional prefix applied to every materialized skill from this source.
+    pub namespace: Option<String>,
     /// Whether the source is enabled.
     pub enabled: bool,
     /// Whether the source path exists.
@@ -226,6 +228,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
                 kind: source.kind,
                 path: source.path.clone(),
                 priority: source.priority,
+                namespace: source.namespace.clone(),
                 enabled: true,
                 exists: source.path.exists(),
                 skill_count: scan.inventory.as_ref().map_or(0, |inv| inv.skills.len()),
@@ -240,6 +243,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
                 kind: source.kind,
                 path: source.path.clone(),
                 priority: source.priority,
+                namespace: source.namespace.clone(),
                 enabled: false,
                 exists: source.path.exists(),
                 skill_count: 0,
@@ -869,8 +873,12 @@ pub fn print_status_report(report: &StatusReport) {
                 .error
                 .as_ref()
                 .map_or(String::new(), |error| format!(" ({error})"));
+            let namespace = source
+                .namespace
+                .as_deref()
+                .map_or(String::new(), |namespace| format!(" namespace={namespace}"));
             println!(
-                "  {:<12} {:<5} priority={:<4} skills={:<3} agents={:<3} plugins={:<3} {}{}",
+                "  {:<12} {:<5} priority={:<4} skills={:<3} agents={:<3} plugins={:<3} {}{}{}",
                 source.id,
                 source.kind,
                 source.priority,
@@ -878,7 +886,8 @@ pub fn print_status_report(report: &StatusReport) {
                 source.agent_count,
                 source.plugin_count,
                 state,
-                error
+                error,
+                namespace,
             );
             print_source_provenance(&source.provenance, "    ");
         }
@@ -1615,14 +1624,19 @@ pub fn print_source_list_report(report: &SourceListReport) {
             .declared_by
             .as_ref()
             .map_or(String::new(), |team| format!(" managed-by={team}"));
+        let namespace = source
+            .namespace
+            .as_deref()
+            .map_or(String::new(), |namespace| format!(" namespace={namespace}"));
         println!(
-            "{:<12} {:<7} priority={:<4} enabled={} {}{}",
+            "{:<12} {:<7} priority={:<4} enabled={} {}{}{}",
             source.id,
             source.kind,
             source.priority,
             source.enabled,
             source.path.display(),
-            managed
+            managed,
+            namespace,
         );
         print_source_provenance(&entry.provenance, "  ");
     }
@@ -1664,6 +1678,28 @@ pub fn print_source_priority_report(report: &SourcePriorityReport, store_root: &
     );
     if report.changed && !report.dry_run {
         print_sync_next_step(store_root, "to update linked targets");
+    }
+}
+
+/// Print a human-readable source namespace report.
+pub fn print_source_namespace_report(report: &SourceNamespaceReport, store_root: &Path) {
+    let verb = if !report.changed {
+        "unchanged"
+    } else if report.dry_run {
+        "would update"
+    } else {
+        "updated"
+    };
+    match &report.source.namespace {
+        Some(namespace) => println!(
+            "source `{}` namespace {verb} to `{namespace}` (run: {})",
+            report.source.id,
+            store::dalo_command(
+                store_root,
+                &format!("source namespace {} --clear", report.source.id)
+            )
+        ),
+        None => println!("source `{}` namespace {verb}: cleared", report.source.id),
     }
 }
 
@@ -2305,6 +2341,7 @@ mod tests {
             kind: SourceKind::Local,
             path: PathBuf::from("/tmp/local"),
             priority: 0,
+            namespace: None,
             enabled: true,
             exists: true,
             skill_count: 2,

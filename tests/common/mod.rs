@@ -39,6 +39,7 @@ pub fn add_source(store: &Path, source: &str, repo: &Path) {
         &StorePaths::new(store.to_path_buf()),
         source,
         repo.to_str().expect("repo path should be utf8"),
+        None,
         false,
     )
     .expect("source should be added");
