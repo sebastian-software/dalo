@@ -927,6 +927,7 @@ mod tests {
         ResolvedSkill {
             source_ref: source_ref.to_owned(),
             slot_name: slot_name.to_owned(),
+            source_namespace: None,
             id: None,
             source_id: "team".to_owned(),
             source_kind: SourceKind::Team,

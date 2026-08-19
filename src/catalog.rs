@@ -172,6 +172,7 @@ pub fn add_catalog_source(
     paths: &StorePaths,
     id: &str,
     url: &str,
+    namespace: Option<&str>,
     dry_run: bool,
 ) -> DaloResult<CatalogAddOutcome> {
     if !source::is_valid_source_id(id) {
@@ -180,6 +181,7 @@ pub fn add_catalog_source(
             reason: source::SOURCE_ID_REQUIREMENTS.to_owned(),
         });
     }
+    let namespace = source::validate_source_namespace(namespace)?;
     git::validate_remote_url(url)?;
 
     let mut config = store::read_config(paths)?;
@@ -203,6 +205,7 @@ pub fn add_catalog_source(
         kind: SourceKind::Catalog,
         path: checkout.clone(),
         priority,
+        namespace,
         // Catalog sources start with an empty selection: their skills are offers,
         // not wholesale dependencies, so nothing materializes until `source select`.
         enabled: true,

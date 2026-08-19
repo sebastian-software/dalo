@@ -723,6 +723,8 @@ pub enum SourceSubcommand {
     List,
     /// Change a source priority.
     Priority(SourcePriorityArgs),
+    /// Set or clear the prefix used when this source's skills are materialized.
+    Namespace(SourceNamespaceArgs),
     /// Inspect a catalog source's available skills.
     Inspect(SourceInspectArgs),
     /// Select or unselect catalog skills.
@@ -750,6 +752,10 @@ pub struct SourceAddArgs {
 
     /// Git URL or local path of the team source.
     pub location: String,
+
+    /// Optional prefix used to install every skill from this source.
+    #[arg(long)]
+    pub namespace: Option<String>,
 }
 
 /// Arguments for `source add-catalog`.
@@ -760,6 +766,10 @@ pub struct SourceAddCatalogArgs {
 
     /// Git URL or local path of the catalog source.
     pub location: String,
+
+    /// Optional prefix used to install every selected skill from this source.
+    #[arg(long)]
+    pub namespace: Option<String>,
 }
 
 /// Arguments for `source priority`.
@@ -771,6 +781,21 @@ pub struct SourcePriorityArgs {
     /// New priority. Lower numbers win.
     #[arg(value_parser = parse_source_priority)]
     pub priority: i32,
+}
+
+/// Arguments for `source namespace`.
+#[derive(Debug, Args)]
+pub struct SourceNamespaceArgs {
+    /// Source ID.
+    pub id: String,
+
+    /// Prefix to apply to every materialized skill from the source.
+    #[arg(required_unless_present = "clear")]
+    pub namespace: Option<String>,
+
+    /// Remove the configured prefix.
+    #[arg(long, conflicts_with = "namespace")]
+    pub clear: bool,
 }
 
 fn parse_source_priority(value: &str) -> Result<i32, String> {
@@ -903,6 +928,10 @@ pub struct TeamCatalogAddArgs {
     /// Optional global resolver priority.
     #[arg(long)]
     pub priority: Option<i32>,
+
+    /// Optional prefix used to install every selected skill from this catalog.
+    #[arg(long)]
+    pub namespace: Option<String>,
 }
 
 /// Arguments for `team catalog skills`.
@@ -3132,10 +3161,13 @@ fn run_team(options: &GlobalOptions, command: TeamCommand) -> DaloResult<()> {
                     &repo,
                     &args.id,
                     &args.url,
-                    &args.version,
-                    &args.skills,
-                    args.priority,
-                    options.dry_run,
+                    team_manifest::AddTeamCatalogOptions {
+                        version: &args.version,
+                        skills: &args.skills,
+                        priority: args.priority,
+                        namespace: args.namespace.as_deref(),
+                        dry_run: options.dry_run,
+                    },
                 )?,
                 TeamCatalogSubcommand::Skills(args) => team_manifest::set_team_catalog_skills(
                     &repo,
@@ -3182,7 +3214,13 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             };
             let location =
                 source::resolve_source_location(&args.location, &std::env::current_dir()?);
-            let report = source::add_team_source(&paths, &args.id, &location, options.dry_run)?;
+            let report = source::add_team_source(
+                &paths,
+                &args.id,
+                &location,
+                args.namespace.as_deref(),
+                options.dry_run,
+            )?;
             if options.json {
                 print_json(&report)?;
             } else {
@@ -3199,8 +3237,13 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             };
             let location =
                 source::resolve_source_location(&args.location, &std::env::current_dir()?);
-            let outcome =
-                catalog::add_catalog_source(&paths, &args.id, &location, options.dry_run)?;
+            let outcome = catalog::add_catalog_source(
+                &paths,
+                &args.id,
+                &location,
+                args.namespace.as_deref(),
+                options.dry_run,
+            )?;
             if options.json {
                 print_json(&outcome.source)?;
             } else {
@@ -3314,6 +3357,23 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
                 print_json(&report)?;
             } else {
                 status::print_source_priority_report(&report, &options.store);
+            }
+            Ok(())
+        }
+        SourceSubcommand::Namespace(args) => {
+            ensure_initialized(&paths)?;
+            let _lock = if options.dry_run {
+                None
+            } else {
+                Some(store::StoreLock::acquire(&paths)?)
+            };
+            let namespace = (!args.clear).then_some(args.namespace.as_deref()).flatten();
+            let report =
+                source::set_source_namespace(&paths, &args.id, namespace, options.dry_run)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                status::print_source_namespace_report(&report, &options.store);
             }
             Ok(())
         }

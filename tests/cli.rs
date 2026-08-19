@@ -11718,3 +11718,80 @@ requirement = "recommended"
     assert!(!codex_package.exists());
     assert!(shared_target.join("core").exists());
 }
+
+#[test]
+fn source_namespace_should_materialize_same_named_skills_side_by_side_and_clear_safely() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = temp.path().join("store");
+    let target = temp.path().join("skills");
+    let company_repo = temp.path().join("company-repo");
+    let acme_repo = temp.path().join("acme-repo");
+    create_git_skill_repo_with_skill(
+        &company_repo,
+        "review",
+        "---\nname: review\n---\n# Company review\n",
+    );
+    create_git_skill_repo_with_skill(
+        &acme_repo,
+        "review",
+        "---\nname: review\n---\n# Acme review\n",
+    );
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "link", "generic"])
+        .arg(&target)
+        .assert()
+        .success();
+    for (id, namespace, repository) in [
+        ("company", "company", &company_repo),
+        ("acme", "acme", &acme_repo),
+    ] {
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .args(["source", "add", id])
+            .arg(repository)
+            .args(["--namespace", namespace])
+            .assert()
+            .success();
+    }
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    for name in ["company__review", "acme__review"] {
+        assert!(
+            std::fs::symlink_metadata(target.join(name))
+                .expect("materialized source skill")
+                .file_type()
+                .is_symlink()
+        );
+    }
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "namespace", "acme", "--clear"])
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    assert!(target.join("company__review").is_symlink());
+    assert!(target.join("review").is_symlink());
+    assert!(!target.join("acme__review").exists());
+}

@@ -257,7 +257,7 @@ dalo --json target unlink generic
 
 JSON output shape: `TargetUnlinkReport`.
 
-### `dalo source add <id> <git-url-or-path>`
+### `dalo source add <id> <git-url-or-path> [--namespace <prefix>]`
 
 Add a trusted team source, clone it into `sources/<id>/checkout`, configure it
 with `update_policy = "track"`, and run a deterministic security preflight for
@@ -270,12 +270,13 @@ Examples:
 
 ```sh
 dalo source add platform git@github.com:example/platform-skills.git
+dalo source add company git@github.com:example/company-skills.git --namespace company
 dalo --dry-run source add team https://github.com/example/team-skills.git
 ```
 
 JSON output shape: `SourceAddReport`.
 
-### `dalo source add-catalog <id> <git-url-or-path>`
+### `dalo source add-catalog <id> <git-url-or-path> [--namespace <prefix>]`
 
 Add an untrusted catalog source, clone it into `sources/<id>/checkout`, and
 configure it with `update_policy = "pin"`. Catalog skills are offers; nothing
@@ -289,6 +290,7 @@ Examples:
 
 ```sh
 dalo source add-catalog public https://github.com/example/skill-catalog.git
+dalo source add-catalog editorial https://github.com/example/editorial-skills.git --namespace editorial
 dalo source inspect public
 dalo source select public review-helper
 ```
@@ -323,6 +325,24 @@ dalo --dry-run source priority platform 20
 ```
 
 JSON output shape: `SourcePriorityReport`.
+
+### `dalo source namespace <id> [<prefix>] [--clear]`
+
+Set an optional namespace for every skill from a configured source.
+Dalo installs namespaced skills as `<prefix>__<skill>` and resolves them under
+that name, so same-named skills from distinct namespaced sources can coexist.
+The source `SKILL.md` files and source-qualified approval identities remain
+unchanged. Prefixes use the same portable lowercase token rules as skill names.
+Use `--clear` to restore the source's original install names.
+
+Examples:
+
+```sh
+dalo source namespace company company
+dalo source namespace company --clear
+```
+
+JSON output shape: `SourceNamespaceReport`.
 
 ### `dalo source inspect <id>`
 
@@ -1112,6 +1132,7 @@ Fields:
 | `sources[].kind` | `local`, `team`, or `catalog`. |
 | `sources[].path` | Local filesystem path for the source root or checkout. |
 | `sources[].priority` | Lower numbers win. |
+| `sources[].namespace` | Optional prefix applied to every materialized skill from the source. A skill named `review` becomes `prefix__review`; the source content and source-qualified approval identity stay unchanged. |
 | `sources[].enabled` | Disabled sources are skipped by resolution. |
 | `sources[].trusted` | Trusted sources are approved automatically. User-added catalog sources always start untrusted. |
 | `sources[].url` | Git URL for team/catalog sources. URLs with embedded credentials are rejected; use SSH or a credential helper. |
@@ -1148,6 +1169,7 @@ url = "https://github.com/coreyhaines31/marketingskills.git"
 version = "0123456789abcdef0123456789abcdef01234567"
 skills = ["+copywriting", "+launch", "+seo-audit", "-seo-audit"]
 priority = 11
+namespace = "marketing"
 ```
 
 Catalog fields:
@@ -1159,6 +1181,7 @@ Catalog fields:
 | `version` | Required Git commit, tag, or ref. `ref` is accepted as an alias. Immutable commits are recommended. |
 | `skills` | Include/exclude filters. Omitted or empty means all. |
 | `priority` | Optional global resolver priority; defaults to the team source priority plus one. |
+| `namespace` | Optional prefix applied to every materialized skill from this catalog. |
 
 Filter evaluation is set-based and independent of list order:
 

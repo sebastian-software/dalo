@@ -2452,6 +2452,7 @@ mod tests {
             active_skills: vec![ResolvedSkill {
                 source_ref: format!("local:{slot_name}"),
                 slot_name: slot_name.to_owned(),
+                source_namespace: None,
                 id: None,
                 source_id: "local".to_owned(),
                 source_kind: SourceKind::Local,
@@ -2474,6 +2475,7 @@ mod tests {
                 ResolvedSkill {
                     source_ref: "company:alpha".to_owned(),
                     slot_name: "alpha".to_owned(),
+                    source_namespace: None,
                     id: None,
                     source_id: "company".to_owned(),
                     source_kind: SourceKind::Team,
@@ -2486,6 +2488,7 @@ mod tests {
                 ResolvedSkill {
                     source_ref: "company:beta".to_owned(),
                     slot_name: "beta".to_owned(),
+                    source_namespace: None,
                     id: None,
                     source_id: "company".to_owned(),
                     source_kind: SourceKind::Team,
