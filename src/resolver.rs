@@ -681,7 +681,7 @@ pub fn degrade_audit_failures(
                         .iter()
                         .any(|blocked| {
                             blocked.source_id == dependent.source_id
-                                && requirement_matches_resolved(requirement, blocked)
+                                && requirement_matches_resolved(requirement, dependent, blocked)
                         })
                         .then(|| (index, requirement.clone()))
                 })
@@ -719,10 +719,15 @@ pub fn degrade_audit_failures(
     });
 }
 
-fn requirement_matches_resolved(requirement: &str, skill: &ResolvedSkill) -> bool {
-    skill.slot_name == requirement
-        || skill.source_ref == requirement
-        || skill.id.as_deref() == Some(requirement)
+fn requirement_matches_resolved(
+    requirement: &str,
+    dependent: &ResolvedSkill,
+    candidate: &ResolvedSkill,
+) -> bool {
+    candidate.slot_name
+        == materialized_slot_name(dependent.source_namespace.as_deref(), requirement)
+        || candidate.source_ref == requirement
+        || candidate.id.as_deref() == Some(requirement)
 }
 
 fn is_approved(candidate: &Candidate, approvals: &[ApprovalRecord]) -> bool {
@@ -1153,6 +1158,39 @@ mod tests {
             diagnostic.code == ResolutionDiagnosticCode::AuditFailed
                 && diagnostic.source_ref.as_deref() == Some("local:beta")
         }));
+    }
+
+    #[test]
+    fn audit_failure_should_remove_namespaced_dependents() {
+        let mut company = source("company", SourceKind::Team, 10);
+        company.namespace = Some("company".to_owned());
+        let mut resolution = resolve_with(
+            vec![company],
+            vec![inventory(
+                "company",
+                vec![
+                    skill_req("company", "alpha", &["beta"]),
+                    skill("company", "beta"),
+                ],
+            )],
+            vec![approval("source", "company")],
+        );
+
+        degrade_audit_failures(
+            &mut resolution,
+            &[crate::audit::ActiveAuditFailure {
+                source_ref: "company:beta".to_owned(),
+                source_id: "company".to_owned(),
+                reason: "I/O error: permission denied".to_owned(),
+            }],
+        );
+
+        assert!(resolution.active_skills.is_empty());
+        assert_eq!(resolution.blocked_skills.len(), 1);
+        assert_eq!(
+            resolution.blocked_skills[0].skill.source_ref,
+            "company:alpha"
+        );
     }
 
     #[test]
