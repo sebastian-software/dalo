@@ -18,6 +18,11 @@ use crate::plugin::{
 use crate::store::ApprovalRecord;
 
 const SKILL_FILE: &str = "SKILL.md";
+/// Conservative maximum for a portable materialized skill slot.
+///
+/// A namespace and a source slot may be joined with `__`, so keeping both below
+/// this bound leaves room under common filesystem component limits.
+pub const MAX_SLOT_NAME_LENGTH: usize = 120;
 const DELIVERY_FILE: &str = "DELIVERY.toml";
 const MAX_FRONTMATTER_BYTES: usize = 64 * 1024;
 const MAX_SKILL_METADATA_BYTES: usize = MAX_FRONTMATTER_BYTES + 16;
@@ -1249,6 +1254,7 @@ pub(crate) fn is_valid_slot_name(value: &str) -> bool {
     // ASCII tokens only, no hidden/traversal segments, no trailing dots, and no
     // Windows device basenames.
     if value.is_empty()
+        || value.len() > MAX_SLOT_NAME_LENGTH
         || value == "."
         || value == ".."
         || value.starts_with('.')
@@ -2180,6 +2186,11 @@ required = true
         for name in invalid_names {
             assert!(!is_valid_slot_name(name), "{name} should be invalid");
         }
+    }
+
+    #[test]
+    fn is_valid_slot_name_should_reject_values_that_exceed_the_portable_bound() {
+        assert!(!is_valid_slot_name(&"a".repeat(MAX_SLOT_NAME_LENGTH + 1)));
     }
 
     #[test]

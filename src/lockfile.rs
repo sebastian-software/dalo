@@ -192,6 +192,8 @@ pub enum LockDriftCode {
     PendingApprovalAdded,
     /// Provider mapping, manifest provenance, or artifact fingerprint changed.
     SkillDeliveryChanged,
+    /// A skill's materialized target slot changed without changing its source identity.
+    SkillMaterializationChanged,
     /// A selected plugin appeared in the live canonical graph.
     PluginAdded,
     /// A previously selected plugin left the live canonical graph.
@@ -605,6 +607,32 @@ fn compare_skill_refs(
             message: format!("{label} `{source_ref}` is not present in the lock"),
         });
     }
+
+    let previous_by_ref = previous
+        .iter()
+        .map(|skill| (skill.source_ref.as_str(), skill))
+        .collect::<BTreeMap<_, _>>();
+    let current_by_ref = current
+        .iter()
+        .map(|skill| (skill.source_ref.as_str(), skill))
+        .collect::<BTreeMap<_, _>>();
+    for source_ref in previous_by_ref
+        .keys()
+        .filter(|source_ref| current_by_ref.contains_key(**source_ref))
+    {
+        let previous_skill = previous_by_ref[source_ref];
+        let current_skill = current_by_ref[source_ref];
+        if previous_skill.slot_name != current_skill.slot_name {
+            drift.push(LockDrift {
+                code: LockDriftCode::SkillMaterializationChanged,
+                subject: (*source_ref).to_owned(),
+                message: format!(
+                    "skill `{source_ref}` materializes as `{}` instead of `{}`",
+                    current_skill.slot_name, previous_skill.slot_name
+                ),
+            });
+        }
+    }
 }
 
 fn unlinked_reason_name(reason: UnlinkedReason) -> &'static str {
@@ -625,6 +653,7 @@ fn drift_code_name(code: LockDriftCode) -> &'static str {
         LockDriftCode::PendingApprovalRemoved => "pending_approval_removed",
         LockDriftCode::PendingApprovalAdded => "pending_approval_added",
         LockDriftCode::SkillDeliveryChanged => "skill_delivery_changed",
+        LockDriftCode::SkillMaterializationChanged => "skill_materialization_changed",
         LockDriftCode::PluginAdded => "plugin_added",
         LockDriftCode::PluginRemoved => "plugin_removed",
         LockDriftCode::PluginChanged => "plugin_changed",
@@ -885,6 +914,27 @@ mod tests {
                 .any(|entry| entry.code == LockDriftCode::UnlinkedRemoved
                     && entry.subject == "company:review")
         );
+    }
+
+    #[test]
+    fn compare_user_lock_should_report_materialization_change_for_same_source_skill() {
+        let previous = UserLock {
+            active_skills: vec![locked_skill("company:review")],
+            ..UserLock::empty()
+        };
+        let mut renamed = locked_skill("company:review");
+        renamed.slot_name = "company__review".to_owned();
+        let current = UserLock {
+            active_skills: vec![renamed],
+            ..UserLock::empty()
+        };
+
+        let drift = compare_user_lock(&previous, &current);
+
+        assert!(drift.iter().any(|entry| {
+            entry.code == LockDriftCode::SkillMaterializationChanged
+                && entry.subject == "company:review"
+        }));
     }
 
     #[test]
