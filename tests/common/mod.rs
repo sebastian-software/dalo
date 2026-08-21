@@ -6,7 +6,8 @@ use dalo::config::UserConfig;
 use dalo::lockfile::UserLock;
 use dalo::store::{self, ApprovalRecord, StorePaths};
 use dalo::{source, target};
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
+use std::io::Read;
 use std::ops::{Deref, DerefMut};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -52,6 +53,11 @@ pub struct TestEnvironment {
 
 impl TestEnvironment {
     fn create() -> Self {
+        let search_path = std::env::var_os("PATH").unwrap_or_default();
+        Self::create_with_git_search_path(&search_path)
+    }
+
+    fn create_with_git_search_path(git_search_path: &OsStr) -> Self {
         let root = tempfile::Builder::new()
             .prefix("dalo-test-env-")
             .tempdir()
@@ -74,9 +80,15 @@ impl TestEnvironment {
             std::fs::create_dir_all(directory)
                 .expect("test environment directory should be created");
         }
-        let git = executable_from_path("git");
-        std::os::unix::fs::symlink(git, path.join("git"))
-            .expect("controlled git fixture should be linked");
+        let programs = [
+            ("bash", executable_from_path("bash")),
+            ("sh", executable_from_path("sh")),
+        ];
+        for (name, program) in programs {
+            std::os::unix::fs::symlink(program, path.join(name))
+                .expect("controlled test program should be linked");
+        }
+        link_working_git(git_search_path, &path);
         Self {
             _root: root,
             home,
@@ -110,16 +122,63 @@ impl TestEnvironment {
 }
 
 fn executable_from_path(program: &str) -> PathBuf {
-    std::env::var_os("PATH")
-        .into_iter()
-        .flat_map(|path| std::env::split_paths(&path).collect::<Vec<_>>())
+    let search_path = std::env::var_os("PATH").unwrap_or_default();
+    std::env::split_paths(&search_path)
         .map(|directory| directory.join(program))
         .find(|candidate| candidate.is_file())
         .unwrap_or_else(|| panic!("{program} should be available for test fixtures"))
 }
 
+fn link_working_git(search_path: &OsStr, controlled_path: &Path) {
+    let link = controlled_path.join("git");
+    for candidate in std::env::split_paths(search_path)
+        .map(|directory| directory.join("git"))
+        .filter(|candidate| candidate.is_file() && !uses_path_selected_interpreter(candidate))
+    {
+        std::os::unix::fs::symlink(&candidate, &link)
+            .expect("controlled git fixture should be linked");
+        let works = std::process::Command::new(&link)
+            .arg("--version")
+            .env_clear()
+            .env("PATH", controlled_path)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success());
+        if works {
+            return;
+        }
+        std::fs::remove_file(&link).expect("unusable git fixture should be removed");
+    }
+    panic!("a git executable that works with the controlled PATH should be available");
+}
+
+fn uses_path_selected_interpreter(candidate: &Path) -> bool {
+    let mut prefix = [0; 128];
+    std::fs::File::open(candidate)
+        .and_then(|mut file| file.read(&mut prefix))
+        .is_ok_and(|read| {
+            let contents = &prefix[..read];
+            let shebang = contents
+                .split(|byte| *byte == b'\n')
+                .next()
+                .and_then(|line| line.strip_prefix(b"#!"))
+                .map(|line| line.trim_ascii());
+            shebang.is_some_and(|interpreter| interpreter.starts_with(b"/usr/bin/env"))
+        })
+}
+
 pub fn dalo_command() -> DaloCommand {
     let environment = TestEnvironment::create();
+    dalo_command_with_environment(environment)
+}
+
+pub fn dalo_command_with_git_search_path(git_search_path: &OsStr) -> DaloCommand {
+    let environment = TestEnvironment::create_with_git_search_path(git_search_path);
+    dalo_command_with_environment(environment)
+}
+
+fn dalo_command_with_environment(environment: TestEnvironment) -> DaloCommand {
     let mut command = Command::cargo_bin("dalo").expect("binary should build");
     command
         .env_remove("DALO_STORE")

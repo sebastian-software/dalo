@@ -11,10 +11,11 @@ use common::{
     add_source, approve_source, create_git_catalog_repo,
     create_git_catalog_repo_with_duplicate_slots, create_git_skill_repo,
     create_git_skill_repo_with_required_pair, create_git_skill_repo_with_skill,
-    create_unmanaged_skill, create_unmanaged_skill_with_body, dalo_command, git_command_succeeds,
-    git_rev_parse_logger, read_source_lock, read_user_lock, remove_source_update_policy, run_git,
-    set_source_untrusted, setup_store_with_skill_and_target, setup_store_with_target,
-    write_local_only_config, write_source_lock,
+    create_unmanaged_skill, create_unmanaged_skill_with_body, dalo_command,
+    dalo_command_with_git_search_path, git_command_succeeds, git_rev_parse_logger,
+    read_source_lock, read_user_lock, remove_source_update_policy, run_git, set_source_untrusted,
+    setup_store_with_skill_and_target, setup_store_with_target, write_local_only_config,
+    write_source_lock,
 };
 
 #[test]
@@ -34,11 +35,19 @@ fn dalo_command_should_isolate_provider_environment_per_invocation() {
     assert!(first_environment.codex_home.is_dir());
     assert!(first_environment.claude_config_dir.is_dir());
     assert!(first_environment.opencode_config_dir.is_dir());
-    let path_entries = std::fs::read_dir(&first_environment.path)
+    let mut path_entries = std::fs::read_dir(&first_environment.path)
         .expect("controlled PATH should be readable")
         .map(|entry| entry.expect("PATH entry should be readable").file_name())
         .collect::<Vec<_>>();
-    assert_eq!(path_entries, [std::ffi::OsString::from("git")]);
+    path_entries.sort();
+    assert_eq!(
+        path_entries,
+        [
+            std::ffi::OsString::from("bash"),
+            std::ffi::OsString::from("git"),
+            std::ffi::OsString::from("sh"),
+        ]
+    );
 }
 
 #[test]
@@ -3968,11 +3977,19 @@ fn sync_json_should_materialize_prebuilt_provider_artifacts_and_record_provenanc
         assert!(!path.starts_with(temp_dir.path()));
     }
     assert_eq!(
-        std::fs::read_dir(controlled_path)
-            .expect("controlled PATH should be readable")
-            .map(|entry| entry.expect("PATH entry should be readable").file_name())
-            .collect::<Vec<_>>(),
-        [std::ffi::OsString::from("git")],
+        {
+            let mut entries = std::fs::read_dir(controlled_path)
+                .expect("controlled PATH should be readable")
+                .map(|entry| entry.expect("PATH entry should be readable").file_name())
+                .collect::<Vec<_>>();
+            entries.sort();
+            entries
+        },
+        [
+            std::ffi::OsString::from("bash"),
+            std::ffi::OsString::from("git"),
+            std::ffi::OsString::from("sh"),
+        ],
         "sync must not discover a provider executable outside the controlled PATH"
     );
     let report: serde_json::Value =
@@ -6448,6 +6465,51 @@ fn source_add_should_clone_team_source_into_store() {
         .stdout(predicate::str::contains("result: clean"));
 
     assert!(store.join("sources/company/checkout/.git").is_dir());
+}
+
+#[test]
+fn source_add_should_skip_an_env_shebang_git_wrapper_for_the_controlled_path() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let repo = temp_dir.path().join("team-repo");
+    let wrapper_bin = temp_dir.path().join("wrapper-bin");
+    let wrapper_log = temp_dir.path().join("git-wrapper.log");
+    std::fs::create_dir_all(&wrapper_bin).expect("wrapper bin should be created");
+    let wrapper = wrapper_bin.join("git");
+    std::fs::write(
+        &wrapper,
+        "#!/usr/bin/env bash\nprintf 'wrapper invoked\\n' > \"$DALO_GIT_WRAPPER_LOG\"\nexit 23\n",
+    )
+    .expect("env-shebang wrapper should be written");
+    std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755))
+        .expect("env-shebang wrapper should be executable");
+    let inherited_path = std::env::var_os("PATH").unwrap_or_default();
+    let git_search_path = std::env::join_paths(
+        std::iter::once(wrapper_bin).chain(std::env::split_paths(&inherited_path)),
+    )
+    .expect("git search PATH should be valid");
+    create_git_skill_repo(&repo);
+
+    dalo_command_with_git_search_path(&git_search_path)
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    dalo_command_with_git_search_path(&git_search_path)
+        .env("DALO_GIT_WRAPPER_LOG", &wrapper_log)
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "company"])
+        .arg(&repo)
+        .assert()
+        .success();
+
+    assert!(store.join("sources/company/checkout/.git").is_dir());
+    assert!(
+        !wrapper_log.exists(),
+        "the env-shebang wrapper must not be selected for the controlled PATH"
+    );
 }
 
 #[test]
