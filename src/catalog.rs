@@ -1651,7 +1651,7 @@ fn relative_path(root: &Path, path: &Path) -> String {
         .into_owned()
 }
 
-/// Stream a skill directory's files into a stable content fingerprint.
+/// Stream every entry in a skill directory into a stable content fingerprint.
 pub fn hash_directory(skill_dir: &Path) -> DaloResult<String> {
     hash_directory_with_options(skill_dir, false)
 }
@@ -1671,24 +1671,29 @@ fn hash_directory_with_options(
     skill_dir: &Path,
     exclude_root_git_metadata: bool,
 ) -> DaloResult<String> {
-    let mut files = Vec::new();
-    collect_files(skill_dir, skill_dir, exclude_root_git_metadata, &mut files)?;
-    files.sort();
+    let mut entries = Vec::new();
+    collect_fingerprint_entries(
+        skill_dir,
+        skill_dir,
+        exclude_root_git_metadata,
+        &mut entries,
+    )?;
+    entries.sort();
 
     let mut hasher = Sha256::new();
-    for file in &files {
-        let relative = file.strip_prefix(skill_dir).unwrap_or(file.as_path());
+    for entry in &entries {
+        let relative = entry.strip_prefix(skill_dir).unwrap_or(entry.as_path());
         hash_framed(&mut hasher, relative.as_os_str().as_bytes());
-        let metadata = fs::symlink_metadata(file)?;
+        let metadata = fs::symlink_metadata(entry)?;
         if metadata.file_type().is_symlink() {
             hasher.update(*b"L");
-            let target = fs::read_link(file)?;
+            let target = fs::read_link(entry)?;
             hash_framed(&mut hasher, target.as_os_str().as_bytes());
         } else if metadata.is_file() {
             hasher.update(*b"F");
             hasher.update((metadata.permissions().mode() & 0o111).to_le_bytes());
             hasher.update(metadata.len().to_le_bytes());
-            let mut handle = fs::File::open(file)?;
+            let mut handle = fs::File::open(entry)?;
             let mut buffer = [0u8; 8192];
             loop {
                 let read = handle.read(&mut buffer)?;
@@ -1697,6 +1702,10 @@ fn hash_directory_with_options(
                 }
                 hasher.update(&buffer[..read]);
             }
+        } else if metadata.is_dir() {
+            // Empty directories must affect the fingerprint because the static
+            // scanner observes directory entries such as `.git` directly.
+            hasher.update(*b"D");
         } else {
             // Special filesystem entries (FIFO, socket, device) must still
             // participate in identity without opening them and potentially
@@ -1732,11 +1741,11 @@ fn hash_metadata(skill: &SkillRecord) -> String {
     hex_digest(&hasher.finalize())
 }
 
-fn collect_files(
+fn collect_fingerprint_entries(
     root: &Path,
     dir: &Path,
     exclude_root_git_metadata: bool,
-    files: &mut Vec<std::path::PathBuf>,
+    entries: &mut Vec<std::path::PathBuf>,
 ) -> DaloResult<()> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
@@ -1746,9 +1755,10 @@ fn collect_files(
         let file_type = entry.file_type()?;
         let path = entry.path();
         if file_type.is_dir() {
-            collect_files(root, &path, exclude_root_git_metadata, files)?;
+            entries.push(path.clone());
+            collect_fingerprint_entries(root, &path, exclude_root_git_metadata, entries)?;
         } else {
-            files.push(path);
+            entries.push(path);
         }
     }
     Ok(())
@@ -1916,6 +1926,20 @@ mod tests {
         permissions.set_mode(0o744);
         fs::set_permissions(&script, permissions).expect("script should be executable");
 
+        let after = hash_directory(&skill_dir).expect("hash should succeed");
+
+        assert_ne!(before, after);
+    }
+
+    #[test]
+    fn hash_directory_should_include_empty_directory_entries() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("skill");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        fs::write(skill_dir.join("SKILL.md"), "# Skill\n").expect("skill file should be written");
+
+        let before = hash_directory(&skill_dir).expect("hash should succeed");
+        fs::create_dir(skill_dir.join(".git")).expect("empty git directory should be created");
         let after = hash_directory(&skill_dir).expect("hash should succeed");
 
         assert_ne!(before, after);
