@@ -233,17 +233,13 @@ pub fn build_installation_plan(
         &active_instructions,
     );
     let materialization = materialize::materialize(&paths, &live.resolution, true)?;
-    let inventories = live
-        .scans
-        .iter()
-        .filter_map(|scan| scan.inventory.clone())
-        .collect::<Vec<_>>();
     let plugin_inventories = crate::resolver::plugin_inventories(&live.scans);
+    let reconciliation_inventories = crate::resolver::inventories_with_plugins(&live.scans);
     let mut plan = build_from_facts(
         store_root,
         &state,
         &live.plugins,
-        &inventories,
+        &reconciliation_inventories,
         &materialization.operations,
         target_filter,
     );
@@ -266,7 +262,7 @@ pub fn build_installation_plan(
         &paths,
         &state,
         &live.plugins,
-        &inventories,
+        &reconciliation_inventories,
         &plan.tools,
         &plan.hooks,
         true,

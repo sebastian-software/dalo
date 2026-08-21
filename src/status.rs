@@ -285,12 +285,8 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         .collect::<Vec<_>>();
     targets.sort_by(|left, right| left.id.cmp(&right.id));
 
-    let inventories = live
-        .scans
-        .iter()
-        .filter_map(|scan| scan.inventory.clone())
-        .collect::<Vec<_>>();
     let plugin_inventories = resolver::plugin_inventories(&live.scans);
+    let reconciliation_inventories = resolver::inventories_with_plugins(&live.scans);
     let mut plugins = live.plugins;
     let mut live_resolution = live.resolution;
     let audits = audit::audit_active_skills(&paths, &live_resolution, false);
@@ -360,7 +356,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         &paths,
         &state,
         &plugins,
-        &inventories,
+        &reconciliation_inventories,
         &tools.tools,
         &hooks.hooks,
         true,
@@ -370,7 +366,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
             store_root,
             &state,
             &plugins,
-            &inventories,
+            &reconciliation_inventories,
             &materialization.operations,
             None,
         )
@@ -2460,11 +2456,23 @@ matcher = { tool_names = ["Write"] }
         fs::create_dir_all(&invalid_skill).expect("invalid skill directory should be created");
         fs::write(invalid_skill.join("SKILL.md"), "# Invalid\n")
             .expect("invalid skill should be written");
+        let paths = store::StorePaths::new(store_root.clone());
+        let mut config = store::read_config(&paths).expect("config should be readable");
+        config.plugins.direct.push("local:quality".to_owned());
+        store::write_config(&paths, &config).expect("plugin selection should be written");
 
         crate::plugin::reset_source_plugin_scan_count();
         let report = build_status_report(&store_root).expect("status should build");
 
         assert_eq!(crate::plugin::source_plugin_scan_count(), 1);
+        assert!(
+            report
+                .plugins
+                .plugins
+                .iter()
+                .any(|plugin| plugin.source_ref == "local:quality"
+                    && plugin.state == crate::plugin::PluginState::Selected)
+        );
         assert_eq!(report.tools.tools.len(), 1);
         assert_eq!(report.hooks.hooks.len(), 2);
         assert!(

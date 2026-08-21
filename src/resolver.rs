@@ -63,6 +63,29 @@ pub fn plugin_inventories(scans: &[SourceScan]) -> Vec<SourceInventory> {
         .collect()
 }
 
+/// Return source inventories suitable for native plugin reconciliation.
+///
+/// This retains successful skill and agent scans while always taking plugin
+/// records from the independently scanned plugin inventory. A failed skill or
+/// agent scan therefore cannot make an otherwise valid selected plugin look
+/// absent to a native projection or hook reconciliation path.
+#[must_use]
+pub fn inventories_with_plugins(scans: &[SourceScan]) -> Vec<SourceInventory> {
+    scans
+        .iter()
+        .map(|scan| {
+            scan.inventory.clone().map_or_else(
+                || plugin_inventory_as_source_inventory(&scan.source, &scan.plugin_inventory),
+                |mut inventory| {
+                    inventory.plugins = scan.plugin_inventory.plugins.clone();
+                    inventory.plugin_warnings = scan.plugin_inventory.warnings.clone();
+                    inventory
+                },
+            )
+        })
+        .collect()
+}
+
 fn plugin_inventory_as_source_inventory(
     source: &SourceConfig,
     plugin_inventory: &PluginInventory,
@@ -1308,10 +1331,17 @@ mod tests {
         }];
 
         let inventories = plugin_inventories(&scans);
+        let reconciliation_inventories = inventories_with_plugins(&scans);
 
         assert_eq!(inventories.len(), 1);
         assert_eq!(inventories[0].plugins.len(), 1);
         assert_eq!(inventories[0].plugins[0].source_ref, "local:quality");
+        assert_eq!(reconciliation_inventories.len(), 1);
+        assert_eq!(reconciliation_inventories[0].plugins.len(), 1);
+        assert_eq!(
+            reconciliation_inventories[0].plugins[0].source_ref,
+            "local:quality"
+        );
     }
 
     #[test]
