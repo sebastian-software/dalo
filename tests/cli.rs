@@ -6468,6 +6468,154 @@ fn source_add_should_clone_team_source_into_store() {
 }
 
 #[test]
+fn source_add_and_sync_should_report_team_inventory_warnings_without_auditing_skipped_skills() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo_with_skill(&repo, "review", "# Review\n");
+    let frontmatter_skill = repo.join("skills/frontmatter-slot");
+    std::fs::create_dir_all(&frontmatter_skill).expect("frontmatter skill directory should exist");
+    std::fs::write(
+        frontmatter_skill.join("SKILL.md"),
+        "---\nname: weird name\n---\n# Frontmatter\n",
+    )
+    .expect("frontmatter skill should be written");
+    let skipped_skill = repo.join("skills/über-skill");
+    std::fs::create_dir_all(&skipped_skill).expect("invalid skill directory should exist");
+    std::fs::write(skipped_skill.join("SKILL.md"), "# Skipped\n")
+        .expect("invalid skill should be written");
+    run_git(&repo, &["add", "."]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "add invalid skills",
+            "-q",
+        ],
+    );
+    setup_store_with_target(&store, &target);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "team"])
+        .arg(&repo)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("inventory warnings:"))
+        .stdout(predicate::str::contains("frontmatter name `weird name`"))
+        .stdout(predicate::str::contains("folder name `über-skill`"))
+        .stdout(predicate::str::contains("fix: rename the skill folder"))
+        .stdout(predicate::str::contains("security audit: team:review"))
+        .stdout(predicate::str::contains(
+            "security audit: team:frontmatter-slot",
+        ))
+        .stdout(predicate::str::contains("security audit: team:über-skill").not());
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("degraded source: team"))
+        .stdout(predicate::str::contains("inventory warnings:"))
+        .stdout(predicate::str::contains("folder name `über-skill`"));
+    assert!(target.join("review").is_symlink());
+    assert!(target.join("frontmatter-slot").is_symlink());
+    assert!(!target.join("über-skill").exists());
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "sync"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let sync: serde_json::Value =
+        serde_json::from_slice(&output).expect("sync should emit valid JSON");
+    let warnings = sync["inventory_warnings"]
+        .as_array()
+        .expect("sync JSON should expose inventory warnings");
+    assert_eq!(warnings.len(), 2);
+    assert!(
+        warnings
+            .iter()
+            .all(|warning| warning["code"] == "invalid_slot_name")
+    );
+    assert!(
+        sync["degraded_sources"]
+            .as_array()
+            .expect("sync JSON should expose degraded sources")
+            .iter()
+            .any(|source| source["id"] == "team")
+    );
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "source", "add", "team-json"])
+        .arg(&repo)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let source_add: serde_json::Value =
+        serde_json::from_slice(&output).expect("source add should emit valid JSON");
+    let warnings = source_add["inventory_warnings"]
+        .as_array()
+        .expect("source add JSON should expose inventory warnings");
+    assert_eq!(warnings.len(), 2);
+    assert_eq!(
+        source_add["audits"]
+            .as_array()
+            .expect("source add JSON should expose audits")
+            .len(),
+        2,
+        "invalid skills must not materialize into the audit list"
+    );
+}
+
+#[test]
+fn sync_should_report_local_inventory_warnings_with_the_affected_skill() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    let valid_skill = store.join("local/skills/review");
+    std::fs::create_dir_all(&valid_skill).expect("valid skill directory should exist");
+    std::fs::write(valid_skill.join("SKILL.md"), "# Review\n")
+        .expect("valid skill should be written");
+    let invalid_skill = store.join("local/skills/über-skill");
+    std::fs::create_dir_all(&invalid_skill).expect("invalid skill directory should exist");
+    std::fs::write(invalid_skill.join("SKILL.md"), "# Skipped\n")
+        .expect("invalid skill should be written");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("degraded source: local"))
+        .stdout(predicate::str::contains("inventory warnings:"))
+        .stdout(predicate::str::contains("folder name `über-skill`"));
+    assert!(target.join("review").is_symlink());
+    assert!(!target.join("über-skill").exists());
+}
+
+#[test]
 fn source_add_should_skip_an_env_shebang_git_wrapper_for_the_controlled_path() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

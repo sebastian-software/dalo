@@ -1057,21 +1057,7 @@ pub fn print_status_report(report: &StatusReport) {
     }
 
     if !report.inventory_warnings.is_empty() {
-        println!("inventory warnings:");
-        for warning in &report.inventory_warnings {
-            println!(
-                "  {} {}: {}",
-                warning.code,
-                warning.path.display(),
-                warning.message
-            );
-            if warning.code == InventoryWarningCode::InvalidSlotName {
-                println!(
-                    "    fix: rename the skill folder or set its frontmatter `name` to a portable lowercase slot name, then run `{}`",
-                    store::dalo_command(&report.store, "sync")
-                );
-            }
-        }
+        print_inventory_warnings(&report.inventory_warnings, Some(&report.store));
     }
 
     if !report.agent_inventory_warnings.is_empty() {
@@ -1394,6 +1380,9 @@ pub fn print_sync_report(report: &SyncReport) {
     for source in &report.degraded_sources {
         println!("{prefix}degraded source: {} ({})", source.id, source.reason);
     }
+    if !report.inventory_warnings.is_empty() {
+        print_inventory_warnings(&report.inventory_warnings, Some(&report.store));
+    }
     for operation in &report.instruction_operations {
         println!(
             "{prefix}instruction {}: {}:{} -> {} ({})",
@@ -1524,9 +1513,49 @@ pub fn print_source_add_report(report: &SourceAddReport) {
         report.source.id,
         report.source.path.display()
     );
+    if !report.inventory_warnings.is_empty() {
+        print_inventory_warnings(&report.inventory_warnings, None);
+    }
     for audit in &report.audits {
         print_audit_report(audit);
     }
+}
+
+/// Print inventory warnings without allowing untrusted paths or metadata to
+/// control terminal formatting.
+fn print_inventory_warnings(warnings: &[InventoryWarning], store_root: Option<&Path>) {
+    println!("inventory warnings:");
+    for warning in warnings {
+        println!(
+            "  {} {}: {}",
+            warning.code,
+            terminal_safe_path(&warning.path),
+            terminal_safe_text(&warning.message)
+        );
+        if warning.code == InventoryWarningCode::InvalidSlotName {
+            let command = store_root
+                .map(|root| store::dalo_command(root, "sync"))
+                .unwrap_or_else(|| "dalo sync".to_owned());
+            println!(
+                "    fix: rename the skill folder or set its frontmatter `name` to a portable lowercase slot name, then run `{command}`"
+            );
+        }
+    }
+}
+
+fn terminal_safe_path(path: &Path) -> String {
+    terminal_safe_text(&path.to_string_lossy())
+}
+
+fn terminal_safe_text(value: &str) -> String {
+    value.chars().fold(String::new(), |mut escaped, character| {
+        if character.is_control() {
+            escaped.extend(character.escape_default());
+        } else {
+            escaped.push(character);
+        }
+        escaped
+    })
 }
 
 /// Print a source removal report.
@@ -2299,6 +2328,14 @@ mod tests {
     use std::fs;
 
     use super::*;
+
+    #[test]
+    fn terminal_safe_text_should_escape_controls_without_hiding_unicode_skill_names() {
+        assert_eq!(
+            terminal_safe_text("über\u{1b}[2J-skill"),
+            "über\\u{1b}[2J-skill"
+        );
+    }
 
     #[test]
     fn format_unix_utc_should_render_calendar_time() {

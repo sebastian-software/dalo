@@ -2501,12 +2501,19 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
             .filter_map(|scan| scan.inventory.clone())
             .collect::<Vec<_>>();
         let degraded_sources = collect_degraded_sources(&live, refresh_failures, &audits.failures);
+        let inventory_warnings = live
+            .scans
+            .iter()
+            .filter_map(|scan| scan.inventory.as_ref())
+            .flat_map(|inventory| inventory.warnings.iter().cloned())
+            .collect::<Vec<_>>();
         let (mut report, rollback) = materialize::materialize_with_degraded_sources_rollback(
             &paths,
             &live.resolution,
             options.dry_run,
             &degraded_sources,
         )?;
+        report.inventory_warnings = inventory_warnings;
         let instruction_sync = match instructions::refresh_active_packs(
             &paths,
             &config.sources,
