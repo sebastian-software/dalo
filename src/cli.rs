@@ -2473,7 +2473,13 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
     };
     let sync_result = (|| -> DaloResult<materialize::SyncReport> {
         let approvals = store::read_approvals(&paths)?;
-        let mut live = resolver::resolve_from_config(&config, approvals.approvals.clone());
+        let resolved = resolver::resolve_from_config_with_plugin_inventories(
+            &config,
+            approvals.approvals.clone(),
+        );
+        let plugin_inventories = resolver::plugin_inventories(&resolved);
+        let reconciliation_inventories = resolver::inventories_with_plugins(&resolved);
+        let mut live = resolved.live;
         let audits = audit::audit_active_skills(&paths, &live.resolution, !options.dry_run);
         ensure_no_blocking_audits(&audits.blocking)?;
         resolver::degrade_audit_failures(&mut live.resolution, &audits.failures);
@@ -2495,8 +2501,6 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
             &live.agents,
             &active_instruction_refs,
         );
-        let plugin_inventories = resolver::plugin_inventories(&live.scans);
-        let reconciliation_inventories = resolver::inventories_with_plugins(&live.scans);
         let degraded_sources = collect_degraded_sources(&live, refresh_failures, &audits.failures);
         let inventory_warnings = live
             .scans

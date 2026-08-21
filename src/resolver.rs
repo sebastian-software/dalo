@@ -28,8 +28,6 @@ pub struct ResolutionInput<'a> {
 pub struct SourceScan {
     /// Scanned source.
     pub source: SourceConfig,
-    /// Plugin inventory scanned independently from skills and agents.
-    pub plugin_inventory: PluginInventory,
     /// Successful inventory, or `None` when the scan failed.
     pub inventory: Option<SourceInventory>,
     /// Scan error message when the scan failed.
@@ -52,14 +50,29 @@ pub struct LiveResolution {
     pub agents: AgentResolution,
 }
 
+/// Internal live-resolution facts that retain independently scanned plugin
+/// contracts without extending the public `SourceScan` API.
+#[derive(Debug, Clone)]
+pub(crate) struct ResolutionWithPluginInventories {
+    pub(crate) live: LiveResolution,
+    plugin_inventories: Vec<PluginInventory>,
+}
+
 /// Project independently scanned plugin inventories into source inventory
 /// records for plugin consumers. Unlike the full inventory, these survive a
 /// degraded skill or agent scan because plugin discovery has its own boundary.
 #[must_use]
-pub fn plugin_inventories(scans: &[SourceScan]) -> Vec<SourceInventory> {
-    scans
+pub(crate) fn plugin_inventories(
+    resolution: &ResolutionWithPluginInventories,
+) -> Vec<SourceInventory> {
+    resolution
+        .live
+        .scans
         .iter()
-        .map(|scan| plugin_inventory_as_source_inventory(&scan.source, &scan.plugin_inventory))
+        .zip(&resolution.plugin_inventories)
+        .map(|(scan, plugin_inventory)| {
+            plugin_inventory_as_source_inventory(&scan.source, plugin_inventory)
+        })
         .collect()
 }
 
@@ -70,15 +83,20 @@ pub fn plugin_inventories(scans: &[SourceScan]) -> Vec<SourceInventory> {
 /// agent scan therefore cannot make an otherwise valid selected plugin look
 /// absent to a native projection or hook reconciliation path.
 #[must_use]
-pub fn inventories_with_plugins(scans: &[SourceScan]) -> Vec<SourceInventory> {
-    scans
+pub(crate) fn inventories_with_plugins(
+    resolution: &ResolutionWithPluginInventories,
+) -> Vec<SourceInventory> {
+    resolution
+        .live
+        .scans
         .iter()
-        .map(|scan| {
+        .zip(&resolution.plugin_inventories)
+        .map(|(scan, plugin_inventory)| {
             scan.inventory.clone().map_or_else(
-                || plugin_inventory_as_source_inventory(&scan.source, &scan.plugin_inventory),
+                || plugin_inventory_as_source_inventory(&scan.source, plugin_inventory),
                 |mut inventory| {
-                    inventory.plugins = scan.plugin_inventory.plugins.clone();
-                    inventory.plugin_warnings = scan.plugin_inventory.warnings.clone();
+                    inventory.plugins = plugin_inventory.plugins.clone();
+                    inventory.plugin_warnings = plugin_inventory.warnings.clone();
                     inventory
                 },
             )
@@ -272,6 +290,16 @@ struct Candidate {
 /// one place. Scan failures are captured per source rather than aborting, so
 /// callers can surface them as diagnostics.
 pub fn resolve_from_config(config: &UserConfig, approvals: Vec<ApprovalRecord>) -> LiveResolution {
+    resolve_from_config_with_plugin_inventories(config, approvals).live
+}
+
+/// Resolve one configuration while retaining internal plugin scan facts for
+/// callers that must derive tool, hook, and native projection reports without
+/// rescanning packages.
+pub(crate) fn resolve_from_config_with_plugin_inventories(
+    config: &UserConfig,
+    approvals: Vec<ApprovalRecord>,
+) -> ResolutionWithPluginInventories {
     let enabled = config
         .sources
         .iter()
@@ -280,6 +308,7 @@ pub fn resolve_from_config(config: &UserConfig, approvals: Vec<ApprovalRecord>) 
         .collect::<Vec<_>>();
 
     let mut scans = Vec::with_capacity(enabled.len());
+    let mut plugin_inventories = Vec::with_capacity(enabled.len());
     let mut inventories = Vec::new();
     for source in &enabled {
         let (plugin_inventory, scanned) = scan_enabled_source(source);
@@ -288,10 +317,10 @@ pub fn resolve_from_config(config: &UserConfig, approvals: Vec<ApprovalRecord>) 
                 inventories.push(inventory.clone());
                 scans.push(SourceScan {
                     source: source.clone(),
-                    plugin_inventory,
                     inventory: Some(inventory),
                     error: None,
                 });
+                plugin_inventories.push(plugin_inventory);
             }
             Err(error) => {
                 // Plugin packages are independently validated inventory. Keep
@@ -304,10 +333,10 @@ pub fn resolve_from_config(config: &UserConfig, approvals: Vec<ApprovalRecord>) 
                 ));
                 scans.push(SourceScan {
                     source: source.clone(),
-                    plugin_inventory,
                     inventory: None,
                     error: Some(error),
                 });
+                plugin_inventories.push(plugin_inventory);
             }
         }
     }
@@ -352,11 +381,14 @@ pub fn resolve_from_config(config: &UserConfig, approvals: Vec<ApprovalRecord>) 
     let agents = agent::resolve_agents(&effective_sources, &inventories, &approvals);
     plugin::apply_component_resolution(&mut plugins, &resolution, &agents, &BTreeSet::new());
 
-    LiveResolution {
-        scans,
-        resolution,
-        plugins,
-        agents,
+    ResolutionWithPluginInventories {
+        live: LiveResolution {
+            scans,
+            resolution,
+            plugins,
+            agents,
+        },
+        plugin_inventories,
     }
 }
 
@@ -1323,15 +1355,31 @@ mod tests {
         .expect("plugin manifest should be written");
         let mut source = source("local", SourceKind::Local, 0);
         source.path = temp.path().to_path_buf();
+        let plugin_inventory = crate::plugin::scan_source_plugins("local", temp.path());
         let scans = vec![SourceScan {
-            source,
-            plugin_inventory: crate::plugin::scan_source_plugins("local", temp.path()),
+            source: source.clone(),
             inventory: None,
             error: Some("skill inventory unavailable".to_owned()),
         }];
+        let resolution = ResolutionWithPluginInventories {
+            live: LiveResolution {
+                scans,
+                resolution: resolve_with(
+                    vec![source.clone()],
+                    vec![plugin_inventory_as_source_inventory(
+                        &source,
+                        &plugin_inventory,
+                    )],
+                    Vec::new(),
+                ),
+                plugins: PluginResolution::default(),
+                agents: AgentResolution::default(),
+            },
+            plugin_inventories: vec![plugin_inventory],
+        };
 
-        let inventories = plugin_inventories(&scans);
-        let reconciliation_inventories = inventories_with_plugins(&scans);
+        let inventories = plugin_inventories(&resolution);
+        let reconciliation_inventories = inventories_with_plugins(&resolution);
 
         assert_eq!(inventories.len(), 1);
         assert_eq!(inventories[0].plugins.len(), 1);
@@ -1342,6 +1390,18 @@ mod tests {
             reconciliation_inventories[0].plugins[0].source_ref,
             "local:quality"
         );
+    }
+
+    #[test]
+    fn source_scan_keeps_its_released_constructible_shape() {
+        let scan = SourceScan {
+            source: source("local", SourceKind::Local, 0),
+            inventory: None,
+            error: Some("source unavailable".to_owned()),
+        };
+
+        assert!(scan.inventory.is_none());
+        assert_eq!(scan.error.as_deref(), Some("source unavailable"));
     }
 
     #[test]

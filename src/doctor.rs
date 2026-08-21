@@ -17,7 +17,7 @@ use crate::config::UserConfig;
 use crate::error::shell_quote_path;
 use crate::git;
 use crate::instructions;
-use crate::inventory::{InventoryWarning, InventoryWarningCode};
+use crate::inventory::{InventoryWarning, InventoryWarningCode, SourceInventory};
 use crate::plan::InstallationPlan;
 use crate::resolver;
 use crate::source::{self, SourceConfig, SourceKind};
@@ -268,12 +268,18 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
         check_protected_skills(state, &mut findings);
     }
 
+    let mut plugin_inventories = None;
+    let mut reconciliation_inventories = None;
     let mut live_resolution = config.as_ref().map(|config| {
         let approval_records = approvals
             .as_ref()
             .map(|approvals| approvals.approvals.clone())
             .unwrap_or_default();
-        resolver::resolve_from_config(config, approval_records)
+        let resolved =
+            resolver::resolve_from_config_with_plugin_inventories(config, approval_records);
+        plugin_inventories = Some(resolver::plugin_inventories(&resolved));
+        reconciliation_inventories = Some(resolver::inventories_with_plugins(&resolved));
+        resolved.live
     });
     if let (Some(live), Some(lock)) = (live_resolution.as_mut(), lock.as_ref()) {
         let active_instructions = lock
@@ -297,15 +303,14 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
     let tool_report = match (
         config.as_ref(),
         approvals.as_ref(),
-        live_resolution.as_ref(),
+        plugin_inventories.as_ref(),
     ) {
-        (Some(config), Some(approvals), Some(live)) => {
-            let inventories = resolver::plugin_inventories(&live.scans);
+        (Some(config), Some(approvals), Some(inventories)) => {
             Some(crate::tool::list_from_inventories(
                 &paths,
                 &config.sources,
                 &approvals.approvals,
-                &inventories,
+                inventories,
             ))
         }
         _ => None,
@@ -313,16 +318,15 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
     let hook_report = match (
         config.as_ref(),
         approvals.as_ref(),
-        live_resolution.as_ref(),
+        plugin_inventories.as_ref(),
         tool_report.as_ref(),
     ) {
-        (Some(config), Some(approvals), Some(live), Some(tools)) => {
-            let inventories = resolver::plugin_inventories(&live.scans);
+        (Some(config), Some(approvals), Some(inventories), Some(tools)) => {
             crate::hook::list_from_inventories(
                 &paths,
                 &config.sources,
                 &approvals.approvals,
-                &inventories,
+                inventories,
                 &tools.tools,
             )
             .ok()
@@ -348,12 +352,17 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
             &mut findings,
         );
     }
-    if let (Some(state), Some(live)) = (state.as_ref(), live_resolution.as_ref()) {
+    if let (Some(state), Some(live), Some(inventories)) = (
+        state.as_ref(),
+        live_resolution.as_ref(),
+        reconciliation_inventories.as_deref(),
+    ) {
         check_hook_targets(&paths, state, live, hook_report.as_ref(), &mut findings);
         check_plugin_targets(
             &paths,
             state,
             live,
+            inventories,
             tool_report.as_ref(),
             hook_report.as_ref(),
             &mut findings,
@@ -378,18 +387,16 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
         state.as_ref(),
         live_resolution.as_ref(),
         materialization.as_ref(),
+        reconciliation_inventories.as_deref(),
     ) {
-        (Some(state), Some(live), Some(materialization)) if !live.plugins.plugins.is_empty() => {
-            let inventories = live
-                .scans
-                .iter()
-                .filter_map(|scan| scan.inventory.clone())
-                .collect::<Vec<_>>();
+        (Some(state), Some(live), Some(materialization), Some(inventories))
+            if !live.plugins.plugins.is_empty() =>
+        {
             let mut plan = crate::plan::build_from_facts(
                 store_root,
                 state,
                 &live.plugins,
-                &inventories,
+                inventories,
                 &materialization.operations,
                 None,
             );
@@ -411,18 +418,18 @@ fn check_plugin_targets(
     paths: &StorePaths,
     state: &crate::store::StateFile,
     live: &crate::resolver::LiveResolution,
+    inventories: &[SourceInventory],
     tool_report: Option<&crate::tool::ToolListReport>,
     hook_report: Option<&crate::hook::HookListReport>,
     findings: &mut Vec<DoctorFinding>,
 ) {
-    let inventories = resolver::inventories_with_plugins(&live.scans);
     let tools = tool_report.map_or_else(Vec::new, |report| report.tools.clone());
     let hooks = hook_report.map_or_else(Vec::new, |report| report.hooks.clone());
     let reports = match crate::plugin_projection::reconcile(
         paths,
         state,
         &live.plugins,
-        &inventories,
+        inventories,
         &tools,
         &hooks,
         true,

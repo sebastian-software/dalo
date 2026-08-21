@@ -220,7 +220,13 @@ pub fn build_installation_plan(
             reason: format!("target `{target}` is not linked"),
         });
     }
-    let mut live = crate::resolver::resolve_from_config(&config, approvals.approvals.clone());
+    let resolved = crate::resolver::resolve_from_config_with_plugin_inventories(
+        &config,
+        approvals.approvals.clone(),
+    );
+    let plugin_inventories = crate::resolver::plugin_inventories(&resolved);
+    let reconciliation_inventories = crate::resolver::inventories_with_plugins(&resolved);
+    let mut live = resolved.live;
     let active_instructions = lock
         .active_instruction_packs
         .iter()
@@ -233,8 +239,6 @@ pub fn build_installation_plan(
         &active_instructions,
     );
     let materialization = materialize::materialize(&paths, &live.resolution, true)?;
-    let plugin_inventories = crate::resolver::plugin_inventories(&live.scans);
-    let reconciliation_inventories = crate::resolver::inventories_with_plugins(&live.scans);
     let mut plan = build_from_facts(
         store_root,
         &state,
@@ -313,6 +317,17 @@ pub fn build_from_facts(
 }
 
 /// Attach independently approved hook facts and target adapter compatibility.
+///
+/// This compatibility wrapper scans once for callers using the released
+/// planning API. Shared command paths should pass their precomputed report to
+/// [`attach_hook_status_from_report`] instead.
+pub fn attach_hook_status(plan: &mut InstallationPlan, paths: &StorePaths) -> DaloResult<()> {
+    let hooks = crate::hook::list(paths)?.hooks;
+    attach_hook_status_from_report(plan, &hooks);
+    Ok(())
+}
+
+/// Attach independently approved hook facts from a precomputed report.
 pub fn attach_hook_status_from_report(plan: &mut InstallationPlan, hooks: &[HookStatusReport]) {
     plan.hooks = hooks.to_vec();
     for destination in &mut plan.destinations {
@@ -449,6 +464,17 @@ pub fn attach_hook_status_from_report(plan: &mut InstallationPlan, hooks: &[Hook
 }
 
 /// Attach read-only local-tool facts to a plan composed from shared live data.
+///
+/// This compatibility wrapper scans once for callers using the released
+/// planning API. Shared command paths should pass their precomputed report to
+/// [`attach_tool_status_from_report`] instead.
+pub fn attach_tool_status(plan: &mut InstallationPlan, paths: &StorePaths) -> DaloResult<()> {
+    let tools = crate::tool::list(paths)?.tools;
+    attach_tool_status_from_report(plan, &tools);
+    Ok(())
+}
+
+/// Attach read-only local-tool facts from a precomputed report.
 pub fn attach_tool_status_from_report(plan: &mut InstallationPlan, tools: &[ToolStatusReport]) {
     plan.tools = tools.to_vec();
     for destination in &mut plan.destinations {
@@ -928,6 +954,12 @@ fn verification_baseline(target: &str) -> &'static str {
 mod tests {
     use super::*;
     use crate::plugin::ResolvedPluginMember;
+
+    #[test]
+    fn released_status_attachment_api_should_remain_callable() {
+        let _tool: fn(&mut InstallationPlan, &StorePaths) -> DaloResult<()> = attach_tool_status;
+        let _hook: fn(&mut InstallationPlan, &StorePaths) -> DaloResult<()> = attach_hook_status;
+    }
 
     #[test]
     fn generic_target_selects_authored_inline_fallback_for_active_agent() {
