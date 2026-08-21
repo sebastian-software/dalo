@@ -19,6 +19,21 @@ use crate::resolver::Resolution;
 use crate::source::SourceConfig;
 use crate::team_manifest::{self, StackRequirement, TEAM_MANIFEST_FILE};
 
+#[cfg(test)]
+thread_local! {
+    static SOURCE_PLUGIN_SCAN_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn reset_source_plugin_scan_count() {
+    SOURCE_PLUGIN_SCAN_COUNT.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+pub(crate) fn source_plugin_scan_count() -> usize {
+    SOURCE_PLUGIN_SCAN_COUNT.with(std::cell::Cell::get)
+}
+
 /// Canonical plugin manifest filename.
 pub const PLUGIN_FILE: &str = "PLUGIN.toml";
 
@@ -471,6 +486,8 @@ const fn default_true() -> bool {
 /// Scan only exact `plugins/<name>/PLUGIN.toml` packages in one source.
 #[must_use]
 pub fn scan_source_plugins(source_id: &str, source_root: &Path) -> PluginInventory {
+    #[cfg(test)]
+    SOURCE_PLUGIN_SCAN_COUNT.with(|count| count.set(count.get() + 1));
     let plugins_root = source_root.join("plugins");
     let metadata = match fs::symlink_metadata(&plugins_root) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {

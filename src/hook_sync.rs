@@ -77,8 +77,30 @@ pub fn reconcile(
     selected_plugins: &[String],
     dry_run: bool,
 ) -> DaloResult<Vec<HookTargetReport>> {
-    let executable = env::current_exe()?;
     let hooks = crate::hook::list(paths)?.hooks;
+    reconcile_with_loaded_hooks(paths, state, selected_plugins, &hooks, dry_run)
+}
+
+/// Reconcile native hook sidecars from a hook report already built by the
+/// command's shared plugin inventory pass.
+pub fn reconcile_with_hooks(
+    paths: &StorePaths,
+    state: &StateFile,
+    selected_plugins: &[String],
+    hooks: &[HookStatusReport],
+    dry_run: bool,
+) -> DaloResult<Vec<HookTargetReport>> {
+    reconcile_with_loaded_hooks(paths, state, selected_plugins, hooks, dry_run)
+}
+
+fn reconcile_with_loaded_hooks(
+    paths: &StorePaths,
+    state: &StateFile,
+    selected_plugins: &[String],
+    hooks: &[HookStatusReport],
+    dry_run: bool,
+) -> DaloResult<Vec<HookTargetReport>> {
+    let executable = env::current_exe()?;
     let mut reports = Vec::new();
     for target in state.targets.iter().filter(|target| target.enabled) {
         if !matches!(target.id.as_str(), "codex" | "claude") {

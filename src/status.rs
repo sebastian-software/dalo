@@ -204,7 +204,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
     // The shared pipeline scans every enabled source once and resolves it; we
     // reuse its per-source scan outcomes here for the status detail instead of
     // re-scanning. Disabled sources are not scanned, so we render them directly.
-    let live = resolver::resolve_from_config(&config, approvals.approvals);
+    let live = resolver::resolve_from_config(&config, approvals.approvals.clone());
     let scan_by_id = live
         .scans
         .iter()
@@ -329,15 +329,32 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         true,
         &audit_degraded_sources,
     )?;
-    let tools = crate::tool::list(&paths)?;
-    let hooks = crate::hook::list(&paths)?;
+    let tools = crate::tool::list_from_inventories(
+        &paths,
+        &config.sources,
+        &approvals.approvals,
+        &inventories,
+    );
+    let hooks = crate::hook::list_from_inventories(
+        &paths,
+        &config.sources,
+        &approvals.approvals,
+        &inventories,
+        &tools.tools,
+    )?;
     let selected_plugin_refs = plugins
         .plugins
         .iter()
         .filter(|plugin| plugin.state == crate::plugin::PluginState::Selected)
         .map(|plugin| plugin.source_ref.clone())
         .collect::<Vec<_>>();
-    let hook_targets = crate::hook_sync::reconcile(&paths, &state, &selected_plugin_refs, true)?;
+    let hook_targets = crate::hook_sync::reconcile_with_hooks(
+        &paths,
+        &state,
+        &selected_plugin_refs,
+        &hooks.hooks,
+        true,
+    )?;
     let plugin_targets = crate::plugin_projection::reconcile(
         &paths,
         &state,
@@ -358,8 +375,8 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         )
     });
     if let Some(plan) = installation_plan.as_mut() {
-        crate::plan::attach_tool_status(plan, &paths)?;
-        crate::plan::attach_hook_status(plan, &paths)?;
+        crate::plan::attach_tool_status_from_report(plan, &tools.tools);
+        crate::plan::attach_hook_status_from_report(plan, &hooks.hooks);
         plan.native_plugins = plugin_targets.clone();
     }
     let live_lock = lockfile::build_user_lock(
@@ -2368,6 +2385,106 @@ mod tests {
         assert_eq!(
             report.resolution.active_skills[0].source_ref,
             "local:review"
+        );
+    }
+
+    #[test]
+    fn status_and_doctor_reuse_one_plugin_scan_for_tool_and_hook_reports() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        let package = store_root.join("local/plugins/quality");
+        fs::create_dir_all(package.join("bin")).expect("tool directory should be created");
+        fs::write(
+            package.join(crate::plugin::PLUGIN_FILE),
+            r#"schema_version = 1
+[plugin]
+name = "quality"
+description = "Quality policy"
+
+[[tool]]
+schema_version = 1
+id = "detector"
+entry = "bin/detect"
+runtime = "executable"
+platforms = ["macos", "linux"]
+argv = []
+cwd = "tool_root"
+capabilities = ["filesystem_read"]
+availability = "required"
+
+[[hook]]
+schema_version = 1
+id = "protect-shell"
+tool = "detector"
+subject = "tool_call"
+phase = "before"
+effect = "allow_deny"
+requirement = "required"
+timeout_ms = 2000
+failure_policy = "fail_closed"
+retry = "never"
+error_visibility = "model_and_user"
+blocking_scope = "matched_event"
+bindings = []
+matcher = { tool_names = ["Bash"] }
+
+[[hook]]
+schema_version = 1
+id = "protect-write"
+tool = "detector"
+subject = "tool_call"
+phase = "before"
+effect = "allow_deny"
+requirement = "required"
+timeout_ms = 2000
+failure_policy = "fail_closed"
+retry = "never"
+error_visibility = "model_and_user"
+blocking_scope = "matched_event"
+bindings = []
+matcher = { tool_names = ["Write"] }
+"#,
+        )
+        .expect("plugin manifest should be written");
+        let entry = package.join("bin/detect");
+        fs::write(&entry, "#!/bin/sh\nexit 0\n").expect("tool entry should be written");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&entry, fs::Permissions::from_mode(0o755))
+                .expect("tool entry should be executable");
+        }
+
+        crate::plugin::reset_source_plugin_scan_count();
+        let report = build_status_report(&store_root).expect("status should build");
+
+        assert_eq!(crate::plugin::source_plugin_scan_count(), 1);
+        assert_eq!(report.tools.tools.len(), 1);
+        assert_eq!(report.hooks.hooks.len(), 2);
+        assert!(
+            report
+                .hooks
+                .hooks
+                .iter()
+                .all(|hook| hook.tool.source_ref == "local:quality#tool:detector")
+        );
+
+        crate::plugin::reset_source_plugin_scan_count();
+        let doctor = crate::doctor::run_doctor(&store_root);
+
+        assert_eq!(crate::plugin::source_plugin_scan_count(), 1);
+        assert!(
+            doctor
+                .findings
+                .iter()
+                .any(|finding| finding.code == crate::doctor::DoctorCode::ToolPendingApproval)
+        );
+        assert!(
+            doctor
+                .findings
+                .iter()
+                .any(|finding| { finding.code == crate::doctor::DoctorCode::HookToolUnavailable })
         );
     }
 

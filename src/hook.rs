@@ -12,8 +12,9 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::error::{DaloError, DaloResult};
-use crate::plugin::{self, HookRecord, PluginInventoryWarning, ToolRecord};
-use crate::source::SourceProvenance;
+use crate::inventory::SourceInventory;
+use crate::plugin::{HookRecord, PluginInventoryWarning, ToolRecord};
+use crate::source::{SourceConfig, SourceProvenance};
 use crate::store::{self, ApprovalRecord, StorePaths};
 use crate::tool::{self, ToolState};
 
@@ -86,12 +87,45 @@ pub struct HookApprovalReport {
 pub fn list(paths: &StorePaths) -> DaloResult<HookListReport> {
     let config = store::read_config(paths)?;
     let approvals = store::read_approvals(paths)?;
+    let inventories = tool::scan_plugin_inventories(&config.sources);
+    let tools =
+        tool::list_from_inventories(paths, &config.sources, &approvals.approvals, &inventories);
+    list_from_inventories(
+        paths,
+        &config.sources,
+        &approvals.approvals,
+        &inventories,
+        &tools.tools,
+    )
+}
+
+/// Join already-scanned plugin inventories with hook and referenced tool state.
+///
+/// Callers that already resolved sources pass the one shared tool list, so each
+/// hook lookup is an in-memory identity lookup rather than another inventory
+/// scan and staged-closure audit.
+pub fn list_from_inventories(
+    paths: &StorePaths,
+    sources: &[SourceConfig],
+    approvals: &[ApprovalRecord],
+    inventories: &[SourceInventory],
+    tools: &[tool::ToolStatusReport],
+) -> DaloResult<HookListReport> {
     let source_lock = crate::catalog::read_source_lock(paths).ok();
+    let tools_by_ref = tools
+        .iter()
+        .map(|tool| (tool.tool.source_ref.as_str(), tool))
+        .collect::<BTreeMap<_, _>>();
     let mut hooks = Vec::new();
     let mut warnings = Vec::new();
-    for source in config.sources.iter().filter(|source| source.enabled) {
-        let inventory = plugin::scan_source_plugins(&source.id, &source.path);
-        warnings.extend(inventory.warnings);
+    for inventory in inventories {
+        let Some(source) = sources
+            .iter()
+            .find(|source| source.enabled && source.id == inventory.source_id)
+        else {
+            continue;
+        };
+        warnings.extend(inventory.plugin_warnings.iter().cloned());
         if inventory
             .plugins
             .iter()
@@ -100,15 +134,22 @@ pub fn list(paths: &StorePaths) -> DaloResult<HookListReport> {
             continue;
         }
         let provenance = crate::source::source_provenance(source, source_lock.as_ref());
-        for plugin in inventory.plugins {
-            for hook in plugin.hooks {
-                let tool = tool::show(paths, &hook.tool_source_ref)?;
+        for plugin in &inventory.plugins {
+            for hook in &plugin.hooks {
+                let tool = tools_by_ref
+                    .get(hook.tool_source_ref.as_str())
+                    .ok_or_else(|| DaloError::InvalidArgument {
+                        reason: format!(
+                            "unknown tool `{}`; use `dalo tool list` and an exact `<source>:<plugin>#tool:<id>` identity",
+                            hook.tool_source_ref
+                        ),
+                    })?;
                 hooks.push(status_for(
-                    hook,
+                    hook.clone(),
                     plugin.package_hash.clone(),
                     provenance.clone(),
-                    tool,
-                    &approvals.approvals,
+                    (*tool).clone(),
+                    approvals,
                 ));
             }
         }

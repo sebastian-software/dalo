@@ -220,7 +220,7 @@ pub fn build_installation_plan(
             reason: format!("target `{target}` is not linked"),
         });
     }
-    let mut live = crate::resolver::resolve_from_config(&config, approvals.approvals);
+    let mut live = crate::resolver::resolve_from_config(&config, approvals.approvals.clone());
     let active_instructions = lock
         .active_instruction_packs
         .iter()
@@ -246,8 +246,21 @@ pub fn build_installation_plan(
         &materialization.operations,
         target_filter,
     );
-    attach_tool_status(&mut plan, &paths)?;
-    attach_hook_status(&mut plan, &paths)?;
+    let tools = crate::tool::list_from_inventories(
+        &paths,
+        &config.sources,
+        &approvals.approvals,
+        &inventories,
+    );
+    let hooks = crate::hook::list_from_inventories(
+        &paths,
+        &config.sources,
+        &approvals.approvals,
+        &inventories,
+        &tools.tools,
+    )?;
+    attach_tool_status_from_report(&mut plan, &tools.tools);
+    attach_hook_status_from_report(&mut plan, &hooks.hooks);
     plan.native_plugins = crate::plugin_projection::reconcile(
         &paths,
         &state,
@@ -303,8 +316,8 @@ pub fn build_from_facts(
 }
 
 /// Attach independently approved hook facts and target adapter compatibility.
-pub fn attach_hook_status(plan: &mut InstallationPlan, paths: &StorePaths) -> DaloResult<()> {
-    plan.hooks = crate::hook::list(paths)?.hooks;
+pub fn attach_hook_status_from_report(plan: &mut InstallationPlan, hooks: &[HookStatusReport]) {
+    plan.hooks = hooks.to_vec();
     for destination in &mut plan.destinations {
         for target in &mut destination.logical_targets {
             for plugin in &mut target.plugins {
@@ -436,12 +449,11 @@ pub fn attach_hook_status(plan: &mut InstallationPlan, paths: &StorePaths) -> Da
             }
         }
     }
-    Ok(())
 }
 
 /// Attach read-only local-tool facts to a plan composed from shared live data.
-pub fn attach_tool_status(plan: &mut InstallationPlan, paths: &StorePaths) -> DaloResult<()> {
-    plan.tools = crate::tool::list(paths)?.tools;
+pub fn attach_tool_status_from_report(plan: &mut InstallationPlan, tools: &[ToolStatusReport]) {
+    plan.tools = tools.to_vec();
     for destination in &mut plan.destinations {
         for target in &mut destination.logical_targets {
             for plugin in &mut target.plugins {
@@ -509,7 +521,6 @@ pub fn attach_tool_status(plan: &mut InstallationPlan, paths: &StorePaths) -> Da
             }
         }
     }
-    Ok(())
 }
 
 fn tool_plan_facts(
