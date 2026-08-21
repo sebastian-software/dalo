@@ -2752,6 +2752,104 @@ fn closed_pipe_should_terminate_without_a_print_panic() {
 
 #[cfg(unix)]
 #[test]
+fn hidden_hook_dispatch_runs_a_staged_codex_projection_end_to_end() {
+    let temp = tempfile::tempdir().expect("temporary directory should be created");
+    let store = store::comparable_path(&temp.path().join("store"));
+    dalo::store::init_store(store.clone(), false).expect("store should initialize");
+    let paths = dalo::store::StorePaths::new(store.clone());
+    let package = paths.local_dir.join("plugins/policy");
+    std::fs::create_dir_all(package.join("bin")).expect("hook package directory should exist");
+    std::fs::write(
+        package.join("PLUGIN.toml"),
+        r#"schema_version = 1
+[plugin]
+name = "policy"
+description = "Hidden dispatch fixture"
+
+[[tool]]
+schema_version = 1
+id = "check"
+entry = "bin/check"
+runtime = "executable"
+platforms = ["macos", "linux"]
+argv = []
+cwd = "tool_root"
+capabilities = []
+availability = "required"
+
+[[hook]]
+schema_version = 1
+id = "protect-shell"
+tool = "check"
+subject = "tool_call"
+phase = "before"
+effect = "allow_deny"
+requirement = "required"
+timeout_ms = 2000
+failure_policy = "fail_closed"
+retry = "never"
+error_visibility = "model_and_user"
+blocking_scope = "matched_event"
+matcher = { tool_names = ["Bash"] }
+"#,
+    )
+    .expect("hook manifest should be written");
+    let entry = package.join("bin/check");
+    std::fs::write(
+        &entry,
+        "#!/bin/sh\nprintf '%s' '{\"kind\":\"deny\",\"reason\":\"blocked by staged Codex policy\"}'\n",
+    )
+    .expect("hook handler should be written");
+    std::fs::set_permissions(&entry, std::fs::Permissions::from_mode(0o755))
+        .expect("hook handler should be executable");
+    dalo::tool::approve(&paths, "local:policy#tool:check", false).expect("tool should be approved");
+    dalo::hook::approve(&paths, "local:policy#hook:protect-shell", false)
+        .expect("hook should be approved");
+    let status = dalo::hook::show(&paths, "local:policy#hook:protect-shell")
+        .expect("approved hook should be visible");
+    let projection = dalo::hook::compile_native_projection(
+        &paths,
+        dalo::hook::HookProvider::Codex,
+        dalo::hook::CODEX_HOOK_BASELINE,
+        std::path::Path::new("/usr/bin/dalo"),
+        &[status],
+    )
+    .expect("hook projection should compile");
+    let sidecar = temp.path().join("native/config.toml");
+    let plan = dalo::hook_sidecar::plan_sidecar(
+        &paths,
+        dalo::hook::HookProvider::Codex,
+        &sidecar,
+        &projection,
+    )
+    .expect("hook sidecar should plan");
+    dalo::hook_sidecar::apply_sidecar(&paths, &projection, plan, false)
+        .expect("hook projection should be staged");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args([
+            "hook",
+            "dispatch",
+            "--provider",
+            "codex",
+            "--projection",
+            &projection.fingerprint,
+            "--event",
+            "PreToolUse",
+            "--group",
+            "group-0000",
+        ])
+        .write_stdin(r#"{"session_id":"s","cwd":"/tmp","tool_name":"Bash","tool_use_id":"t"}"#)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("permissionDecision\":\"deny"))
+        .stdout(predicate::str::contains("blocked by staged Codex policy"));
+}
+
+#[cfg(unix)]
+#[test]
 fn hook_dispatch_should_fail_closed_when_the_handler_closes_stdin() {
     let temp = tempfile::tempdir().expect("temporary directory should be created");
     let store = store::comparable_path(&temp.path().join("store"));
