@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 use std::path::{Component, Path, PathBuf};
@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use tempfile::NamedTempFile;
+use tempfile::tempfile;
 
 #[cfg(unix)]
 use rustix::process::{Pid, Signal, kill_process_group};
@@ -224,15 +224,16 @@ fn invoke_hook(
     // when its own stdout closes. Do not write this untrusted event payload over
     // a child-stdin pipe: a handler that exits early would otherwise terminate
     // the dispatcher before its failure policy can run.
-    let mut stdin_file = NamedTempFile::new()?;
+    let mut stdin_file = tempfile()?;
     stdin_file.write_all(native_input)?;
     stdin_file.flush()?;
+    stdin_file.seek(SeekFrom::Start(0))?;
 
     let mut command = Command::new(&argv[0]);
     command
         .args(&argv[1..])
         .current_dir(&hook.tool_root)
-        .stdin(Stdio::from(stdin_file.reopen()?))
+        .stdin(Stdio::from(stdin_file))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .env_clear();
