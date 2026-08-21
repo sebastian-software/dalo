@@ -12,8 +12,8 @@ use sha2::{Digest, Sha256};
 use crate::agent::{self, AgentInventoryWarning, AgentRecord};
 use crate::error::DaloResult;
 use crate::plugin::{
-    self, PluginInventoryWarning, PluginRecord, ToolAvailability, ToolCapability, ToolInputType,
-    ToolRuntime,
+    self, PluginInventory, PluginInventoryWarning, PluginRecord, ToolAvailability, ToolCapability,
+    ToolInputType, ToolRuntime,
 };
 use crate::store::ApprovalRecord;
 
@@ -334,8 +334,20 @@ struct SkillFrontmatter {
 
 /// Scan a source checkout for skills.
 pub fn scan_source(source_id: &str, source_root: &Path) -> DaloResult<SourceInventory> {
-    let agent_inventory = agent::scan_source_agents(source_id, source_root);
     let plugin_inventory = plugin::scan_source_plugins(source_id, source_root);
+    scan_source_with_plugin_inventory(source_id, source_root, plugin_inventory)
+}
+
+/// Scan skills and agents while reusing an already collected plugin inventory.
+///
+/// The resolver retains this independent inventory even if the skill scan
+/// degrades, so plugin-local contracts remain observable without a rescan.
+pub fn scan_source_with_plugin_inventory(
+    source_id: &str,
+    source_root: &Path,
+    plugin_inventory: PluginInventory,
+) -> DaloResult<SourceInventory> {
+    let agent_inventory = agent::scan_source_agents(source_id, source_root);
     let mut warnings = Vec::new();
     let skill_dirs = find_skill_dirs(source_root, &mut warnings)?;
     let mut skills = Vec::new();

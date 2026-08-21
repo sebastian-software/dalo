@@ -290,6 +290,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         .iter()
         .filter_map(|scan| scan.inventory.clone())
         .collect::<Vec<_>>();
+    let plugin_inventories = resolver::plugin_inventories(&live.scans);
     let mut plugins = live.plugins;
     let mut live_resolution = live.resolution;
     let audits = audit::audit_active_skills(&paths, &live_resolution, false);
@@ -333,13 +334,13 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         &paths,
         &config.sources,
         &approvals.approvals,
-        &inventories,
+        &plugin_inventories,
     );
     let hooks = crate::hook::list_from_inventories(
         &paths,
         &config.sources,
         &approvals.approvals,
-        &inventories,
+        &plugin_inventories,
         &tools.tools,
     )?;
     let selected_plugin_refs = plugins
@@ -2455,6 +2456,10 @@ matcher = { tool_names = ["Write"] }
             fs::set_permissions(&entry, fs::Permissions::from_mode(0o755))
                 .expect("tool entry should be executable");
         }
+        let invalid_skill = store_root.join("local/skills/Invalid");
+        fs::create_dir_all(&invalid_skill).expect("invalid skill directory should be created");
+        fs::write(invalid_skill.join("SKILL.md"), "# Invalid\n")
+            .expect("invalid skill should be written");
 
         crate::plugin::reset_source_plugin_scan_count();
         let report = build_status_report(&store_root).expect("status should build");
@@ -2462,6 +2467,12 @@ matcher = { tool_names = ["Write"] }
         assert_eq!(crate::plugin::source_plugin_scan_count(), 1);
         assert_eq!(report.tools.tools.len(), 1);
         assert_eq!(report.hooks.hooks.len(), 2);
+        assert!(
+            report
+                .inventory_warnings
+                .iter()
+                .any(|warning| warning.path == invalid_skill.join("SKILL.md"))
+        );
         assert!(
             report
                 .hooks
