@@ -2698,6 +2698,109 @@ fn closed_pipe_should_terminate_without_a_print_panic() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn hook_dispatch_should_fail_closed_when_the_handler_closes_stdin() {
+    let temp = tempfile::tempdir().expect("temporary directory should be created");
+    let store = store::comparable_path(&temp.path().join("store"));
+    dalo::store::init_store(store.clone(), false).expect("store should initialize");
+    let paths = dalo::store::StorePaths::new(store.clone());
+    let package = paths.local_dir.join("plugins/policy");
+    std::fs::create_dir_all(package.join("bin")).expect("hook package directory should exist");
+    std::fs::write(
+        package.join("PLUGIN.toml"),
+        r#"schema_version = 1
+[plugin]
+name = "policy"
+description = "SIGPIPE regression fixture"
+
+[[tool]]
+schema_version = 1
+id = "check"
+entry = "bin/check"
+runtime = "executable"
+platforms = ["macos", "linux"]
+argv = []
+cwd = "tool_root"
+capabilities = []
+availability = "required"
+
+[[hook]]
+schema_version = 1
+id = "protect-shell"
+tool = "check"
+subject = "tool_call"
+phase = "before"
+effect = "allow_deny"
+requirement = "required"
+timeout_ms = 2000
+failure_policy = "fail_closed"
+retry = "never"
+error_visibility = "model_and_user"
+blocking_scope = "matched_event"
+matcher = { tool_names = ["Bash"] }
+"#,
+    )
+    .expect("hook manifest should be written");
+    let entry = package.join("bin/check");
+    std::fs::write(&entry, "#!/bin/sh\nexec 0<&-\nexit 1\n")
+        .expect("hook handler should be written");
+    std::fs::set_permissions(&entry, std::fs::Permissions::from_mode(0o755))
+        .expect("hook handler should be executable");
+    dalo::tool::approve(&paths, "local:policy#tool:check", false).expect("tool should be approved");
+    dalo::hook::approve(&paths, "local:policy#hook:protect-shell", false)
+        .expect("hook should be approved");
+    let status = dalo::hook::show(&paths, "local:policy#hook:protect-shell")
+        .expect("approved hook should be visible");
+    let projection = dalo::hook::compile_native_projection(
+        &paths,
+        dalo::hook::HookProvider::Claude,
+        dalo::hook::CLAUDE_HOOK_BASELINE,
+        std::path::Path::new("/usr/bin/dalo"),
+        &[status],
+    )
+    .expect("hook projection should compile");
+    let sidecar = temp.path().join("native/settings.json");
+    let plan = dalo::hook_sidecar::plan_sidecar(
+        &paths,
+        dalo::hook::HookProvider::Claude,
+        &sidecar,
+        &projection,
+    )
+    .expect("hook sidecar should plan");
+    dalo::hook_sidecar::apply_sidecar(&paths, &projection, plan, false)
+        .expect("hook projection should be stored");
+
+    // This exceeds a pipe buffer so the pre-fix dispatcher, whose binary
+    // restores SIGPIPE to SIG_DFL, is terminated once the handler closes stdin.
+    let input = format!(
+        r#"{{"session_id":"s","cwd":"/tmp","tool_name":"Bash","tool_use_id":"t","padding":"{}"}}"#,
+        "x".repeat(1024 * 1024),
+    );
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args([
+            "hook",
+            "dispatch",
+            "--provider",
+            "claude",
+            "--projection",
+            &projection.fingerprint,
+            "--event",
+            "PreToolUse",
+            "--group",
+            "group-0000",
+        ])
+        .write_stdin(input)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("permissionDecision\":\"deny"))
+        .stdout(predicate::str::contains(
+            "hook handler exited unsuccessfully",
+        ));
+}
+
 #[test]
 fn manpage_should_generate_roff() {
     dalo_command()
