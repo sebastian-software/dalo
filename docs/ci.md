@@ -53,6 +53,20 @@ The checkout in this example is a local Git source. Replace `.` with the path
 or URL of the skill repository that the workflow should validate. The temporary
 store and generic target keep the check isolated from any runner state.
 
+## Release publication
+
+The publish workflow keeps a new GitHub release as a draft while its six target
+archives, checksums, and Sigstore bundles build and upload. The workflow creates
+the release tag at draft time so each matrix job can check out the exact release
+commit. A single final job verifies every expected asset and publishes the
+release only after the complete matrix succeeds. If a build is failed or
+cancelled, the incomplete release remains a non-public draft and the preceding
+public latest release stays available.
+
+GitHub is published before crates.io, npm, or the Homebrew tap dispatch. Each of
+those downstream channels depends on the final GitHub-release job, so no public
+installer path advertises an archive before GitHub makes that archive available.
+
 ## Exit codes
 
 | Code | Meaning |
