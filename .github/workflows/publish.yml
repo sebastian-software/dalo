@@ -25,7 +25,9 @@ jobs:
 
   publish-crate:
     name: Publish crate
-    needs: release-please
+    # GitHub assets publish first. This keeps every public install channel from
+    # advertising a release whose archives are not yet available.
+    needs: [release-please, publish-github-release]
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -49,7 +51,7 @@ jobs:
 
   publish-npm:
     name: Publish npm wrapper
-    needs: [release-please, release-artifacts]
+    needs: [release-please, publish-github-release]
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -192,11 +194,50 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
-        run: gh release upload "$TAG_NAME" dist/*.tar.gz dist/*.sha256 dist/*.sigstore.json --clobber
+        shell: bash
+        run: |
+          test "$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft')" = true
+          gh release upload "$TAG_NAME" dist/*.tar.gz dist/*.sha256 dist/*.sigstore.json --clobber
+
+  publish-github-release:
+    name: Publish GitHub release
+    needs: [release-please, release-artifacts]
+    if: ${{ needs.release-please.outputs.release_created == 'true' && needs.release-artifacts.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Verify staged artifacts and publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          test "$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft')" = true
+          case "$TAG_NAME" in
+            dalo-v*) version="${TAG_NAME#dalo-v}" ;;
+            v*) version="${TAG_NAME#v}" ;;
+            *) echo "::error::unexpected release tag '${TAG_NAME}'"; exit 1 ;;
+          esac
+          uploaded_assets="$(gh release view "$TAG_NAME" --json assets --jq '.assets[].name')"
+          for target in \
+            x86_64-unknown-linux-gnu \
+            aarch64-unknown-linux-gnu \
+            x86_64-unknown-linux-musl \
+            aarch64-unknown-linux-musl \
+            x86_64-apple-darwin \
+            aarch64-apple-darwin; do
+            archive="dalo-${version}-${target}.tar.gz"
+            for asset in "$archive" "$archive.sha256" "$archive.sigstore.json"; do
+              printf '%s\n' "$uploaded_assets" | grep -Fx -- "$asset" > /dev/null
+            done
+          done
+          gh release edit "$TAG_NAME" --draft=false
 
   update-homebrew:
     name: Update Homebrew tap
-    needs: [release-please, release-artifacts]
+    needs: [release-please, publish-github-release]
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
