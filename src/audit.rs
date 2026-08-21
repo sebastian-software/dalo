@@ -437,11 +437,7 @@ pub fn audit_skill(
 ) -> DaloResult<AuditReport> {
     let exclude_root_source_metadata = options.exclude_root_source_metadata
         || configured_source_root(paths, source_ref, skill_path);
-    let content_hash = if exclude_root_source_metadata {
-        catalog::hash_source_root_directory(skill_path)?
-    } else {
-        catalog::hash_directory(skill_path)?
-    };
+    let content_hash = audit_content_hash(skill_path, exclude_root_source_metadata)?;
     let existing = match read_report(paths, source_ref, &content_hash) {
         Ok(report) => Some(report),
         Err(DaloError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => None,
@@ -580,6 +576,82 @@ fn configured_source_root(paths: &StorePaths, source_ref: &str, skill_path: &Pat
                 && store::comparable_path(&source.path) == store::comparable_path(skill_path)
         })
     })
+}
+
+/// Return the content fingerprint for the static scanner's exact input.
+///
+/// Catalog hashes intentionally remain file-based because they are stored in
+/// source locks. The scanner additionally observes every `.git` entry,
+/// including an empty directory, so those paths are mixed into an
+/// audit-specific fingerprint without changing catalog compatibility. A
+/// directory without such entries retains the historical catalog hash and can
+/// reuse existing safe reports.
+fn audit_content_hash(skill_path: &Path, exclude_root_git_metadata: bool) -> DaloResult<String> {
+    let catalog_hash = if exclude_root_git_metadata {
+        catalog::hash_source_root_directory(skill_path)?
+    } else {
+        catalog::hash_directory(skill_path)?
+    };
+    let mut git_entries = Vec::new();
+    collect_git_metadata_entries(
+        skill_path,
+        skill_path,
+        exclude_root_git_metadata,
+        &mut git_entries,
+    )?;
+    if git_entries.is_empty() {
+        return Ok(catalog_hash);
+    }
+    git_entries.sort();
+
+    let mut hasher = Sha256::new();
+    hasher.update(b"dalo-audit-content-hash-v1\0");
+    hash_framed(&mut hasher, catalog_hash.as_bytes());
+    for entry in git_entries {
+        let relative = entry.strip_prefix(skill_path).unwrap_or(entry.as_path());
+        hash_framed(&mut hasher, relative.as_os_str().as_bytes());
+    }
+    Ok(hex_digest(&hasher.finalize()))
+}
+
+/// Collect exactly the metadata entries the static scanner handles specially.
+/// A `.git` directory is intentionally not recursed into, mirroring
+/// `collect_entries`: its presence is the scan-visible input, not its contents.
+fn collect_git_metadata_entries(
+    root: &Path,
+    dir: &Path,
+    exclude_root_git_metadata: bool,
+    entries: &mut Vec<PathBuf>,
+) -> DaloResult<()> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if entry.file_name() == ".git" {
+            if !(exclude_root_git_metadata && dir == root) {
+                entries.push(path);
+            }
+            continue;
+        }
+        if entry.file_type()?.is_dir() {
+            collect_git_metadata_entries(root, &path, exclude_root_git_metadata, entries)?;
+        }
+    }
+    Ok(())
+}
+
+fn hash_framed(hasher: &mut Sha256, bytes: &[u8]) {
+    hasher.update((bytes.len() as u64).to_le_bytes());
+    hasher.update(bytes);
+}
+
+fn hex_digest(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        let _ = write!(&mut output, "{byte:02x}");
+    }
+    output
 }
 
 #[derive(Serialize)]
@@ -2644,6 +2716,40 @@ mod tests {
                 .static_findings
                 .iter()
                 .any(|finding| finding.id == "static.git-metadata-entry")
+        );
+    }
+
+    #[test]
+    fn audit_content_hash_should_match_static_metadata_visibility() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let skill = write_skill(temp.path(), "Summarize a pull request.\n");
+
+        let clean_hash = audit_content_hash(&skill, false).expect("clean hash should succeed");
+        fs::create_dir(skill.join("empty")).expect("empty directory should be created");
+        assert_eq!(
+            audit_content_hash(&skill, false).expect("empty directory hash should succeed"),
+            clean_hash,
+            "ordinary empty directories are not visible to the static scan"
+        );
+
+        fs::create_dir(skill.join(".git")).expect("git directory should be created");
+        assert_ne!(
+            audit_content_hash(&skill, false).expect("metadata hash should succeed"),
+            clean_hash,
+            "an empty .git directory is visible to the static scan"
+        );
+        assert_eq!(
+            audit_content_hash(&skill, true).expect("excluded metadata hash should succeed"),
+            clean_hash,
+            "root metadata excluded from the scan must not invalidate its cache"
+        );
+
+        fs::create_dir_all(skill.join("nested/.git"))
+            .expect("nested git directory should be created");
+        assert_ne!(
+            audit_content_hash(&skill, true).expect("nested metadata hash should succeed"),
+            clean_hash,
+            "nested metadata remains visible when root metadata is excluded"
         );
     }
 
