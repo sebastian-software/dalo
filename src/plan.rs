@@ -238,6 +238,7 @@ pub fn build_installation_plan(
         .iter()
         .filter_map(|scan| scan.inventory.clone())
         .collect::<Vec<_>>();
+    let plugin_inventories = crate::resolver::plugin_inventories(&live.scans);
     let mut plan = build_from_facts(
         store_root,
         &state,
@@ -250,13 +251,13 @@ pub fn build_installation_plan(
         &paths,
         &config.sources,
         &approvals.approvals,
-        &inventories,
+        &plugin_inventories,
     );
     let hooks = crate::hook::list_from_inventories(
         &paths,
         &config.sources,
         &approvals.approvals,
-        &inventories,
+        &plugin_inventories,
         &tools.tools,
     )?;
     attach_tool_status_from_report(&mut plan, &tools.tools);

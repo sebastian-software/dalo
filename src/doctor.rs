@@ -300,11 +300,7 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
         live_resolution.as_ref(),
     ) {
         (Some(config), Some(approvals), Some(live)) => {
-            let inventories = live
-                .scans
-                .iter()
-                .filter_map(|scan| scan.inventory.clone())
-                .collect::<Vec<_>>();
+            let inventories = resolver::plugin_inventories(&live.scans);
             Some(crate::tool::list_from_inventories(
                 &paths,
                 &config.sources,
@@ -321,11 +317,7 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
         tool_report.as_ref(),
     ) {
         (Some(config), Some(approvals), Some(live), Some(tools)) => {
-            let inventories = live
-                .scans
-                .iter()
-                .filter_map(|scan| scan.inventory.clone())
-                .collect::<Vec<_>>();
+            let inventories = resolver::plugin_inventories(&live.scans);
             crate::hook::list_from_inventories(
                 &paths,
                 &config.sources,

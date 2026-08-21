@@ -2500,6 +2500,7 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
             .iter()
             .filter_map(|scan| scan.inventory.clone())
             .collect::<Vec<_>>();
+        let plugin_inventories = resolver::plugin_inventories(&live.scans);
         let degraded_sources = collect_degraded_sources(&live, refresh_failures, &audits.failures);
         let inventory_warnings = live
             .scans
@@ -2606,7 +2607,7 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
                 &paths,
                 &config.sources,
                 &approvals.approvals,
-                &inventories,
+                &plugin_inventories,
             )
             .tools
         } else {
@@ -2617,7 +2618,7 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
                 &paths,
                 &config.sources,
                 &approvals.approvals,
-                &inventories,
+                &plugin_inventories,
                 &tools,
             )?
             .hooks

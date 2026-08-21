@@ -8,7 +8,7 @@ use serde::Serialize;
 use crate::agent::{self, AgentResolution};
 use crate::config::UserConfig;
 use crate::inventory::{self, InventoryWarningCode, SkillDelivery, SkillRecord, SourceInventory};
-use crate::plugin::{self, PluginResolution, PluginState};
+use crate::plugin::{self, PluginInventory, PluginResolution, PluginState};
 use crate::source::{SourceConfig, SourceKind};
 use crate::store::ApprovalRecord;
 
@@ -28,6 +28,8 @@ pub struct ResolutionInput<'a> {
 pub struct SourceScan {
     /// Scanned source.
     pub source: SourceConfig,
+    /// Plugin inventory scanned independently from skills and agents.
+    pub plugin_inventory: PluginInventory,
     /// Successful inventory, or `None` when the scan failed.
     pub inventory: Option<SourceInventory>,
     /// Scan error message when the scan failed.
@@ -48,6 +50,32 @@ pub struct LiveResolution {
     pub plugins: PluginResolution,
     /// Independent canonical agent resolution used for plugin member states.
     pub agents: AgentResolution,
+}
+
+/// Project independently scanned plugin inventories into source inventory
+/// records for plugin consumers. Unlike the full inventory, these survive a
+/// degraded skill or agent scan because plugin discovery has its own boundary.
+#[must_use]
+pub fn plugin_inventories(scans: &[SourceScan]) -> Vec<SourceInventory> {
+    scans
+        .iter()
+        .map(|scan| plugin_inventory_as_source_inventory(&scan.source, &scan.plugin_inventory))
+        .collect()
+}
+
+fn plugin_inventory_as_source_inventory(
+    source: &SourceConfig,
+    plugin_inventory: &PluginInventory,
+) -> SourceInventory {
+    SourceInventory {
+        source_id: source.id.clone(),
+        skills: Vec::new(),
+        agents: Vec::new(),
+        plugins: plugin_inventory.plugins.clone(),
+        warnings: Vec::new(),
+        agent_warnings: Vec::new(),
+        plugin_warnings: plugin_inventory.warnings.clone(),
+    }
 }
 
 /// Final resolution result.
@@ -231,20 +259,33 @@ pub fn resolve_from_config(config: &UserConfig, approvals: Vec<ApprovalRecord>) 
     let mut scans = Vec::with_capacity(enabled.len());
     let mut inventories = Vec::new();
     for source in &enabled {
-        match scan_enabled_source(source) {
+        let (plugin_inventory, scanned) = scan_enabled_source(source);
+        match scanned {
             Ok(inventory) => {
                 inventories.push(inventory.clone());
                 scans.push(SourceScan {
                     source: source.clone(),
+                    plugin_inventory,
                     inventory: Some(inventory),
                     error: None,
                 });
             }
-            Err(error) => scans.push(SourceScan {
-                source: source.clone(),
-                inventory: None,
-                error: Some(error),
-            }),
+            Err(error) => {
+                // Plugin packages are independently validated inventory. Keep
+                // their records available for plugin resolution and all
+                // tool/hook consumers even when skill or agent discovery for
+                // this source cannot complete.
+                inventories.push(plugin_inventory_as_source_inventory(
+                    source,
+                    &plugin_inventory,
+                ));
+                scans.push(SourceScan {
+                    source: source.clone(),
+                    plugin_inventory,
+                    inventory: None,
+                    error: Some(error),
+                });
+            }
         }
     }
 
@@ -297,13 +338,23 @@ pub fn resolve_from_config(config: &UserConfig, approvals: Vec<ApprovalRecord>) 
 }
 
 /// Scan one enabled source, returning a human-readable error on failure.
-fn scan_enabled_source(source: &SourceConfig) -> Result<SourceInventory, String> {
+fn scan_enabled_source(
+    source: &SourceConfig,
+) -> (PluginInventory, Result<SourceInventory, String>) {
+    let plugin_inventory = plugin::scan_source_plugins(&source.id, &source.path);
     if !source.path.exists() {
-        return Err("source path does not exist".to_owned());
+        return (
+            plugin_inventory,
+            Err("source path does not exist".to_owned()),
+        );
     }
-    let inventory =
-        inventory::scan_source(&source.id, &source.path).map_err(|error| error.to_string())?;
-    Ok(inventory)
+    let inventory = inventory::scan_source_with_plugin_inventory(
+        &source.id,
+        &source.path,
+        plugin_inventory.clone(),
+    )
+    .map_err(|error| error.to_string());
+    (plugin_inventory, inventory)
 }
 
 /// Whether a successful inventory was partial enough that materialization must
@@ -1235,6 +1286,32 @@ mod tests {
         };
 
         assert!(inventory_degrades_source_for_removal(&inventory));
+    }
+
+    #[test]
+    fn plugin_inventory_projection_keeps_valid_plugins_when_full_scan_is_unavailable() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let package = temp.path().join("plugins/quality");
+        std::fs::create_dir_all(&package).expect("plugin directory should be created");
+        std::fs::write(
+            package.join(crate::plugin::PLUGIN_FILE),
+            "schema_version = 1\n[plugin]\nname = \"quality\"\ndescription = \"Quality policy\"\n",
+        )
+        .expect("plugin manifest should be written");
+        let mut source = source("local", SourceKind::Local, 0);
+        source.path = temp.path().to_path_buf();
+        let scans = vec![SourceScan {
+            source,
+            plugin_inventory: crate::plugin::scan_source_plugins("local", temp.path()),
+            inventory: None,
+            error: Some("skill inventory unavailable".to_owned()),
+        }];
+
+        let inventories = plugin_inventories(&scans);
+
+        assert_eq!(inventories.len(), 1);
+        assert_eq!(inventories[0].plugins.len(), 1);
+        assert_eq!(inventories[0].plugins[0].source_ref, "local:quality");
     }
 
     #[test]
