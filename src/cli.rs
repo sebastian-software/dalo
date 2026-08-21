@@ -2495,12 +2495,8 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
             &live.agents,
             &active_instruction_refs,
         );
-        let inventories = live
-            .scans
-            .iter()
-            .filter_map(|scan| scan.inventory.clone())
-            .collect::<Vec<_>>();
         let plugin_inventories = resolver::plugin_inventories(&live.scans);
+        let reconciliation_inventories = resolver::inventories_with_plugins(&live.scans);
         let degraded_sources = collect_degraded_sources(&live, refresh_failures, &audits.failures);
         let inventory_warnings = live
             .scans
@@ -2545,7 +2541,7 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
                 &options.store,
                 &state,
                 &live.plugins,
-                &inventories,
+                &reconciliation_inventories,
                 &report.operations,
                 None,
             );
@@ -2589,13 +2585,13 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
             .map(|plugin| plugin.source_ref.clone())
             .collect::<Vec<_>>();
         let target_state = store::read_state(&paths)?;
-        let has_tools = inventories
+        let has_tools = plugin_inventories
             .iter()
             .flat_map(|inventory| &inventory.plugins)
             .any(|plugin| {
                 selected_plugins.contains(&plugin.source_ref) && !plugin.tools.is_empty()
             });
-        let has_hooks = inventories
+        let has_hooks = plugin_inventories
             .iter()
             .flat_map(|inventory| &inventory.plugins)
             .any(|plugin| {
@@ -2629,7 +2625,7 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
             &paths,
             &target_state,
             &live.plugins,
-            &inventories,
+            &reconciliation_inventories,
             &tools,
             &hooks,
             options.dry_run,

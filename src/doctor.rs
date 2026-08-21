@@ -415,11 +415,7 @@ fn check_plugin_targets(
     hook_report: Option<&crate::hook::HookListReport>,
     findings: &mut Vec<DoctorFinding>,
 ) {
-    let inventories = live
-        .scans
-        .iter()
-        .filter_map(|scan| scan.inventory.clone())
-        .collect::<Vec<_>>();
+    let inventories = resolver::inventories_with_plugins(&live.scans);
     let tools = tool_report.map_or_else(Vec::new, |report| report.tools.clone());
     let hooks = hook_report.map_or_else(Vec::new, |report| report.hooks.clone());
     let reports = match crate::plugin_projection::reconcile(

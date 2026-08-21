@@ -733,6 +733,28 @@ matcher = { tool_names = ["Bash"] }
     native["foreign"] = serde_json::json!({"retained": true});
     std::fs::write(&sidecar, serde_json::to_vec_pretty(&native).unwrap()).unwrap();
 
+    // A degraded skill inventory must not make the independently scanned
+    // plugin contracts disappear from a real sync. The existing owned hook
+    // and native projection must remain present through the normal scan path.
+    let invalid_skill = store.join("local/skills/Invalid");
+    std::fs::create_dir_all(&invalid_skill).unwrap();
+    std::fs::write(invalid_skill.join("SKILL.md"), "# Invalid\n").unwrap();
+    let mut degraded_sync = dalo_command();
+    degraded_sync
+        .env("PATH", &path)
+        .env("HOME", temp.path())
+        .env("CODEX_HOME", &codex_home)
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    let native: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&sidecar).unwrap()).unwrap();
+    assert_eq!(native["foreign"]["retained"], true);
+    assert_eq!(native["hooks"]["PreToolUse"][0]["matcher"], "^(?:Bash)$");
+    assert!(native_package.exists());
+
     dalo_command()
         .args(["--store"])
         .arg(&store)
