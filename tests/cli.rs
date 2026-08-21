@@ -18,6 +18,30 @@ use common::{
 };
 
 #[test]
+fn dalo_command_should_isolate_provider_environment_per_invocation() {
+    let first = dalo_command();
+    let second = dalo_command();
+    let first_environment = first.test_environment();
+    let second_environment = second.test_environment();
+
+    assert_ne!(first_environment.home, second_environment.home);
+    assert_ne!(first_environment.codex_home, second_environment.codex_home);
+    assert_ne!(
+        first_environment.claude_config_dir,
+        second_environment.claude_config_dir
+    );
+    assert!(first_environment.home.is_dir());
+    assert!(first_environment.codex_home.is_dir());
+    assert!(first_environment.claude_config_dir.is_dir());
+    assert!(first_environment.opencode_config_dir.is_dir());
+    let path_entries = std::fs::read_dir(&first_environment.path)
+        .expect("controlled PATH should be readable")
+        .map(|entry| entry.expect("PATH entry should be readable").file_name())
+        .collect::<Vec<_>>();
+    assert_eq!(path_entries, [std::ffi::OsString::from("git")]);
+}
+
+#[test]
 fn plugin_review_should_be_deterministic_read_only_and_commit_only_exact_displayed_boundaries() {
     let temp = tempfile::tempdir().unwrap();
     let store = store::comparable_path(&temp.path().join("store"));
@@ -582,10 +606,7 @@ fn sync_should_project_and_revoke_owned_codex_hooks_without_touching_foreign_set
     let codex = fake_bin.join("codex");
     std::fs::write(&codex, "#!/bin/sh\nprintf '%s\\n' 'codex-cli 0.147.0'\n").unwrap();
     std::fs::set_permissions(&codex, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let path = std::env::join_paths(std::iter::once(fake_bin).chain(std::env::split_paths(
-        &std::env::var_os("PATH").unwrap_or_default(),
-    )))
-    .unwrap();
+    let path = fake_bin;
 
     dalo_command()
         .args(["--store"])
@@ -3926,7 +3947,14 @@ fn sync_json_should_materialize_prebuilt_provider_artifacts_and_record_provenanc
     )
     .expect("delivery manifest should be written");
 
-    let output = dalo_command()
+    let mut command = dalo_command();
+    let environment = command.test_environment();
+    let provider_paths = [
+        environment.codex_home.clone(),
+        environment.claude_config_dir.clone(),
+    ];
+    let controlled_path = environment.path.clone();
+    let output = command
         .args(["--store"])
         .arg(&store)
         .args(["--json", "sync"])
@@ -3935,6 +3963,18 @@ fn sync_json_should_materialize_prebuilt_provider_artifacts_and_record_provenanc
         .get_output()
         .stdout
         .clone();
+    for path in provider_paths {
+        assert!(path.is_dir());
+        assert!(!path.starts_with(temp_dir.path()));
+    }
+    assert_eq!(
+        std::fs::read_dir(controlled_path)
+            .expect("controlled PATH should be readable")
+            .map(|entry| entry.expect("PATH entry should be readable").file_name())
+            .collect::<Vec<_>>(),
+        [std::ffi::OsString::from("git")],
+        "sync must not discover a provider executable outside the controlled PATH"
+    );
     let report: serde_json::Value =
         serde_json::from_slice(&output).expect("sync should emit valid JSON");
 

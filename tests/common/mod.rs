@@ -7,13 +7,134 @@ use dalo::lockfile::UserLock;
 use dalo::store::{self, ApprovalRecord, StorePaths};
 use dalo::{source, target};
 use std::ffi::OsString;
+use std::ops::{Deref, DerefMut};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
-pub fn dalo_command() -> Command {
+/// A command whose provider-related environment is private to this invocation.
+///
+/// `TempDir` is retained for as long as the command exists, so parallel tests
+/// never share mutable provider configuration and cleanup remains automatic.
+pub struct DaloCommand {
+    command: Command,
+    environment: TestEnvironment,
+}
+
+impl Deref for DaloCommand {
+    type Target = Command;
+
+    fn deref(&self) -> &Self::Target {
+        &self.command
+    }
+}
+
+impl DerefMut for DaloCommand {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.command
+    }
+}
+
+impl DaloCommand {
+    pub fn test_environment(&self) -> &TestEnvironment {
+        &self.environment
+    }
+}
+
+/// Paths which isolate a test command from provider configuration on the host.
+pub struct TestEnvironment {
+    _root: tempfile::TempDir,
+    pub home: PathBuf,
+    pub codex_home: PathBuf,
+    pub claude_config_dir: PathBuf,
+    pub opencode_config_dir: PathBuf,
+    pub path: PathBuf,
+}
+
+impl TestEnvironment {
+    fn create() -> Self {
+        let root = tempfile::Builder::new()
+            .prefix("dalo-test-env-")
+            .tempdir()
+            .expect("test environment should be created");
+        let home = root.path().join("home");
+        let codex_home = root.path().join("codex");
+        let claude_config_dir = root.path().join("claude");
+        let opencode_config_dir = root.path().join("opencode");
+        let path = root.path().join("bin");
+        for directory in [
+            &home,
+            &codex_home,
+            &claude_config_dir,
+            &opencode_config_dir,
+            &path,
+            &root.path().join("xdg/config"),
+            &root.path().join("xdg/data"),
+            &root.path().join("xdg/cache"),
+        ] {
+            std::fs::create_dir_all(directory)
+                .expect("test environment directory should be created");
+        }
+        let git = executable_from_path("git");
+        std::os::unix::fs::symlink(git, path.join("git"))
+            .expect("controlled git fixture should be linked");
+        Self {
+            _root: root,
+            home,
+            codex_home,
+            claude_config_dir,
+            opencode_config_dir,
+            path,
+        }
+    }
+
+    fn xdg_config_home(&self) -> PathBuf {
+        self.home
+            .parent()
+            .expect("test home has a parent")
+            .join("xdg/config")
+    }
+
+    fn xdg_data_home(&self) -> PathBuf {
+        self.home
+            .parent()
+            .expect("test home has a parent")
+            .join("xdg/data")
+    }
+
+    fn xdg_cache_home(&self) -> PathBuf {
+        self.home
+            .parent()
+            .expect("test home has a parent")
+            .join("xdg/cache")
+    }
+}
+
+fn executable_from_path(program: &str) -> PathBuf {
+    std::env::var_os("PATH")
+        .into_iter()
+        .flat_map(|path| std::env::split_paths(&path).collect::<Vec<_>>())
+        .map(|directory| directory.join(program))
+        .find(|candidate| candidate.is_file())
+        .unwrap_or_else(|| panic!("{program} should be available for test fixtures"))
+}
+
+pub fn dalo_command() -> DaloCommand {
+    let environment = TestEnvironment::create();
     let mut command = Command::cargo_bin("dalo").expect("binary should build");
-    command.env_remove("DALO_STORE");
     command
+        .env_remove("DALO_STORE")
+        .env("HOME", &environment.home)
+        .env("CODEX_HOME", &environment.codex_home)
+        .env("CLAUDE_CONFIG_DIR", &environment.claude_config_dir)
+        .env("OPENCODE_CONFIG_DIR", &environment.opencode_config_dir)
+        .env("XDG_CONFIG_HOME", environment.xdg_config_home())
+        .env("XDG_DATA_HOME", environment.xdg_data_home())
+        .env("XDG_CACHE_HOME", environment.xdg_cache_home())
+        .env("PATH", &environment.path);
+    DaloCommand {
+        command,
+        environment,
+    }
 }
 
 pub fn setup_store_with_target(store: &Path, target: &Path) {
@@ -247,12 +368,8 @@ pub fn git_rev_parse_logger(temp_dir: &Path) -> GitRevParseLogger {
     permissions.set_mode(0o755);
     std::fs::set_permissions(&wrapper, permissions).expect("git wrapper should be executable");
 
-    let mut path_env = bin.into_os_string();
-    path_env.push(":");
-    path_env.push(std::env::var_os("PATH").unwrap_or_default());
-
     GitRevParseLogger {
-        path_env,
+        path_env: bin.into_os_string(),
         log: temp_dir.join("git-rev-parse.log"),
         real_git,
     }
