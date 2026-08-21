@@ -221,9 +221,10 @@ fn invoke_hook(
         argv[0] = resolve_executable(&argv[0])?;
     }
     // `main` restores the Unix SIGPIPE default so dalo remains pipeline-friendly
-    // when its own stdout closes. Do not write this untrusted event payload over
-    // a child-stdin pipe: a handler that exits early would otherwise terminate
-    // the dispatcher before its failure policy can run.
+    // when its own stdout closes. Prewrite the untrusted event payload to an
+    // anonymous, seekable file instead of a child-stdin pipe: this both keeps
+    // early handler exits from delivering SIGPIPE and removes the mutual pipe
+    // dependency between a chatty handler and a large native input.
     let mut stdin_file = tempfile()?;
     stdin_file.write_all(native_input)?;
     stdin_file.flush()?;
@@ -506,17 +507,19 @@ fn hash_bytes(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
+    use std::time::{Duration, Instant};
 
-    fn fixture(script: &str) -> (tempfile::TempDir, StorePaths, crate::hook::HookStatusReport) {
+    fn fixture(
+        script: &str,
+        timeout_ms: u32,
+    ) -> (tempfile::TempDir, StorePaths, crate::hook::HookStatusReport) {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("store");
         crate::store::init_store(root.clone(), false).unwrap();
         let paths = StorePaths::new(root);
         let package = paths.local_dir.join("plugins/policy");
         fs::create_dir_all(package.join("bin")).unwrap();
-        fs::write(
-            package.join(crate::plugin::PLUGIN_FILE),
-            r#"schema_version = 1
+        let manifest = r#"schema_version = 1
 [plugin]
 name = "policy"
 description = "Shell policy"
@@ -546,9 +549,9 @@ retry = "never"
 error_visibility = "model_and_user"
 blocking_scope = "matched_event"
 matcher = { tool_names = ["Bash"] }
-"#,
-        )
-        .unwrap();
+"#
+        .replace("timeout_ms = 2000", &format!("timeout_ms = {timeout_ms}"));
+        fs::write(package.join(crate::plugin::PLUGIN_FILE), manifest).unwrap();
         let entry = package.join("bin/check");
         fs::write(&entry, script).unwrap();
         fs::set_permissions(&entry, fs::Permissions::from_mode(0o755)).unwrap();
@@ -582,6 +585,7 @@ matcher = { tool_names = ["Bash"] }
     fn dispatcher_executes_only_staged_contract_and_translates_denial() {
         let (_temp, paths, status) = fixture(
             "#!/bin/sh\ncat >/dev/null\nprintf '%s' '{\"kind\":\"deny\",\"reason\":\"blocked by policy\"}'\n",
+            2_000,
         );
         let projection = compile_and_store(&paths, status);
         let output = dispatch(
@@ -604,7 +608,7 @@ matcher = { tool_names = ["Bash"] }
 
     #[test]
     fn malformed_required_gate_output_fails_closed() {
-        let (_temp, paths, status) = fixture("#!/bin/sh\nprintf '%s' 'not-json'\n");
+        let (_temp, paths, status) = fixture("#!/bin/sh\nprintf '%s' 'not-json'\n", 2_000);
         let projection = compile_and_store(&paths, status);
         let output = dispatch(
             &paths,
@@ -623,6 +627,82 @@ matcher = { tool_names = ["Bash"] }
                 .as_str()
                 .unwrap()
                 .contains("malformed output")
+        );
+    }
+
+    #[test]
+    fn dispatcher_drains_chatty_handler_before_it_consumes_large_native_input() {
+        let (_temp, paths, status) = fixture(
+            "#!/bin/sh\ndd if=/dev/zero bs=1048576 count=1 1>&2 2>/dev/null\ncat >/dev/null\nprintf '%s' '{\"kind\":\"deny\",\"reason\":\"blocked after input\"}'\n",
+            2_000,
+        );
+        let projection = compile_and_store(&paths, status);
+        let input = serde_json::to_vec(&json!({
+            "session_id": "s",
+            "cwd": "/tmp",
+            "tool_name": "Bash",
+            "tool_use_id": "t",
+            "padding": "x".repeat(1024 * 1024),
+        }))
+        .unwrap();
+
+        let started = Instant::now();
+        let output = dispatch(
+            &paths,
+            &DispatchRequest {
+                provider: HookProvider::Claude,
+                projection: &projection.fingerprint,
+                event: "PreToolUse",
+                group: "group-0000",
+            },
+            &input,
+        )
+        .expect("chatty handler should complete");
+
+        assert!(
+            started.elapsed() < Duration::from_millis(2_000),
+            "dispatcher should complete within the configured timeout"
+        );
+        assert_eq!(output["hookSpecificOutput"]["permissionDecision"], "deny");
+        assert_eq!(
+            output["hookSpecificOutput"]["permissionDecisionReason"],
+            "blocked after input"
+        );
+    }
+
+    #[test]
+    fn dispatcher_timeout_terminates_handler_that_never_reads_native_input() {
+        let (_temp, paths, status) = fixture("#!/bin/sh\nsleep 10\n", 150);
+        let projection = compile_and_store(&paths, status);
+        let input = serde_json::to_vec(&json!({
+            "session_id": "s",
+            "cwd": "/tmp",
+            "tool_name": "Bash",
+            "tool_use_id": "t",
+            "padding": "x".repeat(1024 * 1024),
+        }))
+        .unwrap();
+
+        let started = Instant::now();
+        let output = dispatch(
+            &paths,
+            &DispatchRequest {
+                provider: HookProvider::Claude,
+                projection: &projection.fingerprint,
+                event: "PreToolUse",
+                group: "group-0000",
+            },
+            &input,
+        )
+        .expect("fail-closed handler timeout should be translated to a denial");
+
+        assert_eq!(
+            output["hookSpecificOutput"]["permissionDecisionReason"],
+            "hook handler timed out"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "timeout should terminate the handler and join output readers"
         );
     }
 }
