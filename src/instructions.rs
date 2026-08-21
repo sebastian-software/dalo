@@ -13,6 +13,7 @@ use std::os::unix::fs::MetadataExt;
 use std::path::Component;
 use std::path::{Path, PathBuf};
 
+use rustix::fs::{CWD, RenameFlags, renameat_with};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tempfile::NamedTempFile;
@@ -1670,6 +1671,26 @@ fn replace_target_if_unchanged(
     content: &str,
     permissions: Option<fs::Permissions>,
 ) -> DaloResult<()> {
+    replace_target_if_unchanged_with(
+        snapshot,
+        content,
+        permissions,
+        || Ok(()),
+        sync_target_parent,
+    )
+}
+
+fn replace_target_if_unchanged_with<BeforeReplace, SyncParent>(
+    snapshot: &TargetSnapshot,
+    content: &str,
+    permissions: Option<fs::Permissions>,
+    before_replace: BeforeReplace,
+    sync_parent: SyncParent,
+) -> DaloResult<()>
+where
+    BeforeReplace: FnOnce() -> DaloResult<()>,
+    SyncParent: Fn(&Path) -> DaloResult<()>,
+{
     let parent = snapshot
         .target
         .parent()
@@ -1686,28 +1707,165 @@ fn replace_target_if_unchanged(
     temp_file.write_all(content.as_bytes())?;
     temp_file.flush()?;
     temp_file.as_file().sync_all()?;
+    before_replace()?;
 
-    // This final compare-before-replace check catches completed external edits
-    // after the snapshot was read without relying only on an advisory lock
-    // that other programs might not take.
-    if !target_matches_snapshot(snapshot)? {
-        return Err(target_changed(snapshot));
+    if snapshot.identity.is_some() {
+        replace_existing_target(snapshot, content, parent, temp_file, &sync_parent)
+    } else {
+        replace_missing_target(snapshot, content, parent, temp_file, &sync_parent)
     }
-    temp_file
-        .persist(&snapshot.target)
-        .map_err(|error| error.error)?;
-    sync_target_parent(parent)
 }
 
-fn target_matches_snapshot(snapshot: &TargetSnapshot) -> DaloResult<bool> {
-    match fs::metadata(&snapshot.target) {
+/// Atomically swap the staged content with an existing target. The displaced
+/// file remains at the temporary path until its identity and content have been
+/// verified, so a concurrent pathname replacement is restored instead of lost.
+fn replace_existing_target<SyncParent>(
+    snapshot: &TargetSnapshot,
+    content: &str,
+    parent: &Path,
+    temp_file: NamedTempFile,
+    sync_parent: &SyncParent,
+) -> DaloResult<()>
+where
+    SyncParent: Fn(&Path) -> DaloResult<()>,
+{
+    let staged_identity = target_identity(&temp_file.as_file().metadata()?);
+    let temp_path = temp_file.into_temp_path();
+    exchange_paths(&temp_path, &snapshot.target)?;
+
+    if !path_matches_snapshot(&temp_path, snapshot)? {
+        return Err(restore_exchanged_target(
+            snapshot,
+            content,
+            staged_identity,
+            temp_path,
+            parent,
+            sync_parent,
+            target_changed(snapshot),
+        ));
+    }
+    if let Err(error) = sync_parent(parent) {
+        return Err(restore_exchanged_target(
+            snapshot,
+            content,
+            staged_identity,
+            temp_path,
+            parent,
+            sync_parent,
+            error,
+        ));
+    }
+    Ok(())
+}
+
+fn replace_missing_target<SyncParent>(
+    snapshot: &TargetSnapshot,
+    content: &str,
+    parent: &Path,
+    temp_file: NamedTempFile,
+    sync_parent: &SyncParent,
+) -> DaloResult<()>
+where
+    SyncParent: Fn(&Path) -> DaloResult<()>,
+{
+    let staged_identity = target_identity(&temp_file.as_file().metadata()?);
+    temp_file
+        .persist_noclobber(&snapshot.target)
+        .map_err(|error| {
+            if error.error.kind() == std::io::ErrorKind::AlreadyExists {
+                target_changed(snapshot)
+            } else {
+                error.error.into()
+            }
+        })?;
+    if let Err(error) = sync_parent(parent) {
+        return Err(restore_new_target_after_sync_failure(
+            snapshot,
+            content,
+            staged_identity,
+            parent,
+            sync_parent,
+            error,
+        ));
+    }
+    Ok(())
+}
+
+fn exchange_paths(left: &Path, right: &Path) -> DaloResult<()> {
+    renameat_with(CWD, left, CWD, right, RenameFlags::EXCHANGE)
+        .map_err(|error| std::io::Error::from(error).into())
+}
+
+fn restore_exchanged_target<SyncParent>(
+    snapshot: &TargetSnapshot,
+    content: &str,
+    staged_identity: TargetIdentity,
+    temp_path: tempfile::TempPath,
+    parent: &Path,
+    sync_parent: &SyncParent,
+    original_error: DaloError,
+) -> DaloError
+where
+    SyncParent: Fn(&Path) -> DaloResult<()>,
+{
+    if !target_has_identity_and_content(&snapshot.target, staged_identity, content).unwrap_or(false)
+    {
+        return match temp_path.keep() {
+            Ok(recovery_path) => DaloError::Io(std::io::Error::other(format!(
+                "{original_error}; instruction target changed again and its prior contents were retained at `{}`",
+                recovery_path.display()
+            ))),
+            Err(error) => DaloError::Io(std::io::Error::other(format!(
+                "{original_error}; also failed to retain instruction target contents after a concurrent change: {}",
+                error.error
+            ))),
+        };
+    }
+    match exchange_paths(&temp_path, &snapshot.target).and_then(|()| sync_parent(parent)) {
+        Ok(()) => original_error,
+        Err(restore_error) => DaloError::Io(std::io::Error::other(format!(
+            "{original_error}; also failed to restore instruction target `{}`: {restore_error}",
+            snapshot.target.display()
+        ))),
+    }
+}
+
+fn restore_new_target_after_sync_failure<SyncParent>(
+    snapshot: &TargetSnapshot,
+    content: &str,
+    staged_identity: TargetIdentity,
+    parent: &Path,
+    sync_parent: &SyncParent,
+    original_error: DaloError,
+) -> DaloError
+where
+    SyncParent: Fn(&Path) -> DaloResult<()>,
+{
+    if !target_has_identity_and_content(&snapshot.target, staged_identity, content).unwrap_or(false)
+    {
+        return original_error;
+    }
+    let restore_result = (|| -> DaloResult<()> {
+        fs::remove_file(&snapshot.target)?;
+        sync_parent(parent)
+    })();
+    match restore_result {
+        Ok(()) => original_error,
+        Err(restore_error) => DaloError::Io(std::io::Error::other(format!(
+            "{original_error}; also failed to remove instruction target `{}`: {restore_error}",
+            snapshot.target.display()
+        ))),
+    }
+}
+
+fn path_matches_snapshot(path: &Path, snapshot: &TargetSnapshot) -> DaloResult<bool> {
+    match fs::metadata(path) {
         Ok(metadata) => {
             let Some(expected) = snapshot.identity else {
                 return Ok(false);
             };
             Ok(target_identity(&metadata) == expected
-                && fs::read_to_string(&snapshot.target)?
-                    == snapshot.content.as_deref().unwrap_or_default())
+                && fs::read_to_string(path)? == snapshot.content.as_deref().unwrap_or_default())
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             Ok(snapshot.identity.is_none())
@@ -1963,6 +2121,7 @@ pub fn topic_overlaps(active: &[DiscoveredPack]) -> Vec<TopicOverlap> {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
     use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
 
     use super::*;
@@ -2435,6 +2594,94 @@ mod tests {
             .expect_err("replaced target should block replacement");
         assert!(matches!(error, DaloError::InstructionTargetChanged { .. }));
         assert_eq!(fs::read_to_string(&target).unwrap(), "external edit\n");
+    }
+
+    #[test]
+    fn replacement_should_restore_a_pathname_change_that_races_the_swap() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let target = temp.path().join("AGENTS.md");
+        let replacement = temp.path().join("AGENTS.md.external");
+        fs::write(&target, "before\n").expect("target should be seeded");
+        let snapshot = target_snapshot(&target).expect("snapshot should be readable");
+        fs::write(&replacement, "external edit\n").expect("replacement should be written");
+
+        let error = replace_target_if_unchanged_with(
+            &snapshot,
+            "dalo output\n",
+            None,
+            || {
+                fs::rename(&replacement, &target)?;
+                Ok(())
+            },
+            sync_target_parent,
+        )
+        .expect_err("pathname change should block replacement");
+
+        assert!(matches!(error, DaloError::InstructionTargetChanged { .. }));
+        assert_eq!(fs::read_to_string(&target).unwrap(), "external edit\n");
+        assert_eq!(
+            fs::read_dir(temp.path())
+                .expect("parent directory should be readable")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn replacement_should_restore_the_target_when_directory_sync_fails() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let target = temp.path().join("AGENTS.md");
+        fs::write(&target, "before\n").expect("target should be seeded");
+        let snapshot = target_snapshot(&target).expect("snapshot should be readable");
+        let sync_calls = Cell::new(0);
+
+        let error = replace_target_if_unchanged_with(
+            &snapshot,
+            "dalo output\n",
+            None,
+            || Ok(()),
+            |parent| {
+                if sync_calls.replace(1) == 0 {
+                    Err(DaloError::Io(std::io::Error::other(
+                        "directory sync failed",
+                    )))
+                } else {
+                    sync_target_parent(parent)
+                }
+            },
+        )
+        .expect_err("directory sync failure should fail replacement");
+
+        assert!(error.to_string().contains("directory sync failed"));
+        assert_eq!(fs::read_to_string(&target).unwrap(), "before\n");
+    }
+
+    #[test]
+    fn missing_target_replacement_should_remove_the_new_file_when_directory_sync_fails() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let target = temp.path().join("AGENTS.md");
+        let snapshot = target_snapshot(&target).expect("snapshot should be readable");
+        let sync_calls = Cell::new(0);
+
+        let error = replace_target_if_unchanged_with(
+            &snapshot,
+            "dalo output\n",
+            None,
+            || Ok(()),
+            |parent| {
+                if sync_calls.replace(1) == 0 {
+                    Err(DaloError::Io(std::io::Error::other(
+                        "directory sync failed",
+                    )))
+                } else {
+                    sync_target_parent(parent)
+                }
+            },
+        )
+        .expect_err("directory sync failure should fail replacement");
+
+        assert!(error.to_string().contains("directory sync failed"));
+        assert!(!target.exists());
     }
 
     #[test]

@@ -31,7 +31,7 @@ predicates = "3"
 proptest = "1.11.0"
 
 [target.'cfg(unix)'.dependencies]
-rustix = { version = "1", features = ["process"] }
+rustix = { version = "1", features = ["fs", "process"] }
 sigpipe = "0.1.3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
