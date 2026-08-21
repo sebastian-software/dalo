@@ -566,22 +566,41 @@ matcher = { tool_names = ["Bash"] }
 
     fn compile_and_store(
         paths: &StorePaths,
+        provider: HookProvider,
         status: crate::hook::HookStatusReport,
     ) -> crate::hook::NativeHookProjection {
         let projection = crate::hook::compile_native_projection(
             paths,
-            HookProvider::Claude,
-            crate::hook::CLAUDE_HOOK_BASELINE,
+            provider,
+            provider.baseline(),
             Path::new("/usr/bin/dalo"),
             &[status],
         )
         .unwrap();
         let sidecar = paths.root.join("native/settings.json");
         let plan =
-            crate::hook_sidecar::plan_sidecar(paths, HookProvider::Claude, &sidecar, &projection)
-                .unwrap();
+            crate::hook_sidecar::plan_sidecar(paths, provider, &sidecar, &projection).unwrap();
         crate::hook_sidecar::apply_sidecar(paths, &projection, plan, false).unwrap();
         projection
+    }
+
+    fn stored_hook(
+        paths: &StorePaths,
+        projection: &crate::hook::NativeHookProjection,
+    ) -> DispatcherHook {
+        let manifest = fs::read(
+            paths
+                .hooks_dir
+                .join("projections")
+                .join(format!("{}.json", projection.fingerprint)),
+        )
+        .unwrap();
+        serde_json::from_slice::<DispatcherManifest>(&manifest)
+            .unwrap()
+            .hooks
+            .into_iter()
+            .next()
+            .unwrap()
     }
 
     #[test]
@@ -590,7 +609,7 @@ matcher = { tool_names = ["Bash"] }
             "#!/bin/sh\ncat >/dev/null\nprintf '%s' '{\"kind\":\"deny\",\"reason\":\"blocked by policy\"}'\n",
             2_000,
         );
-        let projection = compile_and_store(&paths, status);
+        let projection = compile_and_store(&paths, HookProvider::Claude, status);
         let output = dispatch(
             &paths,
             &DispatchRequest {
@@ -612,7 +631,7 @@ matcher = { tool_names = ["Bash"] }
     #[test]
     fn malformed_required_gate_output_fails_closed() {
         let (_temp, paths, status) = fixture("#!/bin/sh\nprintf '%s' 'not-json'\n", 2_000);
-        let projection = compile_and_store(&paths, status);
+        let projection = compile_and_store(&paths, HookProvider::Claude, status);
         let output = dispatch(
             &paths,
             &DispatchRequest {
@@ -647,7 +666,7 @@ matcher = { tool_names = ["Bash"] }
             "#!/bin/sh\ndd if=/dev/zero bs=1048576 count=1 1>&2 2>/dev/null\ncat >/dev/null\nprintf '%s' '{\"kind\":\"deny\",\"reason\":\"blocked after input\"}'\n",
             2_000,
         );
-        let projection = compile_and_store(&paths, status);
+        let projection = compile_and_store(&paths, HookProvider::Claude, status);
         let output = dispatch(
             &paths,
             &DispatchRequest {
@@ -761,7 +780,7 @@ matcher = { tool_names = ["Bash"] }
     #[test]
     fn dispatcher_timeout_terminates_handler_that_never_reads_native_input() {
         let (_temp, paths, status) = fixture("#!/bin/sh\nsleep 10\n", 150);
-        let projection = compile_and_store(&paths, status);
+        let projection = compile_and_store(&paths, HookProvider::Claude, status);
         let input = serde_json::to_vec(&json!({
             "session_id": "s",
             "cwd": "/tmp",
@@ -791,6 +810,57 @@ matcher = { tool_names = ["Bash"] }
         assert!(
             started.elapsed() < Duration::from_secs(1),
             "timeout should terminate the handler and join output readers"
+        );
+    }
+
+    #[test]
+    fn verify_hook_rejects_a_tampered_contract_hash() {
+        let (_temp, paths, status) = fixture("#!/bin/sh\nprintf '%s' '{}'\n", 2_000);
+        let projection = compile_and_store(&paths, HookProvider::Claude, status);
+        let mut hook = stored_hook(&paths, &projection);
+        hook.contract_hash = "0".repeat(64);
+
+        let error = verify_hook(&paths, &hook).unwrap_err();
+
+        assert!(error.to_string().contains("contract hash mismatch"));
+    }
+
+    #[test]
+    fn oversized_handler_output_is_rejected_without_buffering_past_the_limit() {
+        let error = read_bounded(std::io::Cursor::new(vec![
+            0;
+            MAX_HANDLER_OUTPUT as usize + 1
+        ]))
+        .unwrap_err();
+
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+        assert_eq!(error.to_string(), "hook output exceeds 4 MiB");
+    }
+
+    #[test]
+    fn dispatcher_translates_codex_provider_dispatches() {
+        let (_temp, paths, status) = fixture(
+            "#!/bin/sh\nprintf '%s' '{\"kind\":\"deny\",\"reason\":\"blocked by Codex policy\"}'\n",
+            2_000,
+        );
+        let projection = compile_and_store(&paths, HookProvider::Codex, status);
+
+        let output = dispatch(
+            &paths,
+            &DispatchRequest {
+                provider: HookProvider::Codex,
+                projection: &projection.fingerprint,
+                event: "PreToolUse",
+                group: "group-0000",
+            },
+            br#"{"session_id":"s","cwd":"/tmp","tool_name":"Bash","tool_use_id":"t"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(output["hookSpecificOutput"]["permissionDecision"], "deny");
+        assert_eq!(
+            output["hookSpecificOutput"]["permissionDecisionReason"],
+            "blocked by Codex policy"
         );
     }
 }
