@@ -509,6 +509,9 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
     use std::time::{Duration, Instant};
 
+    const CHATTY_DISPATCH_INPUT_PATH: &str = "DALO_CHATTY_DISPATCH_INPUT_PATH";
+    const CHATTY_DISPATCH_WATCHDOG: Duration = Duration::from_secs(5);
+
     fn fixture(
         script: &str,
         timeout_ms: u32,
@@ -632,20 +635,19 @@ matcher = { tool_names = ["Bash"] }
 
     #[test]
     fn dispatcher_drains_chatty_handler_before_it_consumes_large_native_input() {
+        let Some(input_path) = std::env::var_os(CHATTY_DISPATCH_INPUT_PATH) else {
+            return run_chatty_dispatch_in_child();
+        };
+        let input = fs::read(input_path).expect("child input file should be readable");
+        run_chatty_dispatch(&input);
+    }
+
+    fn run_chatty_dispatch(input: &[u8]) {
         let (_temp, paths, status) = fixture(
             "#!/bin/sh\ndd if=/dev/zero bs=1048576 count=1 1>&2 2>/dev/null\ncat >/dev/null\nprintf '%s' '{\"kind\":\"deny\",\"reason\":\"blocked after input\"}'\n",
             2_000,
         );
         let projection = compile_and_store(&paths, status);
-        let input = serde_json::to_vec(&json!({
-            "session_id": "s",
-            "cwd": "/tmp",
-            "tool_name": "Bash",
-            "tool_use_id": "t",
-            "padding": "x".repeat(1024 * 1024),
-        }))
-        .unwrap();
-
         let output = dispatch(
             &paths,
             &DispatchRequest {
@@ -654,7 +656,7 @@ matcher = { tool_names = ["Bash"] }
                 event: "PreToolUse",
                 group: "group-0000",
             },
-            &input,
+            input,
         )
         .expect("chatty handler should complete");
 
@@ -662,6 +664,97 @@ matcher = { tool_names = ["Bash"] }
         assert_eq!(
             output["hookSpecificOutput"]["permissionDecisionReason"],
             "blocked after input"
+        );
+    }
+
+    fn run_chatty_dispatch_in_child() {
+        let input = serde_json::to_vec(&json!({
+            "session_id": "s",
+            "cwd": "/tmp",
+            "tool_name": "Bash",
+            "tool_use_id": "t",
+            "padding": "x".repeat(1024 * 1024),
+        }))
+        .unwrap();
+        let mut input_file = tempfile::NamedTempFile::new().expect("child input file should open");
+        input_file
+            .write_all(&input)
+            .expect("child input file should be written");
+        input_file
+            .flush()
+            .expect("child input file should be flushed");
+
+        let executable = std::env::current_exe().expect("test executable should be available");
+        let mut command = std::process::Command::new(executable);
+        command
+            .args([
+                "--exact",
+                "hook_dispatch::tests::dispatcher_drains_chatty_handler_before_it_consumes_large_native_input",
+                "--nocapture",
+            ])
+            .env(CHATTY_DISPATCH_INPUT_PATH, input_file.path())
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        #[cfg(unix)]
+        command.process_group(0);
+        let mut child = command.spawn().expect("chatty dispatch child should start");
+        let stdout = child
+            .stdout
+            .take()
+            .expect("child stdout should be captured");
+        let stderr = child
+            .stderr
+            .take()
+            .expect("child stderr should be captured");
+        let stdout_reader = std::thread::spawn(move || read_bounded(stdout));
+        let stderr_reader = std::thread::spawn(move || read_bounded(stderr));
+        let deadline = Instant::now() + CHATTY_DISPATCH_WATCHDOG;
+
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break status,
+                Ok(None) if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                Ok(None) => {
+                    terminate_handler_process(&mut child);
+                    let stdout = stdout_reader
+                        .join()
+                        .expect("child stdout reader should not panic")
+                        .expect("child stdout should be readable");
+                    let stderr = stderr_reader
+                        .join()
+                        .expect("child stderr reader should not panic")
+                        .expect("child stderr should be readable");
+                    panic!(
+                        "chatty dispatch child exceeded {}: stdout={} stderr={}",
+                        CHATTY_DISPATCH_WATCHDOG.as_secs_f32(),
+                        String::from_utf8_lossy(&stdout),
+                        String::from_utf8_lossy(&stderr),
+                    );
+                }
+                Err(error) => {
+                    terminate_handler_process(&mut child);
+                    let _ = stdout_reader.join();
+                    let _ = stderr_reader.join();
+                    panic!("chatty dispatch child could not be polled: {error}");
+                }
+            }
+        };
+        let stdout = stdout_reader
+            .join()
+            .expect("child stdout reader should not panic")
+            .expect("child stdout should be readable");
+        let stderr = stderr_reader
+            .join()
+            .expect("child stderr reader should not panic")
+            .expect("child stderr should be readable");
+        assert!(
+            status.success(),
+            "chatty dispatch child failed with {status}: stdout={} stderr={}",
+            String::from_utf8_lossy(&stdout),
+            String::from_utf8_lossy(&stderr),
         );
     }
 
