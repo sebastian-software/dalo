@@ -69,8 +69,11 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
 
+      - name: Verify MSRV toolchain
+        run: rustc +1.93 --version
+
       - name: Check
-        run: cargo check --locked --all-targets --all-features
+        run: cargo +1.93 check --locked --all-targets --all-features
 
   audit:
     name: Dependency audit
