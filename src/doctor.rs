@@ -822,7 +822,10 @@ fn read_lock(
             findings.push(finding_error(
                 DoctorCode::LockInvalid,
                 format!("user lock could not be read: {error}"),
-                Some("dalo sync".to_owned()),
+                Some(format!(
+                    "inspect {}; if it cannot be repaired, back it up, remove it, run `dalo init`, then run `dalo sync` to regenerate it",
+                    shell_quote_path(&paths.lock_file)
+                )),
             ));
             None
         }
@@ -1216,7 +1219,7 @@ fn check_source_inventories(
                     "source `{}` inventory is degraded; sync preserves existing links: {details}",
                     scan.source.id
                 ),
-                Some(source_inventory_fix_hint(&inventory.warnings)),
+                Some(source_inventory_fix_hint(&scan.source, &inventory.warnings)),
             ));
             }
             // `check_sources` already reports a missing or unreadable checkout.
@@ -1235,15 +1238,27 @@ fn check_source_inventories(
     }
 }
 
-fn source_inventory_fix_hint(warnings: &[InventoryWarning]) -> String {
+fn source_inventory_fix_hint(source: &SourceConfig, warnings: &[InventoryWarning]) -> String {
     if let Some(warning) = warnings
         .iter()
         .find(|warning| warning.code == InventoryWarningCode::InvalidSlotName)
     {
         if warning.message.starts_with("frontmatter name ") {
+            if source.kind != SourceKind::Local {
+                return format!(
+                    "fix the frontmatter `name` for source `{}` in its upstream repository, push it, then run `dalo sync`",
+                    source.id
+                );
+            }
             return format!(
                 "change the frontmatter `name` in {} to a portable lowercase slot name, then run `dalo sync`",
                 shell_quote_path(&warning.path)
+            );
+        }
+        if source.kind != SourceKind::Local {
+            return format!(
+                "rename the affected skill folder for source `{}` in its upstream repository, push it, then run `dalo sync`",
+                source.id
             );
         }
         let path = warning.path.parent().unwrap_or(&warning.path);
@@ -1256,6 +1271,12 @@ fn source_inventory_fix_hint(warnings: &[InventoryWarning]) -> String {
         .iter()
         .find(|warning| warning.code == InventoryWarningCode::UnreadablePath)
     {
+        if source.kind != SourceKind::Local {
+            return format!(
+                "restore read access for source `{}` in its upstream repository, push it, then run `dalo sync`",
+                source.id
+            );
+        }
         return format!(
             "restore read access to {}, then run `dalo sync`",
             shell_quote_path(&warning.path)
@@ -1265,9 +1286,21 @@ fn source_inventory_fix_hint(warnings: &[InventoryWarning]) -> String {
         .iter()
         .find(|warning| warning.code == InventoryWarningCode::SkippedSymlink)
     {
+        if source.kind != SourceKind::Local {
+            return format!(
+                "replace the unsafe symlink for source `{}` in its upstream repository, push it, then run `dalo sync`",
+                source.id
+            );
+        }
         return format!(
             "replace the unsafe symlink at {} with a real path inside the source, then run `dalo sync`",
             shell_quote_path(&warning.path)
+        );
+    }
+    if source.kind != SourceKind::Local {
+        return format!(
+            "fix the source inventory warning for source `{}` in its upstream repository, push it, then run `dalo sync`",
+            source.id
         );
     }
     "fix the source inventory warning, then run `dalo sync`".to_owned()

@@ -5008,6 +5008,57 @@ fn sync_should_fail_closed_on_invalid_lock_without_overwriting_it() {
 }
 
 #[test]
+fn doctor_should_explain_safe_lock_recovery_before_regenerating_it() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store with $(shell)");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    let lock_file = store.join("lock.toml");
+    let comparable_store = store::comparable_path(&store);
+    let comparable_lock_file = comparable_store.join("lock.toml");
+    let invalid_lock = "schema_version = ";
+    std::fs::write(&lock_file, invalid_lock).expect("lock should be corrupted");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["doctor", "--check"])
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(predicate::str::contains("lock_invalid"))
+        .stdout(predicate::str::contains(format!(
+            "next=inspect '{}'; if it cannot be repaired, back it up, remove it, run `{}`, then run `{}` to regenerate it",
+            comparable_lock_file.display(),
+            store::dalo_command(&comparable_store, "init"),
+            store::dalo_command(&comparable_store, "sync")
+        )));
+
+    let backup = store.join("lock.toml.backup");
+    std::fs::copy(&lock_file, &backup).expect("lock should be backed up before removal");
+    std::fs::remove_file(&lock_file).expect("corrupt lock should be removed deliberately");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    assert_eq!(std::fs::read_to_string(backup).unwrap(), invalid_lock);
+    read_user_lock(&store);
+}
+
+#[test]
 fn status_json_should_report_unmanaged_target_skills() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -6585,6 +6636,74 @@ fn source_add_and_sync_should_report_team_inventory_warnings_without_auditing_sk
         2,
         "invalid skills must not materialize into the audit list"
     );
+}
+
+#[test]
+fn doctor_should_direct_team_inventory_repairs_to_upstream_before_syncing() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo_with_skill(
+        &repo,
+        "frontmatter-slot",
+        "---\nname: weird name\n---\n# Frontmatter\n",
+    );
+    setup_store_with_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "team"])
+        .arg(&repo)
+        .assert()
+        .success();
+    let checkout = store.join("sources/team/checkout");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["doctor", "--check"])
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(predicate::str::contains(
+            "next=fix the frontmatter `name` for source `team` in its upstream repository, push it, then run `dalo --store",
+        ));
+    assert!(
+        git_command_succeeds(&checkout, &["diff", "--quiet"]),
+        "doctor must not direct a user to dirty Dalo's managed checkout"
+    );
+
+    std::fs::write(
+        repo.join("skills/frontmatter-slot/SKILL.md"),
+        "---\nname: frontmatter-slot\n---\n# Frontmatter\n",
+    )
+    .expect("upstream skill should be repaired");
+    run_git(&repo, &["add", "."]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "repair skill name",
+            "-q",
+        ],
+    );
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    assert!(git_command_succeeds(&checkout, &["diff", "--quiet"]));
+    assert!(target.join("frontmatter-slot").is_symlink());
 }
 
 #[test]
