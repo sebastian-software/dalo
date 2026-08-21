@@ -822,7 +822,10 @@ fn read_lock(
             findings.push(finding_error(
                 DoctorCode::LockInvalid,
                 format!("user lock could not be read: {error}"),
-                Some("dalo sync".to_owned()),
+                Some(format!(
+                    "inspect {}; repair it or restore a known-good backup before running `dalo sync`; do not remove it because it records active instruction packs",
+                    shell_quote_path(&paths.lock_file)
+                )),
             ));
             None
         }
@@ -1216,7 +1219,7 @@ fn check_source_inventories(
                     "source `{}` inventory is degraded; sync preserves existing links: {details}",
                     scan.source.id
                 ),
-                Some(source_inventory_fix_hint(&inventory.warnings)),
+                Some(source_inventory_fix_hint(&scan.source, &inventory.warnings)),
             ));
             }
             // `check_sources` already reports a missing or unreadable checkout.
@@ -1235,15 +1238,47 @@ fn check_source_inventories(
     }
 }
 
-fn source_inventory_fix_hint(warnings: &[InventoryWarning]) -> String {
+fn source_inventory_fix_hint(source: &SourceConfig, warnings: &[InventoryWarning]) -> String {
+    if let Some(warning) = warnings
+        .iter()
+        .find(|warning| warning.code == InventoryWarningCode::UnreadablePath)
+    {
+        let access_recovery = format!(
+            "restore read access to {} in Dalo's managed checkout",
+            shell_quote_path(&warning.path)
+        );
+        if source.kind != SourceKind::Local
+            && warnings
+                .iter()
+                .any(|warning| warning.code == InventoryWarningCode::InvalidSlotName)
+        {
+            return format!(
+                "{access_recovery}; then fix the invalid skill name for source `{}` in its upstream repository, push it, then run `dalo sync`",
+                source.id
+            );
+        }
+        return format!("{access_recovery}, then run `dalo sync`");
+    }
     if let Some(warning) = warnings
         .iter()
         .find(|warning| warning.code == InventoryWarningCode::InvalidSlotName)
     {
         if warning.message.starts_with("frontmatter name ") {
+            if source.kind != SourceKind::Local {
+                return format!(
+                    "fix the frontmatter `name` for source `{}` in its upstream repository, push it, then run `dalo sync`",
+                    source.id
+                );
+            }
             return format!(
                 "change the frontmatter `name` in {} to a portable lowercase slot name, then run `dalo sync`",
                 shell_quote_path(&warning.path)
+            );
+        }
+        if source.kind != SourceKind::Local {
+            return format!(
+                "rename the affected skill folder for source `{}` in its upstream repository, push it, then run `dalo sync`",
+                source.id
             );
         }
         let path = warning.path.parent().unwrap_or(&warning.path);
@@ -1254,20 +1289,23 @@ fn source_inventory_fix_hint(warnings: &[InventoryWarning]) -> String {
     }
     if let Some(warning) = warnings
         .iter()
-        .find(|warning| warning.code == InventoryWarningCode::UnreadablePath)
-    {
-        return format!(
-            "restore read access to {}, then run `dalo sync`",
-            shell_quote_path(&warning.path)
-        );
-    }
-    if let Some(warning) = warnings
-        .iter()
         .find(|warning| warning.code == InventoryWarningCode::SkippedSymlink)
     {
+        if source.kind != SourceKind::Local {
+            return format!(
+                "replace the unsafe symlink for source `{}` in its upstream repository, push it, then run `dalo sync`",
+                source.id
+            );
+        }
         return format!(
             "replace the unsafe symlink at {} with a real path inside the source, then run `dalo sync`",
             shell_quote_path(&warning.path)
+        );
+    }
+    if source.kind != SourceKind::Local {
+        return format!(
+            "fix the source inventory warning for source `{}` in its upstream repository, push it, then run `dalo sync`",
+            source.id
         );
     }
     "fix the source inventory warning, then run `dalo sync`".to_owned()
@@ -1878,6 +1916,47 @@ mod tests {
         assert!(hint.contains("frontmatter `name`"));
         assert!(hint.contains(skill.to_string_lossy().as_ref()));
         assert!(!hint.contains("rename"));
+    }
+
+    #[test]
+    fn mixed_inventory_hint_repairs_managed_checkout_access_before_upstream_content() {
+        let source = SourceConfig {
+            id: "team".to_owned(),
+            kind: SourceKind::Team,
+            path: PathBuf::from("/store/sources/team/checkout"),
+            priority: 10,
+            namespace: None,
+            enabled: true,
+            trusted: true,
+            url: Some("https://example.com/team.git".to_owned()),
+            branch: None,
+            update_policy: Some("track".to_owned()),
+            selection: Vec::new(),
+            declared_by: None,
+            declared_ref: None,
+        };
+        let hint = source_inventory_fix_hint(
+            &source,
+            &[
+                InventoryWarning {
+                    code: InventoryWarningCode::InvalidSlotName,
+                    path: PathBuf::from("/store/sources/team/checkout/skills/bad/SKILL.md"),
+                    message: "frontmatter name `bad name` is not portable".to_owned(),
+                },
+                InventoryWarning {
+                    code: InventoryWarningCode::UnreadablePath,
+                    path: PathBuf::from("/store/sources/team/checkout/skills/restricted"),
+                    message: "permission denied".to_owned(),
+                },
+            ],
+        );
+        assert!(hint.starts_with(
+            "restore read access to '/store/sources/team/checkout/skills/restricted' in Dalo's managed checkout"
+        ));
+        assert!(hint.contains(
+            "then fix the invalid skill name for source `team` in its upstream repository"
+        ));
+        assert!(hint.ends_with("then run `dalo sync`"));
     }
 
     #[test]

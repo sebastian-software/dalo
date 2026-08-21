@@ -97,6 +97,10 @@ Lock drift compares the previous `lock.toml` with the current live resolution.
 | `unreadable_path` | Dalo could not read a skill path. | Fix filesystem permissions, broken links, or the source checkout. |
 | `skipped_symlink` | Dalo skipped a symlinked directory or an out-of-tree `SKILL.md` metadata symlink to keep source discovery and skill identity inside a bounded checkout. | Replace it with a real in-tree path, or remove the symlink. |
 
+For a local source, make the repair in its local source path. For Git-backed
+team or catalog sources, do not edit Dalo's managed checkout: fix the upstream
+repository, push the change, then run `dalo sync`.
+
 ### Agent Inventory Warnings
 
 These appear in `status.agent_inventory_warnings`, `dalo agent list`, and make
@@ -158,7 +162,7 @@ Doctor includes `ok` and `info` codes as well as warnings/errors. Codes not list
 | `store_layout_missing` | error | Run `dalo init` to recreate missing store paths. |
 | `config_invalid` | error | Fix `config.toml` or restore it from version control/backups. |
 | `state_invalid` | error | Run `dalo init`; corrupt state is backed up and regenerated. Relink targets afterward if needed. |
-| `lock_invalid` | error | Fix/remove `lock.toml`, then run `dalo sync` to regenerate it. |
+| `lock_invalid` | error | Inspect and repair `lock.toml`, or restore a known-good backup before running `dalo sync`. Do not remove it: it is the sole record of active instruction packs and their managed target blocks. |
 | `source_lock_invalid` | error | Inspect or restore `source-lock.toml`; do not sync until the intended catalog pins are understood. |
 | `source_provenance_mismatch` | error | Compare `dalo source list` with the declaring team's `dalo.toml`, then run `dalo sync` after restoring the intended declaration or checkout. |
 | `source_store_debris` | warning | Inspect and remove the reported unconfigured source content or interrupted-operation directory when it is no longer needed. |
