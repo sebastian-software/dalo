@@ -767,11 +767,16 @@ explicit, content-bound risk acceptance without treating every technical skill
 as unsafe by default.
 
 Reports live below `audits/` and are keyed by both the source-qualified skill
-reference and the complete skill directory hash. Cached agent results
-additionally require the same provider and Dalo review-prompt version. Risk
-acceptance is bound to source provenance, engine versions, coverage, and exact
-deterministic and semantic findings, so a different source or newly discovered
-risk requires a new decision even when the skill bytes did not change.
+reference and the complete skill directory hash. After re-hashing the current
+directory, a report with the matching source, static-engine version, and scan
+mode reuses its deterministic findings and coverage instead of reading and
+scanning every file again. Missing, malformed, old-version, changed-content,
+or incompatible-mode reports are rebuilt before they can affect the result.
+Cached agent results additionally require the same content, scan mode,
+provider, and Dalo review-prompt version. Risk acceptance is bound to source
+provenance, engine versions, coverage, and exact deterministic and semantic
+findings, so a different source or newly discovered risk requires a new
+decision even when the skill bytes did not change.
 
 The audit directory and report files are restricted to the current user when
 Dalo writes them. Audit state is still a local trust boundary rather than a
