@@ -4210,6 +4210,33 @@ required = true
 }
 
 #[test]
+fn approve_delivery_should_reject_an_ordinary_skill_without_a_stable_id() {
+    let temporary = tempfile::tempdir().expect("tempdir should be created");
+    let store = temporary.path().join("store");
+    let repo = temporary.path().join("team-repo");
+    create_git_skill_repo_with_skill(&repo, "review", "# Review\n");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    add_source(&store, "company", &repo);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "delivery", "company:review"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "does not declare a generated delivery recipe",
+        ))
+        .stderr(predicate::str::contains("panicked").not());
+}
+
+#[test]
 fn generated_delivery_failure_or_blocking_audit_should_preserve_last_good_link() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

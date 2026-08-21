@@ -936,15 +936,32 @@ fn validate_identity_shape(value: &str) -> DaloResult<()> {
 
 fn inspect(paths: &StorePaths, value: &str) -> DaloResult<DeliveryApprovalReport> {
     let canonical = crate::approval::canonical_skill(paths, value)?;
+    inspect_canonical(paths, &canonical)
+}
+
+/// Inspect the current generated-delivery recipe for an already canonical skill.
+///
+/// The canonical resolution and this inspection require separate source scans.
+/// Treat checkout or configuration changes between those scans as a blocked
+/// repository state instead of assuming the earlier result is still present.
+fn inspect_canonical(paths: &StorePaths, canonical: &str) -> DaloResult<DeliveryApprovalReport> {
     let (source_id, _) = canonical
         .split_once(':')
-        .expect("canonical skill references are source-qualified");
+        .ok_or_else(|| DaloError::StateError {
+            reason: format!(
+                "generated delivery approval lost its canonical skill reference `{canonical}`; retry the command"
+            ),
+        })?;
     let config = store::read_config(paths)?;
     let source = config
         .sources
         .iter()
         .find(|source| source.id == source_id)
-        .expect("canonical skill source remains configured");
+        .ok_or_else(|| DaloError::StateError {
+            reason: format!(
+                "generated delivery source `{source_id}` is no longer configured; restore it or retry the approval"
+            ),
+        })?;
     if source.kind == SourceKind::Local {
         return Err(DaloError::StateError {
             reason: format!(
@@ -979,39 +996,60 @@ fn inspect(paths: &StorePaths, value: &str) -> DaloResult<DeliveryApprovalReport
             .skills
             .iter_mut()
             .find(|skill| skill.source_ref == canonical)
-            .expect("canonical skill remains present in the same inventory");
+            .ok_or_else(|| DaloError::StateError {
+                reason: format!(
+                    "skill `{canonical}` changed or disappeared while preparing generated delivery approval; retry the command"
+                ),
+            })?;
+        let (generator, generator_contract_hash, providers, manifest_path) = match &skill.delivery {
+            SkillDelivery::Generated {
+                generator,
+                generator_contract_hash,
+                providers,
+                manifest_path,
+                ..
+            } => (
+                generator.clone(),
+                generator_contract_hash.clone(),
+                providers.clone(),
+                manifest_path.clone(),
+            ),
+            _ => {
+                return Err(DaloError::InvalidArgument {
+                    reason: format!(
+                        "skill `{canonical}` does not declare a generated delivery recipe"
+                    ),
+                });
+            }
+        };
         let stable_ref = format!(
             "{}:{}",
             skill.source_id,
             skill
                 .id
                 .as_ref()
-                .expect("generated delivery requires a stable skill ID")
+                .ok_or_else(|| DaloError::StateError {
+                    reason: format!(
+                        "generated delivery `{canonical}` is missing its stable skill frontmatter `id`; restore it and retry the approval"
+                    ),
+                })?
         );
         skill
             .delivery
-            .bind_generated_approvals(&canonical, &stable_ref, Some(commit), &[]);
-        let SkillDelivery::Generated {
+            .bind_generated_approvals(canonical, &stable_ref, Some(commit), &[]);
+        let approval_value = skill
+            .delivery
+            .generated_approval_value(canonical, &stable_ref)
+            .ok_or_else(|| DaloError::StateError {
+                reason: format!(
+                    "generated delivery `{canonical}` could not bind commit provenance; retry the approval"
+                ),
+            })?;
+        (
             generator,
             generator_contract_hash,
             providers,
             manifest_path,
-            ..
-        } = &skill.delivery
-        else {
-            return Err(DaloError::InvalidArgument {
-                reason: format!("skill `{canonical}` does not declare a generated delivery recipe"),
-            });
-        };
-        let approval_value = skill
-            .delivery
-            .generated_approval_value(&canonical, &stable_ref)
-            .expect("non-local generated delivery has bound commit provenance");
-        (
-            generator.clone(),
-            generator_contract_hash.clone(),
-            providers.clone(),
-            manifest_path.clone(),
             approval_value,
         )
     };
@@ -1049,7 +1087,7 @@ fn inspect(paths: &StorePaths, value: &str) -> DaloResult<DeliveryApprovalReport
         }
     }
     Ok(DeliveryApprovalReport {
-        skill: canonical,
+        skill: canonical.to_owned(),
         approval_value,
         generator: Some(generator),
         generator_contract_hash: Some(generator_contract_hash),
@@ -1058,4 +1096,79 @@ fn inspect(paths: &StorePaths, value: &str) -> DaloResult<DeliveryApprovalReport
         dry_run: false,
         execution: "not_run".to_owned(),
     })
+}
+
+#[cfg(test)]
+mod approval_inspection_tests {
+    use super::*;
+
+    fn initialized_paths() -> (tempfile::TempDir, StorePaths) {
+        let temporary = tempfile::tempdir().expect("tempdir should be created");
+        let root = temporary.path().join("store");
+        store::init_store(root.clone(), false).expect("store should initialize");
+        (temporary, StorePaths::new(root))
+    }
+
+    fn create_empty_git_repository(path: &Path) {
+        fs::create_dir_all(path).expect("repository directory should be created");
+        crate::git::init_repo(path).expect("repository should initialize");
+        fs::write(path.join("README.md"), "# Fixture\n").expect("fixture file should be written");
+        let status = Command::new("git")
+            .args(["add", "README.md"])
+            .current_dir(path)
+            .status()
+            .expect("git add should run");
+        assert!(status.success());
+        let status = Command::new("git")
+            .args([
+                "-c",
+                "commit.gpgsign=false",
+                "-c",
+                "user.email=test@example.com",
+                "-c",
+                "user.name=Test User",
+                "commit",
+                "-m",
+                "fixture",
+                "-q",
+            ])
+            .current_dir(path)
+            .status()
+            .expect("git commit should run");
+        assert!(status.success());
+    }
+
+    #[test]
+    fn inspect_canonical_should_report_a_source_removed_after_resolution() {
+        let (_temporary, paths) = initialized_paths();
+
+        let error = inspect_canonical(&paths, "company:review")
+            .expect_err("a removed source should block delivery approval");
+
+        assert!(matches!(error, DaloError::StateError { .. }));
+        assert!(error.to_string().contains("no longer configured"));
+    }
+
+    #[test]
+    fn inspect_canonical_should_report_a_skill_removed_after_resolution() {
+        let (temporary, paths) = initialized_paths();
+        let repository = temporary.path().join("team-repository");
+        create_empty_git_repository(&repository);
+        crate::source::add_team_source(
+            &paths,
+            "company",
+            repository
+                .to_str()
+                .expect("repository path should be UTF-8"),
+            None,
+            false,
+        )
+        .expect("source should be added");
+
+        let error = inspect_canonical(&paths, "company:review")
+            .expect_err("a removed skill should block delivery approval");
+
+        assert!(matches!(error, DaloError::StateError { .. }));
+        assert!(error.to_string().contains("changed or disappeared"));
+    }
 }
