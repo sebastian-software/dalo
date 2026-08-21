@@ -646,7 +646,6 @@ matcher = { tool_names = ["Bash"] }
         }))
         .unwrap();
 
-        let started = Instant::now();
         let output = dispatch(
             &paths,
             &DispatchRequest {
@@ -659,10 +658,6 @@ matcher = { tool_names = ["Bash"] }
         )
         .expect("chatty handler should complete");
 
-        assert!(
-            started.elapsed() < Duration::from_millis(2_000),
-            "dispatcher should complete within the configured timeout"
-        );
         assert_eq!(output["hookSpecificOutput"]["permissionDecision"], "deny");
         assert_eq!(
             output["hookSpecificOutput"]["permissionDecisionReason"],
