@@ -5011,6 +5011,7 @@ fn sync_should_fail_closed_on_invalid_lock_without_overwriting_it() {
 fn doctor_should_explain_safe_lock_recovery_before_regenerating_it() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store with $(shell)");
+    let target_file = temp_dir.path().join("AGENTS.md");
     dalo_command()
         .args(["--store"])
         .arg(&store)
@@ -5020,6 +5021,20 @@ fn doctor_should_explain_safe_lock_recovery_before_regenerating_it() {
     let lock_file = store.join("lock.toml");
     let comparable_store = store::comparable_path(&store);
     let comparable_lock_file = comparable_store.join("lock.toml");
+    std::fs::write(
+        store.join("local/instructions/house-style.md"),
+        "Keep instruction state recoverable.\n",
+    )
+    .expect("instruction pack should be written");
+    std::fs::write(&target_file, "# User instructions\n").expect("target should be written");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "house-style"])
+        .arg(&target_file)
+        .assert()
+        .success();
+    let known_good_lock = std::fs::read(&lock_file).expect("lock should be backed up");
     let invalid_lock = "schema_version = ";
     std::fs::write(&lock_file, invalid_lock).expect("lock should be corrupted");
 
@@ -5032,21 +5047,14 @@ fn doctor_should_explain_safe_lock_recovery_before_regenerating_it() {
         .code(1)
         .stdout(predicate::str::contains("lock_invalid"))
         .stdout(predicate::str::contains(format!(
-            "next=inspect '{}'; if it cannot be repaired, back it up, remove it, run `{}`, then run `{}` to regenerate it",
+            "next=inspect '{}'; repair it or restore a known-good backup before running `{}`; do not remove it because it records active instruction packs",
             comparable_lock_file.display(),
-            store::dalo_command(&comparable_store, "init"),
             store::dalo_command(&comparable_store, "sync")
         )));
 
     let backup = store.join("lock.toml.backup");
-    std::fs::copy(&lock_file, &backup).expect("lock should be backed up before removal");
-    std::fs::remove_file(&lock_file).expect("corrupt lock should be removed deliberately");
-    dalo_command()
-        .args(["--store"])
-        .arg(&store)
-        .arg("init")
-        .assert()
-        .success();
+    std::fs::write(&backup, &known_good_lock).expect("known-good lock should be backed up");
+    std::fs::copy(&backup, &lock_file).expect("known-good lock should be restored");
     dalo_command()
         .args(["--store"])
         .arg(&store)
@@ -5054,8 +5062,20 @@ fn doctor_should_explain_safe_lock_recovery_before_regenerating_it() {
         .assert()
         .success();
 
-    assert_eq!(std::fs::read_to_string(backup).unwrap(), invalid_lock);
-    read_user_lock(&store);
+    assert_eq!(std::fs::read(backup).unwrap(), known_good_lock);
+    assert_eq!(read_user_lock(&store).active_instruction_packs.len(), 1);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "disable", "house-style"])
+        .arg(&target_file)
+        .assert()
+        .success();
+    assert!(
+        !std::fs::read_to_string(target_file)
+            .unwrap()
+            .contains("dalo:start")
+    );
 }
 
 #[test]
@@ -6704,6 +6724,69 @@ fn doctor_should_direct_team_inventory_repairs_to_upstream_before_syncing() {
         .success();
     assert!(git_command_succeeds(&checkout, &["diff", "--quiet"]));
     assert!(target.join("frontmatter-slot").is_symlink());
+}
+
+#[test]
+fn doctor_should_direct_unreadable_managed_source_paths_to_local_recovery() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo(&repo);
+    setup_store_with_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "team"])
+        .arg(&repo)
+        .assert()
+        .success();
+    let checkout = store.join("sources/team/checkout");
+    let skills_dir = checkout.join("skills");
+    let comparable_skills_dir = store::comparable_path(&skills_dir);
+    let original_mode = std::fs::metadata(&skills_dir)
+        .expect("skills directory should be readable")
+        .permissions()
+        .mode()
+        & 0o777;
+    std::fs::set_permissions(&skills_dir, std::fs::Permissions::from_mode(0o000))
+        .expect("skills directory permissions should change");
+    let unavailable_dir = checkout.join("skills-unavailable");
+    let used_rename_fallback = if std::fs::read_dir(&skills_dir).is_ok() {
+        std::fs::set_permissions(&skills_dir, std::fs::Permissions::from_mode(original_mode))
+            .expect("permissions should be restored before fallback");
+        std::fs::rename(&skills_dir, &unavailable_dir)
+            .expect("skills directory should be hidden for root-safe fallback");
+        true
+    } else {
+        false
+    };
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["doctor", "--check"])
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(predicate::str::contains(format!(
+            "restore read access to '{}' in Dalo's managed checkout, then run `dalo --store",
+            comparable_skills_dir.display()
+        )));
+
+    if used_rename_fallback {
+        std::fs::rename(&unavailable_dir, &skills_dir)
+            .expect("skills directory should be restored after fallback");
+    } else {
+        std::fs::set_permissions(&skills_dir, std::fs::Permissions::from_mode(original_mode))
+            .expect("skills directory permissions should be restored");
+    }
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
 }
 
 #[test]

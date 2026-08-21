@@ -823,7 +823,7 @@ fn read_lock(
                 DoctorCode::LockInvalid,
                 format!("user lock could not be read: {error}"),
                 Some(format!(
-                    "inspect {}; if it cannot be repaired, back it up, remove it, run `dalo init`, then run `dalo sync` to regenerate it",
+                    "inspect {}; repair it or restore a known-good backup before running `dalo sync`; do not remove it because it records active instruction packs",
                     shell_quote_path(&paths.lock_file)
                 )),
             ));
@@ -1271,14 +1271,8 @@ fn source_inventory_fix_hint(source: &SourceConfig, warnings: &[InventoryWarning
         .iter()
         .find(|warning| warning.code == InventoryWarningCode::UnreadablePath)
     {
-        if source.kind != SourceKind::Local {
-            return format!(
-                "restore read access for source `{}` in its upstream repository, push it, then run `dalo sync`",
-                source.id
-            );
-        }
         return format!(
-            "restore read access to {}, then run `dalo sync`",
+            "restore read access to {} in Dalo's managed checkout, then run `dalo sync`",
             shell_quote_path(&warning.path)
         );
     }
