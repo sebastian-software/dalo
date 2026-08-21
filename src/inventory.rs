@@ -2389,6 +2389,26 @@ required = true
     }
 
     #[test]
+    fn scan_source_should_name_skill_file_when_metadata_is_unreadable() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("skills/review");
+        fs::create_dir_all(&skill_dir).expect("skill directory should be created");
+        let skill_file = skill_dir.join(SKILL_FILE);
+        fs::write(&skill_file, "# Review\n").expect("skill should be written");
+        let mode = fs::metadata(&skill_file).unwrap().permissions().mode() & 0o777;
+        fs::set_permissions(&skill_file, fs::Permissions::from_mode(0o000)).unwrap();
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should complete");
+
+        fs::set_permissions(&skill_file, fs::Permissions::from_mode(mode)).unwrap();
+        assert!(inventory.warnings.iter().any(|warning| {
+            warning.code == InventoryWarningCode::UnreadablePath && warning.path == skill_file
+        }));
+    }
+
+    #[test]
     fn scan_source_should_skip_uppercase_folder_name() {
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
         let skill_dir = temp_dir.path().join("Review");
