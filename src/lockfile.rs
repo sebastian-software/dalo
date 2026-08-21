@@ -698,6 +698,7 @@ mod tests {
             deliveries: Vec::new(),
             resolution: resolution.clone(),
             degraded_sources: Vec::new(),
+            inventory_warnings: Vec::new(),
             unrefreshed_tracking_sources: Vec::new(),
             instruction_operations: Vec::new(),
             instruction_removal_operations: Vec::new(),

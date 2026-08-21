@@ -276,6 +276,11 @@ dalo --dry-run source add team https://github.com/example/team-skills.git
 
 JSON output shape: `SourceAddReport`.
 
+When discovery skips or degrades a skill, `source add` prints each inventory
+warning with its path and actionable reason before continuing to audit the
+valid skills. Skipped skills are not audited or materialized. JSON consumers
+receive the same typed entries in `SourceAddReport.inventory_warnings[]`.
+
 ### `dalo source add-catalog <id> <git-url-or-path> [--namespace <prefix>]`
 
 Add an untrusted catalog source, clone it into `sources/<id>/checkout`, and
@@ -525,6 +530,10 @@ exits with code 1 until the source is healthy. Restore or re-clone the checkout,
 or remove the source with `dalo source remove <id>`. Do not adopt or delete the
 preserved target link as if it were an unmanaged conflict. Machine-readable
 consumers can inspect each affected source in `SyncReport.degraded_sources[]`.
+`sync` also prints the individual inventory warnings that caused a degraded
+scan, including the affected path and reason, so the removal-safety message is
+not the only diagnosis. JSON consumers can inspect the same typed entries in
+`SyncReport.inventory_warnings[]`.
 
 Lock drift for local and team sources is commit-based. Uncommitted working-tree
 edits do not change the recorded commit, and materialized symlinks expose those
@@ -978,7 +987,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `team catalog update` | `TeamCatalogUpdateReport` | `catalog_id`, `old_version`, `old_commit`, `from_ref`, `candidate_commit`, `outcomes[]`, `audits[]`, optional `accepted_risk_reason`, `blocking_reasons[]`, `dry_run`, `updated`, resulting `manifest` |
 | `team catalog remove` | `TeamManifestMutationReport` | `path`, `action`, `catalog_id`, `dry_run`, resulting `manifest` |
 | `team show` | `TeamManifestView` | `path`, `manifest` |
-| `source add` | `SourceAddReport` | `source`, `dry_run`, `audits[]` with one `AuditReport` per discovered skill |
+| `source add` | `SourceAddReport` | `source`, `dry_run`, `audits[]` with one `AuditReport` per discovered skill, optional `inventory_warnings[]` (`code`, `path`, `message`) |
 | `source add-catalog` | `SourceConfig` | `id`, `kind`, `path`, `priority`, `enabled`, `trusted`, `url`, `update_policy`, `selection` |
 | `source list` | `SourceListReport` | `sources[]`, each with existing `SourceConfig` fields plus `provenance` |
 | `source priority` | `SourcePriorityReport` | `source`, `dry_run` |
@@ -992,7 +1001,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `autosync install` / `uninstall` | `AutosyncMutationReport` | `action`, `dry_run`, resulting `status` |
 | `autosync status` | `AutosyncStatusReport` | `configured`, `installed`, `enabled`, backend, schedule, executable, store, artifacts, optional `scheduler_error`, optional `disabled_reason`, and optional `last_run` |
 | `status` | `StatusReport` | `store`, `sources[]` with `skill_count`, `agent_count`, and `provenance`, `targets[]`, `inventory_warnings[]`, `agent_inventory_warnings[]`, `resolution`, dry-run `materialization[]`, `blocking_audits[]`, `audit_failures[]`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]`, `autosync` |
-| `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, skill `operations[]`, optional `instruction_operations[]` (`source_id`, `pack_id`, `target`, `action`, `previous_commit`, `commit`), `resolution`, `degraded_sources[]` (`id`, `path`, `reason`), optional `unrefreshed_tracking_sources[]`, `unselected_catalogs[]` (`source_id`, `available_skills`) |
+| `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, skill `operations[]`, optional `instruction_operations[]` (`source_id`, `pack_id`, `target`, `action`, `previous_commit`, `commit`), `resolution`, `degraded_sources[]` (`id`, `path`, `reason`), optional `inventory_warnings[]` (`code`, `path`, `message`), optional `unrefreshed_tracking_sources[]`, `unselected_catalogs[]` (`source_id`, `available_skills`) |
 | `audit` | `AuditReport` | `schema_version`, `source_ref`, `skill_path`, `content_hash`, `static_engine_version`, `scanned_at_unix`, `coverage`, `status`, optional `max_severity`, `static_findings[]`, optional `agent_review`, optional `risk_acceptance` |
 | `approve list` | `ApprovalsFile` | `schema_version`, `approvals[]` |
 | `approve skill` | audited approval outcome | `audit` (`AuditReport`), `approval` (`ApprovalReport`) |

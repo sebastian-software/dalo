@@ -11,6 +11,7 @@ use crate::catalog::{self, SourceLock};
 use crate::config::UserConfig;
 use crate::error::{DaloError, DaloResult};
 use crate::git;
+use crate::inventory::InventoryWarning;
 use crate::materialize::MaterializeOperationKind;
 use crate::store::{self, ApprovalsFile, StorePaths};
 
@@ -102,6 +103,9 @@ pub struct SourceAddReport {
     pub dry_run: bool,
     /// Deterministic preflight reports for every discovered skill.
     pub audits: Vec<AuditReport>,
+    /// Non-fatal inventory warnings for skipped or invalid skills.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inventory_warnings: Vec<InventoryWarning>,
 }
 
 /// Tracking source that could not be refreshed during sync.
@@ -535,15 +539,17 @@ where
             source,
             dry_run: true,
             audits: Vec::new(),
+            inventory_warnings: Vec::new(),
         });
     }
 
     clone_source_checkout_with(url, &checkout, clone_repo)?;
 
-    let audits = audit_source_checkout(paths, id, &checkout).inspect_err(|_| {
-        let _ = std::fs::remove_dir_all(&checkout);
-        remove_empty_source_dir(&checkout);
-    })?;
+    let (audits, inventory_warnings) =
+        audit_source_checkout(paths, id, &checkout).inspect_err(|_| {
+            let _ = std::fs::remove_dir_all(&checkout);
+            remove_empty_source_dir(&checkout);
+        })?;
 
     // From here on the checkout exists on disk. If persisting the source fails,
     // remove the clone so a later `source add` does not trip over an orphaned
@@ -557,6 +563,7 @@ where
         source,
         dry_run: false,
         audits,
+        inventory_warnings,
     })
 }
 
@@ -580,9 +587,9 @@ fn audit_source_checkout(
     paths: &StorePaths,
     source_id: &str,
     checkout: &Path,
-) -> DaloResult<Vec<AuditReport>> {
+) -> DaloResult<(Vec<AuditReport>, Vec<InventoryWarning>)> {
     let inventory = crate::inventory::scan_source(source_id, checkout)?;
-    inventory
+    let audits = inventory
         .skills
         .iter()
         .map(|skill| {
@@ -597,7 +604,8 @@ fn audit_source_checkout(
                 },
             )
         })
-        .collect()
+        .collect::<DaloResult<Vec<_>>>()?;
+    Ok((audits, inventory.warnings))
 }
 
 /// Clone a source through a temporary sibling and atomically publish it.

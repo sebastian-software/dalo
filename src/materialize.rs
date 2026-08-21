@@ -51,6 +51,9 @@ pub struct SyncReport {
     pub resolution: Resolution,
     /// Sources whose scan was incomplete, so stale links were preserved.
     pub degraded_sources: Vec<DegradedSource>,
+    /// Non-fatal skill inventory warnings observed during this sync.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inventory_warnings: Vec<crate::inventory::InventoryWarning>,
     /// Tracking team sources that a dry-run intentionally did not fetch.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub unrefreshed_tracking_sources: Vec<String>,
@@ -374,6 +377,7 @@ pub fn materialize_with_degraded_sources_rollback(
             deliveries,
             resolution,
             degraded_sources: degraded_sources.to_vec(),
+            inventory_warnings: Vec::new(),
             unrefreshed_tracking_sources: Vec::new(),
             instruction_operations: Vec::new(),
             instruction_removal_operations: Vec::new(),
