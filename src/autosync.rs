@@ -234,22 +234,28 @@ impl CommandRunner for SystemCommandRunner {
             .env("LC_ALL", "C")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        if input.is_some() {
-            command.stdin(Stdio::piped());
+        let stdin_file = input
+            .map(|input| {
+                // Dalo deliberately restores SIGPIPE for its own stdout. Scheduler
+                // input must not share that pipe behavior: if `crontab -` exits
+                // before reading, a pipe write would kill dalo before rollback.
+                let mut file = NamedTempFile::new()?;
+                file.write_all(input.as_bytes())?;
+                file.flush()?;
+                Ok::<_, std::io::Error>(file)
+            })
+            .transpose()?;
+        if let Some(file) = &stdin_file {
+            command.stdin(Stdio::from(file.reopen()?));
         } else {
             command.stdin(Stdio::null());
         }
-        let mut child = command.spawn().map_err(|error| {
+        let child = command.spawn().map_err(|error| {
             DaloError::Io(std::io::Error::new(
                 error.kind(),
                 format!("could not run `{program}`: {error}"),
             ))
         })?;
-        if let Some(input) = input
-            && let Some(mut stdin) = child.stdin.take()
-        {
-            stdin.write_all(input.as_bytes())?;
-        }
         let output = child.wait_with_output()?;
         Ok(CommandResult {
             success: output.status.success(),
@@ -1968,6 +1974,30 @@ mod tests {
         assert_eq!(state.schedule, AutosyncSchedule::Daily);
         assert!(config.settings.autosync);
         assert_eq!(config.settings.sync_interval.as_deref(), Some("daily"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn system_runner_should_report_an_early_stdin_close_as_a_command_failure() {
+        let temp = tempfile::tempdir().expect("temporary directory should be created");
+        let command = temp.path().join("close-stdin");
+        fs::write(&command, "#!/bin/sh\nexec 0<&-\nexit 1\n")
+            .expect("command fixture should be written");
+        let mut permissions = fs::metadata(&command)
+            .expect("command fixture metadata should be readable")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&command, permissions).expect("command fixture should be executable");
+
+        let result = SystemCommandRunner
+            .run(
+                command.to_str().expect("command path should be UTF-8"),
+                &[],
+                Some(&"x".repeat(1024 * 1024)),
+            )
+            .expect("an early child exit should be returned as a command result");
+
+        assert!(!result.success);
     }
 
     #[test]

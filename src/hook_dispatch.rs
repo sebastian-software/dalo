@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use tempfile::NamedTempFile;
 
 #[cfg(unix)]
 use rustix::process::{Pid, Signal, kill_process_group};
@@ -219,11 +220,19 @@ fn invoke_hook(
     if hook.tool_contract.runtime != ToolRuntime::Executable {
         argv[0] = resolve_executable(&argv[0])?;
     }
+    // `main` restores the Unix SIGPIPE default so dalo remains pipeline-friendly
+    // when its own stdout closes. Do not write this untrusted event payload over
+    // a child-stdin pipe: a handler that exits early would otherwise terminate
+    // the dispatcher before its failure policy can run.
+    let mut stdin_file = NamedTempFile::new()?;
+    stdin_file.write_all(native_input)?;
+    stdin_file.flush()?;
+
     let mut command = Command::new(&argv[0]);
     command
         .args(&argv[1..])
         .current_dir(&hook.tool_root)
-        .stdin(Stdio::piped())
+        .stdin(Stdio::from(stdin_file.reopen()?))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .env_clear();
@@ -235,9 +244,6 @@ fn invoke_hook(
     #[cfg(unix)]
     command.process_group(0);
     let mut child = command.spawn()?;
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(native_input)?;
-    }
     let stdout = child.stdout.take().expect("stdout was piped");
     let stderr = child.stderr.take().expect("stderr was piped");
     let stdout_reader = thread::spawn(move || read_bounded(stdout));
