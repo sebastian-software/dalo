@@ -2540,7 +2540,7 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
         report.unrefreshed_tracking_sources = unrefreshed_tracking_sources;
         if options.dry_run && !live.plugins.plugins.is_empty() {
             let state = store::read_state(&paths)?;
-            let mut installation_plan = plan::build_from_facts(
+            let installation_plan = plan::build_from_facts(
                 &options.store,
                 &state,
                 &live.plugins,
@@ -2548,8 +2548,6 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
                 &report.operations,
                 None,
             );
-            plan::attach_tool_status(&mut installation_plan, &paths)?;
-            plan::attach_hook_status(&mut installation_plan, &paths)?;
             report.installation_plan = Some(installation_plan);
         }
         if !options.dry_run {
@@ -2602,13 +2600,27 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
             .any(|plugin| {
                 selected_plugins.contains(&plugin.source_ref) && !plugin.hooks.is_empty()
             });
-        let tools = if has_tools {
-            crate::tool::list(&paths)?.tools
+        let needs_plan_status = report.installation_plan.is_some();
+        let tools = if has_tools || has_hooks || needs_plan_status {
+            crate::tool::list_from_inventories(
+                &paths,
+                &config.sources,
+                &approvals.approvals,
+                &inventories,
+            )
+            .tools
         } else {
             Vec::new()
         };
-        let hooks = if has_hooks {
-            crate::hook::list(&paths)?.hooks
+        let hooks = if has_hooks || needs_plan_status {
+            crate::hook::list_from_inventories(
+                &paths,
+                &config.sources,
+                &approvals.approvals,
+                &inventories,
+                &tools,
+            )?
+            .hooks
         } else {
             Vec::new()
         };
@@ -2622,10 +2634,17 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
             options.dry_run,
         )?;
         if let Some(plan) = report.installation_plan.as_mut() {
+            plan::attach_tool_status_from_report(plan, &tools);
+            plan::attach_hook_status_from_report(plan, &hooks);
             plan.native_plugins = report.plugin_targets.clone();
         }
-        report.hook_targets =
-            hook_sync::reconcile(&paths, &target_state, &selected_plugins, options.dry_run)?;
+        report.hook_targets = hook_sync::reconcile_with_hooks(
+            &paths,
+            &target_state,
+            &selected_plugins,
+            &hooks,
+            options.dry_run,
+        )?;
         Ok(report)
     })();
     let report = match sync_result {

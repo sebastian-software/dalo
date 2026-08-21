@@ -13,10 +13,11 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 use crate::error::{DaloError, DaloResult};
+use crate::inventory::SourceInventory;
 use crate::plugin::{
     self, PluginInventoryWarning, ToolInputType, ToolPlatform, ToolRecord, ToolRuntime,
 };
-use crate::source::SourceProvenance;
+use crate::source::{SourceConfig, SourceProvenance};
 use crate::store::{self, ApprovalRecord, StorePaths};
 
 /// Stable approval scope for exact executable contracts.
@@ -110,29 +111,78 @@ pub struct ToolApprovalReport {
 pub fn list(paths: &StorePaths) -> DaloResult<ToolListReport> {
     let config = store::read_config(paths)?;
     let approvals = store::read_approvals(paths)?;
+    let inventories = scan_plugin_inventories(&config.sources);
+    Ok(list_from_inventories(
+        paths,
+        &config.sources,
+        &approvals.approvals,
+        &inventories,
+    ))
+}
+
+/// Scan only the plugin portion of every enabled source for standalone
+/// tool/hook commands. Shared command paths instead consume the resolver's
+/// full source inventories through [`list_from_inventories`].
+pub(crate) fn scan_plugin_inventories(sources: &[SourceConfig]) -> Vec<SourceInventory> {
+    sources
+        .iter()
+        .filter(|source| source.enabled)
+        .map(|source| {
+            let plugins = plugin::scan_source_plugins(&source.id, &source.path);
+            SourceInventory {
+                source_id: source.id.clone(),
+                skills: Vec::new(),
+                agents: Vec::new(),
+                plugins: plugins.plugins,
+                warnings: Vec::new(),
+                agent_warnings: Vec::new(),
+                plugin_warnings: plugins.warnings,
+            }
+        })
+        .collect()
+}
+
+/// Join already-scanned plugin inventories with current local tool trust state.
+///
+/// Status, doctor, sync, and planning reuse the inventories produced by their
+/// shared resolver pass rather than reopening every plugin package for each
+/// consumer. The standalone tool command uses [`list`] above, which creates
+/// the same input once.
+#[must_use]
+pub fn list_from_inventories(
+    paths: &StorePaths,
+    sources: &[SourceConfig],
+    approvals: &[ApprovalRecord],
+    inventories: &[SourceInventory],
+) -> ToolListReport {
     let source_lock = crate::catalog::read_source_lock(paths).ok();
     let mut tools = Vec::new();
     let mut warnings = Vec::new();
-    for source in config.sources.iter().filter(|source| source.enabled) {
-        let inventory = plugin::scan_source_plugins(&source.id, &source.path);
+    for inventory in inventories {
+        let Some(source) = sources
+            .iter()
+            .find(|source| source.enabled && source.id == inventory.source_id)
+        else {
+            continue;
+        };
         let provenance = crate::source::source_provenance(source, source_lock.as_ref());
-        warnings.extend(inventory.warnings);
-        for plugin in inventory.plugins {
-            for tool in plugin.tools {
+        warnings.extend(inventory.plugin_warnings.iter().cloned());
+        for plugin in &inventory.plugins {
+            for tool in &plugin.tools {
                 tools.push(status_for(
                     paths,
-                    tool,
+                    tool.clone(),
                     plugin.package_hash.clone(),
                     plugin.path.clone(),
                     provenance.clone(),
-                    &approvals.approvals,
+                    approvals,
                 ));
             }
         }
     }
     tools.sort_by(|left, right| left.tool.source_ref.cmp(&right.tool.source_ref));
     warnings.sort_by(|left, right| left.path.cmp(&right.path));
-    Ok(ToolListReport { tools, warnings })
+    ToolListReport { tools, warnings }
 }
 
 /// Find one exact source-qualified tool.

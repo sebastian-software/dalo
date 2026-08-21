@@ -294,9 +294,52 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
         check_source_inventories(live_resolution.as_ref(), &mut findings);
         check_source_store_debris(&paths, config, &mut findings);
     }
-    check_tools(&paths, &mut findings);
+    let tool_report = match (
+        config.as_ref(),
+        approvals.as_ref(),
+        live_resolution.as_ref(),
+    ) {
+        (Some(config), Some(approvals), Some(live)) => {
+            let inventories = live
+                .scans
+                .iter()
+                .filter_map(|scan| scan.inventory.clone())
+                .collect::<Vec<_>>();
+            Some(crate::tool::list_from_inventories(
+                &paths,
+                &config.sources,
+                &approvals.approvals,
+                &inventories,
+            ))
+        }
+        _ => None,
+    };
+    let hook_report = match (
+        config.as_ref(),
+        approvals.as_ref(),
+        live_resolution.as_ref(),
+        tool_report.as_ref(),
+    ) {
+        (Some(config), Some(approvals), Some(live), Some(tools)) => {
+            let inventories = live
+                .scans
+                .iter()
+                .filter_map(|scan| scan.inventory.clone())
+                .collect::<Vec<_>>();
+            crate::hook::list_from_inventories(
+                &paths,
+                &config.sources,
+                &approvals.approvals,
+                &inventories,
+                &tools.tools,
+            )
+            .ok()
+        }
+        _ => None,
+    };
+    check_tools(&paths, tool_report.as_ref(), &mut findings);
     check_generated_delivery_staging(&paths, &mut findings);
-    check_hooks(&paths, &mut findings);
+    check_hooks(hook_report.as_ref(), &mut findings);
 
     // A corrupt lock is reported by `read_lock`, but resolution/instruction/
     // blocker checks do not depend on it (they re-derive from config/state and
@@ -314,8 +357,15 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
         );
     }
     if let (Some(state), Some(live)) = (state.as_ref(), live_resolution.as_ref()) {
-        check_hook_targets(&paths, state, live, &mut findings);
-        check_plugin_targets(&paths, state, live, &mut findings);
+        check_hook_targets(&paths, state, live, hook_report.as_ref(), &mut findings);
+        check_plugin_targets(
+            &paths,
+            state,
+            live,
+            tool_report.as_ref(),
+            hook_report.as_ref(),
+            &mut findings,
+        );
     }
     check_autosync(&paths, &mut findings);
 
@@ -351,8 +401,12 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
                 &materialization.operations,
                 None,
             );
-            let _ = crate::plan::attach_tool_status(&mut plan, &paths);
-            let _ = crate::plan::attach_hook_status(&mut plan, &paths);
+            if let Some(tools) = tool_report.as_ref() {
+                crate::plan::attach_tool_status_from_report(&mut plan, &tools.tools);
+            }
+            if let Some(hooks) = hook_report.as_ref() {
+                crate::plan::attach_hook_status_from_report(&mut plan, &hooks.hooks);
+            }
             Some(plan)
         }
         _ => None,
@@ -365,6 +419,8 @@ fn check_plugin_targets(
     paths: &StorePaths,
     state: &crate::store::StateFile,
     live: &crate::resolver::LiveResolution,
+    tool_report: Option<&crate::tool::ToolListReport>,
+    hook_report: Option<&crate::hook::HookListReport>,
     findings: &mut Vec<DoctorFinding>,
 ) {
     let inventories = live
@@ -372,8 +428,8 @@ fn check_plugin_targets(
         .iter()
         .filter_map(|scan| scan.inventory.clone())
         .collect::<Vec<_>>();
-    let tools = crate::tool::list(paths).map_or_else(|_| Vec::new(), |report| report.tools);
-    let hooks = crate::hook::list(paths).map_or_else(|_| Vec::new(), |report| report.hooks);
+    let tools = tool_report.map_or_else(Vec::new, |report| report.tools.clone());
+    let hooks = hook_report.map_or_else(Vec::new, |report| report.hooks.clone());
     let reports = match crate::plugin_projection::reconcile(
         paths,
         state,
@@ -421,11 +477,11 @@ fn check_plugin_targets(
     }
 }
 
-fn check_hooks(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) {
-    let Ok(report) = crate::hook::list(paths) else {
+fn check_hooks(report: Option<&crate::hook::HookListReport>, findings: &mut Vec<DoctorFinding>) {
+    let Some(report) = report else {
         return;
     };
-    for hook in report.hooks {
+    for hook in &report.hooks {
         let identity = &hook.hook.source_ref;
         match hook.state {
             crate::hook::HookTrustState::Ready => findings.push(ok(
@@ -455,6 +511,7 @@ fn check_hook_targets(
     paths: &StorePaths,
     state: &crate::store::StateFile,
     live: &crate::resolver::LiveResolution,
+    hook_report: Option<&crate::hook::HookListReport>,
     findings: &mut Vec<DoctorFinding>,
 ) {
     let selected = live
@@ -464,7 +521,12 @@ fn check_hook_targets(
         .filter(|plugin| plugin.state == crate::plugin::PluginState::Selected)
         .map(|plugin| plugin.source_ref.clone())
         .collect::<Vec<_>>();
-    let Ok(reports) = crate::hook_sync::reconcile(paths, state, &selected, true) else {
+    let Some(hooks) = hook_report else {
+        return;
+    };
+    let Ok(reports) =
+        crate::hook_sync::reconcile_with_hooks(paths, state, &selected, &hooks.hooks, true)
+    else {
         return;
     };
     for report in reports {
@@ -499,11 +561,15 @@ fn check_hook_targets(
     }
 }
 
-fn check_tools(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) {
-    let Ok(report) = crate::tool::list(paths) else {
+fn check_tools(
+    paths: &StorePaths,
+    report: Option<&crate::tool::ToolListReport>,
+    findings: &mut Vec<DoctorFinding>,
+) {
+    let Some(report) = report else {
         return;
     };
-    for tool in report.tools {
+    for tool in &report.tools {
         use crate::tool::ToolState;
         let identity = &tool.tool.source_ref;
         match tool.state {
