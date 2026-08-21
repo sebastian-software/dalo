@@ -15,7 +15,6 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-#[cfg(test)]
 use tempfile::NamedTempFile;
 
 use crate::error::{DaloError, DaloResult};
@@ -1611,52 +1610,44 @@ fn write_target_if_unchanged(
     content: &str,
 ) -> DaloResult<TargetIdentity> {
     let mut file = match snapshot.identity {
-        Some(_) => OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(&snapshot.target)?,
-        None => OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create_new(true)
-            .open(&snapshot.target)
-            .map_err(|error| {
-                if error.kind() == std::io::ErrorKind::AlreadyExists {
-                    DaloError::InstructionTargetChanged {
-                        path: snapshot.target.clone(),
+        Some(_) => Some(
+            OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&snapshot.target)
+                .map_err(|error| {
+                    if error.kind() == std::io::ErrorKind::NotFound {
+                        target_changed(snapshot)
+                    } else {
+                        error.into()
                     }
-                } else {
-                    error.into()
-                }
-            })?,
+                })?,
+        ),
+        None => None,
     };
-    // Keep the target inode locked while checking and replacing its contents.
-    // Editors that use the same standard advisory lock cannot interleave an
-    // update, and a rename-based replacement is harmless because this handle
-    // continues to refer to the original inode.
-    file.lock()?;
-    let identity = target_identity(&file.metadata()?);
-    if snapshot
-        .identity
-        .is_some_and(|expected| expected != identity)
-    {
-        return Err(DaloError::InstructionTargetChanged {
-            path: snapshot.target.clone(),
-        });
-    }
-    let current = read_locked_target(&mut file)?;
-    if current != snapshot.content.as_deref().unwrap_or_default() {
-        return Err(DaloError::InstructionTargetChanged {
-            path: snapshot.target.clone(),
-        });
-    }
-    write_locked_target(&mut file, content)?;
-    if !target_has_identity(&snapshot.target, identity)?
-        || read_locked_target(&mut file)? != content
-    {
-        return Err(DaloError::InstructionTargetChanged {
-            path: snapshot.target.clone(),
-        });
+    let permissions = if let Some(file) = file.as_mut() {
+        // The target-specific store lock serializes Dalo operations. This
+        // inode lock also cooperates with editors that use advisory locks;
+        // identity and content checks below detect other completed edits.
+        file.lock()?;
+        let metadata = file.metadata()?;
+        if snapshot
+            .identity
+            .is_some_and(|expected| expected != target_identity(&metadata))
+            || read_locked_target(file)? != snapshot.content.as_deref().unwrap_or_default()
+        {
+            return Err(target_changed(snapshot));
+        }
+        Some(metadata.permissions())
+    } else {
+        None
+    };
+
+    replace_target_if_unchanged(snapshot, content, permissions)?;
+    let metadata = fs::metadata(&snapshot.target)?;
+    let identity = target_identity(&metadata);
+    if !target_has_identity_and_content(&snapshot.target, identity, content)? {
+        return Err(target_changed(snapshot));
     }
     Ok(identity)
 }
@@ -1668,21 +1659,85 @@ fn read_locked_target(file: &mut fs::File) -> DaloResult<String> {
     Ok(content)
 }
 
-fn write_locked_target(file: &mut fs::File, content: &str) -> DaloResult<()> {
-    file.set_len(0)?;
-    file.seek(SeekFrom::Start(0))?;
-    file.write_all(content.as_bytes())?;
-    file.flush()?;
-    file.sync_all()?;
-    Ok(())
+/// Replace the target only if it still matches the pre-render snapshot.
+///
+/// The temporary file shares the target's directory, so `persist` is a rename
+/// on the same filesystem. The target is never truncated in place: a crash
+/// before the rename leaves the user's previous content intact, while a crash
+/// after it leaves either the complete old file or the complete new file.
+fn replace_target_if_unchanged(
+    snapshot: &TargetSnapshot,
+    content: &str,
+    permissions: Option<fs::Permissions>,
+) -> DaloResult<()> {
+    let parent = snapshot
+        .target
+        .parent()
+        .ok_or_else(|| DaloError::InvalidArgument {
+            reason: format!(
+                "instruction target `{}` has no parent directory",
+                snapshot.target.display()
+            ),
+        })?;
+    let mut temp_file = NamedTempFile::new_in(parent)?;
+    if let Some(permissions) = permissions {
+        temp_file.as_file().set_permissions(permissions)?;
+    }
+    temp_file.write_all(content.as_bytes())?;
+    temp_file.flush()?;
+    temp_file.as_file().sync_all()?;
+
+    // This final compare-before-replace check catches completed external edits
+    // after the snapshot was read without relying only on an advisory lock
+    // that other programs might not take.
+    if !target_matches_snapshot(snapshot)? {
+        return Err(target_changed(snapshot));
+    }
+    temp_file
+        .persist(&snapshot.target)
+        .map_err(|error| error.error)?;
+    sync_target_parent(parent)
 }
 
-fn target_has_identity(target: &Path, expected: TargetIdentity) -> DaloResult<bool> {
+fn target_matches_snapshot(snapshot: &TargetSnapshot) -> DaloResult<bool> {
+    match fs::metadata(&snapshot.target) {
+        Ok(metadata) => {
+            let Some(expected) = snapshot.identity else {
+                return Ok(false);
+            };
+            Ok(target_identity(&metadata) == expected
+                && fs::read_to_string(&snapshot.target)?
+                    == snapshot.content.as_deref().unwrap_or_default())
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            Ok(snapshot.identity.is_none())
+        }
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn target_has_identity_and_content(
+    target: &Path,
+    expected_identity: TargetIdentity,
+    expected_content: &str,
+) -> DaloResult<bool> {
     match fs::metadata(target) {
-        Ok(metadata) => Ok(target_identity(&metadata) == expected),
+        Ok(metadata) => Ok(target_identity(&metadata) == expected_identity
+            && fs::read_to_string(target)? == expected_content),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
         Err(error) => Err(error.into()),
     }
+}
+
+fn target_changed(snapshot: &TargetSnapshot) -> DaloError {
+    DaloError::InstructionTargetChanged {
+        path: snapshot.target.clone(),
+    }
+}
+
+fn sync_target_parent(parent: &Path) -> DaloResult<()> {
+    fs::File::open(parent)?.sync_all()?;
+    Ok(())
 }
 
 fn restore_target_after_error(
@@ -1708,22 +1763,36 @@ fn restore_target(
 ) -> DaloResult<()> {
     let target = snapshot.target.clone();
     match OpenOptions::new().read(true).write(true).open(&target) {
-        Ok(mut file) => (|| -> DaloResult<()> {
+        Ok(file) => (|| -> DaloResult<()> {
             file.lock()?;
-            if target_identity(&file.metadata()?) != written_identity
-                || read_locked_target(&mut file)? != written_content
-            {
+            if !target_has_identity_and_content(&target, written_identity, written_content)? {
                 return Err(std::io::Error::other(
                     "instruction target changed during rollback; newer content was left untouched",
                 )
                 .into());
             }
             if let Some(content) = snapshot.content {
-                write_locked_target(&mut file, &content)
+                let written_snapshot = TargetSnapshot {
+                    target: target.clone(),
+                    content: Some(written_content.to_owned()),
+                    identity: Some(written_identity),
+                };
+                replace_target_if_unchanged(
+                    &written_snapshot,
+                    &content,
+                    Some(file.metadata()?.permissions()),
+                )
             } else {
                 drop(file);
-                if target_has_identity(&target, written_identity)? {
+                if target_has_identity_and_content(&target, written_identity, written_content)? {
                     fs::remove_file(&target)?;
+                    let parent = target.parent().ok_or_else(|| DaloError::InvalidArgument {
+                        reason: format!(
+                            "instruction target `{}` has no parent directory",
+                            target.display()
+                        ),
+                    })?;
+                    sync_target_parent(parent)?;
                 }
                 Ok(())
             }
@@ -1735,28 +1804,6 @@ fn restore_target(
         }
         Err(error) => Err(error.into()),
     }
-}
-
-#[cfg(test)]
-fn write_target(target: &Path, content: &str) -> DaloResult<()> {
-    let target = writable_target_path(target)?;
-    let existing_permissions = fs::metadata(&target)
-        .map(|metadata| metadata.permissions())
-        .ok();
-    let parent = target
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    fs::create_dir_all(parent)?;
-    let mut temp_file = NamedTempFile::new_in(parent)?;
-    temp_file.write_all(content.as_bytes())?;
-    temp_file.flush()?;
-    temp_file.as_file().sync_all()?;
-    temp_file.persist(&target).map_err(|error| error.error)?;
-    if let Some(permissions) = existing_permissions {
-        fs::set_permissions(&target, permissions)?;
-    }
-    Ok(())
 }
 
 fn writable_target_path(target: &Path) -> DaloResult<PathBuf> {
@@ -2155,6 +2202,47 @@ mod tests {
     }
 
     #[test]
+    fn enable_pack_should_atomically_replace_only_the_managed_block() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp.path().join("store");
+        let target = temp.path().join("AGENTS.md");
+        store::init_store(store_root.clone(), false).expect("store should be initialized");
+        let paths = StorePaths::new(store_root);
+        fs::write(
+            paths.local_instructions_dir.join(format!("{PACK}.md")),
+            "new managed instructions\n",
+        )
+        .expect("pack should be written");
+        let marker = marker_id("local", PACK);
+        let original = format!(
+            "# User heading\n\n{}\nold managed instructions\n{}\n\nUser footer\n",
+            start_marker(&marker),
+            end_marker(&marker)
+        );
+        fs::write(&target, &original).expect("target should be seeded");
+        let before_inode = fs::metadata(&target)
+            .expect("target metadata should be readable")
+            .ino();
+
+        enable_pack(&paths, PACK, &target, false).expect("pack should enable");
+
+        let updated = fs::read_to_string(&target).expect("target should be readable");
+        assert_eq!(
+            updated,
+            render_block(&original, &marker, "new managed instructions\n")
+                .expect("render should succeed")
+        );
+        assert!(updated.starts_with("# User heading\n\n"));
+        assert!(updated.ends_with("\n\nUser footer\n"));
+        assert_ne!(
+            before_inode,
+            fs::metadata(&target)
+                .expect("target metadata should be readable")
+                .ino()
+        );
+    }
+
+    #[test]
     fn disable_pack_should_restore_target_when_lock_write_fails() {
         let temp = tempfile::tempdir().expect("tempdir should be created");
         let store_root = temp.path().join("store");
@@ -2350,16 +2438,28 @@ mod tests {
     }
 
     #[test]
+    fn write_target_if_unchanged_should_reject_a_removed_file() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let target = temp.path().join("AGENTS.md");
+        fs::write(&target, "before\n").expect("target should be seeded");
+        let snapshot = target_snapshot(&target).expect("snapshot should be readable");
+        fs::remove_file(&target).expect("target should be removed");
+
+        let error = write_target_if_unchanged(&snapshot, "dalo output\n")
+            .expect_err("removed target should block replacement");
+
+        assert!(matches!(error, DaloError::InstructionTargetChanged { .. }));
+        assert!(!target.exists());
+    }
+
+    #[test]
     fn rollback_should_not_restore_over_newer_external_content() {
         let temp = tempfile::tempdir().expect("tempdir should be created");
         let target = temp.path().join("AGENTS.md");
         fs::write(&target, "before\n").expect("target should be seeded");
         let snapshot = target_snapshot(&target).expect("snapshot should be readable");
-        write_target(&target, "dalo output\n").expect("dalo output should be written");
-        let written_identity = target_snapshot(&target)
-            .expect("written target should be readable")
-            .identity
-            .expect("written target should have an identity");
+        let written_identity = write_target_if_unchanged(&snapshot, "dalo output\n")
+            .expect("dalo output should be written");
         fs::write(&target, "newer external edit\n").expect("target should be edited");
 
         let error = restore_target_after_error(
@@ -2387,11 +2487,8 @@ mod tests {
         let replacement = temp.path().join("AGENTS.md.external");
         fs::write(&target, "before\n").expect("target should be seeded");
         let snapshot = target_snapshot(&target).expect("snapshot should be readable");
-        write_target(&target, "dalo output\n").expect("dalo output should be written");
-        let written_identity = target_snapshot(&target)
-            .expect("written target should be readable")
-            .identity
-            .expect("written target should have an identity");
+        let written_identity = write_target_if_unchanged(&snapshot, "dalo output\n")
+            .expect("dalo output should be written");
         fs::write(&replacement, "dalo output\n").expect("replacement should be written");
         fs::rename(&replacement, &target).expect("replacement should be installed");
 
@@ -2509,15 +2606,16 @@ mod tests {
     }
 
     #[test]
-    fn write_target_should_replace_file_via_temp_rename() {
+    fn write_target_if_unchanged_should_replace_file_via_temp_rename() {
         let temp = tempfile::tempdir().expect("tempdir should be created");
         let target = temp.path().join("AGENTS.md");
         fs::write(&target, "old\n").expect("target should be seeded");
+        let snapshot = target_snapshot(&target).expect("snapshot should be readable");
         let before_inode = fs::metadata(&target)
             .expect("target metadata should be readable")
             .ino();
 
-        write_target(&target, "new\n").expect("target should be written");
+        write_target_if_unchanged(&snapshot, "new\n").expect("target should be written");
 
         assert_eq!(
             fs::read_to_string(&target).expect("target should be readable"),
@@ -2536,14 +2634,15 @@ mod tests {
     }
 
     #[test]
-    fn write_target_should_preserve_existing_permissions() {
+    fn write_target_if_unchanged_should_preserve_existing_permissions() {
         let temp = tempfile::tempdir().expect("tempdir should be created");
         let target = temp.path().join("AGENTS.md");
         fs::write(&target, "old\n").expect("target should be seeded");
         fs::set_permissions(&target, fs::Permissions::from_mode(0o644))
             .expect("permissions should be set");
+        let snapshot = target_snapshot(&target).expect("snapshot should be readable");
 
-        write_target(&target, "new\n").expect("target should be written");
+        write_target_if_unchanged(&snapshot, "new\n").expect("target should be written");
 
         let mode = fs::metadata(&target)
             .expect("target metadata should be readable")
@@ -2554,14 +2653,15 @@ mod tests {
     }
 
     #[test]
-    fn write_target_should_write_through_symlinked_target() {
+    fn write_target_if_unchanged_should_write_through_symlinked_target() {
         let temp = tempfile::tempdir().expect("tempdir should be created");
         let canonical_target = temp.path().join("AGENTS.md");
         let symlink_target = temp.path().join("CLAUDE.md");
         fs::write(&canonical_target, "old\n").expect("target should be seeded");
         symlink(&canonical_target, &symlink_target).expect("symlink should be created");
+        let snapshot = target_snapshot(&symlink_target).expect("snapshot should be readable");
 
-        write_target(&symlink_target, "new\n").expect("target should be written");
+        write_target_if_unchanged(&snapshot, "new\n").expect("target should be written");
 
         assert!(
             fs::symlink_metadata(&symlink_target)
