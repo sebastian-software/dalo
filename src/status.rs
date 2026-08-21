@@ -204,7 +204,11 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
     // The shared pipeline scans every enabled source once and resolves it; we
     // reuse its per-source scan outcomes here for the status detail instead of
     // re-scanning. Disabled sources are not scanned, so we render them directly.
-    let live = resolver::resolve_from_config(&config, approvals.approvals.clone());
+    let resolved =
+        resolver::resolve_from_config_with_plugin_inventories(&config, approvals.approvals.clone());
+    let plugin_inventories = resolver::plugin_inventories(&resolved);
+    let reconciliation_inventories = resolver::inventories_with_plugins(&resolved);
+    let live = resolved.live;
     let scan_by_id = live
         .scans
         .iter()
@@ -285,8 +289,6 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         .collect::<Vec<_>>();
     targets.sort_by(|left, right| left.id.cmp(&right.id));
 
-    let plugin_inventories = resolver::plugin_inventories(&live.scans);
-    let reconciliation_inventories = resolver::inventories_with_plugins(&live.scans);
     let mut plugins = live.plugins;
     let mut live_resolution = live.resolution;
     let audits = audit::audit_active_skills(&paths, &live_resolution, false);
