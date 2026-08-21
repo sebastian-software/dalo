@@ -2608,6 +2608,46 @@ mod tests {
     }
 
     #[test]
+    fn cache_should_rescan_when_an_empty_git_directory_is_added() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp.path().join("store");
+        store::init_store(store_root.clone(), false).expect("store should initialize");
+        let paths = StorePaths::new(store_root);
+        let skill = write_skill(temp.path(), "Summarize a pull request.\n");
+
+        let clean = audit_skill(
+            &paths,
+            "path:review-helper",
+            &skill,
+            &AuditOptions::default(),
+        )
+        .expect("initial audit should succeed");
+        assert_eq!(clean.coverage, AuditCoverage::Complete);
+        assert!(!clean.is_blocking());
+
+        fs::create_dir(skill.join(".git")).expect("empty git directory should be created");
+        reset_static_scan_invocations();
+        let blocked = audit_skill(
+            &paths,
+            "path:review-helper",
+            &skill,
+            &AuditOptions::default(),
+        )
+        .expect("audit should rescan the changed directory");
+
+        assert_eq!(static_scan_invocations(), 1);
+        assert_ne!(blocked.content_hash, clean.content_hash);
+        assert_eq!(blocked.coverage, AuditCoverage::Partial);
+        assert!(blocked.is_blocking());
+        assert!(
+            blocked
+                .static_findings
+                .iter()
+                .any(|finding| finding.id == "static.git-metadata-entry")
+        );
+    }
+
+    #[test]
     fn missing_corrupt_or_incompatible_persisted_report_should_rescan() {
         let temp = tempfile::tempdir().expect("tempdir should be created");
         let store_root = temp.path().join("store");
