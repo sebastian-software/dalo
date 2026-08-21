@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use std::env;
 use std::ffi::OsStr;
 use std::fs;
-use std::io::Write;
+use std::io::{Seek, SeekFrom, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -14,7 +14,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tempfile::NamedTempFile;
+use tempfile::{NamedTempFile, tempfile};
 
 use crate::error::{DaloError, DaloResult};
 use crate::store::{self, StorePaths};
@@ -239,14 +239,15 @@ impl CommandRunner for SystemCommandRunner {
                 // Dalo deliberately restores SIGPIPE for its own stdout. Scheduler
                 // input must not share that pipe behavior: if `crontab -` exits
                 // before reading, a pipe write would kill dalo before rollback.
-                let mut file = NamedTempFile::new()?;
+                let mut file = tempfile()?;
                 file.write_all(input.as_bytes())?;
                 file.flush()?;
+                file.seek(SeekFrom::Start(0))?;
                 Ok::<_, std::io::Error>(file)
             })
             .transpose()?;
-        if let Some(file) = &stdin_file {
-            command.stdin(Stdio::from(file.reopen()?));
+        if let Some(file) = stdin_file {
+            command.stdin(Stdio::from(file));
         } else {
             command.stdin(Stdio::null());
         }
