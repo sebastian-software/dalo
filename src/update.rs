@@ -459,10 +459,14 @@ mod tests {
 
     #[test]
     fn unknown_installation_should_not_guess_an_upgrade_command() {
+        let temp = tempdir().expect("tempdir");
+        let executable = temp.path().join("bin/dalo");
+        fs::create_dir_all(executable.parent().expect("parent")).expect("create bin dir");
+
         let channel = detect_install_channel_from(
             Some("not-a-channel"),
-            Some(Path::new("/usr/local/bin/dalo")),
-            Some(Path::new("/home/user")),
+            Some(&executable),
+            Some(temp.path()),
             None,
         );
 
