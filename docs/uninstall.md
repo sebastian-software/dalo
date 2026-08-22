@@ -58,7 +58,35 @@ dalo instructions disable <pack> <instruction-file>
 
 Dalo only removes the pack's managed block. Content outside Dalo markers is preserved.
 
-## 4. Remove the Store
+## 4. Disable Autosync
+
+Before removing the Dalo binary or store, inspect and remove any installed
+autosync job:
+
+```sh
+dalo autosync status
+dalo autosync uninstall
+```
+
+If status reports `autosync: not installed`, there is no scheduler job to
+remove and you can continue. `autosync uninstall` is also safe to run in that
+case.
+
+For an installed job, Dalo disables the native scheduler before deleting its
+artifacts: the per-user launchd agent plist on macOS, the per-user systemd
+service and timer on Linux, or only Dalo's marked block in your crontab. It
+also removes the store's `autosync.toml`, `autosync-run.toml`, `autosync.log`,
+and `autosync-error.log`; other crontab entries and scheduler jobs are left
+alone.
+
+If you used a custom store, use the same path for both commands:
+
+```sh
+dalo --store <store-path> autosync status
+dalo --store <store-path> autosync uninstall
+```
+
+## 5. Remove the Store
 
 After target symlinks and instruction blocks are removed, delete the store directory:
 
@@ -70,7 +98,7 @@ Use the path from `dalo status` if you used `--store` or `DALO_STORE`.
 
 Adopted skills live in the local source under the store. Back up anything in `local/skills/` or `local/instructions/` before deleting the store if you want to keep it.
 
-## 5. Uninstall the Binary
+## 6. Uninstall the Binary
 
 If installed through Homebrew:
 
@@ -115,7 +143,7 @@ archives should be checksum-verified before installation as shown in the
 Also remove the adjacent `.dalo-install-channel` receipt when it was created by
 the hosted installer.
 
-## 6. Final Check
+## 7. Final Check
 
 Inspect the agent folders you had linked, such as:
 

@@ -19,6 +19,18 @@ grep -q '15-second secure-sync demo' "$root/site/index.html"
 grep -q 'brew uninstall dalo' "$root/docs/uninstall.md"
 grep -q 'dalo resolve remove-owned <target>:<slot>' "$root/docs/uninstall.md"
 grep -q 'resolve list.*exact owned IDs' "$root/docs/uninstall.md"
+grep -q '^## 4. Disable Autosync$' "$root/docs/uninstall.md"
+grep -q 'dalo --store <store-path> autosync uninstall' "$root/docs/uninstall.md"
+awk '
+  /^## 4\. Disable Autosync$/ { autosync_section = 1; next }
+  autosync_section && /dalo autosync status/ { status_line = NR }
+  autosync_section && /dalo autosync uninstall/ { uninstall_line = NR }
+  /^## 5\. Remove the Store$/ { store_line = NR }
+  END {
+    exit !(status_line && uninstall_line && store_line \
+      && status_line < uninstall_line && uninstall_line < store_line)
+  }
+' "$root/docs/uninstall.md"
 grep -q 'data-install-method="homebrew"' "$root/site/index.html"
 grep -q 'data-install-method="standalone"' "$root/site/index.html"
 grep -q 'preferredInstallMethod' "$root/site/main.js"
