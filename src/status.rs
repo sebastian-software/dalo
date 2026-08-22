@@ -819,6 +819,13 @@ fn print_audit_finding(layer: &str, finding: &crate::audit::AuditFinding) {
     );
 }
 
+fn should_print_hook_target(target: &crate::hook_sync::HookTargetReport) -> bool {
+    !(target.state == crate::hook_sync::HookTargetState::Ready
+        && target.action == Some(crate::hook_sidecar::HookSidecarAction::Noop)
+        && target.projected_hooks == 0
+        && target.diagnostic == "no selected portable hooks")
+}
+
 /// Print a human-readable status report.
 pub fn print_status_report(report: &StatusReport) {
     println!("dalo store: {}", report.store.display());
@@ -865,11 +872,18 @@ pub fn print_status_report(report: &StatusReport) {
         }
     }
     for target in &report.hook_targets {
+        if !should_print_hook_target(target) {
+            continue;
+        }
+        let action = target
+            .action
+            .map(|action| format!(" action={action}"))
+            .unwrap_or_default();
         println!(
-            "native hooks {}: state={:?} action={:?} path={} ({})",
+            "native hooks {}: state={}{} path={} ({})",
             target.target,
             target.state,
-            target.action,
+            action,
             target.path.display(),
             target.diagnostic
         );
@@ -1362,9 +1376,16 @@ pub fn print_sync_report(report: &SyncReport) {
         ""
     };
     for target in &report.hook_targets {
+        if !should_print_hook_target(target) {
+            continue;
+        }
+        let action = target
+            .action
+            .map(|action| format!(" action={action}"))
+            .unwrap_or_default();
         println!(
-            "{prefix}hooks {}: state={:?} action={:?} projected={} ({})",
-            target.target, target.state, target.action, target.projected_hooks, target.diagnostic
+            "{prefix}hooks {}: state={}{} projected={} ({})",
+            target.target, target.state, action, target.projected_hooks, target.diagnostic
         );
     }
     for target in &report.plugin_targets {

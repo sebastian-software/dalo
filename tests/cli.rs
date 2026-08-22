@@ -693,6 +693,21 @@ matcher = { tool_names = ["Bash"] }
         .assert()
         .success();
 
+    let mut planned_status = dalo_command();
+    planned_status
+        .env("PATH", &path)
+        .env("HOME", temp.path())
+        .env("CODEX_HOME", &codex_home)
+        .args(["--store"])
+        .arg(&store)
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "native hooks codex: state=planned action=create",
+        ))
+        .stdout(predicate::str::contains("Some(").not());
+
     let mut dry_run = dalo_command();
     dry_run
         .env("PATH", &path)
@@ -775,7 +790,10 @@ matcher = { tool_names = ["Bash"] }
         .arg(&store)
         .arg("sync")
         .assert()
-        .success();
+        .success()
+        .stdout(predicate::str::contains(
+            "hooks codex: state=blocked action=remove",
+        ));
     let native: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&sidecar).unwrap()).unwrap();
     assert_eq!(native["foreign"]["retained"], true);
@@ -865,9 +883,54 @@ matcher = { tool_names = ["Bash"] }
         .stdout(predicate::str::contains("\"state\": \"conflict\""));
     assert_eq!(std::fs::read(&sidecar).unwrap(), tampered.as_bytes());
 
+    let mut human_conflict = dalo_command();
+    human_conflict
+        .env("PATH", &path)
+        .env("HOME", temp.path())
+        .env("CODEX_HOME", &codex_home)
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("hooks codex: state=conflict"))
+        .stdout(predicate::str::contains("action=None").not());
+
     let tools = store.join("tools");
     for path in [tools.join("sha256"), tools] {
         let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755));
+    }
+}
+
+#[test]
+fn status_and_sync_should_suppress_inert_empty_native_hook_reports() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = store::comparable_path(&temp.path().join("store"));
+    let target = temp.path().join("skills");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "link", "codex"])
+        .arg(&target)
+        .assert()
+        .success();
+
+    for command in ["status", "sync"] {
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .arg(command)
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("hooks codex").not())
+            .stdout(predicate::str::contains("Some(Noop)").not());
     }
 }
 
