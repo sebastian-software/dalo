@@ -1469,6 +1469,62 @@ mod tests {
     }
 
     #[test]
+    fn resolve_should_shadow_a_literal_materialized_name_by_source_priority() {
+        let mut company = source("company", SourceKind::Team, 10);
+        company.namespace = Some("company".to_owned());
+        let public = source("public", SourceKind::Team, 20);
+
+        let resolution = resolve_with(
+            vec![company, public],
+            vec![
+                inventory("company", vec![skill("company", "review")]),
+                inventory("public", vec![skill("public", "company__review")]),
+            ],
+            vec![approval("source", "company"), approval("source", "public")],
+        );
+
+        assert_eq!(active_slots(&resolution), vec!["company__review"]);
+        assert_eq!(resolution.active_skills[0].source_ref, "company:review");
+        assert_eq!(resolution.unlinked_skills.len(), 1);
+        assert_eq!(
+            resolution.unlinked_skills[0].skill.source_ref,
+            "public:company__review"
+        );
+        assert_eq!(resolution.unlinked_skills[0].shadowed_by, "company:review");
+    }
+
+    #[test]
+    fn resolve_should_keep_local_override_for_a_materialized_name_collision() {
+        let mut company = source("company", SourceKind::Team, 10);
+        company.namespace = Some("company".to_owned());
+
+        let resolution = resolve_with(
+            vec![source("local", SourceKind::Local, 0), company],
+            vec![
+                inventory("local", vec![skill("local", "company__review")]),
+                inventory("company", vec![skill("company", "review")]),
+            ],
+            vec![approval("source", "company")],
+        );
+
+        assert_eq!(active_slots(&resolution), vec!["company__review"]);
+        assert_eq!(
+            resolution.active_skills[0].source_ref,
+            "local:company__review"
+        );
+        assert!(resolution.active_skills[0].local_override);
+        assert_eq!(resolution.unlinked_skills.len(), 1);
+        assert_eq!(
+            resolution.unlinked_skills[0].skill.source_ref,
+            "company:review"
+        );
+        assert_eq!(
+            resolution.unlinked_skills[0].shadowed_by,
+            "local:company__review"
+        );
+    }
+
+    #[test]
     fn resolve_should_keep_same_source_requirements_inside_a_namespace() {
         let mut company = source("company", SourceKind::Team, 10);
         company.namespace = Some("company".to_owned());

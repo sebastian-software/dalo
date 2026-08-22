@@ -848,6 +848,14 @@ pub fn set_source_namespace(
             ),
         });
     }
+    // The local source is the guaranteed override. Namespacing it would rename
+    // every local skill and prevent those adaptations from occupying their
+    // original slots.
+    if source.kind == SourceKind::Local {
+        return Err(DaloError::LocalSourceNamespaceFixed {
+            source_id: id.to_owned(),
+        });
+    }
     let changed = source.namespace != namespace;
     source.namespace = namespace;
     let source = source.clone();
