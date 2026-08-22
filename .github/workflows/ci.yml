@@ -79,6 +79,9 @@ jobs:
             builder: cross
             test: cross
             smoke: true
+            # The pinned Cross image deliberately lacks bash, which the CLI
+            # fixture suite requires. Keep the full target library suite and
+            # exercise the release CLI below without adding image-time setup.
           # Compile this release target with the same pinned cross version as
           # publishing. Running it would require QEMU, so native ARM GNU tests
           # above provide deterministic ARM execution coverage instead.
@@ -125,7 +128,7 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.test }}" = "cross" ]; then
-            cross test --locked --target "${{ matrix.target }}"
+            cross test --locked --target "${{ matrix.target }}" --lib
           else
             cargo test --locked --target "${{ matrix.target }}"
           fi

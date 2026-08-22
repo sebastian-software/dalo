@@ -129,7 +129,7 @@ printf '%s\n' "$x86_64_darwin_entry" | grep -Fqx '            test: none'
 printf '%s\n' "$x86_64_darwin_entry" | grep -Fqx '            smoke: false'
 
 printf '%s\n' "$release_targets_job" | grep -Fq 'runs-on: ${{ matrix.os }}'
-printf '%s\n' "$release_targets_job" | grep -Fq 'cross test --locked --target "${{ matrix.target }}"'
+printf '%s\n' "$release_targets_job" | grep -Fq 'cross test --locked --target "${{ matrix.target }}" --lib'
 printf '%s\n' "$release_targets_job" | grep -Fq 'cargo test --locked --target "${{ matrix.target }}"'
 printf '%s\n' "$release_targets_job" | grep -Fq 'target/${{ matrix.target }}/release/dalo'
 printf '%s\n' "$release_targets_job" | grep -Fq '"$binary" init --store "$test_root/store"'
