@@ -16,7 +16,9 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-          - os: macos-14
+          # Keep the established macOS test runner: macos-14 applies a
+          # restrictive sandbox that rejects the repository's hook fixtures.
+          - os: macos-latest
             target: aarch64-apple-darwin
 
     steps:
