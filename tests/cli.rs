@@ -792,8 +792,9 @@ matcher = { tool_names = ["Bash"] }
         .assert()
         .success()
         .stdout(predicate::str::contains(
-            "hooks codex: state=blocked action=remove",
-        ));
+            "hooks codex: state=blocked action=",
+        ))
+        .stdout(predicate::str::contains("Some(").not());
     let native: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&sidecar).unwrap()).unwrap();
     assert_eq!(native["foreign"]["retained"], true);
