@@ -180,15 +180,6 @@ pub enum DaloError {
         source_id: String,
     },
 
-    /// The local source namespace is fixed and cannot be changed.
-    #[error(
-        "source `{source_id}` is the local source; its namespace is fixed and cannot be changed"
-    )]
-    LocalSourceNamespaceFixed {
-        /// Source ID.
-        source_id: String,
-    },
-
     /// A requested skill could not be found.
     #[error("skill `{skill}` was not found{hint}")]
     SkillNotFound {
@@ -424,8 +415,7 @@ impl DaloError {
             | Self::UnsupportedSchema { .. }
             | Self::FileParse { .. }
             | Self::CorruptState { .. }
-            | Self::LocalSourcePriorityFixed { .. }
-            | Self::LocalSourceNamespaceFixed { .. } => DaloExitCode::ExpectedFailure,
+            | Self::LocalSourcePriorityFixed { .. } => DaloExitCode::ExpectedFailure,
             Self::DirtySource { .. }
             | Self::StoreLocked { .. }
             | Self::StateMetadataConflict { .. }
