@@ -36,6 +36,9 @@ pub struct HookTargetReport {
     pub dry_run: bool,
     /// Actionable explanation.
     pub diagnostic: String,
+    /// Whether this inert no-op target may be omitted from human output.
+    #[serde(skip)]
+    pub human_output_inert: bool,
 }
 
 /// Distinct provider hook states required by #501.
@@ -229,24 +232,28 @@ fn reconcile_target(
                 ),
             );
         }
-        return report(
+        let state = if dry_run && action != Some(HookSidecarAction::Noop) {
+            HookTargetState::Planned
+        } else {
+            HookTargetState::Ready
+        };
+        let mut target = report(
             facts,
-            if dry_run && action != Some(HookSidecarAction::Noop) {
-                HookTargetState::Planned
-            } else {
-                HookTargetState::Ready
-            },
+            state,
             action,
             0,
             dry_run,
-            if selected.is_empty() && !had_owned_entries {
-                "no selected portable hooks"
-            } else if selected.is_empty() {
-                "no selected portable hooks; Dalo-owned state is being cleared"
+            if selected.is_empty() {
+                "no selected portable hooks; prior owned entries are removed"
             } else {
                 "unavailable optional hooks are explicitly omitted"
             },
         );
+        target.human_output_inert = selected.is_empty()
+            && !had_owned_entries
+            && state == HookTargetState::Ready
+            && action == Some(HookSidecarAction::Noop);
+        return target;
     }
     if !facts.runtime_available {
         let action = match remove_owned_projection(paths, facts, executable, dry_run) {
@@ -418,6 +425,7 @@ fn report(
         projected_hooks,
         dry_run,
         diagnostic: diagnostic.to_owned(),
+        human_output_inert: false,
     }
 }
 
