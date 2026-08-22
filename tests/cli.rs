@@ -7135,7 +7135,7 @@ fn sync_should_preserve_owned_symlink_when_source_scan_is_degraded() {
 }
 
 #[test]
-fn status_and_sync_should_degrade_a_single_skill_audit_io_failure() {
+fn status_and_sync_should_rebuild_an_unreadable_cached_report() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
@@ -7156,9 +7156,89 @@ fn status_and_sync_should_degrade_a_single_skill_audit_io_failure() {
                 .is_some_and(|extension| extension == "json")
         })
         .expect("sync should persist an audit report");
-    std::fs::remove_file(&report_path).expect("audit report should be removed");
-    std::fs::create_dir(&report_path)
-        .expect("a directory at the report path should force an audit I/O error");
+    std::fs::set_permissions(&report_path, std::fs::Permissions::from_mode(0o000))
+        .expect("audit report permissions should be removed");
+    let permission_denied = matches!(
+        std::fs::read(&report_path),
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied
+    );
+    if !permission_denied {
+        // Root can read a mode-000 file. A dangling symlink is also unreadable
+        // cached metadata and is safely replaced by atomic report persistence.
+        std::fs::remove_file(&report_path).expect("mode-000 report should be removed");
+        std::os::unix::fs::symlink(temp_dir.path().join("missing-report"), &report_path)
+            .expect("dangling report symlink should be created");
+    }
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let status: serde_json::Value =
+        serde_json::from_slice(&output).expect("status should emit valid JSON");
+    assert!(
+        status["audit_failures"]
+            .as_array()
+            .is_some_and(Vec::is_empty)
+    );
+    assert!(
+        status["resolution"]["active_skills"]
+            .as_array()
+            .is_some_and(|skills| !skills.is_empty())
+    );
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("security audit failures:").not());
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("degraded source: local").not());
+    assert!(
+        std::fs::symlink_metadata(&report_path)
+            .expect("recovered report should exist")
+            .file_type()
+            .is_file(),
+        "a non-dry-run sync should atomically replace unreadable cached metadata"
+    );
+    assert!(
+        std::fs::symlink_metadata(target.join("review"))
+            .expect("the previously linked skill should be preserved")
+            .file_type()
+            .is_symlink()
+    );
+}
+
+#[test]
+fn status_and_sync_should_degrade_a_single_skill_audit_output_io_failure() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_skill_and_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    let audits = store.join("audits");
+    std::fs::remove_dir_all(&audits).expect("audit directory should be removed");
+    std::fs::write(&audits, "not a directory")
+        .expect("audit output root should be replaced with a file");
 
     let output = dalo_command()
         .args(["--store"])
