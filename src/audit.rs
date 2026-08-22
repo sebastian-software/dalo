@@ -647,6 +647,10 @@ fn persist_report_if_changed(
     existing: Option<&AuditReport>,
     persist: bool,
 ) -> DaloResult<bool> {
+    if !persist {
+        return Ok(false);
+    }
+
     let unchanged = existing.is_some_and(|existing| {
         let fresh_timestamp = report.scanned_at_unix;
         report.scanned_at_unix = existing.scanned_at_unix;
@@ -657,7 +661,7 @@ fn persist_report_if_changed(
         matches
     });
 
-    if persist && !unchanged {
+    if !unchanged {
         write_report(paths, report)?;
         return Ok(true);
     }
@@ -3339,6 +3343,26 @@ mod tests {
             report_inode(&path),
             before_inode,
             "an unchanged audit must not replace its persisted report"
+        );
+
+        let dry_run = audit_skill(
+            &paths,
+            "path:review-helper",
+            &skill,
+            &AuditOptions {
+                persist: false,
+                ..AuditOptions::default()
+            },
+        )
+        .expect("unchanged dry-run audit should succeed");
+        assert_ne!(
+            dry_run.scanned_at_unix, 1,
+            "dry-run output must retain its fresh scan timestamp"
+        );
+        assert_eq!(
+            report_inode(&path),
+            before_inode,
+            "a dry-run audit must not replace its persisted report"
         );
     }
 
