@@ -1,3 +1,5 @@
+use clap::Parser;
+use dalo::cli::{Cli, Command};
 use dalo::lockfile::LockedInstructionPack;
 use dalo::store;
 use predicates::prelude::*;
@@ -399,36 +401,90 @@ requirement = "required"
 }
 
 #[test]
-fn help_should_list_planned_top_level_commands() {
+fn help_should_use_task_language_for_plugin_commands_and_hide_yes() {
     let mut command = dalo_command();
 
-    command
+    let output = command
         .arg("--help")
         .assert()
         .success()
-        .stdout(predicate::str::contains("init"))
-        .stdout(predicate::str::contains("target"))
-        .stdout(predicate::str::contains("source"))
-        .stdout(predicate::str::contains("tool"))
-        .stdout(predicate::str::contains("hook"))
-        .stdout(predicate::str::contains("team"))
-        .stdout(predicate::str::contains("status"))
-        .stdout(predicate::str::contains("next"))
-        .stdout(predicate::str::contains("sync"))
-        .stdout(predicate::str::contains("adopt"))
-        .stdout(predicate::str::contains("resolve"))
-        .stdout(predicate::str::contains("doctor"))
-        .stdout(predicate::str::contains("Mental model:"))
-        .stdout(predicate::str::contains("Quickstart:"))
-        .stdout(predicate::str::contains("Choose a skill path:"))
-        .stdout(predicate::str::contains(
-            "create <store>/local/skills/<name>/SKILL.md",
-        ))
-        .stdout(predicate::str::contains("dalo adopt <skill>"))
-        .stdout(predicate::str::contains("--yes"))
-        .stdout(predicate::str::contains(
-            "ignored in JSON mode and otherwise noted",
-        ));
+        .get_output()
+        .stdout
+        .clone();
+    let help = String::from_utf8(output).expect("help should be UTF-8");
+
+    for command in [
+        "agent         Inspect source-provided agent packages and preview provider output",
+        "plugin        Inspect and select plugin packages for linked targets",
+        "tool          Inspect plugin-provided tools and their approval state",
+        "hook          Inspect plugin-provided hooks and their approval state",
+        "plan          Show the effective plugin setup for linked targets",
+    ] {
+        assert!(
+            help.lines().any(|line| line.trim() == command),
+            "top-level help should associate `{command}` with its exact description:\n{help}"
+        );
+    }
+    assert!(!help.contains("--yes"));
+    assert!(!help.contains("provider projections"));
+    assert!(!help.contains("passive portable plugins"));
+    assert!(!help.contains("inert plugin-local"));
+}
+
+#[test]
+fn plan_help_should_explain_read_only_output_and_examples() {
+    let output = dalo_command()
+        .args(["plan", "--help"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let help = String::from_utf8(output).expect("help should be UTF-8");
+
+    for expected in [
+        "Show the effective plugin setup for linked targets without changing files.",
+        "Use this report before `sync` to see selected plugins, target compatibility, approval state, and provider package paths.",
+        "Planning does not write source, approval, or target files, and never runs tools or hooks.",
+        "dalo plan",
+        "dalo plan --target codex",
+        "dalo --json plan",
+    ] {
+        assert!(help.contains(expected), "missing `{expected}` in:\n{help}");
+    }
+    assert!(!help.contains("--yes"));
+}
+
+#[test]
+fn plugin_subcommand_help_should_hide_yes() {
+    for args in [
+        ["agent", "--help"],
+        ["plugin", "--help"],
+        ["tool", "--help"],
+        ["hook", "--help"],
+    ] {
+        let output = dalo_command()
+            .args(args)
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+        let help = String::from_utf8(output).expect("help should be UTF-8");
+        assert!(
+            !help.contains("--yes"),
+            "--yes should be hidden in:\n{help}"
+        );
+    }
+}
+
+#[test]
+fn yes_should_remain_accepted_before_or_after_a_command() {
+    for args in [["dalo", "--yes", "plan"], ["dalo", "plan", "--yes"]] {
+        let cli = Cli::try_parse_from(args).expect("--yes should remain accepted");
+        assert!(cli.yes);
+        assert!(matches!(cli.command, Some(Command::Plan(_))));
+    }
 }
 
 #[test]

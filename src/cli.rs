@@ -55,8 +55,8 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub json: bool,
 
-    /// Reserved for future safe interactive prompts; ignored in JSON mode and otherwise noted.
-    #[arg(long, global = true)]
+    /// Reserved compatibility flag for future safe interactive prompts.
+    #[arg(long, global = true, hide = true)]
     pub yes: bool,
 
     /// Show planned changes without mutating state.
@@ -106,15 +106,19 @@ pub enum Command {
     Target(TargetCommand),
     /// Manage skill sources.
     Source(SourceCommand),
-    /// Inspect portable canonical agent packages and provider projections.
+    /// Inspect source-provided agent packages and preview provider output.
     Agent(AgentCommand),
-    /// Inspect and select passive portable plugins.
+    /// Inspect and select plugin packages for linked targets.
     Plugin(PluginCommand),
-    /// Inspect and audit inert plugin-local executable contracts.
+    /// Inspect plugin-provided tools and their approval state.
     Tool(ToolCommand),
-    /// Inspect inert plugin-local hook contracts and independent trust state.
+    /// Inspect plugin-provided hooks and their approval state.
     Hook(HookCommand),
-    /// Explain the read-only effective plugin configuration for linked targets.
+    /// Show the effective plugin setup for linked targets.
+    #[command(
+        long_about = "Show the effective plugin setup for linked targets without changing files.\n\nUse this report before `sync` to see selected plugins, target compatibility, approval state, and provider package paths. It covers every linked target by default; use `--target` for one target. Planning does not write source, approval, or target files, and never runs tools or hooks.",
+        after_help = "Examples:\n  dalo plan\n  dalo plan --target codex\n  dalo --json plan"
+    )]
     Plan(PlanArgs),
     /// Author and maintain a team repository's `dalo.toml`.
     #[command(
@@ -178,30 +182,30 @@ pub struct InstructionsCommand {
     pub command: InstructionsSubcommand,
 }
 
-/// `plugin` command group.
+/// Plugin selection commands.
 #[derive(Debug, Args)]
 pub struct PluginCommand {
-    /// Plugin selection subcommand.
+    /// Select a plugin command.
     #[command(subcommand)]
     pub command: PluginSubcommand,
 }
 
-/// `tool` command group.
+/// Tool inspection commands.
 #[derive(Debug, Args)]
 pub struct ToolCommand {
-    /// Read-only local-tool subcommand.
+    /// Inspect a plugin-provided tool.
     #[command(subcommand)]
     pub command: ToolSubcommand,
 }
 
-/// Inert tool inspection commands. None of these execute a tool.
+/// Tool inspection commands. None of these execute a tool.
 #[derive(Debug, Subcommand)]
 pub enum ToolSubcommand {
-    /// List validated plugin-local tools and trust state.
+    /// List plugin-provided tools and approval status.
     List,
-    /// Show one exact source-qualified tool contract.
+    /// Show one plugin-provided tool contract.
     Show(ToolReferenceArgs),
-    /// Re-read and hash the executable closure without running it.
+    /// Recheck a tool's files and contract hash without running it.
     Audit(ToolReferenceArgs),
 }
 
@@ -212,20 +216,20 @@ pub struct ToolReferenceArgs {
     pub tool: String,
 }
 
-/// `hook` command group.
+/// Hook inspection commands.
 #[derive(Debug, Args)]
 pub struct HookCommand {
-    /// Read-only hook-contract subcommand.
+    /// Inspect a plugin-provided hook.
     #[command(subcommand)]
     pub command: HookSubcommand,
 }
 
-/// Inert hook inspection commands. None install or execute a hook.
+/// Hook inspection commands. None install or execute a hook.
 #[derive(Debug, Subcommand)]
 pub enum HookSubcommand {
-    /// List validated plugin-local hooks and trust state.
+    /// List plugin-provided hooks and approval status.
     List,
-    /// Show one exact source-qualified hook contract.
+    /// Show one plugin-provided hook contract.
     Show(HookReferenceArgs),
     /// Execute one verified hash-addressed native hook projection.
     #[command(hide = true)]
@@ -274,20 +278,20 @@ impl From<HookProviderArg> for hook::HookProvider {
     }
 }
 
-/// Passive plugin selection commands.
+/// Plugin selection commands.
 #[derive(Debug, Subcommand)]
 pub enum PluginSubcommand {
-    /// List canonical selected plugin state.
+    /// List available plugins and their selection status.
     List,
-    /// Show one exact candidate and its selected closure state.
+    /// Show one plugin and its selection status.
     Show(PluginReferenceArgs),
-    /// Add one required direct-user selection.
+    /// Select one plugin for linked targets.
     Select(PluginReferenceArgs),
-    /// Remove only the matching direct-user selection.
+    /// Remove one direct plugin selection.
     Unselect(PluginReferenceArgs),
-    /// Retain selected intent but suppress it with an explicit local policy.
+    /// Keep a selection but block it with local policy.
     Decline(PluginDeclineArgs),
-    /// Review every pending boundary in one session, retaining exact identities.
+    /// Review a plugin's components and approval needs.
     Review(PluginReferenceArgs),
 }
 
@@ -666,20 +670,20 @@ pub struct SourceCommand {
     pub command: SourceSubcommand,
 }
 
-/// `agent` command group.
+/// Agent inspection commands.
 #[derive(Debug, Args)]
 pub struct AgentCommand {
-    /// Agent lifecycle command.
+    /// Inspect a source-provided agent package.
     #[command(subcommand)]
     pub command: AgentSubcommand,
 }
 
-/// Read-only agent subcommands available during the compiler foundation stage.
+/// Agent inspection commands.
 #[derive(Debug, Subcommand)]
 pub enum AgentSubcommand {
-    /// List discovered canonical agents and their deterministic approval state.
+    /// List source-provided agent packages and approval status.
     List,
-    /// Show a canonical agent and provider compilation previews without writing files.
+    /// Preview one agent for Claude or Codex without writing files.
     Show(AgentShowArgs),
 }
 
