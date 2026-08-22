@@ -837,6 +837,34 @@ matcher = { tool_names = ["Bash"] }
             "\"state\": \"unverified_version\"",
         ));
 
+    std::fs::write(&codex, "#!/bin/sh\nprintf '%s\\n' 'codex-cli 0.147.0'\n").unwrap();
+    let mut restore = dalo_command();
+    restore
+        .env("PATH", &path)
+        .env("HOME", temp.path())
+        .env("CODEX_HOME", &codex_home)
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    let tampered = String::from_utf8(std::fs::read(&sidecar).unwrap())
+        .unwrap()
+        .replace("^(?:Bash)$", "^(?:user-modified)$");
+    std::fs::write(&sidecar, &tampered).unwrap();
+    let mut conflict = dalo_command();
+    conflict
+        .env("PATH", &path)
+        .env("HOME", temp.path())
+        .env("CODEX_HOME", &codex_home)
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "sync"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"state\": \"conflict\""));
+    assert_eq!(std::fs::read(&sidecar).unwrap(), tampered.as_bytes());
+
     let tools = store.join("tools");
     for path in [tools.join("sha256"), tools] {
         let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755));
