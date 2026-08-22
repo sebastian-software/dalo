@@ -82,8 +82,53 @@ for target in \
   printf '%s\n' "$release_targets_job" | grep -Fq "$target"
 done
 
+release_target_entry() {
+  printf '%s\n' "$release_targets_job" | awk -v target="$1" '
+    /^          - os:/ {
+      if (entry ~ ("target: " target)) {
+        found = 1
+        print entry
+        exit
+      }
+      entry = $0 ORS
+      next
+    }
+    { entry = entry $0 ORS }
+    END {
+      if (!found) {
+        if (entry ~ ("target: " target)) {
+          print entry
+        } else {
+          exit 1
+        }
+      }
+    }
+  '
+}
+
+aarch64_gnu_entry="$(release_target_entry aarch64-unknown-linux-gnu)"
+x86_64_musl_entry="$(release_target_entry x86_64-unknown-linux-musl)"
+aarch64_musl_entry="$(release_target_entry aarch64-unknown-linux-musl)"
+x86_64_darwin_entry="$(release_target_entry x86_64-apple-darwin)"
+
+printf '%s\n' "$aarch64_gnu_entry" | grep -Fqx '          - os: ubuntu-24.04-arm'
+printf '%s\n' "$aarch64_gnu_entry" | grep -Fqx '            builder: cargo'
+printf '%s\n' "$aarch64_gnu_entry" | grep -Fqx '            test: cargo'
+printf '%s\n' "$aarch64_gnu_entry" | grep -Fqx '            smoke: false'
+printf '%s\n' "$x86_64_musl_entry" | grep -Fqx '          - os: ubuntu-latest'
+printf '%s\n' "$x86_64_musl_entry" | grep -Fqx '            builder: cross'
+printf '%s\n' "$x86_64_musl_entry" | grep -Fqx '            test: cross'
+printf '%s\n' "$x86_64_musl_entry" | grep -Fqx '            smoke: true'
+printf '%s\n' "$aarch64_musl_entry" | grep -Fqx '          - os: ubuntu-latest'
+printf '%s\n' "$aarch64_musl_entry" | grep -Fqx '            builder: cross'
+printf '%s\n' "$aarch64_musl_entry" | grep -Fqx '            test: none'
+printf '%s\n' "$aarch64_musl_entry" | grep -Fqx '            smoke: false'
+printf '%s\n' "$x86_64_darwin_entry" | grep -Fqx '          - os: macos-14'
+printf '%s\n' "$x86_64_darwin_entry" | grep -Fqx '            builder: cargo'
+printf '%s\n' "$x86_64_darwin_entry" | grep -Fqx '            test: none'
+printf '%s\n' "$x86_64_darwin_entry" | grep -Fqx '            smoke: false'
+
 printf '%s\n' "$release_targets_job" | grep -Fq 'runs-on: ${{ matrix.os }}'
-printf '%s\n' "$release_targets_job" | grep -Fq 'os: ubuntu-24.04-arm'
 printf '%s\n' "$release_targets_job" | grep -Fq 'cross test --locked --target "${{ matrix.target }}"'
 printf '%s\n' "$release_targets_job" | grep -Fq 'cargo test --locked --target "${{ matrix.target }}"'
 printf '%s\n' "$release_targets_job" | grep -Fq 'target/${{ matrix.target }}/release/dalo'
