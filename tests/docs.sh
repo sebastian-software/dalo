@@ -20,15 +20,33 @@ grep -q 'brew uninstall dalo' "$root/docs/uninstall.md"
 grep -q 'dalo resolve remove-owned <target>:<slot>' "$root/docs/uninstall.md"
 grep -q 'resolve list.*exact owned IDs' "$root/docs/uninstall.md"
 grep -q '^## 4. Disable Autosync$' "$root/docs/uninstall.md"
-grep -q 'dalo --store <store-path> autosync uninstall' "$root/docs/uninstall.md"
 awk '
   /^## 4\. Disable Autosync$/ { autosync_section = 1; next }
-  autosync_section && /dalo autosync status/ { status_line = NR }
-  autosync_section && /dalo autosync uninstall/ { uninstall_line = NR }
+  /^## / { autosync_section = 0 }
+  autosync_section && $0 == "dalo autosync status" {
+    default_status_count++
+    default_status_line = NR
+  }
+  autosync_section && $0 == "dalo autosync uninstall" {
+    default_uninstall_count++
+    default_uninstall_line = NR
+  }
+  autosync_section && $0 == "dalo --store <store-path> autosync status" {
+    custom_status_count++
+    custom_status_line = NR
+  }
+  autosync_section && $0 == "dalo --store <store-path> autosync uninstall" {
+    custom_uninstall_count++
+    custom_uninstall_line = NR
+  }
   /^## 5\. Remove the Store$/ { store_line = NR }
   END {
-    exit !(status_line && uninstall_line && store_line \
-      && status_line < uninstall_line && uninstall_line < store_line)
+    exit !(default_status_count == 1 && default_uninstall_count == 1 \
+      && custom_status_count == 1 && custom_uninstall_count == 1 && store_line \
+      && default_status_line < default_uninstall_line \
+      && default_uninstall_line < custom_status_line \
+      && custom_status_line < custom_uninstall_line \
+      && custom_uninstall_line < store_line)
   }
 ' "$root/docs/uninstall.md"
 grep -q 'data-install-method="homebrew"' "$root/site/index.html"
