@@ -84,17 +84,6 @@ struct HookSidecarState {
     owned_hooks: BTreeMap<String, Vec<Value>>,
 }
 
-/// Whether Dalo currently owns hook entries for this provider sidecar.
-pub(crate) fn has_owned_entries(
-    paths: &StorePaths,
-    provider: HookProvider,
-    path: &Path,
-) -> DaloResult<bool> {
-    Ok(read_state(paths)?.entries.iter().any(|entry| {
-        entry.provider == provider && entry.path == path && !entry.owned_hooks.is_empty()
-    }))
-}
-
 /// Build the exact reconcile plan without changing provider or store state.
 pub fn plan_sidecar(
     paths: &StorePaths,

@@ -949,6 +949,25 @@ fn status_and_sync_should_suppress_inert_empty_native_hook_reports() {
 }
 
 #[test]
+fn hook_target_report_keeps_legacy_public_shape() {
+    let report = dalo::hook_sync::HookTargetReport {
+        target: "codex".to_owned(),
+        path: std::path::PathBuf::from("hooks.json"),
+        provider_version: Some("0.149.0".to_owned()),
+        state: dalo::hook_sync::HookTargetState::Ready,
+        action: Some(dalo::hook_sidecar::HookSidecarAction::Noop),
+        projected_hooks: 0,
+        dry_run: false,
+        diagnostic: "legacy consumer fixture".to_owned(),
+    };
+
+    fn accepts_legacy_report(_: &dalo::hook_sync::HookTargetReport) {}
+
+    accepts_legacy_report(&report);
+    assert_eq!(report, report.clone());
+}
+
+#[test]
 fn next_should_choose_one_action_from_store_state_and_keep_init_state_aware() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = store::comparable_path(&temp_dir.path().join("store"));
