@@ -525,8 +525,7 @@ fn audit_skill_with_source_roots(
     let content_hash = audit_content_hash(skill_path, exclude_root_source_metadata)?;
     let existing = match read_report(paths, source_ref, &content_hash) {
         Ok(report) => Some(report),
-        Err(DaloError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => None,
-        Err(DaloError::FileParse { .. } | DaloError::UnsupportedSchema { .. }) => None,
+        Err(error) if unusable_cached_report(&error) => None,
         Err(error) => return Err(error),
     };
     let matching_snapshot = existing.as_ref().filter(|report| {
@@ -630,6 +629,25 @@ fn audit_skill_with_source_roots(
     };
     persist_report_if_changed(paths, &mut report, existing.as_ref(), options.persist)?;
     Ok(report)
+}
+
+/// Whether a failed report read proves that its cache entry cannot be reused.
+///
+/// This applies only at the persisted-report boundary. Fresh scan and write
+/// errors still propagate, so a cache miss can never hide a failed audit.
+fn unusable_cached_report(error: &DaloError) -> bool {
+    match error {
+        DaloError::Io(error) => matches!(
+            error.kind(),
+            std::io::ErrorKind::NotFound
+                | std::io::ErrorKind::PermissionDenied
+                | std::io::ErrorKind::InvalidData
+                | std::io::ErrorKind::IsADirectory
+                | std::io::ErrorKind::NotADirectory
+        ),
+        DaloError::FileParse { .. } | DaloError::UnsupportedSchema { .. } => true,
+        _ => false,
+    }
 }
 
 /// Retain a persisted report when all durable audit content is unchanged.
@@ -3399,6 +3417,149 @@ mod tests {
         );
         assert_eq!(
             read_report(&paths, &recovered.source_ref, &recovered.content_hash)
+                .expect("rebuilt report should be valid")
+                .schema_version,
+            AUDIT_SCHEMA_VERSION
+        );
+    }
+
+    #[test]
+    fn invalid_utf8_cached_report_should_be_rebuilt_or_ignored_for_dry_runs() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp.path().join("store");
+        store::init_store(store_root.clone(), false).expect("store should initialize");
+        let paths = StorePaths::new(store_root);
+        let skill = write_skill(temp.path(), "Summarize a pull request.\n");
+        let first = audit_skill(
+            &paths,
+            "path:review-helper",
+            &skill,
+            &AuditOptions::default(),
+        )
+        .expect("initial audit should succeed");
+        let path = report_path(&paths, &first.source_ref, &first.content_hash);
+        fs::write(&path, [0xff]).expect("report should be made invalid UTF-8");
+        let invalid_inode = report_inode(&path);
+
+        audit_skill(
+            &paths,
+            "path:review-helper",
+            &skill,
+            &AuditOptions {
+                persist: false,
+                ..AuditOptions::default()
+            },
+        )
+        .expect("dry-run should ignore invalid UTF-8 cached metadata");
+        assert_eq!(
+            report_inode(&path),
+            invalid_inode,
+            "a dry-run must leave invalid cached metadata untouched"
+        );
+
+        let rebuilt = audit_skill(
+            &paths,
+            "path:review-helper",
+            &skill,
+            &AuditOptions::default(),
+        )
+        .expect("non-dry-run should rebuild invalid UTF-8 cached metadata");
+        assert_ne!(
+            report_inode(&path),
+            invalid_inode,
+            "a non-dry-run must atomically replace invalid cached metadata"
+        );
+        assert_eq!(
+            read_report(&paths, &rebuilt.source_ref, &rebuilt.content_hash)
+                .expect("rebuilt report should be valid")
+                .schema_version,
+            AUDIT_SCHEMA_VERSION
+        );
+    }
+
+    #[test]
+    fn unreadable_cached_report_should_be_rebuilt_or_ignored_for_dry_runs() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp.path().join("store");
+        store::init_store(store_root.clone(), false).expect("store should initialize");
+        let paths = StorePaths::new(store_root);
+        let skill = write_skill(temp.path(), "Summarize a pull request.\n");
+        let first = audit_skill(
+            &paths,
+            "path:review-helper",
+            &skill,
+            &AuditOptions::default(),
+        )
+        .expect("initial audit should succeed");
+        let path = report_path(&paths, &first.source_ref, &first.content_hash);
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000))
+            .expect("report permissions should be removed");
+
+        let permission_denied = matches!(
+            fs::read(&path),
+            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied
+        );
+        if !permission_denied {
+            // Root can read a mode-000 file. A symlink to a directory remains
+            // unreadable to `read_to_string` and is safely replaced by rename.
+            let directory = temp.path().join("unreadable-cache-entry");
+            fs::create_dir(&directory).expect("directory should be created");
+            fs::remove_file(&path).expect("mode-000 report should be removed");
+            symlink(&directory, &path).expect("directory symlink should be created");
+            assert!(matches!(
+                fs::read(&path),
+                Err(error) if error.kind() == std::io::ErrorKind::IsADirectory
+            ));
+        }
+        let before = fs::symlink_metadata(&path).expect("cache entry metadata should be readable");
+        #[cfg(unix)]
+        use std::os::unix::fs::MetadataExt;
+        let before_inode = before.ino();
+
+        audit_skill(
+            &paths,
+            "path:review-helper",
+            &skill,
+            &AuditOptions {
+                persist: false,
+                ..AuditOptions::default()
+            },
+        )
+        .expect("dry-run should ignore unreadable cached metadata");
+        assert_eq!(
+            fs::symlink_metadata(&path)
+                .expect("cache entry metadata should remain readable")
+                .ino(),
+            before_inode,
+            "a dry-run must not replace an unreadable cache entry"
+        );
+        assert_eq!(
+            fs::symlink_metadata(&path)
+                .expect("cache entry metadata should remain readable")
+                .file_type()
+                .is_symlink(),
+            before.file_type().is_symlink(),
+            "a dry-run must not replace an unreadable cache entry"
+        );
+
+        let rebuilt = audit_skill(
+            &paths,
+            "path:review-helper",
+            &skill,
+            &AuditOptions::default(),
+        )
+        .expect("non-dry-run should rebuild unreadable cached metadata");
+        assert!(
+            fs::symlink_metadata(&path)
+                .expect("rebuilt report metadata should be readable")
+                .file_type()
+                .is_file(),
+            "a non-dry-run must replace an unreadable cache entry with a report"
+        );
+        assert_eq!(
+            read_report(&paths, &rebuilt.source_ref, &rebuilt.content_hash)
                 .expect("rebuilt report should be valid")
                 .schema_version,
             AUDIT_SCHEMA_VERSION

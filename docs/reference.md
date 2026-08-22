@@ -800,7 +800,8 @@ reference and the complete skill directory hash. After re-hashing the current
 directory, a report with the matching source, static-engine version, and scan
 mode reuses its deterministic findings and coverage instead of reading and
 scanning every file again. Missing, malformed, old-version, changed-content,
-or incompatible-mode reports are rebuilt before they can affect the result.
+unreadable, or incompatible-mode reports are rebuilt before they can affect the
+result.
 When a non-dry-run audit produces the same durable report content, Dalo retains
 the existing report (including its `scanned_at_unix` value) without rewriting
 it.
