@@ -36,10 +36,10 @@ pub struct HookTargetReport {
     pub dry_run: bool,
     /// Actionable explanation.
     pub diagnostic: String,
-    /// Whether this inert no-op target may be omitted from human output.
-    #[serde(skip)]
-    pub human_output_inert: bool,
 }
+
+const NO_SELECTED_PORTABLE_HOOKS: &str =
+    "no selected portable hooks; prior owned entries are removed";
 
 /// Distinct provider hook states required by #501.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -179,20 +179,6 @@ fn reconcile_target(
             &[],
         )
         .expect("empty baseline projection is always representable");
-        let had_owned_entries =
-            match hook_sidecar::has_owned_entries(paths, facts.provider, &facts.sidecar) {
-                Ok(value) => value,
-                Err(error) => {
-                    return report(
-                        facts,
-                        HookTargetState::Conflict,
-                        None,
-                        0,
-                        dry_run,
-                        &error.to_string(),
-                    );
-                }
-            };
         let action = match reconcile_projection(paths, facts, &empty, dry_run) {
             Ok(action) => Some(action),
             Err(error) => {
@@ -237,23 +223,18 @@ fn reconcile_target(
         } else {
             HookTargetState::Ready
         };
-        let mut target = report(
+        return report(
             facts,
             state,
             action,
             0,
             dry_run,
             if selected.is_empty() {
-                "no selected portable hooks; prior owned entries are removed"
+                NO_SELECTED_PORTABLE_HOOKS
             } else {
                 "unavailable optional hooks are explicitly omitted"
             },
         );
-        target.human_output_inert = selected.is_empty()
-            && !had_owned_entries
-            && state == HookTargetState::Ready
-            && action == Some(HookSidecarAction::Noop);
-        return target;
     }
     if !facts.runtime_available {
         let action = match remove_owned_projection(paths, facts, executable, dry_run) {
@@ -425,8 +406,15 @@ fn report(
         projected_hooks,
         dry_run,
         diagnostic: diagnostic.to_owned(),
-        human_output_inert: false,
     }
+}
+
+/// Whether an empty no-op report has no user-facing effect to describe.
+pub(crate) fn is_human_output_inert(target: &HookTargetReport) -> bool {
+    target.state == HookTargetState::Ready
+        && target.action == Some(HookSidecarAction::Noop)
+        && target.projected_hooks == 0
+        && target.diagnostic == NO_SELECTED_PORTABLE_HOOKS
 }
 
 fn provider_facts(target: &str) -> DaloResult<ProviderFacts> {

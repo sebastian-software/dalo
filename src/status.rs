@@ -820,7 +820,7 @@ fn print_audit_finding(layer: &str, finding: &crate::audit::AuditFinding) {
 }
 
 fn should_print_hook_target(target: &crate::hook_sync::HookTargetReport) -> bool {
-    !target.human_output_inert
+    !crate::hook_sync::is_human_output_inert(target)
 }
 
 /// Print a human-readable status report.
