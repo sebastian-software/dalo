@@ -820,10 +820,7 @@ fn print_audit_finding(layer: &str, finding: &crate::audit::AuditFinding) {
 }
 
 fn should_print_hook_target(target: &crate::hook_sync::HookTargetReport) -> bool {
-    !(target.state == crate::hook_sync::HookTargetState::Ready
-        && target.action == Some(crate::hook_sidecar::HookSidecarAction::Noop)
-        && target.projected_hooks == 0
-        && target.diagnostic == "no selected portable hooks")
+    !target.human_output_inert
 }
 
 /// Print a human-readable status report.

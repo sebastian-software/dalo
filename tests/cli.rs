@@ -933,6 +933,19 @@ fn status_and_sync_should_suppress_inert_empty_native_hook_reports() {
             .stdout(predicate::str::contains("hooks codex").not())
             .stdout(predicate::str::contains("Some(Noop)").not());
     }
+
+    for command in ["status", "sync"] {
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .args(["--json", command])
+            .assert()
+            .success()
+            .stdout(predicate::str::contains(
+                "\"diagnostic\": \"no selected portable hooks; prior owned entries are removed\"",
+            ))
+            .stdout(predicate::str::contains("human_output_inert").not());
+    }
 }
 
 #[test]
