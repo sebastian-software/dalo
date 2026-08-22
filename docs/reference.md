@@ -339,8 +339,9 @@ that name, so same-named skills from distinct namespaced sources can coexist.
 The source `SKILL.md` files and source-qualified approval identities remain
 unchanged. Prefixes use the same portable lowercase token rules as skill names.
 Use `--clear` to restore the source's original install names. The built-in
-local source cannot be namespaced: it stays at its original slot names so local
-adaptations continue to override matching managed skills.
+local source cannot be assigned a namespace, but `--clear` can restore its
+original slot names if a legacy configuration contains one, so local adaptations
+continue to override matching managed skills.
 
 Examples:
 
