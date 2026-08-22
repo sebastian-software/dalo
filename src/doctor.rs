@@ -1317,11 +1317,24 @@ fn source_inventory_fix_hint(source: &SourceConfig, warnings: &[InventoryWarning
             "restore read access to {} in Dalo's managed checkout",
             shell_quote_path(&warning.path)
         );
-        if source.kind != SourceKind::Local
-            && warnings
-                .iter()
-                .any(|warning| warning.code == InventoryWarningCode::InvalidSlotName)
+        if let Some(invalid) = warnings
+            .iter()
+            .find(|warning| warning.code == InventoryWarningCode::InvalidSlotName)
         {
+            if source.kind == SourceKind::Local {
+                let repair = if invalid.message.starts_with("frontmatter name ") {
+                    format!(
+                        "change the frontmatter `name` in {} to a portable lowercase slot name",
+                        shell_quote_path(&invalid.path)
+                    )
+                } else {
+                    format!(
+                        "rename {} to a portable lowercase slot name",
+                        shell_quote_path(invalid.path.parent().unwrap_or(&invalid.path))
+                    )
+                };
+                return format!("{access_recovery}; then {repair}, then run `dalo sync`");
+            }
             return format!(
                 "{access_recovery}; then fix the invalid skill name for source `{}` in its upstream repository, push it, then run `dalo sync`",
                 source.id
@@ -2031,6 +2044,28 @@ mod tests {
             "then fix the invalid skill name for source `team` in its upstream repository"
         ));
         assert!(hint.ends_with("then run `dalo sync`"));
+
+        let mut local = source;
+        local.kind = SourceKind::Local;
+        let hint = source_inventory_fix_hint(
+            &local,
+            &[
+                InventoryWarning {
+                    code: InventoryWarningCode::InvalidSlotName,
+                    path: PathBuf::from("/store/local/skills/bad/SKILL.md"),
+                    message: "frontmatter name `bad name` is not portable".to_owned(),
+                },
+                InventoryWarning {
+                    code: InventoryWarningCode::UnreadablePath,
+                    path: PathBuf::from("/store/local/skills/restricted"),
+                    message: "permission denied".to_owned(),
+                },
+            ],
+        );
+        assert!(hint.contains("restore read access to '/store/local/skills/restricted'"));
+        assert!(
+            hint.contains("change the frontmatter `name` in '/store/local/skills/bad/SKILL.md'")
+        );
     }
 
     #[test]
