@@ -34,6 +34,7 @@ version_check_script="$test_root/publish-version-check.sh"
 )
 
 workflow="$root/.github/workflows/publish.yml"
+ci_workflow="$root/.github/workflows/ci.yml"
 release_config="$root/release-please-config.json"
 
 job_body() {
@@ -53,6 +54,41 @@ final_release_job="$(job_body publish-github-release)"
 crate_job="$(job_body publish-crate)"
 npm_job="$(job_body publish-npm)"
 homebrew_job="$(job_body update-homebrew)"
+
+ci_job_body() {
+  awk -v job="$1" '
+    $0 == "  " job ":" { found = 1; in_job = 1; next }
+    in_job && /^  [A-Za-z0-9_-]+:/ { exit }
+    in_job { print }
+    END { if (!found) exit 1 }
+  ' "$ci_workflow"
+}
+
+ci_test_job="$(ci_job_body test)"
+release_targets_job="$(ci_job_body release-targets)"
+
+# The host test job covers the two native release targets. The dedicated job
+# covers the four remaining targets, including native ARM execution and the
+# static-musl release-binary smoke path.
+for target in x86_64-unknown-linux-gnu aarch64-apple-darwin; do
+  printf '%s\n' "$ci_test_job" | grep -Fq "$target"
+done
+
+for target in \
+  aarch64-unknown-linux-gnu \
+  x86_64-unknown-linux-musl \
+  aarch64-unknown-linux-musl \
+  x86_64-apple-darwin; do
+  printf '%s\n' "$release_targets_job" | grep -Fq "$target"
+done
+
+printf '%s\n' "$release_targets_job" | grep -Fq 'runs-on: ${{ matrix.os }}'
+printf '%s\n' "$release_targets_job" | grep -Fq 'os: ubuntu-24.04-arm'
+printf '%s\n' "$release_targets_job" | grep -Fq 'cross test --locked --target "${{ matrix.target }}"'
+printf '%s\n' "$release_targets_job" | grep -Fq 'cargo test --locked --target "${{ matrix.target }}"'
+printf '%s\n' "$release_targets_job" | grep -Fq 'target/${{ matrix.target }}/release/dalo'
+printf '%s\n' "$release_targets_job" | grep -Fq '"$binary" init --store "$test_root/store"'
+printf '%s\n' "$release_targets_job" | grep -Fq '"$binary" sync --store "$test_root/store" --dry-run'
 
 printf '%s\n' "$artifacts_job" | grep -Fqx '    needs: release-please'
 printf '%s\n' "$artifacts_job" | grep -Fq "gh release view \"\$TAG_NAME\" --json isDraft --jq '.isDraft'"
