@@ -499,3 +499,200 @@ fn read_json(path: &Path) -> Option<serde_json::Value> {
         .ok()
         .and_then(|content| serde_json::from_slice(&content).ok())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::hook::{
+        HookBlockingScope, HookDescriptorV1, HookEffect, HookErrorVisibility, HookFailurePolicy,
+        HookMatcherV1, HookPhase, HookRetryPolicy, HookSubject,
+    };
+    use crate::plugin::{HookRecord, ToolAvailability, ToolCwd, ToolRecord, ToolRuntime};
+    use crate::source::{SourceManagement, SourceProvenance};
+    use crate::tool::ToolState;
+
+    fn fixture() -> (tempfile::TempDir, StorePaths) {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("store");
+        crate::store::init_store(root.clone(), false).unwrap();
+        (temp, StorePaths::new(root))
+    }
+
+    fn facts(sidecar: PathBuf, runtime_available: bool, version: Option<&str>) -> ProviderFacts {
+        ProviderFacts {
+            target: "codex",
+            provider: HookProvider::Codex,
+            sidecar,
+            version: version.map(str::to_owned),
+            runtime_available,
+            hooks_enabled: true,
+            plugin_hooks_allowed: true,
+        }
+    }
+
+    fn status(state: HookTrustState) -> HookStatusReport {
+        HookStatusReport {
+            hook: HookRecord {
+                source_ref: "local:policy#hook:protect-shell".to_owned(),
+                descriptor: HookDescriptorV1 {
+                    schema_version: 1,
+                    id: "protect-shell".to_owned(),
+                    tool: "check".to_owned(),
+                    subject: HookSubject::ToolCall,
+                    phase: HookPhase::Before,
+                    effect: HookEffect::AllowDeny,
+                    requirement: HookRequirement::Required,
+                    timeout_ms: 2_000,
+                    failure_policy: HookFailurePolicy::FailClosed,
+                    retry: HookRetryPolicy::Never,
+                    error_visibility: HookErrorVisibility::ModelAndUser,
+                    matcher: HookMatcherV1 {
+                        tool_names: vec!["Bash".to_owned()],
+                    },
+                    bindings: Vec::new(),
+                    blocking_scope: HookBlockingScope::MatchedEvent,
+                    fallback: None,
+                },
+                tool_source_ref: "local:policy#tool:check".to_owned(),
+                tool_contract_hash: "11".repeat(32),
+                contract_hash: "22".repeat(32),
+            },
+            plugin_package_hash: "33".repeat(32),
+            source_provenance: SourceProvenance {
+                management: SourceManagement::Direct,
+                declared_by: None,
+                origin_url: None,
+                requested_ref: None,
+                resolved_commit: None,
+                checkout_commit: None,
+            },
+            approval_value: "approved".to_owned(),
+            tool_state: ToolState::Ready,
+            tool: ToolRecord {
+                schema_version: 1,
+                id: "check".to_owned(),
+                source_ref: "local:policy#tool:check".to_owned(),
+                entry: "bin/check".to_owned(),
+                runtime: ToolRuntime::Executable,
+                runtime_version: None,
+                platforms: Vec::new(),
+                inputs: Vec::new(),
+                argv: Vec::new(),
+                cwd: ToolCwd::ToolRoot,
+                env: Vec::new(),
+                capabilities: Vec::new(),
+                availability: ToolAvailability::Required,
+                files: Vec::new(),
+                contract_hash: "11".repeat(32),
+            },
+            state,
+            diagnostic: "fixture hook status".to_owned(),
+        }
+    }
+
+    #[test]
+    fn reconcile_target_reports_runtime_unverified_and_blocked_states() {
+        let (temp, paths) = fixture();
+        let executable = std::env::current_exe().unwrap();
+        let ready = status(HookTrustState::Ready);
+
+        let runtime_missing = reconcile_target(
+            &paths,
+            &facts(temp.path().join("runtime-missing/hooks.json"), false, None),
+            &executable,
+            std::slice::from_ref(&ready),
+            true,
+        );
+        assert_eq!(runtime_missing.state, HookTargetState::RuntimeMissing);
+        assert_eq!(runtime_missing.action, Some(HookSidecarAction::Noop));
+
+        let unverified = reconcile_target(
+            &paths,
+            &facts(
+                temp.path().join("unverified/hooks.json"),
+                true,
+                Some("0.148.0"),
+            ),
+            &executable,
+            std::slice::from_ref(&ready),
+            true,
+        );
+        assert_eq!(unverified.state, HookTargetState::UnverifiedVersion);
+        assert_eq!(unverified.action, Some(HookSidecarAction::Noop));
+
+        let blocked = reconcile_target(
+            &paths,
+            &facts(
+                temp.path().join("blocked/hooks.json"),
+                true,
+                Some(HookProvider::Codex.baseline()),
+            ),
+            &executable,
+            &[status(HookTrustState::PendingApproval)],
+            true,
+        );
+        assert_eq!(blocked.state, HookTargetState::Blocked);
+        assert_eq!(blocked.action, Some(HookSidecarAction::Noop));
+        assert_eq!(blocked.projected_hooks, 0);
+    }
+
+    #[test]
+    fn reconcile_target_reports_conflict_without_changing_foreign_or_tampered_sidecars() {
+        let (temp, paths) = fixture();
+        let executable = std::env::current_exe().unwrap();
+        let ready = status(HookTrustState::Ready);
+
+        let foreign_sidecar = temp.path().join("foreign/hooks.json");
+        std::fs::create_dir_all(foreign_sidecar.parent().unwrap()).unwrap();
+        let foreign = br#"{"hooks":{"PreToolUse":[{"hooks":[{"command":"dalo hook dispatch --projection foreign"}]}]}}"#;
+        std::fs::write(&foreign_sidecar, foreign).unwrap();
+        let foreign_report = reconcile_target(
+            &paths,
+            &facts(
+                foreign_sidecar.clone(),
+                true,
+                Some(HookProvider::Codex.baseline()),
+            ),
+            &executable,
+            std::slice::from_ref(&ready),
+            false,
+        );
+        assert_eq!(foreign_report.state, HookTargetState::Conflict);
+        assert_eq!(std::fs::read(&foreign_sidecar).unwrap(), foreign);
+
+        let tampered_sidecar = temp.path().join("tampered/hooks.json");
+        let projection = compile_native_projection(
+            &paths,
+            HookProvider::Codex,
+            HookProvider::Codex.baseline(),
+            &executable,
+            std::slice::from_ref(&ready),
+        )
+        .unwrap();
+        let plan =
+            hook_sidecar::plan_sidecar(&paths, HookProvider::Codex, &tampered_sidecar, &projection)
+                .unwrap();
+        hook_sidecar::apply_sidecar(&paths, &projection, plan, false).unwrap();
+        let tampered = String::from_utf8(std::fs::read(&tampered_sidecar).unwrap())
+            .unwrap()
+            .replace("^(?:Bash)$", "^(?:foreign)$");
+        std::fs::write(&tampered_sidecar, &tampered).unwrap();
+
+        let tampered_report = reconcile_target(
+            &paths,
+            &facts(
+                tampered_sidecar.clone(),
+                true,
+                Some(HookProvider::Codex.baseline()),
+            ),
+            &executable,
+            std::slice::from_ref(&ready),
+            false,
+        );
+        assert_eq!(tampered_report.state, HookTargetState::Conflict);
+        assert_eq!(
+            std::fs::read(&tampered_sidecar).unwrap(),
+            tampered.as_bytes()
+        );
+    }
+}
