@@ -826,15 +826,75 @@ matcher = { tool_names = ["Bash"] }
     }
 
     #[test]
-    fn oversized_handler_output_is_rejected_without_buffering_past_the_limit() {
-        let error = read_bounded(std::io::Cursor::new(vec![
-            0;
-            MAX_HANDLER_OUTPUT as usize + 1
-        ]))
+    fn bounded_reader_stops_at_the_first_over_limit_byte() {
+        struct ReaderThatRejectsReadsPastLimit {
+            consumed: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        }
+
+        impl Read for ReaderThatRejectsReadsPastLimit {
+            fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+                let limit = MAX_HANDLER_OUTPUT as usize + 1;
+                let consumed = self.consumed.load(std::sync::atomic::Ordering::SeqCst);
+                if consumed >= limit {
+                    return Err(std::io::Error::other(
+                        "reader was consumed past the handler output cap",
+                    ));
+                }
+                let length = buffer.len().min(limit - consumed);
+                buffer[..length].fill(0);
+                self.consumed
+                    .fetch_add(length, std::sync::atomic::Ordering::SeqCst);
+                Ok(length)
+            }
+        }
+
+        let consumed = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let error = read_bounded(ReaderThatRejectsReadsPastLimit {
+            consumed: std::sync::Arc::clone(&consumed),
+        })
         .unwrap_err();
 
         assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
         assert_eq!(error.to_string(), "hook output exceeds 4 MiB");
+        assert_eq!(
+            consumed.load(std::sync::atomic::Ordering::SeqCst),
+            MAX_HANDLER_OUTPUT as usize + 1
+        );
+    }
+
+    #[test]
+    fn handler_output_exactly_at_the_limit_is_accepted() {
+        let output =
+            read_bounded(std::io::Cursor::new(vec![0; MAX_HANDLER_OUTPUT as usize])).unwrap();
+
+        assert_eq!(output.len(), MAX_HANDLER_OUTPUT as usize);
+    }
+
+    #[test]
+    fn oversized_handler_output_fails_closed_in_the_dispatcher() {
+        let (_temp, paths, status) = fixture(
+            "#!/bin/sh\n/bin/dd if=/dev/zero bs=4194305 count=1 2>/dev/null\n",
+            2_000,
+        );
+        let projection = compile_and_store(&paths, HookProvider::Claude, status);
+
+        let output = dispatch(
+            &paths,
+            &DispatchRequest {
+                provider: HookProvider::Claude,
+                projection: &projection.fingerprint,
+                event: "PreToolUse",
+                group: "group-0000",
+            },
+            br#"{"session_id":"s","cwd":"/tmp","tool_name":"Bash","tool_use_id":"t"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(output["hookSpecificOutput"]["permissionDecision"], "deny");
+        assert_eq!(
+            output["hookSpecificOutput"]["permissionDecisionReason"],
+            "hook handler failed validation or execution"
+        );
     }
 
     #[test]
