@@ -7811,6 +7811,34 @@ fn source_priority_should_refuse_to_move_local_source() {
 }
 
 #[test]
+fn source_namespace_should_refuse_to_rename_local_skills() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "namespace", "local", "private"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("local source"));
+
+    let config = store::read_config(&store::StorePaths::new(store)).expect("config should load");
+    let local = config
+        .sources
+        .iter()
+        .find(|source| source.id == "local")
+        .expect("local source should exist");
+    assert_eq!(local.namespace, None);
+}
+
+#[test]
 fn source_add_should_explain_an_overlong_source_id_before_creating_a_checkout() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -12294,4 +12322,60 @@ fn source_namespace_should_materialize_same_named_skills_side_by_side_and_clear_
     assert!(target.join("company__review").is_symlink());
     assert!(target.join("review").is_symlink());
     assert!(!target.join("acme__review").exists());
+}
+
+#[test]
+fn source_namespace_should_replace_existing_links_when_set() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = temp.path().join("store");
+    let target = temp.path().join("skills");
+    let company_repo = temp.path().join("company-repo");
+    create_git_skill_repo_with_skill(
+        &company_repo,
+        "review",
+        "---\nname: review\n---\n# Company review\n",
+    );
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "link", "generic"])
+        .arg(&target)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "company"])
+        .arg(&company_repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    assert!(target.join("review").is_symlink());
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "namespace", "company", "company"])
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    assert!(target.join("company__review").is_symlink());
+    assert!(!target.join("review").exists());
 }
