@@ -13,7 +13,7 @@ use std::os::unix::fs::MetadataExt;
 use std::path::Component;
 use std::path::{Path, PathBuf};
 
-use rustix::fs::{CWD, RenameFlags, renameat_with};
+use rustix::fs::{CWD, Gid, RenameFlags, Uid, fchown, renameat_with};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tempfile::NamedTempFile;
@@ -1554,10 +1554,34 @@ struct TargetIdentity {
     inode: u64,
 }
 
+/// File metadata that must survive an inode replacement.
+#[derive(Debug)]
+struct TargetAttributes {
+    permissions: fs::Permissions,
+    owner: TargetOwner,
+}
+
+/// Unix ownership for an instruction target.
+#[derive(Debug, Clone, Copy)]
+struct TargetOwner {
+    uid: u32,
+    gid: u32,
+}
+
 fn target_identity(metadata: &fs::Metadata) -> TargetIdentity {
     TargetIdentity {
         device: metadata.dev(),
         inode: metadata.ino(),
+    }
+}
+
+fn target_attributes(metadata: &fs::Metadata) -> TargetAttributes {
+    TargetAttributes {
+        permissions: metadata.permissions(),
+        owner: TargetOwner {
+            uid: metadata.uid(),
+            gid: metadata.gid(),
+        },
     }
 }
 
@@ -1639,7 +1663,7 @@ fn write_target_if_unchanged(
         {
             return Err(target_changed(snapshot));
         }
-        Some(metadata.permissions())
+        Some(target_attributes(&metadata))
     } else {
         None
     };
@@ -1669,21 +1693,15 @@ fn read_locked_target(file: &mut fs::File) -> DaloResult<String> {
 fn replace_target_if_unchanged(
     snapshot: &TargetSnapshot,
     content: &str,
-    permissions: Option<fs::Permissions>,
+    attributes: Option<TargetAttributes>,
 ) -> DaloResult<()> {
-    replace_target_if_unchanged_with(
-        snapshot,
-        content,
-        permissions,
-        || Ok(()),
-        sync_target_parent,
-    )
+    replace_target_if_unchanged_with(snapshot, content, attributes, || Ok(()), sync_target_parent)
 }
 
 fn replace_target_if_unchanged_with<BeforeReplace, SyncParent>(
     snapshot: &TargetSnapshot,
     content: &str,
-    permissions: Option<fs::Permissions>,
+    attributes: Option<TargetAttributes>,
     before_replace: BeforeReplace,
     sync_parent: SyncParent,
 ) -> DaloResult<()>
@@ -1701,8 +1719,18 @@ where
             ),
         })?;
     let mut temp_file = NamedTempFile::new_in(parent)?;
-    if let Some(permissions) = permissions {
-        temp_file.as_file().set_permissions(permissions)?;
+    if let Some(attributes) = attributes {
+        // `chown` can clear permission bits, so set ownership before the mode.
+        // Failure leaves the live instruction target untouched.
+        fchown(
+            temp_file.as_file(),
+            Some(Uid::from_raw(attributes.owner.uid)),
+            Some(Gid::from_raw(attributes.owner.gid)),
+        )
+        .map_err(std::io::Error::from)?;
+        temp_file
+            .as_file()
+            .set_permissions(attributes.permissions)?;
     }
     temp_file.write_all(content.as_bytes())?;
     temp_file.flush()?;
@@ -1889,6 +1917,60 @@ where
     }
 }
 
+/// Remove a target created by Dalo only if it still has the expected inode and
+/// content. Moving it aside first prevents a concurrent replacement from being
+/// unlinked; that replacement is retained at the recovery path instead.
+fn remove_target_if_unchanged(
+    target: &Path,
+    expected_identity: TargetIdentity,
+    expected_content: &str,
+) -> DaloResult<()> {
+    remove_target_if_unchanged_with(
+        target,
+        expected_identity,
+        expected_content,
+        || Ok(()),
+        sync_target_parent,
+    )
+}
+
+fn remove_target_if_unchanged_with<BeforeRemove, SyncParent>(
+    target: &Path,
+    expected_identity: TargetIdentity,
+    expected_content: &str,
+    before_remove: BeforeRemove,
+    sync_parent: SyncParent,
+) -> DaloResult<()>
+where
+    BeforeRemove: FnOnce() -> DaloResult<()>,
+    SyncParent: Fn(&Path) -> DaloResult<()>,
+{
+    let parent = target.parent().ok_or_else(|| DaloError::InvalidArgument {
+        reason: format!(
+            "instruction target `{}` has no parent directory",
+            target.display()
+        ),
+    })?;
+    let recovery_path = NamedTempFile::new_in(parent)?.into_temp_path();
+    before_remove()?;
+    fs::rename(target, &recovery_path)?;
+
+    let is_dalo_target =
+        target_has_identity_and_content(&recovery_path, expected_identity, expected_content)?;
+    let sync_result = sync_parent(parent);
+    if !is_dalo_target {
+        let message = match sync_result {
+            Ok(()) => "instruction target changed during rollback; newer contents were retained"
+                .to_owned(),
+            Err(error) => format!(
+                "instruction target changed during rollback; newer contents were retained after parent sync failed: {error}"
+            ),
+        };
+        return Err(retain_recovery_path(recovery_path, message));
+    }
+    sync_result
+}
+
 fn retain_recovery_path(temp_path: tempfile::TempPath, message: String) -> DaloError {
     match temp_path.keep() {
         Ok(path) => DaloError::Io(std::io::Error::other(format!(
@@ -1982,21 +2064,11 @@ fn restore_target(
                 replace_target_if_unchanged(
                     &written_snapshot,
                     &content,
-                    Some(file.metadata()?.permissions()),
+                    Some(target_attributes(&file.metadata()?)),
                 )
             } else {
                 drop(file);
-                if target_has_identity_and_content(&target, written_identity, written_content)? {
-                    fs::remove_file(&target)?;
-                    let parent = target.parent().ok_or_else(|| DaloError::InvalidArgument {
-                        reason: format!(
-                            "instruction target `{}` has no parent directory",
-                            target.display()
-                        ),
-                    })?;
-                    sync_target_parent(parent)?;
-                }
-                Ok(())
+                remove_target_if_unchanged(&target, written_identity, written_content)
             }
         })(),
         Err(error)
@@ -2948,6 +3020,39 @@ mod tests {
     }
 
     #[test]
+    fn rollback_removal_should_retain_an_edit_that_races_rename_aside() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let target = temp.path().join("AGENTS.md");
+        let replacement = temp.path().join("AGENTS.md.external");
+        fs::write(&target, "dalo output\n").expect("target should be seeded");
+        let written_identity =
+            target_identity(&fs::metadata(&target).expect("target metadata should be readable"));
+        fs::write(&replacement, "external edit\n").expect("replacement should be written");
+
+        let error = remove_target_if_unchanged_with(
+            &target,
+            written_identity,
+            "dalo output\n",
+            || {
+                fs::rename(&replacement, &target)?;
+                Ok(())
+            },
+            sync_target_parent,
+        )
+        .expect_err("concurrent replacement should not be removed");
+
+        assert!(error.to_string().contains("contents were retained at"));
+        assert!(!target.exists());
+        assert!(
+            fs::read_dir(temp.path())
+                .expect("parent directory should be readable")
+                .filter_map(Result::ok)
+                .any(|entry| fs::read_to_string(entry.path()).ok().as_deref()
+                    == Some("external edit\n"))
+        );
+    }
+
+    #[test]
     fn parse_version_should_read_leading_version_line() {
         assert_eq!(
             parse_version("version: 1.2.0\n\n# Body\n"),
@@ -3090,6 +3195,55 @@ mod tests {
             .mode()
             & 0o777;
         assert_eq!(mode, 0o644);
+    }
+
+    #[test]
+    fn write_target_if_unchanged_should_preserve_existing_owner_and_group() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let target = temp.path().join("AGENTS.md");
+        fs::write(&target, "old\n").expect("target should be seeded");
+        let before = fs::metadata(&target).expect("target metadata should be readable");
+        let snapshot = target_snapshot(&target).expect("snapshot should be readable");
+
+        write_target_if_unchanged(&snapshot, "new\n").expect("target should be written");
+
+        let after = fs::metadata(&target).expect("target metadata should be readable");
+        assert_eq!(after.uid(), before.uid());
+        assert_eq!(after.gid(), before.gid());
+    }
+
+    #[test]
+    fn replacement_should_preserve_nondefault_owner_and_group_or_fail_before_mutation() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let target = temp.path().join("AGENTS.md");
+        fs::write(&target, "old\n").expect("target should be seeded");
+        let before = fs::metadata(&target).expect("target metadata should be readable");
+        let snapshot = target_snapshot(&target).expect("snapshot should be readable");
+        let owner = TargetOwner {
+            uid: if before.uid() == 0 { 1 } else { 0 },
+            gid: if before.gid() == 0 { 1 } else { 0 },
+        };
+        let attributes = TargetAttributes {
+            permissions: before.permissions(),
+            owner,
+        };
+
+        match replace_target_if_unchanged(&snapshot, "new\n", Some(attributes)) {
+            Ok(()) => {
+                let after = fs::metadata(&target).expect("target metadata should be readable");
+                assert_eq!(after.uid(), owner.uid);
+                assert_eq!(after.gid(), owner.gid);
+            }
+            Err(_) => {
+                assert_eq!(fs::read_to_string(&target).unwrap(), "old\n");
+                assert_eq!(
+                    target_identity(
+                        &fs::metadata(&target).expect("target metadata should be readable")
+                    ),
+                    target_identity(&before)
+                );
+            }
+        }
     }
 
     #[test]
