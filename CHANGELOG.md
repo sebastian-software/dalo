@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.14.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.13.0...dalo-v0.14.0) (2026-08-22)
+
+
+### Features
+
+* **source:** add opt-in skill namespaces ([5610e5b](https://github.com/sebastian-software/dalo/commit/5610e5bda5a932215ca0f0676ca7c047fb5d460e))
+
+
+### Bug Fixes
+
+* **api:** preserve resolver and plan compatibility ([37a5dc7](https://github.com/sebastian-software/dalo/commit/37a5dc78b7136bc78e325286f92f1ecc42ee329a))
+* **audit:** hash directory entries for cache reuse ([1a1cb5d](https://github.com/sebastian-software/dalo/commit/1a1cb5dd8e83429525a264606d543b095efba87e))
+* **audit:** reuse compatible static reports ([df21376](https://github.com/sebastian-software/dalo/commit/df21376a54b3374be4ea53596151950d76f6700f))
+* **audit:** scope cache fingerprint to static entries ([750de72](https://github.com/sebastian-software/dalo/commit/750de724fc262603f3612eb6573ed819c5761449))
+* avoid residual child input files ([9af76db](https://github.com/sebastian-software/dalo/commit/9af76dba58c5bf4191ce93e62bd3a2aefc6a9696))
+* **delivery:** reject invalid approvals without panicking ([de08ef1](https://github.com/sebastian-software/dalo/commit/de08ef1aa8b271142c2db43be087b4914b2964dc))
+* **plugin:** retain contracts through degraded sync ([748f236](https://github.com/sebastian-software/dalo/commit/748f236c9b0a4b15c1fefcc9559af47d2f1d2321))
+* **plugin:** retain contracts when skill scans degrade ([2c7defb](https://github.com/sebastian-software/dalo/commit/2c7defb36a5a08e85edec44c1984572a99ff0bbf))
+* prevent SIGPIPE from child stdin writes ([4191554](https://github.com/sebastian-software/dalo/commit/419155489041fa9f91a52266fa7d6071ecc1f286))
+* **release:** publish artifacts atomically ([c7f1092](https://github.com/sebastian-software/dalo/commit/c7f1092af64ffcea4d1fe1b02c70fced821bcab2))
+* **resolver:** propagate audit failures through namespaces ([ea3a2df](https://github.com/sebastian-software/dalo/commit/ea3a2dffcbcb3b9cb600c9f0d8c17c54f800e028))
+* **source:** allow clearing local namespaces ([2e62ced](https://github.com/sebastian-software/dalo/commit/2e62ced96873c20f0f6fd8dffc9b6308416b8a72))
+* **source:** guard local namespace changes ([96c73f3](https://github.com/sebastian-software/dalo/commit/96c73f3939712dbd427981561222b98b176768eb))
+* **source:** preserve error API ([d70a8d2](https://github.com/sebastian-software/dalo/commit/d70a8d2ebaff9c060ff943f9ea0a9ffa03fd4f60))
+* **source:** preserve namespace materialization invariants ([5ad45e2](https://github.com/sebastian-software/dalo/commit/5ad45e2fd91a076776cce06720c9d62a09af16f5))
+* **source:** surface inventory warnings ([55a514f](https://github.com/sebastian-software/dalo/commit/55a514f98c1d3bbb8f69290b0d1186212685d842))
+
+
+### Performance Improvements
+
+* **plugin:** reuse inventories for tool and hook status ([adf807d](https://github.com/sebastian-software/dalo/commit/adf807d9b37b557694b1c603b7e77da4cbe51165))
+
 ## [0.13.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.12.0...dalo-v0.13.0) (2026-08-18)
 
 
