@@ -642,8 +642,6 @@ fn unusable_cached_report(error: &DaloError) -> bool {
             std::io::ErrorKind::NotFound
                 | std::io::ErrorKind::PermissionDenied
                 | std::io::ErrorKind::InvalidData
-                | std::io::ErrorKind::IsADirectory
-                | std::io::ErrorKind::NotADirectory
         ),
         DaloError::FileParse { .. } | DaloError::UnsupportedSchema { .. } => true,
         _ => false,
@@ -3502,15 +3500,14 @@ mod tests {
             Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied
         );
         if !permission_denied {
-            // Root can read a mode-000 file. A symlink to a directory remains
-            // unreadable to `read_to_string` and is safely replaced by rename.
-            let directory = temp.path().join("unreadable-cache-entry");
-            fs::create_dir(&directory).expect("directory should be created");
+            // Root can read a mode-000 file. A dangling symlink is also an
+            // unreadable cache entry and rename safely replaces the symlink.
+            let missing = temp.path().join("missing-cache-entry");
             fs::remove_file(&path).expect("mode-000 report should be removed");
-            symlink(&directory, &path).expect("directory symlink should be created");
+            symlink(&missing, &path).expect("dangling symlink should be created");
             assert!(matches!(
                 fs::read(&path),
-                Err(error) if error.kind() == std::io::ErrorKind::IsADirectory
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound
             ));
         }
         let before = fs::symlink_metadata(&path).expect("cache entry metadata should be readable");
