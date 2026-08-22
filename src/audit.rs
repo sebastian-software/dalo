@@ -218,7 +218,7 @@ pub struct AuditReport {
     /// before their deterministic results can be reused.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub static_scan_excludes_root_source_metadata: Option<bool>,
-    /// Unix timestamp of the latest analysis.
+    /// Unix timestamp of the latest materially different analysis.
     pub scanned_at_unix: u64,
     /// Analysis coverage.
     pub coverage: AuditCoverage,
@@ -613,7 +613,7 @@ fn audit_skill_with_source_roots(
         })
     };
 
-    let report = AuditReport {
+    let mut report = AuditReport {
         schema_version: AUDIT_SCHEMA_VERSION,
         source_ref: source_ref.to_owned(),
         skill_path: skill_path.to_path_buf(),
@@ -628,10 +628,40 @@ fn audit_skill_with_source_roots(
         agent_review,
         risk_acceptance,
     };
-    if options.persist {
-        write_report(paths, &report)?;
-    }
+    persist_report_if_changed(paths, &mut report, existing.as_ref(), options.persist)?;
     Ok(report)
+}
+
+/// Retain a persisted report when all durable audit content is unchanged.
+///
+/// The equality check deliberately compares the complete report after replacing
+/// only the freshly generated scan timestamp. This makes every current and
+/// future persisted field safety-relevant by default: adding a field to
+/// `AuditReport` automatically makes a changed value rewrite the report.
+///
+/// Returns whether the report was written. When the report is unchanged, this
+/// also retains the timestamp of the persisted analysis for API consumers.
+fn persist_report_if_changed(
+    paths: &StorePaths,
+    report: &mut AuditReport,
+    existing: Option<&AuditReport>,
+    persist: bool,
+) -> DaloResult<bool> {
+    let unchanged = existing.is_some_and(|existing| {
+        let fresh_timestamp = report.scanned_at_unix;
+        report.scanned_at_unix = existing.scanned_at_unix;
+        let matches = report == existing;
+        if !matches {
+            report.scanned_at_unix = fresh_timestamp;
+        }
+        matches
+    });
+
+    if persist && !unchanged {
+        write_report(paths, report)?;
+        return Ok(true);
+    }
+    Ok(false)
 }
 
 /// Whether a report was produced for exactly the current static scan input.
@@ -2660,6 +2690,32 @@ mod tests {
         );
     }
 
+    fn report_inode(path: &Path) -> u64 {
+        use std::os::unix::fs::MetadataExt;
+
+        fs::metadata(path)
+            .expect("report metadata should be readable")
+            .ino()
+    }
+
+    fn assert_changed_report_rewrites(
+        paths: &StorePaths,
+        path: &Path,
+        report: &mut AuditReport,
+        existing: &AuditReport,
+    ) {
+        let before_inode = report_inode(path);
+        assert!(
+            persist_report_if_changed(paths, report, Some(existing), true)
+                .expect("changed report should persist")
+        );
+        assert_ne!(
+            report_inode(path),
+            before_inode,
+            "changed durable audit content must replace its persisted report"
+        );
+    }
+
     #[test]
     fn build_agent_snapshot_should_skip_special_files_without_opening_them() {
         use std::os::unix::net::UnixListener;
@@ -3246,6 +3302,140 @@ mod tests {
         );
         assert_eq!(cached.static_findings, persisted.static_findings);
         assert_eq!(cached.coverage, persisted.coverage);
+    }
+
+    #[test]
+    fn unchanged_persisted_report_should_retain_timestamp_and_inode() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp.path().join("store");
+        store::init_store(store_root.clone(), false).expect("store should initialize");
+        let paths = StorePaths::new(store_root);
+        let skill = write_skill(temp.path(), "Summarize a pull request.\n");
+
+        let first = audit_skill(
+            &paths,
+            "path:review-helper",
+            &skill,
+            &AuditOptions::default(),
+        )
+        .expect("initial audit should succeed");
+        let path = report_path(&paths, &first.source_ref, &first.content_hash);
+        let mut persisted = read_report(&paths, &first.source_ref, &first.content_hash)
+            .expect("initial report should be readable");
+        persisted.scanned_at_unix = 1;
+        write_report(&paths, &persisted).expect("seeded report should be persisted");
+        let before_inode = report_inode(&path);
+
+        let second = audit_skill(
+            &paths,
+            "path:review-helper",
+            &skill,
+            &AuditOptions::default(),
+        )
+        .expect("unchanged audit should succeed");
+
+        assert_eq!(second.scanned_at_unix, 1);
+        assert_eq!(
+            report_inode(&path),
+            before_inode,
+            "an unchanged audit must not replace its persisted report"
+        );
+    }
+
+    #[test]
+    fn malformed_persisted_report_should_be_rewritten() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp.path().join("store");
+        store::init_store(store_root.clone(), false).expect("store should initialize");
+        let paths = StorePaths::new(store_root);
+        let skill = write_skill(temp.path(), "Summarize a pull request.\n");
+        let first = audit_skill(
+            &paths,
+            "path:review-helper",
+            &skill,
+            &AuditOptions::default(),
+        )
+        .expect("initial audit should succeed");
+        let path = report_path(&paths, &first.source_ref, &first.content_hash);
+        fs::write(&path, "not valid JSON").expect("report should be corrupted");
+        let corrupt_inode = report_inode(&path);
+
+        let recovered = audit_skill(
+            &paths,
+            "path:review-helper",
+            &skill,
+            &AuditOptions::default(),
+        )
+        .expect("malformed report should be rebuilt");
+
+        assert_ne!(
+            report_inode(&path),
+            corrupt_inode,
+            "a malformed report must not suppress a fresh atomic write"
+        );
+        assert_eq!(
+            read_report(&paths, &recovered.source_ref, &recovered.content_hash)
+                .expect("rebuilt report should be valid")
+                .schema_version,
+            AUDIT_SCHEMA_VERSION
+        );
+    }
+
+    #[test]
+    fn changed_durable_audit_content_should_replace_or_create_a_report() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp.path().join("store");
+        store::init_store(store_root.clone(), false).expect("store should initialize");
+        let paths = StorePaths::new(store_root);
+        let skill = write_skill(temp.path(), "Summarize a pull request.\n");
+        let first = audit_skill(
+            &paths,
+            "path:review-helper",
+            &skill,
+            &AuditOptions::default(),
+        )
+        .expect("initial audit should succeed");
+        let path = report_path(&paths, &first.source_ref, &first.content_hash);
+        let mut existing = read_report(&paths, &first.source_ref, &first.content_hash)
+            .expect("initial report should be readable");
+
+        let mut changed_config = existing.clone();
+        changed_config.static_scan_excludes_root_source_metadata = Some(true);
+        assert_changed_report_rewrites(&paths, &path, &mut changed_config, &existing);
+        existing = changed_config;
+
+        let mut changed_engine = existing.clone();
+        changed_engine.static_engine_version = "next-static-engine".to_owned();
+        assert_changed_report_rewrites(&paths, &path, &mut changed_engine, &existing);
+        existing = changed_engine;
+
+        let mut changed_findings = existing.clone();
+        changed_findings.static_findings.push(finding(
+            "static.regression-finding",
+            Severity::Low,
+            "test",
+            "SKILL.md",
+            Some(1),
+            "A changed persisted finding must not be elided.",
+            None,
+        ));
+        assert_changed_report_rewrites(&paths, &path, &mut changed_findings, &existing);
+
+        let mut changed_content = changed_findings.clone();
+        changed_content.content_hash = "different-content-hash".to_owned();
+        let changed_content_path = report_path(
+            &paths,
+            &changed_content.source_ref,
+            &changed_content.content_hash,
+        );
+        assert!(
+            persist_report_if_changed(&paths, &mut changed_content, Some(&changed_findings), true)
+                .expect("changed content should persist")
+        );
+        assert!(
+            changed_content_path.exists(),
+            "changed content must create a report at its new content-addressed path"
+        );
     }
 
     #[test]
