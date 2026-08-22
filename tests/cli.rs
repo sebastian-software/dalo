@@ -7839,6 +7839,43 @@ fn source_namespace_should_refuse_to_rename_local_skills() {
 }
 
 #[test]
+fn source_namespace_clear_should_recover_a_legacy_local_namespace() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    let paths = store::StorePaths::new(store.clone());
+    let mut config = store::read_config(&paths).expect("config should load");
+    config
+        .sources
+        .iter_mut()
+        .find(|source| source.id == "local")
+        .expect("local source should exist")
+        .namespace = Some("legacy".to_owned());
+    store::write_config(&paths, &config).expect("legacy config should persist");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "namespace", "local", "--clear"])
+        .assert()
+        .success();
+
+    let config = store::read_config(&paths).expect("config should load");
+    let local = config
+        .sources
+        .iter()
+        .find(|source| source.id == "local")
+        .expect("local source should exist");
+    assert_eq!(local.namespace, None);
+}
+
+#[test]
 fn source_add_should_explain_an_overlong_source_id_before_creating_a_checkout() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
