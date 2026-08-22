@@ -852,8 +852,10 @@ pub fn set_source_namespace(
     // every local skill and prevent those adaptations from occupying their
     // original slots.
     if source.kind == SourceKind::Local && namespace.is_some() {
-        return Err(DaloError::LocalSourceNamespaceFixed {
-            source_id: id.to_owned(),
+        return Err(DaloError::StateError {
+            reason: format!(
+                "source `{id}` is the local source; its namespace is fixed and cannot be changed"
+            ),
         });
     }
     let changed = source.namespace != namespace;

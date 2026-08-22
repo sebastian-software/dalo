@@ -7827,7 +7827,9 @@ fn source_namespace_should_refuse_to_rename_local_skills() {
         .args(["source", "namespace", "local", "private"])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("local source"));
+        .stderr(predicate::str::contains(
+            "source `local` is the local source; its namespace is fixed and cannot be changed",
+        ));
 
     let config = store::read_config(&store::StorePaths::new(store)).expect("config should load");
     let local = config
