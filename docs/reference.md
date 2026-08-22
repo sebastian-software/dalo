@@ -35,7 +35,7 @@ Global flags can be placed before or after the command.
 | --- | --- |
 | `--store <PATH>` | Use a store other than the resolved default. |
 | `--json` | Emit machine-readable JSON for commands that support structured output. |
-| `--yes` | Reserved for future safe interactive prompts. It is currently a no-op and never implies `--replace`, creates commits, or grants new approvals. |
+| `--yes` | Compatibility flag accepted for existing scripts but hidden from command help. It is currently a no-op and never implies `--replace`, creates commits, or grants new approvals. |
 | `--dry-run` | Plan supported mutating operations without writing files, cloning, linking, or changing locks. Read-only commands ignore it. |
 | `-h`, `--help` | Print command help. |
 | `-V`, `--version` | Print the installed version. |
@@ -460,6 +460,21 @@ dalo --json status
 ```
 
 JSON output shape: `StatusReport`.
+
+### `dalo plan`
+
+Show the effective plugin setup for every linked target without changing source,
+approval, or target files. Use it before `sync` to review selected plugins,
+target compatibility, approval state, and provider package paths. Planning never
+runs tools or hooks. Pass `--target` to limit the report to one linked target.
+
+```sh
+dalo plan
+dalo plan --target codex
+dalo --json plan
+```
+
+JSON output shape: `InstallationPlan`.
 
 ### `dalo agent list|show <source>:<name>`
 
