@@ -1,6 +1,7 @@
 //! Target-aware hook sidecar planning and reconciliation.
 
 use std::env;
+use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -57,6 +58,21 @@ pub enum HookTargetState {
     Blocked,
     /// Native content or ownership state conflicts with Dalo's exact prior entry.
     Conflict,
+}
+
+impl fmt::Display for HookTargetState {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Ready => "ready",
+            Self::Planned => "planned",
+            Self::Disabled => "disabled",
+            Self::ManagedOnly => "managed_only",
+            Self::RuntimeMissing => "runtime_missing",
+            Self::UnverifiedVersion => "unverified_version",
+            Self::Blocked => "blocked",
+            Self::Conflict => "conflict",
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -160,6 +176,20 @@ fn reconcile_target(
             &[],
         )
         .expect("empty baseline projection is always representable");
+        let had_owned_entries =
+            match hook_sidecar::has_owned_entries(paths, facts.provider, &facts.sidecar) {
+                Ok(value) => value,
+                Err(error) => {
+                    return report(
+                        facts,
+                        HookTargetState::Conflict,
+                        None,
+                        0,
+                        dry_run,
+                        &error.to_string(),
+                    );
+                }
+            };
         let action = match reconcile_projection(paths, facts, &empty, dry_run) {
             Ok(action) => Some(action),
             Err(error) => {
@@ -209,8 +239,10 @@ fn reconcile_target(
             action,
             0,
             dry_run,
-            if selected.is_empty() {
-                "no selected portable hooks; prior owned entries are removed"
+            if selected.is_empty() && !had_owned_entries {
+                "no selected portable hooks"
+            } else if selected.is_empty() {
+                "no selected portable hooks; Dalo-owned state is being cleared"
             } else {
                 "unavailable optional hooks are explicitly omitted"
             },

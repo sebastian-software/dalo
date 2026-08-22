@@ -30,6 +30,17 @@ pub enum HookSidecarAction {
     Remove,
 }
 
+impl std::fmt::Display for HookSidecarAction {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Create => "create",
+            Self::Update => "update",
+            Self::Noop => "noop",
+            Self::Remove => "remove",
+        })
+    }
+}
+
 /// Exact read-only operation plan used unchanged by dry-run and apply.
 #[derive(Debug, Clone, Serialize)]
 pub struct HookSidecarPlan {
@@ -71,6 +82,17 @@ struct HookSidecarState {
     applied_file_hash: String,
     created_file: bool,
     owned_hooks: BTreeMap<String, Vec<Value>>,
+}
+
+/// Whether Dalo currently owns hook entries for this provider sidecar.
+pub(crate) fn has_owned_entries(
+    paths: &StorePaths,
+    provider: HookProvider,
+    path: &Path,
+) -> DaloResult<bool> {
+    Ok(read_state(paths)?.entries.iter().any(|entry| {
+        entry.provider == provider && entry.path == path && !entry.owned_hooks.is_empty()
+    }))
 }
 
 /// Build the exact reconcile plan without changing provider or store state.
