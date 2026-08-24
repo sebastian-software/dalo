@@ -7033,6 +7033,111 @@ fn source_add_should_prefer_an_existing_local_colon_path_over_scp_syntax() {
 }
 
 #[test]
+fn source_add_should_preflight_local_path_failures_without_network_advice() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let missing = temp_dir.path().join("does-not-exist");
+    let plain_directory = temp_dir.path().join("plain-directory");
+    std::fs::create_dir(&plain_directory).expect("plain directory should be created");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "missing"])
+        .arg(&missing)
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains(format!(
+            "local source path `{}` does not exist",
+            missing.display()
+        )))
+        .stderr(predicate::str::contains("network/proxy").not())
+        .stderr(predicate::str::contains("Git said:").not());
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "plain"])
+        .arg(&plain_directory)
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains(format!(
+            "local source path `{}` is not a Git repository (missing .git)",
+            plain_directory.display()
+        )))
+        .stderr(predicate::str::contains("network/proxy").not())
+        .stderr(predicate::str::contains("Git said:").not());
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "catalog-missing"])
+        .arg(&missing)
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains(format!(
+            "local source path `{}` does not exist",
+            missing.display()
+        )))
+        .stderr(predicate::str::contains("network/proxy").not())
+        .stderr(predicate::str::contains("Git said:").not());
+
+    assert!(!store.join("sources/missing").exists());
+    assert!(!store.join("sources/plain").exists());
+    assert!(!store.join("sources/catalog-missing").exists());
+}
+
+#[test]
+fn source_add_local_path_json_error_should_keep_schema_and_escape_controls() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let missing = temp_dir.path().join("missing\nrepo");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    let stderr = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "source", "add", "missing"])
+        .arg(&missing)
+        .assert()
+        .failure()
+        .code(1)
+        .get_output()
+        .stderr
+        .clone();
+    let payload: serde_json::Value =
+        serde_json::from_slice(&stderr).expect("local preflight error should be valid JSON");
+    let root = payload.as_object().expect("JSON error should be an object");
+    assert_eq!(root.len(), 1);
+    let error = payload["error"]
+        .as_object()
+        .expect("JSON error body should be an object");
+    assert_eq!(error.len(), 2);
+    assert_eq!(error["code"], "expected_failure");
+    let message = error["message"]
+        .as_str()
+        .expect("JSON error message should be a string");
+    assert!(message.contains("missing\\nrepo"));
+    assert!(!message.contains("missing\nrepo"));
+    assert!(!message.contains("network/proxy"));
+    assert!(!message.contains("Git said:"));
+}
+
+#[test]
 fn source_add_catalog_should_replace_interrupted_non_git_checkout_debris() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

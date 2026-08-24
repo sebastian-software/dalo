@@ -31,10 +31,11 @@ pub fn init_repo(path: &Path) -> DaloResult<()> {
 /// Clone a Git repository.
 pub fn clone_repo(url: &str, destination: &Path) -> DaloResult<()> {
     let cwd = destination.parent().unwrap_or_else(|| Path::new("."));
+    preflight_local_clone_source(url, cwd)?;
     let destination_arg = destination.to_string_lossy().into_owned();
     print_network_progress(&format!(
         "Cloning repository `{}`...",
-        redact_url_userinfo(url)
+        display_git_value(url)
     ));
     // `--` terminates option parsing so a user-supplied URL that looks like a
     // flag (e.g. `--upload-pack=...`) can never be treated as a git option.
@@ -396,9 +397,15 @@ fn humanize_git_failure(args: &[&str], stderr: &str) -> String {
 
 fn git_failure_summary(args: &[&str]) -> Option<String> {
     match args {
+        ["clone", .., "--", url, _destination] if looks_like_remote_location(url) => {
+            Some(format!(
+                "Could not clone repository `{}`. Check the URL, network/proxy access, and repository permissions.",
+                display_git_value(url)
+            ))
+        }
         ["clone", .., "--", url, _destination] => Some(format!(
-            "Could not clone repository `{}`. Check the URL, network/proxy access, and repository permissions.",
-            redact_url_userinfo(url)
+            "Could not clone local repository `{}`. Check that the path is readable and points to a Git repository.",
+            display_git_value(url)
         )),
         ["pull", ..] => Some(
             "Could not refresh this source. Check network/proxy access, repository permissions, and whether the tracking branch can fast-forward."
@@ -414,9 +421,77 @@ fn git_failure_summary(args: &[&str]) -> Option<String> {
 
 fn display_git_args(args: &[&str]) -> String {
     args.iter()
-        .map(|arg| redact_url_userinfo(arg))
+        .map(|arg| display_git_value(arg))
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn preflight_local_clone_source(location: &str, cwd: &Path) -> DaloResult<()> {
+    let path = Path::new(location);
+    let local_path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        cwd.join(path)
+    };
+    if looks_like_remote_location(location) && !local_path.exists() {
+        return Ok(());
+    }
+
+    let metadata = match fs::metadata(&local_path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(DaloError::InvalidArgument {
+                reason: format!(
+                    "local source path `{}` does not exist",
+                    display_git_value(location)
+                ),
+            });
+        }
+        Err(error) => return Err(DaloError::Io(error)),
+    };
+    let has_worktree_metadata = local_path.join(".git").try_exists()?;
+    let has_bare_metadata = local_path.join("HEAD").is_file()
+        && local_path.join("objects").is_dir()
+        && local_path.join("refs").is_dir();
+    if !metadata.is_dir() || (!has_worktree_metadata && !has_bare_metadata) {
+        return Err(DaloError::InvalidArgument {
+            reason: format!(
+                "local source path `{}` is not a Git repository (missing .git)",
+                display_git_value(location)
+            ),
+        });
+    }
+    Ok(())
+}
+
+pub(crate) fn looks_like_remote_location(location: &str) -> bool {
+    if Path::new(location).is_absolute() {
+        return false;
+    }
+    if location.contains("://") {
+        return true;
+    }
+    let Some(colon) = location.find(':') else {
+        return false;
+    };
+    colon > 0
+        && !location[..colon].contains('/')
+        && location
+            .get(colon + 1..)
+            .is_some_and(|suffix| !suffix.is_empty())
+}
+
+fn display_git_value(value: &str) -> String {
+    redact_url_userinfo(value)
+        .chars()
+        .fold(String::new(), |mut escaped, character| {
+            if character.is_control() {
+                escaped.extend(character.escape_default());
+            } else {
+                escaped.push(character);
+            }
+            escaped
+        })
 }
 
 fn url_has_userinfo(url: &str) -> bool {
@@ -736,6 +811,55 @@ mod tests {
         assert!(message.contains("Could not clone repository"));
         assert!(message.contains("https://example.invalid/repo.git"));
         assert!(message.contains("Git said: fatal: unable to access repository"));
+    }
+
+    #[test]
+    fn humanize_git_failure_should_not_give_network_advice_for_local_clones() {
+        let message = humanize_git_failure(
+            &["clone", "--quiet", "--", "/tmp/team", "/tmp/checkout"],
+            "Schwerwiegend: kein Git-Repository",
+        );
+
+        assert!(message.contains("Could not clone local repository `/tmp/team`"));
+        assert!(message.contains("path is readable"));
+        assert!(!message.contains("network/proxy"));
+    }
+
+    #[test]
+    fn local_clone_preflight_should_report_missing_and_non_repository_paths() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let missing = temp_dir.path().join("missing");
+        let error = preflight_local_clone_source(&missing.to_string_lossy(), temp_dir.path())
+            .expect_err("missing local source should fail preflight");
+        assert_eq!(
+            error.to_string(),
+            format!("local source path `{}` does not exist", missing.display())
+        );
+
+        let plain_directory = temp_dir.path().join("plain");
+        fs::create_dir(&plain_directory).expect("plain directory should be created");
+        let error =
+            preflight_local_clone_source(&plain_directory.to_string_lossy(), temp_dir.path())
+                .expect_err("non-repository local source should fail preflight");
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "local source path `{}` is not a Git repository (missing .git)",
+                plain_directory.display()
+            )
+        );
+    }
+
+    #[test]
+    fn local_clone_preflight_should_escape_control_characters() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let missing = temp_dir.path().join("missing\nrepo");
+        let error = preflight_local_clone_source(&missing.to_string_lossy(), temp_dir.path())
+            .expect_err("missing local source should fail preflight");
+        let message = error.to_string();
+
+        assert!(message.contains("missing\\nrepo"));
+        assert!(!message.contains("missing\nrepo"));
     }
 
     #[test]
