@@ -1375,6 +1375,88 @@ metadata symlink whose resolved target escapes the checkout is skipped and
 reported as `skipped_symlink`. This keeps skill identity and approval metadata
 contained within the source being scanned.
 
+## `PLUGIN.toml` Portable Plugins, Tools, and Hooks
+
+Plugins are exact `plugins/<name>/PLUGIN.toml` packages. The top-level schema is
+closed: unknown fields are rejected. `schema_version = 1` and `[plugin]` with
+`name` and `description` are required; `id`, `version`, `providers`,
+`[[plugin.members]]`, `[[plugin.requires]]`, `[[tool]]`, and `[[hook]]` are
+optional.
+
+```toml
+schema_version = 1
+[plugin]
+name = "review-suite"
+description = "Review helpers"
+
+[[plugin.members]]
+ref = "skill:review"
+requirement = "required"
+
+[[tool]]
+schema_version = 1
+id = "inspect"
+entry = "bin/inspect"
+runtime = "executable"
+argv = []
+cwd = "tool_root"
+availability = "required"
+
+[[hook]]
+schema_version = 1
+id = "before-shell"
+tool = "inspect"
+subject = "tool_call"
+phase = "before"
+effect = "allow_deny"
+requirement = "required"
+timeout_ms = 2000
+failure_policy = "fail_closed"
+retry = "never"
+error_visibility = "model_and_user"
+blocking_scope = "matched_event"
+```
+
+Plugin members use `ref`, `requirement` (`required`, `optional`, or
+`recommended`), and optional `fallback` with required `kind` and `skill`.
+Members may reference skills, agents, or instructions; `recommended` is only
+valid for instructions. A fallback is only valid for an agent member, has
+`kind = "inline"`, names a skill in `skill`, and that skill must also be a
+required member. Dependencies use `ref` to a plugin with `requirement`
+`required` or `optional`.
+
+Tools require `schema_version`, `id`, `entry`, `runtime` (`executable`,
+`python`, `node`), `argv`, `cwd` (`tool_root`), and `availability` (`required`
+or `optional`). Optional fields are `runtime_version`, `platforms` (`macos`,
+`linux`), `inputs`, `files`, `env`, and `capabilities` (`filesystem_read`,
+`filesystem_write`, `subprocess`, or `network`). Tool inputs are closed `name`,
+`type` (`string`, `path`, `integer`, `boolean`), and optional `required`
+(default `true`) records. Paths must be plugin-root-relative and remain inside
+the plugin-owned closure; Dalo stages and hashes that closure before approval.
+
+Hooks are closed descriptors. They require every field in the example except
+`matcher`, `bindings`, and `fallback`; `tool` references the same-plugin tool.
+`subject` is `session`, `user_prompt`, `tool_call`, or `workflow`; `phase` is
+`before`, `after`, `end`, or `completion_attempt`; `effect` is `observe`,
+`add_context`, `allow_deny`, `rewrite_input`, `replace_output`, or
+`continue_workflow`. `requirement` is
+`required` or `optional`; `failure_policy` is `fail_open`, `fail_closed`, or
+`report`; `retry` is only `never`; `error_visibility` is `user` or
+`model_and_user`; and `blocking_scope` is only `matched_event`.
+
+`matcher.tool_names` is an optional unique exact provider-tool-name list.
+Bindings are closed `input`/`field` records and map a lower-snake tool input to
+one admitted event field: `session.id`, `session.cwd`,
+`session.permission_mode`, `actor.kind`, `actor.id`, `transcript.path`,
+`session.end_reason`, `prompt.text`, `tool.call_id`, `tool.name`,
+`workflow.already_continued`, or `workflow.last_message`. Required hooks have
+no fallback; optional hooks explicitly use `fallback = "omit"` when omitted
+behavior is intended. IDs are lower kebab-case, input names are lower
+snake-case, `timeout_ms` is 100 through 120000, and each matcher or binding
+list holds at most 256 entries. Hooks reference a same-plugin tool and are
+independently approved; malformed, unknown, unsafe, or unsupported contracts
+are blocked.
+
 ## `DELIVERY.toml` Provider Builds
 
 Direct delivery remains the default: without a `DELIVERY.toml`, Dalo links the

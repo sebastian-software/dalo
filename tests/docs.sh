@@ -125,6 +125,78 @@ grep -q 'DALO_LINUX_LIBC' "$root/npm/README.md"
 grep -q 'DALO_UPDATE_CHECK=never' "$root/README.md"
 grep -q 'github:sebastian-software/dalo' "$root/site/install.md"
 ! grep -q 'One-time bootstrap publish' "$root/npm/README.md"
+plugin_section="$(awk '/^## `PLUGIN.toml` Portable Plugins, Tools, and Hooks$/{on=1;next} on && /^## /{exit} on{print}' "$root/docs/reference.md")"
+assert_documented_field() {
+  source="$1"
+  section="$2"
+  field="$3"
+  printf '%s\n' "$source" | grep -Eq "^[[:space:]]*(pub )?$field:"
+  printf '%s\n' "$section" | grep -Fq "\`$field\`"
+}
+
+assert_documented_enum_value() {
+  file="$1"
+  enum="$2"
+  variant="$3"
+  value="$4"
+  section="${5:-$plugin_section}"
+  sed -n "/^pub enum $enum {/,/^}/p" "$root/$file" | grep -Eq "^[[:space:]]*$variant,"
+  printf '%s\n' "$section" | grep -Fq "\`$value\`"
+}
+
+manifest_tool="$(sed -n '/^struct ManifestTool {/,/^}/p' "$root/src/plugin.rs")"
+hook_descriptor="$(sed -n '/^pub struct HookDescriptorV1 {/,/^}/p' "$root/src/hook.rs")"
+for key in schema_version id entry runtime argv cwd availability; do
+  assert_documented_field "$manifest_tool" "$plugin_section" "$key"
+done
+for key in schema_version id tool subject phase effect requirement timeout_ms failure_policy retry error_visibility blocking_scope; do
+  assert_documented_field "$hook_descriptor" "$plugin_section" "$key"
+done
+for key in '[[tool]]' '[[hook]]' matcher bindings; do
+  printf '%s\n' "$plugin_section" | grep -Fq "$key"
+done
+for enum_value in \
+  'ToolRuntime Executable executable' 'ToolRuntime Python python' 'ToolRuntime Node node' \
+  'ToolCapability FilesystemRead filesystem_read' 'ToolCapability FilesystemWrite filesystem_write' \
+  'ToolCapability Subprocess subprocess' 'ToolCapability Network network' \
+  'ToolAvailability Required required' 'ToolAvailability Optional optional'; do
+  set -- $enum_value
+  assert_documented_enum_value src/plugin.rs "$1" "$2" "$3"
+done
+for enum_value in \
+  'HookSubject Session session' 'HookSubject UserPrompt user_prompt' \
+  'HookSubject ToolCall tool_call' 'HookSubject Workflow workflow' \
+  'HookPhase Before before' 'HookPhase After after' 'HookPhase End end' \
+  'HookPhase CompletionAttempt completion_attempt' \
+  'HookEffect Observe observe' 'HookEffect AddContext add_context' \
+  'HookEffect AllowDeny allow_deny' 'HookEffect RewriteInput rewrite_input' \
+  'HookEffect ReplaceOutput replace_output' 'HookEffect ContinueWorkflow continue_workflow'; do
+  set -- $enum_value
+  assert_documented_enum_value src/hook.rs "$1" "$2" "$3"
+done
+for source in \
+  'src/plugin.rs:struct Manifest' 'src/plugin.rs:struct ManifestPlugin' \
+  'src/plugin.rs:struct ManifestMember' 'src/plugin.rs:struct ManifestDependency' \
+  'src/plugin.rs:struct ManifestFallback' 'src/plugin.rs:struct ManifestTool' \
+  'src/plugin.rs:pub struct ToolInput' 'src/hook.rs:pub struct HookDescriptorV1' \
+  'src/hook.rs:pub struct HookMatcherV1' 'src/hook.rs:pub struct HookBindingV1'; do
+  file="${source%%:*}"
+  marker="${source#*:}"
+  grep -B 3 -F "$marker" "$root/$file" | grep -Fq '#[serde(deny_unknown_fields)]'
+done
+printf '%s\n' "$plugin_section" | grep -Fq 'unknown fields are rejected'
+
+# The gate must reject a source-required field that is absent from its section.
+missing_availability="$(printf '%s\n' "$plugin_section" | sed '/availability/d')"
+if assert_documented_field "$manifest_tool" "$missing_availability" availability; then
+  echo 'plugin reference gate accepted a missing availability entry' >&2
+  exit 1
+fi
+missing_network="$(printf '%s\n' "$plugin_section" | sed '/network/d')"
+if assert_documented_enum_value src/plugin.rs ToolCapability Network network "$missing_network"; then
+  echo 'plugin reference gate accepted a missing network capability' >&2
+  exit 1
+fi
 
 resolver_code='blocked_winner_alternate_available'
 resolver_emit="$(sed -n '/for blocked in &blocked_skills {/,/active_skills.sort_by/p' "$root/src/resolver.rs")"
