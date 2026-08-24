@@ -288,6 +288,36 @@ printf '%s\n' "$store_paths" | grep -Fq 'hook_state_file: root.join("hooks/state
 printf '%s\n' "$store_layout" | grep -Fq '`hooks/state.json`'
 printf '%s\n' "$store_layout" | grep -Fq 'created lazily, not by `dalo init`'
 
+target_section="$(awk '/^### `DALO_TARGET`$/{on=1;next} on && /^##|^### /{exit} on{print}' "$root/docs/reference.md")"
+reference_document="$(cat "$root/docs/reference.md")"
+published_targets="$(awk '/^[[:space:]]*for target in \\/ {targets=1; next} targets {sub(/^[[:space:]]*/, ""); last = $0; sub(/[[:space:]]*\\$/, "", last); sub(/; do$/, "", last); print last; if ($0 ~ /; do$/) exit}' "$root/.github/workflows/publish.yml")"
+assert_target_reference() {
+  section="$1"
+  document="$2"
+  grep -Fq 'target="${DALO_TARGET:-$(detect_target)}"' "$root/site/install.sh" || return 1
+  grep -Fq '### Installer environment variables' "$root/site/install.md" || return 1
+  printf '%s\n' "$document" | grep -Fq 'Installer-only release target override' || return 1
+  printf '%s\n' "$section" | grep -Fq 'non-empty value takes precedence' || return 1
+  printf '%s\n' "$section" | grep -Fq 'unset or empty value' || return 1
+  printf '%s\n' "$document" | grep -Fq '../site/install.md#installer-environment-variables' || return 1
+  for target in $published_targets; do
+    printf '%s\n' "$section" | grep -Fq "\`$target\`" || return 1
+  done
+}
+assert_target_reference "$target_section" "$reference_document"
+
+# A missing cross-reference or a non-published triplet must fail this gate.
+missing_target_document="$(printf '%s\n' "$reference_document" | sed '/site\/install.md/d')"
+if assert_target_reference "$target_section" "$missing_target_document"; then
+  echo 'DALO_TARGET reference gate accepted a missing installer link' >&2
+  exit 1
+fi
+wrong_target_section="$(printf '%s\n' "$target_section" | sed 's/aarch64-unknown-linux-musl/aarch64-unknown-linux-invalid/')"
+if assert_target_reference "$wrong_target_section" "$reference_document"; then
+  echo 'DALO_TARGET reference gate accepted a wrong published target' >&2
+  exit 1
+fi
+
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/dalo-docs-test.XXXXXX")"
 
 cleanup() {

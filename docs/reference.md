@@ -21,11 +21,25 @@ Relative store paths are resolved against the current working directory. `~` is 
 | `DALO_OFFLINE` | Disable passive update checks when set to a truthy value. |
 | `DALO_UPDATE_CHECK` | Set to `never` to disable passive update checks. |
 | `NO_COLOR` | Disable ANSI color output when set. |
+| `DALO_TARGET` | Installer-only release target override. A non-empty value takes precedence over platform detection; see [installer target variables](../site/install.md#installer-environment-variables). |
 
 For installation variables, see the [README installation section](../README.md#installation)
 and the [npm launcher README](../npm/README.md): `DALO_VERIFY`,
-`DALO_LINUX_LIBC`, `DALO_TARGET`, `DALO_INSTALL_DIR`, `DALO_VERSION`, and
-`DALO_CACHE_DIR`.
+`DALO_LINUX_LIBC`, `DALO_INSTALL_DIR`, `DALO_VERSION`, and `DALO_CACHE_DIR`.
+
+### `DALO_TARGET`
+
+`DALO_TARGET` is read only by `https://dalo.sh/install.sh`; it is not a Dalo
+CLI option and does not affect an installed binary. An unset or empty value
+uses automatic detection: macOS chooses its `x86_64` or `aarch64` target, and
+Linux chooses `x86_64` or `aarch64` plus the detected (or
+`DALO_LINUX_LIBC`-overridden) libc. A non-empty value takes precedence and is
+used verbatim to form the release archive name. Set it only to a published target:
+`x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`,
+`x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`,
+`x86_64-apple-darwin`, or `aarch64-apple-darwin`. The installer does not
+pre-validate the override; another value fails when its release archive cannot
+be fetched.
 
 ## Global Flags
 
