@@ -982,19 +982,24 @@ fn replace_path_root(value: &str, root: &str, replacement: &str) -> String {
         return value.to_owned();
     }
     let mut rendered = String::with_capacity(value.len());
-    let mut remainder = value;
-    while let Some(index) = remainder.find(root) {
-        let (before, candidate) = remainder.split_at(index);
-        let after = &candidate[root.len()..];
-        rendered.push_str(before);
-        if after.is_empty() || after.starts_with('/') {
+    let mut previous_end = 0;
+    for (index, _) in value.match_indices(root) {
+        let after_index = index + root.len();
+        let after = &value[after_index..];
+        rendered.push_str(&value[previous_end..index]);
+        let starts_at_boundary = index == 0
+            || value[..index].chars().next_back().is_some_and(|character| {
+                character.is_whitespace()
+                    || matches!(character, '`' | '\'' | '"' | '(' | '[' | '{' | '=' | ':')
+            });
+        if starts_at_boundary && (after.is_empty() || after.starts_with('/')) {
             rendered.push_str(replacement);
         } else {
             rendered.push_str(root);
         }
-        remainder = after;
+        previous_end = after_index;
     }
-    rendered.push_str(remainder);
+    rendered.push_str(&value[previous_end..]);
     rendered
 }
 
@@ -2978,13 +2983,15 @@ mod tests {
         assert!(context.path(&store.join("local/skills/review")).len() < 40);
         assert_eq!(
             context.text(&format!(
-                "missing `{}` but not `{}`",
+                "missing `{}` but not `{}` or `/foreign{}`",
                 store.join("config.toml").display(),
-                store.with_file_name("storehouse").display()
+                store.with_file_name("storehouse").display(),
+                store.join("config.toml").display()
             )),
             format!(
-                "missing `store:/config.toml` but not `{}`",
-                store.with_file_name("storehouse").display()
+                "missing `store:/config.toml` but not `{}` or `/foreign{}`",
+                store.with_file_name("storehouse").display(),
+                store.join("config.toml").display()
             )
         );
     }
