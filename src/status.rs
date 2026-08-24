@@ -2303,34 +2303,33 @@ fn doctor_finding_lines(finding: &DoctorFinding) -> Vec<String> {
         finding.code
     );
 
-    if finding.code == DoctorCode::SourceInventoryDegraded {
-        if let Some((summary, details)) = finding.message.split_once(": ") {
-            if let Some(warnings) = source_inventory_warnings(details) {
-                let mut lines = vec![
-                    format!("{prefix}:"),
-                    format!("  {}", terminal_safe_text(summary)),
-                ];
-                for warning in warnings {
-                    let code = terminal_safe_text(&warning.code);
-                    let path = terminal_safe_text(&warning.path);
-                    if warning.messages.len() == 1 {
-                        lines.push(format!(
-                            "  {code} at `{path}`: {}",
-                            terminal_safe_text(&warning.messages[0])
-                        ));
-                    } else {
-                        lines.push(format!("  {code} at `{path}`:"));
-                        for message in warning.messages {
-                            lines.push(format!("    - {}", terminal_safe_text(&message)));
-                        }
-                    }
+    if finding.code == DoctorCode::SourceInventoryDegraded
+        && let Some((summary, details)) = finding.message.split_once(": ")
+        && let Some(warnings) = source_inventory_warnings(details)
+    {
+        let mut lines = vec![
+            format!("{prefix}:"),
+            format!("  {}", terminal_safe_text(summary)),
+        ];
+        for warning in warnings {
+            let code = terminal_safe_text(&warning.code);
+            let path = terminal_safe_text(&warning.path);
+            if warning.messages.len() == 1 {
+                lines.push(format!(
+                    "  {code} at `{path}`: {}",
+                    terminal_safe_text(&warning.messages[0])
+                ));
+            } else {
+                lines.push(format!("  {code} at `{path}`:"));
+                for message in warning.messages {
+                    lines.push(format!("    - {}", terminal_safe_text(&message)));
                 }
-                if let Some(command) = &finding.next_command {
-                    lines.push(format!("  next: {}", terminal_safe_text(command)));
-                }
-                return lines;
             }
         }
+        if let Some(command) = &finding.next_command {
+            lines.push(format!("  next: {}", terminal_safe_text(command)));
+        }
+        return lines;
     }
 
     let next = finding
