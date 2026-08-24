@@ -608,9 +608,10 @@ pub fn print_init_report(report: &InitReport, next: Option<&NextActionReport>) {
     println!("dalo store: {}", report.store.display());
 
     for operation in &report.operations {
+        let status = format!("{:<8}", operation.status.as_str());
         println!(
-            "{:<8} {:<12} {}",
-            operation.status.as_str(),
+            "{} {:<12} {}",
+            term::operation_status(&status),
             operation.action.as_str(),
             operation.path.display()
         );
@@ -1339,6 +1340,8 @@ pub fn print_sync_report(report: &SyncReport) {
         }
     } else {
         for operation in &report.operations {
+            let status = format!("{:<8}", operation.status.as_str());
+            let kind = format!("{:<10}", operation.kind.as_str());
             let desired = operation
                 .desired_path
                 .as_ref()
@@ -1356,9 +1359,9 @@ pub fn print_sync_report(report: &SyncReport) {
                 String::new()
             };
             println!(
-                "{:<8} {:<10} {}{}{}{}",
-                operation.status.as_str(),
-                operation.kind.as_str(),
+                "{} {} {}{}{}{}",
+                term::operation_status(&status),
+                term::operation_status(&kind),
                 operation.link_path.display(),
                 desired,
                 reason,

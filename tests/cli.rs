@@ -6358,6 +6358,99 @@ fn doctor_should_collapse_info_and_ok_findings_in_human_output() {
         ));
 }
 
+#[cfg(unix)]
+#[test]
+fn doctor_emphasis_should_be_tty_only_and_honor_terminal_suppression() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("missing-store");
+    let executable = assert_cmd::cargo::cargo_bin("dalo");
+
+    let piped = std::process::Command::new(&executable)
+        .args(["--store"])
+        .arg(&store)
+        .arg("doctor")
+        .output()
+        .expect("piped doctor should run");
+    assert!(piped.status.success());
+    assert!(
+        !piped.stdout.contains(&0x1b),
+        "piped output must not contain ANSI controls"
+    );
+
+    let emphasized = doctor_in_pseudoterminal(&executable, &store, None);
+    assert!(emphasized.status.success());
+    assert!(
+        emphasized
+            .stdout
+            .windows(b"\x1b[31;1merror\x1b[0m".len())
+            .any(|window| window == b"\x1b[31;1merror\x1b[0m"),
+        "TTY output should emphasize errors: {}",
+        String::from_utf8_lossy(&emphasized.stdout)
+    );
+
+    for suppression in [("NO_COLOR", "1"), ("TERM", "dumb")] {
+        let output = doctor_in_pseudoterminal(&executable, &store, Some(suppression));
+        assert!(output.status.success());
+        assert!(
+            !output.stdout.contains(&0x1b),
+            "{} must suppress ANSI controls: {}",
+            suppression.0,
+            String::from_utf8_lossy(&output.stdout)
+        );
+    }
+
+    let json = std::process::Command::new(&executable)
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "doctor"])
+        .output()
+        .expect("JSON doctor should run");
+    assert!(json.status.success());
+    assert!(!json.stdout.contains(&0x1b));
+    let report: serde_json::Value =
+        serde_json::from_slice(&json.stdout).expect("doctor JSON should remain valid");
+    assert_eq!(report["summary"]["errors"], 1);
+}
+
+#[cfg(unix)]
+fn doctor_in_pseudoterminal(
+    executable: &std::path::Path,
+    store: &std::path::Path,
+    suppression: Option<(&str, &str)>,
+) -> std::process::Output {
+    let mut command = std::process::Command::new("/usr/bin/script");
+    command.env_remove("NO_COLOR").env("TERM", "xterm-256color");
+    if let Some((key, value)) = suppression {
+        command.env(key, value);
+    }
+
+    #[cfg(target_os = "macos")]
+    command
+        .arg("-q")
+        .arg("/dev/null")
+        .arg(executable)
+        .args(["--store"])
+        .arg(store)
+        .arg("doctor");
+
+    #[cfg(not(target_os = "macos"))]
+    command
+        .args(["-q", "-c"])
+        .arg(format!(
+            "{} --store {} doctor",
+            shell_quote(executable.to_string_lossy().as_ref()),
+            shell_quote(store.to_string_lossy().as_ref())
+        ))
+        .arg("/dev/null");
+
+    command.output().expect("doctor should run in a PTY")
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\\"'\\\"'"))
+}
+
 #[test]
 fn resolve_keep_should_warn_when_an_adopted_skill_still_targets_the_slot() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
