@@ -1,12 +1,15 @@
 //! Narrow wrapper around the system `git` command.
 
+use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::fs;
 use std::io::IsTerminal;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, OnceLock, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -22,6 +25,10 @@ const GIT_NETWORK_TIMEOUT: Duration = Duration::from_secs(300);
 // collection does not impose a fixed latency floor on every command.
 const GIT_POLL_INTERVAL: Duration = Duration::from_millis(1);
 const GIT_TIMEOUT_ENV: &str = "DALO_GIT_TIMEOUT_SECS";
+const MAX_CONCURRENT_FETCHES: usize = 4;
+
+type SshPreflightCache = Mutex<BTreeMap<(String, PathBuf), Arc<OnceLock<bool>>>>;
+static SSH_PREFLIGHT_CACHE: OnceLock<SshPreflightCache> = OnceLock::new();
 
 /// Run `git init` in the provided directory.
 pub fn init_repo(path: &Path) -> DaloResult<()> {
@@ -157,6 +164,57 @@ pub fn fetch_upstream(path: &Path) -> DaloResult<()> {
     run_git_network(path, &["fetch", "--quiet"]).map(|_| ())
 }
 
+/// Fetch several independent checkouts with a fixed per-batch concurrency cap.
+///
+/// Results retain the exact input ordering even when commands finish out of
+/// order. Scoped workers are always joined before this function returns.
+pub(crate) fn fetch_upstreams_bounded(paths: &[PathBuf]) -> Vec<DaloResult<()>> {
+    for path in paths {
+        print_network_progress(&format!(
+            "Staging source refresh for `{}`...",
+            path.display()
+        ));
+    }
+    run_bounded(paths, MAX_CONCURRENT_FETCHES, |path| {
+        run_git_network(path, &["fetch", "--quiet"]).map(|_| ())
+    })
+}
+
+fn run_bounded<T, F>(items: &[T], limit: usize, operation: F) -> Vec<DaloResult<()>>
+where
+    T: Sync,
+    F: Fn(&T) -> DaloResult<()> + Sync,
+{
+    if items.is_empty() {
+        return Vec::new();
+    }
+    let worker_count = limit.max(1).min(items.len());
+    let next = AtomicUsize::new(0);
+    let (sender, receiver) = mpsc::channel();
+    thread::scope(|scope| {
+        for _ in 0..worker_count {
+            let sender = sender.clone();
+            let next = &next;
+            let operation = &operation;
+            scope.spawn(move || {
+                loop {
+                    let index = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(item) = items.get(index) else {
+                        break;
+                    };
+                    if sender.send((index, operation(item))).is_err() {
+                        break;
+                    }
+                }
+            });
+        }
+    });
+    drop(sender);
+    let mut results = receiver.into_iter().collect::<Vec<_>>();
+    results.sort_by_key(|(index, _)| *index);
+    results.into_iter().map(|(_, result)| result).collect()
+}
+
 /// Resolve a manifest-declared revision to a concrete commit.
 ///
 /// Remote branches are preferred over local branches so a freshly fetched
@@ -280,8 +338,27 @@ fn run_git_program_with_ssh_preflight(
     preflight_core_ssh_command: bool,
 ) -> DaloResult<String> {
     let ssh_command_env = std::env::var_os("GIT_SSH_COMMAND");
+    run_git_program_with_ssh_preflight_and_env(
+        program,
+        path,
+        args,
+        timeout,
+        preflight_core_ssh_command,
+        ssh_command_env.as_deref(),
+    )
+}
+
+fn run_git_program_with_ssh_preflight_and_env(
+    program: &str,
+    path: &Path,
+    args: &[&str],
+    timeout: Duration,
+    preflight_core_ssh_command: bool,
+    ssh_command_env: Option<&OsStr>,
+) -> DaloResult<String> {
     let core_ssh_command_configured = preflight_core_ssh_command
-        && has_core_ssh_command(program, path, timeout.min(git_timeout(GIT_LOCAL_TIMEOUT)));
+        && ssh_command_env.is_none()
+        && cached_has_core_ssh_command(program, path, timeout.min(git_timeout(GIT_LOCAL_TIMEOUT)));
     run_git_program_with_options(
         program,
         path,
@@ -481,6 +558,21 @@ fn has_core_ssh_command(program: &str, path: &Path, timeout: Duration) -> bool {
         true,
     )
     .is_ok()
+}
+
+fn cached_has_core_ssh_command(program: &str, path: &Path, timeout: Duration) -> bool {
+    let comparable_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let cache = SSH_PREFLIGHT_CACHE.get_or_init(|| Mutex::new(BTreeMap::new()));
+    let cell = {
+        let mut cache = cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        cache
+            .entry((program.to_owned(), comparable_path))
+            .or_insert_with(|| Arc::new(OnceLock::new()))
+            .clone()
+    };
+    *cell.get_or_init(|| has_core_ssh_command(program, path, timeout))
 }
 
 fn git_timeout(default: Duration) -> Duration {
@@ -713,6 +805,109 @@ mod tests {
 
         assert_eq!(output.trim(), "ok");
         assert!(start.elapsed() < Duration::from_secs(5));
+    }
+
+    #[test]
+    fn core_ssh_preflight_should_run_once_per_repository() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let fake_git = write_executable(
+            temp_dir.path(),
+            "fake-git-once",
+            "#!/bin/sh\nprintf '%s prompt=%s ssh=%s\\n' \"$1\" \"$GIT_TERMINAL_PROMPT\" \"$GIT_SSH_COMMAND\" >> invocations\n[ \"$1\" != config ]\n",
+        );
+        let program = fake_git.to_str().expect("script path should be utf-8");
+
+        for _ in 0..2 {
+            run_git_program_with_ssh_preflight_and_env(
+                program,
+                temp_dir.path(),
+                &["fetch"],
+                Duration::from_secs(3),
+                true,
+                None,
+            )
+            .expect("network command should run");
+        }
+
+        let invocations = fs::read_to_string(temp_dir.path().join("invocations"))
+            .expect("shim log should be readable");
+        assert_eq!(invocations.matches("config ").count(), 1);
+        assert_eq!(invocations.matches("fetch ").count(), 2);
+        assert!(invocations.lines().all(|line| line.contains("prompt=0")));
+        assert!(
+            invocations
+                .lines()
+                .filter(|line| line.starts_with("fetch "))
+                .all(|line| line.contains("BatchMode=yes"))
+        );
+    }
+
+    #[test]
+    fn explicit_ssh_command_should_skip_the_redundant_preflight() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let fake_git = write_executable(
+            temp_dir.path(),
+            "fake-git-explicit-ssh",
+            "#!/bin/sh\nprintf '%s ssh=%s\\n' \"$1\" \"$GIT_SSH_COMMAND\" >> invocations\n[ \"$1\" != config ]\n",
+        );
+
+        run_git_program_with_ssh_preflight_and_env(
+            fake_git.to_str().expect("script path should be utf-8"),
+            temp_dir.path(),
+            &["fetch"],
+            Duration::from_secs(3),
+            true,
+            Some(OsStr::new("ssh -i explicit-key -oBatchMode=yes")),
+        )
+        .expect("network command should preserve the explicit SSH policy");
+
+        let invocations = fs::read_to_string(temp_dir.path().join("invocations"))
+            .expect("shim log should be readable");
+        assert!(!invocations.contains("config "));
+        assert!(invocations.contains("fetch ssh=ssh -i explicit-key -oBatchMode=yes"));
+    }
+
+    #[test]
+    fn bounded_git_shim_should_cap_concurrency_and_preserve_result_order() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let fake_git = write_executable(
+            temp_dir.path(),
+            "fake-git-parallel",
+            "#!/bin/sh\nsleep 0.03\ncase \"$PWD\" in *job-1|*job-5) exit 7;; esac\n",
+        );
+        let jobs = (0..7)
+            .map(|index| {
+                let path = temp_dir.path().join(format!("job-{index}"));
+                fs::create_dir(&path).expect("job directory should be created");
+                path
+            })
+            .collect::<Vec<_>>();
+        let active = AtomicUsize::new(0);
+        let maximum = AtomicUsize::new(0);
+
+        let results = run_bounded(&jobs, 3, |path| {
+            let current = active.fetch_add(1, Ordering::SeqCst) + 1;
+            maximum.fetch_max(current, Ordering::SeqCst);
+            let result = run_git_program_with_options(
+                fake_git.to_str().expect("script path should be utf-8"),
+                path,
+                &["fetch"],
+                Duration::from_secs(3),
+                Option::<&str>::None,
+                false,
+            )
+            .map(|_| ());
+            active.fetch_sub(1, Ordering::SeqCst);
+            result
+        });
+
+        assert!(maximum.load(Ordering::SeqCst) >= 2);
+        assert!(maximum.load(Ordering::SeqCst) <= 3);
+        assert_eq!(results.len(), jobs.len());
+        for (index, result) in results.iter().enumerate() {
+            assert_eq!(result.is_err(), matches!(index, 1 | 5));
+        }
+        assert_eq!(active.load(Ordering::SeqCst), 0);
     }
 
     #[test]

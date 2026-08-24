@@ -1,6 +1,6 @@
 //! Source definitions and source operations.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
@@ -888,30 +888,36 @@ pub fn refresh_tracking_team_sources_from_config(
     paths: &StorePaths,
     config: &UserConfig,
 ) -> DaloResult<Vec<TrackingSourceRefreshFailure>> {
+    let (fetch_paths, candidates) = prepare_tracking_refreshes(config, git::is_dirty)?;
+    let fetch_errors = git::fetch_upstreams_bounded(&fetch_paths)
+        .into_iter()
+        .map(|result| result.err().map(|error| error.to_string()))
+        .collect::<Vec<_>>();
     let mut failures = Vec::new();
-    for source in config.sources.iter().filter(|source| {
-        source.enabled
-            && source.kind == SourceKind::Team
-            && source.update_policy.as_deref() == Some("track")
-    }) {
-        match git::is_dirty(&source.path) {
-            Ok(true) => {
-                return Err(DaloError::DirtySource {
-                    source_id: source.id.clone(),
-                    path: source.path.clone(),
-                });
-            }
-            Ok(false) => {}
-            Err(error) => {
+    for candidate in candidates {
+        let (source, fetch_index) = match candidate {
+            PreparedTrackingSource::InspectionFailure { source, reason } => {
                 failures.push(TrackingSourceRefreshFailure {
                     id: source.id.clone(),
                     path: source.path.clone(),
-                    reason: format!("could not inspect tracking checkout: {error}"),
+                    reason: format!("could not inspect tracking checkout: {reason}"),
                 });
                 continue;
             }
+            PreparedTrackingSource::Fetch {
+                source,
+                fetch_index,
+            } => (source, fetch_index),
+        };
+        if let Some(error) = &fetch_errors[fetch_index] {
+            failures.push(TrackingSourceRefreshFailure {
+                id: source.id.clone(),
+                path: source.path.clone(),
+                reason: format!("could not refresh tracking source: {error}"),
+            });
+            continue;
         }
-        if let Err(error) = stage_audit_and_fast_forward(paths, source) {
+        if let Err(error) = audit_and_fast_forward_fetched_source(paths, source) {
             if matches!(error, DaloError::AuditBlocked { .. }) {
                 return Err(error);
             }
@@ -925,8 +931,82 @@ pub fn refresh_tracking_team_sources_from_config(
     Ok(failures)
 }
 
-fn stage_audit_and_fast_forward(paths: &StorePaths, source: &SourceConfig) -> DaloResult<()> {
-    git::fetch_upstream(&source.path)?;
+enum PreparedTrackingSource<'a> {
+    InspectionFailure {
+        source: &'a SourceConfig,
+        reason: String,
+    },
+    Fetch {
+        source: &'a SourceConfig,
+        fetch_index: usize,
+    },
+}
+
+fn prepare_tracking_refreshes<'a, D>(
+    config: &'a UserConfig,
+    mut inspect_dirty: D,
+) -> DaloResult<(Vec<PathBuf>, Vec<PreparedTrackingSource<'a>>)>
+where
+    D: FnMut(&Path) -> DaloResult<bool>,
+{
+    let tracking_sources = config
+        .sources
+        .iter()
+        .filter(|source| {
+            source.enabled
+                && source.kind == SourceKind::Team
+                && source.update_policy.as_deref() == Some("track")
+        })
+        .collect::<Vec<_>>();
+
+    // Establish every local safety precondition before any worker starts a
+    // network operation. Checkouts that resolve to the same physical path
+    // share one inspection and one fetch so Git never mutates one repository
+    // concurrently through duplicate configuration entries.
+    let mut inspections = BTreeMap::new();
+    let mut fetch_paths = Vec::new();
+    let mut fetch_index_by_path = BTreeMap::new();
+    let mut prepared = Vec::new();
+    for source in tracking_sources {
+        let comparable_path = store::comparable_path(&source.path);
+        let inspection = inspections
+            .entry(comparable_path.clone())
+            .or_insert_with(|| inspect_dirty(&source.path).map_err(|error| error.to_string()));
+        match inspection {
+            Ok(true) => {
+                return Err(DaloError::DirtySource {
+                    source_id: source.id.clone(),
+                    path: source.path.clone(),
+                });
+            }
+            Ok(false) => {}
+            Err(reason) => {
+                prepared.push(PreparedTrackingSource::InspectionFailure {
+                    source,
+                    reason: reason.clone(),
+                });
+                continue;
+            }
+        }
+        let fetch_index = *fetch_index_by_path
+            .entry(comparable_path)
+            .or_insert_with(|| {
+                let index = fetch_paths.len();
+                fetch_paths.push(source.path.clone());
+                index
+            });
+        prepared.push(PreparedTrackingSource::Fetch {
+            source,
+            fetch_index,
+        });
+    }
+    Ok((fetch_paths, prepared))
+}
+
+fn audit_and_fast_forward_fetched_source(
+    paths: &StorePaths,
+    source: &SourceConfig,
+) -> DaloResult<()> {
     let upstream = git::rev_parse(&source.path, "@{upstream}")?;
     let incoming = git::revision_count(&source.path, "HEAD", &upstream)?;
     if incoming == 0 {
@@ -1363,6 +1443,78 @@ mod tests {
         assert!(checkout.join(".git").is_dir());
         assert!(!source_dir.join(".checkout-tmp-111").exists());
         assert!(!source_dir.join(".checkout-tmp-222").exists());
+    }
+
+    #[test]
+    fn tracking_refresh_plan_should_deduplicate_checkouts_and_preserve_source_order() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let shared = temp_dir.path().join("shared");
+        let broken = temp_dir.path().join("broken");
+        fs::create_dir(&shared).expect("shared checkout should exist");
+        fs::create_dir(&broken).expect("broken checkout should exist");
+        let source = |id: &str, path: PathBuf| SourceConfig {
+            id: id.to_owned(),
+            kind: SourceKind::Team,
+            path,
+            priority: 10,
+            namespace: None,
+            enabled: true,
+            trusted: true,
+            url: Some(format!("https://example.invalid/{id}.git")),
+            branch: None,
+            update_policy: Some("track".to_owned()),
+            selection: Vec::new(),
+            declared_by: None,
+            declared_ref: None,
+        };
+        let config = UserConfig {
+            version: 1,
+            settings: crate::config::Settings {
+                autosync: false,
+                sync_interval: None,
+            },
+            sources: vec![
+                source("first", shared.clone()),
+                source("broken", broken.clone()),
+                source("second", shared.clone()),
+            ],
+            plugins: crate::config::PluginConfig::default(),
+            plugin_policy: Vec::new(),
+        };
+        let mut inspections = BTreeMap::new();
+
+        let (fetch_paths, prepared) = prepare_tracking_refreshes(&config, |path| {
+            *inspections.entry(path.to_path_buf()).or_insert(0_usize) += 1;
+            if path == broken {
+                Err(DaloError::Io(std::io::Error::other("inspection failed")))
+            } else {
+                Ok(false)
+            }
+        })
+        .expect("inspection failures should degrade individual sources");
+
+        assert_eq!(fetch_paths, vec![shared.clone()]);
+        assert_eq!(inspections.get(&shared), Some(&1));
+        assert_eq!(inspections.get(&broken), Some(&1));
+        assert!(matches!(
+            &prepared[0],
+            PreparedTrackingSource::Fetch {
+                source,
+                fetch_index: 0
+            } if source.id == "first"
+        ));
+        assert!(matches!(
+            &prepared[1],
+            PreparedTrackingSource::InspectionFailure { source, reason }
+                if source.id == "broken" && reason.contains("inspection failed")
+        ));
+        assert!(matches!(
+            &prepared[2],
+            PreparedTrackingSource::Fetch {
+                source,
+                fetch_index: 0
+            } if source.id == "second"
+        ));
     }
 
     #[test]
