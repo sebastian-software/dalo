@@ -415,7 +415,7 @@ pub fn resolve_source_location(location: &str, cwd: &Path) -> String {
     }
 
     let local_path = normalize_local_path(&cwd.join(path));
-    if looks_like_remote_location(location) && !local_path.exists() {
+    if git::looks_like_remote_location(location) && !local_path.exists() {
         return location.to_owned();
     }
 
@@ -440,20 +440,6 @@ fn normalize_local_path(path: &Path) -> PathBuf {
         }
     }
     normalized
-}
-
-fn looks_like_remote_location(location: &str) -> bool {
-    if location.contains("://") {
-        return true;
-    }
-    let Some(colon) = location.find(':') else {
-        return false;
-    };
-    colon > 0
-        && !location[..colon].contains('/')
-        && location
-            .get(colon + 1..)
-            .is_some_and(|suffix| !suffix.is_empty())
 }
 
 fn add_team_source_with_config_writer<F>(
