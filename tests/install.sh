@@ -97,7 +97,14 @@ run_install "$cosign_path" "${test_root}/cosign-bin" "$cosign_output" \
   DALO_COSIGN_LOG="${test_root}/cosign.log"
 test -x "${test_root}/cosign-bin/dalo"
 grep -q -- '--certificate-identity-regexp' "${test_root}/cosign.log"
-grep -Fq -- 'workflows/(release-please|publish)\.yml@refs/heads/main' "${test_root}/cosign.log"
+publish_workflow="${repo_root}/.github/workflows/publish.yml"
+grep -Fq 'cosign sign-blob' "$publish_workflow"
+publish_identity='^https://github\.com/sebastian-software/dalo/\.github/workflows/publish\.yml@refs/heads/main$'
+grep -Fq -- "$publish_identity" "${test_root}/cosign.log"
+if grep -Fq -- 'release-please\.yml@refs/heads/main' "${test_root}/cosign.log"; then
+  echo "installer accepted a retired release-please workflow identity" >&2
+  exit 1
+fi
 grep -q -- '--certificate-oidc-issuer' "${test_root}/cosign.log"
 
 missing_bundle_output="${test_root}/missing-bundle-output"
