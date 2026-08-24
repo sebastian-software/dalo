@@ -1,6 +1,6 @@
 {
   "name": "getdalo",
-  "version": "0.6.1",
+  "version": "0.13.0",
   "description": "npm launcher for Dalo on macOS and Linux",
   "keywords": [
     "dalo",
@@ -38,6 +38,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
+    "check-version": "node scripts/check-version.js",
     "test": "node --test"
   }
 }

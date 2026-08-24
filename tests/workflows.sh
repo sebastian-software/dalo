@@ -48,6 +48,17 @@ job_body() {
 
 test "$(node -p 'require(process.argv[1]).packages["."].draft' "$release_config")" = true
 test "$(node -p 'require(process.argv[1]).packages["."]["force-tag-creation"]' "$release_config")" = true
+test "$(node -p 'require(process.argv[1]).packages["."]["extra-files"].includes("npm/package.json")' "$release_config")" = true
+(
+  cd "$root/npm"
+  npm run check-version
+)
+drifted_package="$test_root/package.json"
+sed 's/"version": "[^"]*"/"version": "0.0.0"/' "$root/npm/package.json" > "$drifted_package"
+if DALO_PACKAGE_JSON="$drifted_package" node "$root/npm/scripts/check-version.js" >/dev/null 2>&1; then
+  echo "npm version check accepted a drifted package manifest" >&2
+  exit 1
+fi
 
 artifacts_job="$(job_body release-artifacts)"
 final_release_job="$(job_body publish-github-release)"
