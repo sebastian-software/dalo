@@ -526,6 +526,11 @@ fn preflight_local_clone_source(location: &str, cwd: &Path) -> DaloResult<()> {
         }
         Err(error) => return Err(DaloError::Io(error)),
     };
+    // Git accepts bundle files as clone sources. Let Git validate regular
+    // files so the preflight does not reject a cloneable local transport.
+    if metadata.is_file() {
+        return Ok(());
+    }
     let has_worktree_metadata = local_path.join(".git").try_exists()?;
     let has_bare_metadata = local_path.join("HEAD").is_file()
         && local_path.join("objects").is_dir()
@@ -1043,6 +1048,41 @@ mod tests {
                 plain_directory.display()
             )
         );
+    }
+
+    #[test]
+    fn local_clone_preflight_should_allow_git_bundle_files() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let source = temp_dir.path().join("source");
+        fs::create_dir(&source).expect("source directory should be created");
+        init_repo(&source).expect("source repository should initialize");
+        fs::write(source.join("README.md"), "# Bundle\n")
+            .expect("bundle content should be written");
+        run_git(&source, &["add", "README.md"]).expect("bundle content should be staged");
+        run_git(
+            &source,
+            &[
+                "-c",
+                "user.name=Dalo Test",
+                "-c",
+                "user.email=dalo@example.invalid",
+                "-c",
+                "commit.gpgSign=false",
+                "commit",
+                "-qm",
+                "bundle fixture",
+            ],
+        )
+        .expect("bundle source should commit");
+        let bundle = temp_dir.path().join("source.bundle");
+        let bundle_arg = bundle.to_string_lossy().into_owned();
+        run_git(&source, &["bundle", "create", &bundle_arg, "--all"])
+            .expect("bundle should be created");
+
+        preflight_local_clone_source(&bundle_arg, temp_dir.path())
+            .expect("valid Git bundle should pass local preflight");
+        clone_repo(&bundle_arg, &temp_dir.path().join("clone"))
+            .expect("valid Git bundle should remain cloneable");
     }
 
     #[test]
