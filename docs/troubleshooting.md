@@ -175,7 +175,7 @@ Doctor includes `ok` and `info` codes as well as warnings/errors. Codes not list
 | `owned_symlink_repointed` | error | Run the suggested `dalo resolve remove-owned <id>` command, then `dalo sync` if the recorded skill should be recreated. |
 | `dirty_source` | error for team/catalog, warning for local | The checkout has local edits to tracked files (untracked files such as `.DS_Store` no longer count). Commit, stash, discard, or intentionally keep them. |
 | `source_missing` | error | The enabled source's checkout is missing from disk or could not be read. Restore/re-clone it (or fix its permissions), or run `dalo source remove <id>`. |
-| `source_inventory_degraded` | error | Follow the reported repair hint to correct the inventory warning, then run `dalo sync`. Existing links are preserved until the source can be scanned safely. |
+| `source_inventory_degraded` | error | For listed inventory warnings, follow the reported repair hint and then run `dalo sync`. If the inventory could not be scanned at all, inspect the reported source path and error, restore its checkout or permissions, and rerun `dalo doctor`; `dalo status` provides detail but is not itself a repair. Existing links are preserved until the source can be scanned safely. |
 | `pending_approval` | warning | Add the needed approval or leave the skill pending. |
 | `required_closure_blocked` | error | Resolve the closure block reason shown in the message. |
 | `security_audit_blocked` | error | An active skill has an unaccepted high/critical audit finding; `sync` will refuse to link it. Review with `dalo audit <ref>` and accept the risk or remove/replace the skill. |
