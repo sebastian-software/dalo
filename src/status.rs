@@ -482,6 +482,12 @@ pub fn build_next_action_report(store_root: &Path) -> DaloResult<NextActionRepor
             message,
             Some(store::dalo_command(store_root, "status")),
         )
+    } else if let Some(message) = next_blocker_attention_message(&report) {
+        (
+            NextActionState::NeedsAttention,
+            message,
+            Some(store::dalo_command(store_root, "status")),
+        )
     } else if linked_targets == 0 {
         (
             NextActionState::NoTarget,
@@ -509,12 +515,6 @@ pub fn build_next_action_report(store_root: &Path) -> DaloResult<NextActionRepor
                 store_root,
                 &format!("approve skill {}", skill.source_ref),
             )),
-        )
-    } else if let Some(message) = next_blocker_attention_message(&report) {
-        (
-            NextActionState::NeedsAttention,
-            message,
-            Some(store::dalo_command(store_root, "status")),
         )
     } else if !report.lock.drift.is_empty() {
         (
@@ -569,17 +569,13 @@ fn next_health_attention_message(report: &StatusReport) -> Option<String> {
     }
 
     if !report.inventory_warnings.is_empty() {
-        let warning_sources = report
+        let source_paths = report
             .sources
             .iter()
-            .filter(|source| {
-                report
-                    .inventory_warnings
-                    .iter()
-                    .any(|warning| warning.path.starts_with(&source.path))
-            })
-            .map(|source| source.id.as_str())
+            .map(|source| (source.id.clone(), source.path.clone()))
             .collect::<Vec<_>>();
+        let warning_sources =
+            inventory_warning_source_ids(&source_paths, &report.inventory_warnings);
         return Some(match warning_sources.as_slice() {
             [source] => format!(
                 "Source `{source}` has inventory warnings; review its detailed status before synchronizing."
@@ -613,6 +609,23 @@ fn next_blocker_attention_message(report: &StatusReport) -> Option<String> {
                 .to_owned(),
         );
     }
+    if !report.unmanaged_skills.is_empty() {
+        return Some(
+            "Linked targets contain unmanaged skills; review detailed status before synchronizing."
+                .to_owned(),
+        );
+    }
+    if !report.instruction_block_drifts.is_empty() {
+        return Some(
+            "Managed instruction blocks are missing, malformed, or stale; review detailed status."
+                .to_owned(),
+        );
+    }
+    if autosync_needs_attention(&report.autosync) {
+        return Some(
+            "Scheduled synchronization is unhealthy; review its detailed status.".to_owned(),
+        );
+    }
     if !report.blocking_audits.is_empty()
         || !report.audit_failures.is_empty()
         || report
@@ -635,6 +648,49 @@ fn next_blocker_attention_message(report: &StatusReport) -> Option<String> {
         );
     }
     None
+}
+
+fn inventory_warning_source_ids(
+    sources: &[(String, PathBuf)],
+    warnings: &[InventoryWarning],
+) -> Vec<String> {
+    let mut source_ids = std::collections::BTreeSet::new();
+    for warning in warnings {
+        let matches = sources
+            .iter()
+            .filter(|(_, path)| warning.path.starts_with(path))
+            .map(|(id, _)| id)
+            .collect::<Vec<_>>();
+        match matches.as_slice() {
+            [source_id] => {
+                source_ids.insert((*source_id).clone());
+            }
+            [] => {}
+            _ => return Vec::new(),
+        }
+    }
+    source_ids.into_iter().collect()
+}
+
+fn autosync_needs_attention(status: &AutosyncStatusReport) -> bool {
+    status.scheduler_error.is_some()
+        || (status.configured && !status.installed)
+        || (status.installed
+            && (!status.configured
+                || !status.enabled
+                || status
+                    .executable
+                    .as_ref()
+                    .is_some_and(|path| !crate::autosync::executable_available(path))))
+        || (status.installed
+            && status.last_run.as_ref().is_some_and(|run| {
+                run.outcome == crate::autosync::AutosyncRunOutcome::Blocked
+                    || crate::autosync::running_run_is_stale(
+                        run,
+                        status.schedule,
+                        crate::autosync::now_unix(),
+                    )
+            }))
 }
 
 fn degraded_sources_from_audit_failures(
@@ -2505,6 +2561,21 @@ mod tests {
             1,
             "next must classify already-computed status facts without a doctor or resolver rescan"
         );
+    }
+
+    #[test]
+    fn inventory_warning_source_ids_should_not_guess_between_prefix_related_sources() {
+        let sources = vec![
+            ("parent".to_owned(), PathBuf::from("/tmp/sources")),
+            ("team".to_owned(), PathBuf::from("/tmp/sources/team")),
+        ];
+        let warnings = vec![InventoryWarning {
+            code: InventoryWarningCode::UnreadablePath,
+            path: PathBuf::from("/tmp/sources/team/skills/review/SKILL.md"),
+            message: "unreadable".to_owned(),
+        }];
+
+        assert!(inventory_warning_source_ids(&sources, &warnings).is_empty());
     }
 
     #[test]
