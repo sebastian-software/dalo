@@ -126,6 +126,37 @@ grep -q 'DALO_UPDATE_CHECK=never' "$root/README.md"
 grep -q 'github:sebastian-software/dalo' "$root/site/install.md"
 ! grep -q 'One-time bootstrap publish' "$root/npm/README.md"
 
+resolver_code='blocked_winner_alternate_available'
+resolver_emit="$(sed -n '/for blocked in &blocked_skills {/,/active_skills.sort_by/p' "$root/src/resolver.rs")"
+review_codes="$(sed -n '/pub const fn requires_review(self)/,/^    }/p' "$root/src/resolver.rs")"
+resolver_reference="$(sed -n '/^Resolution diagnostics use these codes/,/^## Store Layout/p' "$root/docs/reference.md")"
+resolver_troubleshooting="$(sed -n '/^### Resolver Diagnostics$/,/^### Required-Closure Block Reasons$/p' "$root/docs/troubleshooting.md")"
+assert_blocked_winner_alternate_docs() {
+  reference="$1"
+  troubleshooting="$2"
+  printf '%s\n' "$resolver_emit" | grep -Fq 'for blocked in &blocked_skills' || return 1
+  printf '%s\n' "$resolver_emit" | grep -Fq 'approved_alternates' || return 1
+  printf '%s\n' "$resolver_emit" | grep -Fq 'BlockedWinnerAlternateAvailable' || return 1
+  printf '%s\n' "$resolver_emit" | grep -Fq 'refs.first()' || return 1
+  ! printf '%s\n' "$review_codes" | grep -Fq 'Self::BlockedWinnerAlternateAvailable' || return 1
+  grep -Fq '"blocked_winner_alternate_available"' "$root/src/resolver.rs" || return 1
+  printf '%s\n' "$reference" | grep -Fq "\`$resolver_code\`" || return 1
+  printf '%s\n' "$reference" | grep -Fq '`code`' || return 1
+  printf '%s\n' "$reference" | grep -Fq '`message`' || return 1
+  printf '%s\n' "$reference" | grep -Fq '`source_ref`' || return 1
+  printf '%s\n' "$troubleshooting" | grep -Fq "\`$resolver_code\`" || return 1
+  printf '%s\n' "$troubleshooting" | grep -Fq 'does not auto-promote the alternate' || return 1
+  printf '%s\n' "$troubleshooting" | grep -Fq 'lower `dalo source priority` value' || return 1
+}
+assert_blocked_winner_alternate_docs "$resolver_reference" "$resolver_troubleshooting"
+
+# The complete reference and recovery row are required, not optional prose.
+missing_resolver_reference="$(printf '%s\n' "$resolver_reference" | sed "/$resolver_code/d")"
+if assert_blocked_winner_alternate_docs "$missing_resolver_reference" "$resolver_troubleshooting"; then
+  echo 'resolver diagnostic reference gate accepted a missing code' >&2
+  exit 1
+fi
+
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/dalo-docs-test.XXXXXX")"
 
 cleanup() {

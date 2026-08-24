@@ -1085,7 +1085,7 @@ canonical `resolved_commit`, and the observed `checkout_commit`. For catalogs,
 the resolved commit comes from `source-lock.toml`; a differing checkout commit
 is preserved in output so drift remains visible.
 
-Resolution diagnostics use these codes when present in `status.resolution.diagnostics`: `pending_approval`, `local_override`, `shadowed`, `required_expanded`, `cross_source_require`, `required_blocked`, `legacy_bare_approval`, and `audit_failed`. For recovery steps, see [Troubleshooting and FAQ](troubleshooting.md).
+Resolution diagnostics use these codes when present in `status.resolution.diagnostics`: `pending_approval`, `local_override`, `shadowed`, `required_expanded`, `cross_source_require`, `required_blocked`, `legacy_bare_approval`, `audit_failed`, and `blocked_winner_alternate_available`. Each JSON entry has `code`, a human-readable `message`, and optional `source_ref`. `blocked_winner_alternate_available` is advisory: its `source_ref` identifies the approved alternate, while `required_blocked` identifies the blocked winner and remains the check-blocking diagnostic. For recovery steps, see [Troubleshooting and FAQ](troubleshooting.md).
 
 ## Store Layout
 
