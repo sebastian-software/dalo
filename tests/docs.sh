@@ -284,6 +284,9 @@ for path in tools generated hooks plugins; do
 done
 printf '%s\n' "$store_paths" | grep -Fq 'plugin_state_file: root.join("plugins/state.json")'
 printf '%s\n' "$store_layout" | grep -Fq '`plugins/state.json`'
+printf '%s\n' "$store_paths" | grep -Fq 'hook_state_file: root.join("hooks/state.json")'
+printf '%s\n' "$store_layout" | grep -Fq '`hooks/state.json`'
+printf '%s\n' "$store_layout" | grep -Fq 'created lazily, not by `dalo init`'
 
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/dalo-docs-test.XXXXXX")"
 
