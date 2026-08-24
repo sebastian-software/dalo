@@ -346,6 +346,7 @@ test('removes a staged binary when final cache promotion fails', async () => {
     const archiveBytes = await fs.readFile(archive);
     const checksum = createHash('sha256').update(archiveBytes).digest('hex');
     await fs.mkdir(binary, { recursive: true });
+    await fs.chmod(binary, 0o600);
     process.env.DALO_RELEASE_BASE_URL = 'https://releases.example.test';
     process.env.TMPDIR = downloadRoot;
     global.fetch = async (url) => new Response(
