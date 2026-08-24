@@ -172,12 +172,31 @@ Doctor includes `ok` and `info` codes as well as warnings/errors. Codes not list
 | `broken_owned_symlink` | error | Run `dalo resolve remove-owned <id>`, then `dalo sync` if it should be recreated. |
 | `owned_path_real_entry` | error | Run `dalo resolve remove-owned <id>`; the real entry stays in place. |
 | `missing_owned_symlink` | warning | Run `dalo resolve remove-owned <id>`, then `dalo sync` if needed. |
+| `owned_symlink_repointed` | error | Run the suggested `dalo resolve remove-owned <id>` command, then `dalo sync` if the recorded skill should be recreated. |
 | `dirty_source` | error for team/catalog, warning for local | The checkout has local edits to tracked files (untracked files such as `.DS_Store` no longer count). Commit, stash, discard, or intentionally keep them. |
 | `source_missing` | error | The enabled source's checkout is missing from disk or could not be read. Restore/re-clone it (or fix its permissions), or run `dalo source remove <id>`. |
+| `source_inventory_degraded` | error | Follow the reported repair hint to correct the inventory warning, then run `dalo sync`. Existing links are preserved until the source can be scanned safely. |
 | `pending_approval` | warning | Add the needed approval or leave the skill pending. |
 | `required_closure_blocked` | error | Resolve the closure block reason shown in the message. |
 | `security_audit_blocked` | error | An active skill has an unaccepted high/critical audit finding; `sync` will refuse to link it. Review with `dalo audit <ref>` and accept the risk or remove/replace the skill. |
 | `security_audit_failed` | warning | An active skill's deterministic security audit could not be completed (for example unreadable content). Investigate with `dalo audit <ref>`. |
+| `tool_pending_approval` | warning | Review the exact tool contract, then run the reported `dalo approve tool <source-ref>` command. |
+| `tool_hash_drift` | error | Inspect the changed contract with the reported `dalo tool audit <source-ref>` command. Approve it again only after review. |
+| `tool_runtime_missing` | error | Install or restore the runtime named in the finding, then run `dalo status` to recheck the tool. |
+| `tool_platform_mismatch` | warning | Use a platform supported by the tool contract, or change the selected plugin/tool configuration. |
+| `tool_approval_revoked` | warning | Review the immutable tool bytes and run the reported `dalo approve tool <source-ref>` command if execution is still intended. |
+| `tool_audit_failed` | error | Run the reported `dalo tool audit <source-ref>` command; repair the immutable staging or approval problem before using the tool. |
+| `tool_ready` | ok | The tool's exact execution contract is approved and staged; no recovery is required. |
+| `tool_staging_debris` | warning | After confirming no sync or approval is running, remove the reported `.tool-stage-*` directory; it was never approved or promoted. |
+| `hook_pending_approval` | warning/error | Review the hook and its referenced tool. Run the reported `dalo approve hook <source-ref>` command when the hook itself is pending; also resolve any provider blocker in the finding. |
+| `hook_hash_drift` | error | Inspect the changed contract with the reported `dalo hook show <source-ref>` command, then approve the reviewed hook again. |
+| `hook_tool_unavailable` | error | Review and approve the referenced tool with the reported `dalo approve tool <source-ref>` command. |
+| `hook_ready` | ok | The hook and its referenced tool are independently approved; no recovery is required. |
+| `hook_provider_disabled` | warning | Enable hook projection for the reported provider/target, or keep the hook managed only if native projection is not required. |
+| `hook_provider_unverified` | error | Install or update the reported provider runtime to a supported, verifiable version, then run `dalo status`. |
+| `hook_native_conflict` | error | Restore the Dalo-owned native sidecar or move conflicting provider content out of the reported target path. |
+| `plugin_projection_blocked` | error | Run `dalo plan` and resolve the required component blocker before projecting the plugin. |
+| `plugin_projection_conflict` | error | Restore the Dalo-owned native plugin link or move foreign provider content out of the target path. |
 | `generated_delivery_invalid` | error | Inspect the reported generated cache path. Move a corrupt hash directory out of `generated/sha256`, then rerun `dalo sync` so the approved derivation can be rebuilt. |
 | `generated_delivery_staging_debris` | warning | Inspect and remove the reported `.delivery-stage-*` directory after confirming no sync is running; staging debris was never activated. |
 | `instruction_pack_topic_overlap` | warning | Rename topics or disable one overlapping pack if the overlap is not intended. |

@@ -181,6 +181,82 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+# Keep the actionable tool, hook, plugin-projection, inventory, and owned-link
+# doctor rows in the troubleshooting table aligned with the production emitter.
+# The expected names come from DoctorCode callsites and its serializer mapping;
+# this deliberately avoids a hand-maintained list of code strings.
+doctor_source="$root/src/doctor.rs"
+doctor_table="$test_root/doctor-findings-table"
+doctor_emitted="$test_root/doctor-emitted-variants"
+doctor_enum="$test_root/doctor-enum-variants"
+doctor_expected="$test_root/doctor-expected-codes"
+doctor_documented="$test_root/doctor-documented-codes"
+
+awk '
+  /^fn code_name/ { exit }
+  { print }
+' "$doctor_source" \
+  | grep -o 'DoctorCode::[A-Za-z0-9_]*' \
+  | sed 's/DoctorCode:://' \
+  | grep -E '^(Tool|Hook|PluginProjection|SourceInventoryDegraded|OwnedSymlinkRepointed)' \
+  | sort -u > "$doctor_emitted"
+
+awk '
+  /^pub enum DoctorCode/ { in_enum = 1; next }
+  in_enum && /^}/ { exit }
+  in_enum && /^[[:space:]]+[A-Z][A-Za-z0-9_]*,/ {
+    line = $0
+    sub(/^[[:space:]]+/, "", line)
+    sub(/,.*/, "", line)
+    print line
+  }
+' "$doctor_source" | sort -u > "$doctor_enum"
+
+comm -23 "$doctor_emitted" "$doctor_enum" | grep -q '^' && {
+  echo "doctor emitter uses a DoctorCode missing from the enum" >&2
+  exit 1
+}
+
+awk '
+  /^fn code_name/ { in_mapping = 1; next }
+  in_mapping && /^}/ { exit }
+  in_mapping && /DoctorCode::/ {
+    line = $0
+    sub(/.*DoctorCode::/, "", line)
+    split(line, fields, / => "/)
+    variant = fields[1]
+    code = fields[2]
+    sub(/".*/, "", code)
+    print variant " " code
+  }
+' "$doctor_source" \
+  | while IFS=' ' read -r variant code; do
+      grep -Fx "$variant" "$doctor_emitted" >/dev/null && printf '%s\n' "$code"
+    done \
+  | sort -u > "$doctor_expected"
+
+awk '
+  /^## Doctor Findings/ { in_table = 1; next }
+  in_table && /^## / { exit }
+  in_table && /^\| `/ {
+    line = $0
+    sub(/^\| `/, "", line)
+    split(line, fields, /`/)
+    print fields[1]
+  }
+' "$root/docs/troubleshooting.md" > "$doctor_table"
+
+grep -E '^(tool_.*|hook_.*|plugin_projection_.*|source_inventory_degraded|owned_symlink_repointed)$' \
+  "$doctor_table" | sort > "$doctor_documented"
+
+duplicates="$(sort "$doctor_documented" | uniq -d)"
+test -z "$duplicates" || {
+  echo "duplicate actionable doctor documentation rows:" >&2
+  printf '%s\n' "$duplicates" >&2
+  exit 1
+}
+diff -u "$doctor_expected" "$doctor_documented"
+
 store="$test_root/store"
 target="$test_root/skills"
 source="$test_root/source"
