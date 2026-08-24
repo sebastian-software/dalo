@@ -1539,7 +1539,7 @@ fn check_resolution(
     // so `doctor --check` does not report a healthy store while sync would
     // refuse to link a skill with an unaccepted blocking finding. Read-only
     // (persist = false), so it never writes audit reports.
-    let audits = audit::audit_active_skills(paths, resolution, false);
+    let audits = audit::audit_active_skills_with_config(paths, resolution, false, config);
     for source_ref in &audits.blocking {
         findings.push(finding_error(
             DoctorCode::SecurityAuditBlocked,

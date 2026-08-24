@@ -291,7 +291,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
 
     let mut plugins = live.plugins;
     let mut live_resolution = live.resolution;
-    let audits = audit::audit_active_skills(&paths, &live_resolution, false);
+    let audits = audit::audit_active_skills_with_config(&paths, &live_resolution, false, &config);
     for failure in &audits.failures {
         if let Some(source) = sources
             .iter_mut()
