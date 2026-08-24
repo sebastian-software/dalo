@@ -2155,6 +2155,12 @@ pub fn print_doctor_report(report: &DoctorReport) {
     if omitted > 0 {
         println!("details: {omitted} info/ok findings omitted; use --json for the full report");
     }
+    if report.summary.errors > 0 {
+        println!(
+            "hint: rerun `{}` to exit non-zero on errors",
+            store::dalo_command(&report.store, "doctor --check")
+        );
+    }
 }
 
 fn doctor_severity_label(severity: DoctorSeverity) -> &'static str {

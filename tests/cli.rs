@@ -3307,6 +3307,56 @@ fn doctor_check_should_keep_json_report_and_fail_for_errors() {
 }
 
 #[test]
+fn doctor_should_keep_default_success_but_explain_check_for_a_custom_store() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("missing-store");
+    let store_root = store::resolve_store_path(Some(&store)).expect("store path should resolve");
+    let check_command = store::dalo_command(&store_root, "doctor --check");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("doctor")
+        .assert()
+        .success()
+        .code(0)
+        .stdout(predicate::str::contains("summary: errors=1"))
+        .stdout(predicate::str::contains(format!(
+            "hint: rerun `{check_command}` to exit non-zero on errors"
+        )));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["doctor", "--check"])
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(predicate::str::contains("summary: errors=1"))
+        .stdout(predicate::str::contains(check_command));
+}
+
+#[test]
+fn doctor_help_should_make_check_discoverable() {
+    dalo_command()
+        .args(["doctor", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "By default, doctor reports findings and exits zero",
+        ))
+        .stdout(predicate::str::contains("dalo doctor --check"))
+        .stdout(predicate::str::contains("dalo sync --check"));
+
+    dalo_command()
+        .args(["help", "doctor"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("dalo doctor --check"))
+        .stdout(predicate::str::contains("dalo sync --check"));
+}
+
+#[test]
 fn doctor_check_should_fail_for_a_degraded_source_inventory() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -3676,6 +3726,7 @@ fn doctor_json_should_report_missing_store_without_creating_it() {
             store::dalo_command(&store_root, "init")
         )))
         .stdout(predicate::str::contains("\"errors\": 1"))
+        .stdout(predicate::str::contains("hint: rerun").not())
         .stdout(predicate::str::contains("config_invalid").not())
         .stdout(predicate::str::contains("state_invalid").not())
         .stdout(predicate::str::contains("lock_invalid").not())

@@ -147,6 +147,10 @@ pub enum Command {
     )]
     Resolve(ResolveCommand),
     /// Diagnose store, target, Git, and lockfile health.
+    #[command(
+        long_about = "Diagnose store, target, Git, and lockfile health.\n\nBy default, doctor reports findings and exits zero so existing interactive and reporting scripts remain compatible. Use --check in CI or scripts to exit non-zero when doctor finds errors.",
+        after_help = "Examples:\n  dalo doctor\n  dalo doctor --check\n  dalo --store /path/to/store doctor --check\n\nUse --check when an error finding should make CI or a script fail. `dalo sync --check` similarly fails when synchronization needs review."
+    )]
     Doctor(CheckArgs),
     /// Inspect a skill with deterministic checks and an optional isolated AI reviewer.
     #[command(
