@@ -306,8 +306,8 @@ assert_target_reference() {
   expected_targets="$(printf '%s\n' $published_targets | sort -u)"
   documented_targets="$(
     printf '%s\n' "$section" \
-      | grep -Eo '\`[A-Za-z0-9_]+-(unknown-linux-(gnu|musl)|apple-darwin)\`' \
-      | tr -d '\`' \
+      | grep -Eo '`[A-Za-z0-9_]+-(unknown-linux-(gnu|musl)|apple-darwin)`' \
+      | tr -d '`' \
       | sort -u
   )"
   test "$documented_targets" = "$expected_targets" || return 1
