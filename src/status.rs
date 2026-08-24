@@ -2160,17 +2160,19 @@ fn doctor_finding_lines(finding: &DoctorFinding) -> Vec<String> {
         finding.code
     );
 
-    if finding.code == DoctorCode::SourceInventoryDegraded
-        && let Some((summary, details)) = finding.message.split_once(": ")
-        && let Some(warnings) = source_inventory_warnings(details)
+    if finding.code == DoctorCode::SourceInventoryDegraded && !finding.inventory_warnings.is_empty()
     {
+        let summary = finding
+            .message
+            .split_once(": ")
+            .map_or(finding.message.as_str(), |(summary, _)| summary);
         let mut lines = vec![
             format!("{prefix}:"),
             format!("  {}", terminal_safe_text(summary)),
         ];
-        for warning in warnings {
-            let code = terminal_safe_text(&warning.code);
-            let path = terminal_safe_text(&warning.path);
+        for warning in grouped_source_inventory_warnings(&finding.inventory_warnings) {
+            let code = warning.code.to_string();
+            let path = terminal_safe_path(&warning.path);
             if warning.messages.len() == 1 {
                 lines.push(format!(
                     "  {code} at `{path}`: {}",
@@ -2203,67 +2205,35 @@ fn doctor_finding_lines(finding: &DoctorFinding) -> Vec<String> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct SourceInventoryWarningLine {
-    code: String,
-    path: String,
+    code: InventoryWarningCode,
+    path: PathBuf,
     messages: Vec<String>,
 }
 
-/// Parse the stable, existing doctor message for source-inventory warnings.
-/// Returning `None` keeps an unfamiliar message on the legacy one-line path
-/// instead of risking that diagnostic content is lost.
-fn source_inventory_warnings(details: &str) -> Option<Vec<SourceInventoryWarningLine>> {
+fn grouped_source_inventory_warnings(
+    inventory_warnings: &[InventoryWarning],
+) -> Vec<SourceInventoryWarningLine> {
     let mut warnings: Vec<SourceInventoryWarningLine> = Vec::new();
-    let mut remaining = details;
-    while !remaining.is_empty() {
-        let (code, after_code) = remaining.split_once(" at `")?;
-        if !is_inventory_warning_code(code) {
-            return None;
-        }
-        let (path, after_path) = after_code.split_once("`: ")?;
-        let (message, next) = match next_inventory_warning_boundary(after_path) {
-            Some(boundary) => (&after_path[..boundary], &after_path[boundary + 2..]),
-            None => (after_path, ""),
-        };
-        if path.is_empty() || message.is_empty() {
-            return None;
-        }
-        if let Some(warning) = warnings
-            .iter_mut()
-            .find(|warning| warning.code == code && warning.path == path)
-        {
-            if !warning.messages.iter().any(|existing| existing == message) {
-                warning.messages.push(message.to_owned());
+    for inventory_warning in inventory_warnings {
+        if let Some(warning) = warnings.iter_mut().find(|warning| {
+            warning.code == inventory_warning.code && warning.path == inventory_warning.path
+        }) {
+            if !warning
+                .messages
+                .iter()
+                .any(|existing| existing == &inventory_warning.message)
+            {
+                warning.messages.push(inventory_warning.message.clone());
             }
         } else {
             warnings.push(SourceInventoryWarningLine {
-                code: code.to_owned(),
-                path: path.to_owned(),
-                messages: vec![message.to_owned()],
+                code: inventory_warning.code,
+                path: inventory_warning.path.clone(),
+                messages: vec![inventory_warning.message.clone()],
             });
         }
-        remaining = next;
     }
-    (!warnings.is_empty()).then_some(warnings)
-}
-
-fn is_inventory_warning_code(value: &str) -> bool {
-    !value.is_empty()
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte == b'_')
-}
-
-/// Find a separator only when the following text begins another rendered
-/// inventory warning. A semicolon in an untrusted warning message therefore
-/// remains part of that message.
-fn next_inventory_warning_boundary(value: &str) -> Option<usize> {
-    value.match_indices("; ").find_map(|(index, _)| {
-        let candidate = &value[index + 2..];
-        candidate
-            .split_once(" at `")
-            .filter(|(code, _)| is_inventory_warning_code(code))
-            .map(|_| index)
-    })
+    warnings
 }
 
 fn doctor_severity_label(severity: DoctorSeverity) -> &'static str {
@@ -2487,6 +2457,18 @@ mod tests {
             code: DoctorCode::SourceInventoryDegraded,
             message: "source `team` inventory is degraded; sync preserves existing links: invalid_slot_name at `/tmp/team/skills/Review/SKILL.md`: frontmatter name `Review Name` is not a valid slot name; still unsafe; invalid_slot_name at `/tmp/team/skills/Review/SKILL.md`: folder name `Review` is not a valid slot name".to_owned(),
             next_command: Some("rename /tmp/team/skills/Review".to_owned()),
+            inventory_warnings: vec![
+                InventoryWarning {
+                    code: InventoryWarningCode::InvalidSlotName,
+                    path: PathBuf::from("/tmp/team/skills/Review/SKILL.md"),
+                    message: "frontmatter name `Review Name` is not a valid slot name; still unsafe; invalid_slot_name at `/fake/path`: injected".to_owned(),
+                },
+                InventoryWarning {
+                    code: InventoryWarningCode::InvalidSlotName,
+                    path: PathBuf::from("/tmp/team/skills/Review/SKILL.md"),
+                    message: "folder name `Review` is not a valid slot name".to_owned(),
+                },
+            ],
         };
 
         assert_eq!(
@@ -2495,7 +2477,7 @@ mod tests {
                 "error   source_inventory_degraded:",
                 "  source `team` inventory is degraded; sync preserves existing links",
                 "  invalid_slot_name at `/tmp/team/skills/Review/SKILL.md`:",
-                "    - frontmatter name `Review Name` is not a valid slot name; still unsafe",
+                "    - frontmatter name `Review Name` is not a valid slot name; still unsafe; invalid_slot_name at `/fake/path`: injected",
                 "    - folder name `Review` is not a valid slot name",
                 "  next: rename /tmp/team/skills/Review",
             ]
@@ -2509,6 +2491,7 @@ mod tests {
             code: DoctorCode::StoreMissing,
             message: "unsafe\nmessage\u{1b}[2J".to_owned(),
             next_command: Some("dalo doctor\r\nnext".to_owned()),
+            inventory_warnings: Vec::new(),
         };
 
         let lines = doctor_finding_lines(&finding);
