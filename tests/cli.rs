@@ -3442,6 +3442,75 @@ fn init_should_create_store_layout() {
 }
 
 #[test]
+fn init_human_paths_should_compact_home_and_store_without_changing_json_or_commands() {
+    let mut command = dalo_command();
+    let store = command
+        .test_environment()
+        .home
+        .join(format!("custom-{}-store", "very-long-".repeat(12)));
+    let stdout = command
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let stdout = String::from_utf8(stdout).expect("human init output should be utf8");
+
+    assert!(stdout.contains(&format!(
+        "dalo store: ~/{}",
+        store.file_name().unwrap().to_string_lossy()
+    )));
+    assert!(stdout.contains("created  create_dir   store:/local/skills"));
+    assert!(stdout.contains("created  write_file   store:/config.toml"));
+    assert!(stdout.contains(&format!(
+        "dalo --store '{}' target link <codex|claude|openclaw|hermes|generic> [path]",
+        store.display()
+    )));
+    assert!(stdout.contains(&format!("dalo --store '{}' sync", store.display())));
+    assert!(
+        stdout
+            .lines()
+            .filter(|line| {
+                matches!(
+                    line.split_whitespace().next(),
+                    Some("created" | "existing" | "planned" | "repaired")
+                )
+            })
+            .all(|line| line.chars().count() < 64)
+    );
+
+    let json = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "init"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let json: serde_json::Value =
+        serde_json::from_slice(&json).expect("JSON init output should deserialize");
+    let comparable_store = store::comparable_path(&store);
+    assert!(
+        json["operations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|operation| {
+                operation["path"]
+                    == comparable_store
+                        .join("local/skills")
+                        .to_string_lossy()
+                        .as_ref()
+            }),
+        "JSON paths should remain absolute and un-compacted: {json}"
+    );
+}
+
+#[test]
 fn init_should_warn_when_existing_store_files_are_invalid() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -3463,15 +3532,9 @@ fn init_should_warn_when_existing_store_files_are_invalid() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Store needs attention:"))
-        .stdout(predicate::str::contains(
-            store.join("config.toml").to_string_lossy(),
-        ))
-        .stdout(predicate::str::contains(
-            store.join("lock.toml").to_string_lossy(),
-        ))
-        .stdout(predicate::str::contains(
-            store.join("approvals.toml").to_string_lossy(),
-        ))
+        .stdout(predicate::str::contains("store:/config.toml"))
+        .stdout(predicate::str::contains("store:/lock.toml"))
+        .stdout(predicate::str::contains("store:/approvals.toml"))
         .stdout(predicate::str::contains("Store ready.").not());
 }
 
@@ -5538,6 +5601,149 @@ fn sync_should_report_existing_on_second_run() {
 }
 
 #[test]
+fn human_sync_status_and_doctor_paths_should_be_compact_but_commands_and_json_absolute() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir
+        .path()
+        .join(format!("{}store", "very-long-custom-store-".repeat(8)));
+    let target = temp_dir
+        .path()
+        .join(format!("{}target", "very-long-custom-target-".repeat(8)));
+    setup_store_with_skill_and_target(&store, &target);
+
+    let sync_output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let sync_output = String::from_utf8(sync_output).expect("sync output should be utf8");
+    let comparable_target = store::comparable_path(&target);
+    assert!(
+        sync_output.contains(&format!("target[generic]: {}", comparable_target.display())),
+        "unexpected sync output:\n{sync_output}"
+    );
+    let operation = sync_output
+        .lines()
+        .find(|line| line.starts_with("applied"))
+        .expect("sync should print its applied operation");
+    assert_eq!(
+        operation,
+        "applied  create     target[generic]:/review -> store:/local/skills/review"
+    );
+    assert!(operation.chars().count() < 80);
+
+    let sync_json = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "sync"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let sync_json: serde_json::Value =
+        serde_json::from_slice(&sync_json).expect("JSON sync output should deserialize");
+    assert_eq!(
+        sync_json["operations"][0]["link_path"],
+        comparable_target.join("review").to_string_lossy().as_ref()
+    );
+    assert_eq!(
+        sync_json["operations"][0]["desired_path"],
+        store.join("local/skills/review").to_string_lossy().as_ref()
+    );
+
+    std::fs::remove_file(target.join("review")).expect("owned link should be removable");
+    create_unmanaged_skill(&target, "review");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("materialization blocks:"))
+        .stdout(predicate::str::contains("target[generic]:/review"))
+        .stdout(predicate::str::contains(format!(
+            "generic      linked  {}",
+            target.display()
+        )));
+
+    std::fs::remove_file(store.join("config.toml")).expect("config should be removable");
+    let comparable_store = store::comparable_path(&store);
+    let repair_command = format!("next=dalo --store '{}' init", comparable_store.display());
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("doctor")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("store:/config.toml"))
+        .stdout(predicate::str::contains("target[generic]:/review"))
+        .stdout(predicate::str::contains(repair_command));
+
+    let doctor_json = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "doctor"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let doctor_json: serde_json::Value =
+        serde_json::from_slice(&doctor_json).expect("JSON doctor output should deserialize");
+    let config_path = comparable_store
+        .join("config.toml")
+        .to_string_lossy()
+        .into_owned();
+    assert!(
+        doctor_json["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|finding| {
+                finding["message"]
+                    .as_str()
+                    .is_some_and(|message| message.contains(&config_path))
+            })
+    );
+}
+
+#[test]
+fn sync_path_labels_should_escape_controls_and_disambiguate_shared_targets() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store\n\u{1b}[2J");
+    let target = temp_dir.path().join("target\r\u{1b}[3J");
+    store::init_store(store.clone(), false).expect("store should initialize");
+    dalo::target::link_target(&store, "codex", Some(&target), false)
+        .expect("codex target should link");
+    dalo::target::link_target(&store, "claude", Some(&target), false)
+        .expect("claude target should share the physical directory");
+    let skill = store.join("local/skills/review");
+    std::fs::create_dir_all(&skill).expect("local skill should be created");
+    std::fs::write(skill.join("SKILL.md"), "# Review\n").expect("skill should be written");
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let output = String::from_utf8(output).expect("escaped human output should be utf8");
+
+    assert!(!output.contains('\u{1b}'));
+    assert!(output.contains("store\\n\\u{1b}[2J"));
+    assert!(output.contains("target\\r\\u{1b}[3J"));
+    assert!(output.contains("target[claude+codex]:/review -> store:/local/skills/review"));
+}
+
+#[test]
 fn status_should_cap_the_human_readable_active_skill_list() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -6712,9 +6918,7 @@ fn protected_requirement_should_keep_dependent_unlinked_without_failing_check() 
         .args(["sync", "--check"])
         .assert()
         .success()
-        .stdout(predicate::str::contains(
-            target.join("alpha").to_string_lossy(),
-        ))
+        .stdout(predicate::str::contains("target[generic]:/alpha"))
         .stdout(predicate::str::contains(
             "required closure kept because a required slot is protected",
         ));
