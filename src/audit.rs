@@ -523,6 +523,29 @@ fn audit_skill_with_source_roots(
     let exclude_root_source_metadata = options.exclude_root_source_metadata
         || configured_source_roots.contains(source_ref, skill_path);
     let content_hash = audit_content_hash(skill_path, exclude_root_source_metadata)?;
+    audit_skill_with_verified_content_hash(
+        paths,
+        source_ref,
+        skill_path,
+        options,
+        exclude_root_source_metadata,
+        content_hash,
+    )
+}
+
+/// Audit a snapshot whose exact scanner content hash was computed by the caller.
+///
+/// Generated-delivery verification computes its delivery fingerprint and this
+/// hash from the same immutable bytes, avoiding a second full tree read while
+/// preserving the persisted-report compatibility and fail-closed audit gates.
+pub(crate) fn audit_skill_with_verified_content_hash(
+    paths: &StorePaths,
+    source_ref: &str,
+    skill_path: &Path,
+    options: &AuditOptions,
+    exclude_root_source_metadata: bool,
+    content_hash: String,
+) -> DaloResult<AuditReport> {
     let existing = match read_report(paths, source_ref, &content_hash) {
         Ok(report) => Some(report),
         Err(error) if unusable_cached_report(&error) => None,
@@ -710,11 +733,21 @@ fn report_matches_snapshot(
 /// directory without such entries retains the historical catalog hash and can
 /// reuse existing safe reports.
 fn audit_content_hash(skill_path: &Path, exclude_root_git_metadata: bool) -> DaloResult<String> {
+    #[cfg(test)]
+    AUDIT_CONTENT_HASH_INVOCATIONS.with(|count| count.set(count.get() + 1));
     let catalog_hash = if exclude_root_git_metadata {
         catalog::hash_source_root_directory(skill_path)?
     } else {
         catalog::hash_directory(skill_path)?
     };
+    audit_content_hash_from_catalog_hash(skill_path, exclude_root_git_metadata, catalog_hash)
+}
+
+pub(crate) fn audit_content_hash_from_catalog_hash(
+    skill_path: &Path,
+    exclude_root_git_metadata: bool,
+    catalog_hash: String,
+) -> DaloResult<String> {
     let mut git_entries = Vec::new();
     collect_git_metadata_entries(
         skill_path,
@@ -1050,6 +1083,7 @@ fn static_scan(skill_path: &Path) -> DaloResult<(Vec<AuditFinding>, AuditCoverag
 #[cfg(test)]
 thread_local! {
     static STATIC_SCAN_INVOCATIONS: Cell<usize> = const { Cell::new(0) };
+    static AUDIT_CONTENT_HASH_INVOCATIONS: Cell<usize> = const { Cell::new(0) };
 }
 
 #[cfg(test)]
@@ -1060,6 +1094,16 @@ fn reset_static_scan_invocations() {
 #[cfg(test)]
 fn static_scan_invocations() -> usize {
     STATIC_SCAN_INVOCATIONS.with(Cell::get)
+}
+
+#[cfg(test)]
+fn reset_audit_content_hash_invocations() {
+    AUDIT_CONTENT_HASH_INVOCATIONS.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+fn audit_content_hash_invocations() -> usize {
+    AUDIT_CONTENT_HASH_INVOCATIONS.with(Cell::get)
 }
 
 fn static_scan_with_options(
@@ -3322,6 +3366,42 @@ mod tests {
         );
         assert_eq!(cached.static_findings, persisted.static_findings);
         assert_eq!(cached.coverage, persisted.coverage);
+    }
+
+    #[test]
+    fn verified_content_hash_should_reuse_a_persisted_audit_without_rehashing() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp.path().join("store");
+        store::init_store(store_root.clone(), false).expect("store should initialize");
+        let paths = StorePaths::new(store_root);
+        let skill = write_skill(temp.path(), "Summarize a pull request.\n");
+
+        reset_static_scan_invocations();
+        reset_audit_content_hash_invocations();
+        let first = audit_skill(
+            &paths,
+            "path:review-helper",
+            &skill,
+            &AuditOptions::default(),
+        )
+        .expect("initial audit should succeed");
+        assert_eq!(static_scan_invocations(), 1);
+        assert_eq!(audit_content_hash_invocations(), 1);
+
+        let cached = audit_skill_with_verified_content_hash(
+            &paths,
+            "path:review-helper",
+            &skill,
+            &AuditOptions::default(),
+            false,
+            first.content_hash.clone(),
+        )
+        .expect("verified snapshot should reuse the exact persisted audit");
+
+        assert_eq!(audit_content_hash_invocations(), 1);
+        assert_eq!(static_scan_invocations(), 1);
+        assert_eq!(cached.static_findings, first.static_findings);
+        assert_eq!(cached.coverage, first.coverage);
     }
 
     #[test]

@@ -963,7 +963,28 @@ fn valid_provider_id(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
 }
 
+pub(crate) struct DirectoryFingerprint {
+    pub(crate) fingerprint: String,
+    pub(crate) catalog_hash: String,
+}
+
 pub(crate) fn fingerprint_directory(root: &Path) -> Result<String, String> {
+    fingerprint_directory_snapshot(root).map(|snapshot| snapshot.fingerprint)
+}
+
+pub(crate) fn fingerprint_directory_snapshot(root: &Path) -> Result<DirectoryFingerprint, String> {
+    fingerprint_directory_snapshot_with(root, |path| {
+        fs::read(path).map_err(|error| format!("cannot read `{}`: {error}", path.display()))
+    })
+}
+
+fn fingerprint_directory_snapshot_with<R>(
+    root: &Path,
+    mut read_file: R,
+) -> Result<DirectoryFingerprint, String>
+where
+    R: FnMut(&Path) -> Result<Vec<u8>, String>,
+{
     let metadata = fs::symlink_metadata(root)
         .map_err(|error| format!("cannot inspect `{}`: {error}", root.display()))?;
     if metadata.file_type().is_symlink() || !metadata.is_dir() {
@@ -971,30 +992,52 @@ pub(crate) fn fingerprint_directory(root: &Path) -> Result<String, String> {
     }
 
     let mut entries = Vec::new();
-    collect_fingerprint_entries(root, root, &mut entries)?;
+    collect_fingerprint_entries(root, root, &mut entries, &mut read_file)?;
     entries.sort_by(|left, right| left.0.cmp(&right.0));
     let mut hash = Sha256::new();
+    let mut catalog_hash = Sha256::new();
     for (relative, kind, mode, content) in entries {
-        hash.update(relative.as_os_str().as_encoded_bytes());
+        let relative = relative.as_os_str().as_encoded_bytes();
+        hash.update(relative);
         hash.update([0]);
         hash.update([kind]);
         hash.update(mode.to_be_bytes());
         hash.update((content.len() as u64).to_be_bytes());
-        hash.update(content);
+        hash.update(&content);
+        if kind == b'f' {
+            catalog_hash.update((relative.len() as u64).to_le_bytes());
+            catalog_hash.update(relative);
+            catalog_hash.update(*b"F");
+            catalog_hash.update(mode.to_le_bytes());
+            catalog_hash.update((content.len() as u64).to_le_bytes());
+            catalog_hash.update(&content);
+        }
     }
     let digest = hash.finalize();
     let hex = digest
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect::<String>();
-    Ok(format!("sha256:{hex}"))
+    let catalog_hash = catalog_hash
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    Ok(DirectoryFingerprint {
+        fingerprint: format!("sha256:{hex}"),
+        catalog_hash,
+    })
 }
 
-fn collect_fingerprint_entries(
+fn collect_fingerprint_entries<R>(
     root: &Path,
     directory: &Path,
     entries: &mut Vec<(PathBuf, u8, u32, Vec<u8>)>,
-) -> Result<(), String> {
+    read_file: &mut R,
+) -> Result<(), String>
+where
+    R: FnMut(&Path) -> Result<Vec<u8>, String>,
+{
     let children = fs::read_dir(directory)
         .map_err(|error| format!("cannot read `{}`: {error}", directory.display()))?;
     for child in children {
@@ -1013,10 +1056,9 @@ fn collect_fingerprint_entries(
         }
         if metadata.is_dir() {
             entries.push((relative, b'd', 0, Vec::new()));
-            collect_fingerprint_entries(root, &path, entries)?;
+            collect_fingerprint_entries(root, &path, entries, read_file)?;
         } else if metadata.is_file() {
-            let content = fs::read(&path)
-                .map_err(|error| format!("cannot read `{}`: {error}", path.display()))?;
+            let content = read_file(&path)?;
             entries.push((
                 relative,
                 b'f',
@@ -1425,6 +1467,33 @@ required = true
 "#,
         )
         .unwrap();
+    }
+
+    #[test]
+    fn directory_snapshot_should_read_each_file_once_and_preserve_both_hashes() {
+        let temporary = tempfile::tempdir().expect("tempdir should be created");
+        let root = temporary.path().join("provider");
+        fs::create_dir_all(root.join("nested")).expect("fixture directories should be created");
+        fs::write(root.join("SKILL.md"), "# Generated\n").expect("skill should be written");
+        fs::write(root.join("nested/config.json"), "{}\n").expect("config should be written");
+        let mut reads = BTreeMap::new();
+
+        let snapshot = fingerprint_directory_snapshot_with(&root, |path| {
+            *reads.entry(path.to_path_buf()).or_insert(0_usize) += 1;
+            fs::read(path).map_err(|error| error.to_string())
+        })
+        .expect("snapshot should succeed");
+
+        assert_eq!(reads.len(), 2);
+        assert!(reads.values().all(|count| *count == 1));
+        assert_eq!(
+            snapshot.fingerprint,
+            fingerprint_directory(&root).expect("legacy fingerprint should remain stable")
+        );
+        assert_eq!(
+            snapshot.catalog_hash,
+            crate::catalog::hash_directory(&root).expect("audit hash input should remain stable")
+        );
     }
 
     #[test]
