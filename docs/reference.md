@@ -1112,6 +1112,10 @@ After `dalo init`, the store contains:
 | `local/skills/` | Local private skill directories. |
 | `local/agents/` | Local portable canonical agent packages. |
 | `local/instructions/` | Local instruction pack Markdown files. |
+| `tools/` | Immutable, approved tool closures, addressed by their exact staged content. |
+| `generated/` | Content-addressed generated-delivery cache; only approved derivations are promoted. |
+| `hooks/`, `hooks/state.json` | Dalo-owned native hook projections and their dispatcher ownership state. |
+| `plugins/`, `plugins/state.json` | Dalo-owned native plugin projections and their ownership state. |
 | `sources/<id>/checkout/` | Team and catalog Git checkouts. |
 | `sources/.audit-staging/` | Detached incoming team commits retained only while security review is required. |
 

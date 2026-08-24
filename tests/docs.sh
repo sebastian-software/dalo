@@ -276,6 +276,15 @@ if printf '%s\n' "$reference_agent_section" | grep -Fq '`--check` exits with cod
   exit 1
 fi
 
+store_paths="$(sed -n '/impl StorePaths/,/^}/p' "$root/src/store.rs")"
+store_layout="$(awk '/^## Store Layout/{ in_section = 1; next } in_section && /^## /{ exit } in_section{ print }' "$root/docs/reference.md")"
+for path in tools generated hooks plugins; do
+  printf '%s\n' "$store_paths" | grep -Fq "root.join(\"$path\")"
+  printf '%s\n' "$store_layout" | grep -Fq "\`$path/\`"
+done
+printf '%s\n' "$store_paths" | grep -Fq 'plugin_state_file: root.join("plugins/state.json")'
+printf '%s\n' "$store_layout" | grep -Fq '`plugins/state.json`'
+
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/dalo-docs-test.XXXXXX")"
 
 cleanup() {
