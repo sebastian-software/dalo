@@ -68,12 +68,18 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
    curl -fsSL https://dalo.sh/install.sh | DALO_INSTALL_DIR="$HOME/.local/bin" sh
    ```
 
-   Installer environment variables:
+   ### Installer environment variables
 
    - `DALO_VERSION` selects a release. Use `dalo-v<version>`, `v<version>`, or `<version>`.
    - `DALO_INSTALL_DIR` changes the binary destination (default: `~/.local/bin`).
    - `DALO_VERIFY=required` requires Sigstore provenance verification; `auto` is the default.
-   - `DALO_LINUX_LIBC=gnu|musl` and `DALO_TARGET` override platform detection when needed.
+   - `DALO_LINUX_LIBC=gnu|musl` overrides Linux libc detection.
+   - `DALO_TARGET` overrides platform detection when non-empty. Use only a
+     published target: `x86_64-unknown-linux-gnu`,
+     `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-musl`,
+     `aarch64-unknown-linux-musl`, `x86_64-apple-darwin`, or
+     `aarch64-apple-darwin`. An unset or empty value uses detection; an
+     unrecognized value fails when the corresponding release archive is fetched.
 
 3. Ensure the install directory is on `PATH` for this session:
 
