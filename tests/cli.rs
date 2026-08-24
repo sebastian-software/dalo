@@ -4397,11 +4397,15 @@ fn sync_should_create_directory_symlink() {
         .success()
         .stdout(predicate::str::contains("applied"));
 
-    assert!(
-        std::fs::symlink_metadata(target.join("review"))
-            .expect("link should exist")
-            .file_type()
-            .is_symlink()
+    let link = target.join("review");
+    assert_eq!(
+        store::comparable_path(&std::fs::read_link(&link).expect("link should be readable")),
+        store::comparable_path(&store.join("local/skills/review")),
+        "sync should link the managed local skill, not another store path"
+    );
+    assert_eq!(
+        std::fs::read_to_string(link.join("SKILL.md")).expect("linked skill should be readable"),
+        "# Review\n"
     );
 }
 
