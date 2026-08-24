@@ -1,4 +1,6 @@
+use dalo::store;
 use predicates::prelude::*;
+use std::path::Path;
 
 mod common;
 
@@ -25,11 +27,11 @@ fn e2e_local_only_sync_quickstart() {
         .success()
         .stdout(predicate::str::contains("applied"));
 
-    assert!(
-        std::fs::symlink_metadata(target.join("review"))
-            .expect("skill should be linked")
-            .file_type()
-            .is_symlink()
+    assert_owned_skill_link(
+        &target,
+        "review",
+        &store.join("local/skills/review"),
+        "# Review\n",
     );
 }
 
@@ -52,11 +54,27 @@ fn e2e_team_source_sync_from_local_git_repo() {
         .assert()
         .success();
 
-    assert!(
-        std::fs::symlink_metadata(target.join("team"))
-            .expect("team skill should be linked")
-            .file_type()
-            .is_symlink()
+    assert_owned_skill_link(
+        &target,
+        "team",
+        &store.join("sources/company/checkout/skills/team"),
+        "# Team\n",
+    );
+}
+
+fn assert_owned_skill_link(target: &Path, slot: &str, expected: &Path, body: &str) {
+    let link = target.join(slot);
+    let destination = std::fs::read_link(&link).expect("skill should be an owned symlink");
+
+    assert_eq!(
+        store::comparable_path(&destination),
+        store::comparable_path(expected),
+        "{slot} should point at its expected managed store path"
+    );
+    assert_eq!(
+        std::fs::read_to_string(link.join("SKILL.md"))
+            .expect("linked skill content should be readable"),
+        body
     );
 }
 
