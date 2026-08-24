@@ -150,7 +150,8 @@ pub(crate) fn verify_generated_source_snapshots(
     paths: &StorePaths,
     resolution: &Resolution,
 ) -> DaloResult<()> {
-    for skill in &resolution.active_skills {
+    let config = store::read_config(paths)?;
+    let requirements = resolution.active_skills.iter().filter_map(|skill| {
         if let SkillDelivery::Generated {
             source_commit: Some(source_commit),
             recipe_approved: true,
@@ -158,10 +159,12 @@ pub(crate) fn verify_generated_source_snapshots(
             ..
         } = &skill.delivery
         {
-            verify_source_snapshot(paths, &skill.source_ref, source_commit)?;
+            Some((skill.source_ref.as_str(), source_commit.as_str()))
+        } else {
+            None
         }
-    }
-    Ok(())
+    });
+    verify_source_snapshot_requirements(&config, requirements, inspect_source_snapshot)
 }
 
 pub(crate) fn derivation_hash(source_ref: &str, source_commit: &str, recipe_hash: &str) -> String {
@@ -269,27 +272,59 @@ fn verify_source_snapshot(
     source_ref: &str,
     expected_commit: &str,
 ) -> DaloResult<()> {
-    let source_id = source_ref
-        .split_once(':')
-        .map(|(source, _)| source)
-        .ok_or_else(|| DaloError::StateError {
-            reason: format!("generated delivery `{source_ref}` has no source identity"),
-        })?;
     let config = store::read_config(paths)?;
-    let source = config
-        .sources
-        .iter()
-        .find(|source| source.id == source_id)
-        .ok_or_else(|| DaloError::StateError {
-            reason: format!("generated delivery source `{source_id}` is no longer configured"),
-        })?;
-    let actual_commit = crate::git::rev_parse_head(&source.path)?;
-    if actual_commit != expected_commit || crate::git::is_dirty(&source.path)? {
-        return Err(DaloError::StateError {
-            reason: format!(
-                "generated delivery source `{source_id}` changed during execution; output was not promoted"
-            ),
-        });
+    verify_source_snapshot_requirements(
+        &config,
+        std::iter::once((source_ref, expected_commit)),
+        inspect_source_snapshot,
+    )
+}
+
+fn inspect_source_snapshot(path: &Path) -> DaloResult<(String, bool)> {
+    Ok((
+        crate::git::rev_parse_head(path)?,
+        crate::git::is_dirty(path)?,
+    ))
+}
+
+fn verify_source_snapshot_requirements<'a, I, F>(
+    config: &crate::config::UserConfig,
+    requirements: I,
+    mut inspect: F,
+) -> DaloResult<()>
+where
+    I: IntoIterator<Item = (&'a str, &'a str)>,
+    F: FnMut(&Path) -> DaloResult<(String, bool)>,
+{
+    let mut snapshots: BTreeMap<String, (String, bool)> = BTreeMap::new();
+    for (source_ref, expected_commit) in requirements {
+        let source_id = source_ref
+            .split_once(':')
+            .map(|(source, _)| source)
+            .ok_or_else(|| DaloError::StateError {
+                reason: format!("generated delivery `{source_ref}` has no source identity"),
+            })?;
+        let source = config
+            .sources
+            .iter()
+            .find(|source| source.id == source_id)
+            .ok_or_else(|| DaloError::StateError {
+                reason: format!("generated delivery source `{source_id}` is no longer configured"),
+            })?;
+        let (actual_commit, dirty) = if let Some(snapshot) = snapshots.get(source_id) {
+            snapshot.clone()
+        } else {
+            let snapshot = inspect(&source.path)?;
+            snapshots.insert(source_id.to_owned(), snapshot.clone());
+            snapshot
+        };
+        if actual_commit != expected_commit || dirty {
+            return Err(DaloError::StateError {
+                reason: format!(
+                    "generated delivery source `{source_id}` changed during execution; output was not promoted"
+                ),
+            });
+        }
     }
     Ok(())
 }
@@ -477,13 +512,19 @@ fn validate_and_audit_outputs(
                 ),
             });
         }
-        let fingerprint = crate::inventory::fingerprint_directory(&path).map_err(|reason| {
-            DaloError::StateError {
-                reason: format!("generated provider `{provider}` output is unsafe: {reason}"),
-            }
-        })?;
+        let snapshot =
+            crate::inventory::fingerprint_directory_snapshot(&path).map_err(|reason| {
+                DaloError::StateError {
+                    reason: format!("generated provider `{provider}` output is unsafe: {reason}"),
+                }
+            })?;
         let audit_ref = format!("{source_ref}@{provider}");
-        let report = crate::audit::audit_skill(
+        let audit_content_hash = crate::audit::audit_content_hash_from_catalog_hash(
+            &path,
+            false,
+            snapshot.catalog_hash,
+        )?;
+        let report = crate::audit::audit_skill_with_verified_content_hash(
             paths,
             &audit_ref,
             &path,
@@ -491,6 +532,8 @@ fn validate_and_audit_outputs(
                 persist: persist_audit,
                 ..crate::audit::AuditOptions::default()
             },
+            false,
+            audit_content_hash,
         )?;
         if report.is_blocking() {
             return Err(DaloError::StateError {
@@ -501,7 +544,10 @@ fn validate_and_audit_outputs(
         }
         artifacts.insert(
             provider.clone(),
-            PrebuiltSkillArtifact { path, fingerprint },
+            PrebuiltSkillArtifact {
+                path,
+                fingerprint: snapshot.fingerprint,
+            },
         );
     }
     Ok(artifacts)
@@ -754,6 +800,75 @@ fn read_bounded(reader: impl Read) -> std::io::Result<Vec<u8>> {
 #[cfg(test)]
 mod generated_tree_tests {
     use super::*;
+
+    fn team_source(id: &str, path: PathBuf) -> crate::source::SourceConfig {
+        crate::source::SourceConfig {
+            id: id.to_owned(),
+            kind: SourceKind::Team,
+            path,
+            priority: 10,
+            namespace: None,
+            enabled: true,
+            trusted: true,
+            url: Some(format!("https://example.test/{id}.git")),
+            branch: None,
+            update_policy: Some("track".to_owned()),
+            selection: Vec::new(),
+            declared_by: None,
+            declared_ref: None,
+        }
+    }
+
+    #[test]
+    fn source_snapshot_requirements_should_inspect_each_source_once() {
+        let temporary = tempfile::tempdir().unwrap();
+        let mut config = crate::config::UserConfig::default_for_store(temporary.path());
+        let company = temporary.path().join("company");
+        let partner = temporary.path().join("partner");
+        config.sources.push(team_source("company", company.clone()));
+        config.sources.push(team_source("partner", partner.clone()));
+        let requirements = [
+            ("company:first", "company-commit"),
+            ("company:second", "company-commit"),
+            ("partner:third", "partner-commit"),
+        ];
+        let mut inspections = BTreeMap::new();
+
+        verify_source_snapshot_requirements(&config, requirements, |path| {
+            *inspections.entry(path.to_path_buf()).or_insert(0) += 1;
+            let commit = if path == company {
+                "company-commit"
+            } else {
+                "partner-commit"
+            };
+            Ok((commit.to_owned(), false))
+        })
+        .unwrap();
+
+        assert_eq!(inspections.get(&company), Some(&1));
+        assert_eq!(inspections.get(&partner), Some(&1));
+    }
+
+    #[test]
+    fn source_snapshot_requirements_should_still_fail_closed() {
+        let temporary = tempfile::tempdir().unwrap();
+        let mut config = crate::config::UserConfig::default_for_store(temporary.path());
+        let company = temporary.path().join("company");
+        config.sources.push(team_source("company", company));
+
+        let error = verify_source_snapshot_requirements(
+            &config,
+            [("company:first", "expected-commit")],
+            |_| Ok(("mutated-commit".to_owned(), false)),
+        )
+        .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("changed during execution; output was not promoted")
+        );
+    }
 
     #[test]
     fn generated_tree_should_reject_external_hard_link_aliases() {
