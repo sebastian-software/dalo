@@ -1415,6 +1415,8 @@ error_visibility = "model_and_user"
 blocking_scope = "matched_event"
 ```
 
+### Plugin members and dependencies
+
 Plugin members use `ref`, `requirement` (`required`, `optional`, or
 `recommended`), and optional `fallback` with required `kind` and `skill`.
 Members may reference skills, agents, or instructions; `recommended` is only
@@ -1422,6 +1424,8 @@ valid for instructions. A fallback is only valid for an agent member, has
 `kind = "inline"`, names a skill in `skill`, and that skill must also be a
 required member. Dependencies use `ref` to a plugin with `requirement`
 `required` or `optional`.
+
+### Tools
 
 Tools require `schema_version`, `id`, `entry`, `runtime` (`executable`,
 `python`, `node`), `argv`, `cwd` (`tool_root`), and `availability` (`required`
@@ -1432,8 +1436,12 @@ or `optional`). Optional fields are `runtime_version`, `platforms` (`macos`,
 (default `true`) records. Paths must be plugin-root-relative and remain inside
 the plugin-owned closure; Dalo stages and hashes that closure before approval.
 
-Hooks are closed descriptors. They require every field in the example except
-`matcher`, `bindings`, and `fallback`; `tool` references the same-plugin tool.
+### Hooks
+
+Hooks are closed descriptors. They require `schema_version`, `id`, `tool`,
+`subject`, `phase`, `effect`, `requirement`, `timeout_ms`, `failure_policy`,
+`retry`, `error_visibility`, and `blocking_scope`; `matcher`, `bindings`, and
+`fallback` are optional fields. `tool` references the same-plugin tool.
 `subject` is `session`, `user_prompt`, `tool_call`, or `workflow`; `phase` is
 `before`, `after`, `end`, or `completion_attempt`; `effect` is `observe`,
 `add_context`, `allow_deny`, `rewrite_input`, `replace_output`, or
@@ -1442,14 +1450,21 @@ Hooks are closed descriptors. They require every field in the example except
 `report`; `retry` is only `never`; `error_visibility` is `user` or
 `model_and_user`; and `blocking_scope` is only `matched_event`.
 
-`matcher.tool_names` is an optional unique exact provider-tool-name list.
+`matcher.tool_names` is an optional unique exact provider-tool-name list and is
+valid only when `subject = "tool_call"`.
 Bindings are closed `input`/`field` records and map a lower-snake tool input to
 one admitted event field: `session.id`, `session.cwd`,
 `session.permission_mode`, `actor.kind`, `actor.id`, `transcript.path`,
 `session.end_reason`, `prompt.text`, `tool.call_id`, `tool.name`,
 `workflow.already_continued`, or `workflow.last_message`. Required hooks have
-no fallback; optional hooks explicitly use `fallback = "omit"` when omitted
-behavior is intended. IDs are lower kebab-case, input names are lower
+no fallback; optional hooks use the fallback value `omit` explicitly as
+`fallback = "omit"` when omitted
+behavior is intended. The `subject`/`phase`/`effect` combination must have a
+verified mapping in at least one supported provider. `fail_closed` is valid
+only for a `before` pre-action enforcement effect (`allow_deny` or
+`rewrite_input`) or `completion_attempt` plus `continue_workflow`; `observe`
+and `replace_output` require `failure_policy = "report"`. A binding's `field`
+must be available for the selected subject and phase. IDs are lower kebab-case, input names are lower
 snake-case, `timeout_ms` is 100 through 120000, and each matcher or binding
 list holds at most 256 entries. Hooks reference a same-plugin tool and are
 independently approved; malformed, unknown, unsafe, or unsupported contracts
