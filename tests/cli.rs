@@ -6916,6 +6916,153 @@ fn sync_should_report_local_inventory_warnings_with_the_affected_skill() {
 }
 
 #[test]
+fn sync_should_isolate_invalid_utf8_local_skill_metadata() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    let valid_skill = store.join("local/skills/review");
+    let invalid_skill = store.join("local/skills/broken");
+    let invalid_skill_file = invalid_skill.join("SKILL.md");
+    std::fs::create_dir_all(&valid_skill).expect("valid skill directory should exist");
+    std::fs::create_dir_all(&invalid_skill).expect("invalid skill directory should exist");
+    std::fs::write(valid_skill.join("SKILL.md"), "# Review\n")
+        .expect("valid skill should be written");
+    std::fs::write(&invalid_skill_file, b"# Broken\n\xff")
+        .expect("invalid metadata should be written");
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "sync"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let sync: serde_json::Value =
+        serde_json::from_slice(&output).expect("sync should emit valid JSON");
+
+    assert!(target.join("review").is_symlink());
+    assert!(!target.join("broken").exists());
+    assert!(
+        sync["inventory_warnings"]
+            .as_array()
+            .is_some_and(|warnings| {
+                warnings.iter().any(|warning| {
+                    warning["code"] == "unreadable_path"
+                        && warning["path"].as_str() == invalid_skill_file.to_str()
+                })
+            })
+    );
+    assert!(
+        sync["degraded_sources"]
+            .as_array()
+            .is_some_and(|sources| { sources.iter().any(|source| source["id"] == "local") })
+    );
+}
+
+#[test]
+fn sync_should_preserve_team_links_when_one_skill_metadata_becomes_invalid_utf8() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo_with_skill(&repo, "review", "# Review\n");
+    let legacy_skill = repo.join("skills/legacy");
+    std::fs::create_dir_all(&legacy_skill).expect("legacy skill directory should exist");
+    std::fs::write(legacy_skill.join("SKILL.md"), "# Legacy\n")
+        .expect("legacy skill should be written");
+    run_git(&repo, &["add", "."]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "add legacy skill",
+            "-q",
+        ],
+    );
+    setup_store_with_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "team"])
+        .arg(&repo)
+        .assert()
+        .success();
+    approve_source(&store, "team");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    assert!(target.join("review").is_symlink());
+    assert!(target.join("legacy").is_symlink());
+
+    std::fs::write(legacy_skill.join("SKILL.md"), b"# Legacy\n\xff")
+        .expect("invalid metadata should be written");
+    run_git(&repo, &["add", "."]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "break legacy metadata",
+            "-q",
+        ],
+    );
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "sync"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let sync: serde_json::Value =
+        serde_json::from_slice(&output).expect("sync should emit valid JSON");
+
+    assert!(target.join("review").is_symlink());
+    assert!(
+        target.join("legacy").is_symlink(),
+        "a partial inventory must not remove a previously owned team link"
+    );
+    assert!(
+        sync["inventory_warnings"]
+            .as_array()
+            .is_some_and(|warnings| {
+                warnings.iter().any(|warning| {
+                    warning["code"] == "unreadable_path"
+                        && warning["path"]
+                            .as_str()
+                            .is_some_and(|path| path.ends_with("/skills/legacy/SKILL.md"))
+                })
+            })
+    );
+    assert!(
+        sync["degraded_sources"]
+            .as_array()
+            .is_some_and(|sources| { sources.iter().any(|source| source["id"] == "team") })
+    );
+}
+
+#[test]
 fn source_add_should_skip_an_env_shebang_git_wrapper_for_the_controlled_path() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

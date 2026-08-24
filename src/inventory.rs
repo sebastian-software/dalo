@@ -369,7 +369,7 @@ pub fn scan_source_with_plugin_inventory(
             }
             Err(error) => warnings.push(InventoryWarning {
                 code: InventoryWarningCode::UnreadablePath,
-                path: skill_dir,
+                path: skill_dir.join(SKILL_FILE),
                 message: error.to_string(),
             }),
         }
@@ -438,27 +438,49 @@ fn find_skill_dirs(
         }
 
         let skill_file = dir.join(SKILL_FILE);
-        if skill_file.is_file() {
-            let metadata_is_symlink = fs::symlink_metadata(&skill_file)
-                .is_ok_and(|metadata| metadata.file_type().is_symlink());
-            if metadata_is_symlink
-                && !canonical_source_root.as_ref().is_some_and(|source_root| {
+        match fs::symlink_metadata(&skill_file) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                if !canonical_source_root.as_ref().is_some_and(|source_root| {
                     skill_file
                         .canonicalize()
                         .is_ok_and(|target| target.starts_with(source_root))
-                })
-            {
+                }) {
+                    warnings.push(InventoryWarning {
+                        code: InventoryWarningCode::SkippedSymlink,
+                        path: skill_file,
+                        message:
+                            "skipped symlinked SKILL.md whose target is outside the source checkout"
+                                .to_owned(),
+                    });
+                    continue;
+                }
+                if skill_file.is_file() {
+                    found.push(dir);
+                    continue;
+                }
                 warnings.push(InventoryWarning {
-                    code: InventoryWarningCode::SkippedSymlink,
+                    code: InventoryWarningCode::UnreadablePath,
                     path: skill_file,
-                    message:
-                        "skipped symlinked SKILL.md whose target is outside the source checkout"
-                            .to_owned(),
+                    message: "SKILL.md must resolve to a regular file".to_owned(),
                 });
+            }
+            Ok(metadata) if metadata.is_file() => {
+                found.push(dir);
                 continue;
             }
-            found.push(dir);
-            continue;
+            Ok(_) => warnings.push(InventoryWarning {
+                code: InventoryWarningCode::UnreadablePath,
+                path: skill_file,
+                message: "SKILL.md must be a regular file".to_owned(),
+            }),
+            Err(error) if error.kind() != io::ErrorKind::NotFound => {
+                warnings.push(InventoryWarning {
+                    code: InventoryWarningCode::UnreadablePath,
+                    path: skill_file,
+                    message: error.to_string(),
+                });
+            }
+            Err(_) => {}
         }
 
         let entries = match fs::read_dir(&dir) {
@@ -536,7 +558,19 @@ fn scan_skill(
     plugins: &[PluginRecord],
 ) -> DaloResult<(Option<SkillRecord>, Vec<InventoryWarning>)> {
     let skill_file = skill_dir.join(SKILL_FILE);
-    let (skill_markdown, metadata_truncated) = read_skill_metadata(&skill_file)?;
+    let (skill_markdown, metadata_truncated) = match read_skill_metadata(&skill_file) {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            return Ok((
+                None,
+                vec![InventoryWarning {
+                    code: InventoryWarningCode::UnreadablePath,
+                    path: skill_file,
+                    message: error.to_string(),
+                }],
+            ));
+        }
+    };
     let (frontmatter, mut warnings) =
         parse_frontmatter(&skill_markdown, &skill_file, metadata_truncated);
     let Some(frontmatter) = frontmatter else {
@@ -1847,6 +1881,86 @@ required = true
 
         assert_eq!(inventory.skills.len(), 1);
         assert!(inventory.warnings.is_empty());
+    }
+
+    #[test]
+    fn scan_source_should_skip_invalid_utf8_skill_metadata_and_keep_valid_siblings() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let valid = temp_dir.path().join("skills/valid");
+        let invalid = temp_dir.path().join("skills/invalid");
+        fs::create_dir_all(&valid).expect("valid skill directory should be created");
+        fs::create_dir_all(&invalid).expect("invalid skill directory should be created");
+        fs::write(valid.join(SKILL_FILE), "# Valid\n").expect("valid skill should be written");
+        fs::write(invalid.join(SKILL_FILE), b"# Invalid\n\xff")
+            .expect("invalid metadata should be written");
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should complete");
+
+        assert_eq!(inventory.skills.len(), 1);
+        assert_eq!(inventory.skills[0].slot_name, "valid");
+        assert_eq!(inventory.warnings.len(), 1);
+        assert_eq!(
+            inventory.warnings[0].code,
+            InventoryWarningCode::UnreadablePath
+        );
+        assert_eq!(inventory.warnings[0].path, invalid.join(SKILL_FILE));
+        assert!(inventory.warnings[0].message.contains("invalid utf-8"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn scan_source_should_fail_closed_for_special_skill_metadata() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let valid = temp_dir.path().join("skills/valid");
+        let special = temp_dir.path().join("skills/special");
+        fs::create_dir_all(&valid).expect("valid skill directory should be created");
+        fs::create_dir_all(&special).expect("special skill directory should be created");
+        fs::write(valid.join(SKILL_FILE), "# Valid\n").expect("valid skill should be written");
+        let _socket = std::os::unix::net::UnixListener::bind(special.join(SKILL_FILE))
+            .expect("special metadata socket should be created");
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should complete");
+
+        assert_eq!(inventory.skills.len(), 1);
+        assert_eq!(inventory.skills[0].slot_name, "valid");
+        assert!(inventory.warnings.iter().any(|warning| {
+            warning.code == InventoryWarningCode::UnreadablePath
+                && warning.path == special.join(SKILL_FILE)
+                && warning.message == "SKILL.md must be a regular file"
+        }));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn scan_source_should_skip_unreadable_skill_metadata_when_permissions_are_enforced() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("skills/review");
+        fs::create_dir_all(&skill_dir).expect("skill directory should be created");
+        let skill_file = skill_dir.join(SKILL_FILE);
+        fs::write(&skill_file, "# Review\n").expect("skill should be written");
+        let mode = fs::metadata(&skill_file)
+            .expect("metadata should be readable")
+            .permissions()
+            .mode()
+            & 0o777;
+        fs::set_permissions(&skill_file, fs::Permissions::from_mode(0o000))
+            .expect("permissions should be changed");
+        let inaccessible = fs::File::open(&skill_file).is_err();
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should complete");
+
+        fs::set_permissions(&skill_file, fs::Permissions::from_mode(mode))
+            .expect("permissions should be restored");
+        if inaccessible {
+            assert!(inventory.skills.is_empty());
+            assert!(inventory.warnings.iter().any(|warning| {
+                warning.code == InventoryWarningCode::UnreadablePath && warning.path == skill_file
+            }));
+        } else {
+            // Root can bypass mode bits; this is an environment limitation, not
+            // evidence that a non-root scan may activate unreadable metadata.
+            assert_eq!(inventory.skills.len(), 1);
+        }
     }
 
     #[test]
