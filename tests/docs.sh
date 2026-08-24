@@ -157,6 +157,23 @@ if assert_blocked_winner_alternate_docs "$missing_resolver_reference" "$resolver
   exit 1
 fi
 
+reference_status_section="$(awk '
+  /^### `dalo status`$/ { in_section = 1; next }
+  in_section && /^### / { exit }
+  in_section { print }
+' "$root/docs/reference.md")"
+reference_agent_section="$(awk '
+  /^### `dalo agent list\|show <source>:<name>`$/ { in_section = 1; next }
+  in_section && /^### / { exit }
+  in_section { print }
+' "$root/docs/reference.md")"
+printf '%s\n' "$reference_status_section" | grep -Fq '`--check` exits with code 1'
+printf '%s\n' "$reference_status_section" | grep -Fq 'full report on stdout for JSON'
+if printf '%s\n' "$reference_agent_section" | grep -Fq '`--check` exits with code 1'; then
+  echo 'status --check semantics must not be documented under dalo agent' >&2
+  exit 1
+fi
+
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/dalo-docs-test.XXXXXX")"
 
 cleanup() {

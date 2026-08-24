@@ -461,6 +461,13 @@ dalo --json status
 
 JSON output shape: `StatusReport`.
 
+`--check` exits with code 1 for unresolved source scans, skill or agent inventory warnings,
+pending approvals, blocked required closure, blocking or failed security audits,
+blocked materialization operations, missing targets for active skills, actionable
+resolution diagnostics, lock drift, unmanaged blockers, instruction-block drift,
+or unhealthy autosync state. It keeps the full report on stdout for JSON
+consumers.
+
 ### `dalo plan`
 
 Show the effective plugin setup for every linked target without changing source,
@@ -493,13 +500,6 @@ source, author, and org approvals do not activate them. Invalid packages also
 make `status --check` fail. JSON shapes: `AgentListReport` (`resolution`,
 `inventory_warnings[]`, `source_errors[]`) and `AgentShowReport` (`agent`,
 `compilations[]`).
-
-`--check` exits with code 1 for unresolved source scans, skill or agent inventory warnings,
-pending approvals, blocked required closure, blocking or failed security audits,
-blocked materialization operations, missing targets for active skills, actionable
-resolution diagnostics, lock drift, unmanaged blockers, instruction-block drift,
-or unhealthy autosync state. It keeps the full report on stdout for JSON
-consumers.
 
 ### `dalo sync`
 
