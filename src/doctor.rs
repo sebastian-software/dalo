@@ -68,6 +68,9 @@ pub struct DoctorFinding {
     /// Suggested next command.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_command: Option<String>,
+    /// Structured source-inventory warnings for degraded-inventory findings.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inventory_warnings: Vec<InventoryWarning>,
 }
 
 /// Diagnostic severity.
@@ -1227,6 +1230,7 @@ fn check_sources(
                         "git -C {} status",
                         shell_quote_path(&source.path)
                     )),
+                    inventory_warnings: Vec::new(),
                 });
             }
             Ok(false) => findings.push(ok(
@@ -1271,14 +1275,16 @@ fn check_source_inventories(
                 })
                 .collect::<Vec<_>>()
                 .join("; ");
-            findings.push(finding_error(
-                DoctorCode::SourceInventoryDegraded,
-                format!(
+            findings.push(DoctorFinding {
+                severity: DoctorSeverity::Error,
+                code: DoctorCode::SourceInventoryDegraded,
+                message: format!(
                     "source `{}` inventory is degraded; sync preserves existing links: {details}",
                     scan.source.id
                 ),
-                Some(source_inventory_fix_hint(&inventory.warnings)),
-            ));
+                next_command: Some(source_inventory_fix_hint(&inventory.warnings)),
+                inventory_warnings: inventory.warnings.clone(),
+            });
             }
             // `check_sources` already reports a missing or unreadable checkout.
             // Only add a distinct inventory error when the checkout itself is
@@ -1698,6 +1704,7 @@ fn ok(code: DoctorCode, message: impl Into<String>) -> DoctorFinding {
         code,
         message: message.into(),
         next_command: None,
+        inventory_warnings: Vec::new(),
     }
 }
 
@@ -1707,6 +1714,7 @@ fn info(code: DoctorCode, message: impl Into<String>) -> DoctorFinding {
         code,
         message: message.into(),
         next_command: None,
+        inventory_warnings: Vec::new(),
     }
 }
 
@@ -1720,6 +1728,7 @@ fn finding_warning(
         code,
         message: message.into(),
         next_command,
+        inventory_warnings: Vec::new(),
     }
 }
 
@@ -1733,6 +1742,7 @@ fn finding_error(
         code,
         message: message.into(),
         next_command,
+        inventory_warnings: Vec::new(),
     }
 }
 
