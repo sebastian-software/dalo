@@ -1110,10 +1110,15 @@ After `dalo init`, the store contains:
 | `local/instructions/` | Local instruction pack Markdown files. |
 | `tools/` | Immutable, approved tool closures, addressed by their exact staged content. |
 | `generated/` | Content-addressed generated-delivery cache; only approved derivations are promoted. |
-| `hooks/`, `hooks/state.json` | Dalo-owned native hook projections and their dispatcher ownership state. |
-| `plugins/`, `plugins/state.json` | Dalo-owned native plugin projections and their ownership state. |
 | `sources/<id>/checkout/` | Team and catalog Git checkouts. |
 | `sources/.audit-staging/` | Detached incoming team commits retained only while security review is required. |
+
+Hook and plugin projection paths are created lazily, not by `dalo init`:
+
+| Path | Created when |
+| --- | --- |
+| `hooks/`, `hooks/state.json` | The first native hook projection is applied; the state file records dispatcher ownership. |
+| `plugins/`, `plugins/state.json` | The first native plugin projection is applied; the state file records projection ownership. |
 
 Dalo rejects unsupported schema versions in persisted TOML files.
 
