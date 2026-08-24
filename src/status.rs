@@ -1,5 +1,6 @@
 //! Status model and renderable command output.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
@@ -737,9 +738,270 @@ fn suppress_initial_local_source_drift(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct HumanPathRoot {
+    path: PathBuf,
+    label: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct HumanTargetRoot {
+    path: PathBuf,
+    label: String,
+}
+
+/// Invocation-local path labels for human output.
+///
+/// The context is deliberately independent of terminal detection and width so
+/// redirected output stays identical to interactive output. Structured reports
+/// keep their original absolute paths; only their human renderer uses labels.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct HumanPathContext {
+    roots: Vec<HumanPathRoot>,
+    targets: Vec<HumanTargetRoot>,
+    home: Option<PathBuf>,
+}
+
+impl HumanPathContext {
+    fn store_only(store: &Path) -> Self {
+        Self::from_targets(store, std::iter::empty::<(PathBuf, Vec<String>)>())
+    }
+
+    fn for_status(report: &StatusReport) -> Self {
+        let mut targets = BTreeMap::<PathBuf, BTreeSet<String>>::new();
+        for target in &report.targets {
+            targets
+                .entry(store::comparable_path(&target.path))
+                .or_default()
+                .insert(target.id.clone());
+        }
+        for delivery in &report.deliveries {
+            if let Some(root) = delivery.link_path.parent() {
+                targets
+                    .entry(store::comparable_path(root))
+                    .or_default()
+                    .extend(delivery.target_ids.iter().cloned());
+            }
+        }
+        for operation in &report.materialization {
+            if let Some(root) = operation.link_path.parent() {
+                targets.entry(store::comparable_path(root)).or_default();
+            }
+        }
+        Self::from_targets(
+            &report.store,
+            targets
+                .into_iter()
+                .map(|(path, identities)| (path, identities.into_iter().collect())),
+        )
+    }
+
+    fn for_sync(report: &SyncReport) -> Self {
+        let mut targets = BTreeMap::<PathBuf, BTreeSet<String>>::new();
+        for delivery in &report.deliveries {
+            if let Some(root) = delivery.link_path.parent() {
+                targets
+                    .entry(store::comparable_path(root))
+                    .or_default()
+                    .extend(delivery.target_ids.iter().cloned());
+            }
+        }
+        for operation in &report.operations {
+            if let Some(root) = operation.link_path.parent() {
+                targets.entry(store::comparable_path(root)).or_default();
+            }
+        }
+        let targets = targets
+            .into_iter()
+            .map(|(path, identities)| (path, identities.into_iter().collect()));
+        Self::from_targets(&report.store, targets)
+    }
+
+    fn for_doctor(report: &DoctorReport) -> Self {
+        let paths = StorePaths::new(report.store.clone());
+        let targets = store::read_state(&paths).map_or_else(
+            |_| Vec::new(),
+            |state| {
+                state
+                    .targets
+                    .into_iter()
+                    .map(|target| (target.path, vec![target.id]))
+                    .collect()
+            },
+        );
+        Self::from_targets(&report.store, targets)
+    }
+
+    fn from_targets(
+        store: &Path,
+        targets: impl IntoIterator<Item = (PathBuf, Vec<String>)>,
+    ) -> Self {
+        Self::from_targets_and_home(store, targets, std::env::var_os("HOME").map(PathBuf::from))
+    }
+
+    fn from_targets_and_home(
+        store: &Path,
+        targets: impl IntoIterator<Item = (PathBuf, Vec<String>)>,
+        home: Option<PathBuf>,
+    ) -> Self {
+        let mut grouped = BTreeMap::<PathBuf, BTreeSet<String>>::new();
+        for (path, identities) in targets {
+            grouped.entry(path).or_default().extend(identities);
+        }
+
+        let mut fallback = 0usize;
+        let targets = grouped
+            .into_iter()
+            .map(|(path, identities)| {
+                let identities = if identities.is_empty() {
+                    fallback += 1;
+                    format!("path-{fallback}")
+                } else {
+                    identities
+                        .iter()
+                        .map(|identity| terminal_safe_text(identity))
+                        .collect::<Vec<_>>()
+                        .join("+")
+                };
+                HumanTargetRoot {
+                    path,
+                    label: format!("target[{identities}]"),
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let mut root_labels = BTreeMap::<PathBuf, BTreeSet<String>>::new();
+        for root in [store.to_path_buf(), store::comparable_path(store)] {
+            root_labels
+                .entry(root)
+                .or_default()
+                .insert("store".to_owned());
+        }
+        for target in &targets {
+            for root in [target.path.clone(), store::comparable_path(&target.path)] {
+                root_labels
+                    .entry(root)
+                    .or_default()
+                    .insert(target.label.clone());
+            }
+        }
+        let mut roots = root_labels
+            .into_iter()
+            .map(|(path, labels)| HumanPathRoot {
+                path,
+                label: labels.into_iter().collect::<Vec<_>>().join("+"),
+            })
+            .collect::<Vec<_>>();
+        roots.sort_by(|left, right| {
+            right
+                .path
+                .components()
+                .count()
+                .cmp(&left.path.components().count())
+                .then_with(|| left.path.cmp(&right.path))
+        });
+
+        Self {
+            roots,
+            targets,
+            home,
+        }
+    }
+
+    fn path(&self, path: &Path) -> String {
+        for root in &self.roots {
+            if let Ok(relative) = path.strip_prefix(&root.path) {
+                return labeled_path(&root.label, relative);
+            }
+        }
+        let comparable = store::comparable_path(path);
+        for root in &self.roots {
+            if let Ok(relative) = comparable.strip_prefix(store::comparable_path(&root.path)) {
+                return labeled_path(&root.label, relative);
+            }
+        }
+        self.root(path)
+    }
+
+    fn root(&self, path: &Path) -> String {
+        if let Some(home) = &self.home
+            && let Ok(relative) = path.strip_prefix(home)
+        {
+            if relative.as_os_str().is_empty() {
+                return "~".to_owned();
+            }
+            return format!("~/{}", terminal_safe_path(relative));
+        }
+        if let Some(home) = &self.home
+            && let Ok(relative) =
+                store::comparable_path(path).strip_prefix(store::comparable_path(home))
+        {
+            if relative.as_os_str().is_empty() {
+                return "~".to_owned();
+            }
+            return format!("~/{}", terminal_safe_path(relative));
+        }
+        terminal_safe_path(path)
+    }
+
+    fn text(&self, value: &str) -> String {
+        let mut rendered = terminal_safe_text(value);
+        for root in &self.roots {
+            rendered = replace_path_root(
+                &rendered,
+                &terminal_safe_path(&root.path),
+                &format!("{}:", root.label),
+            );
+        }
+        if let Some(home) = &self.home {
+            rendered = replace_path_root(&rendered, &terminal_safe_path(home), "~");
+            rendered = replace_path_root(
+                &rendered,
+                &terminal_safe_path(&store::comparable_path(home)),
+                "~",
+            );
+        }
+        rendered
+    }
+
+    fn target_roots(&self) -> &[HumanTargetRoot] {
+        &self.targets
+    }
+}
+
+fn labeled_path(label: &str, relative: &Path) -> String {
+    if relative.as_os_str().is_empty() {
+        format!("{label}:/")
+    } else {
+        format!("{label}:/{}", terminal_safe_path(relative))
+    }
+}
+
+fn replace_path_root(value: &str, root: &str, replacement: &str) -> String {
+    if root.is_empty() {
+        return value.to_owned();
+    }
+    let mut rendered = String::with_capacity(value.len());
+    let mut remainder = value;
+    while let Some(index) = remainder.find(root) {
+        let (before, candidate) = remainder.split_at(index);
+        let after = &candidate[root.len()..];
+        rendered.push_str(before);
+        if after.is_empty() || after.starts_with('/') {
+            rendered.push_str(replacement);
+        } else {
+            rendered.push_str(root);
+        }
+        remainder = after;
+    }
+    rendered.push_str(remainder);
+    rendered
+}
+
 /// Print a human-readable init report.
 pub fn print_init_report(report: &InitReport, next: Option<&NextActionReport>) {
-    println!("dalo store: {}", report.store.display());
+    let paths = HumanPathContext::store_only(&report.store);
+    println!("dalo store: {}", paths.root(&report.store));
 
     for operation in &report.operations {
         let status = format!("{:<8}", operation.status.as_str());
@@ -747,7 +1009,7 @@ pub fn print_init_report(report: &InitReport, next: Option<&NextActionReport>) {
             "{} {:<12} {}",
             term::operation_status(&status),
             operation.action.as_str(),
-            operation.path.display()
+            paths.path(&operation.path)
         );
     }
     println!();
@@ -768,7 +1030,11 @@ pub fn print_init_report(report: &InitReport, next: Option<&NextActionReport>) {
     if !report.validation_warnings.is_empty() {
         println!("Store needs attention:");
         for warning in &report.validation_warnings {
-            println!("  warning {}: {}", warning.path.display(), warning.message);
+            println!(
+                "  warning {}: {}",
+                paths.path(&warning.path),
+                paths.text(&warning.message)
+            );
         }
         println!("Fix the files above before using dalo.");
         return;
@@ -960,8 +1226,9 @@ fn should_print_hook_target(target: &crate::hook_sync::HookTargetReport) -> bool
 
 /// Print a human-readable status report.
 pub fn print_status_report(report: &StatusReport) {
-    println!("dalo store: {}", report.store.display());
-    print_delivery_reports(&report.deliveries);
+    let paths = HumanPathContext::for_status(report);
+    println!("dalo store: {}", paths.root(&report.store));
+    print_delivery_reports(&report.deliveries, &paths);
     if !report.tools.tools.is_empty() {
         println!("local tools (inert inventory):");
         for tool in &report.tools.tools {
@@ -988,7 +1255,7 @@ pub fn print_status_report(report: &StatusReport) {
             target.target,
             target.plugin,
             target.state,
-            target.path.display(),
+            paths.path(&target.path),
             if target.projection_hash.is_empty() {
                 "-"
             } else {
@@ -1016,8 +1283,8 @@ pub fn print_status_report(report: &StatusReport) {
             target.target,
             target.state,
             action,
-            target.path.display(),
-            target.diagnostic
+            paths.path(&target.path),
+            paths.text(&target.diagnostic)
         );
     }
     print_autosync_status_report(&report.autosync);
@@ -1092,7 +1359,12 @@ pub fn print_status_report(report: &StatusReport) {
             } else {
                 "missing"
             };
-            println!("  {:<12} {:<7} {}", target.id, state, target.path.display());
+            println!(
+                "  {:<12} {:<7} {}",
+                target.id,
+                state,
+                paths.root(&target.path)
+            );
         }
     }
 
@@ -1189,7 +1461,11 @@ pub fn print_status_report(report: &StatusReport) {
         println!("materialization blocks:");
         for operation in blocked_operations {
             let reason = operation.reason.as_deref().unwrap_or("blocked");
-            println!("  {}: {reason}", operation.link_path.display());
+            println!(
+                "  {}: {}",
+                paths.path(&operation.link_path),
+                paths.text(reason)
+            );
         }
     }
 
@@ -1214,12 +1490,16 @@ pub fn print_status_report(report: &StatusReport) {
     if !report.unmanaged_skills.is_empty() {
         println!("unmanaged skills:");
         for skill in &report.unmanaged_skills {
-            print_unmanaged_skill_with_repair_hint(skill, &report.store);
+            print_unmanaged_skill_with_repair_hint(skill, &report.store, Some(&paths));
         }
     }
 
     if !report.inventory_warnings.is_empty() {
-        print_inventory_warnings(&report.inventory_warnings, Some(&report.store));
+        print_inventory_warnings(
+            &report.inventory_warnings,
+            Some(&report.store),
+            Some(&paths),
+        );
     }
 
     if !report.agent_inventory_warnings.is_empty() {
@@ -1228,8 +1508,8 @@ pub fn print_status_report(report: &StatusReport) {
             println!(
                 "  {} {}: {}",
                 warning.code,
-                warning.path.display(),
-                warning.message
+                paths.path(&warning.path),
+                paths.text(&warning.message)
             );
         }
     }
@@ -1240,8 +1520,8 @@ pub fn print_status_report(report: &StatusReport) {
             println!(
                 "  {} {}: {}",
                 warning.code,
-                warning.path.display(),
-                warning.message
+                paths.path(&warning.path),
+                paths.text(&warning.message)
             );
         }
     }
@@ -1252,8 +1532,8 @@ pub fn print_status_report(report: &StatusReport) {
             println!(
                 "  {} {}: {}",
                 warning.code.as_str(),
-                warning.path.display(),
-                warning.message
+                paths.path(&warning.path),
+                paths.text(&warning.message)
             );
         }
     }
@@ -1286,14 +1566,14 @@ pub fn print_status_report(report: &StatusReport) {
                 drift.source_id,
                 drift.pack_id,
                 instruction_block_drift_kind_label(drift.kind),
-                drift.target.display(),
-                drift.message
+                paths.path(&drift.target),
+                paths.text(&drift.message)
             );
         }
     }
 }
 
-fn print_delivery_reports(deliveries: &[SkillDeliveryReport]) {
+fn print_delivery_reports(deliveries: &[SkillDeliveryReport], paths: &HumanPathContext) {
     let visible = deliveries
         .iter()
         .filter(|delivery| {
@@ -1309,7 +1589,7 @@ fn print_delivery_reports(deliveries: &[SkillDeliveryReport]) {
         let artifact = delivery
             .artifact_path
             .as_ref()
-            .map_or_else(|| "-".to_owned(), |path| path.display().to_string());
+            .map_or_else(|| "-".to_owned(), |path| paths.path(path));
         println!(
             "  {} targets={} mode={} provider={} artifact={}{}",
             delivery.source_ref,
@@ -1427,8 +1707,12 @@ pub fn print_autosync_mutation_report(report: &AutosyncMutationReport) {
 
 /// Print a human-readable sync report.
 pub fn print_sync_report(report: &SyncReport) {
-    println!("dalo store: {}", report.store.display());
-    print_delivery_reports(&report.deliveries);
+    let paths = HumanPathContext::for_sync(report);
+    println!("dalo store: {}", paths.root(&report.store));
+    for target in paths.target_roots() {
+        println!("{}: {}", target.label, paths.root(&target.path));
+    }
+    print_delivery_reports(&report.deliveries, &paths);
     if report.operations.is_empty() {
         if !report.instruction_operations.is_empty()
             || !report.instruction_removal_operations.is_empty()
@@ -1479,11 +1763,11 @@ pub fn print_sync_report(report: &SyncReport) {
             let desired = operation
                 .desired_path
                 .as_ref()
-                .map_or(String::new(), |path| format!(" -> {}", path.display()));
+                .map_or(String::new(), |path| format!(" -> {}", paths.path(path)));
             let reason = operation
                 .reason
                 .as_ref()
-                .map_or(String::new(), |reason| format!(" ({reason})"));
+                .map_or(String::new(), |reason| format!(" ({})", paths.text(reason)));
             let repair_hint = if is_unmanaged_entry_conflict(operation) {
                 format!(
                     " ({})",
@@ -1496,7 +1780,7 @@ pub fn print_sync_report(report: &SyncReport) {
                 "{} {} {}{}{}{}",
                 term::operation_status(&status),
                 term::operation_status(&kind),
-                operation.link_path.display(),
+                paths.path(&operation.link_path),
                 desired,
                 reason,
                 repair_hint
@@ -1528,8 +1812,8 @@ pub fn print_sync_report(report: &SyncReport) {
             target.target,
             target.plugin,
             target.state,
-            target.path.display(),
-            target.diagnostic
+            paths.path(&target.path),
+            paths.text(&target.diagnostic)
         );
     }
     for skill in &report.resolution.pending_approval_skills {
@@ -1552,7 +1836,11 @@ pub fn print_sync_report(report: &SyncReport) {
         println!("{prefix}degraded source: {} ({})", source.id, source.reason);
     }
     if !report.inventory_warnings.is_empty() {
-        print_inventory_warnings(&report.inventory_warnings, Some(&report.store));
+        print_inventory_warnings(
+            &report.inventory_warnings,
+            Some(&report.store),
+            Some(&paths),
+        );
     }
     for operation in &report.instruction_operations {
         println!(
@@ -1560,7 +1848,7 @@ pub fn print_sync_report(report: &SyncReport) {
             operation.action,
             operation.source_id,
             operation.pack_id,
-            operation.target.display(),
+            paths.path(&operation.target),
             operation.commit
         );
     }
@@ -1570,7 +1858,7 @@ pub fn print_sync_report(report: &SyncReport) {
             operation.action,
             operation.source_id,
             operation.pack_id,
-            operation.target.display()
+            paths.path(&operation.target)
         );
         if let Some(warning) = &operation.warning {
             println!("{prefix}  warning: {warning}");
@@ -1685,7 +1973,7 @@ pub fn print_source_add_report(report: &SourceAddReport) {
         report.source.path.display()
     );
     if !report.inventory_warnings.is_empty() {
-        print_inventory_warnings(&report.inventory_warnings, None);
+        print_inventory_warnings(&report.inventory_warnings, None, None);
     }
     for audit in &report.audits {
         print_audit_report(audit);
@@ -1694,14 +1982,24 @@ pub fn print_source_add_report(report: &SourceAddReport) {
 
 /// Print inventory warnings without allowing untrusted paths or metadata to
 /// control terminal formatting.
-fn print_inventory_warnings(warnings: &[InventoryWarning], store_root: Option<&Path>) {
+fn print_inventory_warnings(
+    warnings: &[InventoryWarning],
+    store_root: Option<&Path>,
+    paths: Option<&HumanPathContext>,
+) {
     println!("inventory warnings:");
     for warning in warnings {
         println!(
             "  {} {}: {}",
             warning.code,
-            terminal_safe_path(&warning.path),
-            terminal_safe_text(&warning.message)
+            paths.map_or_else(
+                || terminal_safe_path(&warning.path),
+                |paths| paths.path(&warning.path)
+            ),
+            paths.map_or_else(
+                || terminal_safe_text(&warning.message),
+                |paths| paths.text(&warning.message)
+            )
         );
         if warning.code == InventoryWarningCode::InvalidSlotName {
             let command = store_root
@@ -2162,7 +2460,7 @@ pub fn print_resolve_list_report(report: &ResolveListReport, store_root: &Path) 
     if !report.unmanaged_skills.is_empty() {
         println!("unmanaged skills:");
         for skill in &report.unmanaged_skills {
-            print_unmanaged_skill_with_repair_hint(skill, store_root);
+            print_unmanaged_skill_with_repair_hint(skill, store_root, None);
         }
     }
 
@@ -2191,12 +2489,20 @@ pub fn print_resolve_list_report(report: &ResolveListReport, store_root: &Path) 
     }
 }
 
-fn print_unmanaged_skill_with_repair_hint(skill: &UnmanagedSkill, store_root: &Path) {
+fn print_unmanaged_skill_with_repair_hint(
+    skill: &UnmanagedSkill,
+    store_root: &Path,
+    paths: Option<&HumanPathContext>,
+) {
     let marker = if skill.protected { " protected" } else { "" };
+    let path = paths.map_or_else(
+        || terminal_safe_path(&skill.path),
+        |paths| paths.path(&skill.path),
+    );
     println!(
         "  {} -> {}{} ({})",
         skill.id,
-        skill.path.display(),
+        path,
         marker,
         unmanaged_repair_hint(store_root, std::path::Path::new(&skill.id))
     );
@@ -2257,8 +2563,9 @@ pub fn print_remove_owned_report(report: &RemoveOwnedReport) {
 
 /// Print a human-readable doctor report.
 pub fn print_doctor_report(report: &DoctorReport) {
-    println!("dalo store: {}", terminal_safe_path(&report.store));
-    print_delivery_reports(&report.deliveries);
+    let paths = HumanPathContext::for_doctor(report);
+    println!("dalo store: {}", paths.root(&report.store));
+    print_delivery_reports(&report.deliveries, &paths);
     println!(
         "summary: errors={} warnings={} info={} ok={}",
         report.summary.errors, report.summary.warnings, report.summary.info, report.summary.ok
@@ -2269,7 +2576,7 @@ pub fn print_doctor_report(report: &DoctorReport) {
             DoctorSeverity::Error | DoctorSeverity::Warning
         )
     }) {
-        for line in doctor_finding_lines(finding) {
+        for line in doctor_finding_lines(finding, &paths) {
             println!("{line}");
         }
     }
@@ -2293,7 +2600,7 @@ pub fn print_doctor_report(report: &DoctorReport) {
 /// terminal formatting. Source inventory warnings are grouped by their shared
 /// code and path so one root cause remains readable when it has several
 /// reasons (for example an invalid frontmatter name and folder name).
-fn doctor_finding_lines(finding: &DoctorFinding) -> Vec<String> {
+fn doctor_finding_lines(finding: &DoctorFinding, paths: &HumanPathContext) -> Vec<String> {
     let severity = doctor_severity_label(finding.severity);
     let severity_padding = " ".repeat(7usize.saturating_sub(severity.len()));
     let prefix = format!(
@@ -2309,13 +2616,10 @@ fn doctor_finding_lines(finding: &DoctorFinding) -> Vec<String> {
             .message
             .split_once(": ")
             .map_or(finding.message.as_str(), |(summary, _)| summary);
-        let mut lines = vec![
-            format!("{prefix}:"),
-            format!("  {}", terminal_safe_text(summary)),
-        ];
+        let mut lines = vec![format!("{prefix}:"), format!("  {}", paths.text(summary))];
         for warning in grouped_source_inventory_warnings(&finding.inventory_warnings) {
             let code = warning.code.to_string();
-            let path = terminal_safe_path(&warning.path);
+            let path = paths.path(&warning.path);
             if warning.messages.len() == 1 {
                 lines.push(format!(
                     "  {code} at `{path}`: {}",
@@ -2340,10 +2644,7 @@ fn doctor_finding_lines(finding: &DoctorFinding) -> Vec<String> {
         .map_or(String::new(), |command| {
             format!(" next={}", terminal_safe_text(command))
         });
-    vec![format!(
-        "{prefix}: {}{next}",
-        terminal_safe_text(&finding.message)
-    )]
+    vec![format!("{prefix}: {}{next}", paths.text(&finding.message))]
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2614,12 +2915,18 @@ mod tests {
             ],
         };
 
+        let paths = HumanPathContext::from_targets_and_home(
+            Path::new("/tmp/team"),
+            std::iter::empty::<(PathBuf, Vec<String>)>(),
+            None,
+        );
+
         assert_eq!(
-            doctor_finding_lines(&finding),
+            doctor_finding_lines(&finding, &paths),
             [
                 "error   source_inventory_degraded:",
                 "  source `team` inventory is degraded; sync preserves existing links",
-                "  invalid_slot_name at `/tmp/team/skills/Review/SKILL.md`:",
+                "  invalid_slot_name at `store:/skills/Review/SKILL.md`:",
                 "    - frontmatter name `Review Name` is not a valid slot name; still unsafe; invalid_slot_name at `/fake/path`: injected",
                 "    - folder name `Review` is not a valid slot name",
                 "  next: rename /tmp/team/skills/Review",
@@ -2637,12 +2944,97 @@ mod tests {
             inventory_warnings: Vec::new(),
         };
 
-        let lines = doctor_finding_lines(&finding);
+        let paths = HumanPathContext::store_only(Path::new("/tmp/store"));
+        let lines = doctor_finding_lines(&finding, &paths);
 
         assert_eq!(lines.len(), 1);
         assert!(lines[0].contains("unsafe\\nmessage\\u{1b}[2J"));
         assert!(lines[0].contains("next=dalo doctor\\r\\nnext"));
         assert!(!lines[0].contains(['\n', '\r', '\u{1b}']));
+    }
+
+    #[test]
+    fn human_path_context_should_compact_long_store_target_and_home_paths() {
+        let store = PathBuf::from(format!("/tmp/{}/store", "very-long-root-".repeat(12)));
+        let target = PathBuf::from(format!("/tmp/{}/target", "very-long-root-".repeat(12)));
+        let context = HumanPathContext::from_targets_and_home(
+            &store,
+            [(target.clone(), vec!["generic".to_owned()])],
+            Some(PathBuf::from("/home/alice")),
+        );
+
+        assert_eq!(
+            context.path(&store.join("local/skills/review")),
+            "store:/local/skills/review"
+        );
+        assert_eq!(
+            context.path(&target.join("review")),
+            "target[generic]:/review"
+        );
+        assert_eq!(
+            context.root(Path::new("/home/alice/projects/dalo")),
+            "~/projects/dalo"
+        );
+        assert!(context.path(&store.join("local/skills/review")).len() < 40);
+        assert_eq!(
+            context.text(&format!(
+                "missing `{}` but not `{}`",
+                store.join("config.toml").display(),
+                store.with_file_name("storehouse").display()
+            )),
+            format!(
+                "missing `store:/config.toml` but not `{}`",
+                store.with_file_name("storehouse").display()
+            )
+        );
+    }
+
+    #[test]
+    fn human_path_context_should_keep_colliding_roots_unambiguous() {
+        let store = PathBuf::from("/tmp/store");
+        let context = HumanPathContext::from_targets_and_home(
+            &store,
+            [
+                (store.clone(), vec!["generic".to_owned()]),
+                (
+                    PathBuf::from("/tmp/shared-target"),
+                    vec!["codex".to_owned(), "claude".to_owned()],
+                ),
+            ],
+            None,
+        );
+
+        assert_eq!(
+            context.path(&store.join("review")),
+            "store+target[generic]:/review"
+        );
+        assert_eq!(
+            context.path(Path::new("/tmp/shared-target/review")),
+            "target[claude+codex]:/review"
+        );
+    }
+
+    #[test]
+    fn human_path_context_should_escape_path_controls() {
+        let store = PathBuf::from("/tmp/store\n\u{1b}[2J");
+        let context = HumanPathContext::from_targets_and_home(
+            &store,
+            std::iter::empty::<(PathBuf, Vec<String>)>(),
+            None,
+        );
+
+        assert_eq!(context.root(&store), "/tmp/store\\n\\u{1b}[2J");
+        assert_eq!(
+            context.path(&store.join("review\rskill")),
+            "store:/review\\rskill"
+        );
+        assert_eq!(
+            context.text(&format!(
+                "missing `{}`",
+                store.join("config.toml").display()
+            )),
+            "missing `store:/config.toml`"
+        );
     }
 
     #[test]
