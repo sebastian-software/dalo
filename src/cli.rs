@@ -2413,6 +2413,27 @@ fn run_sync(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
 }
 
 fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
+    run_sync_locked_with_post_lock_hook(options, args, |_| Ok(()))
+}
+
+/// A durable-sync phase that runs only after the user lock has been committed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PostLockSyncPhase {
+    StateRead,
+    ToolListing,
+    HookListing,
+    PluginProjection,
+    HookProjection,
+}
+
+fn run_sync_locked_with_post_lock_hook<F>(
+    options: &GlobalOptions,
+    args: CheckArgs,
+    mut after_lock: F,
+) -> DaloResult<()>
+where
+    F: FnMut(PostLockSyncPhase) -> DaloResult<()>,
+{
     let paths = store::StorePaths::new(options.store.clone());
     let _catalog_lock = if options.dry_run {
         store::CatalogLock::acquire_shared(&paths)?
@@ -2443,7 +2464,7 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
     } else {
         source::refresh_tracking_team_sources_from_config(&paths, &config_before_manifests)?
     };
-    let (manifest_report, manifest_rollback) = if options.dry_run {
+    let (manifest_report, mut manifest_rollback) = if options.dry_run {
         (None, None)
     } else {
         let (report, rollback) = team_manifest::reconcile_team_manifests(&paths)?;
@@ -2474,6 +2495,13 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
             })
             .map(|source| source.id.clone())
             .collect()
+    };
+    let mut run_post_lock_phase = |phase| {
+        if options.dry_run {
+            Ok(())
+        } else {
+            after_lock(phase)
+        }
     };
     let sync_result = (|| -> DaloResult<materialize::SyncReport> {
         let approvals = store::read_approvals(&paths)?;
@@ -2584,6 +2612,11 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
                 instruction_sync.rollback,
                 store::write_user_lock,
             )?;
+            // A successful lock write commits the materialized state and the
+            // manifest-owned source configuration together. Later projection
+            // failures must not delete checkouts that the committed lock now
+            // references.
+            manifest_rollback = None;
         }
         let selected_plugins = live
             .plugins
@@ -2593,6 +2626,7 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
             .map(|plugin| plugin.source_ref.clone())
             .collect::<Vec<_>>();
         let target_state = store::read_state(&paths)?;
+        run_post_lock_phase(PostLockSyncPhase::StateRead)?;
         let has_tools = plugin_inventories
             .iter()
             .flat_map(|inventory| &inventory.plugins)
@@ -2617,6 +2651,7 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
         } else {
             Vec::new()
         };
+        run_post_lock_phase(PostLockSyncPhase::ToolListing)?;
         let hooks = if has_hooks || needs_plan_status {
             crate::hook::list_from_inventories(
                 &paths,
@@ -2629,6 +2664,7 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
         } else {
             Vec::new()
         };
+        run_post_lock_phase(PostLockSyncPhase::HookListing)?;
         report.plugin_targets = crate::plugin_projection::reconcile(
             &paths,
             &target_state,
@@ -2638,6 +2674,7 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
             &hooks,
             options.dry_run,
         )?;
+        run_post_lock_phase(PostLockSyncPhase::PluginProjection)?;
         if let Some(plan) = report.installation_plan.as_mut() {
             plan::attach_tool_status_from_report(plan, &tools);
             plan::attach_hook_status_from_report(plan, &hooks);
@@ -2650,6 +2687,7 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
             &hooks,
             options.dry_run,
         )?;
+        run_post_lock_phase(PostLockSyncPhase::HookProjection)?;
         Ok(report)
     })();
     let report = match sync_result {
@@ -4131,6 +4169,7 @@ where
 #[cfg(test)]
 mod tests {
     use std::cell::Cell;
+    use std::process::Command as ProcessCommand;
 
     use super::*;
 
@@ -4187,6 +4226,182 @@ mod tests {
         assert_eq!(
             store::read_user_lock(&paths).expect("previous lock should be restored"),
             previous
+        );
+    }
+
+    #[test]
+    fn sync_should_keep_committed_manifest_state_for_each_post_lock_failure() {
+        for phase in [
+            PostLockSyncPhase::StateRead,
+            PostLockSyncPhase::ToolListing,
+            PostLockSyncPhase::HookListing,
+            PostLockSyncPhase::PluginProjection,
+            PostLockSyncPhase::HookProjection,
+        ] {
+            let fixture = post_lock_manifest_fixture();
+            let error = run_sync_locked_with_post_lock_hook(
+                &fixture.options,
+                CheckArgs { check: false },
+                |observed| {
+                    (observed == phase)
+                        .then(|| {
+                            DaloError::Io(std::io::Error::other(format!(
+                                "injected post-lock {phase:?} failure"
+                            )))
+                        })
+                        .map_or(Ok(()), Err)
+                },
+            )
+            .expect_err("post-lock failure should surface");
+            assert!(error.to_string().contains("injected post-lock"));
+
+            let config = store::read_config(&fixture.paths).expect("config should remain readable");
+            let source = config
+                .sources
+                .iter()
+                .find(|source| source.id == fixture.catalog_source_id)
+                .expect("committed manifest source should remain configured");
+            let lock = store::read_user_lock(&fixture.paths).expect("lock should remain readable");
+            let locked_source = lock
+                .sources
+                .iter()
+                .find(|source| source.id == fixture.catalog_source_id)
+                .expect("committed lock should retain manifest source");
+            assert_eq!(locked_source.path, source.path);
+            assert!(
+                source.path.join("skills/review/SKILL.md").is_file(),
+                "the lock must not reference a checkout removed by a stale manifest rollback"
+            );
+            assert!(
+                fixture.target.join("review").is_symlink(),
+                "the committed materialization must remain backed by the preserved checkout"
+            );
+
+            run_sync_locked(&fixture.options, CheckArgs { check: false })
+                .expect("a retry should reconcile the committed manifest state");
+            assert!(source.path.join("skills/review/SKILL.md").is_file());
+            assert!(fixture.target.join("review").is_symlink());
+        }
+    }
+
+    struct PostLockManifestFixture {
+        _temp_dir: tempfile::TempDir,
+        options: GlobalOptions,
+        paths: store::StorePaths,
+        catalog_source_id: String,
+        target: PathBuf,
+    }
+
+    fn post_lock_manifest_fixture() -> PostLockManifestFixture {
+        let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
+        let team_repo = temp_dir.path().join("team");
+        let catalog_repo = temp_dir.path().join("catalog");
+        std::fs::create_dir_all(team_repo.join("skills/team"))
+            .expect("team skill directory should be created");
+        std::fs::create_dir_all(catalog_repo.join("skills/review"))
+            .expect("catalog skill directory should be created");
+        std::fs::write(team_repo.join("skills/team/SKILL.md"), "# Team\n")
+            .expect("team skill should be written");
+        std::fs::write(catalog_repo.join("skills/review/SKILL.md"), "# Review\n")
+            .expect("catalog skill should be written");
+        commit_test_repository(&catalog_repo, "catalog");
+        let catalog_commit = test_git_head(&catalog_repo);
+        std::fs::write(
+            team_repo.join(team_manifest::TEAM_MANIFEST_FILE),
+            format!(
+                "schema_version = 1\n\
+                 [source]\n\
+                 id = \"team\"\n\
+                 [[catalog]]\n\
+                 id = \"catalog\"\n\
+                 url = \"{}\"\n\
+                 version = \"{catalog_commit}\"\n\
+                 skills = [\"+review\"]\n",
+                catalog_repo.display()
+            ),
+        )
+        .expect("team manifest should be written");
+        commit_test_repository(&team_repo, "team");
+
+        let store_root = temp_dir.path().join("store");
+        store::init_store(store_root.clone(), false).expect("store should initialize");
+        let paths = store::StorePaths::new(store_root.clone());
+        source::add_team_source(
+            &paths,
+            "team",
+            team_repo.to_str().expect("team path should be UTF-8"),
+            None,
+            false,
+        )
+        .expect("team source should be added");
+        let catalog_source_id = team_manifest::derived_source_id("team", "catalog");
+        let mut approvals = store::read_approvals(&paths).expect("approvals should be readable");
+        approvals.approvals.push(store::ApprovalRecord {
+            scope: "source".to_owned(),
+            value: catalog_source_id.clone(),
+        });
+        store::write_approvals(&paths, &approvals).expect("approval should be written");
+        let target = temp_dir.path().join("skills");
+        target::link_target(&store_root, "generic", Some(&target), false)
+            .expect("target should be linked");
+
+        PostLockManifestFixture {
+            _temp_dir: temp_dir,
+            options: GlobalOptions {
+                store: store_root,
+                json: false,
+                dry_run: false,
+            },
+            paths,
+            catalog_source_id,
+            target,
+        }
+    }
+
+    fn commit_test_repository(repository: &std::path::Path, message: &str) {
+        run_test_git(repository, &["init", "-q"]);
+        run_test_git(repository, &["add", "."]);
+        run_test_git(
+            repository,
+            &[
+                "-c",
+                "commit.gpgsign=false",
+                "-c",
+                "user.email=test@example.com",
+                "-c",
+                "user.name=Test User",
+                "commit",
+                "-m",
+                message,
+                "-q",
+            ],
+        );
+    }
+
+    fn test_git_head(repository: &std::path::Path) -> String {
+        let output = ProcessCommand::new("git")
+            .arg("rev-parse")
+            .arg("HEAD")
+            .current_dir(repository)
+            .output()
+            .expect("git should run");
+        assert!(output.status.success(), "git rev-parse should succeed");
+        String::from_utf8(output.stdout)
+            .expect("Git SHA should be UTF-8")
+            .trim()
+            .to_owned()
+    }
+
+    fn run_test_git(repository: &std::path::Path, arguments: &[&str]) {
+        let status = ProcessCommand::new("git")
+            .args(arguments)
+            .current_dir(repository)
+            .status()
+            .expect("git should run");
+        assert!(
+            status.success(),
+            "git {} should succeed",
+            arguments.join(" ")
         );
     }
 }
