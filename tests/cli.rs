@@ -1239,6 +1239,122 @@ fn next_should_choose_one_action_from_store_state_and_keep_init_state_aware() {
 }
 
 #[test]
+fn next_should_surface_doctor_error_without_rescanning_or_failing() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = store::comparable_path(&temp_dir.path().join("custom store"));
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    let valid_skill = store.join("local/skills/review");
+    std::fs::create_dir_all(&valid_skill).expect("valid skill should be created");
+    std::fs::write(valid_skill.join("SKILL.md"), "# Review\n")
+        .expect("valid skill should be written");
+    let invalid_skill = store.join("local/skills/Bad\u{1b}[2J");
+    std::fs::create_dir_all(&invalid_skill).expect("invalid skill should be created");
+    std::fs::write(invalid_skill.join("SKILL.md"), "# Invalid\n")
+        .expect("invalid skill should be written");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("degraded source: local"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["doctor", "--check"])
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(predicate::str::contains("source_inventory_degraded"));
+
+    let human = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("next")
+        .assert()
+        .success()
+        .code(0)
+        .stdout(predicate::str::contains(format!(
+            "Next: {}",
+            store::dalo_command(&store, "status")
+        )))
+        .stdout(predicate::str::contains(
+            "Source `local` has inventory warnings",
+        ))
+        .stdout(predicate::str::contains("All synced").not())
+        .get_output()
+        .stdout
+        .clone();
+    assert!(
+        !String::from_utf8_lossy(&human).contains('\u{1b}'),
+        "next output must not replay controls from untrusted warning paths"
+    );
+
+    let json = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "next"])
+        .assert()
+        .success()
+        .code(0)
+        .get_output()
+        .stdout
+        .clone();
+    let report: NextActionReportSchema =
+        serde_json::from_slice(&json).expect("next should keep its public JSON shape");
+    assert_eq!(report.store, store);
+    assert!(report.initialized);
+    assert_eq!(report.linked_targets, 1);
+    assert_eq!(report.sources, 1);
+    assert_eq!(report.active_skills, 1);
+    assert_eq!(report.pending_approvals, 0);
+    assert_eq!(report.state, "needs_attention");
+    assert!(report.message.contains("Source `local`"));
+    assert_eq!(report.command, Some(store::dalo_command(&store, "status")));
+}
+
+#[test]
+fn next_should_surface_non_degrading_inventory_warnings() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    let skill = store.join("local/skills/review");
+    std::fs::create_dir_all(&skill).expect("skill should be created");
+    std::fs::write(
+        skill.join("SKILL.md"),
+        "---\nname: [not valid\n---\n# Review\n",
+    )
+    .expect("malformed-frontmatter skill should be written");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["status", "--check"])
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("malformed_frontmatter"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("next")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Source `local` has inventory warnings",
+        ))
+        .stdout(predicate::str::contains("All synced").not());
+}
+
+#[test]
 fn agent_list_and_show_should_preview_canonical_provider_projections() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -9481,6 +9597,19 @@ struct DoctorReportSchema {
 struct DoctorFindingSchema {
     severity: String,
     code: String,
+}
+
+#[derive(serde::Deserialize)]
+struct NextActionReportSchema {
+    store: std::path::PathBuf,
+    initialized: bool,
+    linked_targets: usize,
+    sources: usize,
+    active_skills: usize,
+    pending_approvals: usize,
+    state: String,
+    message: String,
+    command: Option<String>,
 }
 
 #[test]

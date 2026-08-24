@@ -74,8 +74,10 @@ JSON output shape: `InitReport`.
 
 Show a compact summary of the selected store and one copyable next action. It
 chooses initialization, target discovery, source addition, an exact pending
-approval, or synchronization from the current store state. When no action is
-needed, it reports `All synced`.
+approval, synchronization, or detailed status when the already-computed store
+facts contain errors or inventory warnings. Health problems take precedence
+over onboarding guidance. Only when no action is needed does it report
+`All synced`.
 
 Running bare `dalo` shows this same summary only when stdout is a terminal;
 when output is piped it keeps printing the normal static help. Use `dalo next`

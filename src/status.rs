@@ -476,17 +476,17 @@ pub fn build_next_action_report(store_root: &Path) -> DaloResult<NextActionRepor
     let linked_targets = report.targets.iter().filter(|target| target.linked).count();
     let sources_with_skills = report.sources.iter().any(|source| source.skill_count > 0);
     let pending_approvals = report.resolution.pending_approval_skills.len();
-    let (state, message, command) = if linked_targets == 0 {
+    let (state, message, command) = if let Some(message) = next_health_attention_message(&report) {
+        (
+            NextActionState::NeedsAttention,
+            message,
+            Some(store::dalo_command(store_root, "status")),
+        )
+    } else if linked_targets == 0 {
         (
             NextActionState::NoTarget,
             "Link a target so Dalo knows where to materialize skills.".to_owned(),
             Some(store::dalo_command(store_root, "target detect")),
-        )
-    } else if report.sources.iter().any(|source| source.error.is_some()) {
-        (
-            NextActionState::NeedsAttention,
-            "At least one source could not be inspected; review its detailed status.".to_owned(),
-            Some(store::dalo_command(store_root, "status")),
         )
     } else if !sources_with_skills {
         let local_skills_dir = StorePaths::new(store_root.to_path_buf()).local_skills_dir;
@@ -510,27 +510,10 @@ pub fn build_next_action_report(store_root: &Path) -> DaloResult<NextActionRepor
                 &format!("approve skill {}", skill.source_ref),
             )),
         )
-    } else if !report.blocking_audits.is_empty()
-        || !report.audit_failures.is_empty()
-        || report
-            .materialization
-            .iter()
-            .any(|operation| operation.status == MaterializeOperationStatus::Blocked)
-        || report
-            .resolution
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code.requires_review())
-        || !report.plugin_inventory_warnings.is_empty()
-        || report
-            .plugins
-            .plugins
-            .iter()
-            .any(|plugin| plugin.state == crate::plugin::PluginState::Blocked)
-    {
+    } else if let Some(message) = next_blocker_attention_message(&report) {
         (
             NextActionState::NeedsAttention,
-            "The store has a blocker; inspect its detailed status before changing it.".to_owned(),
+            message,
             Some(store::dalo_command(store_root, "status")),
         )
     } else if !report.lock.drift.is_empty() {
@@ -558,6 +541,100 @@ pub fn build_next_action_report(store_root: &Path) -> DaloResult<NextActionRepor
         message,
         command,
     })
+}
+
+fn next_health_attention_message(report: &StatusReport) -> Option<String> {
+    let source_errors = report
+        .sources
+        .iter()
+        .filter(|source| source.error.is_some())
+        .map(|source| source.id.as_str())
+        .collect::<Vec<_>>();
+    if !source_errors.is_empty() {
+        return Some(if source_errors.len() == 1 {
+            format!(
+                "Source `{}` could not be inspected; review its detailed status.",
+                source_errors[0]
+            )
+        } else {
+            format!(
+                "Sources {} could not be inspected; review their detailed status.",
+                source_errors
+                    .iter()
+                    .map(|source| format!("`{source}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        });
+    }
+
+    if !report.inventory_warnings.is_empty() {
+        let warning_sources = report
+            .sources
+            .iter()
+            .filter(|source| {
+                report
+                    .inventory_warnings
+                    .iter()
+                    .any(|warning| warning.path.starts_with(&source.path))
+            })
+            .map(|source| source.id.as_str())
+            .collect::<Vec<_>>();
+        return Some(match warning_sources.as_slice() {
+            [source] => format!(
+                "Source `{source}` has inventory warnings; review its detailed status before synchronizing."
+            ),
+            [] => "The source inventory has warnings; review detailed status before synchronizing."
+                .to_owned(),
+            sources => format!(
+                "Sources {} have inventory warnings; review their detailed status before synchronizing.",
+                sources
+                    .iter()
+                    .map(|source| format!("`{source}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        });
+    }
+
+    None
+}
+
+fn next_blocker_attention_message(report: &StatusReport) -> Option<String> {
+    if !report.agent_inventory_warnings.is_empty() {
+        return Some(
+            "The agent inventory has warnings; review detailed status before synchronizing."
+                .to_owned(),
+        );
+    }
+    if !report.plugin_inventory_warnings.is_empty() {
+        return Some(
+            "The plugin inventory has warnings; review detailed status before synchronizing."
+                .to_owned(),
+        );
+    }
+    if !report.blocking_audits.is_empty()
+        || !report.audit_failures.is_empty()
+        || report
+            .materialization
+            .iter()
+            .any(|operation| operation.status == MaterializeOperationStatus::Blocked)
+        || report
+            .resolution
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code.requires_review())
+        || report
+            .plugins
+            .plugins
+            .iter()
+            .any(|plugin| plugin.state == crate::plugin::PluginState::Blocked)
+    {
+        return Some(
+            "The store has a blocker; inspect its detailed status before changing it.".to_owned(),
+        );
+    }
+    None
 }
 
 fn degraded_sources_from_audit_failures(
@@ -2411,6 +2488,31 @@ mod tests {
         assert_eq!(
             report.resolution.active_skills[0].source_ref,
             "local:review"
+        );
+    }
+
+    #[test]
+    fn build_next_action_report_should_scan_each_source_once() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        let invalid_skill = store_root.join("local/skills/Invalid");
+        fs::create_dir_all(&invalid_skill).expect("invalid skill should be created");
+        fs::write(invalid_skill.join("SKILL.md"), "# Invalid\n")
+            .expect("invalid skill should be written");
+
+        crate::plugin::reset_source_plugin_scan_count();
+        let report = build_next_action_report(&store_root).expect("next action should build");
+
+        assert_eq!(
+            report.state,
+            NextActionState::NeedsAttention,
+            "health problems must take precedence over missing-target onboarding"
+        );
+        assert_eq!(
+            crate::plugin::source_plugin_scan_count(),
+            1,
+            "next must classify already-computed status facts without a doctor or resolver rescan"
         );
     }
 
