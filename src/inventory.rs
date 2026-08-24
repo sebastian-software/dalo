@@ -440,11 +440,21 @@ fn find_skill_dirs(
         let skill_file = dir.join(SKILL_FILE);
         match fs::symlink_metadata(&skill_file) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
-                if !canonical_source_root.as_ref().is_some_and(|source_root| {
+                if canonical_source_root.as_ref().is_some_and(|source_root| {
                     skill_file
                         .canonicalize()
                         .is_ok_and(|target| target.starts_with(source_root))
                 }) {
+                    if skill_file.is_file() {
+                        found.push(dir);
+                        continue;
+                    }
+                    warnings.push(InventoryWarning {
+                        code: InventoryWarningCode::UnreadablePath,
+                        path: skill_file,
+                        message: "SKILL.md must resolve to a regular file".to_owned(),
+                    });
+                } else {
                     warnings.push(InventoryWarning {
                         code: InventoryWarningCode::SkippedSymlink,
                         path: skill_file,
@@ -452,17 +462,7 @@ fn find_skill_dirs(
                             "skipped symlinked SKILL.md whose target is outside the source checkout"
                                 .to_owned(),
                     });
-                    continue;
                 }
-                if skill_file.is_file() {
-                    found.push(dir);
-                    continue;
-                }
-                warnings.push(InventoryWarning {
-                    code: InventoryWarningCode::UnreadablePath,
-                    path: skill_file,
-                    message: "SKILL.md must resolve to a regular file".to_owned(),
-                });
             }
             Ok(metadata) if metadata.is_file() => {
                 found.push(dir);
@@ -1994,6 +1994,27 @@ required = true
             inventory.warnings[0].path,
             source_root.join("skills/review").join(SKILL_FILE)
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn scan_source_should_continue_below_a_broken_skill_metadata_symlink() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let parent = temp_dir.path().join("skills/parent");
+        let nested = parent.join("nested");
+        fs::create_dir_all(&nested).expect("nested skill directory should be created");
+        std::os::unix::fs::symlink("missing.md", parent.join(SKILL_FILE))
+            .expect("broken skill metadata symlink should be created");
+        fs::write(nested.join(SKILL_FILE), "# Nested\n").expect("nested skill should be written");
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should complete");
+
+        assert_eq!(inventory.skills.len(), 1);
+        assert_eq!(inventory.skills[0].slot_name, "nested");
+        assert!(inventory.warnings.iter().any(|warning| {
+            warning.code == InventoryWarningCode::SkippedSymlink
+                && warning.path == parent.join(SKILL_FILE)
+        }));
     }
 
     #[test]
