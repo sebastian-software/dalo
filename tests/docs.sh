@@ -303,6 +303,14 @@ assert_target_reference() {
   for target in $published_targets; do
     printf '%s\n' "$section" | grep -Fq "\`$target\`" || return 1
   done
+  expected_targets="$(printf '%s\n' $published_targets | sort -u)"
+  documented_targets="$(
+    printf '%s\n' "$section" \
+      | grep -Eo '\`[A-Za-z0-9_]+-(unknown-linux-(gnu|musl)|apple-darwin)\`' \
+      | tr -d '\`' \
+      | sort -u
+  )"
+  test "$documented_targets" = "$expected_targets" || return 1
 }
 assert_target_reference "$target_section" "$reference_document"
 
@@ -312,7 +320,8 @@ if assert_target_reference "$target_section" "$missing_target_document"; then
   echo 'DALO_TARGET reference gate accepted a missing installer link' >&2
   exit 1
 fi
-wrong_target_section="$(printf '%s\n' "$target_section" | sed 's/aarch64-unknown-linux-musl/aarch64-unknown-linux-invalid/')"
+wrong_target_section="$target_section
+Unsupported example: \`powerpc64-unknown-linux-gnu\`."
 if assert_target_reference "$wrong_target_section" "$reference_document"; then
   echo 'DALO_TARGET reference gate accepted a wrong published target' >&2
   exit 1
