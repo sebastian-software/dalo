@@ -2484,7 +2484,12 @@ fn run_sync_locked(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
         let plugin_inventories = resolver::plugin_inventories(&resolved);
         let reconciliation_inventories = resolver::inventories_with_plugins(&resolved);
         let mut live = resolved.live;
-        let audits = audit::audit_active_skills(&paths, &live.resolution, !options.dry_run);
+        let audits = audit::audit_active_skills_with_config(
+            &paths,
+            &live.resolution,
+            !options.dry_run,
+            &config,
+        );
         ensure_no_blocking_audits(&audits.blocking)?;
         resolver::degrade_audit_failures(&mut live.resolution, &audits.failures);
         let planning_lock;
@@ -3426,7 +3431,12 @@ fn run_source_remove(
         source::plan_remove_source(paths, &args.id, args.keep_checkout, options.dry_run)?;
     let previous_user_lock = store::read_user_lock(paths)?;
     let mut live = resolver::resolve_from_config(&plan.config, plan.approvals.approvals.clone());
-    let audits = audit::audit_active_skills(paths, &live.resolution, !options.dry_run);
+    let audits = audit::audit_active_skills_with_config(
+        paths,
+        &live.resolution,
+        !options.dry_run,
+        &plan.config,
+    );
     ensure_no_blocking_audits(&audits.blocking)?;
     resolver::degrade_audit_failures(&mut live.resolution, &audits.failures);
     let degraded_sources = collect_degraded_sources(&live, Vec::new(), &audits.failures);

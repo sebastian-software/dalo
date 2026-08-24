@@ -1,5 +1,7 @@
 //! Store path resolution and managed state layout.
 
+#[cfg(test)]
+use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::ffi::OsString;
@@ -23,6 +25,26 @@ pub const STORE_ENV_VAR: &str = "DALO_STORE";
 
 /// Default store directory name below the user's home directory.
 pub const DEFAULT_STORE_DIR: &str = ".dalo";
+
+#[cfg(test)]
+thread_local! {
+    static CONFIG_READ_INVOCATIONS: Cell<usize> = const { Cell::new(0) };
+    static COMPARABLE_PATH_INVOCATIONS: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn reset_path_io_invocations() {
+    CONFIG_READ_INVOCATIONS.with(|count| count.set(0));
+    COMPARABLE_PATH_INVOCATIONS.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+pub(crate) fn path_io_invocations() -> (usize, usize) {
+    (
+        CONFIG_READ_INVOCATIONS.with(Cell::get),
+        COMPARABLE_PATH_INVOCATIONS.with(Cell::get),
+    )
+}
 
 /// Current internal state schema version.
 pub const STATE_SCHEMA_VERSION: u32 = 1;
@@ -511,6 +533,9 @@ pub fn resolve_link_target(link_path: &Path, target: &Path) -> PathBuf {
 /// existing prefix and preserving any missing tail.
 #[must_use]
 pub fn comparable_path(path: &Path) -> PathBuf {
+    #[cfg(test)]
+    COMPARABLE_PATH_INVOCATIONS.with(|count| count.set(count.get() + 1));
+
     if let Ok(canonical) = path.canonicalize() {
         return canonical;
     }
@@ -691,6 +716,9 @@ fn migrate_protected_skills(state: &mut StateFile) {
 
 /// Read the initialized user config.
 pub fn read_config(paths: &StorePaths) -> DaloResult<UserConfig> {
+    #[cfg(test)]
+    CONFIG_READ_INVOCATIONS.with(|count| count.set(count.get() + 1));
+
     if !paths.config_file.exists() {
         return Err(DaloError::StoreNotInitialized {
             path: paths.root.clone(),
