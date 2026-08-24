@@ -2090,14 +2090,29 @@ fn autosync_status_should_report_not_installed_after_init() {
         .assert()
         .success();
 
-    dalo_command()
+    let autosync = dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["--json", "autosync", "status"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("\"installed\": false"))
-        .stdout(predicate::str::contains("\"enabled\": false"));
+        .get_output()
+        .stdout
+        .clone();
+    let autosync: serde_json::Value = serde_json::from_slice(&autosync).unwrap();
+    assert_eq!(autosync["installed"], false);
+    assert_eq!(autosync["enabled"], false);
+}
+
+#[test]
+fn json_path_assertion_should_reject_the_same_value_in_an_unrelated_context() {
+    let report = serde_json::json!({
+        "history": [{ "outcome": "succeeded" }],
+        "last_run": { "outcome": "blocked" },
+    });
+
+    assert_eq!(report["history"][0]["outcome"], "succeeded");
+    assert_ne!(report["last_run"]["outcome"], "succeeded");
 }
 
 #[test]
@@ -2153,22 +2168,29 @@ fn autosync_run_should_persist_success_and_previous_success_time() {
         .args(["autosync", "run"])
         .assert()
         .success();
-    dalo_command()
+    let autosync = dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["--json", "autosync", "status"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("\"outcome\": \"succeeded\""))
-        .stdout(predicate::str::contains("last_successful_at_unix"));
-    dalo_command()
+        .get_output()
+        .stdout
+        .clone();
+    let autosync: serde_json::Value = serde_json::from_slice(&autosync).unwrap();
+    assert_eq!(autosync["last_run"]["outcome"], "succeeded");
+    assert!(autosync["last_run"]["last_successful_at_unix"].is_u64());
+    let status = dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["--json", "status"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("\"autosync\""))
-        .stdout(predicate::str::contains("\"outcome\": \"succeeded\""));
+        .get_output()
+        .stdout
+        .clone();
+    let status: serde_json::Value = serde_json::from_slice(&status).unwrap();
+    assert_eq!(status["autosync"]["last_run"]["outcome"], "succeeded");
 }
 
 #[test]
