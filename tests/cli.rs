@@ -3334,6 +3334,102 @@ fn doctor_check_should_fail_for_a_degraded_source_inventory() {
 }
 
 #[test]
+fn doctor_human_output_should_group_inventory_warnings_without_changing_json() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    let invalid_skill = store.join("local/skills/Review");
+    std::fs::create_dir_all(&invalid_skill).expect("invalid skill directory should be created");
+    std::fs::write(
+        invalid_skill.join("SKILL.md"),
+        "---\nname: Review Name\n---\n# Review\n",
+    )
+    .expect("invalid skill should be written");
+
+    let human = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("doctor")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let human = String::from_utf8(human).expect("doctor output should be UTF-8");
+    let skill_file = invalid_skill.join("SKILL.md").display().to_string();
+
+    assert!(human.contains("error   source_inventory_degraded:"));
+    assert!(human.contains("  invalid_slot_name at `"));
+    assert_eq!(
+        human
+            .matches(&format!("invalid_slot_name at `{skill_file}`"))
+            .count(),
+        1
+    );
+    assert!(human.contains("    - frontmatter name `Review Name` is not a valid slot name"));
+    assert!(human.contains("    - folder name `Review` is not a valid slot name"));
+    assert!(human.contains("  next: change the frontmatter `name`"));
+
+    let json = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "doctor"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let json: serde_json::Value =
+        serde_json::from_slice(&json).expect("doctor JSON should remain valid");
+    let finding = json["findings"]
+        .as_array()
+        .expect("doctor JSON should contain findings")
+        .iter()
+        .find(|finding| finding["code"] == "source_inventory_degraded")
+        .expect("doctor JSON should retain the degraded inventory finding");
+    let message = finding["message"]
+        .as_str()
+        .expect("doctor JSON finding should retain its message");
+    assert_eq!(message.matches("invalid_slot_name at").count(), 2);
+    assert!(message.contains(&skill_file));
+}
+
+#[test]
+fn doctor_human_output_should_escape_terminal_controls_from_inventory_paths() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    let invalid_skill = store.join("local/skills/review\u{1b}[2J");
+    std::fs::create_dir_all(&invalid_skill).expect("invalid skill directory should be created");
+    std::fs::write(invalid_skill.join("SKILL.md"), "# Review\n")
+        .expect("invalid skill should be written");
+
+    let human = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("doctor")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let human = String::from_utf8(human).expect("doctor output should be UTF-8");
+
+    assert!(!human.contains('\u{1b}'));
+    assert!(human.contains("review\\u{1b}[2J"));
+}
+
+#[test]
 fn status_check_should_succeed_for_a_clean_store() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

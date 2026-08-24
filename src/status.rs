@@ -15,7 +15,7 @@ use crate::autosync::{AutosyncMutationReport, AutosyncStatusReport};
 use crate::catalog::{
     self, CatalogAdvanceReport, CatalogDrift, CatalogInspectReport, CatalogSelectReport,
 };
-use crate::doctor::{DoctorReport, DoctorSeverity};
+use crate::doctor::{DoctorCode, DoctorFinding, DoctorReport, DoctorSeverity};
 use crate::error::DaloResult;
 use crate::hook::HookListReport;
 use crate::instructions::{
@@ -2120,7 +2120,7 @@ pub fn print_remove_owned_report(report: &RemoveOwnedReport) {
 
 /// Print a human-readable doctor report.
 pub fn print_doctor_report(report: &DoctorReport) {
-    println!("dalo store: {}", report.store.display());
+    println!("dalo store: {}", terminal_safe_path(&report.store));
     print_delivery_reports(&report.deliveries);
     println!(
         "summary: errors={} warnings={} info={} ok={}",
@@ -2132,20 +2132,9 @@ pub fn print_doctor_report(report: &DoctorReport) {
             DoctorSeverity::Error | DoctorSeverity::Warning
         )
     }) {
-        let next = finding
-            .next_command
-            .as_ref()
-            .map_or(String::new(), |command| format!(" next={command}"));
-        let severity = doctor_severity_label(finding.severity);
-        let severity_padding = " ".repeat(7usize.saturating_sub(severity.len()));
-        println!(
-            "{}{} {}: {}{}",
-            term::doctor_severity(severity),
-            severity_padding,
-            finding.code,
-            finding.message,
-            next
-        );
+        for line in doctor_finding_lines(finding) {
+            println!("{line}");
+        }
     }
     let omitted = report
         .findings
@@ -2155,6 +2144,127 @@ pub fn print_doctor_report(report: &DoctorReport) {
     if omitted > 0 {
         println!("details: {omitted} info/ok findings omitted; use --json for the full report");
     }
+}
+
+/// Render one actionable finding without allowing finding content to control
+/// terminal formatting. Source inventory warnings are grouped by their shared
+/// code and path so one root cause remains readable when it has several
+/// reasons (for example an invalid frontmatter name and folder name).
+fn doctor_finding_lines(finding: &DoctorFinding) -> Vec<String> {
+    let severity = doctor_severity_label(finding.severity);
+    let severity_padding = " ".repeat(7usize.saturating_sub(severity.len()));
+    let prefix = format!(
+        "{}{} {}",
+        term::doctor_severity(severity),
+        severity_padding,
+        finding.code
+    );
+
+    if finding.code == DoctorCode::SourceInventoryDegraded {
+        if let Some((summary, details)) = finding.message.split_once(": ") {
+            if let Some(warnings) = source_inventory_warnings(details) {
+                let mut lines = vec![
+                    format!("{prefix}:"),
+                    format!("  {}", terminal_safe_text(summary)),
+                ];
+                for warning in warnings {
+                    let code = terminal_safe_text(&warning.code);
+                    let path = terminal_safe_text(&warning.path);
+                    if warning.messages.len() == 1 {
+                        lines.push(format!(
+                            "  {code} at `{path}`: {}",
+                            terminal_safe_text(&warning.messages[0])
+                        ));
+                    } else {
+                        lines.push(format!("  {code} at `{path}`:"));
+                        for message in warning.messages {
+                            lines.push(format!("    - {}", terminal_safe_text(&message)));
+                        }
+                    }
+                }
+                if let Some(command) = &finding.next_command {
+                    lines.push(format!("  next: {}", terminal_safe_text(command)));
+                }
+                return lines;
+            }
+        }
+    }
+
+    let next = finding
+        .next_command
+        .as_ref()
+        .map_or(String::new(), |command| {
+            format!(" next={}", terminal_safe_text(command))
+        });
+    vec![format!(
+        "{prefix}: {}{next}",
+        terminal_safe_text(&finding.message)
+    )]
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SourceInventoryWarningLine {
+    code: String,
+    path: String,
+    messages: Vec<String>,
+}
+
+/// Parse the stable, existing doctor message for source-inventory warnings.
+/// Returning `None` keeps an unfamiliar message on the legacy one-line path
+/// instead of risking that diagnostic content is lost.
+fn source_inventory_warnings(details: &str) -> Option<Vec<SourceInventoryWarningLine>> {
+    let mut warnings: Vec<SourceInventoryWarningLine> = Vec::new();
+    let mut remaining = details;
+    while !remaining.is_empty() {
+        let (code, after_code) = remaining.split_once(" at `")?;
+        if !is_inventory_warning_code(code) {
+            return None;
+        }
+        let (path, after_path) = after_code.split_once("`: ")?;
+        let (message, next) = match next_inventory_warning_boundary(after_path) {
+            Some(boundary) => (&after_path[..boundary], &after_path[boundary + 2..]),
+            None => (after_path, ""),
+        };
+        if path.is_empty() || message.is_empty() {
+            return None;
+        }
+        if let Some(warning) = warnings
+            .iter_mut()
+            .find(|warning| warning.code == code && warning.path == path)
+        {
+            if !warning.messages.iter().any(|existing| existing == message) {
+                warning.messages.push(message.to_owned());
+            }
+        } else {
+            warnings.push(SourceInventoryWarningLine {
+                code: code.to_owned(),
+                path: path.to_owned(),
+                messages: vec![message.to_owned()],
+            });
+        }
+        remaining = next;
+    }
+    (!warnings.is_empty()).then_some(warnings)
+}
+
+fn is_inventory_warning_code(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte == b'_')
+}
+
+/// Find a separator only when the following text begins another rendered
+/// inventory warning. A semicolon in an untrusted warning message therefore
+/// remains part of that message.
+fn next_inventory_warning_boundary(value: &str) -> Option<usize> {
+    value.match_indices("; ").find_map(|(index, _)| {
+        let candidate = &value[index + 2..];
+        candidate
+            .split_once(" at `")
+            .filter(|(code, _)| is_inventory_warning_code(code))
+            .map(|_| index)
+    })
 }
 
 fn doctor_severity_label(severity: DoctorSeverity) -> &'static str {
@@ -2369,6 +2479,45 @@ mod tests {
             terminal_safe_text("über\u{1b}[2J-skill"),
             "über\\u{1b}[2J-skill"
         );
+    }
+
+    #[test]
+    fn doctor_finding_lines_should_group_repeated_inventory_warning_paths() {
+        let finding = DoctorFinding {
+            severity: DoctorSeverity::Error,
+            code: DoctorCode::SourceInventoryDegraded,
+            message: "source `team` inventory is degraded; sync preserves existing links: invalid_slot_name at `/tmp/team/skills/Review/SKILL.md`: frontmatter name `Review Name` is not a valid slot name; still unsafe; invalid_slot_name at `/tmp/team/skills/Review/SKILL.md`: folder name `Review` is not a valid slot name".to_owned(),
+            next_command: Some("rename /tmp/team/skills/Review".to_owned()),
+        };
+
+        assert_eq!(
+            doctor_finding_lines(&finding),
+            [
+                "error   source_inventory_degraded:",
+                "  source `team` inventory is degraded; sync preserves existing links",
+                "  invalid_slot_name at `/tmp/team/skills/Review/SKILL.md`:",
+                "    - frontmatter name `Review Name` is not a valid slot name; still unsafe",
+                "    - folder name `Review` is not a valid slot name",
+                "  next: rename /tmp/team/skills/Review",
+            ]
+        );
+    }
+
+    #[test]
+    fn doctor_finding_lines_should_escape_untrusted_controls() {
+        let finding = DoctorFinding {
+            severity: DoctorSeverity::Warning,
+            code: DoctorCode::StoreMissing,
+            message: "unsafe\nmessage\u{1b}[2J".to_owned(),
+            next_command: Some("dalo doctor\r\nnext".to_owned()),
+        };
+
+        let lines = doctor_finding_lines(&finding);
+
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].contains("unsafe\\nmessage\\u{1b}[2J"));
+        assert!(lines[0].contains("next=dalo doctor\\r\\nnext"));
+        assert!(!lines[0].contains(['\n', '\r', '\u{1b}']));
     }
 
     #[test]
