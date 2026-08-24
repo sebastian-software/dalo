@@ -3,6 +3,7 @@
   "packages": {
     ".": {
       "release-type": "rust",
+      "extra-files": ["npm/package.json"],
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": false,
       "draft": true,

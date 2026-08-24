@@ -47,8 +47,8 @@ jobs:
         with:
           node-version: 24
 
-      - name: npm test
-        run: cd npm && npm test
+      - name: npm wrapper checks
+        run: cd npm && npm run check-version && npm test
 
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
