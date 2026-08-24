@@ -482,12 +482,6 @@ pub fn build_next_action_report(store_root: &Path) -> DaloResult<NextActionRepor
             message,
             Some(store::dalo_command(store_root, "status")),
         )
-    } else if let Some(message) = next_blocker_attention_message(&report) {
-        (
-            NextActionState::NeedsAttention,
-            message,
-            Some(store::dalo_command(store_root, "status")),
-        )
     } else if linked_targets == 0 {
         (
             NextActionState::NoTarget,
@@ -515,6 +509,12 @@ pub fn build_next_action_report(store_root: &Path) -> DaloResult<NextActionRepor
                 store_root,
                 &format!("approve skill {}", skill.source_ref),
             )),
+        )
+    } else if let Some(message) = next_blocker_attention_message(&report) {
+        (
+            NextActionState::NeedsAttention,
+            message,
+            Some(store::dalo_command(store_root, "status")),
         )
     } else if !report.lock.drift.is_empty() {
         (
@@ -593,10 +593,6 @@ fn next_health_attention_message(report: &StatusReport) -> Option<String> {
         });
     }
 
-    None
-}
-
-fn next_blocker_attention_message(report: &StatusReport) -> Option<String> {
     if !report.agent_inventory_warnings.is_empty() {
         return Some(
             "The agent inventory has warnings; review detailed status before synchronizing."
@@ -626,6 +622,11 @@ fn next_blocker_attention_message(report: &StatusReport) -> Option<String> {
             "Scheduled synchronization is unhealthy; review its detailed status.".to_owned(),
         );
     }
+
+    None
+}
+
+fn next_blocker_attention_message(report: &StatusReport) -> Option<String> {
     if !report.blocking_audits.is_empty()
         || !report.audit_failures.is_empty()
         || report
