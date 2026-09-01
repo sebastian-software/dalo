@@ -3,7 +3,19 @@
   "packages": {
     ".": {
       "release-type": "rust",
-      "extra-files": ["npm/package.json"],
+      "extra-files": [
+        "npm/package.json",
+        {
+          "type": "json",
+          "path": "npm/package-lock.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "npm/package-lock.json",
+          "jsonpath": "$.packages[''].version"
+        }
+      ],
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": false,
       "draft": true,

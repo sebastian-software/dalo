@@ -15,10 +15,12 @@ const {
   detectLinuxLibc,
   ensureBinary,
   expectedChecksum,
+  fetchOptions,
   formatLauncherError,
   launcherEnvironment,
   npmInstallChannel,
   normalizeTag,
+  proxyUrlFor,
   targetFor,
   versionFromTag
 } = require('../lib/release');
@@ -128,7 +130,7 @@ test('orders short version cores without throwing', () => {
 });
 
 test('identifies npm and npx launcher executions for update guidance', () => {
-  assert.equal(npmInstallChannel(undefined, '/usr/local/lib/node_modules/getdalo/bin/dalo.js'), 'npm');
+  assert.equal(npmInstallChannel(null, '/usr/local/lib/node_modules/getdalo/bin/dalo.js'), 'npm');
   assert.equal(npmInstallChannel('exec', '/usr/local/lib/node_modules/getdalo/bin/dalo.js'), 'npx');
   assert.equal(npmInstallChannel(undefined, '/home/user/.npm/_npx/123/node_modules/getdalo/bin/dalo.js'), 'npx');
 });
@@ -148,6 +150,54 @@ test('passes only the persistent global npm launcher to the Rust binary', () => 
   );
   assert.equal(npxEnvironment.DALO_INSTALL_CHANNEL, 'npx');
   assert.equal(npxEnvironment.DALO_INVOKED_EXECUTABLE, undefined);
+});
+
+test('selects standard and npm proxy settings with lowercase precedence', () => {
+  assert.equal(proxyUrlFor('http://example.test', {
+    HTTP_PROXY: 'http://uppercase.example:8080',
+    http_proxy: 'http://lowercase.example:8080'
+  }), 'http://lowercase.example:8080');
+  assert.equal(proxyUrlFor('https://example.test', {
+    HTTP_PROXY: 'http://fallback.example:8080'
+  }), 'http://fallback.example:8080');
+  assert.equal(proxyUrlFor('https://example.test', {
+    npm_config_proxy: 'http://npm.example:8080',
+    npm_config_https_proxy: 'http://secure-npm.example:8080'
+  }), 'http://secure-npm.example:8080');
+  assert.equal(proxyUrlFor('http://example.test', {
+    HTTPS_PROXY: 'http://secure-only.example:8080'
+  }), undefined);
+});
+
+test('bypasses matching proxies through NO_PROXY', () => {
+  const environment = {
+    HTTPS_PROXY: 'http://proxy.example:8080',
+    NO_PROXY: 'api.example.test,*.internal.test,localhost:8443'
+  };
+  assert.equal(proxyUrlFor('https://api.example.test/releases', environment), undefined);
+  assert.equal(proxyUrlFor('https://service.internal.test/releases', environment), undefined);
+  assert.equal(proxyUrlFor('https://localhost:8443/releases', environment), undefined);
+  assert.equal(
+    proxyUrlFor('https://localhost:9443/releases', environment),
+    'http://proxy.example:8080'
+  );
+  assert.equal(proxyUrlFor('https://example.test', {
+    HTTPS_PROXY: 'http://proxy.example:8080',
+    NO_PROXY: '*'
+  }), undefined);
+});
+
+test('adds an undici dispatcher only when a request uses a proxy', () => {
+  const options = { signal: AbortSignal.timeout(1_000) };
+  const proxied = fetchOptions('https://example.test', options, {
+    HTTPS_PROXY: 'http://proxy.example:8080'
+  });
+  assert.equal(proxied.signal, options.signal);
+  assert.equal(typeof proxied.dispatcher.dispatch, 'function');
+  assert.equal(fetchOptions('https://example.test', options, {
+    HTTPS_PROXY: 'http://proxy.example:8080',
+    NO_PROXY: 'example.test'
+  }), options);
 });
 
 test('uses the npm package version from a warm cache without network access', async () => {

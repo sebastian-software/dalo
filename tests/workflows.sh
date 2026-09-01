@@ -49,6 +49,7 @@ job_body() {
 test "$(node -p 'require(process.argv[1]).packages["."].draft' "$release_config")" = true
 test "$(node -p 'require(process.argv[1]).packages["."]["force-tag-creation"]' "$release_config")" = true
 test "$(node -p 'require(process.argv[1]).packages["."]["extra-files"].includes("npm/package.json")' "$release_config")" = true
+test "$(node -p 'require(process.argv[1]).packages["."]["extra-files"].filter(entry => entry.path === "npm/package-lock.json").length' "$release_config")" = 2
 (
   cd "$root/npm"
   npm run check-version

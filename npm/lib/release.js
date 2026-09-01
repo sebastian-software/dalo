@@ -6,6 +6,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { promisify } = require('node:util');
+const { ProxyAgent } = require('undici');
 const { version: PACKAGE_VERSION } = require('../package.json');
 
 const execFileAsync = promisify(execFile);
@@ -14,6 +15,7 @@ const FETCH_TIMEOUT_MS = 30_000;
 const DOWNLOAD_HEADERS_TIMEOUT_MS = 10_000;
 const DOWNLOAD_BODY_TIMEOUT_MS = 120_000;
 const DOWNLOAD_ATTEMPTS = 3;
+const proxyAgents = new Map();
 const VERSION_PATTERN = /^(?:dalo-v|v)?(\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$/;
 
 function targetFor(platform = process.platform, arch = process.arch, libc) {
@@ -101,11 +103,64 @@ function launcherEnvironment(baseEnv = process.env, launcherPath = '') {
   return environment;
 }
 
+function proxyEnvironmentValue(environment, lowercase, uppercase) {
+  return environment[lowercase] !== undefined
+    ? environment[lowercase]
+    : environment[uppercase];
+}
+
+function noProxyMatches(url, noProxy) {
+  if (!noProxy) return false;
+  const target = new URL(url);
+  const hostname = target.hostname.toLowerCase();
+  const port = Number(target.port) || (target.protocol === 'https:' ? 443 : 80);
+  for (const rawEntry of noProxy.split(/[,\s]+/)) {
+    if (!rawEntry) continue;
+    if (rawEntry === '*') return true;
+    const match = rawEntry.toLowerCase().match(/^(.*?)(?::(\d+))?$/);
+    const entry = match[1];
+    const entryPort = match[2] ? Number(match[2]) : 0;
+    if (entryPort && entryPort !== port) continue;
+    if (entry.startsWith('*')) {
+      if (hostname.endsWith(entry.slice(1))) return true;
+    } else if (entry.startsWith('.')) {
+      if (hostname.endsWith(entry)) return true;
+    } else if (hostname === entry) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function proxyUrlFor(url, environment = process.env) {
+  const noProxy = proxyEnvironmentValue(environment, 'no_proxy', 'NO_PROXY')
+    ?? environment.npm_config_noproxy;
+  if (noProxyMatches(url, noProxy)) return undefined;
+
+  const httpProxy = proxyEnvironmentValue(environment, 'http_proxy', 'HTTP_PROXY')
+    ?? environment.npm_config_proxy;
+  const httpsProxy = proxyEnvironmentValue(environment, 'https_proxy', 'HTTPS_PROXY')
+    ?? environment.npm_config_https_proxy;
+  return new URL(url).protocol === 'https:' ? (httpsProxy || httpProxy) : (httpProxy || undefined);
+}
+
+function fetchOptions(url, options, environment = process.env) {
+  const proxyUrl = proxyUrlFor(url, environment);
+  if (!proxyUrl) return options;
+  let dispatcher = proxyAgents.get(proxyUrl);
+  if (!dispatcher) {
+    dispatcher = new ProxyAgent(proxyUrl);
+    proxyAgents.set(proxyUrl, dispatcher);
+  }
+  return { ...options, dispatcher };
+}
+
 async function latestTag() {
-  const response = await fetch(`https://api.github.com/repos/${REPOSITORY}/releases/latest`, {
+  const url = `https://api.github.com/repos/${REPOSITORY}/releases/latest`;
+  const response = await fetch(url, fetchOptions(url, {
     headers: { accept: 'application/vnd.github+json', 'user-agent': 'dalo-npm-wrapper' },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
-  });
+  }));
   if (!response.ok) {
     throw new Error(`could not resolve the latest Dalo release (GitHub returned ${response.status})`);
   }
@@ -126,7 +181,7 @@ async function fetchFileOnce(url) {
   const controller = new AbortController();
   let timer = abortAfter(controller, DOWNLOAD_HEADERS_TIMEOUT_MS);
   try {
-    const response = await fetch(url, { signal: controller.signal });
+    const response = await fetch(url, fetchOptions(url, { signal: controller.signal }));
     clearTimeout(timer);
     if (!response.ok) {
       await response.body?.cancel();
@@ -335,10 +390,12 @@ module.exports = {
   detectLinuxLibc,
   ensureBinary,
   expectedChecksum,
+  fetchOptions,
   formatLauncherError,
   launcherEnvironment,
   npmInstallChannel,
   normalizeTag,
+  proxyUrlFor,
   targetFor,
   targetForCurrentRuntime,
   verifyChecksum,
