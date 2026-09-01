@@ -180,6 +180,21 @@ pub struct SourceProvenance {
     pub checkout_commit: Option<String>,
 }
 
+/// Per-command cache for checkout HEADs shared by provenance and lock building.
+#[derive(Debug, Default)]
+pub(crate) struct SourceHeadCache {
+    commits: BTreeMap<PathBuf, Option<String>>,
+}
+
+impl SourceHeadCache {
+    pub(crate) fn resolve(&mut self, source: &SourceConfig) -> Option<String> {
+        self.commits
+            .entry(source.path.clone())
+            .or_insert_with(|| git::rev_parse_head(&source.path).ok())
+            .clone()
+    }
+}
+
 /// Source priority report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SourcePriorityReport {
@@ -729,8 +744,16 @@ pub fn source_provenance(
     source: &SourceConfig,
     source_lock: Option<&SourceLock>,
 ) -> SourceProvenance {
+    source_provenance_with_head_cache(source, source_lock, &mut SourceHeadCache::default())
+}
+
+pub(crate) fn source_provenance_with_head_cache(
+    source: &SourceConfig,
+    source_lock: Option<&SourceLock>,
+    head_cache: &mut SourceHeadCache,
+) -> SourceProvenance {
     let checkout_commit = (source.kind != SourceKind::Local)
-        .then(|| git::rev_parse_head(&source.path).ok())
+        .then(|| head_cache.resolve(source))
         .flatten();
     let resolved_commit = match source.kind {
         SourceKind::Catalog => source_lock

@@ -31,8 +31,8 @@ use crate::plan::InstallationPlan;
 use crate::plugin::{PluginInventoryWarning, PluginResolution};
 use crate::resolver::{self, Resolution};
 use crate::source::{
-    SourceAddReport, SourceConfig, SourceKind, SourceListReport, SourceNamespaceReport,
-    SourcePriorityReport, SourceProvenance, SourceRemoveReport,
+    SourceAddReport, SourceConfig, SourceHeadCache, SourceKind, SourceListReport,
+    SourceNamespaceReport, SourcePriorityReport, SourceProvenance, SourceRemoveReport,
 };
 use crate::store::{self, ApprovalsFile, InitReport, StorePaths};
 use crate::target::{TargetDetectReport, TargetLinkReport, TargetUnlinkReport};
@@ -220,6 +220,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
     let mut inventory_warnings = Vec::new();
     let mut agent_inventory_warnings = Vec::new();
     let mut plugin_inventory_warnings = Vec::new();
+    let mut source_head_cache = SourceHeadCache::default();
 
     for source in &config.sources {
         let status = if let Some(scan) = scan_by_id.get(source.id.as_str()) {
@@ -240,7 +241,11 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
                 agent_count: scan.inventory.as_ref().map_or(0, |inv| inv.agents.len()),
                 plugin_count: scan.inventory.as_ref().map_or(0, |inv| inv.plugins.len()),
                 error: scan.error.clone(),
-                provenance: crate::source::source_provenance(source, source_lock.as_ref()),
+                provenance: crate::source::source_provenance_with_head_cache(
+                    source,
+                    source_lock.as_ref(),
+                    &mut source_head_cache,
+                ),
             }
         } else {
             SourceStatus {
@@ -255,7 +260,11 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
                 agent_count: 0,
                 plugin_count: 0,
                 error: None,
-                provenance: crate::source::source_provenance(source, source_lock.as_ref()),
+                provenance: crate::source::source_provenance_with_head_cache(
+                    source,
+                    source_lock.as_ref(),
+                    &mut source_head_cache,
+                ),
             }
         };
         sources.push(status);
@@ -329,18 +338,20 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         true,
         &audit_degraded_sources,
     )?;
-    let tools = crate::tool::list_from_inventories(
+    let tools = crate::tool::list_from_inventories_with_head_cache(
         &paths,
         &config.sources,
         &approvals.approvals,
         &plugin_inventories,
+        &mut source_head_cache,
     );
-    let hooks = crate::hook::list_from_inventories(
+    let hooks = crate::hook::list_from_inventories_with_head_cache(
         &paths,
         &config.sources,
         &approvals.approvals,
         &plugin_inventories,
         &tools.tools,
+        &mut source_head_cache,
     )?;
     let selected_plugin_refs = plugins
         .plugins
@@ -379,11 +390,12 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         crate::plan::attach_hook_status_from_report(plan, &hooks.hooks);
         plan.native_plugins = plugin_targets.clone();
     }
-    let live_lock = lockfile::build_user_lock(
+    let live_lock = lockfile::build_user_lock_with_head_cache(
         &config.sources,
         &live_resolution,
         Some(&materialization),
         Some(&plugins),
+        &mut source_head_cache,
     );
     let deliveries = materialization.deliveries;
     let resolution = materialization.resolution;

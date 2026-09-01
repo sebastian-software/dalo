@@ -5915,6 +5915,43 @@ fn sync_should_resolve_source_commits_once_per_enabled_source() {
 }
 
 #[test]
+fn status_should_resolve_source_commits_once_per_enabled_source() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo(&repo);
+    setup_store_with_target(&store, &target);
+    common::add_source(&store, "company", &repo);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    let git_logger = git_rev_parse_logger(temp_dir.path());
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("status")
+        .env("PATH", &git_logger.path_env)
+        .env("DALO_REAL_GIT", &git_logger.real_git)
+        .env("DALO_GIT_REV_PARSE_LOG", &git_logger.log)
+        .assert()
+        .success();
+
+    let rev_parse_count = std::fs::read_to_string(&git_logger.log)
+        .unwrap_or_default()
+        .lines()
+        .count();
+    assert_eq!(
+        rev_parse_count, 2,
+        "status should run one git rev-parse HEAD per enabled source"
+    );
+}
+
+#[test]
 fn status_json_should_report_lock_drift_after_skill_removal() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

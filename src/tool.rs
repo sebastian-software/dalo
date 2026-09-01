@@ -17,7 +17,7 @@ use crate::inventory::SourceInventory;
 use crate::plugin::{
     self, PluginInventoryWarning, ToolInputType, ToolPlatform, ToolRecord, ToolRuntime,
 };
-use crate::source::{SourceConfig, SourceProvenance};
+use crate::source::{SourceConfig, SourceHeadCache, SourceProvenance};
 use crate::store::{self, ApprovalRecord, StorePaths};
 
 /// Stable approval scope for exact executable contracts.
@@ -155,6 +155,22 @@ pub fn list_from_inventories(
     approvals: &[ApprovalRecord],
     inventories: &[SourceInventory],
 ) -> ToolListReport {
+    list_from_inventories_with_head_cache(
+        paths,
+        sources,
+        approvals,
+        inventories,
+        &mut SourceHeadCache::default(),
+    )
+}
+
+pub(crate) fn list_from_inventories_with_head_cache(
+    paths: &StorePaths,
+    sources: &[SourceConfig],
+    approvals: &[ApprovalRecord],
+    inventories: &[SourceInventory],
+    head_cache: &mut SourceHeadCache,
+) -> ToolListReport {
     let source_lock = crate::catalog::read_source_lock(paths).ok();
     let mut tools = Vec::new();
     let mut warnings = Vec::new();
@@ -165,7 +181,11 @@ pub fn list_from_inventories(
         else {
             continue;
         };
-        let provenance = crate::source::source_provenance(source, source_lock.as_ref());
+        let provenance = crate::source::source_provenance_with_head_cache(
+            source,
+            source_lock.as_ref(),
+            head_cache,
+        );
         warnings.extend(inventory.plugin_warnings.iter().cloned());
         for plugin in &inventory.plugins {
             for tool in &plugin.tools {

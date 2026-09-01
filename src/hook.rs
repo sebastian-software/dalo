@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 use crate::error::{DaloError, DaloResult};
 use crate::inventory::SourceInventory;
 use crate::plugin::{HookRecord, PluginInventoryWarning, ToolRecord};
-use crate::source::{SourceConfig, SourceProvenance};
+use crate::source::{SourceConfig, SourceHeadCache, SourceProvenance};
 use crate::store::{self, ApprovalRecord, StorePaths};
 use crate::tool::{self, ToolState};
 
@@ -88,14 +88,21 @@ pub fn list(paths: &StorePaths) -> DaloResult<HookListReport> {
     let config = store::read_config(paths)?;
     let approvals = store::read_approvals(paths)?;
     let inventories = tool::scan_plugin_inventories(&config.sources);
-    let tools =
-        tool::list_from_inventories(paths, &config.sources, &approvals.approvals, &inventories);
-    list_from_inventories(
+    let mut head_cache = SourceHeadCache::default();
+    let tools = tool::list_from_inventories_with_head_cache(
+        paths,
+        &config.sources,
+        &approvals.approvals,
+        &inventories,
+        &mut head_cache,
+    );
+    list_from_inventories_with_head_cache(
         paths,
         &config.sources,
         &approvals.approvals,
         &inventories,
         &tools.tools,
+        &mut head_cache,
     )
 }
 
@@ -110,6 +117,24 @@ pub fn list_from_inventories(
     approvals: &[ApprovalRecord],
     inventories: &[SourceInventory],
     tools: &[tool::ToolStatusReport],
+) -> DaloResult<HookListReport> {
+    list_from_inventories_with_head_cache(
+        paths,
+        sources,
+        approvals,
+        inventories,
+        tools,
+        &mut SourceHeadCache::default(),
+    )
+}
+
+pub(crate) fn list_from_inventories_with_head_cache(
+    paths: &StorePaths,
+    sources: &[SourceConfig],
+    approvals: &[ApprovalRecord],
+    inventories: &[SourceInventory],
+    tools: &[tool::ToolStatusReport],
+    head_cache: &mut SourceHeadCache,
 ) -> DaloResult<HookListReport> {
     let source_lock = crate::catalog::read_source_lock(paths).ok();
     let tools_by_ref = tools
@@ -133,7 +158,11 @@ pub fn list_from_inventories(
         {
             continue;
         }
-        let provenance = crate::source::source_provenance(source, source_lock.as_ref());
+        let provenance = crate::source::source_provenance_with_head_cache(
+            source,
+            source_lock.as_ref(),
+            head_cache,
+        );
         for plugin in &inventory.plugins {
             for hook in &plugin.hooks {
                 let tool = tools_by_ref

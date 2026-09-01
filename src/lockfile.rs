@@ -5,7 +5,6 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::git;
 use crate::inventory::SkillDelivery;
 use crate::materialize::SyncReport;
 use crate::plugin::{
@@ -13,7 +12,7 @@ use crate::plugin::{
     ResolvedPluginMember, SelectionOrigin,
 };
 use crate::resolver::{Resolution, UnlinkedReason};
-use crate::source::{SourceConfig, SourceKind};
+use crate::source::{SourceConfig, SourceHeadCache, SourceKind};
 
 /// Current persisted user-lock schema version.
 pub const USER_LOCK_SCHEMA_VERSION: u32 = 6;
@@ -227,9 +226,25 @@ pub fn build_user_lock(
     sync_report: Option<&SyncReport>,
     plugins: Option<&PluginResolution>,
 ) -> UserLock {
+    build_user_lock_with_head_cache(
+        sources,
+        resolution,
+        sync_report,
+        plugins,
+        &mut SourceHeadCache::default(),
+    )
+}
+
+pub(crate) fn build_user_lock_with_head_cache(
+    sources: &[SourceConfig],
+    resolution: &Resolution,
+    sync_report: Option<&SyncReport>,
+    plugins: Option<&PluginResolution>,
+    head_cache: &mut SourceHeadCache,
+) -> UserLock {
     let mut lock = UserLock {
         schema_version: USER_LOCK_SCHEMA_VERSION,
-        sources: locked_sources(sources, resolution),
+        sources: locked_sources(sources, resolution, head_cache),
         active_skills: resolution
             .active_skills
             .iter()
@@ -414,7 +429,11 @@ fn compare_skill_delivery(previous: &UserLock, current: &UserLock, drift: &mut V
     }
 }
 
-fn locked_sources(sources: &[SourceConfig], resolution: &Resolution) -> Vec<LockedSource> {
+fn locked_sources(
+    sources: &[SourceConfig],
+    resolution: &Resolution,
+    head_cache: &mut SourceHeadCache,
+) -> Vec<LockedSource> {
     let mut locked = sources
         .iter()
         .filter(|source| source.enabled)
@@ -427,7 +446,7 @@ fn locked_sources(sources: &[SourceConfig], resolution: &Resolution) -> Vec<Lock
             commit: (source.kind != SourceKind::Catalog)
                 .then(|| {
                     resolved_generated_commit(resolution, &source.id)
-                        .or_else(|| git::rev_parse_head(&source.path).ok())
+                        .or_else(|| head_cache.resolve(source))
                 })
                 .flatten(),
         })
