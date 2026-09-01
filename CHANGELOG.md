@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.4](https://github.com/sebastian-software/dalo/compare/dalo-v0.14.3...dalo-v0.14.4) (2026-09-01)
+
+
+### Bug Fixes
+
+* **npm:** reject unsupported CPU architectures ([eac5924](https://github.com/sebastian-software/dalo/commit/eac59241bfc806352670cf0528ef9fb4682fc3a5))
+
 ## [0.14.3](https://github.com/sebastian-software/dalo/compare/dalo-v0.14.2...dalo-v0.14.3) (2026-09-01)
 
 
