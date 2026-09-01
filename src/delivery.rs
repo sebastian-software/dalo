@@ -27,6 +27,7 @@ use crate::source::SourceKind;
 use crate::store::{self, ApprovalRecord, StorePaths};
 
 const GENERATOR_TIMEOUT: Duration = Duration::from_secs(120);
+const GENERATOR_TIMEOUT_ENV: &str = "DALO_GENERATOR_TIMEOUT_SECS";
 const GENERATOR_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_GENERATOR_STDERR: u64 = 1024 * 1024;
 const MAX_GENERATED_ENTRIES: usize = 4096;
@@ -374,7 +375,8 @@ fn run_generator(
     let mut child = command.spawn()?;
     let stderr = child.stderr.take().expect("generator stderr is piped");
     let stderr_reader = thread::spawn(move || read_bounded(stderr));
-    let deadline = Instant::now() + GENERATOR_TIMEOUT;
+    let timeout = generator_timeout(GENERATOR_TIMEOUT);
+    let deadline = Instant::now() + timeout;
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break status,
@@ -385,7 +387,7 @@ fn run_generator(
                 return Err(DaloError::StateError {
                     reason: format!(
                         "generated delivery `{source_ref}` timed out after {} seconds",
-                        GENERATOR_TIMEOUT.as_secs()
+                        timeout.as_secs()
                     ),
                 });
             }
@@ -413,6 +415,15 @@ fn run_generator(
     })
 }
 
+fn generator_timeout(default: Duration) -> Duration {
+    env::var(GENERATOR_TIMEOUT_ENV)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|seconds| *seconds > 0)
+        .map(Duration::from_secs)
+        .unwrap_or(default)
+}
+
 fn sandboxed_generator_command(
     program: &Path,
     args: &[String],
@@ -431,14 +442,7 @@ fn sandboxed_generator_command(
     }
     #[cfg(target_os = "macos")]
     {
-        let canonical_write_root = fs::canonicalize(write_root)?;
-        let escaped = canonical_write_root
-            .to_string_lossy()
-            .replace('\\', "\\\\")
-            .replace('"', "\\\"");
-        let profile = format!(
-            "(version 1)(allow default)(deny file-write*)(allow file-write* (subpath \"{escaped}\"))"
-        );
+        let profile = macos_sandbox_profile(write_root)?;
         let mut command = Command::new("/usr/bin/sandbox-exec");
         command.args(["-p", &profile]).arg(program).args(args);
         Ok(command)
@@ -450,6 +454,45 @@ fn sandboxed_generator_command(
             reason: "generated delivery requires an enforced operating-system filesystem sandbox"
                 .to_owned(),
         })
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_sandbox_profile(write_root: &Path) -> DaloResult<String> {
+    let canonical_write_root = fs::canonicalize(write_root)?;
+    let escaped = canonical_write_root
+        .to_string_lossy()
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"");
+    Ok(format!(
+        "(version 1)(allow default)(deny file-write*)(allow file-write* (subpath \"{escaped}\"))"
+    ))
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod sandbox_tests {
+    use super::*;
+
+    #[test]
+    fn macos_sandbox_profile_should_escape_quotes_and_backslashes() {
+        let temporary = tempfile::tempdir().expect("tempdir should be created");
+        let write_root = temporary.path().join("write \"root\\segment");
+        fs::create_dir(&write_root).expect("hostile write root should be created");
+        let canonical = fs::canonicalize(&write_root).expect("write root should canonicalize");
+        let escaped = canonical
+            .to_string_lossy()
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"");
+
+        let profile = macos_sandbox_profile(&write_root).expect("profile should render");
+        assert_eq!(
+            profile,
+            format!(
+                "(version 1)(allow default)(deny file-write*)(allow file-write* (subpath \"{escaped}\"))"
+            )
+        );
+        assert!(profile.contains(r#"write \"root\\segment"#));
+        assert!(!profile.contains(r#"write "root\segment"#));
     }
 }
 
