@@ -1245,7 +1245,7 @@ fn should_print_hook_target(target: &crate::hook_sync::HookTargetReport) -> bool
 pub fn print_status_report(report: &StatusReport) {
     let paths = HumanPathContext::for_status(report);
     println!("dalo store: {}", paths.root(&report.store));
-    print_delivery_reports(&report.deliveries, &paths);
+    print_delivery_reports(&report.deliveries, &paths, &BTreeSet::new());
     if !report.tools.tools.is_empty() {
         println!("local tools (inert inventory):");
         for tool in &report.tools.tools {
@@ -1590,11 +1590,16 @@ pub fn print_status_report(report: &StatusReport) {
     }
 }
 
-fn print_delivery_reports(deliveries: &[SkillDeliveryReport], paths: &HumanPathContext) {
+fn print_delivery_reports(
+    deliveries: &[SkillDeliveryReport],
+    paths: &HumanPathContext,
+    suppressed_paths: &BTreeSet<&Path>,
+) {
     let visible = deliveries
         .iter()
         .filter(|delivery| {
-            delivery.mode != crate::inventory::SkillDeliveryMode::Direct || delivery.blocked
+            (delivery.mode != crate::inventory::SkillDeliveryMode::Direct || delivery.blocked)
+                && !suppressed_paths.contains(delivery.link_path.as_path())
         })
         .collect::<Vec<_>>();
     if visible.is_empty() {
@@ -1729,7 +1734,13 @@ pub fn print_sync_report(report: &SyncReport) {
     for target in paths.target_roots() {
         println!("{}: {}", target.label, paths.root(&target.path));
     }
-    print_delivery_reports(&report.deliveries, &paths);
+    let unmanaged_conflicts = report
+        .operations
+        .iter()
+        .filter(|operation| is_unmanaged_entry_conflict(operation))
+        .map(|operation| operation.link_path.as_path())
+        .collect::<BTreeSet<_>>();
+    print_delivery_reports(&report.deliveries, &paths, &unmanaged_conflicts);
     if report.operations.is_empty() {
         if !report.instruction_operations.is_empty()
             || !report.instruction_removal_operations.is_empty()
@@ -2548,7 +2559,20 @@ fn print_unmanaged_skill_with_repair_hint(
 }
 
 fn unmanaged_repair_hint(store_root: &Path, selector: &Path) -> String {
+    let local_copy_exists = selector.file_name().is_some_and(|slot| {
+        StorePaths::new(store_root.to_path_buf())
+            .local_skills_dir
+            .join(slot)
+            .exists()
+    });
     let selector = crate::error::shell_quote_path(selector);
+    if local_copy_exists {
+        return format!(
+            "adopt: run `{}` to replace the original; or `{}` to keep it unmanaged",
+            store::dalo_command(store_root, &format!("adopt {selector} --replace")),
+            store::dalo_command(store_root, &format!("resolve keep {selector}"))
+        );
+    }
     format!(
         "adopt: run `{}` to copy it into the local source; use `{}` to replace the original",
         store::dalo_command(store_root, &format!("adopt {selector}")),
@@ -2604,7 +2628,7 @@ pub fn print_remove_owned_report(report: &RemoveOwnedReport) {
 pub fn print_doctor_report(report: &DoctorReport) {
     let paths = HumanPathContext::for_doctor(report);
     println!("dalo store: {}", paths.root(&report.store));
-    print_delivery_reports(&report.deliveries, &paths);
+    print_delivery_reports(&report.deliveries, &paths, &BTreeSet::new());
     println!(
         "summary: errors={} warnings={} info={} ok={}",
         report.summary.errors, report.summary.warnings, report.summary.info, report.summary.ok

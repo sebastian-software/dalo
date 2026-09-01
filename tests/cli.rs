@@ -6535,6 +6535,43 @@ fn adopt_then_adopt_replace_should_complete_the_two_step_replacement() {
 }
 
 #[test]
+fn sync_conflict_should_suggest_replace_after_copy_only_adoption_once() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["adopt", "review"])
+        .assert()
+        .success();
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["sync", "--check"])
+        .assert()
+        .failure()
+        .code(1)
+        .get_output()
+        .stdout
+        .clone();
+    let stdout = String::from_utf8(output).expect("sync output should be utf8");
+
+    assert!(stdout.contains("--replace"));
+    assert!(!stdout.contains("to copy it into the local source"));
+    assert_eq!(
+        stdout
+            .matches("real unmanaged entry exists at target slot")
+            .count(),
+        1,
+        "one conflict should be rendered once"
+    );
+}
+
+#[test]
 fn adopt_replace_should_refuse_when_local_destination_is_an_unrelated_skill() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
