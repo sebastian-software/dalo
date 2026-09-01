@@ -21,6 +21,9 @@
   "bin": {
     "dalo": "bin/dalo.js"
   },
+  "dependencies": {
+    "undici": "^6.28.0"
+  },
   "files": [
     "bin",
     "lib",

@@ -84,6 +84,7 @@ jobs:
             *) echo "::error::unexpected release tag '${TAG_NAME}'"; exit 1 ;;
           esac
           cd npm
+          npm ci
           npm version "$version" --no-git-tag-version
           test "$(node -p 'require("./package.json").version')" = "$version"
           npm test

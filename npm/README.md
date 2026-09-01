@@ -43,6 +43,7 @@ so runs are reproducible and a warm cache works offline.
 | `DALO_VERSION` | Override the package version with `<version>`, `v<version>`, or `dalo-v<version>`. Use `latest` for an explicit GitHub update lookup; if that lookup fails, the newest usable cached version is used with a warning. |
 | `DALO_CACHE_DIR` | Override the executable cache location (default: `~/.cache/dalo`). |
 | `DALO_LINUX_LIBC` | Override Linux libc detection with `gnu` or `musl`. |
+| `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` | Route release lookups and downloads through an authorized proxy. Lowercase variants are also supported and take precedence. |
 
 To force a fresh download, remove the selected version from `~/.cache/dalo` or
 set `DALO_CACHE_DIR` to an empty directory.
@@ -53,6 +54,8 @@ updates the launcher or cached executable behind npm's back.
 
 Release metadata and archive downloads time out after 30 seconds. Network
 errors include their underlying cause and a hint for selecting an exact version.
+When invoked by npm, the launcher also honors `npm_config_proxy`,
+`npm_config_https_proxy`, and `npm_config_noproxy` as fallbacks.
 
 ## Security
 
