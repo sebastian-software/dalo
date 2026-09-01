@@ -126,7 +126,14 @@ jobs:
             *) echo "::error::unexpected release tag '${TAG_NAME}'"; exit 1 ;;
           esac
           cd npm
-          npm ci
+          if test -f package-lock.json; then
+            npm ci
+          elif node -e 'const p = require("./package.json"); process.exit(Object.keys(p.dependencies || {}).length + Object.keys(p.devDependencies || {}).length === 0 ? 0 : 1)'; then
+            echo "No package-lock.json or dependencies in legacy release; skipping npm install"
+          else
+            echo "::error::package-lock.json is missing for an npm package with dependencies"
+            exit 1
+          fi
           test "$(node -p 'require("./package.json").version')" = "$version"
           if npm view "getdalo@${version}" version > /dev/null 2>&1; then
             echo "getdalo ${version} is already published on npm"

@@ -171,6 +171,9 @@ printf '%s\n' "$crate_job" | grep -Fq 'https://crates.io/api/v1/crates/dalo/${ve
 printf '%s\n' "$crate_job" | grep -Fq 'is already published on crates.io'
 printf '%s\n' "$npm_job" | grep -Fq 'npm view "getdalo@${version}" version'
 printf '%s\n' "$npm_job" | grep -Fq 'is already published on npm'
+printf '%s\n' "$npm_job" | grep -Fq 'if test -f package-lock.json'
+printf '%s\n' "$npm_job" | grep -Fq 'No package-lock.json or dependencies in legacy release; skipping npm install'
+printf '%s\n' "$npm_job" | grep -Fq 'package-lock.json is missing for an npm package with dependencies'
 if printf '%s\n' "$npm_job" | grep -Fq 'npm version "$version"'; then
   echo 'npm publish must validate the release manifest without rewriting its version' >&2
   exit 1
