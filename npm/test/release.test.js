@@ -31,6 +31,7 @@ test('publishes discovery and supported-platform metadata', () => {
   assert.equal(packageManifest.bugs.url, 'https://github.com/sebastian-software/dalo/issues');
   assert.deepEqual(packageManifest.keywords, ['dalo', 'ai', 'agents', 'skills', 'cli']);
   assert.deepEqual(packageManifest.os, ['darwin', 'linux']);
+  assert.deepEqual(packageManifest.cpu, ['x64', 'arm64']);
 });
 
 async function writeCachedBinary(cacheRoot, version, target) {

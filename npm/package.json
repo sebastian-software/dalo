@@ -33,6 +33,10 @@
     "darwin",
     "linux"
   ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
