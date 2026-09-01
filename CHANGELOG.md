@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.7](https://github.com/sebastian-software/dalo/compare/dalo-v0.14.6...dalo-v0.14.7) (2026-09-01)
+
+
+### Bug Fixes
+
+* time out provider version probes ([ab8b0a4](https://github.com/sebastian-software/dalo/commit/ab8b0a4c203bb9b272d9753c93ea33be02cb6011))
+
 ## [0.14.6](https://github.com/sebastian-software/dalo/compare/dalo-v0.14.5...dalo-v0.14.6) (2026-09-01)
 
 
