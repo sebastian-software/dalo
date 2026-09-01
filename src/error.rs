@@ -74,8 +74,8 @@ pub enum DaloError {
 
     /// The store has not been initialized yet.
     #[error(
-        "dalo store is not initialized at `{path}`; run `dalo --store {} init` first",
-        shell_quote_path(.path.as_path())
+        "dalo store is not initialized at `{path}`; run `{}` first",
+        crate::store::dalo_command(.path.as_path(), "init")
     )]
     StoreNotInitialized {
         /// Store path.
