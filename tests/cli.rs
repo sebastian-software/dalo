@@ -3727,18 +3727,24 @@ fn doctor_human_output_should_group_inventory_warnings_without_changing_json() {
         .clone();
     let human = String::from_utf8(human).expect("doctor output should be UTF-8");
     let skill_file = invalid_skill.join("SKILL.md").display().to_string();
+    let compact_skill_file = "store:/local/skills/Review/SKILL.md";
 
     assert!(human.contains("error   source_inventory_degraded:"));
     assert!(human.contains("  invalid_slot_name at `"));
     assert_eq!(
         human
-            .matches(&format!("invalid_slot_name at `{skill_file}`"))
+            .matches(&format!("invalid_slot_name at `{compact_skill_file}`"))
             .count(),
         1
     );
     assert!(human.contains("    - frontmatter name `Review Name` is not a valid slot name"));
     assert!(human.contains("    - folder name `Review` is not a valid slot name"));
     assert!(human.contains("  next: change the frontmatter `name`"));
+    assert_eq!(
+        human.matches(&skill_file).count(),
+        1,
+        "the copy-pasteable repair command must retain the absolute path"
+    );
 
     let json = dalo_command()
         .args(["--store"])
