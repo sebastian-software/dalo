@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.6](https://github.com/sebastian-software/dalo/compare/dalo-v0.14.5...dalo-v0.14.6) (2026-09-01)
+
+
+### Bug Fixes
+
+* simplify default store init hint ([8e18f4b](https://github.com/sebastian-software/dalo/commit/8e18f4bb23a8d78f7e906e3c4d5cb2b25a2b8318))
+
 ## [0.14.5](https://github.com/sebastian-software/dalo/compare/dalo-v0.14.4...dalo-v0.14.5) (2026-09-01)
 
 
