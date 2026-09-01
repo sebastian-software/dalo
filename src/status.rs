@@ -2292,20 +2292,43 @@ pub fn print_catalog_inspect_report(report: &CatalogInspectReport, store_root: &
         report.source_id,
         report.candidates.len()
     );
-    println!(
-        "  * selected; add a skill with `{}`",
-        store::dalo_command(
-            store_root,
-            &format!("source select {} <skill>", report.source_id)
-        )
-    );
-    for candidate in &report.candidates {
-        let marker = if candidate.selected { "*" } else { " " };
-        let id = candidate.id.as_deref().unwrap_or("-");
+    let show_selection = report.candidates.iter().any(|candidate| candidate.selected);
+    let show_ids = report
+        .candidates
+        .iter()
+        .any(|candidate| candidate.id.is_some());
+    if show_selection {
         println!(
-            "  {marker} {:<24} id={:<24} {}",
-            candidate.slot_name, id, candidate.path
+            "  * selected; add a skill with `{}`",
+            store::dalo_command(
+                store_root,
+                &format!("source select {} <skill>", report.source_id)
+            )
         );
+    }
+    for candidate in &report.candidates {
+        match (show_selection, show_ids) {
+            (true, true) => println!(
+                "  {} {:<24} id={:<24} {}",
+                if candidate.selected { "*" } else { " " },
+                candidate.slot_name,
+                candidate.id.as_deref().unwrap_or("-"),
+                candidate.path
+            ),
+            (true, false) => println!(
+                "  {} {:<24} {}",
+                if candidate.selected { "*" } else { " " },
+                candidate.slot_name,
+                candidate.path
+            ),
+            (false, true) => println!(
+                "    {:<24} id={:<24} {}",
+                candidate.slot_name,
+                candidate.id.as_deref().unwrap_or("-"),
+                candidate.path
+            ),
+            (false, false) => println!("    {:<24} {}", candidate.slot_name, candidate.path),
+        }
     }
 }
 

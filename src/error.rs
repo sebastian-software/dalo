@@ -381,8 +381,21 @@ impl DaloError {
         next_command: impl AsRef<str>,
     ) -> Self {
         let skill = skill.into();
+        Self::skill_not_found_for_reference(skill.clone(), &skill, known_skills, next_command)
+    }
+
+    /// Build an unknown-skill error whose displayed selector differs from the
+    /// reference users type to select a candidate.
+    #[must_use]
+    pub fn skill_not_found_for_reference(
+        skill: impl Into<String>,
+        reference: &str,
+        known_skills: Vec<String>,
+        next_command: impl AsRef<str>,
+    ) -> Self {
+        let skill = skill.into();
         Self::SkillNotFound {
-            hint: known_ids_hint("skills", &skill, known_skills, next_command.as_ref()),
+            hint: known_ids_hint("skills", reference, known_skills, next_command.as_ref()),
             skill,
         }
     }

@@ -598,9 +598,13 @@ fn resolve_candidate_reference(
         .cloned()
         .collect::<Vec<_>>();
     match matches.as_slice() {
-        [] => Err(DaloError::skill_not_found(
+        [] => Err(DaloError::skill_not_found_for_reference(
             format!("{source_id}:{reference}"),
-            candidates.iter().map(candidate_display).collect(),
+            reference,
+            candidates
+                .iter()
+                .map(|candidate| candidate.slot_name.clone())
+                .collect(),
             format!("dalo source inspect {source_id}"),
         )),
         [candidate] => Ok(candidate.clone()),
