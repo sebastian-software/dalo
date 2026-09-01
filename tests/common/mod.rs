@@ -245,6 +245,13 @@ pub fn create_git_skill_repo(repo: &Path) {
     create_git_skill_repo_with_skill(repo, "team", "# Team\n");
 }
 
+pub fn create_git_repo_without_skills(repo: &Path) {
+    std::fs::create_dir_all(repo).expect("repo should be created");
+    std::fs::write(repo.join("README.md"), "# Empty skill repository\n")
+        .expect("repo readme should be written");
+    init_git_repo(repo);
+}
+
 pub fn create_git_skill_repo_with_skill(repo: &Path, slot_name: &str, body: &str) {
     let skill_dir = repo.join("skills").join(slot_name);
     std::fs::create_dir_all(&skill_dir).expect("repo skill dir should be created");

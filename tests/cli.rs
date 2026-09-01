@@ -7726,10 +7726,44 @@ fn source_add_should_clone_team_source_into_store() {
         .assert()
         .success()
         .stdout(predicate::str::contains("added source company"))
+        .stdout(predicate::str::contains("found 1 skill"))
         .stdout(predicate::str::contains("security audit: company:team"))
-        .stdout(predicate::str::contains("result: clean"));
+        .stdout(predicate::str::contains("result: clean"))
+        .stdout(predicate::str::contains(format!(
+            "next: {}",
+            store::dalo_command(&store::comparable_path(&store), "sync")
+        )));
 
     assert!(store.join("sources/company/checkout/.git").is_dir());
+}
+
+#[test]
+fn source_add_should_warn_when_no_skills_are_discovered() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let repo = temp_dir.path().join("team-repo");
+    common::create_git_repo_without_skills(&repo);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "empty"])
+        .arg(&repo)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "warning: no usable skills found; expected each skill at <dir>/SKILL.md",
+        ))
+        .stdout(predicate::str::contains(format!(
+            "next: {}",
+            store::dalo_command(&store::comparable_path(&store), "sync")
+        )));
 }
 
 #[test]
