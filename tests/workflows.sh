@@ -162,10 +162,25 @@ printf '%s\n' "$release_please_job" | grep -Fq "gh release view \"\$TAG_NAME\" -
 printf '%s\n' "$release_please_job" | grep -Fq 'GH_REPO: ${{ github.repository }}'
 printf '%s\n' "$release_please_job" | grep -Fq 'echo "release_created=true" >> "$GITHUB_OUTPUT"'
 printf '%s\n' "$release_please_job" | grep -Fq 'echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"'
+printf '%s\n' "$release_please_job" | grep -Fq 'echo "release_is_draft=$release_is_draft" >> "$GITHUB_OUTPUT"'
 printf '%s\n' "$final_release_job" | grep -Fqx '    needs: [release-please, release-artifacts]'
 printf '%s\n' "$final_release_job" | grep -Fq "needs.release-artifacts.result == 'success'"
 printf '%s\n' "$final_release_job" | grep -Fq 'GH_REPO: ${{ github.repository }}'
 printf '%s\n' "$final_release_job" | grep -Fq 'gh release edit "$TAG_NAME" --draft=false'
+printf '%s\n' "$crate_job" | grep -Fq 'https://crates.io/api/v1/crates/dalo/${version}'
+printf '%s\n' "$crate_job" | grep -Fq 'is already published on crates.io'
+printf '%s\n' "$npm_job" | grep -Fq 'npm view "getdalo@${version}" version'
+printf '%s\n' "$npm_job" | grep -Fq 'is already published on npm'
+if printf '%s\n' "$npm_job" | grep -Fq 'npm version "$version"'; then
+  echo 'npm publish must validate the release manifest without rewriting its version' >&2
+  exit 1
+fi
+printf '%s\n' "$homebrew_job" | grep -Fq 'sort -V | tail -n 1'
+printf '%s\n' "$homebrew_job" | grep -Fq 'not dispatching ${version}'
+
+for downstream_job in "$crate_job" "$npm_job" "$homebrew_job"; do
+  printf '%s\n' "$downstream_job" | grep -Fq "needs.release-please.outputs.release_is_draft == 'false'"
+done
 for target in \
   x86_64-unknown-linux-gnu \
   aarch64-unknown-linux-gnu \
