@@ -33,8 +33,12 @@ The MSRV, dependency-audit, and coverage jobs additionally run:
 ```sh
 cargo check --locked --all-targets --all-features
 cargo deny check
-cargo llvm-cov --workspace --all-features --summary-only
+cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines 86.9
 ```
+
+The line-coverage gate is the current 86.97% baseline rounded down to one decimal
+place. Raise it deliberately when sustained coverage improvements establish a
+new baseline; do not lower it to make an untested change pass.
 
 Use `git diff --check` before opening a PR to catch whitespace issues.
 

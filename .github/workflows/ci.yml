@@ -206,4 +206,4 @@ jobs:
         run: cargo install cargo-llvm-cov --version 0.8.4 --locked
 
       - name: Coverage summary
-        run: cargo llvm-cov --workspace --all-features --summary-only
+        run: cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines 86.9

@@ -121,6 +121,8 @@ grep -q 'source add-catalog <id> <git-url-or-path>' "$root/docs/reference.md"
 grep -q '`version:` entry from the first five lines' "$root/docs/reference.md"
 grep -q '`topics:` or `tags:` metadata from the first eight lines' "$root/docs/reference.md"
 ! sed -n '/MSRV, dependency-audit, and coverage jobs additionally run:/,/^```$/p' "$root/CONTRIBUTING.md" | grep -q 'cargo build --release'
+grep -Fq 'cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines 86.9' "$root/CONTRIBUTING.md"
+grep -Fq 'current 86.97% baseline rounded down to one decimal' "$root/CONTRIBUTING.md"
 grep -q 'DALO_LINUX_LIBC' "$root/npm/README.md"
 grep -q 'DALO_UPDATE_CHECK=never' "$root/README.md"
 grep -q 'github:sebastian-software/dalo' "$root/site/install.md"
