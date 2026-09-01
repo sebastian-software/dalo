@@ -834,6 +834,34 @@ are best-effort observations, not a security certification.
 
 JSON output shape: `AuditReport`.
 
+### `dalo plugin list|show|select|unselect|decline`
+
+Inspect and manage direct local plugin selection. Plugin references use
+`<source-id>:<slot-or-stable-id>`.
+
+```sh
+dalo plugin list
+dalo plugin show company:review-workflow
+dalo plugin select company:review-workflow
+dalo plugin unselect company:review-workflow
+dalo plugin decline company:review-workflow \
+  --rule-id no-shell-hooks \
+  --reason "shell hooks are outside local policy"
+```
+
+`list` returns every valid candidate plus the canonical selected graph; `show`
+returns one candidate and its selected state, when reachable. Both commands are
+read-only. `select` adds a direct user selection without replacing
+source-authored selections, while `unselect` removes only that direct user
+selection. `decline` retains selected intent but blocks the plugin with a local
+policy record. It requires the plugin to be selected, a unique lower-kebab
+`--rule-id`, and a non-empty `--reason` for audit context.
+
+The three mutations support `--dry-run` and report whether configuration would
+change. JSON shapes: `PluginListReport` (`candidates[]`, `resolution`),
+`PluginShowReport` (`candidate`, optional `selected`), and
+`PluginMutationReport` (`plugin`, `action`, `changed`, `dry_run`).
+
 ### `dalo plugin review <source:plugin>`
 
 Review every component decision for one selected portable plugin and its
@@ -865,6 +893,50 @@ mutations are never executed by review.
 JSON and dry-run modes are read-only and do not prompt. Prefer the individual
 commands below for a single known component, for revocation, or when a skill's
 blocking findings require `--accept-risk`.
+
+### `dalo tool list`; `dalo tool show|audit <source:plugin#tool:id>`
+
+Inspect plugin-local executable contracts without running them:
+
+```sh
+dalo tool list
+dalo tool show company:review-workflow#tool:detector
+dalo tool audit company:review-workflow#tool:detector
+dalo --json tool show company:review-workflow#tool:detector
+```
+
+`list` joins validated tools with their approval, immutable staging, runtime,
+platform, and audit state. `show` returns the full descriptor, contract hash,
+source provenance, exact approval value, staged path when present, and an
+actionable diagnostic. `audit` rechecks the tool's declared executable closure
+and contract hash; it does not stage, approve, or execute the tool.
+
+JSON shapes: `ToolListReport` (`tools[]`, `warnings[]`), `ToolStatusReport`
+(`tool`, `plugin_package_hash`, `plugin_path`, `source_provenance`,
+`approval_value`, `state`, optional `staged_path`, `diagnostic`), and
+`ToolAuditReport` (`tool`, `contract_hash`, `plugin_package_hash`, `passed`,
+`findings[]`).
+
+### `dalo hook list`; `dalo hook show <source:plugin#hook:id>`
+
+Inspect portable hook contracts without installing or executing them:
+
+```sh
+dalo hook list
+dalo hook show company:review-workflow#hook:check-shell
+dalo --json hook show company:review-workflow#hook:check-shell
+```
+
+`list` reports every validated hook with its independent trust state and the
+referenced tool's state. `show` returns the exact hook and tool contracts,
+source provenance, approval value, event/effect/matcher/binding semantics, and
+an actionable diagnostic. A hook becomes ready only when both its own contract
+and its referenced tool contract are ready. These public inspection commands
+never project or execute a hook.
+
+JSON shapes: `HookListReport` (`hooks[]`, `warnings[]`) and `HookStatusReport`
+(`hook`, `plugin_package_hash`, `source_provenance`, `approval_value`,
+`tool_state`, `tool`, `state`, `diagnostic`).
 
 ### `dalo approve`
 
@@ -1041,6 +1113,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `source add-catalog` | `SourceConfig` | `id`, `kind`, `path`, `priority`, `enabled`, `trusted`, `url`, `update_policy`, `selection` |
 | `source list` | `SourceListReport` | `sources[]`, each with existing `SourceConfig` fields plus `provenance` |
 | `source priority` | `SourcePriorityReport` | `source`, `dry_run` |
+| `source namespace <id> [<prefix>] [--clear]` | `SourceNamespaceReport` | `source`, `changed`, `dry_run` |
 | `source inspect` | `CatalogInspectReport` | `source_id`, `candidates[]` |
 | `source select` | `CatalogSelectReport` | `source_id`, changed user references in `added[]` / `removed[]`, complete resulting `selected[]`, `dry_run`, `audits[]` for skills named by the operation, `migration_warnings[]` for degraded legacy sibling catalogs |
 | `source refresh` | `CatalogDrift` | `source_id`, `pinned_commit`, `upstream_commit`, `outcomes[]`, `migration_warnings[]` for degraded legacy sibling catalogs |
@@ -1048,6 +1121,16 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `source remove` | `SourceRemoveReport` | `source_id`, `checkout_path`, `kept_checkout`, `removed_approvals`, `removed_catalog_lock`, `reconciled_links[]`, `deactivated_skills[]`, `deactivated_instruction_packs[]`, `cleanup_warnings[]`, `affected_paths[]`, `dry_run` |
 | `agent list` | `AgentListReport` | `resolution`, `inventory_warnings[]`, `source_errors[]` |
 | `agent show` | `AgentShowReport` | `agent`, provider `compilations[]` |
+| `plan` | `InstallationPlan` | `schema_version`, `store`, `canonical_plugins`, `inventory_warnings[]`, `tools[]`, `hooks[]`, optional `native_plugins[]`, physical `destinations[]` with per-target plugin/component explanations |
+| `plugin list` | `PluginListReport` | `candidates[]`, canonical `resolution` |
+| `plugin show` | `PluginShowReport` | `candidate`, optional `selected` state |
+| `plugin select` / `unselect` / `decline` | `PluginMutationReport` | `plugin`, `action`, `changed`, `dry_run` |
+| `plugin review` | `PluginReviewReport` | `schema_version`, `root_plugin`, `plugin_closure[]`, `installation_plan`, separately scoped `decisions[]`, `review_token`, `read_only` |
+| `tool list` | `ToolListReport` | `tools[]` with exact trust/runtime/staging state, `warnings[]` |
+| `tool show` | `ToolStatusReport` | tool descriptor, package and source provenance, `approval_value`, `state`, optional `staged_path`, `diagnostic` |
+| `tool audit` | `ToolAuditReport` | `tool`, `contract_hash`, `plugin_package_hash`, `passed`, `findings[]` |
+| `hook list` | `HookListReport` | `hooks[]` with hook and referenced-tool states, `warnings[]` |
+| `hook show` | `HookStatusReport` | hook and tool contracts, package and source provenance, `approval_value`, `tool_state`, `state`, `diagnostic` |
 | `autosync install` / `uninstall` | `AutosyncMutationReport` | `action`, `dry_run`, resulting `status` |
 | `autosync status` | `AutosyncStatusReport` | `configured`, `installed`, `enabled`, backend, schedule, executable, store, artifacts, optional `scheduler_error`, optional `disabled_reason`, and optional `last_run` |
 | `status` | `StatusReport` | `store`, `sources[]` with `skill_count`, `agent_count`, and `provenance`, `targets[]`, `inventory_warnings[]`, `agent_inventory_warnings[]`, `resolution`, dry-run `materialization[]`, `blocking_audits[]`, `audit_failures[]`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]`, `autosync` |
