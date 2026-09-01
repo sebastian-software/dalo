@@ -4106,6 +4106,37 @@ fn init_should_ignore_legacy_store_environment_override() {
 }
 
 #[test]
+fn not_initialized_hint_should_omit_store_for_the_default_store() {
+    let mut command = dalo_command();
+
+    command
+        .arg("sync")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("run `dalo init` first"))
+        .stderr(predicate::str::contains("run `dalo --store").not());
+}
+
+#[test]
+fn not_initialized_hint_should_preserve_an_explicit_store() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let custom_store = temp_dir.path().join("custom store");
+    let custom_root =
+        store::resolve_store_path(Some(&custom_store)).expect("custom store path should resolve");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&custom_store)
+        .arg("sync")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(format!(
+            "run `{}` first",
+            store::dalo_command(&custom_root, "init")
+        )));
+}
+
+#[test]
 fn init_hints_should_include_store_only_when_it_is_not_effectively_default() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let default_store = temp_dir.path().join("default-store");
