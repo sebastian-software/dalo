@@ -2,10 +2,19 @@
 
 use std::env;
 use std::fmt;
+use std::io::Read;
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
+use tempfile::NamedTempFile;
+
+#[cfg(unix)]
+use rustix::process::{Pid, Signal, kill_process_group};
 
 use crate::error::{DaloError, DaloResult};
 use crate::hook::{
@@ -40,6 +49,9 @@ pub struct HookTargetReport {
 
 const NO_SELECTED_PORTABLE_HOOKS: &str =
     "no selected portable hooks; prior owned entries are removed";
+const PROVIDER_VERSION_TIMEOUT: Duration = Duration::from_secs(5);
+const PROVIDER_VERSION_POLL_INTERVAL: Duration = Duration::from_millis(10);
+const MAX_PROVIDER_VERSION_OUTPUT: u64 = 64 * 1024;
 
 /// Distinct provider hook states required by #501.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -481,29 +493,85 @@ fn provider_version(program: &str, prefix: &str) -> (bool, Option<String>) {
     if !available {
         return (false, None);
     }
-    let version = Command::new(program)
+    (
+        true,
+        probe_provider_version(program, prefix, PROVIDER_VERSION_TIMEOUT),
+    )
+}
+
+fn probe_provider_version(program: &str, prefix: &str, timeout: Duration) -> Option<String> {
+    let stdout = NamedTempFile::new().ok()?;
+    let stderr = NamedTempFile::new().ok()?;
+    let mut command = Command::new(program);
+    command
         .arg("--version")
-        .output()
-        .ok()
-        .filter(|output| output.status.success())
-        .and_then(|output| {
-            let bytes = if output.stdout.is_empty() {
-                output.stderr
-            } else {
-                output.stdout
-            };
-            String::from_utf8(bytes).ok()
-        })
-        .and_then(|output| {
-            output
-                .trim()
-                .strip_prefix(prefix)
-                .unwrap_or(output.trim())
-                .split_whitespace()
-                .next()
-                .map(str::to_owned)
-        });
-    (true, version)
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(stdout.reopen().ok()?))
+        .stderr(Stdio::from(stderr.reopen().ok()?));
+    #[cfg(unix)]
+    command.process_group(0);
+    let mut child = command.spawn().ok()?;
+    let start = Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {}
+            Err(_) => {
+                terminate_provider_process(&mut child);
+                return None;
+            }
+        }
+
+        let elapsed = start.elapsed();
+        if elapsed >= timeout {
+            terminate_provider_process(&mut child);
+            return None;
+        }
+        thread::sleep(PROVIDER_VERSION_POLL_INTERVAL.min(timeout - elapsed));
+    };
+    terminate_provider_descendants(&child);
+    if !status.success() {
+        return None;
+    }
+    let stdout = read_provider_output(&stdout)?;
+    let bytes = if stdout.is_empty() {
+        read_provider_output(&stderr)?
+    } else {
+        stdout
+    };
+    let output = String::from_utf8(bytes).ok()?;
+    output
+        .trim()
+        .strip_prefix(prefix)
+        .unwrap_or(output.trim())
+        .split_whitespace()
+        .next()
+        .map(str::to_owned)
+}
+
+fn read_provider_output(file: &NamedTempFile) -> Option<Vec<u8>> {
+    let mut output = Vec::new();
+    file.reopen()
+        .ok()?
+        .take(MAX_PROVIDER_VERSION_OUTPUT)
+        .read_to_end(&mut output)
+        .ok()?;
+    Some(output)
+}
+
+fn terminate_provider_process(child: &mut Child) {
+    terminate_provider_descendants(child);
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+fn terminate_provider_descendants(child: &Child) {
+    #[cfg(unix)]
+    {
+        let _ = kill_process_group(Pid::from_child(child), Signal::KILL);
+    }
+    #[cfg(not(unix))]
+    let _ = child;
 }
 
 fn executable_on_path(program: &str) -> bool {
@@ -538,6 +606,17 @@ mod tests {
     use crate::plugin::{HookRecord, ToolAvailability, ToolCwd, ToolRecord, ToolRuntime};
     use crate::source::{SourceManagement, SourceProvenance};
     use crate::tool::ToolState;
+
+    #[cfg(unix)]
+    fn write_executable(directory: &Path, name: &str, body: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+
+        let path = directory.join(name);
+        std::fs::write(&path, body).expect("provider fixture should be written");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+            .expect("provider fixture should be executable");
+        path
+    }
 
     fn fixture() -> (tempfile::TempDir, StorePaths) {
         let temp = tempfile::tempdir().unwrap();
@@ -616,6 +695,88 @@ mod tests {
             state,
             diagnostic: "fixture hook status".to_owned(),
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn provider_version_probe_should_parse_prefixed_stdout() {
+        let temporary = tempfile::tempdir().expect("tempdir should be created");
+        let provider = write_executable(
+            temporary.path(),
+            "provider",
+            "#!/bin/sh\nprintf 'codex-cli 0.147.0\\n'\n",
+        );
+
+        assert_eq!(
+            probe_provider_version(
+                provider.to_str().expect("provider path should be UTF-8"),
+                "codex-cli ",
+                PROVIDER_VERSION_TIMEOUT,
+            ),
+            Some("0.147.0".to_owned())
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn provider_version_probe_should_timeout_a_hung_process() {
+        let temporary = tempfile::tempdir().expect("tempdir should be created");
+        let provider = write_executable(
+            temporary.path(),
+            "provider",
+            "#!/bin/sh\nwhile :; do :; done\n",
+        );
+        let started = Instant::now();
+
+        assert_eq!(
+            probe_provider_version(
+                provider.to_str().expect("provider path should be UTF-8"),
+                "",
+                Duration::from_millis(500),
+            ),
+            None
+        );
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn terminate_provider_process_should_stop_helper_processes() {
+        let temporary = tempfile::tempdir().expect("tempdir should be created");
+        let activity = temporary.path().join("activity");
+        let provider = write_executable(
+            temporary.path(),
+            "provider",
+            &format!(
+                "#!/bin/sh\nwhile :; do printf . >> {activity}; /bin/sleep 0.01; done &\nwait\n",
+                activity = crate::error::shell_quote_path(&activity)
+            ),
+        );
+        let mut command = Command::new(&provider);
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .process_group(0);
+        let mut child = command.spawn().expect("provider fixture should start");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !activity.metadata().is_ok_and(|metadata| metadata.len() > 0) {
+            if Instant::now() >= deadline {
+                terminate_provider_process(&mut child);
+                panic!("helper should record activity before the test deadline");
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+
+        terminate_provider_process(&mut child);
+        let activity_after_timeout =
+            std::fs::read(&activity).expect("helper should record activity before timeout");
+        thread::sleep(Duration::from_millis(100));
+        assert_eq!(
+            std::fs::read(&activity).expect("activity should remain readable"),
+            activity_after_timeout,
+            "timeout should terminate provider helper processes"
+        );
     }
 
     #[test]
