@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.5](https://github.com/sebastian-software/dalo/compare/dalo-v0.14.4...dalo-v0.14.5) (2026-09-01)
+
+
+### Bug Fixes
+
+* **npm:** retry transient release downloads ([7370c25](https://github.com/sebastian-software/dalo/commit/7370c2557cd8e30f4bef45452fb8e53370a82754))
+
 ## [0.14.4](https://github.com/sebastian-software/dalo/compare/dalo-v0.14.3...dalo-v0.14.4) (2026-09-01)
 
 
