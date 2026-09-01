@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.2](https://github.com/sebastian-software/dalo/compare/dalo-v0.14.1...dalo-v0.14.2) (2026-09-01)
+
+
+### Bug Fixes
+
+* **source:** report discovered skills after add ([bb09299](https://github.com/sebastian-software/dalo/commit/bb09299a895230e60ef4a43b2994374a51260e38))
+* **sync:** clarify adopted skill conflicts ([e8dd948](https://github.com/sebastian-software/dalo/commit/e8dd948383166ca3ffdcf458c8a61c83bddc53ee))
+
 ## [0.14.1](https://github.com/sebastian-software/dalo/compare/dalo-v0.14.0...dalo-v0.14.1) (2026-09-01)
 
 
