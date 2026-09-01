@@ -1094,6 +1094,7 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         _ => {}
     }
 
+    let pending_update_notice = (!json).then(update::start_notice_check).flatten();
     let options = if matches!(command, Command::Team(_)) {
         GlobalOptions {
             store: PathBuf::new(),
@@ -1132,8 +1133,8 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         }
     };
 
-    if result.is_ok() && !options.json {
-        update::maybe_print_notice();
+    if result.is_ok() {
+        update::print_notice_if_ready(pending_update_notice);
     }
 
     result
