@@ -11,6 +11,9 @@ const { version: PACKAGE_VERSION } = require('../package.json');
 const execFileAsync = promisify(execFile);
 const REPOSITORY = 'sebastian-software/dalo';
 const FETCH_TIMEOUT_MS = 30_000;
+const DOWNLOAD_HEADERS_TIMEOUT_MS = 10_000;
+const DOWNLOAD_BODY_TIMEOUT_MS = 120_000;
+const DOWNLOAD_ATTEMPTS = 3;
 const VERSION_PATTERN = /^(?:dalo-v|v)?(\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$/;
 
 function targetFor(platform = process.platform, arch = process.arch, libc) {
@@ -113,12 +116,47 @@ async function latestTag() {
   return normalizeTag(release.tag_name);
 }
 
-async function fetchFile(url, destination) {
-  const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-  if (!response.ok) {
-    throw new Error(`download failed for ${url} (HTTP ${response.status})`);
+function abortAfter(controller, milliseconds) {
+  const timer = setTimeout(() => controller.abort(), milliseconds);
+  timer.unref?.();
+  return timer;
+}
+
+async function fetchFileOnce(url) {
+  const controller = new AbortController();
+  let timer = abortAfter(controller, DOWNLOAD_HEADERS_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!response.ok) {
+      await response.body?.cancel();
+      const error = new Error(`download failed for ${url} (HTTP ${response.status})`);
+      error.status = response.status;
+      throw error;
+    }
+    timer = abortAfter(controller, DOWNLOAD_BODY_TIMEOUT_MS);
+    return Buffer.from(await response.arrayBuffer());
+  } finally {
+    clearTimeout(timer);
   }
-  await fs.writeFile(destination, Buffer.from(await response.arrayBuffer()), { mode: 0o600 });
+}
+
+function isRetryableDownloadError(error) {
+  if (error.name === 'AbortError' || error instanceof TypeError) return true;
+  return error.status === 408 || error.status === 429 || error.status >= 500;
+}
+
+async function fetchFile(url, destination) {
+  let contents;
+  for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt += 1) {
+    try {
+      contents = await fetchFileOnce(url);
+      break;
+    } catch (error) {
+      if (attempt === DOWNLOAD_ATTEMPTS || !isRetryableDownloadError(error)) throw error;
+    }
+  }
+  await fs.writeFile(destination, contents, { mode: 0o600 });
 }
 
 function expectedChecksum(contents, expectedFilename) {
