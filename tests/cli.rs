@@ -5411,6 +5411,29 @@ fn generated_delivery_process_failure_should_preserve_last_good_link() {
 }
 
 #[test]
+fn generated_delivery_timeout_should_terminate_generator_and_preserve_last_good_link() {
+    let fixture = GeneratedDeliveryFailureFixture::new();
+
+    fixture.replace_generator("#!/bin/sh\nwhile :; do :; done\n", "hang generator");
+    let started = std::time::Instant::now();
+    fixture
+        .command()
+        .env("DALO_GENERATOR_TIMEOUT_SECS", "1")
+        .arg("sync")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "generated delivery `company:review` timed out after 1 seconds",
+        ));
+
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(10),
+        "test timeout override should keep the termination path fast"
+    );
+    fixture.assert_last_good_link();
+}
+
+#[test]
 fn generated_delivery_blocking_audit_should_preserve_only_last_good_derivation() {
     let fixture = GeneratedDeliveryFailureFixture::new();
 

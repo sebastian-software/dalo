@@ -182,6 +182,7 @@ fn dalo_command_with_environment(environment: TestEnvironment) -> DaloCommand {
     let mut command = Command::cargo_bin("dalo").expect("binary should build");
     command
         .env_remove("DALO_STORE")
+        .env_remove("DALO_GENERATOR_TIMEOUT_SECS")
         .env("HOME", &environment.home)
         .env("CODEX_HOME", &environment.codex_home)
         .env("CLAUDE_CONFIG_DIR", &environment.claude_config_dir)
