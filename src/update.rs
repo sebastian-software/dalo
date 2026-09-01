@@ -8,6 +8,8 @@ use std::io::IsTerminal;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, Receiver};
+use std::thread;
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -19,25 +21,55 @@ const RELEASE_API: &str = "https://api.github.com/repos/sebastian-software/dalo/
 const INSTALL_RECEIPT: &str = ".dalo-install-channel";
 const CHECK_TIMEOUT: Duration = Duration::from_secs(1);
 
-/// Print a passive release notice when this invocation is eligible for one.
+/// A passive update check running alongside the requested command.
+pub struct PendingNotice {
+    receiver: Receiver<Option<String>>,
+}
+
+/// Start a passive release check when this invocation is eligible for one.
 ///
 /// Update checks are advisory and fail open: network, cache, parsing, and
 /// install-channel detection failures never change the requested command's
 /// output or exit status.
-pub fn maybe_print_notice() {
+pub fn start_notice_check() -> Option<PendingNotice> {
     if !update_checks_enabled() {
-        return;
+        return None;
     }
 
+    spawn_notice_check(check_latest_version)
+}
+
+fn spawn_notice_check<F>(check: F) -> Option<PendingNotice>
+where
+    F: FnOnce() -> Option<String> + Send + 'static,
+{
+    let (sender, receiver) = mpsc::sync_channel(1);
+    thread::Builder::new()
+        .name("dalo-update-check".to_owned())
+        .spawn(move || {
+            let _ = sender.send(check());
+        })
+        .ok()?;
+    Some(PendingNotice { receiver })
+}
+
+fn check_latest_version() -> Option<String> {
     let informer = update_informer::new(DaloGitHub, REPOSITORY, env!("CARGO_PKG_VERSION"))
         .timeout(CHECK_TIMEOUT);
     let Ok(Some(version)) = informer.check_version() else {
+        return None;
+    };
+    Some(version.semver().to_string())
+}
+
+/// Print a completed passive release notice without waiting for the check.
+pub fn print_notice_if_ready(pending: Option<PendingNotice>) {
+    let Some(latest_version) = pending.and_then(take_ready_notice) else {
         return;
     };
-    if !mark_version_notified(&version.to_string()) {
+    if !mark_version_notified(&latest_version) {
         return;
     }
-    let latest_version = version.semver().to_string();
 
     let executable = env::current_exe().ok();
     let channel = detect_install_channel(executable.as_deref());
@@ -50,6 +82,10 @@ pub fn maybe_print_notice() {
             executable.as_deref()
         )
     );
+}
+
+fn take_ready_notice(pending: PendingNotice) -> Option<String> {
+    pending.receiver.try_recv().unwrap_or_default()
 }
 
 fn render_notice(
@@ -362,6 +398,41 @@ mod tests {
             false,
             false
         ));
+    }
+
+    #[test]
+    fn unfinished_update_check_should_not_delay_command_completion() {
+        let (started_sender, started_receiver) = mpsc::sync_channel(1);
+        let (release_sender, release_receiver) = mpsc::sync_channel(1);
+        let pending = spawn_notice_check(move || {
+            started_sender.send(()).expect("test should observe start");
+            release_receiver
+                .recv()
+                .expect("test should release update check");
+            Some("9.9.9".to_owned())
+        })
+        .expect("update thread should start");
+        started_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("update check should start");
+
+        assert_eq!(take_ready_notice(pending), None);
+        release_sender
+            .send(())
+            .expect("update check should be released");
+    }
+
+    #[test]
+    fn completed_update_check_should_return_its_notice() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        sender
+            .send(Some("9.9.9".to_owned()))
+            .expect("notice should be queued");
+
+        assert_eq!(
+            take_ready_notice(PendingNotice { receiver }),
+            Some("9.9.9".to_owned())
+        );
     }
 
     #[test]
