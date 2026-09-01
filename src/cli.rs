@@ -3302,7 +3302,7 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             if options.json {
                 print_json(&report)?;
             } else {
-                status::print_source_add_report(&report);
+                status::print_source_add_report_with_store(&report, &options.store);
             }
             Ok(())
         }

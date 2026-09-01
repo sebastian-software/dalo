@@ -1983,17 +1983,39 @@ fn pluralized_source_list(ids: &[String]) -> String {
 
 /// Print a human-readable source add report.
 pub fn print_source_add_report(report: &SourceAddReport) {
+    print_source_add_report_inner(report, None);
+}
+
+pub(crate) fn print_source_add_report_with_store(report: &SourceAddReport, store_root: &Path) {
+    print_source_add_report_inner(report, Some(store_root));
+}
+
+fn print_source_add_report_inner(report: &SourceAddReport, store_root: Option<&Path>) {
     let verb = if report.dry_run { "would add" } else { "added" };
     println!(
         "{verb} source {} -> {}",
         report.source.id,
         report.source.path.display()
     );
+    if !report.dry_run {
+        match report.audits.len() {
+            0 => println!("warning: no usable skills found; expected each skill at <dir>/SKILL.md"),
+            1 => println!("found 1 skill"),
+            count => println!("found {count} skills"),
+        }
+    }
     if !report.inventory_warnings.is_empty() {
         print_inventory_warnings(&report.inventory_warnings, None, None);
     }
     for audit in &report.audits {
         print_audit_report(audit);
+    }
+    if !report.dry_run {
+        let command = store_root.map_or_else(
+            || "dalo sync".to_owned(),
+            |store_root| store::dalo_command(store_root, "sync"),
+        );
+        println!("next: {command}");
     }
 }
 
