@@ -137,7 +137,10 @@ pub fn plan_sidecar(
         });
     }
     append_owned_groups(&mut root, &projection.hooks)?;
-    let desired_bytes = if root.as_object().is_some_and(|object| object.is_empty()) {
+    let preserve_unowned = previous.is_none() && projection.hooks.is_empty();
+    let desired_bytes = if preserve_unowned {
+        observed_bytes.clone()
+    } else if root.as_object().is_some_and(|object| object.is_empty()) {
         None
     } else {
         let mut bytes = serde_json::to_vec_pretty(&root)?;
@@ -468,6 +471,21 @@ mod tests {
         assert_eq!(removed.action, HookSidecarAction::Remove);
         assert!(!sidecar.exists());
         assert!(!initial.is_empty());
+    }
+
+    #[test]
+    fn empty_projection_preserves_an_unowned_empty_sidecar() {
+        let (temp, paths) = fixture();
+        let sidecar = temp.path().join("claude/settings.json");
+        fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+        fs::write(&sidecar, "{}").unwrap();
+        let empty = projection(HookProvider::Claude, &"11".repeat(32), "");
+
+        let plan = plan_sidecar(&paths, HookProvider::Claude, &sidecar, &empty).unwrap();
+        assert_eq!(plan.action, HookSidecarAction::Noop);
+
+        apply_sidecar(&paths, &empty, plan, false).unwrap();
+        assert_eq!(fs::read_to_string(&sidecar).unwrap(), "{}");
     }
 
     #[test]
