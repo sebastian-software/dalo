@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.14.1](https://github.com/sebastian-software/dalo/compare/dalo-v0.14.0...dalo-v0.14.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **hooks:** preserve unowned empty sidecars ([d849613](https://github.com/sebastian-software/dalo/commit/d849613c4a6f43875666d1652d31024afb52007c))
+
+
+### Performance Improvements
+
+* **status:** cache source HEAD lookups ([6c161a6](https://github.com/sebastian-software/dalo/commit/6c161a6ff457cb01c00cb013d0ec7926fe0d8f13))
+
 ## [0.14.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.13.0...dalo-v0.14.0) (2026-09-01)
 
 
