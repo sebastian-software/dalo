@@ -1,5 +1,78 @@
 # Changelog
 
+## [0.14.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.13.0...dalo-v0.14.0) (2026-09-01)
+
+
+### Features
+
+* **cli:** emphasize status output on TTY ([02089e9](https://github.com/sebastian-software/dalo/commit/02089e946c351e2e31379909aec7baf837a43c3f))
+* **source:** add opt-in skill namespaces ([5610e5b](https://github.com/sebastian-software/dalo/commit/5610e5bda5a932215ca0f0676ca7c047fb5d460e))
+
+
+### Bug Fixes
+
+* **api:** preserve resolver and plan compatibility ([37a5dc7](https://github.com/sebastian-software/dalo/commit/37a5dc78b7136bc78e325286f92f1ecc42ee329a))
+* **audit:** hash directory entries for cache reuse ([1a1cb5d](https://github.com/sebastian-software/dalo/commit/1a1cb5dd8e83429525a264606d543b095efba87e))
+* **audit:** keep dry-run timestamps fresh ([3bb5c47](https://github.com/sebastian-software/dalo/commit/3bb5c47d6295de5a3ae163ccd98fea08dcc9238f))
+* **audit:** preserve invalid cache path errors ([fe780a5](https://github.com/sebastian-software/dalo/commit/fe780a557ad3b74eab7c8cd8d811a7ce40389175))
+* **audit:** rebuild unreadable report cache ([29a1d93](https://github.com/sebastian-software/dalo/commit/29a1d932c3406e872bcad3e736295c860413d0fc))
+* **audit:** reuse compatible static reports ([df21376](https://github.com/sebastian-software/dalo/commit/df21376a54b3374be4ea53596151950d76f6700f))
+* **audit:** scope cache fingerprint to static entries ([750de72](https://github.com/sebastian-software/dalo/commit/750de724fc262603f3612eb6573ed819c5761449))
+* **audit:** skip unchanged report writes ([136c0ff](https://github.com/sebastian-software/dalo/commit/136c0ffbb62cbadd9e64b27112fcce069a320fa7))
+* avoid residual child input files ([9af76db](https://github.com/sebastian-software/dalo/commit/9af76dba58c5bf4191ce93e62bd3a2aefc6a9696))
+* clarify plugin help and plan usage ([e046d67](https://github.com/sebastian-software/dalo/commit/e046d67bbca5422ba61cf6ed3f4094116ad3da87))
+* **cli:** compact repeated output paths ([2e357dc](https://github.com/sebastian-software/dalo/commit/2e357dc096783b34061e80084f3e37f9d69f7562))
+* **delivery:** recheck source provenance before lock ([d8d7a87](https://github.com/sebastian-software/dalo/commit/d8d7a8776933eaa611bbf26f48914caf382a98b0))
+* **delivery:** reject invalid approvals without panicking ([de08ef1](https://github.com/sebastian-software/dalo/commit/de08ef1aa8b271142c2db43be087b4914b2964dc))
+* **doctor:** collapse inventory rendering guards ([065da3e](https://github.com/sebastian-software/dalo/commit/065da3e014da3121bb2d99d5162ca973d26bfedf))
+* **doctor:** complete local mixed recovery ([94a3b97](https://github.com/sebastian-software/dalo/commit/94a3b9784dbb09634200ded8281d60157c74482a))
+* **doctor:** group related findings ([f2520fa](https://github.com/sebastian-software/dalo/commit/f2520fa949cfa7c96d5dda73712fbe16a9cb0cf7))
+* **doctor:** preserve lock recovery state ([183cb73](https://github.com/sebastian-software/dalo/commit/183cb73f4a0e0fc68004b39dc818bdded6818cf4))
+* **doctor:** prioritize checkout access recovery ([306ef9c](https://github.com/sebastian-software/dalo/commit/306ef9c3849fe62a1e79676d234df2516650b3d3))
+* **doctor:** provide actionable recovery remedies ([fdded55](https://github.com/sebastian-software/dalo/commit/fdded55e74debe23828a47c9df27aebd68087f9a))
+* **doctor:** render structured inventory warnings ([6fc2ebd](https://github.com/sebastian-software/dalo/commit/6fc2ebded731da1bb159bef3ac87ad1c7a6935f4))
+* **doctor:** surface failing check status ([288c70e](https://github.com/sebastian-software/dalo/commit/288c70e0015e65bb097000046a5f87bd9d3b5e71))
+* **git:** allow local bundle clone sources ([ae53fed](https://github.com/sebastian-software/dalo/commit/ae53fed1e10c4be473ecb61ddfc326c32657b3ec))
+* **hooks:** clean status output ([93e3e13](https://github.com/sebastian-software/dalo/commit/93e3e135417a5c38ac081a54dbc30fc1fb8fcd79))
+* **hooks:** preserve public report shape ([2a2e3c1](https://github.com/sebastian-software/dalo/commit/2a2e3c113972407876076906c3bbe182a3000c14))
+* **hooks:** preserve report diagnostics ([253fa07](https://github.com/sebastian-software/dalo/commit/253fa07b0c33f22e735cdfec2a9e77a3e9393c2d))
+* **installer:** restrict cosign workflow identity ([a75f820](https://github.com/sebastian-software/dalo/commit/a75f820ef517b3a240fc4acb216c4b1824c5d6fd))
+* **instructions:** atomically replace managed targets ([472be45](https://github.com/sebastian-software/dalo/commit/472be45e3ae258d3f827a8b065cdf15dc2c0f3f8))
+* **instructions:** guard atomic replacement races ([040d24f](https://github.com/sebastian-software/dalo/commit/040d24ff11b350b069a0d402980a2c4ef143c0db))
+* **instructions:** preserve replacement ownership ([5a73dcc](https://github.com/sebastian-software/dalo/commit/5a73dcc9b9bfcf1891fd9b25446a58638e942d52))
+* **instructions:** retain concurrent rollback edits ([d938946](https://github.com/sebastian-software/dalo/commit/d938946575d07621a2747c63b3a2dcc008bbb696))
+* **instructions:** retain failed rollback recovery ([bb048e2](https://github.com/sebastian-software/dalo/commit/bb048e2597811caad5c72b721929f936893510f6))
+* **instructions:** retain unreadable rollback replacements ([6ba3ef2](https://github.com/sebastian-software/dalo/commit/6ba3ef20cd8987d560953e2f7c72c285dc8d4535))
+* **inventory:** report unreadable skill files ([466587b](https://github.com/sebastian-software/dalo/commit/466587b15f01cca51e8f941b08115a41d893cf4f))
+* **inventory:** traverse below invalid skill metadata ([729498f](https://github.com/sebastian-software/dalo/commit/729498f497dc5ce912a915458517f8bac126aaef))
+* **next:** cover health blockers conservatively ([3a81672](https://github.com/sebastian-software/dalo/commit/3a8167282c062b74fd3b96dc93b4b2db3b2fe486))
+* **next:** preserve approval guidance ([d449c3c](https://github.com/sebastian-software/dalo/commit/d449c3c6f4582d805d5f708f5da91e2a293a1c9f))
+* **next:** report doctor errors ([88973e3](https://github.com/sebastian-software/dalo/commit/88973e3c2afd6ca102479933e7eadc56a1ab983f))
+* **npm:** enforce package version synchronization ([e5ca7d0](https://github.com/sebastian-software/dalo/commit/e5ca7d034c9ae16ec2b8c6bcf278e33198a93d97))
+* **plugin:** retain contracts through degraded sync ([748f236](https://github.com/sebastian-software/dalo/commit/748f236c9b0a4b15c1fefcc9559af47d2f1d2321))
+* **plugin:** retain contracts when skill scans degrade ([2c7defb](https://github.com/sebastian-software/dalo/commit/2c7defb36a5a08e85edec44c1984572a99ff0bbf))
+* prevent SIGPIPE from child stdin writes ([4191554](https://github.com/sebastian-software/dalo/commit/419155489041fa9f91a52266fa7d6071ecc1f286))
+* **release:** publish artifacts atomically ([c7f1092](https://github.com/sebastian-software/dalo/commit/c7f1092af64ffcea4d1fe1b02c70fced821bcab2))
+* **resolver:** propagate audit failures through namespaces ([ea3a2df](https://github.com/sebastian-software/dalo/commit/ea3a2dffcbcb3b9cb600c9f0d8c17c54f800e028))
+* **source:** allow clearing local namespaces ([2e62ced](https://github.com/sebastian-software/dalo/commit/2e62ced96873c20f0f6fd8dffc9b6308416b8a72))
+* **source:** clarify local git failures ([ab37b43](https://github.com/sebastian-software/dalo/commit/ab37b43a536a52d8f9162308de2c233659da18b3))
+* **source:** guard local namespace changes ([96c73f3](https://github.com/sebastian-software/dalo/commit/96c73f3939712dbd427981561222b98b176768eb))
+* **source:** isolate unreadable skills during inventory ([81b019c](https://github.com/sebastian-software/dalo/commit/81b019c5435485ed411910f9215e5755800c56cd))
+* **source:** preserve error API ([d70a8d2](https://github.com/sebastian-software/dalo/commit/d70a8d2ebaff9c060ff943f9ea0a9ffa03fd4f60))
+* **source:** preserve namespace materialization invariants ([5ad45e2](https://github.com/sebastian-software/dalo/commit/5ad45e2fd91a076776cce06720c9d62a09af16f5))
+* **source:** surface inventory warnings ([55a514f](https://github.com/sebastian-software/dalo/commit/55a514f98c1d3bbb8f69290b0d1186212685d842))
+* **status:** require leading path boundaries ([09b3af4](https://github.com/sebastian-software/dalo/commit/09b3af4a6674452adf3e55f1cd296902f16491fc))
+* **sync:** preserve committed manifest state on rollback ([f1e4a6d](https://github.com/sebastian-software/dalo/commit/f1e4a6d0cb58c9b2cac66ea1ce648b6d718f32cd))
+
+
+### Performance Improvements
+
+* **audit:** reduce static scanner allocations ([0a7d736](https://github.com/sebastian-software/dalo/commit/0a7d736e6e28452ba71353722961f50917e4dca3))
+* **audit:** reuse store config during scans ([da487e5](https://github.com/sebastian-software/dalo/commit/da487e584373b5d73d6e56bc177fa799c841519c))
+* **delivery:** reuse verified generated output ([133d628](https://github.com/sebastian-software/dalo/commit/133d6285cf8a04c137449fc3850cbf2774158b17))
+* **plugin:** reuse inventories for tool and hook status ([adf807d](https://github.com/sebastian-software/dalo/commit/adf807d9b37b557694b1c603b7e77da4cbe51165))
+* **source:** fetch sources in parallel ([38c80c9](https://github.com/sebastian-software/dalo/commit/38c80c9573740befb2b6a12da93f884926c00141))
+
 ## [0.13.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.12.0...dalo-v0.13.0) (2026-08-18)
 
 
