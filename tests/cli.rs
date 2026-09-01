@@ -10315,7 +10315,8 @@ fn catalog_add_and_sync_should_explain_how_to_select_available_skills() {
         .args(["source", "inspect", "marketing"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("* selected"));
+        .stdout(predicate::str::contains("* selected").not())
+        .stdout(predicate::str::contains("id=").not());
     dalo_command()
         .args(["--store"])
         .arg(&store)
@@ -10330,6 +10331,53 @@ fn catalog_add_and_sync_should_explain_how_to_select_available_skills() {
             &store_root,
             "source select marketing <skill>",
         )));
+}
+
+#[test]
+fn catalog_select_should_suggest_slot_names_for_unknown_skills() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "copy-editng"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "skill `marketing:copy-editng` was not found",
+        ))
+        .stderr(predicate::str::contains("did you mean `copy-editing`?"))
+        .stderr(predicate::str::contains(
+            "known skills: copy-editing, launch-copy",
+        ))
+        .stderr(predicate::str::contains("skills/copy-editing").not());
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "copy-editing"])
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "inspect", "marketing"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("* selected"))
+        .stdout(predicate::str::contains("id=").not());
 }
 
 // Mirror structs for the machine-output schema. They intentionally live in the test
