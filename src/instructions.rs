@@ -1955,8 +1955,12 @@ where
     before_remove()?;
     fs::rename(target, &recovery_path)?;
 
+    // Once the target has been moved aside, every verification failure must be
+    // treated as a concurrent replacement. Propagating a read error here would
+    // drop `recovery_path` and unlink the only remaining copy of that file.
     let is_dalo_target =
-        target_has_identity_and_content(&recovery_path, expected_identity, expected_content)?;
+        target_has_identity_and_content(&recovery_path, expected_identity, expected_content)
+            .unwrap_or(false);
     let sync_result = sync_parent(parent);
     if !is_dalo_target {
         let message = match sync_result {
@@ -3049,6 +3053,39 @@ mod tests {
                 .filter_map(Result::ok)
                 .any(|entry| fs::read_to_string(entry.path()).ok().as_deref()
                     == Some("external edit\n"))
+        );
+    }
+
+    #[test]
+    fn rollback_removal_should_retain_non_utf8_replacement() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let target = temp.path().join("AGENTS.md");
+        let replacement = temp.path().join("AGENTS.md.external");
+        fs::write(&target, "dalo output\n").expect("target should be seeded");
+        let written_identity =
+            target_identity(&fs::metadata(&target).expect("target metadata should be readable"));
+        let replacement_bytes = [0xff, 0xfe, 0xfd];
+        fs::write(&replacement, replacement_bytes).expect("replacement should be written");
+
+        let error = remove_target_if_unchanged_with(
+            &target,
+            written_identity,
+            "dalo output\n",
+            || {
+                fs::rename(&replacement, &target)?;
+                Ok(())
+            },
+            sync_target_parent,
+        )
+        .expect_err("non-UTF-8 replacement should be retained");
+
+        assert!(error.to_string().contains("contents were retained at"));
+        assert!(!target.exists());
+        assert!(
+            fs::read_dir(temp.path())
+                .expect("parent directory should be readable")
+                .filter_map(Result::ok)
+                .any(|entry| fs::read(entry.path()).ok().as_deref() == Some(&replacement_bytes))
         );
     }
 
