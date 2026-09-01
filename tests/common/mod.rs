@@ -189,6 +189,11 @@ fn dalo_command_with_environment(environment: TestEnvironment) -> DaloCommand {
         .env("XDG_CONFIG_HOME", environment.xdg_config_home())
         .env("XDG_DATA_HOME", environment.xdg_data_home())
         .env("XDG_CACHE_HOME", environment.xdg_cache_home())
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env_remove("GIT_CONFIG_COUNT")
+        .env_remove("GIT_CONFIG_PARAMETERS")
         .env("PATH", &environment.path);
     DaloCommand {
         command,
@@ -297,7 +302,7 @@ pub fn create_git_catalog_repo_with_duplicate_slots(repo: &Path) {
 }
 
 fn init_git_repo(repo: &Path) {
-    run_git(repo, &["init", "-q"]);
+    run_git(repo, &["-c", "init.defaultBranch=main", "init", "-q"]);
     run_git(repo, &["add", "."]);
     run_git(
         repo,
@@ -377,23 +382,42 @@ pub fn write_source_lock(store: &Path, lock: &SourceLock) {
 }
 
 pub fn run_git(repo: &Path, args: &[&str]) {
-    let status = std::process::Command::new("git")
+    let status = hermetic_git_command(repo)
         .args(args)
-        .current_dir(repo)
         .status()
         .expect("git should run");
     assert!(status.success(), "git {args:?} should succeed");
 }
 
 pub fn git_command_succeeds(repo: &Path, args: &[&str]) -> bool {
-    std::process::Command::new("git")
+    hermetic_git_command(repo)
         .args(args)
-        .current_dir(repo)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()
         .expect("git should run")
         .success()
+}
+
+pub fn git_stdout(repo: &Path, args: &[&str]) -> String {
+    let output = hermetic_git_command(repo)
+        .args(args)
+        .output()
+        .expect("git should run");
+    assert!(output.status.success(), "git {args:?} should succeed");
+    String::from_utf8(output.stdout).expect("git output should be utf8")
+}
+
+fn hermetic_git_command(repo: &Path) -> std::process::Command {
+    let mut command = std::process::Command::new("git");
+    command
+        .current_dir(repo)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env_remove("GIT_CONFIG_COUNT")
+        .env_remove("GIT_CONFIG_PARAMETERS");
+    command
 }
 
 pub struct GitRevParseLogger {

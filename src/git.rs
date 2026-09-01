@@ -388,6 +388,15 @@ fn run_git_program_with_options(
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout.reopen()?))
         .stderr(Stdio::from(stderr.reopen()?));
+    // Unit tests invoke this production path in-process rather than through
+    // the integration-test command wrapper. Keep those Git calls hermetic
+    // without changing how released binaries honor user Git configuration.
+    #[cfg(test)]
+    command
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env_remove("GIT_CONFIG_COUNT")
+        .env_remove("GIT_CONFIG_PARAMETERS");
     configure_ssh_command(
         &mut command,
         ssh_command_env.as_ref(),
@@ -714,7 +723,7 @@ mod tests {
         let fake_git = write_executable(
             temp_dir.path(),
             "fake-git",
-            "#!/bin/sh\nprintf 'prompt=%s ssh=%s\\n' \"$GIT_TERMINAL_PROMPT\" \"$GIT_SSH_COMMAND\" >&2\nexit 2\n",
+            "#!/bin/sh\nprintf 'prompt=%s ssh=%s global=%s nosystem=%s count=%s parameters=%s\\n' \"$GIT_TERMINAL_PROMPT\" \"$GIT_SSH_COMMAND\" \"$GIT_CONFIG_GLOBAL\" \"$GIT_CONFIG_NOSYSTEM\" \"${GIT_CONFIG_COUNT:-unset}\" \"${GIT_CONFIG_PARAMETERS:-unset}\" >&2\nexit 2\n",
         );
 
         let error = run_git_program_with_options(
@@ -732,6 +741,10 @@ mod tests {
         };
         assert!(stderr.contains("prompt=0"));
         assert!(stderr.contains("BatchMode=yes"));
+        assert!(stderr.contains("global=/dev/null"));
+        assert!(stderr.contains("nosystem=1"));
+        assert!(stderr.contains("count=unset"));
+        assert!(stderr.contains("parameters=unset"));
     }
 
     #[test]

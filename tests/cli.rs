@@ -14,7 +14,7 @@ use common::{
     create_git_catalog_repo_with_duplicate_slots, create_git_skill_repo,
     create_git_skill_repo_with_required_pair, create_git_skill_repo_with_skill,
     create_unmanaged_skill, create_unmanaged_skill_with_body, dalo_command,
-    dalo_command_with_git_search_path, git_command_succeeds, git_rev_parse_logger,
+    dalo_command_with_git_search_path, git_command_succeeds, git_rev_parse_logger, git_stdout,
     read_source_lock, read_user_lock, remove_source_update_policy, run_git, set_source_untrusted,
     setup_store_with_skill_and_target, setup_store_with_target, write_local_only_config,
     write_source_lock,
@@ -49,6 +49,18 @@ fn dalo_command_should_isolate_provider_environment_per_invocation() {
             std::ffi::OsString::from("git"),
             std::ffi::OsString::from("sh"),
         ]
+    );
+}
+
+#[test]
+fn git_fixtures_should_use_a_stable_initial_branch() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo(&repo);
+
+    assert_eq!(
+        git_stdout(&repo, &["branch", "--show-current"]).trim(),
+        "main"
     );
 }
 
@@ -2049,16 +2061,7 @@ fn commit_test_repo(repo: &std::path::Path, message: &str) {
 }
 
 fn test_git_head(repo: &std::path::Path) -> String {
-    let output = std::process::Command::new("git")
-        .args(["rev-parse", "HEAD"])
-        .current_dir(repo)
-        .output()
-        .expect("git rev-parse should run");
-    assert!(output.status.success());
-    String::from_utf8(output.stdout)
-        .expect("git hash should be utf8")
-        .trim()
-        .to_owned()
+    git_stdout(repo, &["rev-parse", "HEAD"]).trim().to_owned()
 }
 
 #[test]
@@ -11581,17 +11584,8 @@ fn catalog_advance_should_update_pin_checkout_and_active_materialization() {
     let lock = read_source_lock(&store);
     let catalog = lock.catalog("marketing").expect("catalog remains locked");
     let checkout = store.join("sources/marketing/checkout");
-    let checkout_head = std::process::Command::new("git")
-        .args(["rev-parse", "HEAD"])
-        .current_dir(&checkout)
-        .output()
-        .expect("git should run");
-    assert_eq!(
-        String::from_utf8(checkout_head.stdout)
-            .expect("commit is utf8")
-            .trim(),
-        catalog.commit
-    );
+    let checkout_head = git_stdout(&checkout, &["rev-parse", "HEAD"]);
+    assert_eq!(checkout_head.trim(), catalog.commit);
     assert_eq!(
         std::fs::read_to_string(target.join("copy-editing/SKILL.md"))
             .expect("materialized skill readable"),
