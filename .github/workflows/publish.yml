@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       recover_tag:
-        description: Existing draft release tag to resume after a failed publish
+        description: Existing release tag to resume after a failed publish
         required: false
         type: string
 
@@ -22,6 +22,7 @@ jobs:
     outputs:
       release_created: ${{ steps.recovery.outputs.release_created || steps.release.outputs.release_created }}
       tag_name: ${{ steps.recovery.outputs.tag_name || steps.release.outputs.tag_name }}
+      release_is_draft: ${{ steps.recovery.outputs.release_is_draft }}
     steps:
       - uses: googleapis/release-please-action@v5
         id: release
@@ -29,7 +30,7 @@ jobs:
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
 
-      - name: Validate draft release recovery
+      - name: Validate release recovery
         id: recovery
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.recover_tag != '' }}
         shell: bash
@@ -42,16 +43,21 @@ jobs:
             dalo-v*|v*) ;;
             *) echo "::error::unexpected release tag '${TAG_NAME}'"; exit 1 ;;
           esac
-          test "$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft')" = true
+          release_is_draft="$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft')"
+          case "$release_is_draft" in
+            true|false) ;;
+            *) echo "::error::could not determine release state for '${TAG_NAME}'"; exit 1 ;;
+          esac
           echo "release_created=true" >> "$GITHUB_OUTPUT"
           echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "release_is_draft=$release_is_draft" >> "$GITHUB_OUTPUT"
 
   publish-crate:
     name: Publish crate
     # GitHub assets publish first. This keeps every public install channel from
     # advertising a release whose archives are not yet available.
     needs: [release-please, publish-github-release]
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    if: ${{ always() && needs.release-please.outputs.release_created == 'true' && (needs.publish-github-release.result == 'success' || needs.release-please.outputs.release_is_draft == 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -68,14 +74,27 @@ jobs:
       - name: Publish to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
         run: |
           test -n "$CARGO_REGISTRY_TOKEN"
+          case "$TAG_NAME" in
+            dalo-v*) version="${TAG_NAME#dalo-v}" ;;
+            v*) version="${TAG_NAME#v}" ;;
+            *) echo "::error::unexpected release tag '${TAG_NAME}'"; exit 1 ;;
+          esac
+          if curl \
+            --user-agent "dalo-publish/${version} (https://github.com/${{ github.repository }})" \
+            --fail --silent --show-error \
+            "https://crates.io/api/v1/crates/dalo/${version}" > /dev/null; then
+            echo "dalo ${version} is already published on crates.io"
+            exit 0
+          fi
           cargo publish --locked
 
   publish-npm:
     name: Publish npm wrapper
     needs: [release-please, publish-github-release]
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    if: ${{ always() && needs.release-please.outputs.release_created == 'true' && (needs.publish-github-release.result == 'success' || needs.release-please.outputs.release_is_draft == 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -108,8 +127,11 @@ jobs:
           esac
           cd npm
           npm ci
-          npm version "$version" --no-git-tag-version
           test "$(node -p 'require("./package.json").version')" = "$version"
+          if npm view "getdalo@${version}" version > /dev/null 2>&1; then
+            echo "getdalo ${version} is already published on npm"
+            exit 0
+          fi
           npm test
           npm pack --dry-run
           DALO_VERSION="$TAG_NAME" node -e "require('./lib/release').ensureBinary().then(binary => require('node:child_process').execFileSync(binary, ['--version'], { stdio: 'inherit' }))"
@@ -118,7 +140,7 @@ jobs:
   release-artifacts:
     name: Build ${{ matrix.target }}
     needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    if: ${{ needs.release-please.outputs.release_created == 'true' && needs.release-please.outputs.release_is_draft != 'false' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     permissions:
@@ -227,7 +249,7 @@ jobs:
   publish-github-release:
     name: Publish GitHub release
     needs: [release-please, release-artifacts]
-    if: ${{ needs.release-please.outputs.release_created == 'true' && needs.release-artifacts.result == 'success' }}
+    if: ${{ needs.release-please.outputs.release_created == 'true' && needs.release-please.outputs.release_is_draft != 'false' && needs.release-artifacts.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -264,7 +286,7 @@ jobs:
   update-homebrew:
     name: Update Homebrew tap
     needs: [release-please, publish-github-release]
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    if: ${{ always() && needs.release-please.outputs.release_created == 'true' && (needs.publish-github-release.result == 'success' || needs.release-please.outputs.release_is_draft == 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -277,9 +299,24 @@ jobs:
         run: |
           test -n "$GH_TOKEN"
           case "$TAG_NAME" in
-            dalo-v*|v*) ;;
+            dalo-v*) version="${TAG_NAME#dalo-v}" ;;
+            v*) version="${TAG_NAME#v}" ;;
             *) echo "::error::unexpected release tag '${TAG_NAME}'"; exit 1 ;;
           esac
+          formula="$(gh api repos/sebastian-software/homebrew-tap/contents/Formula/dalo.rb --jq '.content' | base64 --decode)"
+          current_tag="$(printf '%s\n' "$formula" | sed -n 's#.*releases/download/\([^/]*\)/.*#\1#p' | head -n 1)"
+          if [ -n "$current_tag" ]; then
+            case "$current_tag" in
+              dalo-v*) current_version="${current_tag#dalo-v}" ;;
+              v*) current_version="${current_tag#v}" ;;
+              *) echo "::error::unexpected Homebrew release tag '${current_tag}'"; exit 1 ;;
+            esac
+            newest_version="$(printf '%s\n%s\n' "$current_version" "$version" | sort -V | tail -n 1)"
+            if [ "$current_version" = "$version" ] || [ "$newest_version" = "$current_version" ]; then
+              echo "Homebrew already references dalo ${current_version}; not dispatching ${version}"
+              exit 0
+            fi
+          fi
           gh api --method POST repos/sebastian-software/homebrew-tap/dispatches \
             -f event_type=dalo_release \
             -F "client_payload[tag_name]=$TAG_NAME"
