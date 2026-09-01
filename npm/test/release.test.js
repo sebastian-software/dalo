@@ -271,6 +271,46 @@ test('reports available cache versions when an exact download fails', async () =
   }
 });
 
+test('retries transient release download failures', async () => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'dalo-npm-test-'));
+  const target = 'x86_64-unknown-linux-gnu';
+  const version = '0.6.0';
+  const packageName = `dalo-${version}-${target}`;
+  const packageDir = path.join(temp, packageName);
+  const archive = path.join(temp, `${packageName}.tar.gz`);
+  const cacheRoot = path.join(temp, 'cache');
+  const originalFetch = global.fetch;
+  const originalBaseUrl = process.env.DALO_RELEASE_BASE_URL;
+  try {
+    await fs.mkdir(packageDir);
+    await fs.writeFile(path.join(packageDir, 'dalo'), Buffer.alloc(2048, 'x'), { mode: 0o755 });
+    await execFileAsync('tar', ['-C', temp, '-czf', archive, packageName]);
+    const archiveBytes = await fs.readFile(archive);
+    const checksum = createHash('sha256').update(archiveBytes).digest('hex');
+    const attempts = new Map();
+    process.env.DALO_RELEASE_BASE_URL = 'https://releases.example.test';
+    global.fetch = async (url, options) => {
+      assert.ok(options.signal instanceof AbortSignal);
+      const attempt = (attempts.get(url) || 0) + 1;
+      attempts.set(url, attempt);
+      if (attempt < 3) return new Response('', { status: 503 });
+      return new Response(
+        url.endsWith('.sha256') ? `${checksum}  ${path.basename(archive)}\n` : archiveBytes,
+        { status: 200 }
+      );
+    };
+
+    const binary = await ensureBinary({ tag: version, target, cacheRoot });
+    assert.equal((await fs.stat(binary)).mode & 0o111, 0o111);
+    assert.deepEqual([...attempts.values()], [3, 3]);
+  } finally {
+    global.fetch = originalFetch;
+    if (originalBaseUrl === undefined) delete process.env.DALO_RELEASE_BASE_URL;
+    else process.env.DALO_RELEASE_BASE_URL = originalBaseUrl;
+    await fs.rm(temp, { recursive: true, force: true });
+  }
+});
+
 test('formats network causes and an actionable version hint', () => {
   const error = new TypeError('fetch failed', {
     cause: new Error('getaddrinfo ENOTFOUND api.github.com')
