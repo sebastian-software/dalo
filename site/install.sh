@@ -70,7 +70,7 @@ sha_check() {
 }
 
 fetch() {
-  curl --connect-timeout 10 --max-time 120 --retry 2 "$@"
+  curl --proto '=https' --tlsv1.2 --connect-timeout 10 --max-time 120 --retry 2 "$@"
 }
 
 latest_tag() {
