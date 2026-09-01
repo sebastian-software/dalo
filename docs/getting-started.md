@@ -71,7 +71,7 @@ dalo source list
 dalo sync
 ```
 
-A source is a Git-backed collection of skills. Source priority decides conflicts: lower priority wins. A slot is the portable skill name Dalo links into target folders.
+A source is a Git-backed collection of skills. Source priority decides conflicts: lower priority numbers win. A slot is the portable skill name Dalo links into target folders.
 
 Team sources are trusted by default, so their skills do not need per-skill
 approval. Sync still audits team content and blocks unaccepted high or critical
