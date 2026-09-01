@@ -78,6 +78,10 @@ ci_job_body() {
 ci_test_job="$(ci_job_body test)"
 release_targets_job="$(ci_job_body release-targets)"
 
+printf '%s\n' "$ci_test_job" | grep -Fq 'cargo test --locked'
+printf '%s\n' "$ci_test_job" | grep -Fq 'cargo clippy --locked --all-targets --all-features -- -D warnings'
+printf '%s\n' "$ci_test_job" | grep -Fq 'cargo build --release --locked --target "${{ matrix.target }}"'
+
 # The host test job covers the two native release targets. The dedicated job
 # covers the four remaining targets, including native ARM execution and the
 # static-musl release-binary smoke path.
