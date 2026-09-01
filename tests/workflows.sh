@@ -77,6 +77,7 @@ ci_job_body() {
 
 ci_test_job="$(ci_job_body test)"
 release_targets_job="$(ci_job_body release-targets)"
+coverage_job="$(ci_job_body coverage)"
 
 printf '%s\n' "$ci_test_job" | grep -Fq 'cargo test --locked'
 printf '%s\n' "$ci_test_job" | grep -Fq 'cargo clippy --locked --all-targets --all-features -- -D warnings'
@@ -149,6 +150,7 @@ printf '%s\n' "$release_targets_job" | grep -Fq 'cargo test --locked --target "$
 printf '%s\n' "$release_targets_job" | grep -Fq 'target/${{ matrix.target }}/release/dalo'
 printf '%s\n' "$release_targets_job" | grep -Fq '"$binary" init --store "$test_root/store"'
 printf '%s\n' "$release_targets_job" | grep -Fq '"$binary" sync --store "$test_root/store" --dry-run'
+printf '%s\n' "$coverage_job" | grep -Fq 'cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines 86.9'
 
 printf '%s\n' "$artifacts_job" | grep -Fqx '    needs: release-please'
 printf '%s\n' "$artifacts_job" | grep -Fq "gh release view \"\$TAG_NAME\" --json isDraft --jq '.isDraft'"
