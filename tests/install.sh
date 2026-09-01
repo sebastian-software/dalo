@@ -70,6 +70,8 @@ grep -q 'is not on PATH' "$auto_output"
 grep -q -- '--connect-timeout 10' "$curl_log"
 grep -q -- '--max-time 120' "$curl_log"
 grep -q -- '--retry 2' "$curl_log"
+grep -q -- "--proto =https" "$curl_log"
+grep -q -- '--tlsv1.2' "$curl_log"
 
 atomic_path="${test_root}/atomic-path"
 make_path "$atomic_path"
