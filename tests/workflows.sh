@@ -66,6 +66,7 @@ final_release_job="$(job_body publish-github-release)"
 crate_job="$(job_body publish-crate)"
 npm_job="$(job_body publish-npm)"
 homebrew_job="$(job_body update-homebrew)"
+release_please_job="$(job_body release-please)"
 
 ci_job_body() {
   awk -v job="$1" '
@@ -155,8 +156,15 @@ printf '%s\n' "$coverage_job" | grep -Fq 'cargo llvm-cov --workspace --all-featu
 
 printf '%s\n' "$artifacts_job" | grep -Fqx '    needs: release-please'
 printf '%s\n' "$artifacts_job" | grep -Fq "gh release view \"\$TAG_NAME\" --json isDraft --jq '.isDraft'"
+printf '%s\n' "$artifacts_job" | grep -Fq 'GH_REPO: ${{ github.repository }}'
+printf '%s\n' "$release_please_job" | grep -Fq "inputs.recover_tag != ''"
+printf '%s\n' "$release_please_job" | grep -Fq "gh release view \"\$TAG_NAME\" --json isDraft --jq '.isDraft'"
+printf '%s\n' "$release_please_job" | grep -Fq 'GH_REPO: ${{ github.repository }}'
+printf '%s\n' "$release_please_job" | grep -Fq 'echo "release_created=true" >> "$GITHUB_OUTPUT"'
+printf '%s\n' "$release_please_job" | grep -Fq 'echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"'
 printf '%s\n' "$final_release_job" | grep -Fqx '    needs: [release-please, release-artifacts]'
 printf '%s\n' "$final_release_job" | grep -Fq "needs.release-artifacts.result == 'success'"
+printf '%s\n' "$final_release_job" | grep -Fq 'GH_REPO: ${{ github.repository }}'
 printf '%s\n' "$final_release_job" | grep -Fq 'gh release edit "$TAG_NAME" --draft=false'
 for target in \
   x86_64-unknown-linux-gnu \

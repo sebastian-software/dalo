@@ -5,6 +5,11 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      recover_tag:
+        description: Existing draft release tag to resume after a failed publish
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -15,13 +20,31 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
+      release_created: ${{ steps.recovery.outputs.release_created || steps.release.outputs.release_created }}
+      tag_name: ${{ steps.recovery.outputs.tag_name || steps.release.outputs.tag_name }}
     steps:
       - uses: googleapis/release-please-action@v5
         id: release
+        if: ${{ github.event_name == 'push' || inputs.recover_tag == '' }}
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+
+      - name: Validate draft release recovery
+        id: recovery
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.recover_tag != '' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ inputs.recover_tag }}
+        run: |
+          case "$TAG_NAME" in
+            dalo-v*|v*) ;;
+            *) echo "::error::unexpected release tag '${TAG_NAME}'"; exit 1 ;;
+          esac
+          test "$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft')" = true
+          echo "release_created=true" >> "$GITHUB_OUTPUT"
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
 
   publish-crate:
     name: Publish crate
@@ -194,6 +217,7 @@ jobs:
       - name: Upload artifact to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
         shell: bash
         run: |
@@ -213,6 +237,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
         run: |
           test "$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft')" = true
