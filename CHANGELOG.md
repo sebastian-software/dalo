@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.14.10](https://github.com/sebastian-software/dalo/compare/dalo-v0.14.9...dalo-v0.14.10) (2026-09-01)
+
+
+### Bug Fixes
+
+* clarify catalog skill identifiers ([c2593b6](https://github.com/sebastian-software/dalo/commit/c2593b62cd10782614f2f1a948ec17452ee87bb4))
+* **release:** make channel recovery idempotent ([f9afc93](https://github.com/sebastian-software/dalo/commit/f9afc9319144a426b025c130fd67cfbe7caf1a4c))
+* **release:** recover legacy npm tags ([81e89c7](https://github.com/sebastian-software/dalo/commit/81e89c75f0fa893ed27426d8ebb0bd4eac31463c))
+* **release:** resume staged draft publishes ([d156f30](https://github.com/sebastian-software/dalo/commit/d156f30b5d0f88629a64d6c2dfe8761cc7e961be))
+
 ## [0.14.9](https://github.com/sebastian-software/dalo/compare/dalo-v0.14.8...dalo-v0.14.9) (2026-09-01)
 
 
