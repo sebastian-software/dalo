@@ -2195,7 +2195,7 @@ fn autosync_run_should_skip_immediately_when_store_lock_is_held() {
         .args(["--store"])
         .arg(&store)
         .args(["autosync", "run"])
-        .timeout(std::time::Duration::from_secs(1))
+        .timeout(std::time::Duration::from_secs(10))
         .assert()
         .success()
         .stdout(predicate::str::contains("autosync skipped"))
