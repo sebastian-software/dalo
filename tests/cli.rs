@@ -2105,17 +2105,6 @@ fn autosync_status_should_report_not_installed_after_init() {
 }
 
 #[test]
-fn json_path_assertion_should_reject_the_same_value_in_an_unrelated_context() {
-    let report = serde_json::json!({
-        "history": [{ "outcome": "succeeded" }],
-        "last_run": { "outcome": "blocked" },
-    });
-
-    assert_eq!(report["history"][0]["outcome"], "succeeded");
-    assert_ne!(report["last_run"]["outcome"], "succeeded");
-}
-
-#[test]
 fn status_should_degrade_gracefully_for_invalid_autosync_state() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
