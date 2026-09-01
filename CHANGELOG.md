@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.3](https://github.com/sebastian-software/dalo/compare/dalo-v0.14.2...dalo-v0.14.3) (2026-09-01)
+
+
+### Bug Fixes
+
+* **installer:** require HTTPS and TLS 1.2 ([c807ca2](https://github.com/sebastian-software/dalo/commit/c807ca23e94f35b5c4fa9ed081ccb4a76de75584))
+
 ## [0.14.2](https://github.com/sebastian-software/dalo/compare/dalo-v0.14.1...dalo-v0.14.2) (2026-09-01)
 
 
