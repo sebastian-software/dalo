@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.9](https://github.com/sebastian-software/dalo/compare/dalo-v0.14.8...dalo-v0.14.9) (2026-09-01)
+
+
+### Performance Improvements
+
+* make passive update checks nonblocking ([4e4d191](https://github.com/sebastian-software/dalo/commit/4e4d19144cdc32ce8001b5b1e6d1f2fad62f1aeb))
+
 ## [0.14.8](https://github.com/sebastian-software/dalo/compare/dalo-v0.14.7...dalo-v0.14.8) (2026-09-01)
 
 
