@@ -6,8 +6,8 @@ mod common;
 
 use common::{
     add_source, approve_source, create_git_skill_repo_with_skill, create_local_skill,
-    create_unmanaged_skill_with_body, dalo_command, init_store, link_target, read_user_lock,
-    run_git,
+    create_unmanaged_skill_with_body, dalo_command, git_stdout, init_store, link_target,
+    read_user_lock, run_git,
 };
 
 #[test]
@@ -684,16 +684,7 @@ fn e2e_manifest_source_provenance_is_visible_and_doctor_detects_pin_mismatch() {
 }
 
 fn git_head(repo: &std::path::Path) -> String {
-    let output = std::process::Command::new("git")
-        .args(["rev-parse", "HEAD"])
-        .current_dir(repo)
-        .output()
-        .expect("git rev-parse should run");
-    assert!(output.status.success());
-    String::from_utf8(output.stdout)
-        .expect("git hash should be utf8")
-        .trim()
-        .to_owned()
+    git_stdout(repo, &["rev-parse", "HEAD"]).trim().to_owned()
 }
 
 fn write_team_manifest(
