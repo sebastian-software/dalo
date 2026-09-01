@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.8](https://github.com/sebastian-software/dalo/compare/dalo-v0.14.7...dalo-v0.14.8) (2026-09-01)
+
+
+### Bug Fixes
+
+* honor proxies in npm launcher ([e3318f0](https://github.com/sebastian-software/dalo/commit/e3318f08daae1b4f63783fda8bb2628e38e99fc6))
+
 ## [0.14.7](https://github.com/sebastian-software/dalo/compare/dalo-v0.14.6...dalo-v0.14.7) (2026-09-01)
 
 
