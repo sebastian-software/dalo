@@ -1,6 +1,6 @@
 {
   "name": "getdalo",
-  "version": "0.14.10",
+  "version": "0.14.11",
   "description": "npm launcher for Dalo on macOS and Linux",
   "keywords": [
     "dalo",
