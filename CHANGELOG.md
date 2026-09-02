@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.11](https://github.com/sebastian-software/dalo/compare/dalo-v0.14.10...dalo-v0.14.11) (2026-09-02)
+
+
+### Bug Fixes
+
+* **deps:** update react monorepo ([1a1a6a7](https://github.com/sebastian-software/dalo/commit/1a1a6a78d99aa488a6476cdde4fa6b0b7bdf6400))
+
 ## [0.14.10](https://github.com/sebastian-software/dalo/compare/dalo-v0.14.9...dalo-v0.14.10) (2026-09-01)
 
 
