@@ -16,7 +16,6 @@ import { Marked } from "marked"
 const siteDir = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(siteDir, "..")
 const docsSourceDir = path.join(rootDir, "docs")
-const docsOutDir = path.join(siteDir, "docs")
 const buildDir = path.join(siteDir, "build")
 
 const REPO = "https://github.com/sebastian-software/dalo"

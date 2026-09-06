@@ -3,6 +3,17 @@ set -eu
 
 root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 
+# `! command` is exempt from `set -e`, so every negative assertion runs through
+# this helper and stops the script when the forbidden content is present.
+refute() {
+  reason="$1"
+  shift
+  if "$@" >/dev/null 2>&1; then
+    echo "$reason" >&2
+    exit 1
+  fi
+}
+
 for document in "$root/README.md" "$root/site/index.html" "$root/site/install.md" "$root/docs/uninstall.md"; do
   grep -q 'npx getdalo' "$document"
 done
@@ -13,9 +24,11 @@ for document in "$root/README.md" "$root/site/index.html" "$root/site/install.md
 done
 grep -q 'dalo audit sebastian:pr-review --reviewer auto' "$root/README.md"
 grep -q 'Watch the 15-second demo' "$root/README.md"
-! grep -q '20-second demo' "$root/README.md"
+refute 'README.md still advertises the 20-second demo' \
+  grep -q '20-second demo' "$root/README.md"
 grep -q '15-second secure-sync demo' "$root/site/index.html"
-! grep -R -q 'github-pr-auto-review' "$root/README.md" "$root/site"
+refute 'the retired github-pr-auto-review example is still referenced' \
+  grep -R -q --exclude-dir=node_modules --exclude-dir=build 'github-pr-auto-review' "$root/README.md" "$root/site"
 grep -q 'brew uninstall dalo' "$root/docs/uninstall.md"
 grep -q 'dalo resolve remove-owned <target>:<slot>' "$root/docs/uninstall.md"
 grep -q 'resolve list.*exact owned IDs' "$root/docs/uninstall.md"
@@ -89,7 +102,8 @@ grep -q 'git -C "\$CATALOG_REPO" -c commit.gpgSign=false' "$root/docs/getting-st
 grep -q 'dalo target link generic "\$RUNNER_TEMP/dalo-skills"' "$root/docs/ci.md"
 grep -q 'sh tests/docs.sh' "$root/CONTRIBUTING.md"
 grep -q 'latest released minor line' "$root/SECURITY.md"
-! grep -q '| `0\.4\.x`' "$root/SECURITY.md"
+refute 'SECURITY.md still lists the 0.4.x line as supported' \
+  grep -q '| `0\.4\.x`' "$root/SECURITY.md"
 grep -q '__DALO_LASTMOD__' "$root/site/sitemap.xml"
 
 # The documentation published on dalo.sh is rendered from docs/*.md by
@@ -110,10 +124,12 @@ test -f "$root/site/docs/index.html"
 grep -Fq 'https://dalo.sh/docs/' "$root/site/sitemap.xml"
 grep -Fq '<a href="/docs/">All documentation</a>' "$root/site/index.html"
 grep -Fq '<a href="/docs/reference.html">Reference</a>' "$root/site/index.html"
-! grep -q 'blob/main/docs/' "$root/site/index.html"
+refute 'the site still links its documentation as repository blobs' \
+  grep -q 'blob/main/docs/' "$root/site/index.html"
 
 # The checked-in landing page shows a real version, never a deploy placeholder.
-! grep -q '__DALO_VERSION__' "$root/site/index.html"
+refute 'site/index.html still carries the deploy-time version placeholder' \
+  grep -q '__DALO_VERSION__' "$root/site/index.html"
 test "$(grep -c 'data-dalo-version' "$root/site/index.html")" -eq 2
 grep -Eq '<span data-dalo-version>[0-9]+\.[0-9]+\.[0-9]+</span>' "$root/site/index.html"
 grep -Eq '"softwareVersion": "[0-9]+\.[0-9]+\.[0-9]+"' "$root/site/index.html"
@@ -123,7 +139,8 @@ grep -Fq 'x-release-please-start-version' "$root/site/index.html"
 # The hero transcript is the output the current CLI prints, not the pre-0.14 one.
 grep -Fq 'target[generic]:/review -&gt; store:/local/skills/review' "$root/site/index.html"
 grep -Fq 'synced: 1 skill across 2 targets (2 created)' "$root/site/index.html"
-! grep -q 'skills/review -&gt; /tmp/dalo/store' "$root/site/index.html"
+refute 'the hero terminal still shows the pre-0.14 sync output' \
+  grep -q 'skills/review -&gt; /tmp/dalo/store' "$root/site/index.html"
 
 # When the site dependencies are installed, the committed render must be current.
 if [ -d "$root/site/node_modules" ]; then
@@ -144,11 +161,13 @@ grep -q 'security audits and review gates' "$root/site/index.html"
 grep -q 'security preflight: deterministic checks and compatible cached findings only; sync did not run an agent reviewer; passing is not a safety guarantee' "$root/site/index.html"
 grep -q 'security preflight: deterministic checks and compatible cached findings only; sync did not run an agent reviewer; passing is not a safety guarantee' "$root/video/src/QuickstartVideo.tsx"
 grep -q 'durationInFrames={450}' "$root/video/src/Root.tsx"
-! grep -R -q -E 'cdn\.jsdelivr\.net|AsciinemaPlayer|asciinema-player' "$root/site"
+refute 'the site requests a CDN-hosted player instead of self-hosted assets' \
+  grep -R -q -E --exclude-dir=node_modules --exclude-dir=build 'cdn\.jsdelivr\.net|AsciinemaPlayer|asciinema-player' "$root/site"
 grep -q 'DALO_VERSION' "$root/site/install.md"
 grep -q 'dalo-v<version>.*, `v<version>`.*, or `<version>`' "$root/site/install.md"
 grep -q '`<version>`, `v<version>`, or `dalo-v<version>`' "$root/npm/README.md"
-! grep -q -E 'dalo-v0\.6\.1|v0\.7\.0|dalo-v0\.7\.0' "$root/site/install.md" "$root/npm/README.md"
+refute 'the install documents still pin retired example versions' \
+  grep -q -E 'dalo-v0\.6\.1|v0\.7\.0|dalo-v0\.7\.0' "$root/site/install.md" "$root/npm/README.md"
 grep -q '^## Manual Release Archives' "$root/site/install.md"
 grep -q 'shasum -a 256 -c' "$root/site/install.md"
 grep -q '^## Shell Completions and Man Page' "$root/site/install.md"
@@ -158,13 +177,18 @@ grep -q 'source add <id> <git-url-or-path>' "$root/docs/reference.md"
 grep -q 'source add-catalog <id> <git-url-or-path>' "$root/docs/reference.md"
 grep -q '`version:` entry from the first five lines' "$root/docs/reference.md"
 grep -q '`topics:` or `tags:` metadata from the first eight lines' "$root/docs/reference.md"
-! sed -n '/MSRV, dependency-audit, and coverage jobs additionally run:/,/^```$/p' "$root/CONTRIBUTING.md" | grep -q 'cargo build --release'
+if sed -n '/MSRV, dependency-audit, and coverage jobs additionally run:/,/^```$/p' "$root/CONTRIBUTING.md" \
+  | grep -q 'cargo build --release'; then
+  echo 'CONTRIBUTING repeats the release build in the extra-jobs command set' >&2
+  exit 1
+fi
 grep -Fq 'cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines 86.9' "$root/CONTRIBUTING.md"
 grep -Fq 'current 86.97% baseline rounded down to one decimal' "$root/CONTRIBUTING.md"
 grep -q 'DALO_LINUX_LIBC' "$root/npm/README.md"
 grep -q 'DALO_UPDATE_CHECK=never' "$root/README.md"
 grep -q 'github:sebastian-software/dalo' "$root/site/install.md"
-! grep -q 'One-time bootstrap publish' "$root/npm/README.md"
+refute 'npm/README.md still documents the one-time bootstrap publish' \
+  grep -q 'One-time bootstrap publish' "$root/npm/README.md"
 plugin_section="$(awk '/^## `PLUGIN.toml` Portable Plugins, Tools, and Hooks$/{on=1;next} on && /^## /{exit} on{print}' "$root/docs/reference.md")"
 tool_section="$(printf '%s\n' "$plugin_section" | awk '/^### Tools$/{on=1;next} on && /^### /{exit} on{print}')"
 hook_section="$(printf '%s\n' "$plugin_section" | awk '/^### Hooks$/{on=1;next} on && /^### /{exit} on{print}')"
