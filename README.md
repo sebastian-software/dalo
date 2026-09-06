@@ -3,6 +3,7 @@
 **One source of truth for the skills your AI agents run.**
 
 [![Crates.io](https://img.shields.io/crates/v/dalo.svg)](https://crates.io/crates/dalo)
+[![npm](https://img.shields.io/npm/v/getdalo.svg)](https://www.npmjs.com/package/getdalo)
 [![CI](https://github.com/sebastian-software/dalo/actions/workflows/ci.yml/badge.svg)](https://github.com/sebastian-software/dalo/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![MSRV](https://img.shields.io/badge/rust-1.93%2B-orange.svg)](Cargo.toml)
@@ -539,6 +540,13 @@ For manual archives, upgrades, shell completions, and removal, see the
 Architecture decisions, RFCs, and implementation history remain available in
 the [project documentation](docs/), but the CLI and command reference describe
 the product you can use today.
+
+## Related
+
+[agent-bridge](https://github.com/sebastian-software/agent-bridge) is the
+complementary tool of the same agent line: Dalo distributes the skills your
+agents read, while agent-bridge delegates one bounded invocation to an
+installed agent harness and returns a normalized outcome.
 
 ## Development
 
