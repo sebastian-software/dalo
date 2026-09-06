@@ -4,9 +4,9 @@ Guidance for coding agents working in this repository. Humans welcome too.
 
 ## What this is
 
-Dalo is an MIT-licensed Rust CLI with a reusable library core. It manages Git
-checkouts and symlinks skill content into agent folders, so most changes touch
-user files, lock state, or symlinks.
+Dalo is a Rust CLI with a reusable library core, dual-licensed under MIT or
+Apache-2.0. It manages Git checkouts and symlinks skill content into agent
+folders, so most changes touch user files, lock state, or symlinks.
 
 ## Language
 

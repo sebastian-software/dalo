@@ -3,13 +3,22 @@ all-features = true
 
 [advisories]
 ignore = []
+yanked = "deny"
 
 [licenses]
+# Org-wide permissive allow-list. Keep it in sync with the family baseline
+# rather than widening it per crate; narrower, crate-scoped grants belong in
+# `exceptions` below.
 allow = [
   "Apache-2.0",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
   "MIT",
   "Unicode-3.0",
+  "Zlib",
 ]
+# Crate-scoped grants that stay narrower than the allow-list above.
 exceptions = [
   { allow = ["ISC"], crate = "ring" },
   { allow = ["ISC"], crate = "rustls-webpki" },

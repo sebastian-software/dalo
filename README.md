@@ -5,7 +5,7 @@
 [![Crates.io](https://img.shields.io/crates/v/dalo.svg)](https://crates.io/crates/dalo)
 [![npm](https://img.shields.io/npm/v/getdalo.svg)](https://www.npmjs.com/package/getdalo)
 [![CI](https://github.com/sebastian-software/dalo/actions/workflows/ci.yml/badge.svg)](https://github.com/sebastian-software/dalo/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
 [![MSRV](https://img.shields.io/badge/rust-1.93%2B-orange.svg)](Cargo.toml)
 
 Dalo turns scattered skill folders into shared, versioned infrastructure. Keep
@@ -550,7 +550,8 @@ installed agent harness and returns a normalized outcome.
 
 ## Development
 
-Dalo is an MIT-licensed Rust CLI with a reusable library core.
+Dalo is a Rust CLI with a reusable library core, dual-licensed under MIT or
+Apache-2.0.
 
 ```sh
 cargo fmt --check
