@@ -1,6 +1,6 @@
 # RFC 0005: Portable Plugins and Composable Agent Stacks Beyond Skills
 
-Status: Draft
+Status: Accepted, recorded in [ADR 0006](../adr/0006-passive-portable-plugins.md)  
 Date: 2026-07-31
 Author: Sebastian + Codex
 Depends on: RFC 0001, RFC 0003, RFC 0004

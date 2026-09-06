@@ -1,5 +1,7 @@
 # Dalo Implementation Milestones
 
+> Archived: the V1 and V1.1 milestones are complete; current work is tracked in GitHub issues.
+
 Status: V1 and V1.1 complete
 Scope: V1 implementation plan plus the V1.1 catalog and instruction-pack plan
 Last updated: 2026-07-05
