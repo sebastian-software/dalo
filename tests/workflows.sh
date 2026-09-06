@@ -317,4 +317,35 @@ for excluded_prefix in '.github/' 'docs/' 'npm/' 'site/' 'video/'; do
   fi
 done
 
+# dalo.sh is assembled by site/build.mjs at deploy time: the workflow must run
+# the build, in order, and upload the assembled tree rather than the sources.
+pages_workflow="$root/.github/workflows/pages.yml"
+pages_job="$(awk '/^  deploy:/{on=1} on && /^  [A-Za-z0-9_-]+:/ && !/^  deploy:/{exit} on{print}' "$pages_workflow")"
+for site_build_command in \
+  'corepack pnpm --dir site install --frozen-lockfile' \
+  'node site/build.mjs --check' \
+  'node site/build.mjs'; do
+  printf '%s\n' "$pages_job" | grep -Fqx "          $site_build_command" || {
+    echo "the Pages deploy job no longer runs: $site_build_command" >&2
+    exit 1
+  }
+done
+printf '%s\n' "$pages_job" | grep -Fqx '          path: ./site/build' || {
+  echo 'the Pages deploy job must upload the assembled site/build tree' >&2
+  exit 1
+}
+if printf '%s\n' "$pages_job" | grep -Fq 'Stamp site version'; then
+  echo 'the sed-based version stamp is superseded by site/build.mjs; remove it' >&2
+  exit 1
+fi
+build_line="$(printf '%s\n' "$pages_job" | grep -Fn -- '- name: Build site' | cut -d: -f1)"
+check_line="$(printf '%s\n' "$pages_job" | grep -Fn 'node site/build.mjs --check' | cut -d: -f1)"
+render_line="$(printf '%s\n' "$pages_job" | grep -Fnx '          node site/build.mjs' | cut -d: -f1)"
+upload_line="$(printf '%s\n' "$pages_job" | grep -Fn -- '- name: Upload static site' | cut -d: -f1)"
+test -n "$build_line" && test -n "$check_line" && test -n "$render_line" && test -n "$upload_line"
+if ! { [ "$build_line" -lt "$check_line" ] && [ "$check_line" -lt "$render_line" ] && [ "$render_line" -lt "$upload_line" ]; }; then
+  echo 'the Pages deploy job must check, then build, then upload, in that order' >&2
+  exit 1
+fi
+
 echo "workflow checks passed"

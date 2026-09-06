@@ -34,21 +34,28 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
 
-      - name: Stamp site version
-        shell: bash
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+
+      # site/build.mjs renders docs/*.md, stamps the crate version into
+      # index.html, replaces __DALO_LASTMOD__ in the sitemap, and assembles the
+      # deployable tree in site/build/. --check first proves the committed
+      # render is current, so a stale checkout fails here rather than deploying.
+      - name: Build site
+        env:
+          # corepack downloads pnpm on first use; never wait on a prompt in CI.
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
         run: |
-          version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)"
-          test -n "$version"
-          lastmod="$(date -u +%F)"
-          grep -R "__DALO_VERSION__" -n site
-          grep -q "__DALO_LASTMOD__" site/sitemap.xml
-          find site -type f -name "*.html" -exec sed -i "s/__DALO_VERSION__/${version}/g" {} +
-          sed -i "s/__DALO_LASTMOD__/${lastmod}/g" site/sitemap.xml
+          corepack pnpm --dir site install --frozen-lockfile
+          node site/build.mjs --check
+          node site/build.mjs
 
       - name: Upload static site
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: ./site
+          path: ./site/build
 
       - name: Deploy to GitHub Pages
         id: deployment
