@@ -155,16 +155,16 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.93"
+          toolchain: "1.94"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
 
       - name: Verify MSRV toolchain
-        run: rustc +1.93 --version
+        run: rustc +1.94 --version
 
       - name: Check
-        run: cargo +1.93 check --locked --all-targets --all-features
+        run: cargo +1.94 check --locked --all-targets --all-features
 
   audit:
     name: Dependency audit
