@@ -54,10 +54,11 @@ report a blocked state instead of mutating ambiguous user content.
 
 ## Where decisions live
 
-- [docs/adr/](docs/adr/) — architecture decision records
-- [docs/rfcs/](docs/rfcs/) — product and architecture background
-- [docs/milestones/README.md](docs/milestones/README.md) — implementation
-  milestones and validation policy
+- [docs/adr/README.md](docs/adr/README.md) — accepted architecture
+  decisions; they are constraints, not proposals to re-litigate
+- [docs/rfcs/](docs/rfcs/) — the long-form proposals the ADRs summarize
+- [docs/archive/](docs/archive/) — completed implementation milestones and
+  historical release notes
 - [docs/reference.md](docs/reference.md) — user-facing command and file
   reference
 

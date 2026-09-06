@@ -1,6 +1,6 @@
 # RFC 0002: Technical Architecture
 
-Status: Draft  
+Status: Accepted, recorded in [ADR 0003](../adr/0003-rust-cli-shelling-out-to-git.md)  
 Date: 2026-06-23  
 Author: Sebastian + Codex  
 Depends on: RFC 0001

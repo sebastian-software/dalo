@@ -1,6 +1,6 @@
 # RFC 0003: Resolution Engine
 
-Status: Draft  
+Status: Accepted, recorded in [ADR 0004](../adr/0004-deterministic-resolution-and-safe-materialization.md)  
 Date: 2026-06-23  
 Author: Sebastian + Claude  
 Depends on: RFC 0001, RFC 0002  

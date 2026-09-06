@@ -1,6 +1,6 @@
 # Dalo Implementation Status Snapshot
 
-Status: Superseded by `CHANGELOG.md` and `docs/milestones/README.md` for release-by-release tracking
+Status: Superseded by `CHANGELOG.md` and `docs/archive/milestones/README.md` for release-by-release tracking
 Last updated: 2026-07-05
 Current crate version: see `Cargo.toml`
 

@@ -1,6 +1,6 @@
 # RFC 0004: Portable Agent Profiles
 
-Status: Draft
+Status: Accepted, recorded in [ADR 0005](../adr/0005-portable-agent-profiles.md)  
 Date: 2026-07-20
 Author: Sebastian + Codex
 Depends on: RFC 0001, RFC 0002, RFC 0003
