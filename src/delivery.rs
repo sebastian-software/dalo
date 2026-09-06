@@ -771,29 +771,61 @@ fn make_tree_writable(root: &Path) -> DaloResult<()> {
     Ok(())
 }
 
+/// What the kernel reported about the generator process group when it was
+/// signalled or probed with `kill(-pgid, …)`.
+#[cfg(unix)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProcessGroupProbe {
+    /// At least one member is still there.
+    Present,
+    /// Nothing is left to signal.
+    Gone,
+}
+
+/// Interpret a `kill(-pgid, …)` result.
+///
+/// `ESRCH` is the portable "no such process group". macOS differs: the POSIX
+/// `kill()` that rustix wraps reports a process group that still exists but
+/// has no live member as `EPERM` rather than `ESRCH` (XNU's `killpg1` returns
+/// `nfound ? 0 : (posix ? EPERM : ESRCH)`, and zombies are not counted). That
+/// is the normal state right after the members exited and before the group
+/// structure is released, so both the SIGKILL step and the probe that follows
+/// it see it routinely. On Linux, `EPERM` instead means that members exist and
+/// none of them may be signalled, which is a live group this process cannot
+/// stop, so it stays an error there.
+#[cfg(unix)]
+fn interpret_process_group_signal(
+    result: Result<(), rustix::io::Errno>,
+) -> Result<ProcessGroupProbe, rustix::io::Errno> {
+    match result {
+        Ok(()) => Ok(ProcessGroupProbe::Present),
+        Err(rustix::io::Errno::SRCH) => Ok(ProcessGroupProbe::Gone),
+        #[cfg(target_os = "macos")]
+        Err(rustix::io::Errno::PERM) => Ok(ProcessGroupProbe::Gone),
+        Err(error) => Err(error),
+    }
+}
+
 fn terminate_generator_group(child: &mut Child) -> DaloResult<()> {
     #[cfg(unix)]
     {
         let process_group = Pid::from_child(child);
-        match kill_process_group(process_group, Signal::KILL) {
-            Ok(()) | Err(rustix::io::Errno::SRCH) => {}
-            Err(error) => {
-                return Err(DaloError::StateError {
-                    reason: format!(
-                        "failed to terminate generated-delivery process group: {error}"
-                    ),
-                });
-            }
+        if let Err(error) =
+            interpret_process_group_signal(kill_process_group(process_group, Signal::KILL))
+        {
+            return Err(DaloError::StateError {
+                reason: format!("failed to terminate generated-delivery process group: {error}"),
+            });
         }
         let _ = child.wait();
         let deadline = Instant::now() + GENERATOR_SHUTDOWN_TIMEOUT;
         loop {
-            match test_kill_process_group(process_group) {
-                Err(rustix::io::Errno::SRCH) => return Ok(()),
-                Ok(()) if Instant::now() < deadline => {
+            match interpret_process_group_signal(test_kill_process_group(process_group)) {
+                Ok(ProcessGroupProbe::Gone) => return Ok(()),
+                Ok(ProcessGroupProbe::Present) if Instant::now() < deadline => {
                     thread::sleep(Duration::from_millis(10));
                 }
-                Ok(()) => {
+                Ok(ProcessGroupProbe::Present) => {
                     return Err(DaloError::StateError {
                         reason: "generated-delivery process group survived termination; output was not audited or promoted"
                             .to_owned(),
@@ -838,6 +870,67 @@ fn read_bounded(reader: impl Read) -> std::io::Result<Vec<u8>> {
         output.extend_from_slice(&buffer[..read.min(remaining)]);
     }
     Ok(output)
+}
+
+#[cfg(all(test, unix))]
+mod process_group_probe_tests {
+    use super::*;
+    use rustix::io::Errno;
+    use std::process::Command;
+
+    #[test]
+    fn signalled_group_should_count_as_present() {
+        assert_eq!(
+            interpret_process_group_signal(Ok(())),
+            Ok(ProcessGroupProbe::Present)
+        );
+    }
+
+    #[test]
+    fn missing_group_should_count_as_gone() {
+        assert_eq!(
+            interpret_process_group_signal(Err(Errno::SRCH)),
+            Ok(ProcessGroupProbe::Gone)
+        );
+    }
+
+    #[test]
+    fn eperm_should_mean_gone_only_where_the_kernel_reports_an_empty_group_that_way() {
+        let probe = interpret_process_group_signal(Err(Errno::PERM));
+        if cfg!(target_os = "macos") {
+            assert_eq!(probe, Ok(ProcessGroupProbe::Gone));
+        } else {
+            assert_eq!(probe, Err(Errno::PERM));
+        }
+    }
+
+    #[test]
+    fn other_errors_should_stay_errors() {
+        assert_eq!(
+            interpret_process_group_signal(Err(Errno::INVAL)),
+            Err(Errno::INVAL)
+        );
+    }
+
+    #[test]
+    fn terminate_generator_group_should_accept_a_leader_that_was_already_reaped() {
+        // run_generator reaps the generator through try_wait before it asks for
+        // the group to be terminated, so the group is empty or already released
+        // when the SIGKILL and the probe run. That is the shape that reported
+        // EPERM on macOS.
+        let mut child = Command::new("sh")
+            .args(["-c", "exit 0"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .process_group(0)
+            .spawn()
+            .expect("shell should spawn");
+        child.wait().expect("shell should exit");
+
+        terminate_generator_group(&mut child)
+            .expect("an exited generator group should count as terminated");
+    }
 }
 
 #[cfg(test)]
