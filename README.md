@@ -535,6 +535,8 @@ For manual archives, upgrades, shell completions, and removal, see the
 - [Dalo in CI](docs/ci.md)
 - [Troubleshooting and FAQ](docs/troubleshooting.md)
 - [Security policy](SECURITY.md)
+- [Support](SUPPORT.md)
+- [Code of conduct](CODE_OF_CONDUCT.md)
 - [Changelog](CHANGELOG.md)
 
 Architecture decisions, RFCs, and implementation history remain available in
@@ -566,6 +568,7 @@ workflow.
 ---
 
 <!-- sebastian-software-branding:start -->
+
 <p align="center">
   <a href="https://oss.sebastian-software.com">
     <img src="https://sebastian-brand.vercel.app/sebastian-software/logo-software.svg" alt="Sebastian Software" width="240" />
@@ -578,4 +581,5 @@ workflow.
 </p>
 
 <p align="center">Copyright &copy; 2026 Sebastian Software GmbH</p>
+
 <!-- sebastian-software-branding:end -->

@@ -4,20 +4,24 @@ Dalo clones Git repositories, reads skill metadata, writes lock/config files, an
 
 ## Supported Versions
 
-Dalo is pre-1.0. Security fixes are provided for the latest released minor line
-and for `main`. When a new minor release is published, support moves to that
-new line; older minor lines are no longer supported.
+Security fixes are provided for the latest release on the default branch. Older
+releases are not patched separately — upgrade to the latest version to receive a
+fix.
 
 ## Reporting a Vulnerability
 
-Report vulnerabilities privately through GitHub Security Advisories:
+Report suspected vulnerabilities privately. Do not open a public issue, pull
+request, or discussion for a vulnerability that has not been fixed yet.
 
-1. Open the repository on GitHub.
-2. Go to the **Security** tab.
-3. Choose **Report a vulnerability**.
-4. Include a concise description, affected version or commit, reproduction steps, impact, and any suggested fix.
+Two private channels are available:
 
-Do not open a public issue for a suspected vulnerability before maintainers have had time to triage it.
+- **GitHub private vulnerability reporting** — open this repository's
+  **Security** tab and choose **Report a vulnerability**.
+- **Email** — security@sebastian-software.de.
+
+Include a concise description, the affected version or commit, reproduction
+steps, the impact you expect, and any suggested fix. Leave out credentials and
+data you are not allowed to share.
 
 ## Response Expectations
 

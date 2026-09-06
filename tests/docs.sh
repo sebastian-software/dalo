@@ -101,7 +101,8 @@ grep -q 'git -C "\$TEAM_REPO" -c commit.gpgSign=false' "$root/docs/getting-start
 grep -q 'git -C "\$CATALOG_REPO" -c commit.gpgSign=false' "$root/docs/getting-started.md"
 grep -q 'dalo target link generic "\$RUNNER_TEMP/dalo-skills"' "$root/docs/ci.md"
 grep -q 'sh tests/docs.sh' "$root/CONTRIBUTING.md"
-grep -q 'latest released minor line' "$root/SECURITY.md"
+grep -q 'latest release on the default branch' "$root/SECURITY.md"
+grep -q 'security@sebastian-software.de' "$root/SECURITY.md"
 refute 'SECURITY.md still lists the 0.4.x line as supported' \
   grep -q '| `0\.4\.x`' "$root/SECURITY.md"
 grep -q '__DALO_LASTMOD__' "$root/site/sitemap.xml"
