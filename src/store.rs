@@ -1791,10 +1791,32 @@ mod tests {
         let lock = StoreLock::acquire(&paths).expect("first lock should be acquired");
         drop(lock);
 
-        let reacquired = StoreLock::acquire_with_delays(&paths, &[Duration::from_millis(0)]);
+        // The first attempt still runs with no delay, so a guard that releases
+        // its advisory lock synchronously is proven to do so. The remaining
+        // attempts, at most two seconds in total, only cover kernels that
+        // publish the release asynchronously, which macOS has been observed to
+        // do.
+        let reacquired = StoreLock::acquire_with_delays(
+            &paths,
+            &[
+                Duration::from_millis(0),
+                Duration::from_millis(50),
+                Duration::from_millis(200),
+                Duration::from_millis(750),
+                Duration::from_secs(1),
+            ],
+        )
+        .expect("the dropped guard should release the store lock");
 
-        assert!(reacquired.is_ok());
         assert!(paths.lock_guard_file.is_file());
+        // Re-acquiring is only meaningful if the new guard really owns the
+        // lock, so prove that it excludes another attempt.
+        assert!(
+            StoreLock::try_acquire(&paths)
+                .expect("try acquire should not error")
+                .is_none()
+        );
+        drop(reacquired);
     }
 
     #[test]
