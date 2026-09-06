@@ -28,7 +28,7 @@ const {
 const execFileAsync = promisify(execFile);
 
 test('publishes discovery and supported-platform metadata', () => {
-  assert.equal(packageManifest.description, 'npm launcher for Dalo on macOS and Linux');
+  assert.equal(packageManifest.description, 'One source of truth for the skills your AI agents run.');
   assert.equal(packageManifest.homepage, 'https://dalo.sh');
   assert.equal(packageManifest.bugs.url, 'https://github.com/sebastian-software/dalo/issues');
   assert.deepEqual(packageManifest.keywords, ['dalo', 'ai', 'agents', 'skills', 'cli']);
