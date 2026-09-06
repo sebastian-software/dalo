@@ -82,6 +82,8 @@ ci_job_body() {
 ci_test_job="$(ci_job_body test)"
 release_targets_job="$(ci_job_body release-targets)"
 coverage_job="$(ci_job_body coverage)"
+msrv_job="$(ci_job_body msrv)"
+audit_job="$(ci_job_body audit)"
 
 printf '%s\n' "$ci_test_job" | grep -Fq 'cargo test --locked'
 printf '%s\n' "$ci_test_job" | grep -Fq 'cargo clippy --locked --all-targets --all-features -- -D warnings'
@@ -154,7 +156,106 @@ printf '%s\n' "$release_targets_job" | grep -Fq 'cargo test --locked --target "$
 printf '%s\n' "$release_targets_job" | grep -Fq 'target/${{ matrix.target }}/release/dalo'
 printf '%s\n' "$release_targets_job" | grep -Fq '"$binary" init --store "$test_root/store"'
 printf '%s\n' "$release_targets_job" | grep -Fq '"$binary" sync --store "$test_root/store" --dry-run'
-printf '%s\n' "$coverage_job" | grep -Fq 'cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines 86.9'
+sh "$root/scripts/check-workflow-pins.sh" "$root/.github/workflows" > /dev/null
+
+# The macOS test entry and the comment above it kept contradicting each other.
+printf '%s\n' "$ci_test_job" | grep -Fq 'Keep macos-latest as the macOS test runner'
+printf '%s\n' "$ci_test_job" | grep -Fqx '          - os: macos-latest'
+if printf '%s\n' "$ci_test_job" | grep -Fq -e '- os: macos-14'; then
+  echo 'the macOS test entry must stay on macos-latest; macos-14 rejects the hook fixtures' >&2
+  exit 1
+fi
+
+# One coverage threshold, read from `coverage-threshold` by everything that
+# states it.
+coverage_threshold="$(cat "$root/coverage-threshold")"
+case "$coverage_threshold" in
+  ''|*[!0-9.]*)
+    echo "coverage-threshold must hold a plain number, found '$coverage_threshold'" >&2
+    exit 1
+    ;;
+esac
+coverage_command='cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines "$(cat coverage-threshold)"'
+for coverage_document in "$ci_workflow" "$root/CONTRIBUTING.md" "$root/.github/pull_request_template.md"; do
+  grep -Fq "$coverage_command" "$coverage_document" || {
+    echo "$coverage_document does not read the gate from coverage-threshold" >&2
+    exit 1
+  }
+done
+printf '%s\n' "$coverage_job" | grep -Fq "$coverage_command" || {
+  echo 'the CI coverage job no longer reads the gate from coverage-threshold' >&2
+  exit 1
+}
+if grep -Fq "fail-under-lines $coverage_threshold" "$ci_workflow" "$root/CONTRIBUTING.md"; then
+  echo 'the coverage threshold must be read from coverage-threshold, not restated' >&2
+  exit 1
+fi
+
+# The MSRV job takes its toolchain from `rust-version` so the number lives in
+# Cargo.toml alone.
+msrv="$(sed -n 's/^rust-version = "\(.*\)"/\1/p' "$root/Cargo.toml" | head -n 1)"
+test -n "$msrv"
+printf '%s\n' "$msrv_job" | grep -Fq 'steps.msrv.outputs.version'
+if printf '%s\n' "$msrv_job" | grep -Fq "$msrv"; then
+  echo 'the MSRV job must read rust-version from Cargo.toml, not restate it' >&2
+  exit 1
+fi
+
+# The pull request checklist, the CONTRIBUTING preflight, and the CI jobs are
+# one contract. Every command below has to appear in all three.
+pr_template="$root/.github/pull_request_template.md"
+contributing="$root/CONTRIBUTING.md"
+
+for shared_command in \
+  'cargo fmt --check' \
+  'cargo test --locked' \
+  'sh tests/install.sh' \
+  'sh tests/docs.sh' \
+  'sh tests/workflows.sh' \
+  'npm ci && npm run check-version && npm test' \
+  'cargo clippy --locked --all-targets --all-features -- -D warnings' \
+  'cargo build --release --locked' \
+  'RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features'; do
+  printf '%s\n' "$ci_test_job" | grep -Fq "$shared_command" || {
+    echo "the CI test job no longer runs: $shared_command" >&2
+    exit 1
+  }
+  grep -Fq "$shared_command" "$pr_template" || {
+    echo "the pull request checklist is missing: $shared_command" >&2
+    exit 1
+  }
+  grep -Fq "$shared_command" "$contributing" || {
+    echo "CONTRIBUTING.md is missing: $shared_command" >&2
+    exit 1
+  }
+done
+
+printf '%s\n' "$audit_job" | grep -Fq 'cargo deny check' || {
+  echo 'the CI audit job no longer runs cargo deny check' >&2
+  exit 1
+}
+for documented_command in 'cargo deny check' 'git diff --check'; do
+  for validation_document in "$pr_template" "$contributing"; do
+    grep -Fq "$documented_command" "$validation_document" || {
+      echo "$validation_document is missing: $documented_command" >&2
+      exit 1
+    }
+  done
+done
+
+# Pull request titles feed release-please through the squashed commit subject.
+pr_title_workflow="$root/.github/workflows/pr-title.yml"
+grep -Fq 'amannn/action-semantic-pull-request@' "$pr_title_workflow"
+for commit_type in feat fix docs test ci chore refactor; do
+  grep -Fqx "            $commit_type" "$pr_title_workflow" || {
+    echo "the pull request title check does not accept the '$commit_type' prefix" >&2
+    exit 1
+  }
+  grep -Fq "$commit_type: " "$contributing" || {
+    echo "CONTRIBUTING.md no longer documents the '$commit_type' prefix" >&2
+    exit 1
+  }
+done
 
 printf '%s\n' "$artifacts_job" | grep -Fqx '    needs: release-please'
 printf '%s\n' "$artifacts_job" | grep -Fq "gh release view \"\$TAG_NAME\" --json isDraft --jq '.isDraft'"
@@ -171,6 +272,10 @@ printf '%s\n' "$final_release_job" | grep -Fq 'GH_REPO: ${{ github.repository }}
 printf '%s\n' "$final_release_job" | grep -Fq 'gh release edit "$TAG_NAME" --draft=false'
 printf '%s\n' "$crate_job" | grep -Fq 'https://crates.io/api/v1/crates/dalo/${version}'
 printf '%s\n' "$crate_job" | grep -Fq 'is already published on crates.io'
+printf '%s\n' "$crate_job" | grep -Fq 'rust-lang/crates-io-auth-action@'
+printf '%s\n' "$crate_job" | grep -Fq 'id-token: write'
+printf '%s\n' "$crate_job" | grep -Fq 'CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token || secrets.CARGO_REGISTRY_TOKEN }}'
+printf '%s\n' "$crate_job" | grep -Fq 'no crates.io credential'
 printf '%s\n' "$npm_job" | grep -Fq 'npm view "getdalo@${version}" version'
 printf '%s\n' "$npm_job" | grep -Fq 'is already published on npm'
 printf '%s\n' "$npm_job" | grep -Fq 'if test -f package-lock.json'

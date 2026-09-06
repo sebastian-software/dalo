@@ -182,8 +182,10 @@ if sed -n '/MSRV, dependency-audit, and coverage jobs additionally run:/,/^```$/
   echo 'CONTRIBUTING repeats the release build in the extra-jobs command set' >&2
   exit 1
 fi
-grep -Fq 'cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines 86.9' "$root/CONTRIBUTING.md"
-grep -Fq 'current 86.97% baseline rounded down to one decimal' "$root/CONTRIBUTING.md"
+grep -Fq 'cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines "$(cat coverage-threshold)"' "$root/CONTRIBUTING.md"
+grep -Fq '`coverage-threshold` holds the line-coverage gate' "$root/CONTRIBUTING.md"
+refute 'CONTRIBUTING.md restates the coverage threshold instead of reading coverage-threshold' \
+  grep -Eq 'fail-under-lines[[:space:]]+[0-9]' "$root/CONTRIBUTING.md"
 grep -q 'DALO_LINUX_LIBC' "$root/npm/README.md"
 grep -q 'DALO_UPDATE_CHECK=never' "$root/README.md"
 grep -q 'github:sebastian-software/dalo' "$root/site/install.md"
