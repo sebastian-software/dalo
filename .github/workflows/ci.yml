@@ -7,6 +7,19 @@ on:
       - main
 
 jobs:
+
+  standards:
+    name: Standards drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: "Guard: agent step not yet completed for this PR"
+        run: test ! -f .standards/pending.json
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+      - run: corepack enable pnpm
+      - run: pnpm --config.minimum-release-age=0 dlx @sebastian-software/standards@0.9.0 check
   test:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
