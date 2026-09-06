@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agent Target Integration · Dalo documentation</title>
+  <meta name="description" content="Supported agents, their skill directories, and how instruction packs are written." />
+  <link rel="canonical" href="https://dalo.sh/docs/agents.html" />
+  <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#15171c" media="(prefers-color-scheme: dark)" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Dalo" />
+  <meta property="og:url" content="https://dalo.sh/docs/agents.html" />
+  <meta property="og:title" content="Agent Target Integration · Dalo documentation" />
+  <meta property="og:description" content="Supported agents, their skill directories, and how instruction packs are written." />
+  <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
+  <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
+  <link rel="preload" href="/assets/fonts/hanken-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/assets/fonts/geistmono-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/docs.css" />
+</head>
+<body class="doc-page">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header" data-scope="dark">
+  <div class="wrap header-inner">
+    <a class="brand" href="/" aria-label="Dalo home">
+      <svg class="brand-mark" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true" focusable="false">
+        <rect x="1.25" y="1.25" width="29.5" height="29.5" rx="8" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <circle cx="9" cy="9.5" r="2" fill="currentColor" />
+        <circle cx="9" cy="16" r="2" fill="currentColor" />
+        <circle cx="9" cy="22.5" r="2" fill="currentColor" />
+        <path d="M11 9.5 H17 Q22 9.5 22 16 Q22 22.5 17 22.5 H11 M11 16 H22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" />
+        <circle cx="22.5" cy="16" r="2.6" fill="var(--accent)" />
+      </svg>
+      <span class="brand-word">dalo</span>
+      <span class="brand-section">docs</span>
+    </a>
+    <nav class="site-nav" aria-label="Primary">
+      <a href="/#how">How it works</a>
+      <a href="/#quickstart">Quickstart</a>
+      <a href="/docs/">Documentation</a>
+    </nav>
+    <div class="header-actions">
+      <a class="ghost-btn" href="https://github.com/sebastian-software/dalo" rel="noopener">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="doc-shell wrap">
+  <nav class="doc-nav" aria-label="Documentation">
+    <p class="footer-h">Documentation</p>
+        <a href="/docs/getting-started.html">Getting started</a>
+        <a href="/docs/reference.html">Command reference</a>
+        <a href="/docs/agents.html" aria-current="page">Agent integration</a>
+        <a href="/docs/ci.html">Dalo in CI</a>
+        <a href="/docs/troubleshooting.html">Troubleshooting</a>
+        <a href="/docs/uninstall.html">Uninstall</a>
+  </nav>
+  <article class="doc-body">
+<h1 id="agent-target-integration">Agent Target Integration</h1>
+<p>This page documents target directories for agent skills. Portable canonical
+agent packages are documented in the <a href="reference.html#dalo-agent-listshow-sourcename">command reference</a>.</p>
+<p>Dalo&#39;s V1 targets are directory-based. Each target links the resolved skill set into the folder that agent already reads.</p>
+<p>Run this first:</p>
+<pre><code class="language-sh">dalo init
+dalo target detect
+</code></pre>
+<h2 id="codex"><a class="doc-anchor" href="#codex">Codex</a></h2>
+<p>Default skill path:</p>
+<pre><code class="language-text">~/.agents/skills
+</code></pre>
+<p>Link and verify:</p>
+<pre><code class="language-sh">dalo target link codex
+dalo status
+dalo sync
+ls -la ~/.agents/skills
+</code></pre>
+<h2 id="claude-code"><a class="doc-anchor" href="#claude-code">Claude Code</a></h2>
+<p>Default skill path:</p>
+<pre><code class="language-text">~/.claude/skills
+</code></pre>
+<p>Link and verify:</p>
+<pre><code class="language-sh">dalo target link claude
+dalo status
+dalo sync
+ls -la ~/.claude/skills
+</code></pre>
+<h2 id="openclaw"><a class="doc-anchor" href="#openclaw">OpenClaw</a></h2>
+<p>Default skill path:</p>
+<pre><code class="language-text">~/.agents/skills
+</code></pre>
+<p>Link and verify:</p>
+<pre><code class="language-sh">dalo target link openclaw
+dalo status
+dalo sync
+ls -la ~/.agents/skills
+</code></pre>
+<p>Codex and OpenClaw can share the same physical directory. Dalo de-duplicates physical target paths during materialization.</p>
+<h2 id="hermes"><a class="doc-anchor" href="#hermes">Hermes</a></h2>
+<p>Default skill path:</p>
+<pre><code class="language-text">~/.hermes/skills
+</code></pre>
+<p>Link and verify:</p>
+<pre><code class="language-sh">dalo target link hermes
+dalo status
+dalo sync
+ls -la ~/.hermes/skills
+</code></pre>
+<h2 id="cursor-and-opencode"><a class="doc-anchor" href="#cursor-and-opencode">Cursor and OpenCode</a></h2>
+<p>Cursor and OpenCode have experimental built-in target IDs, but neither has a
+verified default path. Until their behavior is verified, use a generic target
+after you know the folder the agent reads:</p>
+<pre><code class="language-sh">dalo target link generic /path/to/agent/skills
+dalo sync
+</code></pre>
+<p>You may instead use <code>dalo target link cursor &lt;path&gt;</code> or
+<code>dalo target link opencode &lt;path&gt;</code> to record the experimental target ID. All
+three forms require an explicit path; <code>generic</code> is recommended until the adapter
+is verified.</p>
+<p>Open an issue with the expected skill path and a short verification transcript if you can confirm either target.</p>
+<p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/agents.md" rel="noopener">docs/agents.md</a></p>
+  </article>
+</main>
+
+<footer class="site-footer doc-footer" data-scope="dark">
+  <div class="wrap footer-base">
+    <span>© 2026 <a href="https://sebastian-software.de" rel="noopener">Sebastian Software</a> · Dalo</span>
+    <span><a href="/" >dalo.sh</a> · <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a> · <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a></span>
+  </div>
+</footer>
+</body>
+</html>

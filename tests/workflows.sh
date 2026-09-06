@@ -50,6 +50,8 @@ test "$(node -p 'require(process.argv[1]).packages["."].draft' "$release_config"
 test "$(node -p 'require(process.argv[1]).packages["."]["force-tag-creation"]' "$release_config")" = true
 test "$(node -p 'require(process.argv[1]).packages["."]["extra-files"].includes("npm/package.json")' "$release_config")" = true
 test "$(node -p 'require(process.argv[1]).packages["."]["extra-files"].filter(entry => entry.path === "npm/package-lock.json").length' "$release_config")" = 2
+# release-please keeps the version shown on dalo.sh in step with the crate.
+test "$(node -p 'require(process.argv[1]).packages["."]["extra-files"].some(entry => entry.type === "generic" && entry.path === "site/index.html")' "$release_config")" = true
 (
   cd "$root/npm"
   npm run check-version

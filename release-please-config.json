@@ -6,6 +6,10 @@
       "extra-files": [
         "npm/package.json",
         {
+          "type": "generic",
+          "path": "site/index.html"
+        },
+        {
           "type": "json",
           "path": "npm/package-lock.json",
           "jsonpath": "$.version"

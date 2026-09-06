@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Using Dalo in CI · Dalo documentation</title>
+  <meta name="description" content="Run a reproducible, non-interactive sync in a pipeline." />
+  <link rel="canonical" href="https://dalo.sh/docs/ci.html" />
+  <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#15171c" media="(prefers-color-scheme: dark)" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Dalo" />
+  <meta property="og:url" content="https://dalo.sh/docs/ci.html" />
+  <meta property="og:title" content="Using Dalo in CI · Dalo documentation" />
+  <meta property="og:description" content="Run a reproducible, non-interactive sync in a pipeline." />
+  <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
+  <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
+  <link rel="preload" href="/assets/fonts/hanken-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/assets/fonts/geistmono-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/docs.css" />
+</head>
+<body class="doc-page">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header" data-scope="dark">
+  <div class="wrap header-inner">
+    <a class="brand" href="/" aria-label="Dalo home">
+      <svg class="brand-mark" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true" focusable="false">
+        <rect x="1.25" y="1.25" width="29.5" height="29.5" rx="8" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <circle cx="9" cy="9.5" r="2" fill="currentColor" />
+        <circle cx="9" cy="16" r="2" fill="currentColor" />
+        <circle cx="9" cy="22.5" r="2" fill="currentColor" />
+        <path d="M11 9.5 H17 Q22 9.5 22 16 Q22 22.5 17 22.5 H11 M11 16 H22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" />
+        <circle cx="22.5" cy="16" r="2.6" fill="var(--accent)" />
+      </svg>
+      <span class="brand-word">dalo</span>
+      <span class="brand-section">docs</span>
+    </a>
+    <nav class="site-nav" aria-label="Primary">
+      <a href="/#how">How it works</a>
+      <a href="/#quickstart">Quickstart</a>
+      <a href="/docs/">Documentation</a>
+    </nav>
+    <div class="header-actions">
+      <a class="ghost-btn" href="https://github.com/sebastian-software/dalo" rel="noopener">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="doc-shell wrap">
+  <nav class="doc-nav" aria-label="Documentation">
+    <p class="footer-h">Documentation</p>
+        <a href="/docs/getting-started.html">Getting started</a>
+        <a href="/docs/reference.html">Command reference</a>
+        <a href="/docs/agents.html">Agent integration</a>
+        <a href="/docs/ci.html" aria-current="page">Dalo in CI</a>
+        <a href="/docs/troubleshooting.html">Troubleshooting</a>
+        <a href="/docs/uninstall.html">Uninstall</a>
+  </nav>
+  <article class="doc-body">
+<h1 id="using-dalo-in-ci">Using Dalo in CI</h1>
+<p>Passive release checks are disabled automatically when the conventional <code>CI</code>
+environment variable is set. <code>DALO_OFFLINE=1</code> or <code>DALO_UPDATE_CHECK=never</code> can
+also disable them explicitly in other managed environments.</p>
+<p>Dalo&#39;s JSON output and exit codes are intended for automation.</p>
+<p>Useful checks:</p>
+<ul>
+<li><code>dalo status --check --json</code> reports resolution and fails when the state needs review, including malformed or unsafe portable agent packages.</li>
+<li><code>dalo doctor --check --json</code> reports health and fails on error findings.</li>
+<li><code>dalo sync --check --json</code> renders the sync result and fails when materialization is blocked or incomplete.</li>
+<li><code>dalo source refresh &lt;catalog&gt; --check</code> checks catalog drift read-only and fails for changed, moved, or removed selected skills.</li>
+</ul>
+<h2 id="example-github-actions-job"><a class="doc-anchor" href="#example-github-actions-job">Example GitHub Actions job</a></h2>
+<pre><code class="language-yaml">name: dalo
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  dalo:
+    runs-on: ubuntu-latest
+    env:
+      DALO_STORE: ${{ runner.temp }}/dalo-store
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install dalo
+        run: cargo install dalo
+
+      - name: Configure a temporary Dalo store
+        run: |
+          dalo init
+          dalo target link generic &quot;$RUNNER_TEMP/dalo-skills&quot;
+          dalo source add project .
+          dalo sync
+
+      - name: Check dalo status
+        run: dalo status --check --json &gt; dalo-status.json
+
+      - name: Check dalo health
+        run: dalo doctor --check --json &gt; dalo-doctor.json
+</code></pre>
+<p>The checkout in this example is a local Git source. Replace <code>.</code> with the path
+or URL of the skill repository that the workflow should validate. The temporary
+store and generic target keep the check isolated from any runner state.</p>
+<h2 id="release-publication"><a class="doc-anchor" href="#release-publication">Release publication</a></h2>
+<p>The publish workflow keeps a new GitHub release as a draft while its six target
+archives, checksums, and Sigstore bundles build and upload. The workflow creates
+the release tag at draft time so each matrix job can check out the exact release
+commit. A single final job verifies every expected asset and publishes the
+release only after the complete matrix succeeds. If a build is failed or
+cancelled, the incomplete release remains a non-public draft and the preceding
+public latest release stays available.</p>
+<p>GitHub is published before crates.io, npm, or the Homebrew tap dispatch. Each of
+those downstream channels depends on the final GitHub-release job, so no public
+installer path advertises an archive before GitHub makes that archive available.</p>
+<h2 id="exit-codes"><a class="doc-anchor" href="#exit-codes">Exit codes</a></h2>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0</td>
+<td>Success</td>
+</tr>
+<tr>
+<td>1</td>
+<td>Expected actionable failure, including semantic value validation, failed checks, and security-audit blocks</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Usage error from invalid arguments or flags; emitted as plain text even with <code>--json</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td>Unsafe state blocked the operation</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Dependency or environment problem</td>
+</tr>
+</tbody></table></div>
+<p>Treat <code>1</code> as a user-actionable configuration or drift problem, <code>3</code> as a safety stop that should not be auto-fixed, and <code>4</code> as a runner/tooling problem.</p>
+<h2 id="catalog-drift"><a class="doc-anchor" href="#catalog-drift">Catalog drift</a></h2>
+<p>For catalog sources, use the read-only refresh check. <code>--check</code> changes only
+the exit status; neither form advances the catalog pin:</p>
+<pre><code class="language-sh">dalo source refresh company-catalog --check
+</code></pre>
+<p>The command reports new available skills, selected skill changes, moved or removed selections, and changed requirements without changing the source lock. New unselected skills remain informational; any selected-skill drift exits with code 1 for review.</p>
+<p>Pin advancement is deliberately separate from CI checking. Preview the exact
+transaction without writes, then apply it only in a reviewed maintenance flow:</p>
+<pre><code class="language-sh">dalo --dry-run --json source refresh company-catalog --advance
+dalo source refresh company-catalog --advance
+</code></pre>
+<p>The advance report contains both lock entries, every drift classification,
+the affected materialization plan, and blocking reasons. Never add <code>--advance</code>
+to an unattended drift-check job.</p>
+<p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/ci.md" rel="noopener">docs/ci.md</a></p>
+  </article>
+</main>
+
+<footer class="site-footer doc-footer" data-scope="dark">
+  <div class="wrap footer-base">
+    <span>© 2026 <a href="https://sebastian-software.de" rel="noopener">Sebastian Software</a> · Dalo</span>
+    <span><a href="/" >dalo.sh</a> · <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a> · <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a></span>
+  </div>
+</footer>
+</body>
+</html>

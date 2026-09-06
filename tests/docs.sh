@@ -91,6 +91,44 @@ grep -q 'sh tests/docs.sh' "$root/CONTRIBUTING.md"
 grep -q 'latest released minor line' "$root/SECURITY.md"
 ! grep -q '| `0\.4\.x`' "$root/SECURITY.md"
 grep -q '__DALO_LASTMOD__' "$root/site/sitemap.xml"
+
+# The documentation published on dalo.sh is rendered from docs/*.md by
+# site/build.mjs and committed, so it must exist, carry the site styles, and be
+# reachable from the sitemap, the documentation index, and the footer.
+for document in getting-started reference agents ci troubleshooting uninstall; do
+  page="$root/site/docs/$document.html"
+  test -f "$page"
+  title="$(sed -n 's/^# //p' "$root/docs/$document.md" | head -n 1)"
+  grep -Fq "<title>$title · Dalo documentation</title>" "$page"
+  grep -Fq '<link rel="stylesheet" href="/styles.css" />' "$page"
+  grep -Fq '<link rel="stylesheet" href="/docs.css" />' "$page"
+  grep -Fq "https://github.com/sebastian-software/dalo/blob/main/docs/$document.md" "$page"
+  grep -Fq "https://dalo.sh/docs/$document.html" "$root/site/sitemap.xml"
+  grep -Fq "/docs/$document.html" "$root/site/docs/index.html"
+done
+test -f "$root/site/docs/index.html"
+grep -Fq 'https://dalo.sh/docs/' "$root/site/sitemap.xml"
+grep -Fq '<a href="/docs/">All documentation</a>' "$root/site/index.html"
+grep -Fq '<a href="/docs/reference.html">Reference</a>' "$root/site/index.html"
+! grep -q 'blob/main/docs/' "$root/site/index.html"
+
+# The checked-in landing page shows a real version, never a deploy placeholder.
+! grep -q '__DALO_VERSION__' "$root/site/index.html"
+test "$(grep -c 'data-dalo-version' "$root/site/index.html")" -eq 2
+grep -Eq '<span data-dalo-version>[0-9]+\.[0-9]+\.[0-9]+</span>' "$root/site/index.html"
+grep -Eq '"softwareVersion": "[0-9]+\.[0-9]+\.[0-9]+"' "$root/site/index.html"
+grep -Fq 'x-release-please-version' "$root/site/index.html"
+grep -Fq 'x-release-please-start-version' "$root/site/index.html"
+
+# The hero transcript is the output the current CLI prints, not the pre-0.14 one.
+grep -Fq 'target[generic]:/review -&gt; store:/local/skills/review' "$root/site/index.html"
+grep -Fq 'synced: 1 skill across 2 targets (2 created)' "$root/site/index.html"
+! grep -q 'skills/review -&gt; /tmp/dalo/store' "$root/site/index.html"
+
+# When the site dependencies are installed, the committed render must be current.
+if [ -d "$root/site/node_modules" ]; then
+  node "$root/site/build.mjs" --check
+fi
 grep -q 'dalo-quickstart.mp4' "$root/site/index.html"
 grep -q 'type="video/mp4"' "$root/site/index.html"
 grep -q 'dalo-quickstart.mp4' "$root/README.md"

@@ -31,6 +31,7 @@
   <link rel="preload" href="/assets/fonts/hanken-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="/assets/fonts/geistmono-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="/styles.css" />
+  <!-- x-release-please-start-version -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -39,7 +40,7 @@
     "url": "https://dalo.sh/",
     "description": "Git-backed skill management for AI agents: resolve approved skills deterministically and link them into local agent folders.",
     "sameAs": "https://github.com/sebastian-software/dalo",
-    "softwareVersion": "__DALO_VERSION__",
+    "softwareVersion": "0.14.10",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "macOS, Linux",
     "offers": {
@@ -49,6 +50,7 @@
     }
   }
   </script>
+  <!-- x-release-please-end-version -->
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
@@ -76,6 +78,7 @@
       <a href="#targets">Targets</a>
       <a href="#compare">Compare</a>
       <a href="#roadmap">Roadmap</a>
+      <a href="/docs/">Docs</a>
     </nav>
 
     <details class="mobile-menu">
@@ -92,6 +95,7 @@
         <a href="#targets">Targets</a>
         <a href="#compare">Compare</a>
         <a href="#roadmap">Roadmap</a>
+        <a href="/docs/">Docs</a>
       </nav>
     </details>
 
@@ -110,7 +114,7 @@
   <section class="hero" data-scope="dark">
     <div class="wrap hero-grid">
       <div class="hero-copy">
-        <p class="kicker reveal"><span class="dot"></span> Rust CLI · macOS &amp; Linux · v__DALO_VERSION__</p>
+        <p class="kicker reveal"><span class="dot"></span> Rust CLI · macOS &amp; Linux · v<span data-dalo-version>0.14.10</span></p> <!-- x-release-please-version -->
         <h1 class="reveal">Your team's agent skills, versioned like code.</h1>
         <p class="hero-lede reveal">
           Dalo is the missing layer between "I found a useful skill" and "our agents
@@ -148,10 +152,10 @@
         <div class="proof-badges reveal" aria-label="Project signals">
           <a href="https://crates.io/crates/dalo" rel="noopener">crates.io</a>
           <a href="https://github.com/sebastian-software/dalo/actions/workflows/ci.yml" rel="noopener">CI</a>
-          <a href="https://github.com/sebastian-software/dalo/blob/main/LICENSE" rel="noopener">MIT</a>
+          <a href="https://github.com/sebastian-software/dalo/blob/main/LICENSE-MIT" rel="noopener">MIT OR Apache-2.0</a>
           <a href="https://github.com/sebastian-software/dalo" rel="noopener">Star on GitHub</a>
         </div>
-        <p class="hero-meta reveal">MIT-licensed. Single binary, no daemon; just <code>git</code> on your PATH.</p>
+        <p class="hero-meta reveal">MIT OR Apache-2.0. Single binary, no daemon; just <code>git</code> on your PATH.</p>
       </div>
 
       <div class="hero-demo reveal">
@@ -161,9 +165,12 @@
             <span class="terminal-title">~/work · dalo sync</span>
           </div>
           <pre class="terminal-body"><code><span class="ln"><span class="prompt">$</span> dalo sync</span>
-<span class="ln c-dim">dalo store: /tmp/dalo/store</span>
-<span class="ln"><span class="c-ok">applied  create</span>     ~/.agents/skills/review -&gt; /tmp/dalo/store/local/skills/review</span>
-<span class="ln"><span class="c-ok">applied  create</span>     ~/.claude/skills/review -&gt; /tmp/dalo/store/local/skills/review</span></code></pre>
+<span class="ln c-dim">dalo store: ~/.dalo</span>
+<span class="ln c-dim">target[generic]: ~/.agents/skills</span>
+<span class="ln c-dim">target[claude]: ~/.claude/skills</span>
+<span class="ln"><span class="c-ok">applied  create</span>     target[generic]:/review -&gt; store:/local/skills/review</span>
+<span class="ln"><span class="c-ok">applied  create</span>     target[claude]:/review -&gt; store:/local/skills/review</span>
+<span class="ln c-dim">synced: 1 skill across 2 targets (2 created)</span></code></pre>
         </div>
       </div>
     </div>
@@ -648,7 +655,8 @@
     <div class="wrap">
       <h2 class="section-h reveal">Early, and honest about it.</h2>
       <p class="lead reveal">
-        Dalo is v__DALO_VERSION__. These features work today: local, team, and catalog
+        Dalo is v<span data-dalo-version>0.14.10</span>. <!-- x-release-please-version -->
+        These features work today: local, team, and catalog
         sources; deterministic resolution; security audits and review gates; safe
         sync; adoption; diagnostics; and instruction packs. Here's what's
         intentionally deferred to later releases.
@@ -706,10 +714,12 @@
       </div>
       <div class="footer-col">
         <p class="footer-h">Docs</p>
-        <a href="https://github.com/sebastian-software/dalo/blob/main/docs/getting-started.md" rel="noopener">Getting started</a>
-        <a href="https://github.com/sebastian-software/dalo/blob/main/docs/reference.md" rel="noopener">Reference</a>
-        <a href="https://github.com/sebastian-software/dalo/blob/main/docs/troubleshooting.md" rel="noopener">Troubleshooting</a>
-        <a href="https://github.com/sebastian-software/dalo/blob/main/docs/uninstall.md" rel="noopener">Uninstall</a>
+        <a href="/docs/">All documentation</a>
+        <a href="/docs/getting-started.html">Getting started</a>
+        <a href="/docs/reference.html">Reference</a>
+        <a href="/docs/troubleshooting.html">Troubleshooting</a>
+        <a href="/docs/uninstall.html">Uninstall</a>
+        <a href="/install.md">Installation guide</a>
         <a href="https://github.com/sebastian-software/dalo/releases" rel="noopener">Releases</a>
       </div>
       <div class="footer-col">
@@ -719,13 +729,15 @@
         <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a>
         <a href="https://github.com/sebastian-software/dalo/tree/main/docs/rfcs" rel="noopener">RFCs</a>
         <a href="https://github.com/sebastian-software/dalo/tree/main/docs/milestones" rel="noopener">Milestones</a>
-        <a href="https://github.com/sebastian-software/dalo/blob/main/LICENSE" rel="noopener">MIT License</a>
+        <a href="https://github.com/sebastian-software/dalo/blob/main/LICENSE-MIT" rel="noopener">MIT license</a>
+        <a href="https://github.com/sebastian-software/dalo/blob/main/LICENSE-APACHE" rel="noopener">Apache-2.0 license</a>
         <a href="https://github.com/sebastian-software/dalo/issues" rel="noopener">Issues</a>
       </div>
     </nav>
   </div>
   <div class="wrap footer-base">
-    <span>© 2026 Sebastian Software · Dalo</span>
+    <span>© 2026 <a href="https://sebastian-software.de" rel="noopener">Sebastian Software</a> · Dalo</span>
+    <span>From the same workshop: <a href="https://github.com/sebastian-software/agent-bridge" rel="noopener">agent-bridge</a> · <a href="https://oss.sebastian-software.com" rel="noopener">more open source</a></span>
     <span class="footer-os">No tracking, no cookies · macOS · Linux</span>
   </div>
 </footer>

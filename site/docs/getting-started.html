@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Getting Started · Dalo documentation</title>
+  <meta name="description" content="Install Dalo, link an agent, add sources, and reach a first synced skill set." />
+  <link rel="canonical" href="https://dalo.sh/docs/getting-started.html" />
+  <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#15171c" media="(prefers-color-scheme: dark)" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Dalo" />
+  <meta property="og:url" content="https://dalo.sh/docs/getting-started.html" />
+  <meta property="og:title" content="Getting Started · Dalo documentation" />
+  <meta property="og:description" content="Install Dalo, link an agent, add sources, and reach a first synced skill set." />
+  <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
+  <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
+  <link rel="preload" href="/assets/fonts/hanken-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/assets/fonts/geistmono-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/docs.css" />
+</head>
+<body class="doc-page">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header" data-scope="dark">
+  <div class="wrap header-inner">
+    <a class="brand" href="/" aria-label="Dalo home">
+      <svg class="brand-mark" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true" focusable="false">
+        <rect x="1.25" y="1.25" width="29.5" height="29.5" rx="8" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <circle cx="9" cy="9.5" r="2" fill="currentColor" />
+        <circle cx="9" cy="16" r="2" fill="currentColor" />
+        <circle cx="9" cy="22.5" r="2" fill="currentColor" />
+        <path d="M11 9.5 H17 Q22 9.5 22 16 Q22 22.5 17 22.5 H11 M11 16 H22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" />
+        <circle cx="22.5" cy="16" r="2.6" fill="var(--accent)" />
+      </svg>
+      <span class="brand-word">dalo</span>
+      <span class="brand-section">docs</span>
+    </a>
+    <nav class="site-nav" aria-label="Primary">
+      <a href="/#how">How it works</a>
+      <a href="/#quickstart">Quickstart</a>
+      <a href="/docs/">Documentation</a>
+    </nav>
+    <div class="header-actions">
+      <a class="ghost-btn" href="https://github.com/sebastian-software/dalo" rel="noopener">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="doc-shell wrap">
+  <nav class="doc-nav" aria-label="Documentation">
+    <p class="footer-h">Documentation</p>
+        <a href="/docs/getting-started.html" aria-current="page">Getting started</a>
+        <a href="/docs/reference.html">Command reference</a>
+        <a href="/docs/agents.html">Agent integration</a>
+        <a href="/docs/ci.html">Dalo in CI</a>
+        <a href="/docs/troubleshooting.html">Troubleshooting</a>
+        <a href="/docs/uninstall.html">Uninstall</a>
+  </nav>
+  <article class="doc-body">
+<h1 id="getting-started">Getting Started</h1>
+<p>This guide walks through Dalo&#39;s core loop without touching your real agent folders
+first. Install Dalo first (see the <a href="https://github.com/sebastian-software/dalo/blob/main/README.md#installation" rel="noopener">README installation instructions</a>),
+make sure <code>git</code> is on <code>PATH</code>, and use Linux or macOS.</p>
+<h2 id="1-create-a-sandbox-store"><a class="doc-anchor" href="#1-create-a-sandbox-store">1. Create a sandbox store</a></h2>
+<pre><code class="language-sh">export DALO_STORE=&quot;$(mktemp -d)/store&quot;
+target_dir=&quot;$(mktemp -d)/skills&quot;
+
+dalo init
+dalo target link generic &quot;$target_dir&quot;
+</code></pre>
+<p>The store is Dalo&#39;s local database. It contains source checkouts, the local source, lockfiles, approvals, and target state.</p>
+<p>The target is where Dalo materializes the resolved skill set. In this sandbox it is just a temporary folder.</p>
+<p>At any point, run <code>dalo next</code> to see the store summary and the single most
+useful next command. In a terminal, bare <code>dalo</code> shows the same summary; use
+<code>dalo next</code> when output is piped or scripted.</p>
+<h2 id="2-add-a-local-skill"><a class="doc-anchor" href="#2-add-a-local-skill">2. Add a local skill</a></h2>
+<pre><code class="language-sh">mkdir -p &quot;$DALO_STORE/local/skills/review&quot;
+cat &gt; &quot;$DALO_STORE/local/skills/review/SKILL.md&quot; &lt;&lt;&#39;EOF&#39;
+# Review
+
+Check behavioral regressions before style nits.
+EOF
+</code></pre>
+<p>The local source is private to your machine. It is useful for experiments and overrides.</p>
+<h2 id="3-sync"><a class="doc-anchor" href="#3-sync">3. Sync</a></h2>
+<pre><code class="language-sh">dalo status
+dalo sync
+ls -la &quot;$target_dir&quot;
+</code></pre>
+<p><code>sync</code> refreshes clean tracking sources, resolves one approved skill set, and links that set into configured targets. Dalo links directories it owns and refuses to overwrite unmanaged files.</p>
+<p><code>status</code> may show a <code>lock drift</code> block here. That just means the next <code>sync</code>
+has not recorded the new skill yet; it disappears after <code>dalo sync</code>. See
+<a href="troubleshooting.html#lock-drift">Lock Drift</a> for more detail.</p>
+<h2 id="4-try-a-local-team-source"><a class="doc-anchor" href="#4-try-a-local-team-source">4. Try a local team source</a></h2>
+<p>This uses a local Git repository, so it works without network access.</p>
+<pre><code class="language-sh">TEAM_REPO=&quot;$(mktemp -d)/team-skills&quot;
+mkdir -p &quot;$TEAM_REPO/skills/release-notes&quot;
+cat &gt; &quot;$TEAM_REPO/skills/release-notes/SKILL.md&quot; &lt;&lt;&#39;EOF&#39;
+# Release Notes
+
+Summarize user-visible changes first.
+EOF
+
+git -C &quot;$TEAM_REPO&quot; init
+git -C &quot;$TEAM_REPO&quot; add .
+git -C &quot;$TEAM_REPO&quot; -c commit.gpgSign=false -c user.email=test@example.com -c user.name=&#39;Test User&#39; commit -m initial
+
+dalo source add company &quot;$TEAM_REPO&quot;
+dalo source list
+dalo sync
+</code></pre>
+<p>A source is a Git-backed collection of skills. Source priority decides conflicts: lower priority numbers win. A slot is the portable skill name Dalo links into target folders.</p>
+<p>Team sources are trusted by default, so their skills do not need per-skill
+approval. Sync still audits team content and blocks unaccepted high or critical
+findings. Use a catalog source when you want to review and approve individual
+skills.</p>
+<h2 id="5-try-a-catalog-source"><a class="doc-anchor" href="#5-try-a-catalog-source">5. Try a catalog source</a></h2>
+<p>This local catalog demonstrates the selection and approval flow without network
+access:</p>
+<pre><code class="language-sh">CATALOG_REPO=&quot;$(mktemp -d)/catalog-skills&quot;
+mkdir -p &quot;$CATALOG_REPO/skills/review-helper&quot;
+cat &gt; &quot;$CATALOG_REPO/skills/review-helper/SKILL.md&quot; &lt;&lt;&#39;EOF&#39;
+# Review Helper
+
+Check behavioral regressions before style nits.
+EOF
+
+git -C &quot;$CATALOG_REPO&quot; init
+git -C &quot;$CATALOG_REPO&quot; add .
+git -C &quot;$CATALOG_REPO&quot; -c commit.gpgSign=false -c user.email=test@example.com -c user.name=&#39;Test User&#39; commit -m initial
+
+dalo source add-catalog public &quot;$CATALOG_REPO&quot;
+dalo source inspect public
+dalo source select public review-helper
+dalo status
+</code></pre>
+<p>Catalog skills are untrusted by default. After reviewing the pending skill,
+<code>status</code> prints the exact narrow approval command. Grant only that skill, then
+sync it. The <code>lock drift</code> block is still expected until that sync records the
+new selection:</p>
+<pre><code class="language-sh">dalo audit public:review-helper
+dalo approve skill public:review-helper
+dalo sync
+</code></pre>
+<p>Optionally, add a semantic review by an agent. This requires an installed Claude
+or OpenCode CLI on your <code>PATH</code> and may send the skill&#39;s contents to the
+configured provider; without an agent CLI available it exits with an error, so
+it is not part of the core flow:</p>
+<pre><code class="language-sh">dalo audit public:review-helper --reviewer auto
+</code></pre>
+<p><code>source add</code>, <code>source select</code>, and <code>approve skill</code> run deterministic local
+preflight checks. <code>sync</code> repeats them against the exact content about to be
+linked and blocks unaccepted <code>high</code> or <code>critical</code> findings from those checks or
+a compatible cached review. <code>sync</code> does not start an agent reviewer, and a
+passing preflight is not a safety guarantee. To accept a known risk for one
+exact content hash and finding set, provide a reason:</p>
+<pre><code class="language-sh">dalo audit public:review-helper --accept-risk &quot;reviewed pinned upstream installer&quot;
+</code></pre>
+<p>Changing any file, adding findings, or upgrading an audit or review engine
+invalidates that acceptance.</p>
+<p>Use <code>dalo approve list</code> to inspect local trust rules. Broader <code>source</code>, <code>author</code>,
+and <code>org</code> approvals are available when that is the intended policy.</p>
+<h2 id="6-move-from-sandbox-to-a-real-agent"><a class="doc-anchor" href="#6-move-from-sandbox-to-a-real-agent">6. Move from sandbox to a real agent</a></h2>
+<p>Unset the sandbox variables when you are ready to use your real store and agent folder:</p>
+<pre><code class="language-sh">unset DALO_STORE
+dalo init
+dalo target detect
+</code></pre>
+<p>Then link one real target:</p>
+<pre><code class="language-sh">dalo target link codex
+# or: dalo target link claude
+# or: dalo target link openclaw
+# or: dalo target link hermes
+</code></pre>
+<p>Add your team source and sync:</p>
+<pre><code class="language-sh">dalo source add company git@github.com:acme/agent-skills.git
+dalo sync
+dalo doctor
+</code></pre>
+<h2 id="7-adopt-a-local-skill"><a class="doc-anchor" href="#7-adopt-a-local-skill">7. Adopt a local skill</a></h2>
+<p>If an agent created a useful unmanaged skill directly in its folder, inspect it first:</p>
+<pre><code class="language-sh">dalo status
+</code></pre>
+<p>Then copy it into Dalo&#39;s local source:</p>
+<pre><code class="language-sh">dalo adopt release-notes
+</code></pre>
+<p>Adoption prints a local security preflight before it copies or replaces the
+unmanaged skill.</p>
+<p>Replacing the original folder with a Dalo-owned symlink is a separate explicit step:</p>
+<pre><code class="language-sh">dalo adopt --replace release-notes
+</code></pre>
+<p>Dalo does not commit adopted work automatically.</p>
+<p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/getting-started.md" rel="noopener">docs/getting-started.md</a></p>
+  </article>
+</main>
+
+<footer class="site-footer doc-footer" data-scope="dark">
+  <div class="wrap footer-base">
+    <span>© 2026 <a href="https://sebastian-software.de" rel="noopener">Sebastian Software</a> · Dalo</span>
+    <span><a href="/" >dalo.sh</a> · <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a> · <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a></span>
+  </div>
+</footer>
+</body>
+</html>
