@@ -18,13 +18,13 @@ checks that CI runs on every supported OS:
 
 ```sh
 cargo fmt --check
-cargo test
+cargo test --locked
 sh tests/install.sh
 sh tests/docs.sh
 sh tests/workflows.sh
-(cd npm && npm test)
-cargo clippy --all-targets --all-features -- -D warnings
-cargo build --release
+(cd npm && npm ci && npm run check-version && npm test)
+cargo clippy --locked --all-targets --all-features -- -D warnings
+cargo build --release --locked
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
 ```
 
@@ -33,12 +33,19 @@ The MSRV, dependency-audit, and coverage jobs additionally run:
 ```sh
 cargo check --locked --all-targets --all-features
 cargo deny check
-cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines 86.9
+cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines "$(cat coverage-threshold)"
 ```
 
-The line-coverage gate is the current 86.97% baseline rounded down to one decimal
-place. Raise it deliberately when sustained coverage improvements establish a
-new baseline; do not lower it to make an untested change pass.
+The MSRV job installs the toolchain named by `rust-version` in `Cargo.toml`, so
+that number lives in one place.
+
+`coverage-threshold` holds the line-coverage gate, and both CI and the command
+above read it, so the number is never restated. Raise it deliberately when
+sustained coverage improvements establish a new baseline; do not lower it to
+make an untested change pass.
+
+This list, the checklist in `.github/pull_request_template.md`, and the CI jobs
+are kept in step by `tests/workflows.sh`; update all three together.
 
 Use `git diff --check` before opening a PR to catch whitespace issues.
 
