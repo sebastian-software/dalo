@@ -44,6 +44,16 @@ once with `pnpm --dir site install`. `site/README.md` describes the build.
 The MSRV job installs the toolchain named by `rust-version` in `Cargo.toml`, so
 that number lives in one place.
 
+The standards-drift job runs `standards check` from
+[`@sebastian-software/standards`](https://github.com/sebastian-software/standards)
+at the version pinned in the job itself. This repository has no lockfile to
+hold that CLI, so the pin lives in `.github/workflows/ci.yml` and Renovate's
+custom manager in `renovate.json` moves it through a pull request instead of CI
+running whatever was published last. Copy the command from the job rather than
+restating the version here, and raise the pin in the same pull request that
+runs `standards apply`, so the stamp in `.repometa.json` and the CLI that
+checks it never disagree.
+
 `coverage-threshold` holds the line-coverage gate, and both CI and the command
 above read it, so the number is never restated. Raise it deliberately when
 sustained coverage improvements establish a new baseline; do not lower it to

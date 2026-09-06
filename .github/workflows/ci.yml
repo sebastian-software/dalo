@@ -246,3 +246,35 @@ jobs:
         run: |
           corepack pnpm --dir site install --frozen-lockfile
           node site/build.mjs --check
+
+  standards:
+    name: Standards drift
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The Renovate-driven flow drops this file when a standards release still
+      # needs the agent judgement steps. Fail while it is there.
+      - name: Guard against an incomplete standards migration
+        run: test ! -f .standards/pending.json
+
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+
+      # The CLI version is pinned here because a Rust-only repository has no
+      # lockfile to hold it; Renovate's custom manager in renovate.json moves
+      # the pin. An unpinned `dlx` would run whatever was published minutes
+      # ago, with this job's token.
+      #
+      # minimum-release-age=0 stays: pnpm holds versions younger than 24 hours
+      # back, so a pin raised on the day of a standards release would not
+      # resolve without the bypass.
+      - name: Check for standards drift
+        env:
+          # corepack downloads pnpm on first use; never wait on a prompt in CI.
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+        run: corepack pnpm --config.minimum-release-age=0 dlx @sebastian-software/standards@0.9.0 check
