@@ -1,6 +1,6 @@
 # RFC 0001: Dalo Vision
 
-Status: Draft  
+Status: Accepted, recorded in [ADR 0002](../adr/0002-store-centered-skill-management.md)  
 Date: 2026-06-23  
 Author: Sebastian + Codex  
 
