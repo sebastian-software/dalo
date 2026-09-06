@@ -6,7 +6,7 @@
 [![npm](https://img.shields.io/npm/v/getdalo.svg)](https://www.npmjs.com/package/getdalo)
 [![CI](https://github.com/sebastian-software/dalo/actions/workflows/ci.yml/badge.svg)](https://github.com/sebastian-software/dalo/actions/workflows/ci.yml)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
-[![MSRV](https://img.shields.io/badge/rust-1.93%2B-orange.svg)](Cargo.toml)
+[![MSRV](https://img.shields.io/badge/rust-1.94%2B-orange.svg)](Cargo.toml)
 
 Dalo turns scattered skill folders into shared, versioned infrastructure. Keep
 team skills in Git, private experiments local, and deliver one approved,
@@ -504,7 +504,7 @@ cargo binstall dalo
 # mise with the GitHub Releases backend
 mise use -g github:sebastian-software/dalo
 
-# crates.io (requires Rust 1.93 or newer)
+# crates.io (requires Rust 1.94 or newer)
 cargo install dalo
 ```
 
