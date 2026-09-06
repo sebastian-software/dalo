@@ -856,25 +856,64 @@ mod tests {
             .to_str()
             .expect("helper activity path should be utf-8");
 
-        let error = run_git_program_with_options(
-            fake_git.to_str().expect("script path should be utf-8"),
-            temp_dir.path(),
-            &[helper_activity_file_arg],
-            Duration::from_secs(3),
-            Option::<&str>::None,
-            false,
-        )
-        .expect_err("hung command should time out");
+        // Tests spawn processes concurrently, and a child forked by another
+        // test can still hold the freshly written script open until it execs,
+        // which fails this spawn with ETXTBSY before any timeout runs. That is
+        // a property of the test harness, not of the timeout, so retry the
+        // spawn within a bounded window and let anything else through.
+        let spawn_deadline = Instant::now() + Duration::from_secs(2);
+        let error = loop {
+            match run_git_program_with_options(
+                fake_git.to_str().expect("script path should be utf-8"),
+                temp_dir.path(),
+                &[helper_activity_file_arg],
+                Duration::from_secs(3),
+                Option::<&str>::None,
+                false,
+            ) {
+                Err(DaloError::Io(io_error))
+                    if io_error.kind() == std::io::ErrorKind::ExecutableFileBusy
+                        && Instant::now() < spawn_deadline =>
+                {
+                    thread::sleep(Duration::from_millis(50));
+                }
+                Err(error) => break error,
+                Ok(output) => panic!("hung command should time out, got output {output:?}"),
+            }
+        };
 
-        assert!(matches!(error, DaloError::CommandFailed { .. }));
-        let activity_after_timeout = fs::read(&helper_activity_file)
-            .expect("helper should record activity before the timeout");
-        thread::sleep(Duration::from_millis(100));
-        assert_eq!(
-            fs::read(&helper_activity_file).expect("helper activity should remain readable"),
-            activity_after_timeout,
-            "timeout should terminate the helper process"
+        // Only the timeout branch terminates the process group, and only it
+        // reports this status, so the status proves that termination ran.
+        let DaloError::CommandFailed { status, .. } = error else {
+            panic!("hung command should time out with a command failure, got: {error}");
+        };
+        assert!(
+            status.contains("timed out after"),
+            "expected a timeout status, got {status:?}"
         );
+
+        // A live helper appends every 10 ms, so the file only stops growing
+        // once the helper is dead. A write already in flight when the group
+        // was killed may still land, so wait for a full quiet window instead
+        // of comparing two fixed snapshots, and bound the wait so a helper
+        // that survived fails the test rather than hanging it.
+        let quiet_window = Duration::from_millis(100);
+        let quiet_deadline = Instant::now() + Duration::from_secs(2);
+        let mut activity = fs::read(&helper_activity_file)
+            .expect("helper should record activity before the timeout");
+        loop {
+            thread::sleep(quiet_window);
+            let now =
+                fs::read(&helper_activity_file).expect("helper activity should remain readable");
+            if now == activity {
+                break;
+            }
+            assert!(
+                Instant::now() < quiet_deadline,
+                "timeout should terminate the helper process; it kept writing for 2s"
+            );
+            activity = now;
+        }
     }
 
     #[test]
