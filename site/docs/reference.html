@@ -1,0 +1,2142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dalo User Reference · Dalo documentation</title>
+  <meta name="description" content="Every command, flag, config file, JSON report, and diagnostic code." />
+  <link rel="canonical" href="https://dalo.sh/docs/reference.html" />
+  <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#15171c" media="(prefers-color-scheme: dark)" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Dalo" />
+  <meta property="og:url" content="https://dalo.sh/docs/reference.html" />
+  <meta property="og:title" content="Dalo User Reference · Dalo documentation" />
+  <meta property="og:description" content="Every command, flag, config file, JSON report, and diagnostic code." />
+  <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
+  <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
+  <link rel="preload" href="/assets/fonts/hanken-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/assets/fonts/geistmono-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/docs.css" />
+</head>
+<body class="doc-page">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header" data-scope="dark">
+  <div class="wrap header-inner">
+    <a class="brand" href="/" aria-label="Dalo home">
+      <svg class="brand-mark" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true" focusable="false">
+        <rect x="1.25" y="1.25" width="29.5" height="29.5" rx="8" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <circle cx="9" cy="9.5" r="2" fill="currentColor" />
+        <circle cx="9" cy="16" r="2" fill="currentColor" />
+        <circle cx="9" cy="22.5" r="2" fill="currentColor" />
+        <path d="M11 9.5 H17 Q22 9.5 22 16 Q22 22.5 17 22.5 H11 M11 16 H22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" />
+        <circle cx="22.5" cy="16" r="2.6" fill="var(--accent)" />
+      </svg>
+      <span class="brand-word">dalo</span>
+      <span class="brand-section">docs</span>
+    </a>
+    <nav class="site-nav" aria-label="Primary">
+      <a href="/#how">How it works</a>
+      <a href="/#quickstart">Quickstart</a>
+      <a href="/docs/">Documentation</a>
+    </nav>
+    <div class="header-actions">
+      <a class="ghost-btn" href="https://github.com/sebastian-software/dalo" rel="noopener">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="doc-shell wrap">
+  <nav class="doc-nav" aria-label="Documentation">
+    <p class="footer-h">Documentation</p>
+        <a href="/docs/getting-started.html">Getting started</a>
+        <a href="/docs/reference.html" aria-current="page">Command reference</a>
+        <a href="/docs/agents.html">Agent integration</a>
+        <a href="/docs/ci.html">Dalo in CI</a>
+        <a href="/docs/troubleshooting.html">Troubleshooting</a>
+        <a href="/docs/uninstall.html">Uninstall</a>
+  </nav>
+  <article class="doc-body">
+<h1 id="dalo-user-reference">Dalo User Reference</h1>
+<p>This is the user-facing reference for scripting Dalo and for understanding the files Dalo writes. It documents the current CLI and persisted schemas.</p>
+<h2 id="store-resolution"><a class="doc-anchor" href="#store-resolution">Store Resolution</a></h2>
+<p>Dalo chooses the store path in this order:</p>
+<ol>
+<li><code>--store &lt;PATH&gt;</code></li>
+<li><code>DALO_STORE</code></li>
+<li><code>~/.dalo</code></li>
+</ol>
+<p>Relative store paths are resolved against the current working directory. <code>~</code> is expanded when used at the start of a path.</p>
+<h2 id="environment-variables"><a class="doc-anchor" href="#environment-variables">Environment Variables</a></h2>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>DALO_STORE</code></td>
+<td>Override the default store path; <code>--store</code> takes precedence.</td>
+</tr>
+<tr>
+<td><code>DALO_GIT_TIMEOUT_SECS</code></td>
+<td>Positive timeout in seconds for every Git subprocess. Invalid or zero values use the built-in defaults.</td>
+</tr>
+<tr>
+<td><code>DALO_OFFLINE</code></td>
+<td>Disable passive update checks when set to a truthy value.</td>
+</tr>
+<tr>
+<td><code>DALO_UPDATE_CHECK</code></td>
+<td>Set to <code>never</code> to disable passive update checks.</td>
+</tr>
+<tr>
+<td><code>NO_COLOR</code></td>
+<td>Disable ANSI color output when set.</td>
+</tr>
+<tr>
+<td><code>DALO_TARGET</code></td>
+<td>Installer-only release target override. A non-empty value takes precedence over platform detection; see <a href="/install.md#installer-environment-variables">installer target variables</a>.</td>
+</tr>
+</tbody></table></div>
+<p>For installation variables, see the <a href="https://github.com/sebastian-software/dalo/blob/main/README.md#installation" rel="noopener">README installation section</a>
+and the <a href="https://github.com/sebastian-software/dalo/blob/main/npm/README.md" rel="noopener">npm launcher README</a>: <code>DALO_VERIFY</code>,
+<code>DALO_LINUX_LIBC</code>, <code>DALO_INSTALL_DIR</code>, <code>DALO_VERSION</code>, and <code>DALO_CACHE_DIR</code>.</p>
+<h3 id="dalo_target"><a class="doc-anchor" href="#dalo_target"><code>DALO_TARGET</code></a></h3>
+<p><code>DALO_TARGET</code> is read only by <code>https://dalo.sh/install.sh</code>; it is not a Dalo
+CLI option and does not affect an installed binary. An unset or empty value
+uses automatic detection: macOS chooses its <code>x86_64</code> or <code>aarch64</code> target, and
+Linux chooses <code>x86_64</code> or <code>aarch64</code> plus the detected (or
+<code>DALO_LINUX_LIBC</code>-overridden) libc. A non-empty value takes precedence and is
+used verbatim to form the release archive name. Set it only to a published target:
+<code>x86_64-unknown-linux-gnu</code>, <code>aarch64-unknown-linux-gnu</code>,
+<code>x86_64-unknown-linux-musl</code>, <code>aarch64-unknown-linux-musl</code>,
+<code>x86_64-apple-darwin</code>, or <code>aarch64-apple-darwin</code>. The installer does not
+pre-validate the override; another value fails when its release archive cannot
+be fetched.</p>
+<h2 id="global-flags"><a class="doc-anchor" href="#global-flags">Global Flags</a></h2>
+<p>Global flags can be placed before or after the command.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>--store &lt;PATH&gt;</code></td>
+<td>Use a store other than the resolved default.</td>
+</tr>
+<tr>
+<td><code>--json</code></td>
+<td>Emit machine-readable JSON for commands that support structured output.</td>
+</tr>
+<tr>
+<td><code>--yes</code></td>
+<td>Compatibility flag accepted for existing scripts but hidden from command help. It is currently a no-op and never implies <code>--replace</code>, creates commits, or grants new approvals.</td>
+</tr>
+<tr>
+<td><code>--dry-run</code></td>
+<td>Plan supported mutating operations without writing files, cloning, linking, or changing locks. Read-only commands ignore it.</td>
+</tr>
+<tr>
+<td><code>-h</code>, <code>--help</code></td>
+<td>Print command help.</td>
+</tr>
+<tr>
+<td><code>-V</code>, <code>--version</code></td>
+<td>Print the installed version.</td>
+</tr>
+</tbody></table></div>
+<h2 id="update-notices"><a class="doc-anchor" href="#update-notices">Update Notices</a></h2>
+<p>After a successful interactive command, Dalo checks for a newer GitHub release
+at most once per 24 hours. The cached check uses a one-second network timeout and
+never changes the command&#39;s exit status. Checks are skipped for <code>--json</code>, CI,
+<code>DALO_OFFLINE=1</code>, and <code>DALO_UPDATE_CHECK=never</code>.</p>
+<p>Dalo never modifies its own executable. If the installed version is outdated,
+the notice recommends an upgrade command for Homebrew, npm/npx, mise, Cargo, or
+the hosted installer. Launchers may set <code>DALO_INSTALL_CHANNEL</code> so the Rust binary
+can preserve their installation context. Unknown installation methods receive a
+link to the installation guide instead of a guessed command. Each newer version
+is announced only once per user cache.</p>
+<h2 id="command-reference"><a class="doc-anchor" href="#command-reference">Command Reference</a></h2>
+<h3 id="dalo-init"><a class="doc-anchor" href="#dalo-init"><code>dalo init</code></a></h3>
+<p>Initialize the store layout, default config, local Git source, lock/state files, and approvals file.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo init
+dalo --store /tmp/dalo-demo init
+dalo --json --dry-run init
+</code></pre>
+<p>JSON output shape: <code>InitReport</code>.</p>
+<h3 id="dalo-next"><a class="doc-anchor" href="#dalo-next"><code>dalo next</code></a></h3>
+<p>Show a compact summary of the selected store and one copyable next action. It
+chooses initialization, target discovery, source addition, an exact pending
+approval, synchronization, or detailed status when the already-computed store
+facts contain errors or inventory warnings. Health problems take precedence
+over onboarding guidance. Only when no action is needed does it report
+<code>All synced</code>.</p>
+<p>Running bare <code>dalo</code> shows this same summary only when stdout is a terminal;
+when output is piped it keeps printing the normal static help. Use <code>dalo next</code>
+in scripts or whenever you want the state-aware result explicitly.</p>
+<pre><code class="language-sh">dalo next
+dalo --store /tmp/dalo-demo next
+dalo --json next
+</code></pre>
+<p>JSON output shape: <code>NextActionReport</code> with store counts, <code>state</code>, <code>message</code>,
+and an optional copyable <code>command</code>.</p>
+<h3 id="dalo-team-init-source-id"><a class="doc-anchor" href="#dalo-team-init-source-id"><code>dalo team init &lt;source-id&gt;</code></a></h3>
+<p>Create <code>dalo.toml</code> in the current team repository. Use <code>--repo &lt;path&gt;</code> on the
+<code>team</code> command to target another checkout. Team-management commands do not read
+or initialize the personal Dalo store, and they do not commit or push changes.
+The global <code>--store</code> flag is accepted for uniformity but has no effect on <code>team</code>
+commands; select the target repository with <code>--repo</code> instead. They write the
+manifest in canonical TOML form; catalog mutations may normalize formatting and
+do not preserve comments.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo team init company --name &quot;Company Skills&quot;
+dalo team --repo ../company-skills init company
+dalo --dry-run team init company
+</code></pre>
+<p>An existing manifest with the same source ID is left unchanged. A different ID
+is never overwritten. JSON output shape: <code>TeamManifestMutationReport</code>.</p>
+<h3 id="dalo-team-catalog-add-id-git-url-or-path---version-revision"><a class="doc-anchor" href="#dalo-team-catalog-add-id-git-url-or-path---version-revision"><code>dalo team catalog add &lt;id&gt; &lt;git-url-or-path&gt; --version &lt;revision&gt;</code></a></h3>
+<p>Add a pinned external skill set to the team manifest. Repeat <code>--skill</code> for
+include/exclude filters; omitting it means all skills.</p>
+<pre><code class="language-sh">dalo team catalog add marketing https://github.com/coreyhaines31/marketingskills.git \
+  --version 0123456789abcdef0123456789abcdef01234567 \
+  --skill +copywriting \
+  --skill +launch \
+  --skill -seo-audit
+</code></pre>
+<p>Use <code>--priority &lt;number&gt;</code> to override the derived default. JSON output shape:
+<code>TeamManifestMutationReport</code>.</p>
+<h3 id="dalo-team-catalog-skills-id-filter"><a class="doc-anchor" href="#dalo-team-catalog-skills-id-filter"><code>dalo team catalog skills &lt;id&gt; [filter]...</code></a></h3>
+<p>Replace the complete filter list. Calling the command without filters sets
+<code>skills = []</code>, which means all skills.</p>
+<pre><code class="language-sh">dalo team catalog skills marketing +copywriting +launch -seo-audit
+dalo team catalog skills marketing
+</code></pre>
+<p>JSON output shape: <code>TeamManifestMutationReport</code>.</p>
+<h3 id="dalo-team-catalog-version-id-revision"><a class="doc-anchor" href="#dalo-team-catalog-version-id-revision"><code>dalo team catalog version &lt;id&gt; &lt;revision&gt;</code></a></h3>
+<p>Change the requested commit, tag, or ref. The next <code>dalo sync</code> on each team
+member&#39;s machine stages, audits, and pins the resolved commit before publishing
+it.</p>
+<pre><code class="language-sh">dalo team catalog version marketing v2.0.0
+</code></pre>
+<p>JSON output shape: <code>TeamManifestMutationReport</code>.</p>
+<h3 id="dalo-team-catalog-update-id---from-ref"><a class="doc-anchor" href="#dalo-team-catalog-update-id---from-ref"><code>dalo team catalog update &lt;id&gt; --from &lt;ref&gt;</code></a></h3>
+<p>Resolve an upstream branch, tag, or ref in a temporary clone, compare the
+currently declared version with the candidate inventory, and run deterministic
+audits for the selected candidate skills. A successful real update writes the
+exact candidate commit to <code>dalo.toml</code>; it never leaves the shared version as a
+floating ref and never commits or pushes the repository.</p>
+<pre><code class="language-sh">dalo --dry-run team catalog update marketing --from main
+dalo --json --dry-run team catalog update marketing --from v2
+dalo team catalog update marketing --from main
+dalo team catalog update marketing --from main \
+  --accept-risk &quot;reviewed pinned automation&quot;
+</code></pre>
+<p>Dry-run performs network reads and temporary filesystem work but does not edit
+the repository or personal Dalo store. A non-fast-forward candidate, a removed
+selected skill, an invalid candidate selection, or a blocking audit finding
+prevents the write. <code>--accept-risk &lt;reason&gt;</code> is required to be non-empty and
+accepts only blocking security-audit findings from this exact candidate. It
+does not bypass non-fast-forward updates, removed skills, invalid selections,
+or other structural blockers. Each accepted audit report retains its
+content-bound <code>risk_acceptance</code> scope hash; no personal store state is written.
+JSON output shape: <code>TeamCatalogUpdateReport</code>, including
+<code>old_version</code>, exact <code>old_commit</code> and <code>candidate_commit</code>, <code>outcomes[]</code>,
+<code>audits[]</code>, <code>accepted_risk_reason</code>, <code>blocking_reasons[]</code>, <code>dry_run</code>, and
+<code>updated</code>.</p>
+<h3 id="dalo-team-catalog-remove-id"><a class="doc-anchor" href="#dalo-team-catalog-remove-id"><code>dalo team catalog remove &lt;id&gt;</code></a></h3>
+<p>Remove the declaration. The next team-member sync removes generated source
+state, approvals, owned links, and checkout state for that catalog.</p>
+<p>JSON output shape: <code>TeamManifestMutationReport</code>.</p>
+<h3 id="dalo-team-show"><a class="doc-anchor" href="#dalo-team-show"><code>dalo team show</code></a></h3>
+<p>Print the source identity and catalog declarations from <code>dalo.toml</code>. Use
+<code>--json</code> for <code>TeamManifestView</code>.</p>
+<h3 id="dalo-target-detect"><a class="doc-anchor" href="#dalo-target-detect"><code>dalo target detect</code></a></h3>
+<p>List known agent targets, their linked paths when configured (otherwise their
+default paths where known), whether those paths exist, and whether they are
+linked in Dalo state. The text output finishes with the next link command when
+it finds an installed-but-unlinked agent, a repair command when a recorded
+target path is missing, or a generic-folder command when no agent folder is
+present. <code>dalo target list</code> is an alias for this command.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo target detect
+dalo --json target detect
+</code></pre>
+<p>Built-in target IDs:</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Default path</th>
+<th>Support</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>codex</code></td>
+<td><code>~/.agents/skills</code></td>
+<td>supported</td>
+</tr>
+<tr>
+<td><code>claude</code></td>
+<td><code>~/.claude/skills</code></td>
+<td>supported</td>
+</tr>
+<tr>
+<td><code>openclaw</code></td>
+<td><code>~/.agents/skills</code></td>
+<td>supported</td>
+</tr>
+<tr>
+<td><code>hermes</code></td>
+<td><code>~/.hermes/skills</code></td>
+<td>supported</td>
+</tr>
+<tr>
+<td><code>generic</code></td>
+<td>none, path required</td>
+<td>supported</td>
+</tr>
+<tr>
+<td><code>cursor</code></td>
+<td>none</td>
+<td>experimental</td>
+</tr>
+<tr>
+<td><code>opencode</code></td>
+<td>none</td>
+<td>experimental</td>
+</tr>
+</tbody></table></div>
+<p>JSON output shape: <code>TargetDetectReport</code>.</p>
+<h3 id="dalo-target-link-target-path"><a class="doc-anchor" href="#dalo-target-link-target-path"><code>dalo target link &lt;target&gt; [path]</code></a></h3>
+<p>Record a target materialization directory. The <code>generic</code> target requires an explicit path. Known targets can use their default path or an explicit override.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo target link codex
+dalo target link generic ./tmp/agent-skills
+dalo --dry-run target link claude ~/.claude/skills
+</code></pre>
+<p>When a target path does not exist yet, Dalo creates its missing directory
+ancestors only after validating the state update. If persisting <code>state.toml</code>
+fails, newly created empty ancestors are removed again; pre-existing directories
+and any concurrent content are preserved.</p>
+<p>JSON output shape: <code>TargetLinkReport</code>.</p>
+<h3 id="dalo-target-unlink-target"><a class="doc-anchor" href="#dalo-target-unlink-target"><code>dalo target unlink &lt;target&gt;</code></a></h3>
+<p>Disable a target in state. <code>unlink</code> itself removes nothing from the target
+directory. The next <code>dalo sync</code> then reconciles the target and removes the
+Dalo-owned links it had materialized there; unmanaged files and real
+directories are never touched.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo target unlink codex
+dalo --json target unlink generic
+</code></pre>
+<p>JSON output shape: <code>TargetUnlinkReport</code>.</p>
+<h3 id="dalo-source-add-id-git-url-or-path---namespace-prefix"><a class="doc-anchor" href="#dalo-source-add-id-git-url-or-path---namespace-prefix"><code>dalo source add &lt;id&gt; &lt;git-url-or-path&gt; [--namespace &lt;prefix&gt;]</code></a></h3>
+<p>Add a trusted team source, clone it into <code>sources/&lt;id&gt;/checkout</code>, configure it
+with <code>update_policy = &quot;track&quot;</code>, and run a deterministic security preflight for
+every discovered skill. Source IDs must be a single path component using only
+letters, digits, <code>.</code>, <code>_</code>, and <code>-</code>; <code>.</code> and <code>..</code> are rejected.
+Local paths are supported; relative paths resolve against the current working
+directory.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo source add platform git@github.com:example/platform-skills.git
+dalo source add company git@github.com:example/company-skills.git --namespace company
+dalo --dry-run source add team https://github.com/example/team-skills.git
+</code></pre>
+<p>JSON output shape: <code>SourceAddReport</code>.</p>
+<p>When discovery skips or degrades a skill, <code>source add</code> prints each inventory
+warning with its path and actionable reason before continuing to audit the
+valid skills. Skipped skills are not audited or materialized. JSON consumers
+receive the same typed entries in <code>SourceAddReport.inventory_warnings[]</code>.</p>
+<h3 id="dalo-source-add-catalog-id-git-url-or-path---namespace-prefix"><a class="doc-anchor" href="#dalo-source-add-catalog-id-git-url-or-path---namespace-prefix"><code>dalo source add-catalog &lt;id&gt; &lt;git-url-or-path&gt; [--namespace &lt;prefix&gt;]</code></a></h3>
+<p>Add an untrusted catalog source, clone it into <code>sources/&lt;id&gt;/checkout</code>, and
+configure it with <code>update_policy = &quot;pin&quot;</code>. Catalog skills are offers; nothing
+from a catalog becomes active until selected and approved.
+After adding a catalog, the CLI reports how many skills are available and prints
+the exact <code>source inspect</code> and <code>source select</code> commands for the next step.
+Local paths are supported; relative paths resolve against the current working
+directory.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo source add-catalog public https://github.com/example/skill-catalog.git
+dalo source add-catalog editorial https://github.com/example/editorial-skills.git --namespace editorial
+dalo source inspect public
+dalo source select public review-helper
+</code></pre>
+<p>JSON output shape: <code>SourceConfig</code>.</p>
+<h3 id="dalo-source-list"><a class="doc-anchor" href="#dalo-source-list"><code>dalo source list</code></a></h3>
+<p>List configured sources in priority order. Git-backed entries include a
+read-only <code>provenance</code> object assembled from config, <code>source-lock.toml</code>, and the
+checkout without fetching: management authority, credential-redacted origin,
+requested ref, resolved pin, and checkout commit.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo source list
+dalo --json source list
+</code></pre>
+<p>JSON output shape: <code>SourceListReport</code>.</p>
+<h3 id="dalo-source-priority-id-priority"><a class="doc-anchor" href="#dalo-source-priority-id-priority"><code>dalo source priority &lt;id&gt; &lt;priority&gt;</code></a></h3>
+<p>Change a source priority. Lower numbers win during resolution. The local source priority is fixed and cannot be changed.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo source priority platform 10
+dalo --dry-run source priority platform 20
+</code></pre>
+<p>JSON output shape: <code>SourcePriorityReport</code>.</p>
+<h3 id="dalo-source-namespace-id-prefix---clear"><a class="doc-anchor" href="#dalo-source-namespace-id-prefix---clear"><code>dalo source namespace &lt;id&gt; [&lt;prefix&gt;] [--clear]</code></a></h3>
+<p>Set an optional namespace for every skill from a configured source.
+Dalo installs namespaced skills as <code>&lt;prefix&gt;__&lt;skill&gt;</code> and resolves them under
+that name, so same-named skills from distinct namespaced sources can coexist.
+The source <code>SKILL.md</code> files and source-qualified approval identities remain
+unchanged. Prefixes use the same portable lowercase token rules as skill names.
+Use <code>--clear</code> to restore the source&#39;s original install names. The built-in
+local source cannot be assigned a namespace, but <code>--clear</code> can restore its
+original slot names if a legacy configuration contains one, so local adaptations
+continue to override matching managed skills.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo source namespace company company
+dalo source namespace company --clear
+</code></pre>
+<p>JSON output shape: <code>SourceNamespaceReport</code>.</p>
+<h3 id="dalo-source-inspect-id"><a class="doc-anchor" href="#dalo-source-inspect-id"><code>dalo source inspect &lt;id&gt;</code></a></h3>
+<p>Inspect a catalog source and list available candidate skills, including ID, slot name, path, description, dependencies, and selection status.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo source inspect public
+dalo --json source inspect public
+</code></pre>
+<p>JSON output shape: <code>CatalogInspectReport</code>.</p>
+<h3 id="dalo-source-select-id-skill"><a class="doc-anchor" href="#dalo-source-select-id-skill"><code>dalo source select &lt;id&gt; &lt;skill&gt;...</code></a></h3>
+<p>Select catalog skills by stable frontmatter ID, <code>&lt;source-id&gt;:&lt;slot&gt;</code> reference,
+or slot name. Selection runs the deterministic security preflight, writes
+<code>config.toml</code>, and updates <code>source-lock.toml</code> with the pinned commit and
+inventory snapshot. Human-readable output names the skills added or removed,
+reports no-op requests explicitly, and shows the complete resulting selection
+as secondary detail.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo source select public review-helper
+dalo source select public review-helper formatter
+dalo source select public --unselect formatter
+dalo --dry-run source select public review-helper
+</code></pre>
+<p>JSON output shape: <code>CatalogSelectReport</code>.</p>
+<h3 id="dalo-source-refresh-id"><a class="doc-anchor" href="#dalo-source-refresh-id"><code>dalo source refresh &lt;id&gt;</code></a></h3>
+<p>Fetch a catalog source and compare the upstream inventory with the pinned
+inventory snapshot. This is read-only for pins and selections. <code>--check</code> exits
+non-zero when selected skills drifted upstream. <code>--advance</code> explicitly updates
+only this catalog after candidate approval, dependency, audit, and
+materialization preflight. Selected removal, dirty or divergent checkouts,
+security-audit blocks, and unsafe target state stop the transaction.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo source refresh public
+dalo source refresh public --check
+dalo --json source refresh public
+dalo --dry-run --json source refresh public --advance
+dalo source refresh public --advance
+</code></pre>
+<p>JSON output shape: <code>CatalogDrift</code>.</p>
+<p>With <code>--check</code>, the command exits with code 1 when a selected skill changed,
+moved, or was removed upstream. New unselected offerings remain informational.</p>
+<p><code>--advance</code> and <code>--check</code> are mutually exclusive. Global <code>--dry-run</code> with
+<code>--advance</code> returns <code>CatalogAdvanceReport</code>, including the complete old and new
+catalog lock entries, stable drift codes, reconciled selection, security audit
+results, materialization plan, and blocking reasons. It performs no config,
+lock, checkout, audit-cache, state, or target writes. A real advance updates the
+checkout, <code>source-lock.toml</code>, any stable-ID move in <code>config.toml</code>, <code>lock.toml</code>,
+and affected owned target links as one rollback-safe transaction. Newly
+required unapproved skills remain unlinked and can be approved after the new
+pin is installed; their dependents remain blocked until then. A candidate with
+blocking audit findings stays in <code>sources/.audit-staging/</code>; the report prints
+the exact staged path to review and, when justified, accept for that content
+hash before retrying the advance.</p>
+<h3 id="dalo-source-remove-id"><a class="doc-anchor" href="#dalo-source-remove-id"><code>dalo source remove &lt;id&gt;</code></a></h3>
+<p>Remove a team or catalog source as one coordinated change. Dalo first reconciles
+only links it owns, then removes the source from <code>config.toml</code>, its catalog lock
+entry (when present), and approvals qualified with that source ID. The source
+checkout is removed after the durable store state is committed. Use
+<code>--keep-checkout</code> to retain it for manual inspection. The built-in <code>local</code>
+source cannot be removed. A retained checkout must be moved or removed before
+the same source ID can be added again.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo --dry-run --json source remove platform
+dalo source remove public
+dalo source remove public --keep-checkout
+</code></pre>
+<p>Both dry-run and real <code>--json</code> output use <code>SourceRemoveReport</code>. It lists
+deactivated skills, the operation kind for every reconciled owned link, and any
+non-fatal checkout cleanup warnings. Dry-run does not modify config, locks,
+approvals, checkouts, or targets.</p>
+<h3 id="dalo-status"><a class="doc-anchor" href="#dalo-status"><code>dalo status</code></a></h3>
+<p>Show source scans, linked targets, active skills, pending approvals, unlinked skills,
+user-lock drift, unmanaged target skills, instruction packs, topic overlaps, and
+instruction block drift.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo status
+dalo status --check
+dalo --json status
+</code></pre>
+<p>JSON output shape: <code>StatusReport</code>.</p>
+<p><code>--check</code> exits with code 1 for unresolved source scans, skill or agent inventory warnings,
+pending approvals, blocked required closure, blocking or failed security audits,
+blocked materialization operations, missing targets for active skills, actionable
+resolution diagnostics, lock drift, unmanaged blockers, instruction-block drift,
+or unhealthy autosync state. It keeps the full report on stdout for JSON
+consumers.</p>
+<h3 id="dalo-plan"><a class="doc-anchor" href="#dalo-plan"><code>dalo plan</code></a></h3>
+<p>Show the effective plugin setup for every linked target without changing source,
+approval, or target files. Use it before <code>sync</code> to review selected plugins,
+target compatibility, approval state, and provider package paths. Planning never
+runs tools or hooks. Pass <code>--target</code> to limit the report to one linked target.</p>
+<pre><code class="language-sh">dalo plan
+dalo plan --target codex
+dalo --json plan
+</code></pre>
+<p>JSON output shape: <code>InstallationPlan</code>.</p>
+<h3 id="dalo-agent-listshow-sourcename"><a class="doc-anchor" href="#dalo-agent-listshow-sourcename"><code>dalo agent list|show &lt;source&gt;:&lt;name&gt;</code></a></h3>
+<p>Canonical agent packages live in <code>agents/&lt;name&gt;/AGENT.md</code> inside a source.
+<code>agent list</code> shows active, pending, and shadowed packages; <code>agent show</code> previews
+the package for Claude and Codex without writing provider files.</p>
+<pre><code class="language-sh">dalo agent list
+dalo agent show local:reviewer --provider codex
+dalo approve agent team:reviewer
+</code></pre>
+<p>Non-local agents need explicit <code>approve agent &lt;source&gt;:&lt;name&gt;</code> records; skill,
+source, author, and org approvals do not activate them. Invalid packages also
+make <code>status --check</code> fail. JSON shapes: <code>AgentListReport</code> (<code>resolution</code>,
+<code>inventory_warnings[]</code>, <code>source_errors[]</code>) and <code>AgentShowReport</code> (<code>agent</code>,
+<code>compilations[]</code>).</p>
+<h3 id="dalo-sync"><a class="doc-anchor" href="#dalo-sync"><code>dalo sync</code></a></h3>
+<p>Refresh clean tracking team sources, resolve the desired skill set, materialize owned symlinks into linked targets, and write <code>lock.toml</code>. Dirty tracking sources block refresh. Dalo does not overwrite unmanaged real directories or foreign symlinks.</p>
+<p>Before materialization, Dalo audits the exact content hash of every active
+skill. Unaccepted <code>high</code> or <code>critical</code> findings stop the command before any
+links are changed. A previously recorded risk acceptance is reused only while
+the complete directory hash, audit-engine versions, coverage, and finding set
+remain unchanged.</p>
+<p>Tracking team updates are fetched and audited in a detached worktree below
+<code>sources/.audit-staging/</code> before the live checkout fast-forwards. Existing
+target links therefore continue to expose the last accepted commit. When an
+update is blocked, the error prints a command for auditing and accepting the
+exact staged skill; the next <code>sync</code> reuses that staged hash.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo sync
+dalo sync --check
+dalo --dry-run sync
+dalo --json sync
+</code></pre>
+<p>JSON output shape: <code>SyncReport</code>. <code>deliveries[]</code> records each logical skill and
+physical target slot with <code>target_ids</code>, <code>mode</code>, optional <code>provider</code>, selected
+<code>artifact_path</code>, content <code>fingerprint</code>, and any fail-closed <code>reason</code>.</p>
+<p><code>dalo --dry-run sync</code> does not fetch tracking team sources, so it prints a
+note when upstream changes are not reflected in its plan. Run a real
+<code>dalo sync</code> to fetch those sources first; JSON consumers can inspect
+<code>SyncReport.unrefreshed_tracking_sources[]</code>.</p>
+<p><code>sync --check</code> still renders the report, then exits with code 1 when materialization
+is blocked or incomplete, including pending approvals, resolution diagnostics,
+degraded sources, blocked operations, or active skills without linked targets.</p>
+<p>An enabled source is <strong>degraded</strong> when Dalo cannot safely scan it, for example
+because its checkout is missing or unreadable, a tracking refresh failed, or
+inventory warnings make removals ambiguous. Dalo preserves recorded owned links
+from that source instead of treating the incomplete scan as a deletion. A normal
+<code>sync</code> can still apply unrelated safe work and exits successfully; <code>sync --check</code>
+exits with code 1 until the source is healthy. Restore or re-clone the checkout,
+or remove the source with <code>dalo source remove &lt;id&gt;</code>. Do not adopt or delete the
+preserved target link as if it were an unmanaged conflict. Machine-readable
+consumers can inspect each affected source in <code>SyncReport.degraded_sources[]</code>.
+<code>sync</code> also prints the individual inventory warnings that caused a degraded
+scan, including the affected path and reason, so the removal-safety message is
+not the only diagnosis. JSON consumers can inspect the same typed entries in
+<code>SyncReport.inventory_warnings[]</code>.</p>
+<p>Lock drift for local and team sources is commit-based. Uncommitted working-tree
+edits do not change the recorded commit, and materialized symlinks expose those
+live edits directly. Catalog selections are the source kind with content and
+metadata fingerprints for upstream drift checks.</p>
+<h3 id="dalo-autosync-installstatusuninstall"><a class="doc-anchor" href="#dalo-autosync-installstatusuninstall"><code>dalo autosync install|status|uninstall</code></a></h3>
+<p>Install recurring <code>dalo sync --check</code> behavior through the current user&#39;s
+native scheduler. macOS uses launchd. Linux prefers a systemd user timer and
+falls back to cron only when the user manager is unavailable. Supported
+schedules are <code>hourly</code>, <code>daily</code> (default for a first install), and <code>weekly</code>.
+Omitting <code>--schedule</code> on a reinstall preserves the installed schedule.</p>
+<p>Daily and weekly schedules run at a fixed per-store time in the local
+early-morning window (00:00–05:59, derived from the store path so different
+stores stagger rather than all firing at once). launchd coalesces missed jobs
+on wake and the systemd timer uses <code>Persistent=true</code>, but the cron fallback has
+no catch-up: a machine powered off throughout its scheduled window simply waits
+for the next slot, so prefer <code>hourly</code> on machines that are usually asleep at
+night. The window also overlaps the daylight-saving transition, so a skipped or
+repeated local hour can shift a single run.</p>
+<pre><code class="language-sh">dalo autosync install
+dalo autosync install --schedule hourly
+dalo --json autosync status
+dalo autosync uninstall
+</code></pre>
+<p>Installation records the stable absolute executable or launcher path that was
+invoked, preserving Homebrew symlinks and the global npm launcher instead of
+pinning their version-specific targets. Temporary <code>npx</code> executions cannot
+install autosync; install <code>getdalo</code> globally or use another persistent Dalo
+installation first. Generated artifacts never depend on shell startup files.
+Reinstalling or removing the job is idempotent. Global <code>--dry-run</code> previews
+install and uninstall without writing config, metadata, native artifacts, or
+scheduler state. Re-run <code>autosync install</code> after moving the Dalo executable;
+status treats a missing recorded executable as disabled instead of guessing a
+replacement, and <code>doctor</code> reports the exact missing path.
+If <code>autosync.toml</code> is malformed or uses a newer unsupported schema,
+<code>autosync uninstall</code> quarantines it as <code>autosync.toml.corrupt-*</code>, reconstructs
+the native scheduler identifiers from the store path for best-effort cleanup,
+and leaves autosync ready for a clean reinstall.</p>
+<p>The internal scheduled runner acquires the store lock once without waiting. If
+an interactive Dalo process owns it, the run exits successfully as <code>skipped</code>
+and retries on the next schedule. Dirty sources, malformed locks, pending
+approvals, security findings, target conflicts, or managed instruction drift
+remain fail-closed. <code>autosync-run.toml</code> records the last attempted and last
+successful timestamps plus <code>running</code>, <code>succeeded</code>, <code>skipped</code>, or <code>blocked</code> and
+an actionable reason. A run left <code>running</code> well past its schedule interval —
+for example after a crash or power loss mid-sync — is surfaced by <code>status</code> and
+<code>doctor</code> as an interrupted run.</p>
+<p><code>autosync status</code>, normal <code>status</code>, and <code>doctor</code> all surface this durable
+state; non-JSON output renders timestamps as UTC calendar times and, when an
+installed job is disabled, names the specific cause (missing artifacts, a moved
+store, or a scheduler-reported disable). Logs are written to <code>autosync.log</code> and
+<code>autosync-error.log</code> in the store. Before each scheduled run, Dalo trims each
+file to roughly its most recent 1 MiB, marking discarded older output with a
+truncation line. Both files are removed on <code>autosync uninstall</code>.</p>
+<h3 id="dalo-adopt-skill---replace"><a class="doc-anchor" href="#dalo-adopt-skill---replace"><code>dalo adopt &lt;skill&gt; [--replace]</code></a></h3>
+<p>Copy an unmanaged target skill into <code>local/skills/&lt;slot&gt;</code>. With <code>--replace</code>, Dalo replaces the original unmanaged directory with an owned symlink after copying. Without <code>--replace</code>, the original directory remains untouched.</p>
+<p>Adoption runs the same deterministic security preflight before copying or
+replacing anything. <code>--reviewer</code> (with deprecated <code>--agent</code> alias), <code>--refresh-audit</code>, and <code>--accept-risk &lt;reason&gt;</code>
+have the same meaning as on <code>dalo approve skill</code>.</p>
+<p>The <code>&lt;skill&gt;</code> argument can be a slot name, a disambiguating path, or an ID reported by <code>status</code> or <code>resolve list</code>. If the slot name exists in more than one target, Dalo refuses the ambiguous selector and lists the paths to choose from.</p>
+<p>Before it audits or copies anything, adoption rejects a folder name or
+<code>SKILL.md</code> frontmatter <code>name</code> that is not a portable lowercase slot name.
+Rename the folder or correct the frontmatter first, then run <code>dalo adopt</code>
+again.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo adopt review-helper
+dalo adopt review-helper --replace
+dalo --dry-run adopt /path/to/target/review-helper
+</code></pre>
+<p>When <code>--replace</code> reuses an existing local copy, Dalo compares the complete
+directory shape before removing the unmanaged original: file bytes and
+executable bits, empty directories, and symlink targets must all match.</p>
+<p>Successful JSON output combines the preflight and mutation as
+<code>{ &quot;audit&quot;: AuditReport, &quot;adoption&quot;: AdoptReport }</code>. If the audit blocks the
+operation, Dalo prints only the blocking <code>AuditReport</code> and exits non-zero.</p>
+<h3 id="dalo-resolve-list"><a class="doc-anchor" href="#dalo-resolve-list"><code>dalo resolve list</code></a></h3>
+<p>List repairable unmanaged skills, target scan warnings, and recorded owned symlinks.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo resolve list
+dalo --json resolve list
+</code></pre>
+<p>JSON output shape: <code>ResolveListReport</code>.</p>
+<h3 id="dalo-resolve-adopt-id---replace"><a class="doc-anchor" href="#dalo-resolve-adopt-id---replace"><code>dalo resolve adopt &lt;id&gt; [--replace]</code></a></h3>
+<p>Adopt an unmanaged skill by an ID returned from <code>resolve list</code>. Behavior matches <code>dalo adopt</code>.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo resolve adopt review-helper
+dalo resolve adopt review-helper --replace
+</code></pre>
+<p>JSON output matches <code>dalo adopt</code>: successful output is
+<code>{ &quot;audit&quot;: AuditReport, &quot;adoption&quot;: AdoptReport }</code>; a blocking audit prints
+only <code>AuditReport</code> and exits non-zero.</p>
+<h3 id="dalo-resolve-keep-id"><a class="doc-anchor" href="#dalo-resolve-keep-id"><code>dalo resolve keep &lt;id&gt;</code></a></h3>
+<p>Protect an unmanaged target skill so Dalo reports it as intentionally unmanaged. Protection is stored by logical target and slot, follows later target-path updates, and turns the sync conflict into a non-failing <code>keep</code> operation. An explicit <code>resolve adopt --replace</code> remains an override.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo resolve keep review-helper
+dalo --dry-run resolve keep review-helper
+</code></pre>
+<p>JSON output shape: <code>KeepReport</code>.</p>
+<h3 id="dalo-resolve-unkeep-targetslot"><a class="doc-anchor" href="#dalo-resolve-unkeep-targetslot"><code>dalo resolve unkeep &lt;target&gt;:&lt;slot&gt;</code></a></h3>
+<p>Remove protection from one target slot. A bare slot name removes matching protection across targets.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo resolve unkeep claude:review-helper
+dalo --dry-run resolve unkeep review-helper
+</code></pre>
+<p>JSON output shape: <code>UnkeepReport</code>.</p>
+<h3 id="dalo-resolve-remove-owned-id"><a class="doc-anchor" href="#dalo-resolve-remove-owned-id"><code>dalo resolve remove-owned &lt;id&gt;</code></a></h3>
+<p>Remove a recorded owned symlink by ID. If the recorded path is already missing,
+Dalo drops the stale state record. If a different, foreign symlink occupies the
+path, Dalo leaves that symlink untouched and drops only the stale ownership
+record. If a real entry exists at that path, Dalo blocks removal.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo resolve remove-owned claude:review-helper
+dalo --json resolve remove-owned claude:review-helper
+</code></pre>
+<p>JSON output shape: <code>RemoveOwnedReport</code>.</p>
+<h3 id="dalo-doctor"><a class="doc-anchor" href="#dalo-doctor"><code>dalo doctor</code></a></h3>
+<p>Run read-only diagnostics for store layout, config, state, lock, approvals, Git, GitHub CLI, targets, owned symlinks, dirty sources, pending approvals, required closures, instruction packs, and cloud-synced target paths.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo doctor
+dalo doctor --check
+dalo --json doctor
+</code></pre>
+<p>JSON output shape: <code>DoctorReport</code>.</p>
+<p><code>--check</code> exits with code 1 when the report contains an error finding. Warnings
+remain report-only so CI can choose its own warning policy.
+Doctor emits <code>source_lock_ok</code> only when <code>source-lock.toml</code> exists and parses. If
+the file is malformed, it reports <code>source_lock_invalid</code> and suppresses dependent
+catalog provenance comparisons so recovery guidance cannot contradict itself.</p>
+<h3 id="dalo-audit-skill-or-path"><a class="doc-anchor" href="#dalo-audit-skill-or-path"><code>dalo audit &lt;skill-or-path&gt;</code></a></h3>
+<p>Inspect a skill before it is exposed to an agent. The target can be an existing
+directory or a source-qualified reference. Deterministic checks are local and
+never execute skill code.</p>
+<pre><code class="language-sh">dalo audit public:review-helper
+dalo audit ./my-skill --check
+dalo audit public:review-helper --reviewer auto
+dalo --json audit public:review-helper --reviewer codex
+dalo audit public:review-helper --reviewer claude --refresh-audit
+</code></pre>
+<p>Use <code>--refresh-audit</code> to ignore a compatible cached semantic review and run the
+selected provider again. The older <code>--refresh</code> spelling remains a hidden alias
+for script compatibility.</p>
+<p><code>--reviewer auto|codex|claude|opencode</code> adds a semantic review through an installed
+agent CLI. Dalo starts a fresh non-persistent reviewer and treats a bounded
+snapshot as untrusted data. Claude and OpenCode run with tools denied. Codex
+currently retains its network-disabled, read-only sandbox shell, so Dalo never
+selects it through <code>auto</code>; choosing <code>--reviewer codex</code> is an explicit acceptance of
+that weaker isolation boundary. User configuration, project rules, skills,
+plugins, and MCPs are disabled where the provider supports it. The structured
+result contains evidence-backed findings, expected capabilities, and behavior
+not disclosed by the skill. Depending on the installed agent configuration,
+this can send skill contents to an external model provider and consume that
+provider&#39;s quota. Dalo never includes <code>.git</code> metadata in that snapshot; a skill
+containing a <code>.git</code> entry receives a blocking, partial-coverage finding instead.
+Provider processes receive only an explicit runtime and provider-authentication
+environment allowlist rather than inheriting Dalo&#39;s full environment. Omitting
+<code>--reviewer</code> is fully local. <code>--agent</code> remains a deprecated compatibility alias.</p>
+<p>Agent review is optional and additive, not an approval mechanism. It can add
+evidence-backed findings to the deterministic audit, but it never clears a
+deterministic finding or certifies a skill as safe. A review with no additional
+findings means only that this constrained assessment found no additional issue;
+it is not an endorsement or safety guarantee. <code>sync</code> does not invoke a provider
+on its own. Its human-readable result repeats that boundary after every sync.</p>
+<p><code>--check</code> exits non-zero for unaccepted <code>high</code> or <code>critical</code> findings. Record a
+reviewed exception with a non-empty reason:</p>
+<pre><code class="language-sh">dalo audit public:review-helper \
+  --accept-risk &quot;reviewed pinned upstream installer&quot;
+</code></pre>
+<p>Persistence changes (such as shell startup files, scheduled tasks, or agent
+configuration) and privileged command execution are <code>high</code> findings and block
+by default. General dynamic execution remains a <code>medium</code> review finding: it is
+reported, but does not block materialization on its own. This policy keeps
+high-confidence persistence and privilege-escalation primitives behind an
+explicit, content-bound risk acceptance without treating every technical skill
+as unsafe by default.</p>
+<p>Reports live below <code>audits/</code> and are keyed by both the source-qualified skill
+reference and the complete skill directory hash. After re-hashing the current
+directory, a report with the matching source, static-engine version, and scan
+mode reuses its deterministic findings and coverage instead of reading and
+scanning every file again. Missing, malformed, old-version, changed-content,
+unreadable, or incompatible-mode reports are rebuilt before they can affect the
+result.
+When a non-dry-run audit produces the same durable report content, Dalo retains
+the existing report (including its <code>scanned_at_unix</code> value) without rewriting
+it.
+Cached agent results additionally require the same content, scan mode,
+provider, and Dalo review-prompt version. Risk acceptance is bound to source
+provenance, engine versions, coverage, and exact deterministic and semantic
+findings, so a different source or newly discovered risk requires a new
+decision even when the skill bytes did not change.</p>
+<p>The audit directory and report files are restricted to the current user when
+Dalo writes them. Audit state is still a local trust boundary rather than a
+cryptographically authenticated log: a process running as the same user can
+replace it. Protect the store like other security-sensitive user state and do
+not place it in a shared or untrusted writable directory. No-finding results
+are best-effort observations, not a security certification.</p>
+<p>JSON output shape: <code>AuditReport</code>.</p>
+<h3 id="dalo-plugin-listshowselectunselectdecline"><a class="doc-anchor" href="#dalo-plugin-listshowselectunselectdecline"><code>dalo plugin list|show|select|unselect|decline</code></a></h3>
+<p>Inspect and manage direct local plugin selection. Plugin references use
+<code>&lt;source-id&gt;:&lt;slot-or-stable-id&gt;</code>.</p>
+<pre><code class="language-sh">dalo plugin list
+dalo plugin show company:review-workflow
+dalo plugin select company:review-workflow
+dalo plugin unselect company:review-workflow
+dalo plugin decline company:review-workflow \
+  --rule-id no-shell-hooks \
+  --reason &quot;shell hooks are outside local policy&quot;
+</code></pre>
+<p><code>list</code> returns every valid candidate plus the canonical selected graph; <code>show</code>
+returns one candidate and its selected state, when reachable. Both commands are
+read-only. <code>select</code> adds a direct user selection without replacing
+source-authored selections, while <code>unselect</code> removes only that direct user
+selection. <code>decline</code> retains selected intent but blocks the plugin with a local
+policy record. It requires the plugin to be selected, a unique lower-kebab
+<code>--rule-id</code>, and a non-empty <code>--reason</code> for audit context.</p>
+<p>The three mutations support <code>--dry-run</code> and report whether configuration would
+change. JSON shapes: <code>PluginListReport</code> (<code>candidates[]</code>, <code>resolution</code>),
+<code>PluginShowReport</code> (<code>candidate</code>, optional <code>selected</code>), and
+<code>PluginMutationReport</code> (<code>plugin</code>, <code>action</code>, <code>changed</code>, <code>dry_run</code>).</p>
+<h3 id="dalo-plugin-review-sourceplugin"><a class="doc-anchor" href="#dalo-plugin-review-sourceplugin"><code>dalo plugin review &lt;source:plugin&gt;</code></a></h3>
+<p>Review every component decision for one selected portable plugin and its
+selected dependency closure in deterministic plugin/component/target order:</p>
+<pre><code class="language-sh">dalo plugin review company:review-workflow
+dalo --dry-run plugin review company:review-workflow
+dalo --json plugin review company:review-workflow
+</code></pre>
+<p>The report embeds the same typed installation-plan facts as <code>dalo plan</code>, plus
+package provenance, content/contract hashes, agent activation, inactive
+instruction recommendations, tool capabilities, hook event/effect/matcher/
+timeout/failure semantics, and provider mappings or fallbacks. Existing exact
+approvals are marked <code>reused</code>; changed hash-bound contracts are <code>invalidated</code>;
+blocked, unsupported, and inactive boundaries stay distinct.</p>
+<p>Interactive mode collects <code>y</code>/<code>n</code> answers in memory and requires a final
+confirmation before one atomic approval-ledger write. EOF, <code>q</code>, or declining
+the final confirmation grants nothing. The displayed review token is rebuilt
+under the store lock immediately before commit, so source, approval, audit, or
+target drift requires a fresh review. Only the displayed exact <code>skill</code>,
+<code>agent</code>, <code>tool</code>, and <code>hook</code> values can be committed—never a plugin/source/
+author/org/wildcard approval. Tool bytes may be content-addressed and staged as
+an inert prepare step; tools, hooks, generators, semantic reviewers, and target
+mutations are never executed by review.</p>
+<p>JSON and dry-run modes are read-only and do not prompt. Prefer the individual
+commands below for a single known component, for revocation, or when a skill&#39;s
+blocking findings require <code>--accept-risk</code>.</p>
+<h3 id="dalo-tool-list-dalo-tool-showaudit-sourceplugintoolid"><a class="doc-anchor" href="#dalo-tool-list-dalo-tool-showaudit-sourceplugintoolid"><code>dalo tool list</code>; <code>dalo tool show|audit &lt;source:plugin#tool:id&gt;</code></a></h3>
+<p>Inspect plugin-local executable contracts without running them:</p>
+<pre><code class="language-sh">dalo tool list
+dalo tool show company:review-workflow#tool:detector
+dalo tool audit company:review-workflow#tool:detector
+dalo --json tool show company:review-workflow#tool:detector
+</code></pre>
+<p><code>list</code> joins validated tools with their approval, immutable staging, runtime,
+platform, and audit state. <code>show</code> returns the full descriptor, contract hash,
+source provenance, exact approval value, staged path when present, and an
+actionable diagnostic. <code>audit</code> rechecks the tool&#39;s declared executable closure
+and contract hash; it does not stage, approve, or execute the tool.</p>
+<p>JSON shapes: <code>ToolListReport</code> (<code>tools[]</code>, <code>warnings[]</code>), <code>ToolStatusReport</code>
+(<code>tool</code>, <code>plugin_package_hash</code>, <code>plugin_path</code>, <code>source_provenance</code>,
+<code>approval_value</code>, <code>state</code>, optional <code>staged_path</code>, <code>diagnostic</code>), and
+<code>ToolAuditReport</code> (<code>tool</code>, <code>contract_hash</code>, <code>plugin_package_hash</code>, <code>passed</code>,
+<code>findings[]</code>).</p>
+<h3 id="dalo-hook-list-dalo-hook-show-sourcepluginhookid"><a class="doc-anchor" href="#dalo-hook-list-dalo-hook-show-sourcepluginhookid"><code>dalo hook list</code>; <code>dalo hook show &lt;source:plugin#hook:id&gt;</code></a></h3>
+<p>Inspect portable hook contracts without installing or executing them:</p>
+<pre><code class="language-sh">dalo hook list
+dalo hook show company:review-workflow#hook:check-shell
+dalo --json hook show company:review-workflow#hook:check-shell
+</code></pre>
+<p><code>list</code> reports every validated hook with its independent trust state and the
+referenced tool&#39;s state. <code>show</code> returns the exact hook and tool contracts,
+source provenance, approval value, event/effect/matcher/binding semantics, and
+an actionable diagnostic. A hook becomes ready only when both its own contract
+and its referenced tool contract are ready. These public inspection commands
+never project or execute a hook.</p>
+<p>JSON shapes: <code>HookListReport</code> (<code>hooks[]</code>, <code>warnings[]</code>) and <code>HookStatusReport</code>
+(<code>hook</code>, <code>plugin_package_hash</code>, <code>source_provenance</code>, <code>approval_value</code>,
+<code>tool_state</code>, <code>tool</code>, <code>state</code>, <code>diagnostic</code>).</p>
+<h3 id="dalo-approve"><a class="doc-anchor" href="#dalo-approve"><code>dalo approve</code></a></h3>
+<p>Grant, list, and revoke approval records without editing <code>approvals.toml</code>.
+Component and owner values are source-qualified, so an approval cannot
+accidentally apply to a different source with the same name.</p>
+<pre><code class="language-sh">dalo approve list
+dalo approve skill public:review-helper
+dalo approve skill public:review-helper --reviewer codex
+dalo approve skill public:review-helper --accept-risk &quot;reviewed exception&quot;
+dalo approve agent team:reviewer
+dalo approve tool team:quality#tool:detector
+dalo approve delivery team:generated-review
+dalo approve hook team:quality#hook:pre-commit
+dalo approve source team
+dalo approve author public:maintainers
+dalo approve org public:example-org
+dalo approve revoke skill public:review-helper
+dalo approve revoke tool team:quality#tool:detector
+dalo approve revoke delivery team:generated-review
+dalo approve revoke hook team:quality#hook:pre-commit
+</code></pre>
+<p>Approval writes support <code>--dry-run</code> and <code>--json</code>. A pending skill shown by
+<code>status</code> can be approved narrowly with <code>dalo approve skill &lt;source:skill&gt;</code>.
+A pending canonical agent shown by <code>agent list</code> can be activated with
+<code>dalo approve agent &lt;source:agent&gt;</code>. Tool approval validates and immutably
+stages the exact executable closure without running it. Delivery approval is
+inert and grants only the exact revision- and recipe-bound generated delivery.
+Hook approval grants the exact hook contract after its referenced tool is
+ready. The revoke scope is one of <code>skill</code>, <code>agent</code>, <code>tool</code>, <code>delivery</code>, <code>hook</code>,
+<code>source</code>, <code>author</code>, or <code>org</code>; Clap validates this value and exposes the choices
+to shell completion.
+Skill approval always runs the deterministic preflight first and refuses a
+blocking result unless a reason is supplied with <code>--accept-risk</code>. <code>--reviewer</code>
+adds the same isolated semantic review as <code>dalo audit</code>.</p>
+<p>JSON output shapes: <code>ApprovalsFile</code> for <code>list</code>; successful <code>approve skill</code>
+output is <code>{ &quot;audit&quot;: AuditReport, &quot;approval&quot;: ApprovalReport }</code>; <code>agent</code>,
+<code>source</code>, <code>author</code>, and <code>org</code> mutations emit a bare <code>ApprovalReport</code>; tool,
+delivery, and hook grants and revocations emit <code>ToolApprovalReport</code>,
+<code>DeliveryApprovalReport</code>, and <code>HookApprovalReport</code>, respectively. Other
+revocations emit <code>ApprovalReport</code>. If the skill audit blocks approval, Dalo
+prints only the blocking <code>AuditReport</code> and exits non-zero.</p>
+<h3 id="dalo-instructions-enable-pack-ref-file--target-agent"><a class="doc-anchor" href="#dalo-instructions-enable-pack-ref-file--target-agent"><code>dalo instructions enable &lt;pack-ref&gt; &lt;file|--target agent...&gt;</code></a></h3>
+<p>Render a local pack from <code>local/instructions/&lt;pack&gt;.md</code>, or a source-backed pack
+selected as <code>&lt;source&gt;:&lt;pack&gt;</code>, into an instruction file as a managed block. The
+target file is created if missing. Enabling the same pack again is idempotent
+and refreshes the block. Source-backed packs must be tracked in a clean Git
+checkout; Dalo records the exact source commit and declared pack version in the
+user lock. Running <code>instructions enable</code> is the explicit activation boundary:
+discovering or refreshing a source never activates a new pack automatically.</p>
+<p>Repeat <code>--target</code> to resolve one pack to several verified native user files in
+one operation. <code>codex</code> maps to <code>$CODEX_HOME/AGENTS.md</code> (default
+<code>~/.codex/AGENTS.md</code>) and <code>claude</code> maps to
+<code>$CLAUDE_CONFIG_DIR/CLAUDE.md</code> (default <code>~/.claude/CLAUDE.md</code>). Existing
+symlinks are resolved before planning, so aliases of the same physical file are
+written once. Targets without a verified mapping fail closed and require an
+explicit file.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo instructions enable team-style ~/.codex/AGENTS.md
+dalo instructions enable company:engineering-defaults ~/.claude/CLAUDE.md
+dalo instructions enable company:engineering-defaults --target codex --target claude
+dalo --dry-run instructions enable team-style ./AGENTS.md
+</code></pre>
+<p>Explicit-file JSON output uses <code>InstructionPackReport</code>. Target-aware output uses
+<code>InstructionPackBatchReport</code> with <code>source_id</code>, <code>pack_id</code>, <code>dry_run</code>, and
+de-duplicated <code>operations[]</code>; every operation includes <code>logical_targets[]</code>, the
+effective physical <code>target</code>, <code>action</code>, and an optional <code>warning</code>.</p>
+<h3 id="dalo-instructions-disable-pack-ref-file--target-agent"><a class="doc-anchor" href="#dalo-instructions-disable-pack-ref-file--target-agent"><code>dalo instructions disable &lt;pack-ref&gt; &lt;file|--target agent...&gt;</code></a></h3>
+<p>Remove a pack&#39;s managed block from an instruction file and remove its active lock entry.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo instructions disable team-style ~/.codex/AGENTS.md
+dalo instructions disable company:engineering-defaults ~/.claude/CLAUDE.md
+dalo instructions disable company:engineering-defaults --target codex --target claude
+dalo --json instructions disable team-style ./AGENTS.md
+</code></pre>
+<p>JSON output shape: <code>InstructionPackReport</code> with <code>source_id</code>, <code>pack_id</code>, <code>target</code>,
+<code>action</code>, <code>dry_run</code>, and an optional <code>warning</code> when recovery leaves a malformed
+target block untouched. Disabling a pack removes its lock entry even when its managed
+markers are malformed; the target file is left unchanged and the warning
+explains the remaining drift. Mutations abort if the target changed on disk
+after it was read. Target updates lock the opened inode and verify both its
+content and identity before and after writing, so a file replaced by another
+process is left untouched and the command fails safely.</p>
+<h3 id="dalo-instructions-list"><a class="doc-anchor" href="#dalo-instructions-list"><code>dalo instructions list</code></a></h3>
+<p>List active instruction packs recorded in <code>lock.toml</code>.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo instructions list
+dalo --json instructions list
+</code></pre>
+<p>JSON output shape: <code>InstructionPackListReport</code> with
+<code>active_instruction_packs[]</code> entries.</p>
+<h3 id="dalo-completions-shell"><a class="doc-anchor" href="#dalo-completions-shell"><code>dalo completions &lt;shell&gt;</code></a></h3>
+<p>Generate shell completions to stdout. Supported shell names are provided by <code>clap_complete</code>, including <code>bash</code>, <code>zsh</code>, and <code>fish</code>.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo completions zsh &gt; _dalo
+dalo completions bash &gt; dalo.bash
+dalo completions fish &gt; dalo.fish
+</code></pre>
+<p>Release archives include generated completions. This command is also available for Cargo installs and local shell setup.</p>
+<h3 id="dalo-manpage"><a class="doc-anchor" href="#dalo-manpage"><code>dalo manpage</code></a></h3>
+<p>Generate the <code>dalo(1)</code> man page to stdout from the same Clap command definition used for <code>--help</code>.</p>
+<p>Example:</p>
+<pre><code class="language-sh">dalo manpage &gt; dalo.1
+</code></pre>
+<p>Release archives include the generated man page. This command is also available for Cargo installs and local documentation setup.</p>
+<h2 id="exit-codes"><a class="doc-anchor" href="#exit-codes">Exit Codes</a></h2>
+<p>Dalo uses a small scripting contract:</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Name</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>0</code></td>
+<td>success</td>
+<td>Command completed.</td>
+</tr>
+<tr>
+<td><code>1</code></td>
+<td>expected failure</td>
+<td>User-actionable input/state problem, such as semantic value validation, unknown source, unknown target, unsupported schema, parse error, a failed explicit check, a security-audit block during <code>sync</code> or <code>approve</code>, or adoption destination already existing.</td>
+</tr>
+<tr>
+<td><code>2</code></td>
+<td>usage error</td>
+<td>Invalid arguments or flags from Clap. This output is plain text even with <code>--json</code>.</td>
+</tr>
+<tr>
+<td><code>3</code></td>
+<td>unsafe state</td>
+<td>Dalo refused to mutate because the state needs human attention, such as a dirty source, active store lock, or malformed instruction block.</td>
+</tr>
+<tr>
+<td><code>4</code></td>
+<td>environment problem</td>
+<td>Dependency, path, Git, filesystem, or external command problem.</td>
+</tr>
+</tbody></table></div>
+<p>Scripts should treat <code>3</code> differently from <code>1</code>: it means Dalo intentionally stopped before touching state that may require review.</p>
+<h2 id="json-output-shapes"><a class="doc-anchor" href="#json-output-shapes">JSON Output Shapes</a></h2>
+<p><code>--json</code> prints one JSON value to stdout on success. Runtime errors are printed to stderr as <code>{&quot;error&quot;:{&quot;code&quot;:&quot;...&quot;,&quot;message&quot;:&quot;...&quot;}}</code> and keep the same exit code as text output. Path fields serialize as strings. Enum fields serialize as <code>snake_case</code> unless noted. Commands that mutate and support <code>--dry-run</code> include a <code>dry_run</code> boolean in their report.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Shape</th>
+<th>Important fields</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>init</code></td>
+<td><code>InitReport</code></td>
+<td><code>store</code>, <code>dry_run</code>, <code>operations[]</code> with <code>action</code>, <code>path</code>, <code>status</code></td>
+</tr>
+<tr>
+<td><code>target detect</code></td>
+<td><code>TargetDetectReport</code></td>
+<td><code>targets[]</code> with <code>id</code>, <code>name</code>, <code>support</code>, <code>path</code>, <code>exists</code>, <code>linked</code></td>
+</tr>
+<tr>
+<td><code>target link</code></td>
+<td><code>TargetLinkReport</code></td>
+<td><code>target_id</code>, <code>path</code>, <code>canonical_path</code>, <code>status</code>, <code>created_dir</code></td>
+</tr>
+<tr>
+<td><code>target unlink</code></td>
+<td><code>TargetUnlinkReport</code></td>
+<td><code>target_id</code>, <code>status</code></td>
+</tr>
+<tr>
+<td><code>team init</code></td>
+<td><code>TeamManifestMutationReport</code></td>
+<td><code>path</code>, <code>action</code>, <code>dry_run</code>, resulting <code>manifest</code></td>
+</tr>
+<tr>
+<td><code>team catalog add</code></td>
+<td><code>TeamManifestMutationReport</code></td>
+<td><code>path</code>, <code>action</code>, <code>catalog_id</code>, <code>dry_run</code>, resulting <code>manifest</code></td>
+</tr>
+<tr>
+<td><code>team catalog skills</code></td>
+<td><code>TeamManifestMutationReport</code></td>
+<td><code>path</code>, <code>action</code>, <code>catalog_id</code>, <code>dry_run</code>, resulting <code>manifest</code></td>
+</tr>
+<tr>
+<td><code>team catalog version</code></td>
+<td><code>TeamManifestMutationReport</code></td>
+<td><code>path</code>, <code>action</code>, <code>catalog_id</code>, <code>dry_run</code>, resulting <code>manifest</code></td>
+</tr>
+<tr>
+<td><code>team catalog update</code></td>
+<td><code>TeamCatalogUpdateReport</code></td>
+<td><code>catalog_id</code>, <code>old_version</code>, <code>old_commit</code>, <code>from_ref</code>, <code>candidate_commit</code>, <code>outcomes[]</code>, <code>audits[]</code>, optional <code>accepted_risk_reason</code>, <code>blocking_reasons[]</code>, <code>dry_run</code>, <code>updated</code>, resulting <code>manifest</code></td>
+</tr>
+<tr>
+<td><code>team catalog remove</code></td>
+<td><code>TeamManifestMutationReport</code></td>
+<td><code>path</code>, <code>action</code>, <code>catalog_id</code>, <code>dry_run</code>, resulting <code>manifest</code></td>
+</tr>
+<tr>
+<td><code>team show</code></td>
+<td><code>TeamManifestView</code></td>
+<td><code>path</code>, <code>manifest</code></td>
+</tr>
+<tr>
+<td><code>source add</code></td>
+<td><code>SourceAddReport</code></td>
+<td><code>source</code>, <code>dry_run</code>, <code>audits[]</code> with one <code>AuditReport</code> per discovered skill, optional <code>inventory_warnings[]</code> (<code>code</code>, <code>path</code>, <code>message</code>)</td>
+</tr>
+<tr>
+<td><code>source add-catalog</code></td>
+<td><code>SourceConfig</code></td>
+<td><code>id</code>, <code>kind</code>, <code>path</code>, <code>priority</code>, <code>enabled</code>, <code>trusted</code>, <code>url</code>, <code>update_policy</code>, <code>selection</code></td>
+</tr>
+<tr>
+<td><code>source list</code></td>
+<td><code>SourceListReport</code></td>
+<td><code>sources[]</code>, each with existing <code>SourceConfig</code> fields plus <code>provenance</code></td>
+</tr>
+<tr>
+<td><code>source priority</code></td>
+<td><code>SourcePriorityReport</code></td>
+<td><code>source</code>, <code>dry_run</code></td>
+</tr>
+<tr>
+<td><code>source namespace &lt;id&gt; [&lt;prefix&gt;] [--clear]</code></td>
+<td><code>SourceNamespaceReport</code></td>
+<td><code>source</code>, <code>changed</code>, <code>dry_run</code></td>
+</tr>
+<tr>
+<td><code>source inspect</code></td>
+<td><code>CatalogInspectReport</code></td>
+<td><code>source_id</code>, <code>candidates[]</code></td>
+</tr>
+<tr>
+<td><code>source select</code></td>
+<td><code>CatalogSelectReport</code></td>
+<td><code>source_id</code>, changed user references in <code>added[]</code> / <code>removed[]</code>, complete resulting <code>selected[]</code>, <code>dry_run</code>, <code>audits[]</code> for skills named by the operation, <code>migration_warnings[]</code> for degraded legacy sibling catalogs</td>
+</tr>
+<tr>
+<td><code>source refresh</code></td>
+<td><code>CatalogDrift</code></td>
+<td><code>source_id</code>, <code>pinned_commit</code>, <code>upstream_commit</code>, <code>outcomes[]</code>, <code>migration_warnings[]</code> for degraded legacy sibling catalogs</td>
+</tr>
+<tr>
+<td><code>source refresh --advance</code></td>
+<td><code>CatalogAdvanceReport</code></td>
+<td>exact <code>old_lock</code>/<code>new_lock</code>, selections, <code>outcomes[]</code>, <code>audits[]</code>, <code>sync</code>, <code>blocking_reasons[]</code>, <code>dry_run</code>, and <code>advanced</code></td>
+</tr>
+<tr>
+<td><code>source remove</code></td>
+<td><code>SourceRemoveReport</code></td>
+<td><code>source_id</code>, <code>checkout_path</code>, <code>kept_checkout</code>, <code>removed_approvals</code>, <code>removed_catalog_lock</code>, <code>reconciled_links[]</code>, <code>deactivated_skills[]</code>, <code>deactivated_instruction_packs[]</code>, <code>cleanup_warnings[]</code>, <code>affected_paths[]</code>, <code>dry_run</code></td>
+</tr>
+<tr>
+<td><code>agent list</code></td>
+<td><code>AgentListReport</code></td>
+<td><code>resolution</code>, <code>inventory_warnings[]</code>, <code>source_errors[]</code></td>
+</tr>
+<tr>
+<td><code>agent show</code></td>
+<td><code>AgentShowReport</code></td>
+<td><code>agent</code>, provider <code>compilations[]</code></td>
+</tr>
+<tr>
+<td><code>plan</code></td>
+<td><code>InstallationPlan</code></td>
+<td><code>schema_version</code>, <code>store</code>, <code>canonical_plugins</code>, <code>inventory_warnings[]</code>, <code>tools[]</code>, <code>hooks[]</code>, optional <code>native_plugins[]</code>, physical <code>destinations[]</code> with per-target plugin/component explanations</td>
+</tr>
+<tr>
+<td><code>plugin list</code></td>
+<td><code>PluginListReport</code></td>
+<td><code>candidates[]</code>, canonical <code>resolution</code></td>
+</tr>
+<tr>
+<td><code>plugin show</code></td>
+<td><code>PluginShowReport</code></td>
+<td><code>candidate</code>, optional <code>selected</code> state</td>
+</tr>
+<tr>
+<td><code>plugin select</code> / <code>unselect</code> / <code>decline</code></td>
+<td><code>PluginMutationReport</code></td>
+<td><code>plugin</code>, <code>action</code>, <code>changed</code>, <code>dry_run</code></td>
+</tr>
+<tr>
+<td><code>plugin review</code></td>
+<td><code>PluginReviewReport</code></td>
+<td><code>schema_version</code>, <code>root_plugin</code>, <code>plugin_closure[]</code>, <code>installation_plan</code>, separately scoped <code>decisions[]</code>, <code>review_token</code>, <code>read_only</code></td>
+</tr>
+<tr>
+<td><code>tool list</code></td>
+<td><code>ToolListReport</code></td>
+<td><code>tools[]</code> with exact trust/runtime/staging state, <code>warnings[]</code></td>
+</tr>
+<tr>
+<td><code>tool show</code></td>
+<td><code>ToolStatusReport</code></td>
+<td>tool descriptor, package and source provenance, <code>approval_value</code>, <code>state</code>, optional <code>staged_path</code>, <code>diagnostic</code></td>
+</tr>
+<tr>
+<td><code>tool audit</code></td>
+<td><code>ToolAuditReport</code></td>
+<td><code>tool</code>, <code>contract_hash</code>, <code>plugin_package_hash</code>, <code>passed</code>, <code>findings[]</code></td>
+</tr>
+<tr>
+<td><code>hook list</code></td>
+<td><code>HookListReport</code></td>
+<td><code>hooks[]</code> with hook and referenced-tool states, <code>warnings[]</code></td>
+</tr>
+<tr>
+<td><code>hook show</code></td>
+<td><code>HookStatusReport</code></td>
+<td>hook and tool contracts, package and source provenance, <code>approval_value</code>, <code>tool_state</code>, <code>state</code>, <code>diagnostic</code></td>
+</tr>
+<tr>
+<td><code>autosync install</code> / <code>uninstall</code></td>
+<td><code>AutosyncMutationReport</code></td>
+<td><code>action</code>, <code>dry_run</code>, resulting <code>status</code></td>
+</tr>
+<tr>
+<td><code>autosync status</code></td>
+<td><code>AutosyncStatusReport</code></td>
+<td><code>configured</code>, <code>installed</code>, <code>enabled</code>, backend, schedule, executable, store, artifacts, optional <code>scheduler_error</code>, optional <code>disabled_reason</code>, and optional <code>last_run</code></td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td><code>StatusReport</code></td>
+<td><code>store</code>, <code>sources[]</code> with <code>skill_count</code>, <code>agent_count</code>, and <code>provenance</code>, <code>targets[]</code>, <code>inventory_warnings[]</code>, <code>agent_inventory_warnings[]</code>, <code>resolution</code>, dry-run <code>materialization[]</code>, <code>blocking_audits[]</code>, <code>audit_failures[]</code>, <code>lock</code>, <code>unmanaged_skills[]</code>, <code>target_warnings[]</code>, <code>instruction_packs[]</code>, <code>instruction_pack_overlaps[]</code>, <code>instruction_block_drifts[]</code>, <code>autosync</code></td>
+</tr>
+<tr>
+<td><code>sync</code></td>
+<td><code>SyncReport</code></td>
+<td><code>store</code>, <code>dry_run</code>, <code>linked_targets</code>, skill <code>operations[]</code>, optional <code>instruction_operations[]</code> (<code>source_id</code>, <code>pack_id</code>, <code>target</code>, <code>action</code>, <code>previous_commit</code>, <code>commit</code>), <code>resolution</code>, <code>degraded_sources[]</code> (<code>id</code>, <code>path</code>, <code>reason</code>), optional <code>inventory_warnings[]</code> (<code>code</code>, <code>path</code>, <code>message</code>), optional <code>unrefreshed_tracking_sources[]</code>, <code>unselected_catalogs[]</code> (<code>source_id</code>, <code>available_skills</code>)</td>
+</tr>
+<tr>
+<td><code>audit</code></td>
+<td><code>AuditReport</code></td>
+<td><code>schema_version</code>, <code>source_ref</code>, <code>skill_path</code>, <code>content_hash</code>, <code>static_engine_version</code>, <code>scanned_at_unix</code>, <code>coverage</code>, <code>status</code>, optional <code>max_severity</code>, <code>static_findings[]</code>, optional <code>agent_review</code>, optional <code>risk_acceptance</code></td>
+</tr>
+<tr>
+<td><code>approve list</code></td>
+<td><code>ApprovalsFile</code></td>
+<td><code>schema_version</code>, <code>approvals[]</code></td>
+</tr>
+<tr>
+<td><code>approve skill</code></td>
+<td>audited approval outcome</td>
+<td><code>audit</code> (<code>AuditReport</code>), <code>approval</code> (<code>ApprovalReport</code>)</td>
+</tr>
+<tr>
+<td><code>approve agent</code> / <code>source</code> / <code>author</code> / <code>org</code></td>
+<td><code>ApprovalReport</code></td>
+<td><code>scope</code>, <code>value</code>, <code>action</code>, <code>dry_run</code></td>
+</tr>
+<tr>
+<td><code>approve tool</code> / <code>approve revoke tool</code></td>
+<td><code>ToolApprovalReport</code></td>
+<td><code>tool</code>, content-bound <code>approval_value</code>, <code>action</code>, optional immutable <code>staged_path</code>, <code>dry_run</code></td>
+</tr>
+<tr>
+<td><code>approve delivery</code> / <code>approve revoke delivery</code></td>
+<td><code>DeliveryApprovalReport</code></td>
+<td><code>skill</code>, revision- and recipe-bound <code>approval_value</code>, optional <code>generator</code> and <code>generator_contract_hash</code>, <code>providers</code>, <code>action</code>, <code>dry_run</code>, <code>execution</code> (<code>not_run</code> during approval)</td>
+</tr>
+<tr>
+<td><code>approve hook</code> / <code>approve revoke hook</code></td>
+<td><code>HookApprovalReport</code></td>
+<td><code>hook</code>, content-bound <code>approval_value</code>, <code>action</code>, <code>dry_run</code></td>
+</tr>
+<tr>
+<td><code>approve revoke skill</code> / <code>agent</code> / <code>source</code> / <code>author</code> / <code>org</code></td>
+<td><code>ApprovalReport</code></td>
+<td><code>scope</code>, <code>value</code>, <code>action</code>, <code>dry_run</code></td>
+</tr>
+<tr>
+<td><code>adopt</code> / <code>resolve adopt</code></td>
+<td>audited adoption outcome</td>
+<td><code>audit</code> (<code>AuditReport</code>), <code>adoption</code> (<code>AdoptReport</code>)</td>
+</tr>
+<tr>
+<td><code>resolve list</code></td>
+<td><code>ResolveListReport</code></td>
+<td><code>unmanaged_skills[]</code>, <code>target_warnings[]</code>, <code>owned_skills[]</code></td>
+</tr>
+<tr>
+<td><code>resolve keep</code></td>
+<td><code>KeepReport</code></td>
+<td><code>skill</code>, <code>existing</code>, <code>dry_run</code></td>
+</tr>
+<tr>
+<td><code>resolve unkeep</code></td>
+<td><code>UnkeepReport</code></td>
+<td><code>selector</code>, <code>removed[]</code>, <code>dry_run</code></td>
+</tr>
+<tr>
+<td><code>resolve remove-owned</code></td>
+<td><code>RemoveOwnedReport</code></td>
+<td><code>id</code>, <code>link_path</code>, <code>status</code></td>
+</tr>
+<tr>
+<td><code>doctor</code></td>
+<td><code>DoctorReport</code></td>
+<td><code>store</code>, <code>findings[]</code>, <code>summary</code></td>
+</tr>
+<tr>
+<td><code>instructions enable</code> / <code>disable</code> with explicit file</td>
+<td><code>InstructionPackReport</code></td>
+<td><code>source_id</code>, <code>pack_id</code>, <code>target</code>, <code>action</code>, <code>dry_run</code>, optional <code>warning</code></td>
+</tr>
+<tr>
+<td><code>instructions enable</code> / <code>disable</code> with logical targets</td>
+<td><code>InstructionPackBatchReport</code></td>
+<td><code>source_id</code>, <code>pack_id</code>, <code>dry_run</code>, de-duplicated <code>operations[]</code> with <code>logical_targets[]</code>, effective <code>target</code>, <code>action</code>, optional <code>warning</code></td>
+</tr>
+<tr>
+<td><code>instructions list</code></td>
+<td><code>InstructionPackListReport</code></td>
+<td><code>active_instruction_packs[]</code> with <code>pack_id</code>, <code>target</code>, optional <code>logical_targets[]</code>, <code>source_id</code>, optional <code>commit</code>, optional <code>version</code></td>
+</tr>
+</tbody></table></div>
+<p>Each <code>AuditReport.static_findings[]</code> entry contains <code>id</code>, <code>severity</code>,
+<code>category</code>, <code>path</code>, optional <code>line</code>, <code>message</code>, and optional bounded <code>evidence</code>.
+When present, <code>risk_acceptance</code> contains <code>reason</code>, <code>accepted_at_unix</code>, and
+<code>scope_hash</code>; <code>agent_review</code> identifies the provider and isolation boundary and
+includes its findings, summary, expected capabilities/actions, and undeclared
+behaviors. <code>source add</code> and <code>source select</code> expose security preflight results in
+their top-level <code>audits[]</code> arrays. <code>source add-catalog</code> returns only the new
+<code>SourceConfig</code>: adding a pinned catalog does not audit anything until a skill is
+selected.</p>
+<p>Each <code>StatusReport.audit_failures[]</code> entry contains <code>source_ref</code>, <code>source_id</code>,
+and the technical <code>reason</code>. The failed skill is omitted from the active
+materialization plan, while the owning source is treated as degraded so an
+existing owned link is not removed solely because the audit was incomplete.</p>
+<p>Common status values:</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Values</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>TargetSupport</code></td>
+<td><code>supported</code>, <code>experimental</code></td>
+</tr>
+<tr>
+<td><code>TargetLinkStatus</code></td>
+<td><code>planned</code>, <code>linked</code>, <code>updated</code>, <code>existing</code></td>
+</tr>
+<tr>
+<td><code>TargetUnlinkStatus</code></td>
+<td><code>planned</code>, <code>unlinked</code>, <code>missing</code></td>
+</tr>
+<tr>
+<td><code>MaterializeOperationKind</code></td>
+<td><code>create</code>, <code>relink</code>, <code>remove</code>, <code>drop_record</code>, <code>conflict</code>, <code>keep</code>, <code>no_op</code></td>
+</tr>
+<tr>
+<td><code>MaterializeOperationStatus</code></td>
+<td><code>planned</code>, <code>applied</code>, <code>existing</code>, <code>blocked</code></td>
+</tr>
+<tr>
+<td><code>AdoptCopyStatus</code></td>
+<td><code>planned</code>, <code>copied</code>, <code>existing</code></td>
+</tr>
+<tr>
+<td><code>AdoptReplacementStatus</code></td>
+<td><code>planned</code>, <code>replaced</code>, <code>skipped</code>, <code>protected</code></td>
+</tr>
+<tr>
+<td><code>RemoveOwnedStatus</code></td>
+<td><code>planned</code>, <code>removed</code>, <code>dropped_missing</code>, <code>blocked_real_entry</code>, <code>dropped_foreign_symlink</code></td>
+</tr>
+<tr>
+<td><code>InstructionBlockDriftKind</code></td>
+<td><code>missing</code>, <code>malformed</code>, <code>stale</code>, <code>source_missing</code></td>
+</tr>
+<tr>
+<td><code>CatalogDrift.code</code></td>
+<td><code>new_available</code>, <code>selected_changed</code>, <code>selected_moved</code>, <code>selected_removed</code></td>
+</tr>
+<tr>
+<td><code>AutosyncRunOutcome</code></td>
+<td><code>running</code>, <code>succeeded</code>, <code>skipped</code>, <code>blocked</code></td>
+</tr>
+<tr>
+<td><code>TargetScanWarningCode</code></td>
+<td><code>unreadable_target_dir</code></td>
+</tr>
+</tbody></table></div>
+<p><code>DoctorFinding</code> uses:</p>
+<pre><code class="language-json">{
+  &quot;severity&quot;: &quot;warning&quot;,
+  &quot;code&quot;: &quot;pending_approval&quot;,
+  &quot;message&quot;: &quot;human-readable diagnostic&quot;,
+  &quot;next_command&quot;: &quot;optional next command&quot;
+}
+</code></pre>
+<p>Doctor severities are <code>error</code>, <code>warning</code>, <code>info</code>, and <code>ok</code>.</p>
+<p><code>SourceProvenance</code> contains <code>management</code> (<code>direct</code> or <code>team_manifest</code>), optional
+<code>declared_by</code>, credential-redacted <code>origin_url</code>, optional <code>requested_ref</code>, the
+canonical <code>resolved_commit</code>, and the observed <code>checkout_commit</code>. For catalogs,
+the resolved commit comes from <code>source-lock.toml</code>; a differing checkout commit
+is preserved in output so drift remains visible.</p>
+<p>Resolution diagnostics use these codes when present in <code>status.resolution.diagnostics</code>: <code>pending_approval</code>, <code>local_override</code>, <code>shadowed</code>, <code>required_expanded</code>, <code>cross_source_require</code>, <code>required_blocked</code>, <code>legacy_bare_approval</code>, <code>audit_failed</code>, and <code>blocked_winner_alternate_available</code>. Each JSON entry has <code>code</code>, a human-readable <code>message</code>, and optional <code>source_ref</code>. <code>blocked_winner_alternate_available</code> is advisory: its <code>source_ref</code> identifies the approved alternate, while <code>required_blocked</code> identifies the blocked winner and remains the check-blocking diagnostic. For recovery steps, see <a href="troubleshooting.html">Troubleshooting and FAQ</a>.</p>
+<h2 id="store-layout"><a class="doc-anchor" href="#store-layout">Store Layout</a></h2>
+<p>After <code>dalo init</code>, the store contains:</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>config.toml</code></td>
+<td>User-authored config: settings and source list.</td>
+</tr>
+<tr>
+<td><code>lock.toml</code></td>
+<td>Resolved user lock written by <code>sync</code> and instruction commands.</td>
+</tr>
+<tr>
+<td><code>state.toml</code></td>
+<td>Internal target/materialization/protection state.</td>
+</tr>
+<tr>
+<td><code>approvals.toml</code></td>
+<td>Local approval records.</td>
+</tr>
+<tr>
+<td><code>source-lock.toml</code></td>
+<td>Catalog source pins, selections, and inventory snapshots.</td>
+</tr>
+<tr>
+<td><code>autosync.toml</code></td>
+<td>Installed scheduler backend, schedule, exact paths, identifier, and artifacts.</td>
+</tr>
+<tr>
+<td><code>autosync-run.toml</code></td>
+<td>Last attempted/successful scheduled run and its durable outcome/reason.</td>
+</tr>
+<tr>
+<td><code>autosync.log</code>, <code>autosync-error.log</code></td>
+<td>Native scheduler stdout and stderr.</td>
+</tr>
+<tr>
+<td><code>audits/&lt;content-hash&gt;-&lt;source-ref-hash&gt;.json</code></td>
+<td>Source- and content-bound deterministic and optional agent security reports.</td>
+</tr>
+<tr>
+<td><code>.lock</code></td>
+<td>Temporary coarse lock file while mutating commands run.</td>
+</tr>
+<tr>
+<td><code>local/skills/</code></td>
+<td>Local private skill directories.</td>
+</tr>
+<tr>
+<td><code>local/agents/</code></td>
+<td>Local portable canonical agent packages.</td>
+</tr>
+<tr>
+<td><code>local/instructions/</code></td>
+<td>Local instruction pack Markdown files.</td>
+</tr>
+<tr>
+<td><code>tools/</code></td>
+<td>Immutable, approved tool closures, addressed by their exact staged content.</td>
+</tr>
+<tr>
+<td><code>generated/</code></td>
+<td>Content-addressed generated-delivery cache; only approved derivations are promoted.</td>
+</tr>
+<tr>
+<td><code>sources/&lt;id&gt;/checkout/</code></td>
+<td>Team and catalog Git checkouts.</td>
+</tr>
+<tr>
+<td><code>sources/.audit-staging/</code></td>
+<td>Detached incoming team commits retained only while security review is required.</td>
+</tr>
+</tbody></table></div>
+<p>Hook and plugin projection paths are created lazily, not by <code>dalo init</code>:</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Created when</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>hooks/</code>, <code>hooks/state.json</code></td>
+<td>The first native hook projection is applied; the state file records dispatcher ownership.</td>
+</tr>
+<tr>
+<td><code>plugins/</code>, <code>plugins/state.json</code></td>
+<td>The first native plugin projection is applied; the state file records projection ownership.</td>
+</tr>
+</tbody></table></div>
+<p>Dalo rejects unsupported schema versions in persisted TOML files.</p>
+<h2 id="configtoml"><a class="doc-anchor" href="#configtoml"><code>config.toml</code></a></h2>
+<p>Schema version: <code>version = 1</code>.</p>
+<p>Example:</p>
+<pre><code class="language-toml">version = 1
+
+[settings]
+autosync = false
+sync_interval = &quot;hourly&quot;
+
+[[sources]]
+id = &quot;local&quot;
+kind = &quot;local&quot;
+path = &quot;/Users/alex/.dalo/local&quot;
+priority = 0
+enabled = true
+trusted = true
+
+[[sources]]
+id = &quot;team&quot;
+kind = &quot;team&quot;
+path = &quot;/Users/alex/.dalo/sources/team/checkout&quot;
+priority = 10
+enabled = true
+trusted = true
+url = &quot;git@github.com:example/team-skills.git&quot;
+update_policy = &quot;track&quot;
+
+[[sources]]
+id = &quot;public&quot;
+kind = &quot;catalog&quot;
+path = &quot;/Users/alex/.dalo/sources/public/checkout&quot;
+priority = 20
+enabled = true
+trusted = true
+url = &quot;https://github.com/example/catalog.git&quot;
+update_policy = &quot;pin&quot;
+selection = [&quot;review-helper&quot;]
+</code></pre>
+<p>Fields:</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>settings.autosync</code></td>
+<td>Whether <code>dalo autosync install</code> has configured a scheduler job.</td>
+</tr>
+<tr>
+<td><code>settings.sync_interval</code></td>
+<td>Installed <code>hourly</code>, <code>daily</code>, or <code>weekly</code> schedule.</td>
+</tr>
+<tr>
+<td><code>sources[].id</code></td>
+<td>Stable source ID.</td>
+</tr>
+<tr>
+<td><code>sources[].kind</code></td>
+<td><code>local</code>, <code>team</code>, or <code>catalog</code>.</td>
+</tr>
+<tr>
+<td><code>sources[].path</code></td>
+<td>Local filesystem path for the source root or checkout.</td>
+</tr>
+<tr>
+<td><code>sources[].priority</code></td>
+<td>Lower numbers win.</td>
+</tr>
+<tr>
+<td><code>sources[].namespace</code></td>
+<td>Optional prefix applied to every materialized skill from the source. A skill named <code>review</code> becomes <code>prefix__review</code>; the source content and source-qualified approval identity stay unchanged.</td>
+</tr>
+<tr>
+<td><code>sources[].enabled</code></td>
+<td>Disabled sources are skipped by resolution.</td>
+</tr>
+<tr>
+<td><code>sources[].trusted</code></td>
+<td>Trusted sources are approved automatically. User-added catalog sources always start untrusted.</td>
+</tr>
+<tr>
+<td><code>sources[].url</code></td>
+<td>Git URL for team/catalog sources. URLs with embedded credentials are rejected; use SSH or a credential helper.</td>
+</tr>
+<tr>
+<td><code>sources[].branch</code></td>
+<td>Optional branch label.</td>
+</tr>
+<tr>
+<td><code>sources[].update_policy</code></td>
+<td>Usually <code>track</code> for team sources and <code>pin</code> for catalog sources.</td>
+</tr>
+<tr>
+<td><code>sources[].selection</code></td>
+<td>Catalog selections by stable ID, source ref, path, or slot name. Empty for local/team sources.</td>
+</tr>
+<tr>
+<td><code>sources[].declared_by</code></td>
+<td>Team source whose <code>dalo.toml</code> owns this derived catalog. Generated by <code>sync</code>; do not edit directly.</td>
+</tr>
+<tr>
+<td><code>sources[].declared_ref</code></td>
+<td>Git version requested by the declaring team manifest. Generated by <code>sync</code>.</td>
+</tr>
+</tbody></table></div>
+<p>Unknown fields are rejected.</p>
+<h2 id="team-repository-dalotoml"><a class="doc-anchor" href="#team-repository-dalotoml">Team repository <code>dalo.toml</code></a></h2>
+<p>Schema version: <code>schema_version = 1</code>.</p>
+<p>Team repositories may compose their checked-in skills with pinned external
+catalogs. <code>sync</code> namespaces ordinary IDs as <code>&lt;team-id&gt;.&lt;catalog-id&gt;</code> and stores
+the resolved commit in <code>source-lock.toml</code>. If either component itself contains
+a dot, Dalo losslessly encodes both components into a reserved point-free
+<code>team-&lt;hex&gt;-catalog-&lt;hex&gt;</code> ID so different declarations cannot collapse onto
+the same source.</p>
+<pre><code class="language-toml">schema_version = 1
+
+[source]
+id = &quot;company&quot;
+name = &quot;Company Skills&quot;
+kind = &quot;team&quot;
+
+[[catalog]]
+id = &quot;marketing&quot;
+url = &quot;https://github.com/coreyhaines31/marketingskills.git&quot;
+version = &quot;0123456789abcdef0123456789abcdef01234567&quot;
+skills = [&quot;+copywriting&quot;, &quot;+launch&quot;, &quot;+seo-audit&quot;, &quot;-seo-audit&quot;]
+priority = 11
+namespace = &quot;marketing&quot;
+</code></pre>
+<p>Catalog fields:</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>id</code></td>
+<td>ID local to the manifest. The local source ID is namespaced with the team source.</td>
+</tr>
+<tr>
+<td><code>url</code></td>
+<td>Git URL. Embedded credentials are rejected.</td>
+</tr>
+<tr>
+<td><code>version</code></td>
+<td>Required Git commit, tag, or ref. <code>ref</code> is accepted as an alias. Immutable commits are recommended.</td>
+</tr>
+<tr>
+<td><code>skills</code></td>
+<td>Include/exclude filters. Omitted or empty means all.</td>
+</tr>
+<tr>
+<td><code>priority</code></td>
+<td>Optional global resolver priority; defaults to the team source priority plus one.</td>
+</tr>
+<tr>
+<td><code>namespace</code></td>
+<td>Optional prefix applied to every materialized skill from this catalog.</td>
+</tr>
+</tbody></table></div>
+<p>Filter evaluation is set-based and independent of list order:</p>
+<ul>
+<li>no filters: all catalog skills</li>
+<li>only <code>-skill</code>: all except the exclusions</li>
+<li>any <code>+skill</code> or bare <code>skill</code>: whitelist mode</li>
+<li>exclusions always win over inclusions</li>
+</ul>
+<p>Unknown or ambiguous filter references block sync. Manifest-derived catalogs
+are untrusted by default, so their newly selected skills remain pending until a
+local approval matches. <code>source select</code>, <code>source priority</code>, <code>source remove</code>, and
+pin advancement reject derived catalogs; edit and review <code>dalo.toml</code> instead.
+Changing a catalog URL uses an explicit two-sync replacement: remove the
+declaration and sync, then add the reviewed replacement URL and sync again.</p>
+<h2 id="approvalstoml"><a class="doc-anchor" href="#approvalstoml"><code>approvals.toml</code></a></h2>
+<p>Schema version: <code>schema_version = 1</code>.</p>
+<p>Example:</p>
+<pre><code class="language-toml">schema_version = 1
+
+[[approvals]]
+scope = &quot;source&quot;
+value = &quot;team&quot;
+
+[[approvals]]
+scope = &quot;skill&quot;
+value = &quot;team:review-helper&quot;
+
+[[approvals]]
+scope = &quot;author&quot;
+value = &quot;team:platform-team&quot;
+</code></pre>
+<p>Approval scopes:</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Scope</th>
+<th>Value</th>
+<th>Matches</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>skill</code></td>
+<td><code>&lt;source-id&gt;:&lt;slot&gt;</code> or <code>&lt;source-id&gt;:&lt;stable-id&gt;</code></td>
+<td>One skill from one source. Bare slot names and bare stable IDs do not match.</td>
+</tr>
+<tr>
+<td><code>agent</code></td>
+<td><code>&lt;source-id&gt;:&lt;name&gt;</code> or <code>&lt;source-id&gt;:&lt;stable-id&gt;</code></td>
+<td>One canonical agent package from one source.</td>
+</tr>
+<tr>
+<td><code>tool</code></td>
+<td><code>&lt;source-id&gt;:&lt;plugin&gt;#tool:&lt;name&gt;@sha256:&lt;contract-hash&gt;</code></td>
+<td>One exact plugin-local executable contract. Approval also requires its immutable staged closure.</td>
+</tr>
+<tr>
+<td><code>delivery</code></td>
+<td><code>&lt;source-id&gt;:&lt;slot&gt;@id:&lt;source-id&gt;:&lt;stable-id&gt;@&lt;commit&gt;@sha256:&lt;recipe-hash&gt;</code></td>
+<td>One exact generated-delivery recipe at one source revision. Both recorded identities remain valid for revocation.</td>
+</tr>
+<tr>
+<td><code>hook</code></td>
+<td><code>&lt;source-id&gt;:&lt;plugin&gt;#hook:&lt;name&gt;@sha256:&lt;contract-hash&gt;</code></td>
+<td>One exact plugin-local hook contract. The referenced tool must be independently ready.</td>
+</tr>
+<tr>
+<td><code>source</code></td>
+<td><code>&lt;source-id&gt;</code></td>
+<td>Every skill from that source.</td>
+</tr>
+<tr>
+<td><code>author</code></td>
+<td><code>&lt;source-id&gt;:&lt;owner&gt;</code></td>
+<td>Skills from that source whose <code>owners</code> frontmatter contains that owner.</td>
+</tr>
+<tr>
+<td><code>org</code></td>
+<td><code>&lt;source-id&gt;:&lt;owner&gt;</code></td>
+<td>Same matching behavior as <code>author</code>; the scope is a policy label.</td>
+</tr>
+</tbody></table></div>
+<p>Local skills and skills from <code>trusted = true</code> sources are approved automatically. Non-interactive commands can use existing approvals but never create new approvals.</p>
+<p>Prefer <code>dalo approve</code> for all approval changes. The TOML format remains
+documented for auditability and recovery, but does not need to be edited for
+normal approval workflows.</p>
+<h2 id="locktoml"><a class="doc-anchor" href="#locktoml"><code>lock.toml</code></a></h2>
+<p>Schema version: <code>schema_version = 6</code>.</p>
+<p>This file is Dalo&#39;s resolved user lock. <code>sync</code> rewrites source snapshots, active skills, pending approvals, unlinked skills, and target materialization summaries. Instruction commands preserve and update active instruction-pack entries.</p>
+<p>Top-level fields:</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>sources[]</code></td>
+<td>Source ID, kind, path, and optional commit.</td>
+</tr>
+<tr>
+<td><code>active_skills[]</code></td>
+<td>Skills that should be linked into targets.</td>
+</tr>
+<tr>
+<td><code>pending_approval_skills[]</code></td>
+<td>Skills blocked by approval.</td>
+</tr>
+<tr>
+<td><code>unlinked_skills[]</code></td>
+<td>Managed skills not linked, with a reason such as shadowing.</td>
+</tr>
+<tr>
+<td><code>target_materializations[]</code></td>
+<td>Last sync operations by target path.</td>
+</tr>
+<tr>
+<td><code>active_instruction_packs[]</code></td>
+<td>Instruction packs rendered into instruction files.</td>
+</tr>
+</tbody></table></div>
+<p>Important record fields:</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Record</th>
+<th>Fields</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>LockedSource</code></td>
+<td><code>id</code>, <code>kind</code>, <code>path</code>, optional <code>commit</code></td>
+</tr>
+<tr>
+<td><code>LockedSkill</code></td>
+<td><code>source_ref</code>, <code>slot_name</code>, optional <code>id</code>, <code>source_id</code>, <code>source_kind</code>, optional <code>delivery</code> provenance/recipe/derivation/output fingerprints, optional <code>reason</code></td>
+</tr>
+<tr>
+<td><code>LockedTargetMaterialization</code></td>
+<td><code>link_path</code>, optional <code>desired_path</code>, <code>kind</code>, <code>status</code>, optional <code>reason</code></td>
+</tr>
+<tr>
+<td><code>LockedInstructionPack</code></td>
+<td><code>pack_id</code>, <code>target</code>, optional <code>logical_targets[]</code>, <code>source_id</code>, optional <code>commit</code>, optional <code>version</code></td>
+</tr>
+</tbody></table></div>
+<h2 id="statetoml"><a class="doc-anchor" href="#statetoml"><code>state.toml</code></a></h2>
+<p>Schema version: <code>schema_version = 1</code>.</p>
+<p>This is internal state. Users normally inspect it through <code>target detect</code>, <code>status</code>, <code>sync</code>, and <code>resolve list</code>.</p>
+<p>Top-level fields:</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>targets[]</code></td>
+<td>Logical target links with <code>id</code>, <code>path</code>, <code>canonical_path</code>, and <code>enabled</code>.</td>
+</tr>
+<tr>
+<td><code>materialization_dirs[]</code></td>
+<td>Canonical physical directories and the logical target IDs sharing each directory.</td>
+</tr>
+<tr>
+<td><code>owned_skills[]</code></td>
+<td>Symlinks Dalo owns: <code>target_id</code>, <code>slot_name</code>, <code>link_path</code>, <code>store_path</code>, plus additive delivery mode/provider/fingerprint/derivation provenance.</td>
+</tr>
+<tr>
+<td><code>protected_skills[]</code></td>
+<td>Unmanaged target slots kept by the user: <code>target_id</code>, <code>slot_name</code>. Legacy path-based entries migrate on read.</td>
+</tr>
+</tbody></table></div>
+<p>Unknown fields in this internal state model are retained across reads and writes for downgrade safety after additive changes. Breaking changes still require a schema-version bump. User-authored configuration remains strict.</p>
+<h2 id="source-locktoml"><a class="doc-anchor" href="#source-locktoml"><code>source-lock.toml</code></a></h2>
+<p>Schema version: <code>schema_version = 3</code>.</p>
+<p>This file stores catalog pins and inventory snapshots. It is written by catalog selection and read by drift checks.</p>
+<p>Top-level fields:</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>catalogs[]</code></td>
+<td>One <code>CatalogLock</code> per pinned catalog source.</td>
+</tr>
+<tr>
+<td><code>catalogs[].source_id</code></td>
+<td>Catalog source ID.</td>
+</tr>
+<tr>
+<td><code>catalogs[].commit</code></td>
+<td>Pinned commit used for the inventory snapshot.</td>
+</tr>
+<tr>
+<td><code>catalogs[].selected[]</code></td>
+<td>Selected skill references.</td>
+</tr>
+<tr>
+<td><code>catalogs[].inventory[]</code></td>
+<td>Pinned catalog entries.</td>
+</tr>
+</tbody></table></div>
+<p>Inventory entry fields:</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>id</code></td>
+<td>Optional stable skill ID from frontmatter.</td>
+</tr>
+<tr>
+<td><code>slot_name</code></td>
+<td>Install slot name.</td>
+</tr>
+<tr>
+<td><code>path</code></td>
+<td>Skill directory path relative to the catalog root.</td>
+</tr>
+<tr>
+<td><code>content_hash</code></td>
+<td>Hash over skill directory content, executable file bits, and symlink metadata.</td>
+</tr>
+<tr>
+<td><code>metadata_hash</code></td>
+<td>Hash over parsed skill metadata.</td>
+</tr>
+<tr>
+<td><code>requires[]</code></td>
+<td>Declared same-source dependencies.</td>
+</tr>
+</tbody></table></div>
+<h2 id="skillmd-frontmatter"><a class="doc-anchor" href="#skillmd-frontmatter"><code>SKILL.md</code> Frontmatter</a></h2>
+<p>Dalo discovers a skill by finding a directory containing <code>SKILL.md</code>. If the file starts with YAML frontmatter fenced by <code>---</code> lines, Dalo reads these fields:</p>
+<pre><code class="language-markdown">---
+id: review-helper
+name: review-helper
+description: Review pull requests for behavior regressions
+owners:
+  - platform-team
+tags:
+  - review
+requires:
+  - base-style
+---
+
+# Review Helper
+</code></pre>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Required</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>id</code></td>
+<td>no</td>
+<td>Stable skill identity. Use for catalog selections and source-qualified approvals.</td>
+</tr>
+<tr>
+<td><code>name</code></td>
+<td>no</td>
+<td>Preferred slot name. Must be a safe slot name; otherwise Dalo falls back to the folder name and records an inventory warning.</td>
+</tr>
+<tr>
+<td><code>description</code></td>
+<td>no</td>
+<td>Human-readable description shown in catalog inspection.</td>
+</tr>
+<tr>
+<td><code>owners[]</code></td>
+<td>no</td>
+<td>Approval owner strings matched by <code>author</code> and <code>org</code> approvals.</td>
+</tr>
+<tr>
+<td><code>tags[]</code></td>
+<td>no</td>
+<td>User metadata.</td>
+</tr>
+<tr>
+<td><code>requires[]</code></td>
+<td>no</td>
+<td>Same-source or same-catalog dependencies. Required skills are expanded only when the closure is linkable and approved.</td>
+</tr>
+</tbody></table></div>
+<p>If <code>name</code> is absent, the directory name is the slot name. Duplicate slot names within one source are warned and de-duplicated by resolver behavior.</p>
+<p><code>SKILL.md</code> may reference another file inside the same source checkout, but a
+metadata symlink whose resolved target escapes the checkout is skipped and
+reported as <code>skipped_symlink</code>. This keeps skill identity and approval metadata
+contained within the source being scanned.</p>
+<h2 id="plugintoml-portable-plugins-tools-and-hooks"><a class="doc-anchor" href="#plugintoml-portable-plugins-tools-and-hooks"><code>PLUGIN.toml</code> Portable Plugins, Tools, and Hooks</a></h2>
+<p>Plugins are exact <code>plugins/&lt;name&gt;/PLUGIN.toml</code> packages. The top-level schema is
+closed: unknown fields are rejected. <code>schema_version = 1</code> and <code>[plugin]</code> with
+<code>name</code> and <code>description</code> are required; <code>id</code>, <code>version</code>, <code>providers</code>,
+<code>[[plugin.members]]</code>, <code>[[plugin.requires]]</code>, <code>[[tool]]</code>, and <code>[[hook]]</code> are
+optional.</p>
+<pre><code class="language-toml">schema_version = 1
+[plugin]
+name = &quot;review-suite&quot;
+description = &quot;Review helpers&quot;
+
+[[plugin.members]]
+ref = &quot;skill:review&quot;
+requirement = &quot;required&quot;
+
+[[tool]]
+schema_version = 1
+id = &quot;inspect&quot;
+entry = &quot;bin/inspect&quot;
+runtime = &quot;executable&quot;
+argv = []
+cwd = &quot;tool_root&quot;
+availability = &quot;required&quot;
+
+[[hook]]
+schema_version = 1
+id = &quot;before-shell&quot;
+tool = &quot;inspect&quot;
+subject = &quot;tool_call&quot;
+phase = &quot;before&quot;
+effect = &quot;allow_deny&quot;
+requirement = &quot;required&quot;
+timeout_ms = 2000
+failure_policy = &quot;fail_closed&quot;
+retry = &quot;never&quot;
+error_visibility = &quot;model_and_user&quot;
+blocking_scope = &quot;matched_event&quot;
+</code></pre>
+<h3 id="plugin-members-and-dependencies"><a class="doc-anchor" href="#plugin-members-and-dependencies">Plugin members and dependencies</a></h3>
+<p>Plugin members use <code>ref</code>, <code>requirement</code> (<code>required</code>, <code>optional</code>, or
+<code>recommended</code>), and optional <code>fallback</code> with required <code>kind</code> and <code>skill</code>.
+Members may reference skills, agents, or instructions; <code>recommended</code> is only
+valid for instructions. A fallback is only valid for an agent member, has
+<code>kind = &quot;inline&quot;</code>, names a skill in <code>skill</code>, and that skill must also be a
+required member. Dependencies use <code>ref</code> to a plugin with <code>requirement</code>
+<code>required</code> or <code>optional</code>.</p>
+<h3 id="tools"><a class="doc-anchor" href="#tools">Tools</a></h3>
+<p>Tools require <code>schema_version</code>, <code>id</code>, <code>entry</code>, <code>runtime</code> (<code>executable</code>,
+<code>python</code>, <code>node</code>), <code>argv</code>, <code>cwd</code> (<code>tool_root</code>), and <code>availability</code> (<code>required</code>
+or <code>optional</code>). Optional fields are <code>runtime_version</code>, <code>platforms</code> (<code>macos</code>,
+<code>linux</code>), <code>inputs</code>, <code>files</code>, <code>env</code>, and <code>capabilities</code> (<code>filesystem_read</code>,
+<code>filesystem_write</code>, <code>subprocess</code>, or <code>network</code>). Tool inputs are closed <code>name</code>,
+<code>type</code> (<code>string</code>, <code>path</code>, <code>integer</code>, <code>boolean</code>), and optional <code>required</code>
+(default <code>true</code>) records. Paths must be plugin-root-relative and remain inside
+the plugin-owned closure; Dalo stages and hashes that closure before approval.</p>
+<h3 id="hooks"><a class="doc-anchor" href="#hooks">Hooks</a></h3>
+<p>Hooks are closed descriptors. They require <code>schema_version</code>, <code>id</code>, <code>tool</code>,
+<code>subject</code>, <code>phase</code>, <code>effect</code>, <code>requirement</code>, <code>timeout_ms</code>, <code>failure_policy</code>,
+<code>retry</code>, <code>error_visibility</code>, and <code>blocking_scope</code>; <code>matcher</code>, <code>bindings</code>, and
+<code>fallback</code> are optional fields. <code>tool</code> references the same-plugin tool.
+<code>subject</code> is <code>session</code>, <code>user_prompt</code>, <code>tool_call</code>, or <code>workflow</code>; <code>phase</code> is
+<code>before</code>, <code>after</code>, <code>end</code>, or <code>completion_attempt</code>; <code>effect</code> is <code>observe</code>,
+<code>add_context</code>, <code>allow_deny</code>, <code>rewrite_input</code>, <code>replace_output</code>, or
+<code>continue_workflow</code>. <code>requirement</code> is
+<code>required</code> or <code>optional</code>; <code>failure_policy</code> is <code>fail_open</code>, <code>fail_closed</code>, or
+<code>report</code>; <code>retry</code> is only <code>never</code>; <code>error_visibility</code> is <code>user</code> or
+<code>model_and_user</code>; and <code>blocking_scope</code> is only <code>matched_event</code>.</p>
+<p><code>matcher.tool_names</code> is an optional unique exact provider-tool-name list and is
+valid only when <code>subject = &quot;tool_call&quot;</code>.
+Bindings are closed <code>input</code>/<code>field</code> records and map a lower-snake tool input to
+one admitted event field: <code>session.id</code>, <code>session.cwd</code>,
+<code>session.permission_mode</code>, <code>actor.kind</code>, <code>actor.id</code>, <code>transcript.path</code>,
+<code>session.end_reason</code>, <code>prompt.text</code>, <code>tool.call_id</code>, <code>tool.name</code>,
+<code>workflow.already_continued</code>, or <code>workflow.last_message</code>. Required hooks have
+no fallback; optional hooks use the fallback value <code>omit</code> explicitly as
+<code>fallback = &quot;omit&quot;</code> when omitted
+behavior is intended. The <code>subject</code>/<code>phase</code>/<code>effect</code> combination must have a
+verified mapping in at least one supported provider. <code>fail_closed</code> is valid
+only for a <code>before</code> pre-action enforcement effect (<code>allow_deny</code> or
+<code>rewrite_input</code>) or <code>completion_attempt</code> plus <code>continue_workflow</code>; <code>observe</code>
+and <code>replace_output</code> require <code>failure_policy = &quot;report&quot;</code>. A binding&#39;s <code>field</code>
+must be available for the selected subject and phase. IDs are lower kebab-case, input names are lower
+snake-case, <code>timeout_ms</code> is 100 through 120000, and each matcher or binding
+list holds at most 256 entries. Hooks reference a same-plugin tool and are
+independently approved; malformed, unknown, unsafe, or unsupported contracts
+are blocked.</p>
+<h2 id="deliverytoml-provider-builds"><a class="doc-anchor" href="#deliverytoml-provider-builds"><code>DELIVERY.toml</code> Provider Builds</a></h2>
+<p>Direct delivery remains the default: without a <code>DELIVERY.toml</code>, Dalo links the
+discovered skill directory unchanged to every target.</p>
+<p>A logical skill can instead select existing, provider-specific build artifacts
+from the same pinned source checkout:</p>
+<pre><code class="language-toml">schema_version = 1
+kind = &quot;prebuilt&quot;
+universal_fallback = false
+
+[providers]
+codex = &quot;.agents/skills/impeccable&quot;
+claude = &quot;.claude/skills/impeccable&quot;
+cursor = &quot;.cursor/skills/impeccable&quot;
+</code></pre>
+<p>Provider paths are relative to the source checkout. Each artifact must be a
+real directory inside that checkout, contain <code>SKILL.md</code>, and contain no
+symlinks or special filesystem entries. Dalo fingerprints every artifact,
+audits it, and links the matching artifact for each logical target. Artifact
+directories referenced by a delivery manifest are not inventoried again as
+independent logical skills. The provider ID <code>universal</code> is reserved for the
+canonical artifact selected by <code>universal_fallback</code> and cannot be declared in
+the <code>providers</code> table.</p>
+<p>An omitted provider mapping blocks that target. Set <code>universal_fallback = true</code>
+only when the logical skill directory is intentionally valid for every unmapped
+provider. When multiple logical targets share one physical target directory,
+their selected artifact must be identical; otherwise Dalo reports a conflict
+instead of choosing one implicitly.</p>
+<p><code>sync</code>, <code>status</code>, and <code>doctor</code> expose delivery selections in JSON. Human-readable
+<code>sync</code> and <code>status</code> output lists prebuilt selections and blocked mappings. The
+user lock records the manifest, provider paths, and fingerprints; changing a
+provider artifact therefore appears as <code>skill_delivery_changed</code> lock drift.
+Audit reports use provider-qualified selectors such as
+<code>dalo audit impeccable:impeccable@codex</code>, so findings, risk acceptance, and
+persisted provenance stay bound to the exact provider artifact.</p>
+<p>A generated delivery requires a stable skill frontmatter <code>id</code>, declares a
+same-source plugin tool, and names the relative output directory expected for
+each provider:</p>
+<pre><code class="language-toml">schema_version = 1
+kind = &quot;generated&quot;
+generator = &quot;company:builder#tool:build&quot;
+output_input = &quot;output_dir&quot;
+
+[providers]
+codex = &quot;codex/review&quot;
+claude = &quot;claude/review&quot;
+</code></pre>
+<p>The referenced tool must be required, declare <code>filesystem_write</code>, and expose
+the named required <code>path</code> input in its argument contract. The delivery
+manifest, plugin manifest, and every file in the tool closure must be tracked
+by the same clean Git source commit. Dalo binds the recipe fingerprint to that
+commit and the exact tool contract. Generated delivery schema v1 requires the
+tool runtime to be <code>executable</code>; Python and Node runtime lookup is rejected so
+sync never selects an interpreter from its ambient <code>PATH</code>. An executable script
+must use an absolute shebang such as <code>#!/bin/sh</code>; <code>/usr/bin/env</code> shebangs are
+rejected for the same reason. Generated execution also rejects a declared
+<code>PATH</code> environment input and sets <code>PATH</code> to the empty string, so scripts must
+not resolve subprocesses through the invoking user&#39;s environment.</p>
+<p>Generator execution is fail-closed behind an operating-system filesystem
+sandbox inherited by every descendant: Linux uses a fully enforced Landlock
+ABI v3 domain, while macOS uses the system Seatbelt launcher. The sandbox
+permits filesystem writes only below the one delivery staging directory. If
+the required sandbox cannot be fully enforced, Dalo does not run the generator.</p>
+<p>Generated delivery has two independent approvals:</p>
+<pre><code class="language-text">dalo approve delivery company:review
+dalo approve tool company:builder#tool:build
+</code></pre>
+<p>The first approves only the exact revision-bound recipe; the second approves
+the generator tool contract. A new source commit or changed recipe invalidates
+the recipe approval. The approval key records both the current slot and the
+required stable ID, so stale trust remains revocable after a rename, deletion,
+or invalid recipe through either historical identity. Approval itself remains
+inert. Once both exact approvals exist, a real <code>sync</code> invokes the immutable
+staged tool closure with an empty environment except for explicitly declared
+variables. Dalo passes a newly created staging directory as the declared output
+input, enforces a bounded runtime and output tree, rejects undeclared paths,
+symlinks, multiply linked or special files, oversized output, and
+source-checkout changes. Surviving members of the generator process group are
+terminated before Dalo copies the validated output into a fresh-inode snapshot.
+Dalo audits that snapshot, promotes it, and verifies and audits the immutable
+cache path again before it can reach materialization. The source commit and
+cleanliness are rechecked after that final cache verification, immediately
+before materialized state is persisted, and again immediately before the user
+lock commit. Source drift during generation therefore rolls back activation and
+prevents provenance from being committed. Blocking findings or a failed
+generator leave the last known-good target link unchanged.</p>
+<p>Successful output is made read-only and atomically promoted below
+<code>generated/sha256/&lt;derivation-hash&gt;</code>. The derivation identity binds the logical
+skill, source commit, recipe, and exact tool contract; subsequent syncs verify
+and reuse that cache instead of executing again. Only after verification does
+the normal transactional materializer link provider outputs. Dry-run, JSON,
+<code>status</code>, and <code>doctor</code> expose <code>miss</code>, <code>generated</code>, or <code>hit</code> cache state,
+derivation identity, selected output fingerprint, and any blocking remediation.</p>
+<h2 id="agentmd-canonical-packages"><a class="doc-anchor" href="#agentmd-canonical-packages"><code>AGENT.md</code> Canonical Packages</a></h2>
+<p>An agent package is an <code>agents/&lt;name&gt;/AGENT.md</code> directory. <code>AGENT.md</code> starts
+with YAML frontmatter and then contains the portable Markdown prompt. Required
+fields are <code>schema_version: 1</code>, <code>name</code>, and <code>description</code>; <code>model.profile</code>,
+<code>targets</code>, and <code>skills</code> express portable intent and requirements.</p>
+<pre><code class="language-markdown">---
+schema_version: 1
+name: reviewer
+description: Reviews pull requests for behavior regressions
+model:
+  profile: balanced
+targets: [claude, codex]
+skills: [review-helper]
+---
+
+Review behavior before style nits.
+</code></pre>
+<p><code>targets</code> may omit providers (all compatible providers) or name <code>claude</code> and
+<code>codex</code>; <code>skills</code> lists required skill references. Optional <code>id</code>, <code>owners</code>,
+<code>tags</code>, <code>tools</code>, <code>filesystem</code>, <code>network</code>, and <code>providers</code> metadata add identity,
+boundaries, and provider overlays. Packages are bounded to 256 entries, 16
+directory levels, and 16 MiB total; <code>AGENT.md</code> itself is limited to 1 MiB.
+Symlinks and unsupported special files are rejected.</p>
+<h2 id="instruction-packs"><a class="doc-anchor" href="#instruction-packs">Instruction Packs</a></h2>
+<p>Instruction packs are Markdown files in <code>local/instructions/&lt;id&gt;.md</code> or
+<code>&lt;source&gt;/instructions/&lt;id&gt;.md</code>. Dalo discovers both locations. Bare IDs select
+local packs; source packs use an explicit source-qualified reference such as
+<code>company:engineering-defaults</code>. Pack IDs use the same safe token rule as source
+IDs: letters, digits, <code>.</code>, <code>_</code>, and <code>-</code>, excluding <code>.</code> and <code>..</code>.</p>
+<p>Local managed-block markers retain their existing bare pack ID. Source-backed
+markers use the full source-qualified reference, allowing same-named packs from
+different sources to coexist in one instruction file. Source-backed lock entries
+bind the activation to the exact clean Git commit. If that checkout advances,
+normal <code>dalo sync</code> refreshes only packs already present in the user lock and
+updates their commit and version provenance. Newly discovered packs remain
+inactive. Refresh requires the source to remain trusted or source-approved and
+the existing managed block to match the previously rendered immutable commit.
+Revoked approval, dirty or missing sources, missing Git history, untracked pack
+files, malformed markers, and externally edited managed blocks fail closed with
+an actionable error instead of overwriting the target. Tracking team sources
+advance through normal sync; catalog sources retain their explicit pinned
+advancement workflow.</p>
+<p>Dalo reads an optional <code>version:</code> entry from the first five lines and optional
+<code>topics:</code> or <code>tags:</code> metadata from the first eight lines:</p>
+<pre><code class="language-markdown">version: 1.0.0
+topics: review, formatting
+
+# Team Style
+
+Use concise review comments.
+</code></pre>
+<p><code>tags:</code> can be used instead of <code>topics:</code>. Topics are comma-separated and are used for advisory overlap warnings when multiple active packs share topics.</p>
+<p>Managed blocks use these markers:</p>
+<pre><code class="language-markdown">&lt;!-- dalo:start team-style --&gt;
+...
+&lt;!-- dalo:end team-style --&gt;
+</code></pre>
+<p>Dalo only rewrites bytes inside the pack&#39;s own managed block. Content outside managed blocks is preserved.</p>
+<p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/reference.md" rel="noopener">docs/reference.md</a></p>
+  </article>
+</main>
+
+<footer class="site-footer doc-footer" data-scope="dark">
+  <div class="wrap footer-base">
+    <span>© 2026 <a href="https://sebastian-software.de" rel="noopener">Sebastian Software</a> · Dalo</span>
+    <span><a href="/" >dalo.sh</a> · <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a> · <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a></span>
+  </div>
+</footer>
+</body>
+</html>

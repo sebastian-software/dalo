@@ -54,6 +54,9 @@ Use a small dependency set in v1:
 - `anyhow`: CLI boundary error context
 - `tempfile`: tests and safe temporary writes
 
+The shipped set has since moved on; `Cargo.toml` is authoritative. `anyhow`
+was dropped, and YAML front matter is parsed by `yaml_serde`.
+
 Likely test-only dependencies:
 
 - `assert_cmd`: command-level CLI tests

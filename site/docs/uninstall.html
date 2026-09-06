@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Uninstall Dalo · Dalo documentation</title>
+  <meta name="description" content="Remove targets, autosync, the store, and the binary." />
+  <link rel="canonical" href="https://dalo.sh/docs/uninstall.html" />
+  <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#15171c" media="(prefers-color-scheme: dark)" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Dalo" />
+  <meta property="og:url" content="https://dalo.sh/docs/uninstall.html" />
+  <meta property="og:title" content="Uninstall Dalo · Dalo documentation" />
+  <meta property="og:description" content="Remove targets, autosync, the store, and the binary." />
+  <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
+  <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
+  <link rel="preload" href="/assets/fonts/hanken-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/assets/fonts/geistmono-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/docs.css" />
+</head>
+<body class="doc-page">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header" data-scope="dark">
+  <div class="wrap header-inner">
+    <a class="brand" href="/" aria-label="Dalo home">
+      <svg class="brand-mark" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true" focusable="false">
+        <rect x="1.25" y="1.25" width="29.5" height="29.5" rx="8" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <circle cx="9" cy="9.5" r="2" fill="currentColor" />
+        <circle cx="9" cy="16" r="2" fill="currentColor" />
+        <circle cx="9" cy="22.5" r="2" fill="currentColor" />
+        <path d="M11 9.5 H17 Q22 9.5 22 16 Q22 22.5 17 22.5 H11 M11 16 H22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" />
+        <circle cx="22.5" cy="16" r="2.6" fill="var(--accent)" />
+      </svg>
+      <span class="brand-word">dalo</span>
+      <span class="brand-section">docs</span>
+    </a>
+    <nav class="site-nav" aria-label="Primary">
+      <a href="/#how">How it works</a>
+      <a href="/#quickstart">Quickstart</a>
+      <a href="/docs/">Documentation</a>
+    </nav>
+    <div class="header-actions">
+      <a class="ghost-btn" href="https://github.com/sebastian-software/dalo" rel="noopener">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="doc-shell wrap">
+  <nav class="doc-nav" aria-label="Documentation">
+    <p class="footer-h">Documentation</p>
+        <a href="/docs/getting-started.html">Getting started</a>
+        <a href="/docs/reference.html">Command reference</a>
+        <a href="/docs/agents.html">Agent integration</a>
+        <a href="/docs/ci.html">Dalo in CI</a>
+        <a href="/docs/troubleshooting.html">Troubleshooting</a>
+        <a href="/docs/uninstall.html" aria-current="page">Uninstall</a>
+  </nav>
+  <article class="doc-body">
+<h1 id="uninstall-dalo">Uninstall Dalo</h1>
+<p>This guide removes Dalo without leaving broken Dalo-owned symlinks in agent folders.</p>
+<h2 id="1-inspect-current-state"><a class="doc-anchor" href="#1-inspect-current-state">1. Inspect Current State</a></h2>
+<p>Run:</p>
+<pre><code class="language-sh">dalo target detect
+dalo status
+dalo doctor
+</code></pre>
+<p>If <code>doctor</code> reports broken/foreign/missing owned symlinks or real entries at owned paths, clear those records first:</p>
+<pre><code class="language-sh">dalo resolve list
+dalo resolve remove-owned &lt;target&gt;:&lt;slot&gt;
+</code></pre>
+<p><code>resolve list</code> prints the exact owned IDs accepted by <code>remove-owned</code>, for example
+<code>generic:helper</code>. The removal command removes Dalo-owned symlinks or drops stale
+ownership records. It does not delete real user directories.</p>
+<h2 id="2-unlink-targets"><a class="doc-anchor" href="#2-unlink-targets">2. Unlink Targets</a></h2>
+<p>Unlink each target Dalo knows about:</p>
+<pre><code class="language-sh">dalo target unlink codex
+dalo target unlink claude
+dalo target unlink openclaw
+dalo target unlink hermes
+dalo target unlink generic
+</code></pre>
+<p>Only run the targets you actually linked. <code>target unlink</code> updates Dalo state. It does not delete real files from the target directory.</p>
+<p>Then run <code>sync</code> once so Dalo removes the owned symlinks that are no longer desired:</p>
+<pre><code class="language-sh">dalo sync
+</code></pre>
+<p><code>sync</code> removes Dalo-owned symlinks and stale ownership records. It does not delete unmanaged real directories.</p>
+<p>Run <code>dalo status</code> again and confirm <code>sync</code> no longer reports owned target entries.</p>
+<h2 id="3-disable-instruction-packs"><a class="doc-anchor" href="#3-disable-instruction-packs">3. Disable Instruction Packs</a></h2>
+<p>If you enabled instruction packs, remove their managed blocks:</p>
+<pre><code class="language-sh">dalo instructions list
+dalo instructions disable &lt;pack&gt; &lt;instruction-file&gt;
+</code></pre>
+<p>Dalo only removes the pack&#39;s managed block. Content outside Dalo markers is preserved.</p>
+<h2 id="4-disable-autosync"><a class="doc-anchor" href="#4-disable-autosync">4. Disable Autosync</a></h2>
+<p>Before removing the Dalo binary or store, inspect and remove any installed
+autosync job:</p>
+<pre><code class="language-sh">dalo autosync status
+dalo autosync uninstall
+</code></pre>
+<p>If status reports <code>autosync: not installed</code>, there is no scheduler job to
+remove and you can continue. <code>autosync uninstall</code> is also safe to run in that
+case.</p>
+<p>For an installed job, Dalo disables the native scheduler before deleting its
+artifacts: the per-user launchd agent plist on macOS, the per-user systemd
+service and timer on Linux, or only Dalo&#39;s marked block in your crontab. It
+also removes the store&#39;s <code>autosync.toml</code>, <code>autosync-run.toml</code>, <code>autosync.log</code>,
+and <code>autosync-error.log</code>; other crontab entries and scheduler jobs are left
+alone.</p>
+<p>If you used a custom store, use the same path for both commands:</p>
+<pre><code class="language-sh">dalo --store &lt;store-path&gt; autosync status
+dalo --store &lt;store-path&gt; autosync uninstall
+</code></pre>
+<h2 id="5-remove-the-store"><a class="doc-anchor" href="#5-remove-the-store">5. Remove the Store</a></h2>
+<p>After target symlinks and instruction blocks are removed, delete the store directory:</p>
+<pre><code class="language-sh">rm -rf ~/.dalo
+</code></pre>
+<p>Use the path from <code>dalo status</code> if you used <code>--store</code> or <code>DALO_STORE</code>.</p>
+<p>Adopted skills live in the local source under the store. Back up anything in <code>local/skills/</code> or <code>local/instructions/</code> before deleting the store if you want to keep it.</p>
+<h2 id="6-uninstall-the-binary"><a class="doc-anchor" href="#6-uninstall-the-binary">6. Uninstall the Binary</a></h2>
+<p>If installed through Homebrew:</p>
+<pre><code class="language-sh">brew uninstall dalo
+</code></pre>
+<p>If installed through npm:</p>
+<pre><code class="language-sh">npm uninstall --global getdalo
+rm -rf ~/.cache/dalo
+</code></pre>
+<p><code>npx getdalo</code> does not install a global launcher, but it uses the same cache; remove
+<code>~/.cache/dalo</code> if you no longer want the downloaded release binary. If you set
+<code>DALO_CACHE_DIR</code>, remove that directory instead.</p>
+<p>If installed through Cargo:</p>
+<pre><code class="language-sh">cargo uninstall dalo
+</code></pre>
+<p>Cargo Binstall uses Cargo&#39;s installation directory as well; use the same
+<code>cargo uninstall dalo</code> command after confirming it refers to the Dalo binary.</p>
+<p>If managed by mise&#39;s GitHub Releases backend:</p>
+<pre><code class="language-sh">mise uninstall -g github:sebastian-software/dalo
+</code></pre>
+<p>Older installations that still use the deprecated ubi backend can be removed
+with <code>mise uninstall -g ubi:sebastian-software/dalo</code>.</p>
+<p>If installed with the hosted installer or from a GitHub release archive, remove
+the copied <code>dalo</code> binary from wherever you placed it on <code>PATH</code> (by default,
+<code>~/.local/bin/dalo</code>). The hosted installer always verifies checksums; manual
+archives should be checksum-verified before installation as shown in the
+<a href="https://dalo.sh/install.md#manual-release-archives" rel="noopener">installation guide</a>.
+Also remove the adjacent <code>.dalo-install-channel</code> receipt when it was created by
+the hosted installer.</p>
+<h2 id="7-final-check"><a class="doc-anchor" href="#7-final-check">7. Final Check</a></h2>
+<p>Inspect the agent folders you had linked, such as:</p>
+<pre><code class="language-sh">ls -la ~/.agents/skills
+ls -la ~/.claude/skills
+ls -la ~/.hermes/skills
+</code></pre>
+<p>Remove only broken symlinks that point into the deleted Dalo store. Leave real directories and project/user-authored files in place.</p>
+<p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/uninstall.md" rel="noopener">docs/uninstall.md</a></p>
+  </article>
+</main>
+
+<footer class="site-footer doc-footer" data-scope="dark">
+  <div class="wrap footer-base">
+    <span>© 2026 <a href="https://sebastian-software.de" rel="noopener">Sebastian Software</a> · Dalo</span>
+    <span><a href="/" >dalo.sh</a> · <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a> · <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a></span>
+  </div>
+</footer>
+</body>
+</html>
