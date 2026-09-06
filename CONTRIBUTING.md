@@ -28,13 +28,18 @@ cargo build --release --locked
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
 ```
 
-The MSRV, dependency-audit, and coverage jobs additionally run:
+The MSRV, dependency-audit, coverage, and site-render jobs additionally run:
 
 ```sh
 cargo check --locked --all-targets --all-features
 cargo deny check
 cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines "$(cat coverage-threshold)"
+node site/build.mjs --check
 ```
+
+The site check compares the committed render under `site/` with what
+`site/build.mjs` produces from `docs/*.md`; it needs the renderer installed
+once with `pnpm --dir site install`. `site/README.md` describes the build.
 
 The MSRV job installs the toolchain named by `rust-version` in `Cargo.toml`, so
 that number lives in one place.

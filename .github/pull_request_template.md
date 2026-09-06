@@ -26,6 +26,7 @@ you skipped. `tests/workflows.sh` checks this list against the CI job it mirrors
 - [ ] `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features`
 - [ ] `cargo deny check`
 - [ ] `cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines "$(cat coverage-threshold)"`
+- [ ] `node site/build.mjs --check` (needs `pnpm --dir site install` once)
 - [ ] `git diff --check`
 
 ## Linked issues

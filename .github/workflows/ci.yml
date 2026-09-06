@@ -222,3 +222,27 @@ jobs:
 
       - name: Coverage summary
         run: cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines "$(cat coverage-threshold)"
+
+  site:
+    name: Site render
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+
+      # The documentation rendered from docs/*.md and the stamped landing page
+      # under site/ are committed. Failing here keeps a stale render from
+      # reaching the Pages deploy on main, which runs the same check.
+      - name: Check site render
+        env:
+          # corepack downloads pnpm on first use; never wait on a prompt in CI.
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+        run: |
+          corepack pnpm --dir site install --frozen-lockfile
+          node site/build.mjs --check
