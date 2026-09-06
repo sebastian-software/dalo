@@ -1,0 +1,875 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Troubleshooting and FAQ · Dalo documentation</title>
+  <meta name="description" content="Resolver, doctor, and security findings with the command that clears each one." />
+  <link rel="canonical" href="https://dalo.sh/docs/troubleshooting.html" />
+  <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#15171c" media="(prefers-color-scheme: dark)" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Dalo" />
+  <meta property="og:url" content="https://dalo.sh/docs/troubleshooting.html" />
+  <meta property="og:title" content="Troubleshooting and FAQ · Dalo documentation" />
+  <meta property="og:description" content="Resolver, doctor, and security findings with the command that clears each one." />
+  <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
+  <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
+  <link rel="preload" href="/assets/fonts/hanken-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/assets/fonts/geistmono-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/docs.css" />
+</head>
+<body class="doc-page">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header" data-scope="dark">
+  <div class="wrap header-inner">
+    <a class="brand" href="/" aria-label="Dalo home">
+      <svg class="brand-mark" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true" focusable="false">
+        <rect x="1.25" y="1.25" width="29.5" height="29.5" rx="8" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <circle cx="9" cy="9.5" r="2" fill="currentColor" />
+        <circle cx="9" cy="16" r="2" fill="currentColor" />
+        <circle cx="9" cy="22.5" r="2" fill="currentColor" />
+        <path d="M11 9.5 H17 Q22 9.5 22 16 Q22 22.5 17 22.5 H11 M11 16 H22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" />
+        <circle cx="22.5" cy="16" r="2.6" fill="var(--accent)" />
+      </svg>
+      <span class="brand-word">dalo</span>
+      <span class="brand-section">docs</span>
+    </a>
+    <nav class="site-nav" aria-label="Primary">
+      <a href="/#how">How it works</a>
+      <a href="/#quickstart">Quickstart</a>
+      <a href="/docs/">Documentation</a>
+    </nav>
+    <div class="header-actions">
+      <a class="ghost-btn" href="https://github.com/sebastian-software/dalo" rel="noopener">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="doc-shell wrap">
+  <nav class="doc-nav" aria-label="Documentation">
+    <p class="footer-h">Documentation</p>
+        <a href="/docs/getting-started.html">Getting started</a>
+        <a href="/docs/reference.html">Command reference</a>
+        <a href="/docs/agents.html">Agent integration</a>
+        <a href="/docs/ci.html">Dalo in CI</a>
+        <a href="/docs/troubleshooting.html" aria-current="page">Troubleshooting</a>
+        <a href="/docs/uninstall.html">Uninstall</a>
+  </nav>
+  <article class="doc-body">
+<h1 id="troubleshooting-and-faq">Troubleshooting and FAQ</h1>
+<p>This page maps Dalo status and doctor codes to concrete recovery steps. Start with:</p>
+<pre><code class="language-sh">dalo status
+dalo doctor
+</code></pre>
+<p>Use <code>--json</code> when scripting recovery:</p>
+<pre><code class="language-sh">dalo --json status
+dalo --json doctor
+</code></pre>
+<h2 id="fast-recovery-paths"><a class="doc-anchor" href="#fast-recovery-paths">Fast Recovery Paths</a></h2>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Symptom or code</th>
+<th>What happened</th>
+<th>Recovery</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>blocked_by_same_name_skill</code>, <code>unmanaged_same_name_blocker</code>, sync <code>blocked</code> with <code>real unmanaged entry exists at target slot</code></td>
+<td>A real folder already occupies the target slot Dalo wanted to link.</td>
+<td>Keep it intentionally with <code>dalo resolve keep &lt;id&gt;</code> (undo with <code>dalo resolve unkeep &lt;target&gt;:&lt;slot&gt;</code>), adopt it with <code>dalo adopt &lt;id&gt;</code>, or adopt and replace it with <code>dalo adopt &lt;id&gt; --replace</code>.</td>
+</tr>
+<tr>
+<td><code>pending_approval</code></td>
+<td>A skill would become active, but no approval rule covers it.</td>
+<td>Review the skill, then run <code>dalo approve skill &lt;source-id&gt;:&lt;skill&gt;</code> (or grant a reviewed source/author/org scope), or set the source <code>trusted = true</code> if the whole source is trusted. Run <code>dalo status</code> again.</td>
+</tr>
+<tr>
+<td>error <code>security audit blocked ...</code></td>
+<td>A selected or trusted skill has an unaccepted high or critical finding. Trust skips per-skill approval; it does not bypass the security gate.</td>
+<td>Inspect it with <code>dalo audit &lt;source-id&gt;:&lt;skill&gt;</code>. If the risk is understood, record a reason with <code>dalo audit &lt;source-id&gt;:&lt;skill&gt; --accept-risk &quot;&lt;reason&gt;&quot;</code>, or use <code>dalo approve skill &lt;source-id&gt;:&lt;skill&gt; --accept-risk &quot;&lt;reason&gt;&quot;</code> for a catalog skill. Then rerun <code>dalo sync</code>.</td>
+</tr>
+<tr>
+<td><code>dirty_source</code></td>
+<td>A Git-backed source has local edits. Team sources block refresh when dirty.</td>
+<td>Commit, stash, discard, or promote the edits outside Dalo. Then run <code>dalo sync</code>.</td>
+</tr>
+<tr>
+<td>sync reason <code>scan degraded</code>, output <code>degraded source:</code></td>
+<td>Dalo could not safely scan an enabled source. Recorded owned links are preserved so an incomplete scan cannot delete them.</td>
+<td>Restore or re-clone the source checkout, or remove the source with <code>dalo source remove &lt;id&gt;</code>. Do not adopt or delete the preserved target link as an unmanaged blocker.</td>
+</tr>
+<tr>
+<td><code>lock drift</code></td>
+<td>Live resolution differs from the last <code>lock.toml</code>.</td>
+<td>Run <code>dalo status</code> to inspect the drift, then <code>dalo sync</code> when the change is expected.</td>
+</tr>
+<tr>
+<td><code>source_provenance_mismatch</code></td>
+<td>A manifest-derived catalog&#39;s declaration, generated config, checkout HEAD, or <code>source-lock.toml</code> pin disagree.</td>
+<td>Inspect <code>dalo source list</code>, review the declaring team&#39;s <code>dalo.toml</code>, then run <code>dalo sync</code> to reconcile an expected change. Restore the reviewed manifest or checkout first when the difference is unexpected.</td>
+</tr>
+<tr>
+<td><code>StoreLocked</code>, error text <code>another dalo operation is running</code></td>
+<td>Another Dalo command currently owns <code>.lock</code>, or a stale lock file remains.</td>
+<td>Wait for the other command. If no Dalo process is running, inspect and remove the stale <code>.lock</code> file in the store.</td>
+</tr>
+<tr>
+<td><code>owned_path_real_entry</code></td>
+<td>Dalo has an ownership record, but a real file or directory now exists at that path.</td>
+<td>Run <code>dalo resolve remove-owned &lt;id&gt;</code>. Dalo drops the ownership record and leaves the real entry intact.</td>
+</tr>
+<tr>
+<td><code>missing_owned_symlink</code>, <code>broken_owned_symlink</code>, <code>foreign_owned_symlink</code></td>
+<td>A recorded owned symlink is missing, broken, or points outside the store.</td>
+<td>Run <code>dalo resolve remove-owned &lt;id&gt;</code>, then <code>dalo sync</code> if the skill should be linked again.</td>
+</tr>
+<tr>
+<td><code>instruction_block_drift</code></td>
+<td>A managed instruction block is missing, malformed, stale, or points to a missing pack.</td>
+<td>Re-render with <code>dalo instructions enable &lt;pack&gt; &lt;file&gt;</code>, or disable with <code>dalo instructions disable &lt;pack&gt; &lt;file&gt;</code> if no longer wanted.</td>
+</tr>
+<tr>
+<td><code>selected_removed</code> from catalog drift</td>
+<td>A selected catalog skill disappeared upstream.</td>
+<td>Unselect it with <code>dalo source select &lt;catalog&gt; --unselect &lt;skill&gt;</code>, or wait for a catalog fix before syncing.</td>
+</tr>
+<tr>
+<td>catalog drift</td>
+<td>A catalog&#39;s upstream inventory differs from its pinned snapshot.</td>
+<td>Run <code>dalo source refresh &lt;id&gt;</code> to inspect it. Add <code>--check</code> for CI, or preview the reviewed update with <code>dalo --dry-run source refresh &lt;id&gt; --advance</code> before applying it without <code>--dry-run</code>.</td>
+</tr>
+<tr>
+<td><code>autosync_disabled</code></td>
+<td>Dalo has install metadata, but the native scheduler no longer reports the job enabled.</td>
+<td>Reinstall idempotently with <code>dalo autosync install --schedule &lt;hourly|daily|weekly&gt;</code>, or remove it with <code>dalo autosync uninstall</code>.</td>
+</tr>
+<tr>
+<td><code>autosync_run_blocked</code></td>
+<td>The latest scheduled run encountered a dirty source, malformed state, pending approval, audit finding, or target conflict.</td>
+<td>Run <code>dalo autosync status</code> for the durable reason, resolve it with the suggested normal Dalo command, then retry or wait for the next schedule.</td>
+</tr>
+<tr>
+<td><code>autosync_run_stale</code></td>
+<td>A scheduled run is still marked <code>running</code> well past its schedule interval, so it was likely interrupted (crash or power loss) before recording an outcome.</td>
+<td>Run <code>dalo autosync status</code> to confirm, then trigger a fresh run (<code>dalo sync</code>) or wait for the next schedule to overwrite the state.</td>
+</tr>
+<tr>
+<td>autosync <code>skipped</code></td>
+<td>Another interactive Dalo process held the store lock.</td>
+<td>No action is normally required. The next scheduled run retries without contention.</td>
+</tr>
+</tbody></table></div>
+<h2 id="status-codes"><a class="doc-anchor" href="#status-codes">Status Codes</a></h2>
+<h3 id="resolver-diagnostics"><a class="doc-anchor" href="#resolver-diagnostics">Resolver Diagnostics</a></h3>
+<p>These appear in <code>status.resolution.diagnostics</code> and in related text output.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Code</th>
+<th>What it means</th>
+<th>Recovery</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>pending_approval</code></td>
+<td>A would-be winner is held until locally approved.</td>
+<td>Run <code>dalo approve skill &lt;source-id&gt;:&lt;skill&gt;</code>, trust the source, or leave it pending.</td>
+</tr>
+<tr>
+<td><code>local_override</code></td>
+<td>A local skill wins over another managed source for the same slot.</td>
+<td>No action required if intentional. Rename/remove the local skill if the team/catalog skill should win.</td>
+</tr>
+<tr>
+<td><code>shadowed</code></td>
+<td>A lower-priority managed skill lost to another managed skill with the same slot.</td>
+<td>No action required if expected. Adjust source priorities or rename one skill if the loser should be active.</td>
+</tr>
+<tr>
+<td><code>required_expanded</code></td>
+<td>A selected catalog skill pulled in a same-catalog dependency through <code>requires</code>.</td>
+<td>No action required if the dependency is expected. Review the dependency before syncing.</td>
+</tr>
+<tr>
+<td><code>cross_source_require</code></td>
+<td>A <code>requires</code> entry points at another source. Dalo reports it but does not auto-install across sources.</td>
+<td>Select or add the dependency explicitly, or change the skill metadata to use a same-source requirement.</td>
+</tr>
+<tr>
+<td><code>required_blocked</code></td>
+<td>A skill was held back because a required closure cannot be linked.</td>
+<td>Use the closure block reason below to fix the dependency, approval, shadowing, or target conflict.</td>
+</tr>
+<tr>
+<td><code>blocked_winner_alternate_available</code></td>
+<td>A higher-precedence winner was blocked by its required closure while an approved lower-precedence alternate for the same slot remains shadowed. This advisory does not auto-promote the alternate or itself make <code>--check</code> fail; the related <code>required_blocked</code> diagnostic does.</td>
+<td>Resolve the winner&#39;s blocked requirement(s), or give the approved alternate higher precedence with a lower <code>dalo source priority</code> value.</td>
+</tr>
+<tr>
+<td><code>legacy_bare_approval</code></td>
+<td>An older skill approval names only the skill and is no longer accepted because it is ambiguous across sources.</td>
+<td>Re-grant it with <code>dalo approve skill &lt;source-id&gt;:&lt;skill&gt;</code> as suggested by the diagnostic.</td>
+</tr>
+<tr>
+<td><code>audit_failed</code></td>
+<td>Dalo could not complete the security audit for one active skill. The owning source is degraded and existing owned links are preserved until the audit succeeds.</td>
+<td>Inspect <code>status.audit_failures</code>, restore the reported path or permissions, then rerun <code>dalo status</code> or <code>dalo sync</code>.</td>
+</tr>
+</tbody></table></div>
+<h3 id="required-closure-block-reasons"><a class="doc-anchor" href="#required-closure-block-reasons">Required-Closure Block Reasons</a></h3>
+<p>These appear in <code>status</code> under <code>blocked skills</code>.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Reason</th>
+<th>What it means</th>
+<th>Recovery</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>missing</code></td>
+<td>The required reference exists in no enabled source.</td>
+<td>Add/select the required skill, enable its source, or remove/fix the <code>requires</code> entry.</td>
+</tr>
+<tr>
+<td><code>pending approval</code></td>
+<td>The required skill exists but is not approved.</td>
+<td>Approve the required skill or its source/owner.</td>
+</tr>
+<tr>
+<td><code>shadowed but not satisfied</code></td>
+<td>The required skill is shadowed by a different winner.</td>
+<td>Adjust priorities, rename skills, or require the winner instead.</td>
+</tr>
+<tr>
+<td><code>blocked by a same-name target entry</code></td>
+<td>The required skill would be blocked by an unmanaged target entry.</td>
+<td>Adopt, replace, rename, or keep the unmanaged entry.</td>
+</tr>
+<tr>
+<td><code>unlinked</code></td>
+<td>The required skill exists but is otherwise not linkable.</td>
+<td>Inspect <code>dalo status</code> and resolve the related unlinked/blocking reason first.</td>
+</tr>
+</tbody></table></div>
+<h3 id="unlinked-skills"><a class="doc-anchor" href="#unlinked-skills">Unlinked Skills</a></h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Reason</th>
+<th>What it means</th>
+<th>Recovery</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>shadowed</code></td>
+<td>Another managed source won the same slot name.</td>
+<td>No action required if expected. Change source priority, remove/rename one skill, or select a different catalog skill if the loser should win.</td>
+</tr>
+</tbody></table></div>
+<h3 id="lock-drift"><a class="doc-anchor" href="#lock-drift">Lock Drift</a></h3>
+<p>Lock drift compares the previous <code>lock.toml</code> with the current live resolution.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Code</th>
+<th>What it means</th>
+<th>Recovery</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>source_commit_changed</code></td>
+<td>A source commit changed since the lock was written.</td>
+<td>Review source changes, then run <code>dalo sync</code> to write a fresh lock.</td>
+</tr>
+<tr>
+<td><code>source_removed</code></td>
+<td>A source from the lock is no longer configured.</td>
+<td>Run <code>dalo sync</code> to reconcile, or restore the source config.</td>
+</tr>
+<tr>
+<td><code>source_added</code></td>
+<td>A new source is configured but absent from the lock.</td>
+<td>Run <code>dalo sync</code> after reviewing the source.</td>
+</tr>
+<tr>
+<td><code>active_removed</code></td>
+<td>A previously active skill is no longer active.</td>
+<td>Review why it disappeared, then run <code>dalo sync</code> if expected.</td>
+</tr>
+<tr>
+<td><code>active_added</code></td>
+<td>A skill is now active but was not active in the lock.</td>
+<td>Review the skill and approvals, then run <code>dalo sync</code>.</td>
+</tr>
+<tr>
+<td><code>unlinked_removed</code></td>
+<td>A previously unlinked skill is no longer unlinked.</td>
+<td>Usually no action; run <code>dalo sync</code> if the new resolution is expected.</td>
+</tr>
+<tr>
+<td><code>unlinked_added</code></td>
+<td>A skill is now unlinked.</td>
+<td>Inspect the reason, usually shadowing, then adjust priority/selection/name if needed.</td>
+</tr>
+<tr>
+<td><code>pending_approval_removed</code></td>
+<td>A previously pending skill is no longer pending.</td>
+<td>Usually no action; run <code>dalo sync</code> if the new resolution is expected.</td>
+</tr>
+<tr>
+<td><code>pending_approval_added</code></td>
+<td>A skill now needs approval.</td>
+<td>Approve it or leave it pending.</td>
+</tr>
+</tbody></table></div>
+<h3 id="inventory-warnings"><a class="doc-anchor" href="#inventory-warnings">Inventory Warnings</a></h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Code</th>
+<th>What it means</th>
+<th>Recovery</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>malformed_frontmatter</code></td>
+<td><code>SKILL.md</code> frontmatter could not be parsed.</td>
+<td>Fix the YAML frontmatter fences and fields, then rerun <code>dalo status</code>.</td>
+</tr>
+<tr>
+<td><code>invalid_slot_name</code></td>
+<td>Frontmatter <code>name</code> or folder name is not a portable slot name.</td>
+<td>Rename the folder or frontmatter <code>name</code> to a lowercase portable token.</td>
+</tr>
+<tr>
+<td><code>duplicate_slot_name</code></td>
+<td>One source contains multiple skills with the same slot name.</td>
+<td>Rename one skill or split the source.</td>
+</tr>
+<tr>
+<td><code>unreadable_path</code></td>
+<td>Dalo could not read a skill path.</td>
+<td>Fix filesystem permissions, broken links, or the source checkout.</td>
+</tr>
+<tr>
+<td><code>skipped_symlink</code></td>
+<td>Dalo skipped a symlinked directory or an out-of-tree <code>SKILL.md</code> metadata symlink to keep source discovery and skill identity inside a bounded checkout.</td>
+<td>Replace it with a real in-tree path, or remove the symlink.</td>
+</tr>
+</tbody></table></div>
+<p>For a local source, make the repair in its local source path. For Git-backed
+team or catalog sources, do not edit Dalo&#39;s managed checkout: fix the upstream
+repository, push the change, then run <code>dalo sync</code>.</p>
+<h3 id="agent-inventory-warnings"><a class="doc-anchor" href="#agent-inventory-warnings">Agent Inventory Warnings</a></h3>
+<p>These appear in <code>status.agent_inventory_warnings</code>, <code>dalo agent list</code>, and make
+<code>dalo status --check</code> fail.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Code</th>
+<th>What it means</th>
+<th>Recovery</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>invalid_agent_package</code></td>
+<td><code>AGENT.md</code> is malformed, misses required frontmatter such as <code>schema_version: 1</code>, or exceeds a safety bound.</td>
+<td>Fix the frontmatter and package layout, then rerun <code>dalo status</code>.</td>
+</tr>
+<tr>
+<td><code>unsafe_agent_package_entry</code></td>
+<td>The package contains a symlink or unsupported special filesystem entry.</td>
+<td>Replace it with a real in-tree file or directory.</td>
+</tr>
+<tr>
+<td><code>duplicate_agent_slot_name</code></td>
+<td>Two packages in one source declare the same canonical agent name.</td>
+<td>Rename one package or split the source.</td>
+</tr>
+<tr>
+<td><code>unreadable_agent_path</code></td>
+<td>Dalo could not read an agent package or one of its entries.</td>
+<td>Restore the checkout or fix permissions, then rerun <code>dalo status</code>.</td>
+</tr>
+</tbody></table></div>
+<h3 id="target-scan-warnings"><a class="doc-anchor" href="#target-scan-warnings">Target Scan Warnings</a></h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Code</th>
+<th>What it means</th>
+<th>Recovery</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>unreadable_target_dir</code></td>
+<td>A linked target directory or child entry could not be scanned.</td>
+<td>Fix permissions or remove the unreadable entry, then rerun <code>dalo status</code> or <code>dalo doctor</code>.</td>
+</tr>
+</tbody></table></div>
+<h3 id="sync-operations"><a class="doc-anchor" href="#sync-operations">Sync Operations</a></h3>
+<p><code>dalo sync --json</code> reports materialization operations.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Kind/status</th>
+<th>What it means</th>
+<th>Recovery</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>create</code> / <code>applied</code></td>
+<td>Dalo created an owned symlink.</td>
+<td>No action.</td>
+</tr>
+<tr>
+<td><code>relink</code> / <code>applied</code></td>
+<td>Dalo moved an owned symlink to the desired store path.</td>
+<td>No action.</td>
+</tr>
+<tr>
+<td><code>remove</code> / <code>applied</code></td>
+<td>Dalo removed a no-longer-desired owned symlink.</td>
+<td>No action.</td>
+</tr>
+<tr>
+<td><code>drop_record</code> / <code>applied</code></td>
+<td>Dalo dropped stale ownership state without touching a real entry.</td>
+<td>No action unless the skill should be linked again; then run <code>dalo sync</code>.</td>
+</tr>
+<tr>
+<td><code>conflict</code> / <code>blocked</code>, reason says a real entry or foreign symlink occupies the slot</td>
+<td>Dalo refused to touch unmanaged or foreign content.</td>
+<td>Adopt, keep, rename, or remove the blocker, then rerun <code>dalo sync</code>.</td>
+</tr>
+<tr>
+<td><code>conflict</code> / <code>blocked</code>, reason contains <code>source &lt;id&gt; scan degraded</code></td>
+<td>Dalo preserved a recorded owned link because its source could not be scanned safely.</td>
+<td>Restore or re-clone the source checkout, or run <code>dalo source remove &lt;id&gt;</code>. Leave the preserved target link in place.</td>
+</tr>
+<tr>
+<td>any kind / <code>planned</code></td>
+<td><code>--dry-run</code> showed what would happen.</td>
+<td>Rerun without <code>--dry-run</code> if the plan is correct.</td>
+</tr>
+<tr>
+<td>any kind / <code>existing</code></td>
+<td>The filesystem already matched the desired state.</td>
+<td>No action.</td>
+</tr>
+</tbody></table></div>
+<h3 id="catalog-drift"><a class="doc-anchor" href="#catalog-drift">Catalog Drift</a></h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Code</th>
+<th>What it means</th>
+<th>Recovery</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>new_available</code></td>
+<td>Upstream added an unselected catalog skill.</td>
+<td>Inspect/select it if wanted.</td>
+</tr>
+<tr>
+<td><code>selected_changed</code></td>
+<td>A selected skill changed content or metadata upstream.</td>
+<td>Review <code>dalo --dry-run source refresh &lt;id&gt; --advance</code>, then apply the reviewed pin.</td>
+</tr>
+<tr>
+<td><code>selected_moved</code></td>
+<td>A selected skill moved but still has a stable ID.</td>
+<td>Review the advance plan. A real advance canonicalizes the selection to the stable ID and relinks owned targets transactionally.</td>
+</tr>
+<tr>
+<td><code>selected_removed</code></td>
+<td>A selected skill no longer exists upstream.</td>
+<td>Unselect it, restore it upstream, or keep the old pin until resolved.</td>
+</tr>
+</tbody></table></div>
+<h3 id="instruction-block-drift"><a class="doc-anchor" href="#instruction-block-drift">Instruction Block Drift</a></h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Kind</th>
+<th>What it means</th>
+<th>Recovery</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>missing</code></td>
+<td>The target file or managed block is missing.</td>
+<td>Re-render with <code>dalo instructions enable &lt;pack&gt; &lt;file&gt;</code>, or disable the pack if no longer wanted.</td>
+</tr>
+<tr>
+<td><code>malformed</code></td>
+<td>Managed block markers are duplicated, reversed, unreadable, or malformed.</td>
+<td>Re-run <code>dalo instructions disable &lt;pack&gt; &lt;file&gt;</code> to remove the stale lock entry while leaving the malformed target untouched, then fix or remove the markers before re-enabling.</td>
+</tr>
+<tr>
+<td><code>stale</code></td>
+<td>The block exists but no longer matches the pack body.</td>
+<td>Re-render with <code>dalo instructions enable &lt;pack&gt; &lt;file&gt;</code>.</td>
+</tr>
+<tr>
+<td><code>source_missing</code></td>
+<td>The active lock entry points to a pack that cannot be read.</td>
+<td>Restore the pack file or disable the pack.</td>
+</tr>
+</tbody></table></div>
+<h2 id="doctor-findings"><a class="doc-anchor" href="#doctor-findings">Doctor Findings</a></h2>
+<p>Doctor includes <code>ok</code> and <code>info</code> codes as well as warnings/errors. Codes not listed as requiring action are informational.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Severity</th>
+<th>Recovery</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>store_missing</code></td>
+<td>error</td>
+<td>Run <code>dalo init</code> or pass the right <code>--store</code>.</td>
+</tr>
+<tr>
+<td><code>store_layout_missing</code></td>
+<td>error</td>
+<td>Run <code>dalo init</code> to recreate missing store paths.</td>
+</tr>
+<tr>
+<td><code>config_invalid</code></td>
+<td>error</td>
+<td>Fix <code>config.toml</code> or restore it from version control/backups.</td>
+</tr>
+<tr>
+<td><code>state_invalid</code></td>
+<td>error</td>
+<td>Run <code>dalo init</code>; corrupt state is backed up and regenerated. Relink targets afterward if needed.</td>
+</tr>
+<tr>
+<td><code>lock_invalid</code></td>
+<td>error</td>
+<td>Inspect and repair <code>lock.toml</code>, or restore a known-good backup before running <code>dalo sync</code>. Do not remove it: it is the sole record of active instruction packs and their managed target blocks.</td>
+</tr>
+<tr>
+<td><code>source_lock_invalid</code></td>
+<td>error</td>
+<td>Inspect or restore <code>source-lock.toml</code>; do not sync until the intended catalog pins are understood.</td>
+</tr>
+<tr>
+<td><code>source_provenance_mismatch</code></td>
+<td>error</td>
+<td>Compare <code>dalo source list</code> with the declaring team&#39;s <code>dalo.toml</code>, then run <code>dalo sync</code> after restoring the intended declaration or checkout.</td>
+</tr>
+<tr>
+<td><code>source_store_debris</code></td>
+<td>warning</td>
+<td>Inspect and remove the reported unconfigured source content or interrupted-operation directory when it is no longer needed.</td>
+</tr>
+<tr>
+<td><code>approvals_invalid</code></td>
+<td>error</td>
+<td>Fix <code>approvals.toml</code>; doctor suppresses approval-dependent warnings while it is invalid.</td>
+</tr>
+<tr>
+<td><code>git_missing</code></td>
+<td>error</td>
+<td>Install Git and ensure <code>git</code> is on <code>PATH</code>.</td>
+</tr>
+<tr>
+<td><code>local_git_missing</code></td>
+<td>error</td>
+<td>Run <code>dalo init</code> to restore the local source Git repository.</td>
+</tr>
+<tr>
+<td><code>target_missing</code></td>
+<td>warning</td>
+<td>Recreate the directory or run <code>dalo target link &lt;target&gt; [path]</code>.</td>
+</tr>
+<tr>
+<td><code>cloud_synced_target</code></td>
+<td>warning</td>
+<td>Prefer a non-cloud-synced target path if sync software interferes with symlinks.</td>
+</tr>
+<tr>
+<td><code>foreign_owned_symlink</code></td>
+<td>error</td>
+<td>Run <code>dalo resolve remove-owned &lt;id&gt;</code>.</td>
+</tr>
+<tr>
+<td><code>broken_owned_symlink</code></td>
+<td>error</td>
+<td>Run <code>dalo resolve remove-owned &lt;id&gt;</code>, then <code>dalo sync</code> if it should be recreated.</td>
+</tr>
+<tr>
+<td><code>owned_path_real_entry</code></td>
+<td>error</td>
+<td>Run <code>dalo resolve remove-owned &lt;id&gt;</code>; the real entry stays in place.</td>
+</tr>
+<tr>
+<td><code>missing_owned_symlink</code></td>
+<td>warning</td>
+<td>Run <code>dalo resolve remove-owned &lt;id&gt;</code>, then <code>dalo sync</code> if needed.</td>
+</tr>
+<tr>
+<td><code>owned_symlink_repointed</code></td>
+<td>error</td>
+<td>Run the suggested <code>dalo resolve remove-owned &lt;id&gt;</code> command, then <code>dalo sync</code> if the recorded skill should be recreated.</td>
+</tr>
+<tr>
+<td><code>dirty_source</code></td>
+<td>error for team/catalog, warning for local</td>
+<td>The checkout has local edits to tracked files (untracked files such as <code>.DS_Store</code> no longer count). Commit, stash, discard, or intentionally keep them.</td>
+</tr>
+<tr>
+<td><code>source_missing</code></td>
+<td>error</td>
+<td>The enabled source&#39;s checkout is missing from disk or could not be read. Restore/re-clone it (or fix its permissions), or run <code>dalo source remove &lt;id&gt;</code>.</td>
+</tr>
+<tr>
+<td><code>source_inventory_degraded</code></td>
+<td>error</td>
+<td>For listed inventory warnings, follow the reported repair hint and then run <code>dalo sync</code>. If the inventory could not be scanned at all, inspect the reported source path and error, restore its checkout or permissions, and rerun <code>dalo doctor</code>; <code>dalo status</code> provides detail but is not itself a repair. Existing links are preserved until the source can be scanned safely.</td>
+</tr>
+<tr>
+<td><code>pending_approval</code></td>
+<td>warning</td>
+<td>Add the needed approval or leave the skill pending.</td>
+</tr>
+<tr>
+<td><code>required_closure_blocked</code></td>
+<td>error</td>
+<td>Resolve the closure block reason shown in the message.</td>
+</tr>
+<tr>
+<td><code>security_audit_blocked</code></td>
+<td>error</td>
+<td>An active skill has an unaccepted high/critical audit finding; <code>sync</code> will refuse to link it. Review with <code>dalo audit &lt;ref&gt;</code> and accept the risk or remove/replace the skill.</td>
+</tr>
+<tr>
+<td><code>security_audit_failed</code></td>
+<td>warning</td>
+<td>An active skill&#39;s deterministic security audit could not be completed (for example unreadable content). Investigate with <code>dalo audit &lt;ref&gt;</code>.</td>
+</tr>
+<tr>
+<td><code>tool_pending_approval</code></td>
+<td>warning</td>
+<td>Review the exact tool contract, then run the reported <code>dalo approve tool &lt;source-ref&gt;</code> command.</td>
+</tr>
+<tr>
+<td><code>tool_hash_drift</code></td>
+<td>error</td>
+<td>Inspect the changed contract with the reported <code>dalo tool audit &lt;source-ref&gt;</code> command. Approve it again only after review.</td>
+</tr>
+<tr>
+<td><code>tool_runtime_missing</code></td>
+<td>error</td>
+<td>Install or restore the runtime named in the finding, then run <code>dalo status</code> to recheck the tool.</td>
+</tr>
+<tr>
+<td><code>tool_platform_mismatch</code></td>
+<td>warning</td>
+<td>Use a platform supported by the tool contract, or change the selected plugin/tool configuration.</td>
+</tr>
+<tr>
+<td><code>tool_approval_revoked</code></td>
+<td>warning</td>
+<td>Review the immutable tool bytes and run the reported <code>dalo approve tool &lt;source-ref&gt;</code> command if execution is still intended.</td>
+</tr>
+<tr>
+<td><code>tool_audit_failed</code></td>
+<td>error</td>
+<td>Run the reported <code>dalo tool audit &lt;source-ref&gt;</code> command; repair the immutable staging or approval problem before using the tool.</td>
+</tr>
+<tr>
+<td><code>tool_ready</code></td>
+<td>ok</td>
+<td>The tool&#39;s exact execution contract is approved and staged; no recovery is required.</td>
+</tr>
+<tr>
+<td><code>tool_staging_debris</code></td>
+<td>warning</td>
+<td>After confirming no sync or approval is running, remove the reported <code>.tool-stage-*</code> directory; it was never approved or promoted.</td>
+</tr>
+<tr>
+<td><code>hook_pending_approval</code></td>
+<td>warning/error</td>
+<td>Review the hook and its referenced tool. Run the reported <code>dalo approve hook &lt;source-ref&gt;</code> command when the hook itself is pending; also resolve any provider blocker in the finding.</td>
+</tr>
+<tr>
+<td><code>hook_hash_drift</code></td>
+<td>error</td>
+<td>Inspect the changed contract with the reported <code>dalo hook show &lt;source-ref&gt;</code> command, then approve the reviewed hook again.</td>
+</tr>
+<tr>
+<td><code>hook_tool_unavailable</code></td>
+<td>error</td>
+<td>Review and approve the referenced tool with the reported <code>dalo approve tool &lt;source-ref&gt;</code> command.</td>
+</tr>
+<tr>
+<td><code>hook_ready</code></td>
+<td>ok</td>
+<td>The hook and its referenced tool are independently approved; no recovery is required.</td>
+</tr>
+<tr>
+<td><code>hook_provider_disabled</code></td>
+<td>warning</td>
+<td>Enable hook projection for the reported provider/target, or keep the hook managed only if native projection is not required.</td>
+</tr>
+<tr>
+<td><code>hook_provider_unverified</code></td>
+<td>error</td>
+<td>Install or update the reported provider runtime to a supported, verifiable version, then run <code>dalo status</code>.</td>
+</tr>
+<tr>
+<td><code>hook_native_conflict</code></td>
+<td>error</td>
+<td>Restore the Dalo-owned native sidecar or move conflicting provider content out of the reported target path.</td>
+</tr>
+<tr>
+<td><code>plugin_projection_blocked</code></td>
+<td>error</td>
+<td>Run <code>dalo plan</code> and resolve the required component blocker before projecting the plugin.</td>
+</tr>
+<tr>
+<td><code>plugin_projection_conflict</code></td>
+<td>error</td>
+<td>Restore the Dalo-owned native plugin link or move foreign provider content out of the target path.</td>
+</tr>
+<tr>
+<td><code>generated_delivery_invalid</code></td>
+<td>error</td>
+<td>Inspect the reported generated cache path. Move a corrupt hash directory out of <code>generated/sha256</code>, then rerun <code>dalo sync</code> so the approved derivation can be rebuilt.</td>
+</tr>
+<tr>
+<td><code>generated_delivery_staging_debris</code></td>
+<td>warning</td>
+<td>Inspect and remove the reported <code>.delivery-stage-*</code> directory after confirming no sync is running; staging debris was never activated.</td>
+</tr>
+<tr>
+<td><code>instruction_pack_topic_overlap</code></td>
+<td>warning</td>
+<td>Rename topics or disable one overlapping pack if the overlap is not intended.</td>
+</tr>
+<tr>
+<td><code>instruction_block_drift</code></td>
+<td>error</td>
+<td>Re-render or disable the pack.</td>
+</tr>
+<tr>
+<td><code>autosync_installed</code></td>
+<td>ok</td>
+<td>The native scheduler is installed and enabled.</td>
+</tr>
+<tr>
+<td><code>autosync_not_installed</code></td>
+<td>info</td>
+<td>Install it with <code>dalo autosync install</code> if recurring synchronization is desired.</td>
+</tr>
+<tr>
+<td><code>autosync_disabled</code></td>
+<td>warning</td>
+<td>Reinstall with <code>dalo autosync install</code>, or remove stale metadata with <code>dalo autosync uninstall</code>.</td>
+</tr>
+<tr>
+<td><code>autosync_executable_missing</code></td>
+<td>warning</td>
+<td>The executable path recorded during installation is missing or no longer executable. Reinstall with <code>dalo autosync install</code> from a persistent launcher.</td>
+</tr>
+<tr>
+<td><code>autosync_run_blocked</code></td>
+<td>warning</td>
+<td>Inspect <code>dalo autosync status</code>, resolve its recorded reason, and retry.</td>
+</tr>
+<tr>
+<td><code>autosync_run_stale</code></td>
+<td>warning</td>
+<td>A run is still <code>running</code> long after it started; it was likely interrupted. Trigger a fresh <code>dalo sync</code> or wait for the next schedule.</td>
+</tr>
+<tr>
+<td><code>autosync_state_invalid</code></td>
+<td>error</td>
+<td>Run <code>dalo autosync uninstall</code> to quarantine malformed or newer-schema <code>autosync.toml</code> and clean reconstructed scheduler artifacts, then reinstall. Repair or remove malformed <code>autosync-run.toml</code> separately.</td>
+</tr>
+<tr>
+<td><code>unreadable_target_directory</code></td>
+<td>warning</td>
+<td>Fix permissions or remove unreadable entries.</td>
+</tr>
+<tr>
+<td><code>unmanaged_same_name_blocker</code></td>
+<td>error</td>
+<td>Adopt, keep, rename, or remove the unmanaged blocker.</td>
+</tr>
+<tr>
+<td><code>stale_protected_skill</code></td>
+<td>warning</td>
+<td>Relink the target if it moved, or remove the stale marker with the suggested <code>dalo resolve unkeep</code> command.</td>
+</tr>
+<tr>
+<td><code>protected_skill_kept</code></td>
+<td>info</td>
+<td>The unmanaged slot was intentionally kept; no recovery is required.</td>
+</tr>
+<tr>
+<td><code>store_exists</code>, <code>store_layout_ok</code>, <code>config_ok</code>, <code>state_ok</code>, <code>lock_ok</code>, <code>approvals_ok</code>, <code>git_available</code>, <code>local_git_ok</code>, <code>target_exists</code>, <code>duplicate_target_directory</code>, <code>owned_symlink_ok</code>, <code>source_clean</code></td>
+<td>ok/info</td>
+<td>No recovery required.</td>
+</tr>
+</tbody></table></div>
+<h2 id="faq"><a class="doc-anchor" href="#faq">FAQ</a></h2>
+<h3 id="why-did-sync-not-overwrite-my-folder"><a class="doc-anchor" href="#why-did-sync-not-overwrite-my-folder">Why did <code>sync</code> not overwrite my folder?</a></h3>
+<p>Dalo treats real folders in target directories as user/project content. Use <code>dalo adopt &lt;id&gt;</code> to copy the folder into the local source, <code>dalo adopt &lt;id&gt; --replace</code> to replace it with an owned symlink, or <code>dalo resolve keep &lt;id&gt;</code> to leave it intentionally unmanaged without failing checks. Undo that decision with <code>dalo resolve unkeep &lt;target&gt;:&lt;slot&gt;</code>.</p>
+<h3 id="how-do-i-approve-a-pending-skill"><a class="doc-anchor" href="#how-do-i-approve-a-pending-skill">How do I approve a pending skill?</a></h3>
+<p>Review the reported source-qualified skill, then run:</p>
+<pre><code class="language-sh">dalo approve skill &lt;source-id&gt;:&lt;skill&gt;
+</code></pre>
+<p>Use <code>dalo approve list</code> to inspect existing rules and <a href="reference.html#dalo-approve">the user reference</a> for broader source, author, and organization scopes. Rerun <code>dalo status</code> before syncing.</p>
+<h3 id="how-do-i-recover-from-a-security-audit-block"><a class="doc-anchor" href="#how-do-i-recover-from-a-security-audit-block">How do I recover from a security-audit block?</a></h3>
+<p>An audit block means deterministic or optional semantic review found an
+unaccepted <code>high</code> or <code>critical</code> risk. Semantic review is optional and can add
+findings, but a review with no additional findings is not an approval or safety
+guarantee. This applies to trusted team sources too:
+trust removes the catalog-style approval requirement, but it never bypasses the
+security gate.</p>
+<p>Inspect the exact source-qualified skill first:</p>
+<pre><code class="language-sh">dalo audit &lt;source-id&gt;:&lt;skill&gt;
+</code></pre>
+<p>If the behavior is expected and you accept the risk, record a specific reason:</p>
+<pre><code class="language-sh">dalo audit &lt;source-id&gt;:&lt;skill&gt; --accept-risk &quot;reviewed pinned installer&quot;
+</code></pre>
+<p>For a catalog skill that still needs approval, combine both decisions:</p>
+<pre><code class="language-sh">dalo approve skill &lt;source-id&gt;:&lt;skill&gt; \
+  --accept-risk &quot;reviewed pinned installer&quot;
+</code></pre>
+<p>Then rerun <code>dalo sync</code>. Acceptance is bound to the source, exact content,
+engine versions, coverage, and findings; a relevant change invalidates it and
+requires a fresh review.</p>
+<h3 id="how-do-i-recover-from-a-dirty-team-source"><a class="doc-anchor" href="#how-do-i-recover-from-a-dirty-team-source">How do I recover from a dirty team source?</a></h3>
+<p>Go to the checkout shown by <code>dalo doctor</code>, then commit, stash, or discard the edits with normal Git commands. Dalo does not decide this for you because the edits may be user or agent work.</p>
+<h3 id="how-do-i-remove-dalo-completely"><a class="doc-anchor" href="#how-do-i-remove-dalo-completely">How do I remove Dalo completely?</a></h3>
+<p>Use the uninstall guide: <a href="uninstall.html">Uninstall Dalo</a>.</p>
+<p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/troubleshooting.md" rel="noopener">docs/troubleshooting.md</a></p>
+  </article>
+</main>
+
+<footer class="site-footer doc-footer" data-scope="dark">
+  <div class="wrap footer-base">
+    <span>© 2026 <a href="https://sebastian-software.de" rel="noopener">Sebastian Software</a> · Dalo</span>
+    <span><a href="/" >dalo.sh</a> · <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a> · <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a></span>
+  </div>
+</footer>
+</body>
+</html>

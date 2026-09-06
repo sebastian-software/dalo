@@ -46,7 +46,7 @@ The V1.1 catalog and instruction-pack layer is also implemented:
 
 Distribution work is wired for the next tagged release:
 
-- Root MIT `LICENSE`.
+- Root `LICENSE-MIT` and `LICENSE-APACHE` (the crate is `MIT OR Apache-2.0`).
 - Release workflow publishes to crates.io when release-please creates a release, assuming `CARGO_REGISTRY_TOKEN` is configured.
 - Release workflow attaches Linux and macOS archives plus SHA-256 checksum files to GitHub releases.
 

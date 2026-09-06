@@ -3,4 +3,6 @@
 /target/
 /.pnpm-store/
 /video/node_modules/
+/site/node_modules/
+/site/build/
 /npm/node_modules/

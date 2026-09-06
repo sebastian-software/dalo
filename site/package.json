@@ -1,0 +1,14 @@
+{
+  "name": "@dalo/site",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Build step for the dalo.sh static site.",
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "node build.mjs --check"
+  },
+  "devDependencies": {
+    "marked": "18.0.11"
+  }
+}
