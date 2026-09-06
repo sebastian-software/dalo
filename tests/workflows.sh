@@ -348,4 +348,26 @@ if ! { [ "$build_line" -lt "$check_line" ] && [ "$check_line" -lt "$render_line"
   exit 1
 fi
 
+# A stale committed site render must fail the pull request, not the Pages
+# deploy on main: CI installs the site dependencies and runs the same check.
+site_job="$(ci_job_body site)"
+for site_check_command in \
+  'corepack pnpm --dir site install --frozen-lockfile' \
+  'node site/build.mjs --check'; do
+  printf '%s\n' "$site_job" | grep -Fqx "          $site_check_command" || {
+    echo "the CI site job no longer runs: $site_check_command" >&2
+    exit 1
+  }
+done
+printf '%s\n' "$site_job" | grep -Fq 'COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"' || {
+  echo 'the CI site job must disable the corepack download prompt' >&2
+  exit 1
+}
+for validation_document in "$pr_template" "$contributing"; do
+  grep -Fq 'node site/build.mjs --check' "$validation_document" || {
+    echo "$validation_document is missing: node site/build.mjs --check" >&2
+    exit 1
+  }
+done
+
 echo "workflow checks passed"

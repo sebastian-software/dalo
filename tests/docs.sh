@@ -177,7 +177,7 @@ grep -q 'source add <id> <git-url-or-path>' "$root/docs/reference.md"
 grep -q 'source add-catalog <id> <git-url-or-path>' "$root/docs/reference.md"
 grep -q '`version:` entry from the first five lines' "$root/docs/reference.md"
 grep -q '`topics:` or `tags:` metadata from the first eight lines' "$root/docs/reference.md"
-if sed -n '/MSRV, dependency-audit, and coverage jobs additionally run:/,/^```$/p' "$root/CONTRIBUTING.md" \
+if sed -n '/MSRV, dependency-audit, coverage, and site-render jobs additionally run:/,/^```$/p' "$root/CONTRIBUTING.md" \
   | grep -q 'cargo build --release'; then
   echo 'CONTRIBUTING repeats the release build in the extra-jobs command set' >&2
   exit 1
