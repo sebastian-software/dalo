@@ -187,7 +187,7 @@ ${body}
 <footer class="site-footer doc-footer" data-scope="dark">
   <div class="wrap footer-base">
     <span>© 2026 <a href="https://sebastian-software.de" rel="noopener">Sebastian Software</a> · Dalo</span>
-    <span><a href="/" >dalo.sh</a> · <a href="${REPO}" rel="noopener">GitHub</a> · <a href="${REPO}/blob/main/CHANGELOG.md" rel="noopener">Changelog</a></span>
+    <span><a href="/">dalo.sh</a> · <a href="${REPO}" rel="noopener">GitHub</a> · <a href="${REPO}/blob/main/CHANGELOG.md" rel="noopener">Changelog</a></span>
   </div>
 </footer>
 </body>
