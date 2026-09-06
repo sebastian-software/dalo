@@ -7,7 +7,7 @@ Thanks for improving Dalo. This project is a Rust CLI with a reusable library co
 Useful project references:
 
 - User-facing command and file reference: [docs/reference.md](docs/reference.md)
-- Implementation milestones and validation policy: [docs/milestones/README.md](docs/milestones/README.md)
+- Implementation milestones and validation policy: [docs/archive/milestones/README.md](docs/archive/milestones/README.md)
 - Product and architecture background: [docs/rfcs/](docs/rfcs/)
 - Release history: [CHANGELOG.md](CHANGELOG.md)
 
