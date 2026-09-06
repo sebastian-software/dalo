@@ -222,7 +222,7 @@ jobs:
           mkdir -p "dist/${package}"
           mkdir -p "dist/${package}/completions" "dist/${package}/man/man1"
           cp "target/${TARGET}/release/dalo" "dist/${package}/"
-          cp README.md LICENSE "dist/${package}/"
+          cp README.md LICENSE-MIT LICENSE-APACHE "dist/${package}/"
           cargo run --locked -- completions bash > "dist/${package}/completions/dalo.bash"
           cargo run --locked -- completions zsh > "dist/${package}/completions/_dalo"
           cargo run --locked -- completions fish > "dist/${package}/completions/dalo.fish"

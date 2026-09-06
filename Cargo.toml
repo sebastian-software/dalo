@@ -4,15 +4,17 @@ version = "0.14.10"
 edition = "2024"
 rust-version = "1.93"
 description = "Git-backed skill management for AI agents."
-license = "MIT"
+authors = ["Sebastian Software GmbH"]
+license = "MIT OR Apache-2.0"
 repository = "https://github.com/sebastian-software/dalo"
 homepage = "https://dalo.sh"
+documentation = "https://docs.rs/dalo"
+readme = "README.md"
 keywords = ["ai", "agents", "skills", "cli", "symlink"]
 categories = ["command-line-utilities", "development-tools"]
 exclude = [".github/", "docs/", "npm/", "site/", "video/"]
 
 [dependencies]
-anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
 clap_mangen = "0.3"
@@ -36,6 +38,10 @@ sigpipe = "0.1.3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 landlock = "0.4.7"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/dalo-v{ version }/{ name }-{ version }-{ target }.tar.gz"
