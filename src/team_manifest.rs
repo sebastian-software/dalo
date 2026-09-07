@@ -1785,6 +1785,21 @@ mod tests {
     }
 
     #[test]
+    fn load_team_manifest_should_reject_unsafe_catalog_transport_before_reconciliation() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        std::fs::write(
+            temp.path().join(TEAM_MANIFEST_FILE),
+            "schema_version = 1\n\n[source]\nid = \"team\"\nkind = \"team\"\n\n[[catalog]]\nid = \"unsafe\"\nurl = \"ext::sh -c 'touch /tmp/dalo-rce'\"\nversion = \"main\"\n",
+        )
+        .expect("manifest should be written");
+
+        let error = load_team_manifest(temp.path(), "team")
+            .expect_err("unsafe catalog transport should be rejected before cloning");
+
+        assert!(matches!(error, DaloError::UnsafeRemoteUrl));
+    }
+
+    #[test]
     fn candidate_error_wins_when_cleanup_also_fails() {
         let result: DaloResult<()> = finish_candidate_after_cleanup(
             Err(DaloError::AuditBlocked {

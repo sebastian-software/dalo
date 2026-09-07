@@ -26,6 +26,7 @@ const GIT_NETWORK_TIMEOUT: Duration = Duration::from_secs(300);
 const GIT_POLL_INTERVAL: Duration = Duration::from_millis(1);
 const GIT_TIMEOUT_ENV: &str = "DALO_GIT_TIMEOUT_SECS";
 const MAX_CONCURRENT_FETCHES: usize = 4;
+const GIT_ALLOWED_PROTOCOLS: &str = "https:ssh:git:file";
 
 type SshPreflightCache = Mutex<BTreeMap<(String, PathBuf), Arc<OnceLock<bool>>>>;
 static SSH_PREFLIGHT_CACHE: OnceLock<SshPreflightCache> = OnceLock::new();
@@ -37,6 +38,7 @@ pub fn init_repo(path: &Path) -> DaloResult<()> {
 
 /// Clone a Git repository.
 pub fn clone_repo(url: &str, destination: &Path) -> DaloResult<()> {
+    validate_remote_url(url)?;
     let cwd = destination.parent().unwrap_or_else(|| Path::new("."));
     preflight_local_clone_source(url, cwd)?;
     let destination_arg = destination.to_string_lossy().into_owned();
@@ -49,10 +51,12 @@ pub fn clone_repo(url: &str, destination: &Path) -> DaloResult<()> {
     run_git_network(cwd, &["clone", "--quiet", "--", url, &destination_arg]).map(|_| ())
 }
 
-/// Reject Git URLs that embed userinfo so credentials never reach config files,
-/// command displays, or Git's remote configuration.
+/// Reject unsafe Git transports and URLs that embed credentials.
+///
+/// Local paths remain valid clone sources. Remote sources must use one of the
+/// protocols that Dalo supports, or a constrained SCP-style SSH location.
 pub fn validate_remote_url(url: &str) -> DaloResult<()> {
-    if url_has_userinfo(url) {
+    if url_has_forbidden_userinfo(url) || !uses_allowed_git_transport(url) {
         return Err(DaloError::UnsafeRemoteUrl);
     }
     Ok(())
@@ -384,6 +388,11 @@ fn run_git_program_with_options(
     command
         .args(args)
         .current_dir(path)
+        // Do not let a configured remote select arbitrary Git transport
+        // helpers. `GIT_PROTOCOL_FROM_USER=0` also prevents Git from treating
+        // URLs supplied on the command line as user-approved protocols.
+        .env("GIT_ALLOW_PROTOCOL", GIT_ALLOWED_PROTOCOLS)
+        .env("GIT_PROTOCOL_FROM_USER", "0")
         .env("GIT_TERMINAL_PROMPT", "0")
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout.reopen()?))
@@ -585,7 +594,57 @@ fn display_git_value(value: &str) -> String {
         })
 }
 
-fn url_has_userinfo(url: &str) -> bool {
+fn uses_allowed_git_transport(url: &str) -> bool {
+    let Some((scheme, remainder)) = url.split_once("://") else {
+        return !looks_like_remote_location(url) || is_scp_style_git_url(url);
+    };
+
+    match scheme.to_ascii_lowercase().as_str() {
+        "https" | "ssh" | "git" => has_url_authority(remainder),
+        // `file:///path` has an empty authority but is a valid local URL.
+        "file" => !remainder.is_empty(),
+        _ => false,
+    }
+}
+
+fn has_url_authority(remainder: &str) -> bool {
+    remainder
+        .split(['/', '?', '#'])
+        .next()
+        .is_some_and(|authority| !authority.is_empty())
+}
+
+fn is_scp_style_git_url(url: &str) -> bool {
+    let Some((authority, path)) = url.split_once(':') else {
+        return false;
+    };
+    if authority.is_empty()
+        || path.is_empty()
+        || path.starts_with(':')
+        || path.contains(':')
+        || path
+            .chars()
+            .any(|character| character.is_whitespace() || character.is_control())
+    {
+        return false;
+    }
+
+    let (user, host) = authority
+        .split_once('@')
+        .map_or((None, authority), |(user, host)| (Some(user), host));
+    user.is_none_or(|user| {
+        !user.is_empty()
+            && user
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || "._-".contains(character))
+    }) && !host.is_empty()
+        && !host.starts_with('-')
+        && host
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || ".-".contains(character))
+}
+
+fn url_has_forbidden_userinfo(url: &str) -> bool {
     let Some(scheme_end) = url.find("://") else {
         return false;
     };
@@ -593,7 +652,16 @@ fn url_has_userinfo(url: &str) -> bool {
     let authority_end = authority
         .find(|character: char| ['/', '?', '#'].contains(&character))
         .unwrap_or(authority.len());
-    authority[..authority_end].contains('@')
+    let authority = &authority[..authority_end];
+    let Some(userinfo_end) = authority.rfind('@') else {
+        return false;
+    };
+
+    // An SSH username is an address, not an embedded credential. All other
+    // URL userinfo, and passwords in SSH URLs, remain forbidden.
+    !url[..scheme_end].eq_ignore_ascii_case("ssh")
+        || authority[..userinfo_end].is_empty()
+        || authority[..userinfo_end].contains(':')
 }
 
 fn redact_url_userinfo(url: &str) -> String {
@@ -723,7 +791,7 @@ mod tests {
         let fake_git = write_executable(
             temp_dir.path(),
             "fake-git",
-            "#!/bin/sh\nprintf 'prompt=%s ssh=%s global=%s nosystem=%s count=%s parameters=%s\\n' \"$GIT_TERMINAL_PROMPT\" \"$GIT_SSH_COMMAND\" \"$GIT_CONFIG_GLOBAL\" \"$GIT_CONFIG_NOSYSTEM\" \"${GIT_CONFIG_COUNT:-unset}\" \"${GIT_CONFIG_PARAMETERS:-unset}\" >&2\nexit 2\n",
+            "#!/bin/sh\nprintf 'prompt=%s ssh=%s protocols=%s from_user=%s global=%s nosystem=%s count=%s parameters=%s\\n' \"$GIT_TERMINAL_PROMPT\" \"$GIT_SSH_COMMAND\" \"$GIT_ALLOW_PROTOCOL\" \"$GIT_PROTOCOL_FROM_USER\" \"$GIT_CONFIG_GLOBAL\" \"$GIT_CONFIG_NOSYSTEM\" \"${GIT_CONFIG_COUNT:-unset}\" \"${GIT_CONFIG_PARAMETERS:-unset}\" >&2\nexit 2\n",
         );
 
         let error = run_git_program_with_options(
@@ -741,6 +809,8 @@ mod tests {
         };
         assert!(stderr.contains("prompt=0"));
         assert!(stderr.contains("BatchMode=yes"));
+        assert!(stderr.contains("protocols=https:ssh:git:file"));
+        assert!(stderr.contains("from_user=0"));
         assert!(stderr.contains("global=/dev/null"));
         assert!(stderr.contains("nosystem=1"));
         assert!(stderr.contains("count=unset"));
@@ -1162,12 +1232,57 @@ mod tests {
     }
 
     #[test]
-    fn validate_remote_url_should_reject_userinfo() {
-        assert!(matches!(
-            validate_remote_url("https://octo:token-value@example.invalid/repo.git"),
-            Err(DaloError::UnsafeRemoteUrl)
-        ));
-        assert!(validate_remote_url("git@github.com:sebastian-software/dalo.git").is_ok());
+    fn validate_remote_url_should_allow_supported_transports() {
+        for location in [
+            "/tmp/repo",
+            "./repo",
+            "https://example.invalid/repo.git",
+            "ssh://git@example.invalid/repo.git",
+            "git://example.invalid/repo.git",
+            "file:///tmp/repo",
+            "git@example.invalid:owner/repo.git",
+            "example.invalid:owner/repo.git",
+        ] {
+            assert!(
+                validate_remote_url(location).is_ok(),
+                "expected `{location}` to be accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_remote_url_should_reject_unsafe_transports_and_userinfo() {
+        for location in [
+            "ext::sh -c 'touch /tmp/dalo-rce'",
+            "ext::sh",
+            "http://example.invalid/repo.git",
+            "git+ssh://example.invalid/repo.git",
+            "rsync://example.invalid/repo.git",
+            "https://octo:token-value@example.invalid/repo.git",
+            "ssh://octo:token-value@example.invalid/repo.git",
+            "git@example.invalid:owner:repo.git",
+            "git@-example.invalid:owner/repo.git",
+        ] {
+            assert!(
+                matches!(
+                    validate_remote_url(location),
+                    Err(DaloError::UnsafeRemoteUrl)
+                ),
+                "expected `{location}` to be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn clone_repo_should_reject_unsafe_transport_before_spawning_git() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let destination = temp_dir.path().join("checkout");
+
+        let error = clone_repo("ext::sh -c 'touch /tmp/dalo-rce'", &destination)
+            .expect_err("unsafe transport should be rejected before cloning");
+
+        assert!(matches!(error, DaloError::UnsafeRemoteUrl));
+        assert!(!destination.exists());
     }
 
     #[test]
