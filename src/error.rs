@@ -123,8 +123,10 @@ pub enum DaloError {
         reason: String,
     },
 
-    /// A Git URL embeds credentials that would otherwise leak into state or logs.
-    #[error("Git URL contains userinfo; use an SSH URL or a credential helper instead")]
+    /// A Git URL uses an unsafe transport or embeds credentials.
+    #[error(
+        "Git URL uses an unsafe transport or contains userinfo; use a local path, an SSH URL, or a credential helper instead"
+    )]
     UnsafeRemoteUrl,
 
     /// A source ID does not exist.
