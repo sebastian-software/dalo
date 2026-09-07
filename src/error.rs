@@ -200,17 +200,6 @@ pub enum DaloError {
         path: PathBuf,
     },
 
-    /// A requested instruction pack could not be found in a configured source.
-    #[error(
-        "instruction pack `{pack}` was not found{hint}; add the pack to the source repository and sync"
-    )]
-    SourceInstructionPackNotFound {
-        /// Source-qualified pack reference.
-        pack: String,
-        /// Known pack IDs or a recovery command when available.
-        hint: String,
-    },
-
     /// An instruction target changed after it was read for a mutation.
     #[error("instruction target `{path}` changed on disk; re-run the command")]
     InstructionTargetChanged {
@@ -415,14 +404,17 @@ impl DaloError {
 
     /// Build an unknown source-backed instruction-pack error with concise recovery guidance.
     #[must_use]
-    pub fn source_instruction_pack_not_found(
+    pub(crate) fn source_instruction_pack_not_found(
         pack: impl Into<String>,
         pack_id: &str,
         known_packs: Vec<String>,
     ) -> Self {
-        Self::SourceInstructionPackNotFound {
-            hint: known_ids_hint("instruction packs", pack_id, known_packs, "dalo status"),
-            pack: pack.into(),
+        Self::StateError {
+            reason: format!(
+                "instruction pack `{}` was not found{}; add the pack to the source repository and sync",
+                pack.into(),
+                known_ids_hint("instruction packs", pack_id, known_packs, "dalo status")
+            ),
         }
     }
 
@@ -450,7 +442,6 @@ impl DaloError {
             | Self::UnknownSource { .. }
             | Self::SkillNotFound { .. }
             | Self::InstructionPackNotFound { .. }
-            | Self::SourceInstructionPackNotFound { .. }
             | Self::AdoptionDestinationExists { .. }
             | Self::UnsupportedSchema { .. }
             | Self::FileParse { .. }
@@ -758,6 +749,21 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "instruction pack `house-style` was not found; create `/tmp/store/local/instructions/house-style.md` before enabling it"
+        );
+    }
+
+    #[test]
+    fn source_instruction_pack_not_found_should_render_state_error_guidance() {
+        let error = DaloError::source_instruction_pack_not_found(
+            "company:enginering-defaults",
+            "enginering-defaults",
+            vec!["engineering-defaults".to_owned()],
+        );
+
+        assert!(matches!(error, DaloError::StateError { .. }));
+        assert_eq!(
+            error.to_string(),
+            "instruction pack `company:enginering-defaults` was not found; did you mean `engineering-defaults`?; known instruction packs: engineering-defaults; add the pack to the source repository and sync"
         );
     }
 
