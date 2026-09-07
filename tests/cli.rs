@@ -9797,24 +9797,31 @@ fn sync_should_audit_tracking_update_before_publishing_it_to_existing_links() {
         ],
     );
 
-    dalo_command()
+    let sync_stderr = dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("sync")
         .assert()
         .failure()
         .code(1)
-        .stderr(predicate::str::contains(
-            "staged security audit blocked upstream commit",
-        ))
-        .stderr(predicate::str::contains("company:team (1 finding, max high)"))
-        .stderr(predicate::str::contains(".audit-staging"))
-        .stderr(
-            predicate::str::is_match(
-                r"inspect with `dalo [^`]* audit [^`]*`; then, only if the risk is accepted, add `--accept-risk <reason>`",
-            )
-            .expect("guidance expression should compile"),
-        );
+        .get_output()
+        .stderr
+        .clone();
+    let sync_stderr = String::from_utf8(sync_stderr).expect("sync stderr should be UTF-8");
+    assert!(sync_stderr.contains("staged security audit blocked upstream commit"));
+    assert!(sync_stderr.contains("company:team (1 finding, max high)"));
+    let inspect_start = sync_stderr
+        .find("inspect with `")
+        .map(|index| index + "inspect with `".len())
+        .expect("blocked guidance should include an inspection command");
+    let (inspection_command, subsequent_guidance) = sync_stderr[inspect_start..]
+        .split_once("`; then,")
+        .expect("inspection command should be the first backticked command");
+    assert!(inspection_command.starts_with("dalo "));
+    assert!(inspection_command.contains(" audit "));
+    assert!(inspection_command.contains(".audit-staging"));
+    assert!(!inspection_command.contains("--accept-risk"));
+    assert!(subsequent_guidance.contains("`--accept-risk <reason>`"));
 
     assert_eq!(
         std::fs::read_to_string(store.join("sources/company/checkout/skills/team/SKILL.md"))
