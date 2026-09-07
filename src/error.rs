@@ -200,6 +200,17 @@ pub enum DaloError {
         path: PathBuf,
     },
 
+    /// A requested instruction pack could not be found in a configured source.
+    #[error(
+        "instruction pack `{pack}` was not found{hint}; add the pack to the source repository and sync"
+    )]
+    SourceInstructionPackNotFound {
+        /// Source-qualified pack reference.
+        pack: String,
+        /// Known pack IDs or a recovery command when available.
+        hint: String,
+    },
+
     /// An instruction target changed after it was read for a mutation.
     #[error("instruction target `{path}` changed on disk; re-run the command")]
     InstructionTargetChanged {
@@ -402,6 +413,19 @@ impl DaloError {
         }
     }
 
+    /// Build an unknown source-backed instruction-pack error with concise recovery guidance.
+    #[must_use]
+    pub fn source_instruction_pack_not_found(
+        pack: impl Into<String>,
+        pack_id: &str,
+        known_packs: Vec<String>,
+    ) -> Self {
+        Self::SourceInstructionPackNotFound {
+            hint: known_ids_hint("instruction packs", pack_id, known_packs, "dalo status"),
+            pack: pack.into(),
+        }
+    }
+
     /// Exit code for this error.
     #[must_use]
     pub fn exit_code(&self) -> DaloExitCode {
@@ -426,6 +450,7 @@ impl DaloError {
             | Self::UnknownSource { .. }
             | Self::SkillNotFound { .. }
             | Self::InstructionPackNotFound { .. }
+            | Self::SourceInstructionPackNotFound { .. }
             | Self::AdoptionDestinationExists { .. }
             | Self::UnsupportedSchema { .. }
             | Self::FileParse { .. }

@@ -418,7 +418,7 @@ pub fn refresh_active_packs(
             ),
         })?;
         let commit = validate_source_pack(paths, source, &entry.pack_id, None)?;
-        let pack = read_pack_from_dir(&source.path.join("instructions"), &entry.pack_id)?;
+        let pack = read_source_pack(source, &entry.pack_id)?;
         let relative_path = PathBuf::from("instructions").join(format!("{}.md", entry.pack_id));
         let old_body = if previous_commit == commit {
             pack.body.clone()
@@ -1012,7 +1012,7 @@ fn read_pack_for_lock_entry(
         });
     }
     validate_source_pack(paths, source, &entry.pack_id, entry.commit.as_deref())?;
-    read_pack_from_dir(&source.path.join("instructions"), &entry.pack_id)
+    read_source_pack(source, &entry.pack_id)
 }
 
 fn append_block(content: &str, block: &str, line_ending: &str) -> String {
@@ -1198,7 +1198,7 @@ fn resolve_pack(paths: &StorePaths, selector: &str) -> DaloResult<ResolvedInstru
     ensure_instruction_source_approved(source, &approvals.approvals, Some(&pack_id))?;
     let commit = validate_source_pack(paths, source, &pack_id, None)?;
     Ok(ResolvedInstructionPack {
-        pack: read_pack_from_dir(&source.path.join("instructions"), &pack_id)?,
+        pack: read_source_pack(source, &pack_id)?,
         source_id,
         commit: Some(commit),
     })
@@ -1244,11 +1244,8 @@ fn validate_source_pack(
         .path
         .join("instructions")
         .join(format!("{pack_id}.md"));
-    let metadata =
-        fs::symlink_metadata(&pack_path).map_err(|_| DaloError::InstructionPackNotFound {
-            pack_id: pack_id.to_owned(),
-            path: pack_path.clone(),
-        })?;
+    let metadata = fs::symlink_metadata(&pack_path)
+        .map_err(|_| source_instruction_pack_not_found(source, pack_id))?;
     if metadata.file_type().is_symlink() || !metadata.is_file() {
         return Err(DaloError::StateError {
             reason: format!(
@@ -1310,6 +1307,33 @@ fn read_pack_from_dir(dir: &Path, pack_id: &str) -> DaloResult<InstructionPack> 
         version: parse_version(&body),
         body,
     })
+}
+
+fn read_source_pack(source: &SourceConfig, pack_id: &str) -> DaloResult<InstructionPack> {
+    let dir = source.path.join("instructions");
+    let path = dir.join(format!("{pack_id}.md"));
+    let body = fs::read_to_string(&path)
+        .map_err(|_| source_instruction_pack_not_found(source, pack_id))?;
+    Ok(InstructionPack {
+        id: pack_id.to_owned(),
+        version: parse_version(&body),
+        body,
+    })
+}
+
+fn source_instruction_pack_not_found(source: &SourceConfig, pack_id: &str) -> DaloError {
+    let mut packs = Vec::new();
+    scan_pack_dir(
+        &source.path.join("instructions"),
+        &source.id,
+        &BTreeSet::new(),
+        &mut packs,
+    );
+    DaloError::source_instruction_pack_not_found(
+        pack_ref(&source.id, pack_id),
+        pack_id,
+        packs.into_iter().map(|pack| pack.id).collect(),
+    )
 }
 
 /// Enable a local or source-qualified pack: render its managed block into `target` and record it in
