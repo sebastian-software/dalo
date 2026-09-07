@@ -9806,7 +9806,15 @@ fn sync_should_audit_tracking_update_before_publishing_it_to_existing_links() {
         .code(1)
         .stderr(predicate::str::contains(
             "staged security audit blocked upstream commit",
-        ));
+        ))
+        .stderr(predicate::str::contains("company:team (1 finding, max high)"))
+        .stderr(predicate::str::contains(".audit-staging"))
+        .stderr(
+            predicate::str::is_match(
+                r"inspect with `dalo [^`]* audit [^`]*`; then, only if the risk is accepted, add `--accept-risk <reason>`",
+            )
+            .expect("guidance expression should compile"),
+        );
 
     assert_eq!(
         std::fs::read_to_string(store.join("sources/company/checkout/skills/team/SKILL.md"))
@@ -9819,18 +9827,28 @@ fn sync_should_audit_tracking_update_before_publishing_it_to_existing_links() {
         "# Team\n"
     );
 
-    let staged = std::fs::read_dir(store.join("sources/.audit-staging"))
-        .expect("blocked update should remain staged")
-        .next()
-        .expect("one staged worktree should exist")
-        .expect("staged worktree should be readable")
-        .path()
-        .join("skills/team");
     dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["audit"])
-        .arg(&staged)
+        .arg("company:team")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("security audit: company:team"))
+        .stdout(predicate::str::contains("static high"))
+        .stdout(predicate::str::contains("installation policy: blocked"))
+        .stdout(predicate::str::contains("risk accepted:").not());
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .failure()
+        .code(1);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["audit", "company:team"])
         .args(["--accept-risk", "reviewed exact upstream update"])
         .assert()
         .success();

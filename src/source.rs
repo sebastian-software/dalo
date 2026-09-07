@@ -1058,7 +1058,7 @@ fn audit_and_fast_forward_fetched_source(
                 },
             )?;
             if report.is_blocking() {
-                blocked.push((skill.source_ref, skill.path));
+                blocked.push((skill.source_ref, skill.path, audit_finding_summary(&report)));
             }
         }
         if blocked.is_empty() {
@@ -1069,9 +1069,9 @@ fn audit_and_fast_forward_fetched_source(
                     "staged security audit blocked upstream commit {upstream} ({})",
                     blocked
                         .iter()
-                        .map(|(source_ref, path)| format!(
-                            "{source_ref}; review with `dalo audit '{}' --accept-risk <reason>`",
-                            path.display()
+                        .map(|(source_ref, path, finding_summary)| format!(
+                            "{source_ref} ({finding_summary}); inspect with `dalo audit {}`; then, only if the risk is accepted, add `--accept-risk <reason>`",
+                            crate::error::shell_quote_path(path)
                         ))
                         .collect::<Vec<_>>()
                         .join(", ")
@@ -1095,6 +1095,26 @@ fn audit_and_fast_forward_fetched_source(
     git::remove_worktree(&source.path, &staging_path)?;
     let _ = fs::remove_dir(&staging_root);
     git::fast_forward_to(&source.path, &upstream)
+}
+
+fn audit_finding_summary(report: &AuditReport) -> String {
+    let finding_count = report.static_findings.len()
+        + report
+            .agent_review
+            .as_ref()
+            .map_or(0, |review| review.findings.len());
+    let finding_word = if finding_count == 1 {
+        "finding"
+    } else {
+        "findings"
+    };
+    let max_severity = report
+        .max_severity
+        .expect("a blocking audit report has a maximum severity");
+    format!(
+        "{finding_count} {finding_word}, max {}",
+        max_severity.as_str()
+    )
 }
 
 fn cleanup_obsolete_staging_worktrees(
