@@ -883,6 +883,11 @@ fn resolve_target(paths: &StorePaths, target: &str) -> DaloResult<(String, PathB
     if let Some((source_id, selector)) = parsed_selector
         && let Some(source) = config.sources.iter().find(|source| source.id == source_id)
     {
+        if provider.is_none()
+            && let Some(staged_skill) = staged_skill_for_selector(paths, source, selector)?
+        {
+            return Ok(staged_skill);
+        }
         let inventory = inventory::scan_source(source_id, &source.path)?;
         let known_skills = inventory
             .skills
@@ -1004,6 +1009,44 @@ fn resolve_target(paths: &StorePaths, target: &str) -> DaloResult<(String, PathB
             .map(|source| source.id.clone())
             .collect(),
     ))
+}
+
+fn staged_skill_for_selector(
+    paths: &StorePaths,
+    source: &crate::source::SourceConfig,
+    selector: &str,
+) -> DaloResult<Option<(String, PathBuf)>> {
+    let staging_root = paths.sources_dir.join(".audit-staging");
+    let entries = match fs::read_dir(&staging_root) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    let mut staging_paths = entries
+        .map(|entry| {
+            let entry = entry?;
+            Ok(
+                crate::source::staging_entry_belongs_to_source(&entry.file_name(), &source.id)
+                    .then(|| entry.path()),
+            )
+        })
+        .collect::<Result<Vec<_>, std::io::Error>>()?
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    staging_paths.sort();
+
+    for staging_path in staging_paths {
+        let inventory = inventory::scan_source(&source.id, &staging_path)?;
+        if let Some(skill) = inventory
+            .skills
+            .into_iter()
+            .find(|skill| skill.slot_name == selector || skill.id.as_deref() == Some(selector))
+        {
+            return Ok(Some((skill.source_ref, skill.path)));
+        }
+    }
+    Ok(None)
 }
 
 fn synthetic_path_source_ref(path: &Path) -> String {
