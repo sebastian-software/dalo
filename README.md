@@ -547,7 +547,7 @@ the product you can use today.
 
 ## Related
 
-[harness-relay](https://github.com/sebastian-software/agent-bridge) is the
+[harness-relay](https://github.com/sebastian-software/harness-relay) is the
 complementary tool of the same agent line: Dalo distributes the skills your
 agents read, while harness-relay delegates one bounded invocation to an
 installed agent harness and returns a normalized outcome.
