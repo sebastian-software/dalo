@@ -12612,6 +12612,86 @@ fn sync_should_block_active_instruction_pack_after_source_approval_is_revoked() 
 }
 
 #[test]
+fn instructions_enable_should_suggest_source_packs_without_exposing_checkout_paths() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let repo = temp_dir.path().join("team-repo");
+    let target_file = temp_dir.path().join("AGENTS.md");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::create_dir_all(repo.join("instructions"))
+        .expect("instruction directory should be created");
+    std::fs::write(
+        repo.join("instructions/engineering-defaults.md"),
+        "Review security boundaries first.\n",
+    )
+    .expect("source pack should be written");
+    create_git_skill_repo(&repo);
+    add_source(&store, "team", &repo);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "team:enginering-defaults"])
+        .arg(&target_file)
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains(
+            "instruction pack `team:enginering-defaults` was not found",
+        ))
+        .stderr(predicate::str::contains(
+            "did you mean `engineering-defaults`?",
+        ))
+        .stderr(predicate::str::contains(
+            "add the pack to the source repository and sync",
+        ))
+        .stderr(predicate::str::contains("sources/team/checkout/instructions").not());
+    assert!(!target_file.exists());
+    assert!(read_user_lock(&store).active_instruction_packs.is_empty());
+}
+
+#[test]
+fn instructions_enable_should_keep_local_pack_creation_guidance_for_bare_ids() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target_file = temp_dir.path().join("AGENTS.md");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "house-style"])
+        .arg(&target_file)
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains(
+            "instruction pack `house-style` was not found; create",
+        ))
+        .stderr(predicate::str::contains(
+            store
+                .join("local/instructions/house-style.md")
+                .display()
+                .to_string(),
+        ))
+        .stderr(predicate::str::contains("source repository and sync").not());
+    assert!(!target_file.exists());
+    assert!(read_user_lock(&store).active_instruction_packs.is_empty());
+}
+
+#[test]
 fn instructions_enable_should_require_source_approval_for_untrusted_source() {
     let temp = tempfile::tempdir().expect("tempdir should be created");
     let store = temp.path().join("store");
