@@ -190,53 +190,26 @@ esac
 source_select_reference="$(awk '/^### `dalo source select <id> <skill>\.\.\.`$/{on=1;next} on && /^### /{exit} on{print}' "$root/docs/reference.md")"
 source_select_page="$(awk '/id="dalo-source-select-id-skill"/{on=1;next} on && /<h3 /{exit} on{print}' "$root/site/docs/reference.html")"
 for source_select_document in "$source_select_reference" "$source_select_page"; do
-  printf '%s\n' "$source_select_document" | grep -Fq 'stable frontmatter ID, slot name, or catalog-relative path'
+  printf '%s\n' "$source_select_document" | grep -Fq 'stable frontmatter ID, slot name, catalog-relative path'
+  printf '%s\n' "$source_select_document" | grep -Fq 'source-qualified'
 done
-case "$source_select_reference" in
-  *'<source-id>:<slot>'*)
-    echo 'source select documentation advertises rejected source-qualified references' >&2
-    exit 1
-    ;;
-esac
-case "$source_select_page" in
-  *'&lt;source-id&gt;:&lt;slot&gt;'*)
-    echo 'rendered source select documentation advertises rejected source-qualified references' >&2
-    exit 1
-    ;;
-esac
-grep -Fq '| `sources[].selection` | Catalog selections by stable ID, slot name, or catalog-relative path. Empty for local/team sources. |' "$root/docs/reference.md"
+grep -Fq '| `sources[].selection` | Catalog selections by stable ID, slot name, catalog-relative path, or source-qualified reference. Empty for local/team sources. |' "$root/docs/reference.md"
 source_selection_field="$(grep -F -A1 '<td><code>sources[].selection</code></td>' "$root/site/docs/reference.html")"
-printf '%s\n' "$source_selection_field" | grep -Fq 'Catalog selections by stable ID, slot name, or catalog-relative path. Empty for local/team sources.'
-case "$source_selection_field" in
-  *'source ref'*|*'&lt;source-id&gt;:&lt;slot&gt;'*)
-    echo 'SourceConfig.selection documentation advertises a rejected source-qualified reference' >&2
-    exit 1
-    ;;
-esac
+printf '%s\n' "$source_selection_field" | grep -Fq 'Catalog selections by stable ID, slot name, catalog-relative path, or source-qualified reference. Empty for local/team sources.'
 source_config_selection_rustdoc="$(awk '
   /^    \/\/\/ Selected skill references for a catalog source\./ { on = 1 }
   on { print }
   on && /^    pub selection: Vec<String>/ { exit }
 ' "$root/src/source.rs")"
-printf '%s\n' "$source_config_selection_rustdoc" | grep -Fq 'frontmatter ID, a slot name, or a catalog-relative path.'
-case "$source_config_selection_rustdoc" in
-  *'<source-id>:<slot>'*)
-    echo 'SourceConfig.selection rustdoc advertises a rejected source-qualified reference' >&2
-    exit 1
-    ;;
-esac
+printf '%s\n' "$source_config_selection_rustdoc" | grep -Fq 'frontmatter ID, a slot name, a catalog-relative path, or a'
+printf '%s\n' "$source_config_selection_rustdoc" | grep -Fq '<source-id>:<slot-or-stable-id>'
 catalog_select_skills_rustdoc="$(awk '
   /^\/\/\/ Select skills from a catalog\./ { on = 1 }
   on { print }
   on && /^pub fn select_skills/ { exit }
 ' "$root/src/catalog.rs")"
-printf '%s\n' "$catalog_select_skills_rustdoc" | grep -Fq 'ID, slot name, or catalog-relative path; unknown refs are rejected.'
-case "$catalog_select_skills_rustdoc" in
-  *'<source-id>:<slot>'*)
-    echo 'catalog::select_skills rustdoc advertises a rejected source-qualified reference' >&2
-    exit 1
-    ;;
-esac
+printf '%s\n' "$catalog_select_skills_rustdoc" | grep -Fq 'ID, slot name, catalog-relative path, or a source-qualified'
+printf '%s\n' "$catalog_select_skills_rustdoc" | grep -Fq '<source-id>:<slot-or-stable-id>'
 grep -q '`version:` entry from the first five lines' "$root/docs/reference.md"
 grep -q '`topics:` or `tags:` metadata from the first eight lines' "$root/docs/reference.md"
 if sed -n '/MSRV, dependency-audit, coverage, and site-render jobs additionally run:/,/^```$/p' "$root/CONTRIBUTING.md" \
