@@ -206,7 +206,7 @@ pub struct ToolCommand {
 #[derive(Debug, Subcommand)]
 pub enum ToolSubcommand {
     /// List plugin-provided tools and approval status.
-    List,
+    List(CheckArgs),
     /// Show one plugin-provided tool contract.
     Show(ToolReferenceArgs),
     /// Recheck a tool's files and contract hash without running it.
@@ -232,7 +232,7 @@ pub struct HookCommand {
 #[derive(Debug, Subcommand)]
 pub enum HookSubcommand {
     /// List plugin-provided hooks and approval status.
-    List,
+    List(CheckArgs),
     /// Show one plugin-provided hook contract.
     Show(HookReferenceArgs),
     /// Execute one verified hash-addressed native hook projection.
@@ -686,7 +686,7 @@ pub struct AgentCommand {
 #[derive(Debug, Subcommand)]
 pub enum AgentSubcommand {
     /// List source-provided agent packages and approval status.
-    List,
+    List(CheckArgs),
     /// Preview one agent for Claude or Codex without writing files.
     Show(AgentShowArgs),
 }
@@ -1160,7 +1160,7 @@ fn command_ignores_dry_run(command: &Command) -> bool {
         }) | Command::Source(SourceCommand {
             command: SourceSubcommand::List | SourceSubcommand::Inspect(_)
         }) | Command::Agent(AgentCommand {
-            command: AgentSubcommand::List | AgentSubcommand::Show(_)
+            command: AgentSubcommand::List(_) | AgentSubcommand::Show(_)
         }) | Command::Status(_)
             | Command::Plugin(PluginCommand {
                 command: PluginSubcommand::List | PluginSubcommand::Show(_)
@@ -1232,7 +1232,7 @@ fn run_agent(options: &GlobalOptions, command: AgentCommand) -> DaloResult<()> {
     source_errors.sort();
 
     match command.command {
-        AgentSubcommand::List => {
+        AgentSubcommand::List(args) => {
             let report = agent::AgentListReport {
                 resolution: agent::resolve_agents(
                     &config.sources,
@@ -1246,6 +1246,20 @@ fn run_agent(options: &GlobalOptions, command: AgentCommand) -> DaloResult<()> {
                 print_json(&report)?;
             } else {
                 print_agent_list_report(&report, &options.store);
+            }
+            ensure_agent_list_source_scans_succeeded(&report.source_errors)?;
+            if args.check && !report.inventory_warnings.is_empty() {
+                return Err(DaloError::CheckFailed {
+                    reason: format!(
+                        "agent list found {} inventory warning{}",
+                        report.inventory_warnings.len(),
+                        if report.inventory_warnings.len() == 1 {
+                            ""
+                        } else {
+                            "s"
+                        }
+                    ),
+                });
             }
         }
         AgentSubcommand::Show(args) => {
@@ -1730,23 +1744,33 @@ fn run_tool(options: &GlobalOptions, command: ToolCommand) -> DaloResult<()> {
     let paths = store::StorePaths::new(options.store.clone());
     ensure_initialized(&paths)?;
     match command.command {
-        ToolSubcommand::List => {
+        ToolSubcommand::List(args) => {
             let report = tool::list(&paths)?;
             if options.json {
-                return print_json(&report);
+                print_json(&report)?;
+            } else {
+                if report.tools.is_empty() {
+                    println!("no plugin-local tools discovered");
+                }
+                for item in &report.tools {
+                    println!(
+                        "{} state={:?} contract=sha256:{}",
+                        item.tool.source_ref, item.state, item.tool.contract_hash
+                    );
+                    println!("  {}", item.diagnostic);
+                }
+                for warning in &report.warnings {
+                    println!("warning {}: {}", warning.path.display(), warning.message);
+                }
             }
-            if report.tools.is_empty() {
-                println!("no plugin-local tools discovered");
-            }
-            for item in report.tools {
-                println!(
-                    "{} state={:?} contract=sha256:{}",
-                    item.tool.source_ref, item.state, item.tool.contract_hash
-                );
-                println!("  {}", item.diagnostic);
-            }
-            for warning in report.warnings {
-                println!("warning {}: {}", warning.path.display(), warning.message);
+            if args.check && !report.warnings.is_empty() {
+                return Err(DaloError::CheckFailed {
+                    reason: format!(
+                        "tool list found {} rejected plugin package{}",
+                        report.warnings.len(),
+                        if report.warnings.len() == 1 { "" } else { "s" }
+                    ),
+                });
             }
         }
         ToolSubcommand::Show(args) => {
@@ -1766,16 +1790,18 @@ fn run_tool(options: &GlobalOptions, command: ToolCommand) -> DaloResult<()> {
         ToolSubcommand::Audit(args) => {
             let report = tool::audit(&paths, &args.tool)?;
             if options.json {
-                return print_json(&report);
+                print_json(&report)?;
+            } else {
+                println!(
+                    "tool audit {}: {}",
+                    report.tool,
+                    if report.passed { "passed" } else { "failed" }
+                );
+                for finding in &report.findings {
+                    println!("  {finding}");
+                }
             }
-            println!(
-                "tool audit {}: {}",
-                report.tool,
-                if report.passed { "passed" } else { "failed" }
-            );
-            for finding in report.findings {
-                println!("  {finding}");
-            }
+            ensure_tool_audit_passed(&report)?;
         }
     }
     Ok(())
@@ -1785,23 +1811,33 @@ fn run_hook(options: &GlobalOptions, command: HookCommand) -> DaloResult<()> {
     let paths = store::StorePaths::new(options.store.clone());
     ensure_initialized(&paths)?;
     match command.command {
-        HookSubcommand::List => {
+        HookSubcommand::List(args) => {
             let report = hook::list(&paths)?;
             if options.json {
-                return print_json(&report);
+                print_json(&report)?;
+            } else {
+                if report.hooks.is_empty() {
+                    println!("no plugin-local hooks discovered");
+                }
+                for item in &report.hooks {
+                    println!(
+                        "{} state={:?} tool_state={:?} contract=sha256:{}",
+                        item.hook.source_ref, item.state, item.tool_state, item.hook.contract_hash
+                    );
+                    println!("  {}", item.diagnostic);
+                }
+                for warning in &report.warnings {
+                    println!("warning {}: {}", warning.path.display(), warning.message);
+                }
             }
-            if report.hooks.is_empty() {
-                println!("no plugin-local hooks discovered");
-            }
-            for item in report.hooks {
-                println!(
-                    "{} state={:?} tool_state={:?} contract=sha256:{}",
-                    item.hook.source_ref, item.state, item.tool_state, item.hook.contract_hash
-                );
-                println!("  {}", item.diagnostic);
-            }
-            for warning in report.warnings {
-                println!("warning {}: {}", warning.path.display(), warning.message);
+            if args.check && !report.warnings.is_empty() {
+                return Err(DaloError::CheckFailed {
+                    reason: format!(
+                        "hook list found {} rejected plugin package{}",
+                        report.warnings.len(),
+                        if report.warnings.len() == 1 { "" } else { "s" }
+                    ),
+                });
             }
         }
         HookSubcommand::Show(args) => {
@@ -1850,6 +1886,32 @@ fn run_hook(options: &GlobalOptions, command: HookCommand) -> DaloResult<()> {
         }
     }
     Ok(())
+}
+
+fn ensure_tool_audit_passed(report: &tool::ToolAuditReport) -> DaloResult<()> {
+    if report.passed {
+        return Ok(());
+    }
+    Err(DaloError::StateError {
+        reason: format!("tool audit failed for `{}`", report.tool),
+    })
+}
+
+fn ensure_agent_list_source_scans_succeeded(source_errors: &[String]) -> DaloResult<()> {
+    if source_errors.is_empty() {
+        return Ok(());
+    }
+    Err(DaloError::StateError {
+        reason: format!(
+            "agent list is incomplete because {} source inventory {} failed",
+            source_errors.len(),
+            if source_errors.len() == 1 {
+                "scan"
+            } else {
+                "scans"
+            }
+        ),
+    })
 }
 
 fn run_plan(options: &GlobalOptions, args: PlanArgs) -> DaloResult<()> {
@@ -3819,6 +3881,14 @@ fn run_resolve(options: &GlobalOptions, command: ResolveCommand) -> DaloResult<(
             } else {
                 status::print_remove_owned_report(&report);
             }
+            if report.status == adopt::RemoveOwnedStatus::BlockedRealEntry {
+                return Err(DaloError::StateError {
+                    reason: format!(
+                        "cannot remove owned link at `{}` because a real entry occupies the recorded path",
+                        report.link_path.display()
+                    ),
+                });
+            }
             Ok(())
         }
     }
@@ -4199,6 +4269,43 @@ mod tests {
         };
 
         assert!(run_cli(cli).is_ok());
+    }
+
+    #[test]
+    fn failed_tool_audit_should_return_an_expected_failure() {
+        let error = ensure_tool_audit_passed(&tool::ToolAuditReport {
+            tool: "local:quality#tool:detector".to_owned(),
+            contract_hash: "00".repeat(32),
+            plugin_package_hash: "11".repeat(32),
+            passed: false,
+            findings: vec!["hash_drift:bin/detect".to_owned()],
+        })
+        .expect_err("a failed tool audit should fail the command");
+
+        assert_eq!(
+            error.exit_code(),
+            crate::error::DaloExitCode::ExpectedFailure
+        );
+        assert_eq!(
+            error.to_string(),
+            "tool audit failed for `local:quality#tool:detector`"
+        );
+    }
+
+    #[test]
+    fn incomplete_agent_list_should_return_an_expected_failure() {
+        let error =
+            ensure_agent_list_source_scans_succeeded(&["team: missing checkout".to_owned()])
+                .expect_err("a source scan error should fail the command");
+
+        assert_eq!(
+            error.exit_code(),
+            crate::error::DaloExitCode::ExpectedFailure
+        );
+        assert_eq!(
+            error.to_string(),
+            "agent list is incomplete because 1 source inventory scan failed"
+        );
     }
 
     #[test]

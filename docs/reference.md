@@ -499,23 +499,25 @@ dalo --json plan
 
 JSON output shape: `InstallationPlan`.
 
-### `dalo agent list|show <source>:<name>`
+### `dalo agent list [--check]`; `dalo agent show <source>:<name>`
 
 Canonical agent packages live in `agents/<name>/AGENT.md` inside a source.
 `agent list` shows active, pending, and shadowed packages; `agent show` previews
 the package for Claude and Codex without writing provider files.
 
 ```sh
-dalo agent list
+dalo agent list --check
 dalo agent show local:reviewer --provider codex
 dalo approve agent team:reviewer
 ```
 
 Non-local agents need explicit `approve agent <source>:<name>` records; skill,
 source, author, and org approvals do not activate them. Invalid packages also
-make `status --check` fail. JSON shapes: `AgentListReport` (`resolution`,
-`inventory_warnings[]`, `source_errors[]`) and `AgentShowReport` (`agent`,
-`compilations[]`).
+make `status --check` fail. `agent list` returns a non-zero exit code after
+reporting source scan errors because its result is incomplete; `--check` also
+returns a non-zero exit code for package inventory warnings. JSON shapes:
+`AgentListReport` (`resolution`, `inventory_warnings[]`, `source_errors[]`) and
+`AgentShowReport` (`agent`, `compilations[]`).
 
 ### `dalo sync`
 
@@ -721,7 +723,8 @@ JSON output shape: `UnkeepReport`.
 Remove a recorded owned symlink by ID. If the recorded path is already missing,
 Dalo drops the stale state record. If a different, foreign symlink occupies the
 path, Dalo leaves that symlink untouched and drops only the stale ownership
-record. If a real entry exists at that path, Dalo blocks removal.
+record. If a real entry exists at that path, Dalo blocks removal, prints the
+blocked report, and exits non-zero.
 
 Examples:
 
@@ -894,12 +897,12 @@ JSON and dry-run modes are read-only and do not prompt. Prefer the individual
 commands below for a single known component, for revocation, or when a skill's
 blocking findings require `--accept-risk`.
 
-### `dalo tool list`; `dalo tool show|audit <source:plugin#tool:id>`
+### `dalo tool list [--check]`; `dalo tool show|audit <source:plugin#tool:id>`
 
 Inspect plugin-local executable contracts without running them:
 
 ```sh
-dalo tool list
+dalo tool list --check
 dalo tool show company:review-workflow#tool:detector
 dalo tool audit company:review-workflow#tool:detector
 dalo --json tool show company:review-workflow#tool:detector
@@ -909,7 +912,10 @@ dalo --json tool show company:review-workflow#tool:detector
 platform, and audit state. `show` returns the full descriptor, contract hash,
 source provenance, exact approval value, staged path when present, and an
 actionable diagnostic. `audit` rechecks the tool's declared executable closure
-and contract hash; it does not stage, approve, or execute the tool.
+and contract hash; it does not stage, approve, or execute the tool. A failed
+audit returns a non-zero exit code after printing its findings. `tool list
+--check` returns a non-zero exit code when rejected plugin packages produce
+inventory warnings.
 
 JSON shapes: `ToolListReport` (`tools[]`, `warnings[]`), `ToolStatusReport`
 (`tool`, `plugin_package_hash`, `plugin_path`, `source_provenance`,
@@ -917,12 +923,12 @@ JSON shapes: `ToolListReport` (`tools[]`, `warnings[]`), `ToolStatusReport`
 `ToolAuditReport` (`tool`, `contract_hash`, `plugin_package_hash`, `passed`,
 `findings[]`).
 
-### `dalo hook list`; `dalo hook show <source:plugin#hook:id>`
+### `dalo hook list [--check]`; `dalo hook show <source:plugin#hook:id>`
 
 Inspect portable hook contracts without installing or executing them:
 
 ```sh
-dalo hook list
+dalo hook list --check
 dalo hook show company:review-workflow#hook:check-shell
 dalo --json hook show company:review-workflow#hook:check-shell
 ```
@@ -932,7 +938,8 @@ referenced tool's state. `show` returns the exact hook and tool contracts,
 source provenance, approval value, event/effect/matcher/binding semantics, and
 an actionable diagnostic. A hook becomes ready only when both its own contract
 and its referenced tool contract are ready. These public inspection commands
-never project or execute a hook.
+never project or execute a hook. `hook list --check` returns a non-zero exit
+code when rejected plugin packages produce inventory warnings.
 
 JSON shapes: `HookListReport` (`hooks[]`, `warnings[]`) and `HookStatusReport`
 (`hook`, `plugin_package_hash`, `source_provenance`, `approval_value`,

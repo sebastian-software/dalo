@@ -499,19 +499,21 @@ dalo plan --target codex
 dalo --json plan
 </code></pre>
 <p>JSON output shape: <code>InstallationPlan</code>.</p>
-<h3 id="dalo-agent-listshow-sourcename"><a class="doc-anchor" href="#dalo-agent-listshow-sourcename"><code>dalo agent list|show &lt;source&gt;:&lt;name&gt;</code></a></h3>
+<h3 id="dalo-agent-list---check-dalo-agent-show-sourcename"><a class="doc-anchor" href="#dalo-agent-list---check-dalo-agent-show-sourcename"><code>dalo agent list [--check]</code>; <code>dalo agent show &lt;source&gt;:&lt;name&gt;</code></a></h3>
 <p>Canonical agent packages live in <code>agents/&lt;name&gt;/AGENT.md</code> inside a source.
 <code>agent list</code> shows active, pending, and shadowed packages; <code>agent show</code> previews
 the package for Claude and Codex without writing provider files.</p>
-<pre><code class="language-sh">dalo agent list
+<pre><code class="language-sh">dalo agent list --check
 dalo agent show local:reviewer --provider codex
 dalo approve agent team:reviewer
 </code></pre>
 <p>Non-local agents need explicit <code>approve agent &lt;source&gt;:&lt;name&gt;</code> records; skill,
 source, author, and org approvals do not activate them. Invalid packages also
-make <code>status --check</code> fail. JSON shapes: <code>AgentListReport</code> (<code>resolution</code>,
-<code>inventory_warnings[]</code>, <code>source_errors[]</code>) and <code>AgentShowReport</code> (<code>agent</code>,
-<code>compilations[]</code>).</p>
+make <code>status --check</code> fail. <code>agent list</code> returns a non-zero exit code after
+reporting source scan errors because its result is incomplete; <code>--check</code> also
+returns a non-zero exit code for package inventory warnings. JSON shapes:
+<code>AgentListReport</code> (<code>resolution</code>, <code>inventory_warnings[]</code>, <code>source_errors[]</code>) and
+<code>AgentShowReport</code> (<code>agent</code>, <code>compilations[]</code>).</p>
 <h3 id="dalo-sync"><a class="doc-anchor" href="#dalo-sync"><code>dalo sync</code></a></h3>
 <p>Refresh clean tracking team sources, resolve the desired skill set, materialize owned symlinks into linked targets, and write <code>lock.toml</code>. Dirty tracking sources block refresh. Dalo does not overwrite unmanaged real directories or foreign symlinks.</p>
 <p>Before materialization, Dalo audits the exact content hash of every active
@@ -661,7 +663,8 @@ dalo --dry-run resolve unkeep review-helper
 <p>Remove a recorded owned symlink by ID. If the recorded path is already missing,
 Dalo drops the stale state record. If a different, foreign symlink occupies the
 path, Dalo leaves that symlink untouched and drops only the stale ownership
-record. If a real entry exists at that path, Dalo blocks removal.</p>
+record. If a real entry exists at that path, Dalo blocks removal, prints the
+blocked report, and exits non-zero.</p>
 <p>Examples:</p>
 <pre><code class="language-sh">dalo resolve remove-owned claude:review-helper
 dalo --json resolve remove-owned claude:review-helper
@@ -795,9 +798,9 @@ mutations are never executed by review.</p>
 <p>JSON and dry-run modes are read-only and do not prompt. Prefer the individual
 commands below for a single known component, for revocation, or when a skill&#39;s
 blocking findings require <code>--accept-risk</code>.</p>
-<h3 id="dalo-tool-list-dalo-tool-showaudit-sourceplugintoolid"><a class="doc-anchor" href="#dalo-tool-list-dalo-tool-showaudit-sourceplugintoolid"><code>dalo tool list</code>; <code>dalo tool show|audit &lt;source:plugin#tool:id&gt;</code></a></h3>
+<h3 id="dalo-tool-list---check-dalo-tool-showaudit-sourceplugintoolid"><a class="doc-anchor" href="#dalo-tool-list---check-dalo-tool-showaudit-sourceplugintoolid"><code>dalo tool list [--check]</code>; <code>dalo tool show|audit &lt;source:plugin#tool:id&gt;</code></a></h3>
 <p>Inspect plugin-local executable contracts without running them:</p>
-<pre><code class="language-sh">dalo tool list
+<pre><code class="language-sh">dalo tool list --check
 dalo tool show company:review-workflow#tool:detector
 dalo tool audit company:review-workflow#tool:detector
 dalo --json tool show company:review-workflow#tool:detector
@@ -806,15 +809,17 @@ dalo --json tool show company:review-workflow#tool:detector
 platform, and audit state. <code>show</code> returns the full descriptor, contract hash,
 source provenance, exact approval value, staged path when present, and an
 actionable diagnostic. <code>audit</code> rechecks the tool&#39;s declared executable closure
-and contract hash; it does not stage, approve, or execute the tool.</p>
+and contract hash; it does not stage, approve, or execute the tool. A failed
+audit returns a non-zero exit code after printing its findings. <code>tool list --check</code> returns a non-zero exit code when rejected plugin packages produce
+inventory warnings.</p>
 <p>JSON shapes: <code>ToolListReport</code> (<code>tools[]</code>, <code>warnings[]</code>), <code>ToolStatusReport</code>
 (<code>tool</code>, <code>plugin_package_hash</code>, <code>plugin_path</code>, <code>source_provenance</code>,
 <code>approval_value</code>, <code>state</code>, optional <code>staged_path</code>, <code>diagnostic</code>), and
 <code>ToolAuditReport</code> (<code>tool</code>, <code>contract_hash</code>, <code>plugin_package_hash</code>, <code>passed</code>,
 <code>findings[]</code>).</p>
-<h3 id="dalo-hook-list-dalo-hook-show-sourcepluginhookid"><a class="doc-anchor" href="#dalo-hook-list-dalo-hook-show-sourcepluginhookid"><code>dalo hook list</code>; <code>dalo hook show &lt;source:plugin#hook:id&gt;</code></a></h3>
+<h3 id="dalo-hook-list---check-dalo-hook-show-sourcepluginhookid"><a class="doc-anchor" href="#dalo-hook-list---check-dalo-hook-show-sourcepluginhookid"><code>dalo hook list [--check]</code>; <code>dalo hook show &lt;source:plugin#hook:id&gt;</code></a></h3>
 <p>Inspect portable hook contracts without installing or executing them:</p>
-<pre><code class="language-sh">dalo hook list
+<pre><code class="language-sh">dalo hook list --check
 dalo hook show company:review-workflow#hook:check-shell
 dalo --json hook show company:review-workflow#hook:check-shell
 </code></pre>
@@ -823,7 +828,8 @@ referenced tool&#39;s state. <code>show</code> returns the exact hook and tool c
 source provenance, approval value, event/effect/matcher/binding semantics, and
 an actionable diagnostic. A hook becomes ready only when both its own contract
 and its referenced tool contract are ready. These public inspection commands
-never project or execute a hook.</p>
+never project or execute a hook. <code>hook list --check</code> returns a non-zero exit
+code when rejected plugin packages produce inventory warnings.</p>
 <p>JSON shapes: <code>HookListReport</code> (<code>hooks[]</code>, <code>warnings[]</code>) and <code>HookStatusReport</code>
 (<code>hook</code>, <code>plugin_package_hash</code>, <code>source_provenance</code>, <code>approval_value</code>,
 <code>tool_state</code>, <code>tool</code>, <code>state</code>, <code>diagnostic</code>).</p>
