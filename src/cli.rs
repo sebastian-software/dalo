@@ -1879,10 +1879,7 @@ fn run_hook(options: &GlobalOptions, command: HookCommand) -> DaloResult<()> {
             if options.json {
                 return print_json(&report);
             }
-            println!(
-                "{}",
-                status::terminal_safe_text(&report.hook.source_ref)
-            );
+            println!("{}", status::terminal_safe_text(&report.hook.source_ref));
             println!("state: {}", report.state);
             println!("tool state: {}", report.tool_state);
             println!(
