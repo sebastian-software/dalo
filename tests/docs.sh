@@ -193,6 +193,15 @@ case "$source_select_page" in
     exit 1
     ;;
 esac
+grep -Fq '| `sources[].selection` | Catalog selections by stable ID, slot name, or catalog-relative path. Empty for local/team sources. |' "$root/docs/reference.md"
+source_selection_field="$(grep -F -A1 '<td><code>sources[].selection</code></td>' "$root/site/docs/reference.html")"
+printf '%s\n' "$source_selection_field" | grep -Fq 'Catalog selections by stable ID, slot name, or catalog-relative path. Empty for local/team sources.'
+case "$source_selection_field" in
+  *'source ref'*|*'&lt;source-id&gt;:&lt;slot&gt;'*)
+    echo 'SourceConfig.selection documentation advertises a rejected source-qualified reference' >&2
+    exit 1
+    ;;
+esac
 grep -q '`version:` entry from the first five lines' "$root/docs/reference.md"
 grep -q '`topics:` or `tags:` metadata from the first eight lines' "$root/docs/reference.md"
 if sed -n '/MSRV, dependency-audit, coverage, and site-render jobs additionally run:/,/^```$/p' "$root/CONTRIBUTING.md" \
