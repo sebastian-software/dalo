@@ -300,6 +300,23 @@ pub(crate) fn resolve_from_config_with_plugin_inventories(
     config: &UserConfig,
     approvals: Vec<ApprovalRecord>,
 ) -> ResolutionWithPluginInventories {
+    resolve_from_config_with_plugin_inventories_with_source_errors(
+        config,
+        approvals,
+        &BTreeMap::new(),
+    )
+}
+
+/// Resolve a configuration while treating selected sources as unavailable.
+///
+/// Callers use this at safety boundaries that have already established that a
+/// source must not contribute live content. The source remains in the scan
+/// report, allowing materialization to preserve its recorded links.
+pub(crate) fn resolve_from_config_with_plugin_inventories_with_source_errors(
+    config: &UserConfig,
+    approvals: Vec<ApprovalRecord>,
+    source_errors: &BTreeMap<String, String>,
+) -> ResolutionWithPluginInventories {
     let enabled = config
         .sources
         .iter()
@@ -311,7 +328,10 @@ pub(crate) fn resolve_from_config_with_plugin_inventories(
     let mut plugin_inventories = Vec::with_capacity(enabled.len());
     let mut inventories = Vec::new();
     for source in &enabled {
-        let (plugin_inventory, scanned) = scan_enabled_source(source);
+        let (plugin_inventory, scanned) = source_errors.get(&source.id).map_or_else(
+            || scan_enabled_source(source),
+            |error| (PluginInventory::default(), Err(error.clone())),
+        );
         match scanned {
             Ok(inventory) => {
                 inventories.push(inventory.clone());

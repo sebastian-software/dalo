@@ -2543,6 +2543,12 @@ where
     } else {
         store::read_config(&paths)?
     };
+    let direct_catalog_pin_mismatches =
+        catalog::direct_catalog_pin_mismatches(&paths, &config.sources)?;
+    let direct_catalog_source_errors = direct_catalog_pin_mismatches
+        .iter()
+        .map(|mismatch| (mismatch.source_id.clone(), mismatch.reason.clone()))
+        .collect::<std::collections::BTreeMap<_, _>>();
     let removed_manifest_source_ids = if let Some(report) = &manifest_report {
         report
             .removed
@@ -2573,9 +2579,10 @@ where
     };
     let sync_result = (|| -> DaloResult<materialize::SyncReport> {
         let approvals = store::read_approvals(&paths)?;
-        let resolved = resolver::resolve_from_config_with_plugin_inventories(
+        let resolved = resolver::resolve_from_config_with_plugin_inventories_with_source_errors(
             &config,
             approvals.approvals.clone(),
+            &direct_catalog_source_errors,
         );
         let plugin_inventories = resolver::plugin_inventories(&resolved);
         let reconciliation_inventories = resolver::inventories_with_plugins(&resolved);

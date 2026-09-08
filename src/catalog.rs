@@ -76,6 +76,15 @@ pub struct CatalogLock {
     pub inventory: Vec<CatalogEntry>,
 }
 
+/// A directly configured catalog checkout that cannot safely be resolved.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DirectCatalogPinMismatch {
+    /// Configured catalog source ID.
+    pub source_id: String,
+    /// Actionable explanation of the pin mismatch.
+    pub reason: String,
+}
+
 /// One catalog inventory entry captured in the source lock.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -111,6 +120,65 @@ impl SourceLock {
     pub fn catalog(&self, source_id: &str) -> Option<&CatalogLock> {
         self.catalogs.iter().find(|c| c.source_id == source_id)
     }
+}
+
+/// Find directly-added catalog checkouts that do not match their persisted pin.
+///
+/// Manifest-derived catalogs are reconciled by `team_manifest` before sync.
+/// Direct catalogs have no reconciler, so allowing their checkout to enter the
+/// resolver would silently materialize content outside the prescriptive pin.
+pub fn direct_catalog_pin_mismatches(
+    paths: &StorePaths,
+    sources: &[SourceConfig],
+) -> DaloResult<Vec<DirectCatalogPinMismatch>> {
+    let source_lock = read_source_lock(paths)?;
+    let mut mismatches = sources
+        .iter()
+        .filter(|source| {
+            source.enabled && source.kind == SourceKind::Catalog && source.declared_by.is_none()
+        })
+        .filter_map(|source| {
+            catalog_checkout_pin_mismatch(source, &source_lock).map(|reason| {
+                DirectCatalogPinMismatch {
+                    source_id: source.id.clone(),
+                    reason,
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    mismatches.sort_by(|left, right| left.source_id.cmp(&right.source_id));
+    Ok(mismatches)
+}
+
+/// Describe any disagreement between a catalog checkout and its source-lock pin.
+#[must_use]
+pub fn catalog_checkout_pin_mismatch(
+    source: &SourceConfig,
+    source_lock: &SourceLock,
+) -> Option<String> {
+    let Some(catalog_lock) = source_lock.catalog(&source.id) else {
+        return Some(
+            "source-lock.toml has no catalog pin; restore the catalog lock before syncing"
+                .to_owned(),
+        );
+    };
+    match git::rev_parse_head(&source.path) {
+        Ok(checkout) if checkout == catalog_lock.commit => None,
+        Ok(checkout) => Some(format!(
+            "checkout {} does not match source-lock pin {}; restore the checkout to the pinned commit before syncing, or review `dalo source refresh {} --advance` after restoring it",
+            short_commit(&checkout),
+            short_commit(&catalog_lock.commit),
+            source.id
+        )),
+        Err(error) => Some(format!(
+            "checkout commit could not be read: {error}; restore the checkout to source-lock pin {} before syncing",
+            short_commit(&catalog_lock.commit)
+        )),
+    }
+}
+
+fn short_commit(commit: &str) -> &str {
+    commit.get(..12).unwrap_or(commit)
 }
 
 /// One inspected candidate skill in a catalog.
