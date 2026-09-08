@@ -1661,6 +1661,24 @@ fn status_json_should_reject_mapping_key_references_over_limit() {
     assert_status_json_handles_mapping_key_references("mapping-key-references-over-limit", 9, 8);
 }
 
+#[test]
+fn status_json_should_allow_nested_sequence_mapping_key_references_at_limit() {
+    assert_status_json_handles_nested_sequence_mapping_key_references(
+        "nested-sequence-mapping-key-references-at-limit",
+        8,
+        8,
+    );
+}
+
+#[test]
+fn status_json_should_reject_nested_sequence_mapping_key_references_over_limit() {
+    assert_status_json_handles_nested_sequence_mapping_key_references(
+        "nested-sequence-mapping-key-references-over-limit",
+        8,
+        9,
+    );
+}
+
 fn assert_status_json_handles_mapping_key_references(
     slot: &str,
     anchor_keys: usize,
@@ -1725,6 +1743,84 @@ fn assert_status_json_handles_mapping_key_references(
                 .as_array()
                 .is_some_and(Vec::is_empty),
             "{references} mapping-key references must not activate the skill: {status}"
+        );
+        assert_eq!(
+            status["inventory_warnings"][0]["code"],
+            "malformed_frontmatter"
+        );
+        assert!(
+            status["inventory_warnings"][0]["message"]
+                .as_str()
+                .is_some_and(|message| message
+                    .contains("anchor/alias references exceed the 16-reference safety limit"))
+        );
+    }
+}
+
+fn assert_status_json_handles_nested_sequence_mapping_key_references(
+    slot: &str,
+    anchor_keys: usize,
+    alias_keys: usize,
+) {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    let skill = store.join("local/skills").join(slot);
+    std::fs::create_dir_all(&skill).expect("skill should be created");
+
+    let anchor_entries = (0..anchor_keys)
+        .map(|index| format!("    &anchor-{index} anchor-key-{index}: anchor-value-{index}\n"))
+        .collect::<String>();
+    let alias_entries = (0..alias_keys)
+        .map(|index| format!("    *anchor-{index}: alias-value-{index}\n"))
+        .collect::<String>();
+    std::fs::write(
+        skill.join("SKILL.md"),
+        format!(
+            "---\nname: {slot}\nmetadata:\n  - description: plain\n{anchor_entries}{alias_entries}---\n# {slot}\n"
+        ),
+    )
+    .expect("skill should be written");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    let status = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let status: serde_json::Value =
+        serde_json::from_slice(&status).expect("status should emit valid JSON");
+
+    let references = anchor_keys + alias_keys;
+    if references <= 16 {
+        assert_eq!(
+            status["resolution"]["active_skills"]
+                .as_array()
+                .map(Vec::len),
+            Some(1)
+        );
+        assert!(
+            status["inventory_warnings"]
+                .as_array()
+                .is_some_and(Vec::is_empty),
+            "{references} nested sequence mapping-key references must remain accepted: {status}"
+        );
+    } else {
+        assert!(
+            status["resolution"]["active_skills"]
+                .as_array()
+                .is_some_and(Vec::is_empty),
+            "{references} nested sequence mapping-key references must not activate the skill: {status}"
         );
         assert_eq!(
             status["inventory_warnings"][0]["code"],
