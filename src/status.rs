@@ -2075,14 +2075,7 @@ fn terminal_safe_path(path: &Path) -> String {
 }
 
 pub(crate) fn terminal_safe_text(value: &str) -> String {
-    value.chars().fold(String::new(), |mut escaped, character| {
-        if character.is_control() {
-            escaped.extend(character.escape_default());
-        } else {
-            escaped.push(character);
-        }
-        escaped
-    })
+    crate::term::terminal_safe_text(value)
 }
 
 /// Print a source removal report.
@@ -2982,14 +2975,6 @@ mod tests {
     use std::fs;
 
     use super::*;
-
-    #[test]
-    fn terminal_safe_text_should_escape_controls_without_hiding_unicode_skill_names() {
-        assert_eq!(
-            terminal_safe_text("über\u{1b}[2J-skill"),
-            "über\\u{1b}[2J-skill"
-        );
-    }
 
     #[test]
     fn audit_report_lines_should_escape_all_untrusted_review_text() {

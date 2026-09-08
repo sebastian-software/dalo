@@ -34,7 +34,11 @@ fn main() -> ExitCode {
             if json {
                 print_json_error(&message, code);
             } else {
-                eprintln!("{}: {message}", term::error_label("error"));
+                eprintln!(
+                    "{}: {}",
+                    term::error_label("error"),
+                    term::terminal_safe_text(&message)
+                );
             }
             code.into()
         }
