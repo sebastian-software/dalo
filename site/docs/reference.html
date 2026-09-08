@@ -373,7 +373,9 @@ dalo source add-catalog editorial https://github.com/example/editorial-skills.gi
 dalo source inspect public
 dalo source select public review-helper
 </code></pre>
-<p>JSON output shape: <code>SourceConfig</code>.</p>
+<p>JSON output shape: <code>CatalogAddOutcome</code> (<code>source</code>, <code>available_skills</code>, <code>dry_run</code>).
+<code>available_skills</code> is <code>null</code> during a dry run because no catalog checkout is
+created or inspected.</p>
 <h3 id="dalo-source-list"><a class="doc-anchor" href="#dalo-source-list"><code>dalo source list</code></a></h3>
 <p>List configured sources in priority order. Git-backed entries include a
 read-only <code>provenance</code> object assembled from config, <code>source-lock.toml</code>, and the
@@ -1045,8 +1047,8 @@ dalo completions fish &gt; dalo.fish
 </tr>
 <tr>
 <td><code>source add-catalog</code></td>
-<td><code>SourceConfig</code></td>
-<td><code>id</code>, <code>kind</code>, <code>path</code>, <code>priority</code>, <code>enabled</code>, <code>trusted</code>, <code>url</code>, <code>update_policy</code>, <code>selection</code></td>
+<td><code>CatalogAddOutcome</code></td>
+<td>resulting <code>source</code>, nullable <code>available_skills</code>, <code>dry_run</code></td>
 </tr>
 <tr>
 <td><code>source list</code></td>
@@ -1260,9 +1262,9 @@ When present, <code>risk_acceptance</code> contains <code>reason</code>, <code>a
 <code>scope_hash</code>; <code>agent_review</code> identifies the provider and isolation boundary and
 includes its findings, summary, expected capabilities/actions, and undeclared
 behaviors. <code>source add</code> and <code>source select</code> expose security preflight results in
-their top-level <code>audits[]</code> arrays. <code>source add-catalog</code> returns only the new
-<code>SourceConfig</code>: adding a pinned catalog does not audit anything until a skill is
-selected.</p>
+their top-level <code>audits[]</code> arrays. <code>source add-catalog</code> returns the resulting
+<code>CatalogAddOutcome</code>: adding a pinned catalog does not audit anything until a
+skill is selected.</p>
 <p>Each <code>StatusReport.audit_failures[]</code> entry contains <code>source_ref</code>, <code>source_id</code>,
 and the technical <code>reason</code>. The failed skill is omitted from the active
 materialization plan, while the owning source is treated as degraded so an
