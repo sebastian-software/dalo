@@ -870,7 +870,12 @@ to shell completion.
 Skill approval always runs the deterministic preflight first and refuses a
 blocking result unless a reason is supplied with <code>--accept-risk</code>. <code>--reviewer</code>
 adds the same isolated semantic review as <code>dalo audit</code>.</p>
-<p>JSON output shapes: <code>ApprovalsFile</code> for <code>list</code>; successful <code>approve skill</code>
+<p><code>approve list</code> also surfaces every persisted accepted-risk audit, with its
+source reference, exact content hash, acceptance reason/timestamp, scope
+binding, and a command for re-inspection. The human output labels these
+exceptions explicitly and explains that <code>@sha256:</code> suffixes bind a record to
+an exact content or contract hash.</p>
+<p>JSON output shapes: <code>ApprovalListReport</code> for <code>list</code>; successful <code>approve skill</code>
 output is <code>{ &quot;audit&quot;: AuditReport, &quot;approval&quot;: ApprovalReport }</code>; <code>agent</code>,
 <code>source</code>, <code>author</code>, and <code>org</code> mutations emit a bare <code>ApprovalReport</code>; tool,
 delivery, and hook grants and revocations emit <code>ToolApprovalReport</code>,
