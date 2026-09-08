@@ -4904,6 +4904,8 @@ fn approve_list_should_render_accepted_risk_context_and_quote_path_targets() {
         "'{}'",
         skill_path.to_string_lossy().replace('\'', "'\"'\"'")
     );
+    let resolved_store =
+        store::resolve_store_path(Some(&store)).expect("store path should resolve");
     dalo_command()
         .args(["--store"])
         .arg(&store)
@@ -4913,7 +4915,8 @@ fn approve_list_should_render_accepted_risk_context_and_quote_path_targets() {
         .stdout(predicate::str::contains("accepted-risk audits:"))
         .stdout(predicate::str::contains("reviewed path exception"))
         .stdout(predicate::str::contains(format!(
-            "run: dalo audit {quoted_path}"
+            "run: {}",
+            store::dalo_command(&resolved_store, &format!("audit {quoted_path}"))
         )));
 
     let json = dalo_command()
