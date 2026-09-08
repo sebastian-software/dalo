@@ -27,6 +27,7 @@ const DELIVERY_FILE: &str = "DELIVERY.toml";
 const MAX_FRONTMATTER_BYTES: usize = 64 * 1024;
 const MAX_SKILL_METADATA_BYTES: usize = MAX_FRONTMATTER_BYTES + 16;
 const MAX_FRONTMATTER_FLOW_DEPTH: usize = 64;
+const MAX_FRONTMATTER_ANCHOR_OR_ALIAS_REFERENCES: usize = 16;
 
 /// Inventory for one source checkout.
 #[derive(Debug, Clone, Serialize)]
@@ -1152,6 +1153,19 @@ fn parse_frontmatter(
         });
         return (None, warnings);
     }
+    if frontmatter_anchor_or_alias_references_exceed(
+        frontmatter,
+        MAX_FRONTMATTER_ANCHOR_OR_ALIAS_REFERENCES,
+    ) {
+        warnings.push(InventoryWarning {
+            code: InventoryWarningCode::MalformedFrontmatter,
+            path: path.to_path_buf(),
+            message: format!(
+                "frontmatter anchor/alias references exceed the {MAX_FRONTMATTER_ANCHOR_OR_ALIAS_REFERENCES}-reference safety limit"
+            ),
+        });
+        return (None, warnings);
+    }
     match yaml_serde::from_str(frontmatter) {
         Ok(frontmatter) => (Some(frontmatter), warnings),
         Err(error) => {
@@ -1226,6 +1240,77 @@ fn frontmatter_flow_depth_exceeds(frontmatter: &str, limit: usize) -> bool {
     }
 
     false
+}
+
+// `yaml_serde` expands aliases by jumping back through its parsed event stream
+// without exposing a caller-configurable expansion limit. Bound YAML indicator
+// tokens before deserialization, while deliberately ignoring text that cannot
+// introduce YAML structure (quoted scalars, comments, and block scalar bodies).
+fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize) -> bool {
+    let structural_frontmatter = frontmatter_without_block_scalar_bodies(frontmatter);
+    let mut chars = structural_frontmatter.chars().peekable();
+    let mut references = 0_usize;
+    let mut in_single_quote = false;
+    let mut in_double_quote = false;
+    let mut escaped = false;
+    let mut in_comment = false;
+    let mut previous = None;
+
+    while let Some(character) = chars.next() {
+        if in_comment {
+            if character == '\n' {
+                in_comment = false;
+            }
+            previous = Some(character);
+            continue;
+        }
+        if in_single_quote {
+            if character == '\'' {
+                if chars.peek() == Some(&'\'') {
+                    chars.next();
+                } else {
+                    in_single_quote = false;
+                }
+            }
+            previous = Some(character);
+            continue;
+        }
+        if in_double_quote {
+            if escaped {
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == '"' {
+                in_double_quote = false;
+            }
+            previous = Some(character);
+            continue;
+        }
+
+        match character {
+            '#' if previous.is_none_or(char::is_whitespace) => in_comment = true,
+            '\'' => in_single_quote = true,
+            '"' => in_double_quote = true,
+            '&' | '*' if yaml_anchor_or_alias_starts(previous, chars.peek().copied()) => {
+                references += 1;
+                if references > limit {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+        previous = Some(character);
+    }
+
+    false
+}
+
+fn yaml_anchor_or_alias_starts(previous: Option<char>, next: Option<char>) -> bool {
+    previous.is_none_or(|character| {
+        character.is_whitespace() || matches!(character, '[' | '{' | ',' | ':' | '?')
+    }) && next.is_some_and(|character| {
+        !character.is_whitespace() && !matches!(character, '[' | ']' | '{' | '}' | ',')
+    })
 }
 
 fn frontmatter_without_block_scalar_bodies(frontmatter: &str) -> String {
@@ -2257,6 +2342,70 @@ required = true
                 .message
                 .contains("flow nesting exceeds")
         );
+    }
+
+    #[test]
+    fn scan_source_should_allow_bounded_frontmatter_anchors_and_aliases() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("alias-safe");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        fs::write(
+            skill_dir.join(SKILL_FILE),
+            "---\nname: &skill alias-safe\ndescription: *skill\nrequires: &dependencies [setup]\nowners: *dependencies\ntags: *dependencies\n---\n# Alias Safe\n",
+        )
+        .expect("skill file should be written");
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should succeed");
+
+        assert_eq!(inventory.skills.len(), 1);
+        let skill = &inventory.skills[0];
+        assert_eq!(skill.slot_name, "alias-safe");
+        assert_eq!(skill.description.as_deref(), Some("alias-safe"));
+        assert_eq!(skill.requires, ["setup".to_owned()]);
+        assert_eq!(skill.owners, ["setup".to_owned()]);
+        assert_eq!(skill.tags, ["setup".to_owned()]);
+        assert!(inventory.warnings.is_empty());
+    }
+
+    #[test]
+    fn scan_source_should_reject_excessive_frontmatter_anchor_alias_references_before_parsing() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("alias-bomb");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        let aliases = "*tag, ".repeat(MAX_FRONTMATTER_ANCHOR_OR_ALIAS_REFERENCES);
+        fs::write(
+            skill_dir.join(SKILL_FILE),
+            format!(
+                "---\nname: alias-bomb\ndescription: &tag bounded\ntags: [{aliases}*tag]\n---\n# Alias Bomb\n"
+            ),
+        )
+        .expect("skill file should be written");
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should succeed");
+
+        assert!(inventory.skills.is_empty());
+        assert_eq!(
+            inventory.warnings[0].code,
+            InventoryWarningCode::MalformedFrontmatter
+        );
+        assert!(
+            inventory.warnings[0]
+                .message
+                .contains("anchor/alias references exceed")
+        );
+    }
+
+    #[test]
+    fn frontmatter_anchor_alias_guard_should_ignore_quotes_comments_and_block_scalars() {
+        let indicators = "&anchor *alias ".repeat(MAX_FRONTMATTER_ANCHOR_OR_ALIAS_REFERENCES + 1);
+        let frontmatter = format!(
+            "description: \"{indicators}\"\nowner: '{indicators}'\n# {indicators}\nnotes: |-\n  {indicators}\n"
+        );
+
+        assert!(!frontmatter_anchor_or_alias_references_exceed(
+            &frontmatter,
+            MAX_FRONTMATTER_ANCHOR_OR_ALIAS_REFERENCES
+        ));
     }
 
     #[test]
