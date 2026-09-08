@@ -176,6 +176,23 @@ grep -q 'dalo completions <bash|zsh|fish>' "$root/site/install.md"
 grep -q '^## Upgrades and Removal' "$root/site/install.md"
 grep -q 'source add <id> <git-url-or-path>' "$root/docs/reference.md"
 grep -q 'source add-catalog <id> <git-url-or-path>' "$root/docs/reference.md"
+source_select_reference="$(awk '/^### `dalo source select <id> <skill>\.\.\.`$/{on=1;next} on && /^### /{exit} on{print}' "$root/docs/reference.md")"
+source_select_page="$(awk '/id="dalo-source-select-id-skill"/{on=1;next} on && /<h3 /{exit} on{print}' "$root/site/docs/reference.html")"
+for source_select_document in "$source_select_reference" "$source_select_page"; do
+  printf '%s\n' "$source_select_document" | grep -Fq 'stable frontmatter ID, slot name, or catalog-relative path'
+done
+case "$source_select_reference" in
+  *'<source-id>:<slot>'*)
+    echo 'source select documentation advertises rejected source-qualified references' >&2
+    exit 1
+    ;;
+esac
+case "$source_select_page" in
+  *'&lt;source-id&gt;:&lt;slot&gt;'*)
+    echo 'rendered source select documentation advertises rejected source-qualified references' >&2
+    exit 1
+    ;;
+esac
 grep -q '`version:` entry from the first five lines' "$root/docs/reference.md"
 grep -q '`topics:` or `tags:` metadata from the first eight lines' "$root/docs/reference.md"
 if sed -n '/MSRV, dependency-audit, coverage, and site-render jobs additionally run:/,/^```$/p' "$root/CONTRIBUTING.md" \
