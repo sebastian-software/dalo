@@ -14084,6 +14084,97 @@ fn sync_should_refresh_already_active_tracking_instruction_pack() {
 }
 
 #[test]
+fn sync_should_migrate_legacy_metadata_bearing_instruction_block() {
+    let temp = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp.path().join("store");
+    let repo = temp.path().join("team-repo");
+    let target = temp.path().join("AGENTS.md");
+    let skill_target = temp.path().join("skills");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::create_dir_all(repo.join("instructions")).unwrap();
+    std::fs::write(
+        repo.join("instructions/engineering-defaults.md"),
+        "version: 1\ntopics: review\n\nReview boundaries.\n",
+    )
+    .unwrap();
+    create_git_skill_repo(&repo);
+    add_source(&store, "team", &repo);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "link", "codex"])
+        .arg(&skill_target)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "team:engineering-defaults"])
+        .arg(&target)
+        .assert()
+        .success();
+
+    // This is the exact managed representation written before pack metadata
+    // moved out of agent-visible blocks. The lock remains Dalo's provenance.
+    std::fs::write(
+        &target,
+        "<!-- dalo:start team:engineering-defaults -->\nversion: 1\ntopics: review\n\nReview boundaries.\n<!-- dalo:end team:engineering-defaults -->\n",
+    )
+    .unwrap();
+    let lock_before = read_user_lock(&store);
+    assert_eq!(lock_before.active_instruction_packs.len(), 1);
+    assert_eq!(lock_before.active_instruction_packs[0].source_id, "team");
+    assert_eq!(
+        lock_before.active_instruction_packs[0].pack_id,
+        "engineering-defaults"
+    );
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["status", "--check"])
+        .assert()
+        .success();
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "sync"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(report["instruction_operations"][0]["action"], "refreshed");
+    assert_eq!(
+        std::fs::read_to_string(&target).unwrap(),
+        "<!-- dalo:start team:engineering-defaults -->\nReview boundaries.\n<!-- dalo:end team:engineering-defaults -->\n"
+    );
+    let lock_after = read_user_lock(&store);
+    assert_eq!(
+        lock_after.active_instruction_packs[0].commit,
+        lock_before.active_instruction_packs[0].commit
+    );
+    assert_eq!(
+        lock_after.active_instruction_packs[0].version.as_deref(),
+        Some("1")
+    );
+}
+
+#[test]
 fn sync_should_block_active_instruction_pack_after_source_approval_is_revoked() {
     let temp = tempfile::tempdir().expect("tempdir should be created");
     let store = temp.path().join("store");
