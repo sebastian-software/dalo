@@ -535,7 +535,17 @@ pub fn update_team_catalog_pin(
     git::clone_repo(&location, &checkout)?;
     git::fetch_upstream(&checkout)?;
     let old_commit = git::resolve_manifest_revision(&checkout, &declaration.version)?;
-    let candidate_commit = git::resolve_manifest_revision(&checkout, from_ref)?;
+    let candidate_commit =
+        git::resolve_manifest_revision(&checkout, from_ref).map_err(|error| {
+            if matches!(&error, DaloError::CommandFailed { status, .. } if status == "128") {
+                DaloError::TeamCatalogRefNotFound {
+                    reference: from_ref.to_owned(),
+                    repository: git::display_remote_url(&location),
+                }
+            } else {
+                error
+            }
+        })?;
     let mut blocking_reasons = Vec::new();
     if old_commit != candidate_commit
         && git::revision_count(&checkout, &candidate_commit, &old_commit)? != 0
@@ -702,14 +712,22 @@ fn mutate_team_manifest(
 }
 
 fn team_manifest_path(repo: &Path) -> DaloResult<PathBuf> {
-    let repo = fs::canonicalize(repo).map_err(|error| DaloError::InvalidStorePath {
+    let repo = fs::canonicalize(repo).map_err(|error| DaloError::TeamRepository {
         path: repo.to_path_buf(),
-        reason: format!("team repository could not be resolved: {error}"),
+        reason: match error.kind() {
+            std::io::ErrorKind::NotFound => "was not found".to_owned(),
+            std::io::ErrorKind::PermissionDenied => {
+                "could not be accessed; check permissions".to_owned()
+            }
+            _ => "could not be resolved".to_owned(),
+        },
+        origin: String::new(),
     })?;
     if !repo.is_dir() {
-        return Err(DaloError::InvalidStorePath {
+        return Err(DaloError::TeamRepository {
             path: repo,
-            reason: "team repository must be a directory".to_owned(),
+            reason: "must be a directory".to_owned(),
+            origin: String::new(),
         });
     }
     Ok(repo.join(TEAM_MANIFEST_FILE))

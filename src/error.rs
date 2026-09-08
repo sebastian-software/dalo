@@ -64,6 +64,17 @@ pub enum DaloError {
         reason: String,
     },
 
+    /// A team repository could not be used for a team-management command.
+    #[error("team repository `{path}` {reason}{origin}")]
+    TeamRepository {
+        /// Repository path supplied to the team command.
+        path: PathBuf,
+        /// Stable explanation of why the repository cannot be used.
+        reason: String,
+        /// Optional CLI provenance, such as ` (from --repo)`.
+        origin: String,
+    },
+
     /// TOML serialization failed.
     #[error(transparent)]
     TomlSerialize(#[from] toml::ser::Error),
@@ -171,6 +182,15 @@ pub enum DaloError {
         upstream: String,
         /// Pinned revision.
         pinned: String,
+    },
+
+    /// A requested ref could not be resolved in a team catalog repository.
+    #[error("ref `{reference}` was not found in `{repository}`; use a branch, tag, or commit")]
+    TeamCatalogRefNotFound {
+        /// User-supplied `--from` ref.
+        reference: String,
+        /// Catalog repository in which the ref was looked up.
+        repository: String,
     },
 
     /// The local source priority is fixed and cannot be changed.
@@ -355,6 +375,24 @@ pub(crate) fn shell_quote_path(path: &Path) -> String {
 }
 
 impl DaloError {
+    /// Add CLI provenance to a team-repository error without changing errors
+    /// returned by other command boundaries.
+    #[must_use]
+    pub(crate) fn with_team_repository_origin(self, origin: &str) -> Self {
+        match self {
+            Self::TeamRepository {
+                path,
+                reason,
+                origin: existing_origin,
+            } if existing_origin.is_empty() => Self::TeamRepository {
+                path,
+                reason,
+                origin: origin.to_owned(),
+            },
+            error => error,
+        }
+    }
+
     /// Build an unknown-target error with concise recovery guidance.
     #[must_use]
     pub fn unknown_target(target: impl Into<String>, known_targets: Vec<String>) -> Self {
@@ -426,6 +464,7 @@ impl DaloError {
             | Self::CheckFailed { .. }
             | Self::StateError { .. }
             | Self::CatalogNotFastForward { .. }
+            | Self::TeamCatalogRefNotFound { .. }
             | Self::AuditBlocked { .. }
             | Self::NotImplemented { .. }
             | Self::StoreNotInitialized { .. }
@@ -454,6 +493,7 @@ impl DaloError {
             | Self::InstructionTargetChanged { .. } => DaloExitCode::UnsafeState,
             Self::StorePath { .. }
             | Self::InvalidStorePath { .. }
+            | Self::TeamRepository { .. }
             | Self::CommandFailed { .. }
             | Self::CatalogMigrationFailed { .. }
             | Self::AgentUnavailable { .. }
@@ -994,6 +1034,11 @@ mod tests {
             DaloError::InvalidStorePath {
                 path: PathBuf::from("/tmp/store"),
                 reason: "path is empty".to_owned(),
+            },
+            DaloError::TeamRepository {
+                path: PathBuf::from("/tmp/team"),
+                reason: "was not found".to_owned(),
+                origin: " (from --repo)".to_owned(),
             },
             DaloError::CommandFailed {
                 program: "git".to_owned(),
