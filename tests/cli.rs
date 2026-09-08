@@ -4926,6 +4926,89 @@ fn approve_cli_should_grant_list_revoke_and_dry_run() {
 }
 
 #[test]
+fn approve_list_should_not_require_initialization_or_store_lock() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("no approvals recorded"));
+    assert!(!store.exists(), "listing should not initialize the store");
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "approve", "list"])
+        .output()
+        .expect("JSON approve list should run without initialization");
+    assert!(output.status.success());
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("approve list JSON should parse");
+    assert_eq!(report["schema_version"], 1);
+    assert_eq!(report["approvals"], serde_json::json!([]));
+    assert_eq!(report["accepted_risks"], serde_json::json!([]));
+    assert!(
+        !store.exists(),
+        "JSON listing should not initialize the store"
+    );
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    let paths = store::StorePaths::new(store.clone());
+    let _lock = store::StoreLock::acquire(&paths).expect("parent should hold store lock");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "list"])
+        .timeout(std::time::Duration::from_secs(1))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("no approvals recorded"));
+}
+
+#[test]
+fn approve_mutations_should_retain_initialization_and_store_lock_requirements() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "source", "local"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("store is not initialized"));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    let paths = store::StorePaths::new(store.clone());
+    let _lock = store::StoreLock::acquire(&paths).expect("parent should hold store lock");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "source", "local"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "another dalo operation is running",
+        ));
+}
+
+#[test]
 fn approve_list_should_render_accepted_risk_context_and_quote_path_targets() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

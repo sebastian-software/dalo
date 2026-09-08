@@ -131,7 +131,11 @@ pub fn revoke(
 
 /// Read approvals and persisted risk acceptances for `approve list`.
 pub fn list(paths: &StorePaths) -> DaloResult<ApprovalListReport> {
-    let approvals = store::read_approvals(paths)?;
+    let approvals = if paths.approvals_file.exists() {
+        store::read_approvals(paths)?
+    } else {
+        store::ApprovalsFile::empty()
+    };
     let accepted_risks = audit::read_persisted_reports(paths)?
         .into_iter()
         .filter_map(|report| {
