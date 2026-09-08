@@ -101,6 +101,18 @@ pub enum TargetPluginState {
     Shadowed,
 }
 
+impl std::fmt::Display for TargetPluginState {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Active => "active",
+            Self::Degraded => "degraded",
+            Self::Blocked => "blocked",
+            Self::Declined => "declined",
+            Self::Shadowed => "shadowed",
+        })
+    }
+}
+
 /// Plan compatibility vocabulary from RFC 0005.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -115,6 +127,18 @@ pub enum PlanCompatibility {
     Unsupported,
     /// Required behavior or safety boundary blocks the projection.
     Blocked,
+}
+
+impl std::fmt::Display for PlanCompatibility {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Exact => "exact",
+            Self::Mapped => "mapped",
+            Self::GuidanceOnly => "guidance_only",
+            Self::Unsupported => "unsupported",
+            Self::Blocked => "blocked",
+        })
+    }
 }
 
 /// One plugin component planned for one logical target.
@@ -162,6 +186,19 @@ pub enum TargetComponentState {
     IntentionallyOmitted,
     /// Required behavior or safety cannot be represented.
     Blocked,
+}
+
+impl std::fmt::Display for TargetComponentState {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Active => "active",
+            Self::Inactive => "inactive",
+            Self::PendingApproval => "pending_approval",
+            Self::Shadowed => "shadowed",
+            Self::IntentionallyOmitted => "intentionally_omitted",
+            Self::Blocked => "blocked",
+        })
+    }
 }
 
 /// Typed blocker with a stable source category.
@@ -665,7 +702,7 @@ fn target_plugin_plan(
             blockers.push(PlanBlocker {
                 source: PlanBlockerSource::MissingDependency,
                 message: format!(
-                    "required dependency `{}` is {:?}",
+                    "required dependency `{}` is {}",
                     dependency.reference, dependency.state
                 )
                 .to_lowercase(),
@@ -906,7 +943,7 @@ fn canonical_blocker(member: &crate::plugin::ResolvedPluginMember) -> Option<Pla
     };
     Some(PlanBlocker {
         source,
-        message: format!("component `{}` is {:?}", member.reference, member.state).to_lowercase(),
+        message: format!("component `{}` is {}", member.reference, member.state),
     })
 }
 

@@ -618,13 +618,96 @@ fn plugin_tool_inventory_should_report_pending_tool_without_execution() {
         .assert()
         .success()
         .stdout(predicate::str::contains(PluginToolFixture::TOOL_ID))
-        .stdout(predicate::str::contains("PendingApproval"));
+        .stdout(predicate::str::contains("state=pending_approval"))
+        .stdout(predicate::str::contains("PendingApproval").not());
     fixture
         .command()
         .args(["hook", "show", PluginToolFixture::HOOK_ID])
         .assert()
         .success()
-        .stdout(predicate::str::contains("state: ToolUnavailable"));
+        .stdout(predicate::str::contains("state: tool_unavailable"))
+        .stdout(predicate::str::contains("tool state: pending_approval"))
+        .stdout(predicate::str::contains(
+            "event: tool_call.before effect=allow_deny",
+        ))
+        .stdout(predicate::str::contains("matcher: tool_names=Bash"))
+        .stdout(predicate::str::contains("bindings: none"))
+        .stdout(predicate::str::contains("ToolUnavailable").not());
+    fixture.assert_never_executed();
+}
+
+#[test]
+fn human_plugin_tool_hook_status_and_review_reports_use_stable_display_values() {
+    let fixture = PluginToolFixture::new();
+
+    fixture
+        .command()
+        .args(["tool", "show", PluginToolFixture::TOOL_ID])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("state: pending_approval"))
+        .stdout(predicate::str::contains("entry: bin/detect (executable)"))
+        .stdout(predicate::str::contains("argv: --check"))
+        .stdout(predicate::str::contains("capabilities: filesystem_read"));
+    fixture
+        .command()
+        .args(["--json", "tool", "show", PluginToolFixture::TOOL_ID])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"state\": \"pending_approval\""));
+
+    fixture.select_plugin();
+    fixture
+        .command()
+        .args(["plugin", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("local:quality state=selected"));
+    fixture
+        .command()
+        .args(["plugin", "show", "local:quality"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("selected: yes (selected)"))
+        .stdout(predicate::str::contains("runtime=executable"));
+    fixture
+        .command()
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("local:quality state=selected"))
+        .stdout(predicate::str::contains(
+            "state=tool_unavailable tool_state=pending_approval",
+        ));
+    let codex_target = fixture.store.parent().unwrap().join("codex");
+    fixture
+        .command()
+        .args(["target", "link", "codex"])
+        .arg(&codex_target)
+        .assert()
+        .success();
+    fixture
+        .command()
+        .args(["--dry-run", "sync"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "plugin codex local:quality: state=blocked",
+        ))
+        .stdout(predicate::str::contains("pending_approval"))
+        .stdout(predicate::str::contains("pendingapproval").not())
+        .stdout(predicate::str::contains("state=Blocked").not());
+    fixture
+        .command()
+        .args(["plugin", "review", "local:quality"])
+        .write_stdin("q\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("state=selected"))
+        .stdout(predicate::str::contains("state=pending"))
+        .stdout(predicate::str::contains("boundary: tool_execution"))
+        .stdout(predicate::str::contains("ToolExecution").not())
+        .stdout(predicate::str::contains("Pending").not());
     fixture.assert_never_executed();
 }
 
@@ -688,14 +771,14 @@ fn tool_approval_should_stage_an_immutable_ready_tool_and_expose_pending_hook() 
         .args(["tool", "show", PluginToolFixture::TOOL_ID])
         .assert()
         .success()
-        .stdout(predicate::str::contains("state: Ready"));
+        .stdout(predicate::str::contains("state: ready"));
     fixture
         .command()
         .args(["hook", "list"])
         .assert()
         .success()
         .stdout(predicate::str::contains(PluginToolFixture::HOOK_ID))
-        .stdout(predicate::str::contains("PendingApproval"));
+        .stdout(predicate::str::contains("state=pending_approval"));
     fixture.assert_never_executed();
 }
 
@@ -715,7 +798,7 @@ fn hook_approval_and_revocation_should_change_only_hook_state_without_execution(
         .args(["hook", "show", PluginToolFixture::HOOK_ID])
         .assert()
         .success()
-        .stdout(predicate::str::contains("state: Ready"));
+        .stdout(predicate::str::contains("state: ready"));
     fixture
         .command()
         .args(["approve", "revoke", "hook", PluginToolFixture::HOOK_ID])
@@ -726,7 +809,7 @@ fn hook_approval_and_revocation_should_change_only_hook_state_without_execution(
         .args(["hook", "show", PluginToolFixture::HOOK_ID])
         .assert()
         .success()
-        .stdout(predicate::str::contains("state: PendingApproval"));
+        .stdout(predicate::str::contains("state: pending_approval"));
     fixture.assert_never_executed();
 }
 
@@ -746,7 +829,7 @@ fn tool_revocation_should_report_the_staged_tool_as_revoked() {
         .args(["tool", "show", PluginToolFixture::TOOL_ID])
         .assert()
         .success()
-        .stdout(predicate::str::contains("state: Revoked"));
+        .stdout(predicate::str::contains("state: revoked"));
     fixture.assert_never_executed();
 }
 
@@ -766,7 +849,7 @@ fn tool_inspection_should_report_a_missing_declared_runtime_without_execution() 
         .args(["tool", "show", PluginToolFixture::TOOL_ID])
         .assert()
         .success()
-        .stdout(predicate::str::contains("state: RuntimeMissing"));
+        .stdout(predicate::str::contains("state: runtime_missing"));
     fixture.assert_never_executed();
 }
 

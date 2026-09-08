@@ -1408,13 +1408,13 @@ fn run_plugin(options: &GlobalOptions, command: PluginCommand) -> DaloResult<()>
                         .iter()
                         .find(|selected| selected.source_ref == candidate.source_ref)
                         .map_or("available".to_owned(), |selected| {
-                            format!("{:?}", selected.state).to_lowercase()
+                            selected.state.to_string()
                         });
                     println!("{} state={state}", candidate.source_ref);
                 }
                 for diagnostic in &report.resolution.diagnostics {
                     println!(
-                        "warning {:?} {}: {}",
+                        "warning {} {}: {}",
                         diagnostic.code, diagnostic.subject, diagnostic.message
                     );
                 }
@@ -1438,20 +1438,21 @@ fn run_plugin(options: &GlobalOptions, command: PluginCommand) -> DaloResult<()>
                     report
                         .selected
                         .as_ref()
-                        .map_or("no".to_owned(), |selected| {
-                            format!("yes ({:?})", selected.state).to_lowercase()
-                        })
+                        .map_or("no".to_owned(), |selected| format!(
+                            "yes ({})",
+                            selected.state
+                        ))
                 );
                 for member in &report.candidate.members {
                     println!(
-                        "  member {} requirement={:?}",
+                        "  member {} requirement={}",
                         member.reference.as_string(),
                         member.requirement
                     );
                 }
                 for tool in &report.candidate.tools {
                     println!(
-                        "  tool {} runtime={:?} contract=sha256:{}",
+                        "  tool {} runtime={} contract=sha256:{}",
                         tool.source_ref, tool.runtime, tool.contract_hash
                     );
                 }
@@ -1611,7 +1612,7 @@ fn run_plugin_review(
     for decision in &approvable {
         println!();
         println!("decision: {}", decision.id);
-        println!("  boundary: {:?}", decision.kind);
+        println!("  boundary: {}", decision.kind);
         println!("  component: {}", decision.component);
         if let Some(hash) = &decision.content_hash {
             println!("  reviewed hash: {hash}");
@@ -1628,7 +1629,7 @@ fn run_plugin_review(
         }
         for target in &decision.targets {
             println!(
-                "  target {}: {:?}/{:?} -> {}",
+                "  target {}: {}/{} -> {}",
                 target.target, target.state, target.compatibility, target.mapping
             );
         }
@@ -1709,7 +1710,7 @@ fn print_plugin_review(report: &plugin_review::PluginReviewReport) {
     println!("dependency closure:");
     for plugin in &report.plugin_closure {
         println!(
-            "  {} state={:?} package=sha256:{} closure=sha256:{}",
+            "  {} state={} package=sha256:{} closure=sha256:{}",
             plugin.source_ref, plugin.state, plugin.package_hash, plugin.closure_hash
         );
         for reason in &plugin.blocking_reasons {
@@ -1719,7 +1720,7 @@ fn print_plugin_review(report: &plugin_review::PluginReviewReport) {
     println!("component decisions:");
     for decision in &report.decisions {
         println!(
-            "  {} state={:?} component={}",
+            "  {} state={} component={}",
             decision.id, decision.state, decision.component
         );
         println!("    {}", decision.diagnostic);
@@ -1731,7 +1732,7 @@ fn print_plugin_review(report: &plugin_review::PluginReviewReport) {
         }
         for target in &decision.targets {
             println!(
-                "    target {}: {:?}/{:?} -> {}",
+                "    target {}: {}/{} -> {}",
                 target.target, target.state, target.compatibility, target.mapping
             );
             if let Some(fallback) = &target.fallback {
@@ -1755,7 +1756,7 @@ fn run_tool(options: &GlobalOptions, command: ToolCommand) -> DaloResult<()> {
                 }
                 for item in &report.tools {
                     println!(
-                        "{} state={:?} contract=sha256:{}",
+                        "{} state={} contract=sha256:{}",
                         item.tool.source_ref, item.state, item.tool.contract_hash
                     );
                     println!("  {}", item.diagnostic);
@@ -1780,12 +1781,15 @@ fn run_tool(options: &GlobalOptions, command: ToolCommand) -> DaloResult<()> {
                 return print_json(&report);
             }
             println!("{}", report.tool.source_ref);
-            println!("state: {:?}", report.state);
+            println!("state: {}", report.state);
             println!("contract hash: {}", report.tool.contract_hash);
             println!("plugin package hash: {}", report.plugin_package_hash);
-            println!("entry: {} ({:?})", report.tool.entry, report.tool.runtime);
-            println!("argv: {:?}", report.tool.argv);
-            println!("capabilities: {:?}", report.tool.capabilities);
+            println!("entry: {} ({})", report.tool.entry, report.tool.runtime);
+            println!("argv: {}", format_display_values(&report.tool.argv));
+            println!(
+                "capabilities: {}",
+                format_display_values(&report.tool.capabilities)
+            );
             println!("diagnostic: {}", report.diagnostic);
         }
         ToolSubcommand::Audit(args) => {
@@ -1822,7 +1826,7 @@ fn run_hook(options: &GlobalOptions, command: HookCommand) -> DaloResult<()> {
                 }
                 for item in &report.hooks {
                     println!(
-                        "{} state={:?} tool_state={:?} contract=sha256:{}",
+                        "{} state={} tool_state={} contract=sha256:{}",
                         item.hook.source_ref, item.state, item.tool_state, item.hook.contract_hash
                     );
                     println!("  {}", item.diagnostic);
@@ -1847,19 +1851,25 @@ fn run_hook(options: &GlobalOptions, command: HookCommand) -> DaloResult<()> {
                 return print_json(&report);
             }
             println!("{}", report.hook.source_ref);
-            println!("state: {:?}", report.state);
-            println!("tool state: {:?}", report.tool_state);
+            println!("state: {}", report.state);
+            println!("tool state: {}", report.tool_state);
             println!("contract hash: {}", report.hook.contract_hash);
             println!("tool: {}", report.hook.tool_source_ref);
             println!("tool contract hash: {}", report.hook.tool_contract_hash);
             println!(
-                "event: {:?}.{:?} effect={:?}",
+                "event: {}.{} effect={}",
                 report.hook.descriptor.subject,
                 report.hook.descriptor.phase,
                 report.hook.descriptor.effect
             );
-            println!("matcher: {:?}", report.hook.descriptor.matcher);
-            println!("bindings: {:?}", report.hook.descriptor.bindings);
+            println!(
+                "matcher: tool_names={}",
+                format_display_values(&report.hook.descriptor.matcher.tool_names)
+            );
+            println!(
+                "bindings: {}",
+                format_display_values(&report.hook.descriptor.bindings)
+            );
             println!("diagnostic: {}", report.diagnostic);
         }
         HookSubcommand::Dispatch(args) => {
@@ -1928,7 +1938,7 @@ fn run_plan(options: &GlobalOptions, args: PlanArgs) -> DaloResult<()> {
         println!("local tools (never executed by planning):");
         for tool in &report.tools {
             println!(
-                "  {} state={:?} contract=sha256:{}",
+                "  {} state={} contract=sha256:{}",
                 tool.tool.source_ref, tool.state, tool.tool.contract_hash
             );
             println!("    {}", tool.diagnostic);
@@ -1938,7 +1948,7 @@ fn run_plan(options: &GlobalOptions, args: PlanArgs) -> DaloResult<()> {
         println!("portable hooks (never executed by planning):");
         for hook in &report.hooks {
             println!(
-                "  {} state={:?} tool_state={:?} contract=sha256:{}",
+                "  {} state={} tool_state={} contract=sha256:{}",
                 hook.hook.source_ref, hook.state, hook.tool_state, hook.hook.contract_hash
             );
             println!("    {}", hook.diagnostic);
@@ -1948,7 +1958,7 @@ fn run_plan(options: &GlobalOptions, args: PlanArgs) -> DaloResult<()> {
         println!("native package projections:");
         for native in &report.native_plugins {
             println!(
-                "  {} {} state={:?} path={} hash={}",
+                "  {} {} state={} path={} hash={}",
                 native.target,
                 native.plugin,
                 native.state,
@@ -1981,12 +1991,12 @@ fn run_plan(options: &GlobalOptions, args: PlanArgs) -> DaloResult<()> {
             println!("  target {} [{}]", target.id, target.verification_baseline);
             for plugin in &target.plugins {
                 println!(
-                    "    {} state={:?} compatibility={:?}",
+                    "    {} state={} compatibility={}",
                     plugin.source_ref, plugin.state, plugin.compatibility
                 );
                 for component in &plugin.components {
                     println!(
-                        "      {} requirement={:?} state={:?} compatibility={:?}",
+                        "      {} requirement={} state={} compatibility={}",
                         component.reference,
                         component.requirement,
                         component.canonical_state,
@@ -2000,6 +2010,17 @@ fn run_plan(options: &GlobalOptions, args: PlanArgs) -> DaloResult<()> {
         }
     }
     Ok(())
+}
+
+fn format_display_values(values: &[impl std::fmt::Display]) -> String {
+    if values.is_empty() {
+        return "none".to_owned();
+    }
+    values
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn valid_plugin_rule_id(value: &str) -> bool {

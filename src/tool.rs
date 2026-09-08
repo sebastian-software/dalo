@@ -76,6 +76,21 @@ pub enum ToolState {
     Ready,
 }
 
+impl std::fmt::Display for ToolState {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::PlatformMismatch => "platform_mismatch",
+            Self::RuntimeMissing => "runtime_missing",
+            Self::PendingApproval => "pending_approval",
+            Self::HashDrift => "hash_drift",
+            Self::Revoked => "revoked",
+            Self::ApprovedNotStaged => "approved_not_staged",
+            Self::AuditFailure => "audit_failure",
+            Self::Ready => "ready",
+        })
+    }
+}
+
 /// Read-only deterministic executable-closure audit.
 #[derive(Debug, Clone, Serialize)]
 pub struct ToolAuditReport {

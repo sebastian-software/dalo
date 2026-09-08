@@ -70,6 +70,17 @@ pub enum HookTrustState {
     Ready,
 }
 
+impl std::fmt::Display for HookTrustState {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::ToolUnavailable => "tool_unavailable",
+            Self::PendingApproval => "pending_approval",
+            Self::HashDrift => "hash_drift",
+            Self::Ready => "ready",
+        })
+    }
+}
+
 /// Result of granting or revoking exact hook trust.
 #[derive(Debug, Clone, Serialize)]
 pub struct HookApprovalReport {
@@ -357,6 +368,17 @@ pub enum HookSubject {
     Workflow,
 }
 
+impl std::fmt::Display for HookSubject {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Session => "session",
+            Self::UserPrompt => "user_prompt",
+            Self::ToolCall => "tool_call",
+            Self::Workflow => "workflow",
+        })
+    }
+}
+
 /// Timing relative to the semantic subject.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -369,6 +391,17 @@ pub enum HookPhase {
     End,
     /// Agent-turn completion attempt that may be continued.
     CompletionAttempt,
+}
+
+impl std::fmt::Display for HookPhase {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Before => "before",
+            Self::After => "after",
+            Self::End => "end",
+            Self::CompletionAttempt => "completion_attempt",
+        })
+    }
 }
 
 /// Requested portable effect. Event identity never implies an effect.
@@ -387,6 +420,19 @@ pub enum HookEffect {
     ReplaceOutput,
     /// Request another agent turn at a completion attempt.
     ContinueWorkflow,
+}
+
+impl std::fmt::Display for HookEffect {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Observe => "observe",
+            Self::AddContext => "add_context",
+            Self::AllowDeny => "allow_deny",
+            Self::RewriteInput => "rewrite_input",
+            Self::ReplaceOutput => "replace_output",
+            Self::ContinueWorkflow => "continue_workflow",
+        })
+    }
 }
 
 impl HookEffect {
@@ -417,6 +463,16 @@ pub enum HookFailurePolicy {
     FailClosed,
     /// The event already happened; report failure without claiming control.
     Report,
+}
+
+impl std::fmt::Display for HookFailurePolicy {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::FailOpen => "fail_open",
+            Self::FailClosed => "fail_closed",
+            Self::Report => "report",
+        })
+    }
 }
 
 /// Retry policy accepted by hook descriptor version 1.
@@ -537,6 +593,12 @@ pub struct HookBindingV1 {
     pub input: String,
     /// Typed portable event field.
     pub field: HookEventField,
+}
+
+impl std::fmt::Display for HookBindingV1 {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}={}", self.input, self.field.as_str())
+    }
 }
 
 /// Closed portable matcher. Empty tool names match every covered tool call.
