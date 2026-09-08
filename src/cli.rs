@@ -847,7 +847,8 @@ pub struct SourceSelectArgs {
     /// Catalog source ID.
     pub id: String,
 
-    /// Skill references to select (stable ID, slot name, or catalog-relative path).
+    /// Skill references to select (stable ID, slot name, catalog-relative path,
+    /// or `<source-id>:<slot-or-stable-id>`).
     #[arg(required = true)]
     pub skills: Vec<String>,
 

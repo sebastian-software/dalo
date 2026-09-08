@@ -416,7 +416,9 @@ dalo --json source inspect public
 </code></pre>
 <p>JSON output shape: <code>CatalogInspectReport</code>.</p>
 <h3 id="dalo-source-select-id-skill"><a class="doc-anchor" href="#dalo-source-select-id-skill"><code>dalo source select &lt;id&gt; &lt;skill&gt;...</code></a></h3>
-<p>Select catalog skills by stable frontmatter ID, slot name, or catalog-relative path.
+<p>Select catalog skills by stable frontmatter ID, slot name, catalog-relative path,
+or a source-qualified <code>&lt;source-id&gt;:&lt;slot-or-stable-id&gt;</code> reference. The source ID
+must match the catalog being selected.
 Selection runs the deterministic security preflight, writes
 <code>config.toml</code>, and updates <code>source-lock.toml</code> with the pinned commit and
 inventory snapshot. Human-readable output names the skills added or removed,
@@ -424,7 +426,7 @@ reports no-op requests explicitly, and shows the complete resulting selection
 as secondary detail.</p>
 <p>Examples:</p>
 <pre><code class="language-sh">dalo source select public review-helper
-dalo source select public review-helper formatter
+dalo source select public review-helper public:formatter
 dalo source select public --unselect formatter
 dalo --dry-run source select public review-helper
 </code></pre>
@@ -1540,7 +1542,7 @@ selection = [&quot;review-helper&quot;]
 </tr>
 <tr>
 <td><code>sources[].selection</code></td>
-<td>Catalog selections by stable ID, slot name, or catalog-relative path. Empty for local/team sources.</td>
+<td>Catalog selections by stable ID, slot name, catalog-relative path, or source-qualified reference. Empty for local/team sources.</td>
 </tr>
 <tr>
 <td><code>sources[].declared_by</code></td>

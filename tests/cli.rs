@@ -12719,7 +12719,7 @@ fn catalog_select_should_suggest_slot_names_for_unknown_skills() {
     dalo_command()
         .args(["--store"])
         .arg(&store)
-        .args(["source", "select", "marketing", "copy-editng"])
+        .args(["source", "select", "marketing", "marketing:copy-editng"])
         .assert()
         .failure()
         .stderr(predicate::str::contains(

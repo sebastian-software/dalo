@@ -370,8 +370,9 @@ pub fn inspect_catalog(paths: &StorePaths, id: &str) -> DaloResult<CatalogInspec
 }
 
 /// Select skills from a catalog. Each ref must match an inventory entry by stable
-/// ID, slot name, or catalog-relative path; unknown refs are rejected. Refreshes
-/// the lock inventory
+/// ID, slot name, catalog-relative path, or a source-qualified
+/// `<source-id>:<slot-or-stable-id>` reference; unknown refs are rejected.
+/// Refreshes the lock inventory
 /// snapshot so subsequent drift detection compares against the current commit.
 pub fn select_skills(
     paths: &StorePaths,
@@ -701,8 +702,8 @@ fn resolve_candidate_reference(
     }
     match matches.as_slice() {
         [] => Err(DaloError::skill_not_found_for_reference(
-            format!("{source_id}:{reference}"),
-            reference,
+            format!("{source_id}:{lookup}"),
+            lookup,
             candidates
                 .iter()
                 .map(|candidate| candidate.slot_name.clone())
