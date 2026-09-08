@@ -888,6 +888,47 @@ pub fn read_report(
     Ok(report)
 }
 
+/// Read all persisted audit reports so inspection commands can surface trust
+/// decisions that are not represented by an approval record.
+pub(crate) fn read_persisted_reports(paths: &StorePaths) -> DaloResult<Vec<AuditReport>> {
+    if !paths.audits_dir.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    let mut reports = Vec::new();
+    for entry in fs::read_dir(&paths.audits_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if !entry.file_type()?.is_file()
+            || path.extension().and_then(|extension| extension.to_str()) != Some("json")
+        {
+            continue;
+        }
+
+        let content = fs::read_to_string(&path)?;
+        let report: AuditReport =
+            serde_json::from_str(&content).map_err(|error| DaloError::FileParse {
+                path: path.clone(),
+                reason: error.to_string(),
+            })?;
+        if report.schema_version != AUDIT_SCHEMA_VERSION {
+            return Err(DaloError::UnsupportedSchema {
+                path,
+                version: report.schema_version,
+                supported: AUDIT_SCHEMA_VERSION,
+            });
+        }
+        reports.push(report);
+    }
+
+    reports.sort_by(|left, right| {
+        left.source_ref
+            .cmp(&right.source_ref)
+            .then(left.content_hash.cmp(&right.content_hash))
+    });
+    Ok(reports)
+}
+
 fn resolve_target(paths: &StorePaths, target: &str) -> DaloResult<(String, PathBuf)> {
     let (logical_target, provider) = target
         .rsplit_once('@')
