@@ -52,8 +52,10 @@ The launcher tells the Rust binary whether it was invoked through npm or npx so
 passive Dalo update notices can recommend the matching upgrade command. It never
 updates the launcher or cached executable behind npm's back.
 
-Release metadata and archive downloads time out after 30 seconds. Network
-errors include their underlying cause and a hint for selecting an exact version.
+Release-metadata lookups time out after 30 seconds; archive downloads use a
+10-second connection and 120-second body timeout and are retried up to three
+times on transient failures. Network errors include their underlying cause and
+a hint for selecting an exact version.
 When invoked by npm, the launcher also honors `npm_config_proxy`,
 `npm_config_https_proxy`, and `npm_config_noproxy` as fallbacks.
 
