@@ -8054,6 +8054,79 @@ fn sync_should_preserve_owned_symlink_when_slot_name_is_invalidated() {
 }
 
 #[test]
+fn degraded_inventory_should_preserve_owned_symlink_in_status_and_sync_previews() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_skill_and_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    std::fs::rename(
+        store.join("local/skills/review"),
+        store.join("local/skills/Review"),
+    )
+    .expect("skill should become inventory-degraded");
+
+    let status = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let status: serde_json::Value =
+        serde_json::from_slice(&status).expect("status should emit valid JSON");
+
+    let dry_run = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "--dry-run", "sync"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let dry_run: serde_json::Value =
+        serde_json::from_slice(&dry_run).expect("dry-run sync should emit valid JSON");
+
+    for operations in [&status["materialization"], &dry_run["operations"]] {
+        assert!(operations.as_array().is_some_and(|operations| {
+            operations.iter().any(|operation| {
+                operation["kind"] == "conflict"
+                    && operation["status"] == "blocked"
+                    && operation["link_path"]
+                        .as_str()
+                        .is_some_and(|path| path.ends_with("/skills/review"))
+                    && operation["reason"]
+                        .as_str()
+                        .is_some_and(|reason| reason.contains("scan degraded"))
+            })
+        }));
+    }
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("preserving recorded owned link"));
+    assert!(
+        std::fs::symlink_metadata(target.join("review"))
+            .expect("degraded source must preserve the owned link")
+            .file_type()
+            .is_symlink()
+    );
+}
+
+#[test]
 fn source_add_should_clone_team_source_into_store() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

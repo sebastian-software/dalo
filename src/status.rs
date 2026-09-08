@@ -299,9 +299,10 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         .collect::<Vec<_>>();
     targets.sort_by(|left, right| left.id.cmp(&right.id));
 
+    let audits = audit::audit_active_skills_with_config(&paths, &live.resolution, false, &config);
+    let audit_degraded_sources = live.degraded_sources(&audits.failures);
     let mut plugins = live.plugins;
     let mut live_resolution = live.resolution;
-    let audits = audit::audit_active_skills_with_config(&paths, &live_resolution, false, &config);
     for failure in &audits.failures {
         if let Some(source) = sources
             .iter_mut()
@@ -319,7 +320,6 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
             );
         }
     }
-    let audit_degraded_sources = degraded_sources_from_audit_failures(&sources, &audits.failures);
     resolver::degrade_audit_failures(&mut live_resolution, &audits.failures);
     let active_instruction_refs = previous_lock
         .active_instruction_packs
@@ -705,33 +705,6 @@ fn autosync_needs_attention(status: &AutosyncStatusReport) -> bool {
                         crate::autosync::now_unix(),
                     )
             }))
-}
-
-fn degraded_sources_from_audit_failures(
-    sources: &[SourceStatus],
-    failures: &[ActiveAuditFailure],
-) -> Vec<materialize::DegradedSource> {
-    let mut degraded = Vec::<materialize::DegradedSource>::new();
-    for failure in failures {
-        let reason = format!(
-            "security audit failed for {}: {}",
-            failure.source_ref, failure.reason
-        );
-        if let Some(existing) = degraded
-            .iter_mut()
-            .find(|source| source.id == failure.source_id)
-        {
-            existing.reason = format!("{}; {reason}", existing.reason);
-        } else if let Some(source) = sources.iter().find(|source| source.id == failure.source_id) {
-            degraded.push(materialize::DegradedSource {
-                id: source.id.clone(),
-                path: source.path.clone(),
-                reason,
-            });
-        }
-    }
-    degraded.sort_by(|left, right| left.id.cmp(&right.id));
-    degraded
 }
 
 fn suppress_initial_local_source_drift(
@@ -3322,49 +3295,6 @@ matcher = { tool_names = ["Write"] }
                 .iter()
                 .any(|finding| { finding.code == crate::doctor::DoctorCode::HookToolUnavailable })
         );
-    }
-
-    #[test]
-    fn audit_failures_should_degrade_each_source_once() {
-        let sources = vec![SourceStatus {
-            id: "local".to_owned(),
-            kind: SourceKind::Local,
-            path: PathBuf::from("/tmp/local"),
-            priority: 0,
-            namespace: None,
-            enabled: true,
-            exists: true,
-            skill_count: 2,
-            agent_count: 0,
-            plugin_count: 0,
-            error: None,
-            provenance: SourceProvenance {
-                management: crate::source::SourceManagement::Direct,
-                declared_by: None,
-                origin_url: None,
-                requested_ref: None,
-                resolved_commit: None,
-                checkout_commit: None,
-            },
-        }];
-        let failures = vec![
-            ActiveAuditFailure {
-                source_ref: "local:alpha".to_owned(),
-                source_id: "local".to_owned(),
-                reason: "first failure".to_owned(),
-            },
-            ActiveAuditFailure {
-                source_ref: "local:beta".to_owned(),
-                source_id: "local".to_owned(),
-                reason: "second failure".to_owned(),
-            },
-        ];
-
-        let degraded = degraded_sources_from_audit_failures(&sources, &failures);
-
-        assert_eq!(degraded.len(), 1);
-        assert!(degraded[0].reason.contains("local:alpha"));
-        assert!(degraded[0].reason.contains("local:beta"));
     }
 
     #[test]
