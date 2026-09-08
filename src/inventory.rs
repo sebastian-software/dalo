@@ -1257,12 +1257,36 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
     let mut scalar_can_start = true;
     let mut flow_depth = 0_usize;
     let mut previous = None;
+    let mut at_line_start = true;
+    let mut line_indent = 0_usize;
+    let mut plain_scalar_indent = None;
 
     while let Some(character) = chars.next() {
+        if at_line_start && character == ' ' {
+            line_indent += 1;
+            previous = Some(character);
+            continue;
+        }
+        if at_line_start && character != '\n' {
+            at_line_start = false;
+            if !in_comment && !in_single_quote && !in_double_quote {
+                if plain_scalar_indent.is_some_and(|indent| line_indent > indent) {
+                    // A more-indented line extends the preceding plain scalar,
+                    // so a leading quote remains scalar content rather than a
+                    // quoted-scalar delimiter.
+                    scalar_can_start = false;
+                } else {
+                    plain_scalar_indent = None;
+                    scalar_can_start = true;
+                }
+            }
+        }
         if in_comment {
             if character == '\n' {
                 in_comment = false;
                 scalar_can_start = true;
+                at_line_start = true;
+                line_indent = 0;
             }
             previous = Some(character);
             continue;
@@ -1300,12 +1324,19 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
                 if scalar_can_start
                     && yaml_anchor_or_alias_starts(previous, chars.peek().copied()) =>
             {
+                if flow_depth == 0 {
+                    plain_scalar_indent = Some(line_indent);
+                }
                 references += 1;
                 if references > limit {
                     return true;
                 }
             }
-            '\n' => scalar_can_start = true,
+            '\n' => {
+                scalar_can_start = true;
+                at_line_start = true;
+                line_indent = 0;
+            }
             '[' | '{' | ',' => {
                 flow_depth += matches!(character, '[' | '{') as usize;
                 scalar_can_start = true;
@@ -1315,11 +1346,17 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
                 scalar_can_start = false;
             }
             ':' if flow_depth > 0 || chars.peek().is_some_and(|next| next.is_whitespace()) => {
+                plain_scalar_indent = None;
                 scalar_can_start = true;
             }
             '-' | '?'
                 if scalar_can_start && chars.peek().is_some_and(|next| next.is_whitespace()) => {}
-            character if !character.is_whitespace() => scalar_can_start = false,
+            character if !character.is_whitespace() => {
+                if scalar_can_start && flow_depth == 0 {
+                    plain_scalar_indent = Some(line_indent);
+                }
+                scalar_can_start = false;
+            }
             _ => {}
         }
         previous = Some(character);
@@ -2452,6 +2489,26 @@ required = true
                 .message
                 .contains("anchor/alias references exceed")
         );
+    }
+
+    #[test]
+    fn scan_source_should_allow_anchor_alias_text_in_indented_quoted_scalar() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("indented-quoted-scalar");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        let indicators = "&anchor *alias ".repeat(MAX_FRONTMATTER_ANCHOR_OR_ALIAS_REFERENCES + 1);
+        fs::write(
+            skill_dir.join(SKILL_FILE),
+            format!(
+                "---\nname: indented-quoted-scalar\ndescription:\n  \"{indicators}\"\n---\n# Indented Quoted Scalar\n"
+            ),
+        )
+        .expect("skill file should be written");
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should succeed");
+
+        assert_eq!(inventory.skills.len(), 1);
+        assert!(inventory.warnings.is_empty());
     }
 
     #[test]
