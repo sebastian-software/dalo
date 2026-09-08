@@ -4187,13 +4187,24 @@ fn help_should_explain_complex_command_values_and_examples() {
             vec!["approve", "--help"],
             "dalo approve skill public:review-helper",
         ),
+        (vec!["audit", "--help"], "SKILL"),
         (
             vec!["resolve", "--help"],
             "dalo resolve remove-owned claude:review-helper",
         ),
         (
+            vec!["resolve", "keep", "--help"],
+            "Unmanaged skill ID or unambiguous slot name",
+        ),
+        (vec!["resolve", "unkeep", "--help"], "TARGET:SLOT"),
+        (vec!["resolve", "remove-owned", "--help"], "TARGET:SLOT"),
+        (
             vec!["source", "select", "--help"],
             "Skill references to select (stable ID, slot name, catalog-relative path, or",
+        ),
+        (
+            vec!["source", "unselect", "--help"],
+            "dalo source unselect public formatter",
         ),
         (
             vec!["source", "remove", "--help"],
@@ -9506,13 +9517,7 @@ fn resolve_remove_owned_should_not_warn_for_an_inactive_skill() {
     dalo_command()
         .args(["--store"])
         .arg(&store)
-        .args([
-            "source",
-            "select",
-            "marketing",
-            "--unselect",
-            "copy-editing",
-        ])
+        .args(["source", "unselect", "marketing", "copy-editing"])
         .assert()
         .success();
 

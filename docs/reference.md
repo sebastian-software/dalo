@@ -399,8 +399,25 @@ Examples:
 ```sh
 dalo source select public review-helper
 dalo source select public review-helper public:formatter
-dalo source select public --unselect formatter
+dalo source unselect public formatter
 dalo --dry-run source select public review-helper
+```
+
+JSON output shape: `CatalogSelectReport`.
+
+### `dalo source unselect <id> <skill>...`
+
+Unselect catalog skills by stable frontmatter ID, slot name, catalog-relative
+path, or a source-qualified `<source-id>:<slot-or-stable-id>` reference. The
+source ID must match the catalog being changed. This is the explicit negation
+counterpart to `source select`; the legacy `source select --unselect` spelling
+remains accepted for compatibility.
+
+Examples:
+
+```sh
+dalo source unselect public formatter
+dalo --dry-run source unselect public formatter
 ```
 
 JSON output shape: `CatalogSelectReport`.
@@ -722,7 +739,7 @@ dalo --dry-run resolve unkeep review-helper
 
 JSON output shape: `UnkeepReport`.
 
-### `dalo resolve remove-owned <id>`
+### `dalo resolve remove-owned <target>:<slot>`
 
 Remove a recorded owned symlink by ID. If the recorded path is already missing,
 Dalo drops the stale state record. If a different, foreign symlink occupies the
