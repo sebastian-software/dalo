@@ -146,6 +146,11 @@ grep -Fq 'x-release-please-start-version' "$root/site/index.html"
 # The hero transcript is the output the current CLI prints, not the pre-0.14 one.
 grep -Fq 'target[generic]:/review -&gt; store:/local/skills/review' "$root/site/index.html"
 grep -Fq 'synced: 1 skill across 2 targets (2 created)' "$root/site/index.html"
+grep -Fq '  security preflight: deterministic checks only' "$root/site/index.html"
+grep -Fq 'target[generic]:/review -> store:/local/skills/review' "$root/video/src/QuickstartVideo.tsx"
+refute 'the quickstart video source still uses the pre-0.14 absolute sync path' \
+  grep -Fq 'applied  create     /tmp/dalo/skills/review -> /tmp/dalo/store/local/skills/review' "$root/video/src/QuickstartVideo.tsx"
+grep -Fq 'synced: 1 skill across 1 target (1 created)' "$root/video/src/QuickstartVideo.tsx"
 refute 'the hero terminal still shows the pre-0.14 sync output' \
   grep -q 'skills/review -&gt; /tmp/dalo/store' "$root/site/index.html"
 
