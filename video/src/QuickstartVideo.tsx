@@ -31,9 +31,12 @@ const lines: Line[] = [
   {at: 154, kind: 'output', content: '  note: no findings means no known issue was detected; it is not a safety guarantee'},
   {at: 202, kind: 'command', content: <>dalo sync</>},
   {at: 226, kind: 'output', content: 'dalo store: /tmp/dalo/store'},
-  {at: 250, kind: 'success', content: 'applied  create     /tmp/dalo/skills/review -> /tmp/dalo/store/local/skills/review'},
-  {at: 278, kind: 'output', content: <span style={{fontSize: 12}}>security preflight: deterministic checks and compatible cached findings only; sync did not run an agent reviewer; passing is not a safety guarantee</span>},
-  {at: 340, kind: 'comment', content: '# exit 0 · reviewed content linked'},
+  {at: 250, kind: 'output', content: 'target[generic]: /tmp/dalo/skills'},
+  {at: 278, kind: 'success', content: 'applied  create     target[generic]:/review -> store:/local/skills/review'},
+  {at: 306, kind: 'output', content: 'synced: 1 skill across 1 target (1 created)'},
+  {at: 334, kind: 'output', content: <span style={{fontSize: 12}}>security preflight: deterministic checks only</span>},
+  {at: 356, kind: 'output', content: <span style={{fontSize: 12}}>security preflight: deterministic checks and compatible cached findings only; sync did not run an agent reviewer; passing is not a safety guarantee</span>},
+  {at: 404, kind: 'comment', content: '# exit 0 · reviewed content linked'},
 ];
 
 const DaloMark = () => (
