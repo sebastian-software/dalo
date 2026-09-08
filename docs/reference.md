@@ -385,8 +385,8 @@ JSON output shape: `CatalogInspectReport`.
 
 ### `dalo source select <id> <skill>...`
 
-Select catalog skills by stable frontmatter ID, `<source-id>:<slot>` reference,
-or slot name. Selection runs the deterministic security preflight, writes
+Select catalog skills by stable frontmatter ID, slot name, or catalog-relative path.
+Selection runs the deterministic security preflight, writes
 `config.toml`, and updates `source-lock.toml` with the pinned commit and
 inventory snapshot. Human-readable output names the skills added or removed,
 reports no-op requests explicitly, and shows the complete resulting selection

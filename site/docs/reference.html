@@ -416,8 +416,8 @@ dalo --json source inspect public
 </code></pre>
 <p>JSON output shape: <code>CatalogInspectReport</code>.</p>
 <h3 id="dalo-source-select-id-skill"><a class="doc-anchor" href="#dalo-source-select-id-skill"><code>dalo source select &lt;id&gt; &lt;skill&gt;...</code></a></h3>
-<p>Select catalog skills by stable frontmatter ID, <code>&lt;source-id&gt;:&lt;slot&gt;</code> reference,
-or slot name. Selection runs the deterministic security preflight, writes
+<p>Select catalog skills by stable frontmatter ID, slot name, or catalog-relative path.
+Selection runs the deterministic security preflight, writes
 <code>config.toml</code>, and updates <code>source-lock.toml</code> with the pinned commit and
 inventory snapshot. Human-readable output names the skills added or removed,
 reports no-op requests explicitly, and shows the complete resulting selection

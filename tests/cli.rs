@@ -3065,7 +3065,7 @@ fn help_should_explain_complex_command_values_and_examples() {
         ),
         (
             vec!["source", "select", "--help"],
-            "dalo source select public --unselect formatter",
+            "Skill references to select (stable ID, slot name, or catalog-relative path)",
         ),
         (
             vec!["source", "remove", "--help"],
@@ -3086,6 +3086,12 @@ fn help_should_explain_complex_command_values_and_examples() {
             .success()
             .stdout(predicate::str::contains(expected));
     }
+
+    dalo_command()
+        .args(["source", "select", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("<source-id>:<slot>").not());
 }
 
 #[test]
