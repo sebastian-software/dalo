@@ -4736,6 +4736,40 @@ fn sync_should_create_directory_symlink() {
 }
 
 #[test]
+fn sync_should_preserve_unrecorded_store_symlink_to_a_different_target() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_skill_and_target(&store, &target);
+    let foreign_store_skill = store.join("sources/other/checkout/skills/review-v2");
+    std::fs::create_dir_all(&foreign_store_skill).expect("foreign store path should be created");
+    let link_path = target.join("review");
+    std::os::unix::fs::symlink(&foreign_store_skill, &link_path)
+        .expect("foreign symlink should be created");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    assert_eq!(
+        std::fs::read_link(&link_path).expect("foreign symlink should survive"),
+        foreign_store_skill
+    );
+    let state =
+        store::read_state(&store::StorePaths::new(store)).expect("state should be readable");
+    assert!(
+        state
+            .owned_skills
+            .iter()
+            .all(|owned| owned.link_path != link_path),
+        "foreign symlink must not become an owned state record"
+    );
+}
+
+#[test]
 fn sync_json_should_materialize_prebuilt_provider_artifacts_and_record_provenance() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
