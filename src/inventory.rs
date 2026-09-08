@@ -1254,12 +1254,15 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
     let mut in_double_quote = false;
     let mut escaped = false;
     let mut in_comment = false;
+    let mut scalar_can_start = true;
+    let mut flow_depth = 0_usize;
     let mut previous = None;
 
     while let Some(character) = chars.next() {
         if in_comment {
             if character == '\n' {
                 in_comment = false;
+                scalar_can_start = true;
             }
             previous = Some(character);
             continue;
@@ -1270,6 +1273,7 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
                     chars.next();
                 } else {
                     in_single_quote = false;
+                    scalar_can_start = false;
                 }
             }
             previous = Some(character);
@@ -1282,6 +1286,7 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
                 escaped = true;
             } else if character == '"' {
                 in_double_quote = false;
+                scalar_can_start = false;
             }
             previous = Some(character);
             continue;
@@ -1289,14 +1294,32 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
 
         match character {
             '#' if previous.is_none_or(char::is_whitespace) => in_comment = true,
-            '\'' => in_single_quote = true,
-            '"' => in_double_quote = true,
-            '&' | '*' if yaml_anchor_or_alias_starts(previous, chars.peek().copied()) => {
+            '\'' if scalar_can_start => in_single_quote = true,
+            '"' if scalar_can_start => in_double_quote = true,
+            '&' | '*'
+                if scalar_can_start
+                    && yaml_anchor_or_alias_starts(previous, chars.peek().copied()) =>
+            {
                 references += 1;
                 if references > limit {
                     return true;
                 }
             }
+            '\n' => scalar_can_start = true,
+            '[' | '{' | ',' => {
+                flow_depth += matches!(character, '[' | '{') as usize;
+                scalar_can_start = true;
+            }
+            ']' | '}' => {
+                flow_depth = flow_depth.saturating_sub(1);
+                scalar_can_start = false;
+            }
+            ':' if flow_depth > 0 || chars.peek().is_some_and(|next| next.is_whitespace()) => {
+                scalar_can_start = true;
+            }
+            '-' | '?'
+                if scalar_can_start && chars.peek().is_some_and(|next| next.is_whitespace()) => {}
+            character if !character.is_whitespace() => scalar_can_start = false,
             _ => {}
         }
         previous = Some(character);
@@ -1346,10 +1369,18 @@ fn is_block_scalar_header(line: &str) -> bool {
     if line.starts_with('#') {
         return false;
     }
-    let Some((_, value)) = line.split_once(':') else {
+    let value = if let Some(sequence_value) = line.strip_prefix('-')
+        && sequence_value
+            .chars()
+            .next()
+            .is_some_and(char::is_whitespace)
+    {
+        sequence_value.trim_start()
+    } else if let Some((_, mapping_value)) = line.split_once(':') {
+        mapping_value.trim_start()
+    } else {
         return false;
     };
-    let value = value.trim_start();
     let Some(indicator) = value.chars().next() else {
         return false;
     };
@@ -2393,6 +2424,56 @@ required = true
                 .message
                 .contains("anchor/alias references exceed")
         );
+    }
+
+    #[test]
+    fn scan_source_should_reject_excessive_references_after_plain_scalar_quote_text() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("plain-quote-alias-bomb");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        let aliases = "*tag, ".repeat(MAX_FRONTMATTER_ANCHOR_OR_ALIAS_REFERENCES);
+        fs::write(
+            skill_dir.join(SKILL_FILE),
+            format!(
+                "---\nname: plain-quote-alias-bomb\ndescription: plain\"text\ntags: [&tag bounded, {aliases}*tag]\n---\n# Plain Quote Alias Bomb\n"
+            ),
+        )
+        .expect("skill file should be written");
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should succeed");
+
+        assert!(inventory.skills.is_empty());
+        assert_eq!(
+            inventory.warnings[0].code,
+            InventoryWarningCode::MalformedFrontmatter
+        );
+        assert!(
+            inventory.warnings[0]
+                .message
+                .contains("anchor/alias references exceed")
+        );
+    }
+
+    #[test]
+    fn scan_source_should_ignore_anchor_and_alias_text_in_sequence_block_scalars() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("sequence-block-scalar");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        let indicators = "&anchor *alias ".repeat(MAX_FRONTMATTER_ANCHOR_OR_ALIAS_REFERENCES + 1);
+        fs::write(
+            skill_dir.join(SKILL_FILE),
+            format!(
+                "---\nname: sequence-block-scalar\ntags:\n  - |-\n    {indicators}\n---\n# Sequence Block Scalar\n"
+            ),
+        )
+        .expect("skill file should be written");
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should succeed");
+
+        assert_eq!(inventory.skills.len(), 1);
+        assert_eq!(inventory.skills[0].tags.len(), 1);
+        assert!(inventory.skills[0].tags[0].contains("&anchor *alias"));
+        assert!(inventory.warnings.is_empty());
     }
 
     #[test]
