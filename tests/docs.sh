@@ -240,6 +240,10 @@ grep -Fq '`coverage-threshold` holds the line-coverage gate' "$root/CONTRIBUTING
 refute 'CONTRIBUTING.md restates the coverage threshold instead of reading coverage-threshold' \
   grep -Eq 'fail-under-lines[[:space:]]+[0-9]' "$root/CONTRIBUTING.md"
 grep -q 'DALO_LINUX_LIBC' "$root/npm/README.md"
+grep -Fq 'Release-metadata lookups time out after 30 seconds; archive downloads use a' "$root/npm/README.md"
+grep -Fq '10-second connection and 120-second body timeout and are retried up to three' "$root/npm/README.md"
+refute 'npm/README.md still claims archive downloads time out after 30 seconds' \
+  grep -Fq 'Release metadata and archive downloads time out after 30 seconds' "$root/npm/README.md"
 grep -q 'DALO_UPDATE_CHECK=never' "$root/README.md"
 grep -q 'github:sebastian-software/dalo' "$root/site/install.md"
 refute 'npm/README.md still documents the one-time bootstrap publish' \
