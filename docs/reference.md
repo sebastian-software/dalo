@@ -316,7 +316,9 @@ dalo source inspect public
 dalo source select public review-helper
 ```
 
-JSON output shape: `SourceConfig`.
+JSON output shape: `CatalogAddOutcome` (`source`, `available_skills`, `dry_run`).
+`available_skills` is `null` during a dry run because no catalog checkout is
+created or inspected.
 
 ### `dalo source list`
 
@@ -1117,7 +1119,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `team catalog remove` | `TeamManifestMutationReport` | `path`, `action`, `catalog_id`, `dry_run`, resulting `manifest` |
 | `team show` | `TeamManifestView` | `path`, `manifest` |
 | `source add` | `SourceAddReport` | `source`, `dry_run`, `audits[]` with one `AuditReport` per discovered skill, optional `inventory_warnings[]` (`code`, `path`, `message`) |
-| `source add-catalog` | `SourceConfig` | `id`, `kind`, `path`, `priority`, `enabled`, `trusted`, `url`, `update_policy`, `selection` |
+| `source add-catalog` | `CatalogAddOutcome` | resulting `source`, nullable `available_skills`, `dry_run` |
 | `source list` | `SourceListReport` | `sources[]`, each with existing `SourceConfig` fields plus `provenance` |
 | `source priority` | `SourcePriorityReport` | `source`, `dry_run` |
 | `source namespace <id> [<prefix>] [--clear]` | `SourceNamespaceReport` | `source`, `changed`, `dry_run` |
@@ -1166,9 +1168,9 @@ When present, `risk_acceptance` contains `reason`, `accepted_at_unix`, and
 `scope_hash`; `agent_review` identifies the provider and isolation boundary and
 includes its findings, summary, expected capabilities/actions, and undeclared
 behaviors. `source add` and `source select` expose security preflight results in
-their top-level `audits[]` arrays. `source add-catalog` returns only the new
-`SourceConfig`: adding a pinned catalog does not audit anything until a skill is
-selected.
+their top-level `audits[]` arrays. `source add-catalog` returns the resulting
+`CatalogAddOutcome`: adding a pinned catalog does not audit anything until a
+skill is selected.
 
 Each `StatusReport.audit_failures[]` entry contains `source_ref`, `source_id`,
 and the technical `reason`. The failed skill is omitted from the active
