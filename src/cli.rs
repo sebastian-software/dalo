@@ -4439,11 +4439,15 @@ fn run_audit(options: &GlobalOptions, command: AuditCommand) -> DaloResult<()> {
 
 fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<()> {
     let paths = store::StorePaths::new(options.store.clone());
-    ensure_initialized(&paths)?;
-    let _lock = if options.dry_run {
+    let _lock = if matches!(&command.command, ApproveSubcommand::List) {
         None
     } else {
-        Some(store::StoreLock::acquire(&paths)?)
+        ensure_initialized(&paths)?;
+        if options.dry_run {
+            None
+        } else {
+            Some(store::StoreLock::acquire(&paths)?)
+        }
     };
     match command.command {
         ApproveSubcommand::List => {
