@@ -81,10 +81,10 @@ pub struct SourceConfig {
     /// Update policy, such as `track`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub update_policy: Option<String>,
-    /// Selected skill references for a catalog source. Each entry is a stable
-    /// frontmatter ID, a slot name, a catalog-relative path, or a
-    /// `<source-id>:<slot-or-stable-id>` reference. Always empty for non-catalog
-    /// sources.
+    /// Persisted selected skill references for a catalog source. Each entry is a
+    /// stable frontmatter ID, a slot name, or a catalog-relative path. The
+    /// source-qualified form accepted by `source select` is normalized before
+    /// storage. Always empty for non-catalog sources.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub selection: Vec<String>,
     /// Team source whose `dalo.toml` declaration manages this source.
