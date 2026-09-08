@@ -1684,11 +1684,19 @@ rejected for the same reason. Generated execution also rejects a declared
 `PATH` environment input and sets `PATH` to the empty string, so scripts must
 not resolve subprocesses through the invoking user's environment.
 
-Generator execution is fail-closed behind an operating-system filesystem
-sandbox inherited by every descendant: Linux uses a fully enforced Landlock
-ABI v3 domain, while macOS uses the system Seatbelt launcher. The sandbox
-permits filesystem writes only below the one delivery staging directory. If
-the required sandbox cannot be fully enforced, Dalo does not run the generator.
+Generator execution is fail-closed behind an operating-system sandbox inherited
+by every descendant. The sandbox permits filesystem writes only below the one
+delivery staging directory. macOS uses the system Seatbelt launcher and denies
+network operations. Linux requires a fully enforced Landlock ABI v4 domain and
+denies TCP connection and bind operations. If the required sandbox cannot be
+fully enforced, Dalo does not run the generator.
+
+This is not a general read-confinement boundary: a generator can read files its
+OS user can read, including the native runtime files that executable tools
+need. Linux Landlock network controls do not cover UDP or UNIX-domain sockets.
+Treat a generated-delivery approval as permission to run the exact staged tool
+closure within these stated write and network limits, not as permission for
+arbitrary code or as proof that its inputs are confidential.
 
 Generated delivery has two independent approvals:
 

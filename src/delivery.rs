@@ -465,7 +465,7 @@ fn macos_sandbox_profile(write_root: &Path) -> DaloResult<String> {
         .replace('\\', "\\\\")
         .replace('"', "\\\"");
     Ok(format!(
-        "(version 1)(allow default)(deny file-write*)(allow file-write* (subpath \"{escaped}\"))"
+        "(version 1)(allow default)(deny network*)(deny file-write*)(allow file-write* (subpath \"{escaped}\"))"
     ))
 }
 
@@ -488,7 +488,7 @@ mod sandbox_tests {
         assert_eq!(
             profile,
             format!(
-                "(version 1)(allow default)(deny file-write*)(allow file-write* (subpath \"{escaped}\"))"
+                "(version 1)(allow default)(deny network*)(deny file-write*)(allow file-write* (subpath \"{escaped}\"))"
             )
         );
         assert!(profile.contains(r#"write \"root\\segment"#));
@@ -501,8 +501,8 @@ mod sandbox_tests {
 #[doc(hidden)]
 pub fn run_linux_delivery_sandbox(arguments: Vec<OsString>) -> Result<(), String> {
     use landlock::{
-        ABI, AccessFs, CompatLevel, Compatible, PathBeneath, PathFd, Ruleset, RulesetAttr,
-        RulesetCreatedAttr, RulesetStatus,
+        ABI, AccessFs, AccessNet, CompatLevel, Compatible, PathBeneath, PathFd, Ruleset,
+        RulesetAttr, RulesetCreatedAttr, RulesetStatus,
     };
 
     let mut arguments = arguments.into_iter();
@@ -512,12 +512,21 @@ pub fn run_linux_delivery_sandbox(arguments: Vec<OsString>) -> Result<(), String
     let program = arguments
         .next()
         .ok_or_else(|| "delivery sandbox requires a program".to_owned())?;
-    let abi = ABI::V3;
+    // TCP restrictions arrived with Landlock ABI v4. HardRequirement keeps
+    // generator execution fail-closed on older kernels rather than silently
+    // retaining the earlier write-only boundary.
+    let abi = ABI::V4;
     let write_access = AccessFs::from_write(abi);
+    let network_access = AccessNet::BindTcp | AccessNet::ConnectTcp;
     let status = Ruleset::default()
         .set_compatibility(CompatLevel::HardRequirement)
         .handle_access(write_access)
         .map_err(|error| format!("cannot declare Landlock write restrictions: {error}"))?
+        // Landlock denies handled access by default. Deliberately add no port
+        // rules, so the generator and its descendants cannot connect or bind
+        // TCP sockets.
+        .handle_access(network_access)
+        .map_err(|error| format!("cannot declare Landlock TCP restrictions: {error}"))?
         .create()
         .map_err(|error| format!("cannot create Landlock ruleset: {error}"))?
         .add_rule(PathBeneath::new(
