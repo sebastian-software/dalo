@@ -4668,6 +4668,55 @@ fn json_errors_should_render_machine_readable_stderr() {
 }
 
 #[test]
+fn contextualized_human_errors_should_escape_controlled_store_paths_without_changing_json() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("missing\u{1b}]0;pwned\u{7}-store");
+
+    let human = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("status")
+        .output()
+        .expect("human error command should run");
+
+    assert_eq!(human.status.code(), Some(1));
+    assert!(
+        human
+            .stderr
+            .iter()
+            .all(|byte| !byte.is_ascii_control() || matches!(*byte, b'\n' | b'\r')),
+        "human stderr must not contain raw control bytes: {:?}",
+        human.stderr
+    );
+    let human_stderr = String::from_utf8_lossy(&human.stderr);
+    assert!(human_stderr.contains("dalo --store '"));
+    assert!(human_stderr.contains("\\u{1b}]0;pwned\\u{7}-store' init"));
+
+    let json = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .output()
+        .expect("JSON error command should run");
+
+    assert_eq!(json.status.code(), Some(1));
+    let payload: serde_json::Value =
+        serde_json::from_slice(&json.stderr).expect("JSON error should remain valid");
+    let message = payload["error"]["message"]
+        .as_str()
+        .expect("JSON error should contain a message");
+    assert_eq!(
+        message,
+        format!(
+            "dalo store is not initialized at `{}`; run `dalo --store '{}' init` first",
+            store.display(),
+            store.display()
+        )
+    );
+    assert!(message.contains("\u{1b}]0;pwned\u{7}"));
+}
+
+#[test]
 fn yes_should_not_corrupt_json_errors() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("missing-store");
