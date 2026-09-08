@@ -3145,14 +3145,14 @@ fn autosync_run_should_block_managed_instruction_drift() {
         .assert()
         .failure()
         .code(1)
-        .stderr(predicate::str::contains("managed instruction block"));
+        .stderr(predicate::str::contains("changed outside Dalo"));
     dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["--json", "autosync", "status"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("managed instruction block"));
+        .stdout(predicate::str::contains("changed outside Dalo"));
 }
 
 #[test]
