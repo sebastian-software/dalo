@@ -3,10 +3,11 @@
 use serde::Serialize;
 
 use crate::agent;
+use crate::audit;
 use crate::error::{DaloError, DaloResult};
 use crate::inventory;
 use crate::source::SourceKind;
-use crate::store::{self, ApprovalRecord, ApprovalsFile, StorePaths};
+use crate::store::{self, ApprovalRecord, StorePaths};
 
 /// Result of granting or revoking an approval.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -19,6 +20,35 @@ pub struct ApprovalReport {
     pub action: String,
     /// Whether no file was changed.
     pub dry_run: bool,
+}
+
+/// One persisted risk acceptance surfaced by `approve list`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AcceptedRiskSummary {
+    /// Source-qualified audited skill reference.
+    pub source_ref: String,
+    /// Exact audited content hash.
+    pub content_hash: String,
+    /// User-provided reason for accepting the risk.
+    pub reason: String,
+    /// Unix timestamp of acceptance.
+    pub accepted_at_unix: u64,
+    /// Hash binding the acceptance to the exact audit inputs and findings.
+    pub scope_hash: String,
+    /// Copyable command for inspecting the persisted audit again.
+    pub audit_command: String,
+}
+
+/// Read model for the approval inspection command.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ApprovalListReport {
+    /// Persisted approval schema version.
+    pub schema_version: u32,
+    /// Explicit approval records.
+    pub approvals: Vec<ApprovalRecord>,
+    /// Persisted accepted-risk audits, including those not represented by an
+    /// explicit per-skill approval record.
+    pub accepted_risks: Vec<AcceptedRiskSummary>,
 }
 
 /// Grant one approval after validating its scope and source qualification.
@@ -99,9 +129,30 @@ pub fn revoke(
     })
 }
 
-/// Read approvals for `approve list`.
-pub fn list(paths: &StorePaths) -> DaloResult<ApprovalsFile> {
-    store::read_approvals(paths)
+/// Read approvals and persisted risk acceptances for `approve list`.
+pub fn list(paths: &StorePaths) -> DaloResult<ApprovalListReport> {
+    let approvals = store::read_approvals(paths)?;
+    let accepted_risks = audit::read_persisted_reports(paths)?
+        .into_iter()
+        .filter_map(|report| {
+            report
+                .risk_acceptance
+                .map(|acceptance| AcceptedRiskSummary {
+                    source_ref: report.source_ref.clone(),
+                    content_hash: report.content_hash,
+                    reason: acceptance.reason,
+                    accepted_at_unix: acceptance.accepted_at_unix,
+                    scope_hash: acceptance.scope_hash,
+                    audit_command: format!("dalo audit {}", report.source_ref),
+                })
+        })
+        .collect();
+
+    Ok(ApprovalListReport {
+        schema_version: approvals.schema_version,
+        approvals: approvals.approvals,
+        accepted_risks,
+    })
 }
 
 fn canonical_value(paths: &StorePaths, scope: &str, value: &str) -> DaloResult<String> {
@@ -251,6 +302,51 @@ mod tests {
         let root = temp.path().join("store");
         store::init_store(root.clone(), false).expect("store should initialize");
         (temp, StorePaths::new(root))
+    }
+
+    #[test]
+    fn list_should_surface_persisted_risk_acceptances_with_exact_bindings() {
+        let (_temp, paths) = init_paths();
+        std::fs::write(
+            paths.audits_dir.join("danger.json"),
+            serde_json::json!({
+                "schema_version": 1,
+                "source_ref": "catalog:danger-tool",
+                "skill_path": "/tmp/danger-tool",
+                "content_hash": "deadbeef",
+                "static_engine_version": "5",
+                "static_scan_excludes_root_source_metadata": false,
+                "scanned_at_unix": 100,
+                "coverage": "complete",
+                "status": "blocked",
+                "max_severity": "high",
+                "static_findings": [{
+                    "id": "shell",
+                    "severity": "high",
+                    "category": "execution",
+                    "path": "SKILL.md",
+                    "message": "runs a shell command"
+                }],
+                "risk_acceptance": {
+                    "reason": "reviewed exception",
+                    "accepted_at_unix": 200,
+                    "scope_hash": "cafebabe"
+                }
+            })
+            .to_string(),
+        )
+        .expect("audit report should be written");
+
+        let report = list(&paths).expect("approval list should include audits");
+        assert!(report.approvals.is_empty());
+        assert_eq!(report.accepted_risks.len(), 1);
+        let acceptance = &report.accepted_risks[0];
+        assert_eq!(acceptance.source_ref, "catalog:danger-tool");
+        assert_eq!(acceptance.content_hash, "deadbeef");
+        assert_eq!(acceptance.reason, "reviewed exception");
+        assert_eq!(acceptance.accepted_at_unix, 200);
+        assert_eq!(acceptance.scope_hash, "cafebabe");
+        assert_eq!(acceptance.audit_command, "dalo audit catalog:danger-tool");
     }
 
     #[test]

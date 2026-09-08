@@ -10,7 +10,7 @@ use crate::adopt::{
     UnmanagedSkill,
 };
 use crate::agent::AgentInventoryWarning;
-use crate::approval::ApprovalReport;
+use crate::approval::{AcceptedRiskSummary, ApprovalListReport, ApprovalReport};
 use crate::audit::{self, ActiveAuditFailure, AuditCoverage, AuditReport, AuditStatus};
 use crate::autosync::{AutosyncMutationReport, AutosyncStatusReport};
 use crate::catalog::{
@@ -34,7 +34,7 @@ use crate::source::{
     SourceAddReport, SourceConfig, SourceHeadCache, SourceKind, SourceListReport,
     SourceNamespaceReport, SourcePriorityReport, SourceProvenance, SourceRemoveReport,
 };
-use crate::store::{self, ApprovalsFile, InitReport, StorePaths};
+use crate::store::{self, InitReport, StorePaths};
 use crate::target::{TargetDetectReport, TargetLinkReport, TargetUnlinkReport};
 use crate::team_manifest::{
     TeamCatalogUpdateReport, TeamManifestAction, TeamManifestMutationReport, TeamManifestView,
@@ -1142,15 +1142,53 @@ pub fn print_next_action_report(report: &NextActionReport) {
     }
 }
 
-/// Print local approval records.
-pub fn print_approval_list(report: &ApprovalsFile) {
+/// Print local approval records and persisted risk acceptances.
+pub fn print_approval_list(report: &ApprovalListReport) {
     if report.approvals.is_empty() {
         println!("no approvals recorded");
-        return;
+    } else {
+        for approval in &report.approvals {
+            println!(
+                "{} {}",
+                term::terminal_safe_text(&approval.scope),
+                term::terminal_safe_text(&approval.value)
+            );
+        }
     }
-    for approval in &report.approvals {
-        println!("{} {}", approval.scope, approval.value);
+
+    if !report.accepted_risks.is_empty() {
+        println!();
+        println!("accepted-risk audits:");
+        for acceptance in &report.accepted_risks {
+            print_accepted_risk_summary(acceptance);
+        }
+        println!();
+        println!("legend: @sha256:... binds an approval to an exact content or contract hash");
+        println!(
+            "accepted-risk entries are persisted audit exceptions; inspect each with its run command"
+        );
     }
+}
+
+fn print_accepted_risk_summary(acceptance: &AcceptedRiskSummary) {
+    println!(
+        "  {} @sha256:{}",
+        term::terminal_safe_text(&acceptance.source_ref),
+        term::terminal_safe_text(&acceptance.content_hash)
+    );
+    println!(
+        "    accepted at unix {}: {}",
+        acceptance.accepted_at_unix,
+        term::terminal_safe_text(&acceptance.reason)
+    );
+    println!(
+        "    scope binding: {}",
+        term::terminal_safe_text(&acceptance.scope_hash)
+    );
+    println!(
+        "    run: {}",
+        term::terminal_safe_text(&acceptance.audit_command)
+    );
 }
 
 /// Print one approval mutation result.
