@@ -193,16 +193,16 @@ for source_select_document in "$source_select_reference" "$source_select_page"; 
   printf '%s\n' "$source_select_document" | grep -Fq 'stable frontmatter ID, slot name, catalog-relative path'
   printf '%s\n' "$source_select_document" | grep -Fq 'source-qualified'
 done
-grep -Fq '| `sources[].selection` | Catalog selections by stable ID, slot name, catalog-relative path, or source-qualified reference. Empty for local/team sources. |' "$root/docs/reference.md"
+grep -Fq '| `sources[].selection` | Persisted catalog selections by stable ID, slot name, or catalog-relative path. Source-qualified command input is normalized before storage. Empty for local/team sources. |' "$root/docs/reference.md"
 source_selection_field="$(grep -F -A1 '<td><code>sources[].selection</code></td>' "$root/site/docs/reference.html")"
-printf '%s\n' "$source_selection_field" | grep -Fq 'Catalog selections by stable ID, slot name, catalog-relative path, or source-qualified reference. Empty for local/team sources.'
+printf '%s\n' "$source_selection_field" | grep -Fq 'Persisted catalog selections by stable ID, slot name, or catalog-relative path. Source-qualified command input is normalized before storage. Empty for local/team sources.'
 source_config_selection_rustdoc="$(awk '
-  /^    \/\/\/ Selected skill references for a catalog source\./ { on = 1 }
+  /^    \/\/\/ Persisted selected skill references for a catalog source\./ { on = 1 }
   on { print }
   on && /^    pub selection: Vec<String>/ { exit }
 ' "$root/src/source.rs")"
-printf '%s\n' "$source_config_selection_rustdoc" | grep -Fq 'frontmatter ID, a slot name, a catalog-relative path, or a'
-printf '%s\n' "$source_config_selection_rustdoc" | grep -Fq '<source-id>:<slot-or-stable-id>'
+printf '%s\n' "$source_config_selection_rustdoc" | grep -Fq 'frontmatter ID, a slot name, or a catalog-relative path.'
+printf '%s\n' "$source_config_selection_rustdoc" | grep -Fq 'source-qualified form accepted by `source select` is normalized before'
 catalog_select_skills_rustdoc="$(awk '
   /^\/\/\/ Select skills from a catalog\./ { on = 1 }
   on { print }

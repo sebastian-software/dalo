@@ -13621,7 +13621,7 @@ fn catalog_select_should_accept_a_source_qualified_slot_reference() {
         .stdout(predicate::str::contains("copy-editing"));
 
     assert_eq!(
-        store::read_config(&store::StorePaths::new(store))
+        store::read_config(&store::StorePaths::new(store.clone()))
             .expect("config should be readable")
             .sources
             .iter()
@@ -13629,6 +13629,29 @@ fn catalog_select_should_accept_a_source_qualified_slot_reference() {
             .expect("catalog source should exist")
             .selection,
         ["skills/copy-editing".to_owned()]
+    );
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args([
+            "source",
+            "select",
+            "marketing",
+            "--unselect",
+            "marketing:copy-editing",
+        ])
+        .assert()
+        .success();
+    assert!(
+        store::read_config(&store::StorePaths::new(store))
+            .expect("config should be readable")
+            .sources
+            .iter()
+            .find(|source| source.id == "marketing")
+            .expect("catalog source should exist")
+            .selection
+            .is_empty()
     );
 }
 
