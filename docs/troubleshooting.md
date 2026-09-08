@@ -18,7 +18,7 @@ dalo --json doctor
 
 | Symptom or code | What happened | Recovery |
 | --- | --- | --- |
-| `blocked_by_same_name_skill`, `unmanaged_same_name_blocker`, sync `blocked` with `real unmanaged entry exists at target slot` | A real folder already occupies the target slot Dalo wanted to link. | Keep it intentionally with `dalo resolve keep <id>` (undo with `dalo resolve unkeep <target>:<slot>`), adopt it with `dalo adopt <id>`, or adopt and replace it with `dalo adopt <id> --replace`. |
+| `unmanaged_same_name_blocker`, sync `blocked` with `real unmanaged entry exists at target slot` | A real folder already occupies the target slot Dalo wanted to link. | Keep it intentionally with `dalo resolve keep <id>` (undo with `dalo resolve unkeep <target>:<slot>`), adopt it with `dalo adopt <id>`, or adopt and replace it with `dalo adopt <id> --replace`. |
 | `pending_approval` | A skill would become active, but no approval rule covers it. | Review the skill, then run `dalo approve skill <source-id>:<skill>` (or grant a reviewed source/author/org scope), or set the source `trusted = true` if the whole source is trusted. Run `dalo status` again. |
 | error `security audit blocked ...` | A selected or trusted skill has an unaccepted high or critical finding. Trust skips per-skill approval; it does not bypass the security gate. | Inspect it with `dalo audit <source-id>:<skill>`. If the risk is understood, record a reason with `dalo audit <source-id>:<skill> --accept-risk "<reason>"`, or use `dalo approve skill <source-id>:<skill> --accept-risk "<reason>"` for a catalog skill. Then rerun `dalo sync`. |
 | `dirty_source` | A Git-backed source has local edits. Team sources block refresh when dirty. | Commit, stash, discard, or promote the edits outside Dalo. Then run `dalo sync`. |
@@ -87,6 +87,11 @@ Lock drift compares the previous `lock.toml` with the current live resolution.
 | `unlinked_added` | A skill is now unlinked. | Inspect the reason, usually shadowing, then adjust priority/selection/name if needed. |
 | `pending_approval_removed` | A previously pending skill is no longer pending. | Usually no action; run `dalo sync` if the new resolution is expected. |
 | `pending_approval_added` | A skill now needs approval. | Approve it or leave it pending. |
+| `skill_delivery_changed` | A provider mapping, manifest provenance, or delivered-artifact fingerprint changed. | Review the source and delivery change, then run `dalo sync` if it is expected. |
+| `skill_materialization_changed` | A skill's materialized target slot changed without changing its source identity. | Review the skill name and target mapping, then run `dalo sync` if the new slot is expected. |
+| `plugin_added` | A selected plugin appeared in the live canonical graph. | Review the plugin and its source, then run `dalo sync` if it is expected. |
+| `plugin_removed` | A previously selected plugin left the live canonical graph. | Review the plugin selection and source configuration, then run `dalo sync` if the removal is expected. |
+| `plugin_changed` | A plugin package, closure, state, origin, or member outcome changed. | Review the plugin source and dependencies, then run `dalo sync` if the change is expected. |
 
 ### Inventory Warnings
 
@@ -216,7 +221,7 @@ Doctor includes `ok` and `info` codes as well as warnings/errors. Codes not list
 | `unmanaged_same_name_blocker` | error | Adopt, keep, rename, or remove the unmanaged blocker. |
 | `stale_protected_skill` | warning | Relink the target if it moved, or remove the stale marker with the suggested `dalo resolve unkeep` command. |
 | `protected_skill_kept` | info | The unmanaged slot was intentionally kept; no recovery is required. |
-| `store_exists`, `store_layout_ok`, `config_ok`, `state_ok`, `lock_ok`, `approvals_ok`, `git_available`, `local_git_ok`, `target_exists`, `duplicate_target_directory`, `owned_symlink_ok`, `source_clean` | ok/info | No recovery required. |
+| `store_exists`, `store_layout_ok`, `config_ok`, `state_ok`, `lock_ok`, `source_lock_ok`, `approvals_ok`, `git_available`, `local_git_ok`, `target_exists`, `duplicate_target_directory`, `owned_symlink_ok`, `source_clean`, `source_provenance_ok` | ok/info | No recovery required. |
 
 ## FAQ
 

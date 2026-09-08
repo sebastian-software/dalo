@@ -83,7 +83,7 @@ dalo --json doctor
 </tr>
 </thead>
 <tbody><tr>
-<td><code>blocked_by_same_name_skill</code>, <code>unmanaged_same_name_blocker</code>, sync <code>blocked</code> with <code>real unmanaged entry exists at target slot</code></td>
+<td><code>unmanaged_same_name_blocker</code>, sync <code>blocked</code> with <code>real unmanaged entry exists at target slot</code></td>
 <td>A real folder already occupies the target slot Dalo wanted to link.</td>
 <td>Keep it intentionally with <code>dalo resolve keep &lt;id&gt;</code> (undo with <code>dalo resolve unkeep &lt;target&gt;:&lt;slot&gt;</code>), adopt it with <code>dalo adopt &lt;id&gt;</code>, or adopt and replace it with <code>dalo adopt &lt;id&gt; --replace</code>.</td>
 </tr>
@@ -330,6 +330,31 @@ dalo --json doctor
 <td><code>pending_approval_added</code></td>
 <td>A skill now needs approval.</td>
 <td>Approve it or leave it pending.</td>
+</tr>
+<tr>
+<td><code>skill_delivery_changed</code></td>
+<td>A provider mapping, manifest provenance, or delivered-artifact fingerprint changed.</td>
+<td>Review the source and delivery change, then run <code>dalo sync</code> if it is expected.</td>
+</tr>
+<tr>
+<td><code>skill_materialization_changed</code></td>
+<td>A skill&#39;s materialized target slot changed without changing its source identity.</td>
+<td>Review the skill name and target mapping, then run <code>dalo sync</code> if the new slot is expected.</td>
+</tr>
+<tr>
+<td><code>plugin_added</code></td>
+<td>A selected plugin appeared in the live canonical graph.</td>
+<td>Review the plugin and its source, then run <code>dalo sync</code> if it is expected.</td>
+</tr>
+<tr>
+<td><code>plugin_removed</code></td>
+<td>A previously selected plugin left the live canonical graph.</td>
+<td>Review the plugin selection and source configuration, then run <code>dalo sync</code> if the removal is expected.</td>
+</tr>
+<tr>
+<td><code>plugin_changed</code></td>
+<td>A plugin package, closure, state, origin, or member outcome changed.</td>
+<td>Review the plugin source and dependencies, then run <code>dalo sync</code> if the change is expected.</td>
 </tr>
 </tbody></table></div>
 <h3 id="inventory-warnings"><a class="doc-anchor" href="#inventory-warnings">Inventory Warnings</a></h3>
@@ -824,7 +849,7 @@ repository, push the change, then run <code>dalo sync</code>.</p>
 <td>The unmanaged slot was intentionally kept; no recovery is required.</td>
 </tr>
 <tr>
-<td><code>store_exists</code>, <code>store_layout_ok</code>, <code>config_ok</code>, <code>state_ok</code>, <code>lock_ok</code>, <code>approvals_ok</code>, <code>git_available</code>, <code>local_git_ok</code>, <code>target_exists</code>, <code>duplicate_target_directory</code>, <code>owned_symlink_ok</code>, <code>source_clean</code></td>
+<td><code>store_exists</code>, <code>store_layout_ok</code>, <code>config_ok</code>, <code>state_ok</code>, <code>lock_ok</code>, <code>source_lock_ok</code>, <code>approvals_ok</code>, <code>git_available</code>, <code>local_git_ok</code>, <code>target_exists</code>, <code>duplicate_target_directory</code>, <code>owned_symlink_ok</code>, <code>source_clean</code>, <code>source_provenance_ok</code></td>
 <td>ok/info</td>
 <td>No recovery required.</td>
 </tr>

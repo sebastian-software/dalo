@@ -535,6 +535,68 @@ test -z "$duplicates" || {
 }
 diff -u "$doctor_expected" "$doctor_documented"
 
+# Keep the lock-drift table aligned with every production LockDriftCode name
+# so new drift categories cannot silently disappear from recovery guidance.
+lockfile_source="$root/src/lockfile.rs"
+lockfile_expected="$test_root/lock-drift-expected-codes"
+lockfile_documented="$test_root/lock-drift-documented-codes"
+
+awk '
+  /^pub enum LockDriftCode/ { in_enum = 1; next }
+  in_enum && /^}/ { exit }
+  in_enum && /^[[:space:]]+[A-Z][A-Za-z0-9_]*,/ {
+    line = $0
+    sub(/^[[:space:]]+/, "", line)
+    sub(/,.*/, "", line)
+    print line
+  }
+' "$lockfile_source" \
+  | sort -u > "$lockfile_expected"
+
+awk '
+  /^fn drift_code_name/ { in_mapping = 1; next }
+  in_mapping && /^}/ { exit }
+  in_mapping && /LockDriftCode::/ {
+    line = $0
+    sub(/.*LockDriftCode::/, "", line)
+    split(line, fields, / => "/)
+    variant = fields[1]
+    code = fields[2]
+    sub(/".*/, "", code)
+    print variant " " code
+  }
+' "$lockfile_source" \
+  | while IFS=' ' read -r variant code; do
+      grep -Fx "$variant" "$lockfile_expected" >/dev/null && printf '%s\n' "$code"
+    done \
+  | sort -u > "$lockfile_documented"
+
+awk '
+  /^### Lock Drift$/ { in_table = 1; next }
+  in_table && /^### / { exit }
+  in_table && /^\| `/ {
+    line = $0
+    sub(/^\| `/, "", line)
+    split(line, fields, /`/)
+    print fields[1]
+  }
+' "$root/docs/troubleshooting.md" \
+  | tr ', ' '\n' \
+  | sed '/^$/d; s/^`//; s/`$//' \
+  | sort -u > "$test_root/lock-drift-table-codes"
+
+for lock_code in $(cat "$lockfile_documented"); do
+  grep -Fx "$lock_code" "$test_root/lock-drift-table-codes" >/dev/null || {
+    echo "missing lock-drift troubleshooting row: $lock_code" >&2
+    exit 1
+  }
+done
+grep -Fq 'blocked_by_same_name_skill' "$root/docs/rfcs/0001-dalo-vision.md"
+if grep -Fq 'blocked_by_same_name_skill' "$root/docs/troubleshooting.md"; then
+  echo 'troubleshooting documents a non-emitted blocked_by_same_name_skill code' >&2
+  exit 1
+fi
+
 store="$test_root/store"
 target="$test_root/skills"
 source="$test_root/source"
