@@ -2511,7 +2511,7 @@ pub fn print_instruction_pack_report(report: &InstructionPackReport) {
 }
 
 /// Print a human-readable catalog drift report.
-pub fn print_catalog_drift_report(report: &CatalogDrift) {
+pub fn print_catalog_drift_report(report: &CatalogDrift, store_root: &Path) {
     for warning in &report.migration_warnings {
         println!("warning: {warning}");
     }
@@ -2532,11 +2532,14 @@ pub fn print_catalog_drift_report(report: &CatalogDrift) {
     );
     for outcome in &report.outcomes {
         println!("  [{}] {}", outcome.code.as_str(), outcome.message);
+        if outcome.code == catalog::DriftCode::SelectedRemoved {
+            print_catalog_unselect_hint(store_root, &report.source_id, &outcome.skill);
+        }
     }
 }
 
 /// Print a reviewed catalog pin-advance plan or result.
-pub fn print_catalog_advance_report(report: &CatalogAdvanceReport) {
+pub fn print_catalog_advance_report(report: &CatalogAdvanceReport, store_root: &Path) {
     for warning in &report.migration_warnings {
         println!("warning: {warning}");
     }
@@ -2567,9 +2570,18 @@ pub fn print_catalog_advance_report(report: &CatalogAdvanceReport) {
     );
     for outcome in &report.outcomes {
         println!("  [{}] {}", outcome.code.as_str(), outcome.message);
+        if outcome.code == catalog::DriftCode::SelectedRemoved {
+            print_catalog_unselect_hint(store_root, &report.source_id, &outcome.skill);
+        }
     }
     for reason in &report.blocking_reasons {
         println!("  blocked: {reason}");
+        for outcome in report.outcomes.iter().filter(|outcome| {
+            outcome.code == catalog::DriftCode::SelectedRemoved
+                && reason.contains(&format!("`{}`", outcome.skill))
+        }) {
+            print_catalog_unselect_hint(store_root, &report.source_id, &outcome.skill);
+        }
     }
     if !report.sync.resolution.pending_approval_skills.is_empty() {
         println!(
@@ -2599,6 +2611,16 @@ pub fn print_catalog_advance_report(report: &CatalogAdvanceReport) {
         .filter(|operation| operation.kind != crate::materialize::MaterializeOperationKind::NoOp)
         .count();
     println!("  materialization changes: {changed_operations}");
+}
+
+fn print_catalog_unselect_hint(store_root: &Path, source_id: &str, skill: &str) {
+    println!(
+        "    run: {}",
+        store::dalo_command(
+            store_root,
+            &format!("source select {source_id} --unselect {skill}")
+        )
+    );
 }
 
 fn short_commit(commit: &str) -> &str {

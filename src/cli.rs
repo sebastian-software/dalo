@@ -3269,7 +3269,7 @@ fn scheduled_sync_postflight(paths: &store::StorePaths) -> DaloResult<()> {
         .filter(|source| source.enabled && source.kind == source::SourceKind::Catalog)
     {
         let drift = catalog::check_catalog_drift(paths, &source.id)?;
-        status::print_catalog_drift_report(&drift);
+        status::print_catalog_drift_report(&drift, &paths.root);
         removed.extend(
             drift
                 .outcomes
@@ -3774,14 +3774,18 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
                 if options.json {
                     print_json(&report)?;
                 } else {
-                    status::print_catalog_advance_report(&report);
+                    status::print_catalog_advance_report(&report, &paths.root);
                 }
                 if !report.blocking_reasons.is_empty() {
                     return Err(DaloError::StateError {
-                        reason: format!(
-                            "catalog pin was not advanced: {}",
-                            report.blocking_reasons.join("; ")
-                        ),
+                        reason: if options.json {
+                            format!(
+                                "catalog pin was not advanced: {}",
+                                report.blocking_reasons.join("; ")
+                            )
+                        } else {
+                            "catalog pin was not advanced; see blocked reasons above".to_owned()
+                        },
                     });
                 }
                 return Ok(());
@@ -3790,7 +3794,7 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             if options.json {
                 print_json(&report)?;
             } else {
-                status::print_catalog_drift_report(&report);
+                status::print_catalog_drift_report(&report, &paths.root);
             }
             if args.check
                 && report
