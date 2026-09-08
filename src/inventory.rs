@@ -1260,9 +1260,11 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
     let mut at_line_start = true;
     let mut line_indent = 0_usize;
     let mut plain_scalar_indent = None;
-    let mut same_indent_plain_scalar_may_be_mapping_key = false;
-    let mut same_indent_mapping_key_property_prefix = false;
-    let mut pending_same_indent_mapping_key_references = 0_usize;
+    let mut plain_scalar_sequence_mapping_indent = None;
+    let mut line_starts_sequence_item = false;
+    let mut plain_scalar_may_be_mapping_key = false;
+    let mut mapping_key_property_prefix = false;
+    let mut pending_mapping_key_references = 0_usize;
     let mut in_tag_property = false;
     let mut in_anchor_property = false;
 
@@ -1274,12 +1276,21 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
         }
         if at_line_start && character != '\n' {
             at_line_start = false;
+            line_starts_sequence_item =
+                character == '-' && chars.peek().is_some_and(|next| next.is_whitespace());
             if !in_comment && !in_single_quote && !in_double_quote {
                 if plain_scalar_indent.is_some_and(|indent| line_indent > indent) {
-                    // A more-indented line extends the preceding plain scalar,
-                    // so a leading quote remains scalar content rather than a
-                    // quoted-scalar delimiter.
+                    // A compact mapping nested in a sequence has sibling keys
+                    // more-indented than its sequence marker. They are
+                    // ambiguous until `:` confirms a mapping key, while other
+                    // more-indented lines still extend a plain scalar.
                     scalar_can_start = false;
+                    if plain_scalar_sequence_mapping_indent
+                        .is_some_and(|sequence_indent| line_indent > sequence_indent)
+                    {
+                        plain_scalar_may_be_mapping_key = true;
+                        mapping_key_property_prefix = true;
+                    }
                 } else if plain_scalar_indent == Some(line_indent) {
                     // A same-indented line can either continue a plain scalar or
                     // start a sibling mapping key. A quoted key proves the latter
@@ -1292,8 +1303,8 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
                         scalar_can_start = true;
                     } else {
                         scalar_can_start = false;
-                        same_indent_plain_scalar_may_be_mapping_key = true;
-                        same_indent_mapping_key_property_prefix = true;
+                        plain_scalar_may_be_mapping_key = true;
+                        mapping_key_property_prefix = true;
                     }
                 } else {
                     plain_scalar_indent = None;
@@ -1364,16 +1375,16 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
             '#' if previous.is_none_or(char::is_whitespace) => in_comment = true,
             '\'' if scalar_can_start => in_single_quote = true,
             '"' if scalar_can_start => in_double_quote = true,
-            '&' if (scalar_can_start || same_indent_plain_scalar_may_be_mapping_key)
+            '&' if (scalar_can_start || plain_scalar_may_be_mapping_key)
                 && yaml_anchor_or_alias_starts(previous, chars.peek().copied()) =>
             {
-                if same_indent_plain_scalar_may_be_mapping_key {
-                    // A leading anchor property can decorate a sibling mapping
-                    // key, but `&` after ordinary plain-key text is scalar text.
-                    // Keep only the property-prefix reference provisional until
-                    // that line's mapping-value indicator proves the key.
-                    if same_indent_mapping_key_property_prefix {
-                        pending_same_indent_mapping_key_references += 1;
+                if plain_scalar_may_be_mapping_key {
+                    // A leading anchor property can decorate an ambiguous
+                    // sibling mapping key, but `&` after ordinary plain-key
+                    // text is scalar text. Keep the reference provisional
+                    // until that line's mapping-value indicator proves the key.
+                    if mapping_key_property_prefix {
+                        pending_mapping_key_references += 1;
                     }
                 } else {
                     in_anchor_property = true;
@@ -1383,15 +1394,15 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
                     }
                 }
             }
-            '*' if (scalar_can_start || same_indent_plain_scalar_may_be_mapping_key)
+            '*' if (scalar_can_start || plain_scalar_may_be_mapping_key)
                 && yaml_anchor_or_alias_starts(previous, chars.peek().copied()) =>
             {
-                if same_indent_plain_scalar_may_be_mapping_key {
-                    // An alias at the start of an ambiguous same-indent line is
+                if plain_scalar_may_be_mapping_key {
+                    // An alias at the start of an ambiguous line is
                     // a possible mapping-key node. Indicators later in a plain
                     // key remain excluded once ordinary key text was observed.
-                    if same_indent_mapping_key_property_prefix {
-                        pending_same_indent_mapping_key_references += 1;
+                    if mapping_key_property_prefix {
+                        pending_mapping_key_references += 1;
                     }
                 } else {
                     plain_scalar_indent = Some(line_indent);
@@ -1402,9 +1413,10 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
                 }
             }
             '\n' => {
-                same_indent_plain_scalar_may_be_mapping_key = false;
-                same_indent_mapping_key_property_prefix = false;
-                pending_same_indent_mapping_key_references = 0;
+                line_starts_sequence_item = false;
+                plain_scalar_may_be_mapping_key = false;
+                mapping_key_property_prefix = false;
+                pending_mapping_key_references = 0;
                 scalar_can_start = true;
                 at_line_start = true;
                 line_indent = 0;
@@ -1420,38 +1432,39 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
                 scalar_can_start = false;
             }
             ':' if flow_depth > 0 || chars.peek().is_some_and(|next| next.is_whitespace()) => {
-                references += pending_same_indent_mapping_key_references;
+                references += pending_mapping_key_references;
                 if references > limit {
                     return true;
                 }
-                same_indent_plain_scalar_may_be_mapping_key = false;
-                same_indent_mapping_key_property_prefix = false;
-                pending_same_indent_mapping_key_references = 0;
+                plain_scalar_may_be_mapping_key = false;
+                mapping_key_property_prefix = false;
+                pending_mapping_key_references = 0;
                 plain_scalar_indent = None;
                 scalar_can_start = true;
             }
             '!' if scalar_can_start
-                || (same_indent_plain_scalar_may_be_mapping_key
-                    && same_indent_mapping_key_property_prefix) =>
+                || (plain_scalar_may_be_mapping_key && mapping_key_property_prefix) =>
             {
                 in_tag_property = true;
             }
             '-' | '?'
-                if (scalar_can_start || same_indent_plain_scalar_may_be_mapping_key)
+                if (scalar_can_start || plain_scalar_may_be_mapping_key)
                     && chars.peek().is_some_and(|next| next.is_whitespace()) =>
             {
-                same_indent_plain_scalar_may_be_mapping_key = false;
-                same_indent_mapping_key_property_prefix = false;
-                pending_same_indent_mapping_key_references = 0;
+                plain_scalar_may_be_mapping_key = false;
+                mapping_key_property_prefix = false;
+                pending_mapping_key_references = 0;
                 plain_scalar_indent = None;
                 scalar_can_start = true;
             }
             character if !character.is_whitespace() => {
-                if same_indent_plain_scalar_may_be_mapping_key {
-                    same_indent_mapping_key_property_prefix = false;
+                if plain_scalar_may_be_mapping_key {
+                    mapping_key_property_prefix = false;
                 }
                 if scalar_can_start {
                     plain_scalar_indent = Some(line_indent);
+                    plain_scalar_sequence_mapping_indent =
+                        line_starts_sequence_item.then_some(line_indent);
                 }
                 scalar_can_start = false;
             }
@@ -2624,6 +2637,23 @@ required = true
                 .message
                 .contains("anchor/alias references exceed")
         );
+    }
+
+    #[test]
+    fn frontmatter_anchor_alias_guard_should_count_nested_sequence_mapping_keys() {
+        let anchors = (0..8)
+            .map(|index| format!("    &anchor-{index} anchor-key-{index}: anchor-value-{index}\n"))
+            .collect::<String>();
+        let aliases = (0..9)
+            .map(|index| format!("    *anchor-{index}: alias-value-{index}\n"))
+            .collect::<String>();
+        let frontmatter =
+            format!("name: nested\nmetadata:\n  - description: plain\n{anchors}{aliases}");
+
+        assert!(frontmatter_anchor_or_alias_references_exceed(
+            &frontmatter,
+            MAX_FRONTMATTER_ANCHOR_OR_ALIAS_REFERENCES
+        ));
     }
 
     #[test]
