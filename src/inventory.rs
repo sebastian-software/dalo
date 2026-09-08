@@ -1261,6 +1261,7 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
     let mut line_indent = 0_usize;
     let mut plain_scalar_indent = None;
     let mut in_tag_property = false;
+    let mut in_anchor_property = false;
 
     while let Some(character) = chars.next() {
         if at_line_start && character == ' ' {
@@ -1289,6 +1290,19 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
                 line_indent = 0;
             } else if character.is_whitespace() {
                 in_tag_property = false;
+            }
+            previous = Some(character);
+            continue;
+        }
+        if in_anchor_property {
+            if character == '\n' {
+                in_anchor_property = false;
+                plain_scalar_indent = None;
+                scalar_can_start = true;
+                at_line_start = true;
+                line_indent = 0;
+            } else if character.is_whitespace() {
+                in_anchor_property = false;
             }
             previous = Some(character);
             continue;
@@ -1332,9 +1346,17 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
             '#' if previous.is_none_or(char::is_whitespace) => in_comment = true,
             '\'' if scalar_can_start => in_single_quote = true,
             '"' if scalar_can_start => in_double_quote = true,
-            '&' | '*'
-                if scalar_can_start
-                    && yaml_anchor_or_alias_starts(previous, chars.peek().copied()) =>
+            '&' if scalar_can_start
+                && yaml_anchor_or_alias_starts(previous, chars.peek().copied()) =>
+            {
+                in_anchor_property = true;
+                references += 1;
+                if references > limit {
+                    return true;
+                }
+            }
+            '*' if scalar_can_start
+                && yaml_anchor_or_alias_starts(previous, chars.peek().copied()) =>
             {
                 plain_scalar_indent = Some(line_indent);
                 references += 1;
@@ -2514,6 +2536,58 @@ required = true
             skill_dir.join(SKILL_FILE),
             format!(
                 "---\nname: tag-property-alias-bomb\ndescription: !!str &tag bounded\ntags: [{aliases}*tag]\n---\n# Tag Property Alias Bomb\n"
+            ),
+        )
+        .expect("skill file should be written");
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should succeed");
+
+        assert!(inventory.skills.is_empty());
+        assert_eq!(
+            inventory.warnings[0].code,
+            InventoryWarningCode::MalformedFrontmatter
+        );
+        assert!(
+            inventory.warnings[0]
+                .message
+                .contains("anchor/alias references exceed")
+        );
+    }
+
+    #[test]
+    fn scan_source_should_allow_references_at_limit_in_anchor_decorated_multiline_collection() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("bounded-multiline-aliases");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        let aliases = "  - *tag\n".repeat(MAX_FRONTMATTER_ANCHOR_OR_ALIAS_REFERENCES - 2);
+        fs::write(
+            skill_dir.join(SKILL_FILE),
+            format!(
+                "---\nname: bounded-multiline-aliases\ntags: &root\n  - &tag bounded\n{aliases}---\n# Bounded Multiline Aliases\n"
+            ),
+        )
+        .expect("skill file should be written");
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should succeed");
+
+        assert_eq!(inventory.skills.len(), 1);
+        assert_eq!(
+            inventory.skills[0].tags,
+            vec!["bounded"; MAX_FRONTMATTER_ANCHOR_OR_ALIAS_REFERENCES - 1]
+        );
+        assert!(inventory.warnings.is_empty());
+    }
+
+    #[test]
+    fn scan_source_should_reject_references_over_limit_in_anchor_decorated_multiline_collection() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("excessive-multiline-aliases");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        let aliases = "  - *tag\n".repeat(MAX_FRONTMATTER_ANCHOR_OR_ALIAS_REFERENCES - 1);
+        fs::write(
+            skill_dir.join(SKILL_FILE),
+            format!(
+                "---\nname: excessive-multiline-aliases\ntags: &root\n  - &tag bounded\n{aliases}---\n# Excessive Multiline Aliases\n"
             ),
         )
         .expect("skill file should be written");
