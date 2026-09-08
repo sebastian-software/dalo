@@ -4169,7 +4169,7 @@ fn help_should_explain_complex_command_values_and_examples() {
         ),
         (
             vec!["source", "select", "--help"],
-            "Skill references to select (stable ID, slot name, or catalog-relative path)",
+            "Skill references to select (stable ID, slot name, catalog-relative path, or",
         ),
         (
             vec!["source", "remove", "--help"],
@@ -4195,7 +4195,7 @@ fn help_should_explain_complex_command_values_and_examples() {
         .args(["source", "select", "--help"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("<source-id>:<slot>").not());
+        .stdout(predicate::str::contains("<source-id>:<slot-or-stable-id>"));
 }
 
 #[test]
