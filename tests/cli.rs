@@ -14330,7 +14330,20 @@ fn catalog_advance_should_block_selected_removal_without_writes() {
         ],
     );
 
+    let unselect_command = store::dalo_command(
+        &store::comparable_path(&store),
+        "source select marketing --unselect copy-editing",
+    );
+
     dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "refresh", "marketing"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!("run: {unselect_command}")));
+
+    let output = dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["source", "refresh", "marketing", "--advance"])
@@ -14338,7 +14351,22 @@ fn catalog_advance_should_block_selected_removal_without_writes() {
         .failure()
         .code(1)
         .stdout(predicate::str::contains("selected_removed"))
-        .stdout(predicate::str::contains("blocked: selected skill"));
+        .stdout(predicate::str::contains("blocked: selected skill"))
+        .stdout(predicate::str::contains(format!("run: {unselect_command}")))
+        .stderr(predicate::str::contains(
+            "catalog pin was not advanced; see blocked reasons above",
+        ))
+        .stderr(predicate::str::contains(
+            "selected skill `copy-editing` was removed; update the selection explicitly before advancing",
+        ).not())
+        .get_output()
+        .clone();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout.matches(&format!("run: {unselect_command}")).count(),
+        2,
+        "the drift outcome and the advance blocker should each offer the exact unselect command"
+    );
     assert_eq!(
         read_source_lock(&store)
             .catalog("marketing")
