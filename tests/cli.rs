@@ -7562,7 +7562,31 @@ fn sync_should_report_empty_noop_after_init() {
         .stdout(predicate::str::contains("nothing to sync"))
         .stdout(predicate::str::contains(
             "security preflight: deterministic checks and compatible cached findings only; sync did not run an agent reviewer; passing is not a safety guarantee",
-        ));
+        ).not());
+}
+
+#[test]
+fn sync_should_keep_security_preflight_concise_when_active_skills_are_checked() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_skill_and_target(&store, &target);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "security preflight: deterministic checks only",
+        ))
+        .stdout(
+            predicate::str::contains(
+                "sync did not run an agent reviewer; passing is not a safety guarantee",
+            )
+            .not(),
+        );
 }
 
 #[test]
@@ -12290,7 +12314,8 @@ fn status_should_show_all_pending_approval_candidates_for_same_slot() {
         .success()
         .stdout(predicate::str::contains("pending approval:"))
         .stdout(predicate::str::contains("team -> team-a:team"))
-        .stdout(predicate::str::contains("team -> team-b:team"));
+        .stdout(predicate::str::contains("team -> team-b:team"))
+        .stdout(predicate::str::contains("pending_approval:").not());
 }
 
 #[test]
@@ -13263,9 +13288,29 @@ fn sync_should_print_pending_approval_beside_existing_operations_and_name_check_
         .stdout(predicate::str::contains(
             "pending approval: marketing:copy-editing",
         ))
+        .stdout(predicate::str::contains("diagnostic: pending_approval").not())
         .stderr(predicate::str::contains(
             "check failed: 1 pending approval (marketing:copy-editing)",
         ));
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "sync"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value = serde_json::from_slice(&output).expect("sync JSON is valid");
+    assert!(
+        report["resolution"]["diagnostics"]
+            .as_array()
+            .is_some_and(|diagnostics| diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic["code"].as_str() == Some("pending_approval") })),
+        "JSON should retain pending-approval diagnostics"
+    );
 }
 
 #[test]
