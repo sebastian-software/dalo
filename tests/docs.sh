@@ -346,12 +346,12 @@ reference_hook_section="$(awk '
   in_section && /^### / { exit }
   in_section { print }
 ' "$root/docs/reference.md")"
+reference_tool_contract="$(printf '%s\n' "$reference_tool_section" | tr '\n' ' ' | tr -s '[:space:]' ' ')"
 printf '%s\n' "$reference_status_section" | grep -Fq '`--check` exits with code 1'
 printf '%s\n' "$reference_status_section" | grep -Fq 'full report on stdout for JSON'
 printf '%s\n' "$reference_agent_section" | grep -Fq 'source scan errors because its result is incomplete'
 printf '%s\n' "$reference_agent_section" | grep -Fq 'package inventory warnings'
-printf '%s\n' "$reference_tool_section" | grep -Fq 'A failed audit'
-printf '%s\n' "$reference_tool_section" | grep -Fq 'audit returns a non-zero exit code'
+printf '%s\n' "$reference_tool_contract" | grep -Fq 'A failed audit returns a non-zero exit code'
 printf '%s\n' "$reference_tool_section" | grep -Fq 'rejected plugin packages produce'
 printf '%s\n' "$reference_hook_section" | grep -Fq 'rejected plugin packages produce'
 
