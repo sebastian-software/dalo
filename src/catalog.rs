@@ -684,11 +684,21 @@ fn resolve_candidate_reference(
 ) -> DaloResult<CatalogCandidate> {
     let source_prefix = format!("{source_id}:");
     let lookup = reference.strip_prefix(&source_prefix).unwrap_or(reference);
-    let matches = candidates
+    let mut matches = candidates
         .iter()
-        .filter(|candidate| candidate_matches_ref(candidate, lookup))
+        .filter(|candidate| candidate_matches_ref(candidate, reference))
         .cloned()
         .collect::<Vec<_>>();
+    if lookup != reference {
+        for candidate in candidates
+            .iter()
+            .filter(|candidate| candidate_matches_ref(candidate, lookup))
+        {
+            if !matches.contains(candidate) {
+                matches.push(candidate.clone());
+            }
+        }
+    }
     match matches.as_slice() {
         [] => Err(DaloError::skill_not_found_for_reference(
             format!("{source_id}:{reference}"),
@@ -1885,6 +1895,51 @@ mod tests {
             metadata_hash: "m".to_owned(),
             requires: Vec::new(),
         }
+    }
+
+    fn candidate(id: Option<&str>, slot: &str, path: &str) -> CatalogCandidate {
+        CatalogCandidate {
+            id: id.map(str::to_owned),
+            slot_name: slot.to_owned(),
+            path: path.to_owned(),
+            description: None,
+            requires: Vec::new(),
+            selected: false,
+        }
+    }
+
+    #[test]
+    fn source_qualified_reference_preserves_exact_colon_bearing_stable_id() {
+        let candidates = vec![candidate(
+            Some("marketing:copy-editing"),
+            "renamed-copy-editing",
+            "skills/renamed-copy-editing",
+        )];
+
+        let resolved =
+            resolve_candidate_reference("marketing", &candidates, "marketing:copy-editing")
+                .expect("exact stable ID should resolve");
+
+        assert_eq!(resolved.slot_name, "renamed-copy-editing");
+    }
+
+    #[test]
+    fn source_qualified_reference_reports_exact_and_slot_collision() {
+        let candidates = vec![
+            candidate(
+                Some("marketing:copy-editing"),
+                "renamed-copy-editing",
+                "skills/renamed-copy-editing",
+            ),
+            candidate(None, "copy-editing", "skills/copy-editing"),
+        ];
+
+        let error = resolve_candidate_reference("marketing", &candidates, "marketing:copy-editing")
+            .expect_err("colliding exact and qualified references should be ambiguous");
+
+        assert!(matches!(error, DaloError::AmbiguousSkillReference { .. }));
+        assert!(error.to_string().contains("skills/renamed-copy-editing"));
+        assert!(error.to_string().contains("skills/copy-editing"));
     }
 
     #[test]
