@@ -537,10 +537,12 @@ pub fn update_team_catalog_pin(
     let old_commit = git::resolve_manifest_revision(&checkout, &declaration.version)?;
     let candidate_commit =
         git::resolve_manifest_revision(&checkout, from_ref).map_err(|error| {
-            if matches!(&error, DaloError::CommandFailed { status, .. } if status == "128") {
-                DaloError::TeamCatalogRefNotFound {
-                    reference: from_ref.to_owned(),
-                    repository: git::display_remote_url(&location),
+            if git::revision_is_missing(&checkout, from_ref) {
+                DaloError::StateError {
+                    reason: format!(
+                        "ref `{from_ref}` was not found in `{}`; use a branch, tag, or commit",
+                        git::display_remote_url(&location)
+                    ),
                 }
             } else {
                 error
@@ -712,22 +714,20 @@ fn mutate_team_manifest(
 }
 
 fn team_manifest_path(repo: &Path) -> DaloResult<PathBuf> {
-    let repo = fs::canonicalize(repo).map_err(|error| DaloError::TeamRepository {
+    let repo = fs::canonicalize(repo).map_err(|error| DaloError::InvalidStorePath {
         path: repo.to_path_buf(),
         reason: match error.kind() {
-            std::io::ErrorKind::NotFound => "was not found".to_owned(),
+            std::io::ErrorKind::NotFound => "team repository was not found".to_owned(),
             std::io::ErrorKind::PermissionDenied => {
-                "could not be accessed; check permissions".to_owned()
+                "team repository could not be accessed; check permissions".to_owned()
             }
-            _ => "could not be resolved".to_owned(),
+            _ => "team repository could not be resolved".to_owned(),
         },
-        origin: String::new(),
     })?;
     if !repo.is_dir() {
-        return Err(DaloError::TeamRepository {
+        return Err(DaloError::InvalidStorePath {
             path: repo,
-            reason: "must be a directory".to_owned(),
-            origin: String::new(),
+            reason: "team repository must be a directory".to_owned(),
         });
     }
     Ok(repo.join(TEAM_MANIFEST_FILE))

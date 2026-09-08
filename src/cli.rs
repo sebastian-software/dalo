@@ -865,8 +865,8 @@ pub struct SourceRemoveArgs {
 #[derive(Debug, Args)]
 pub struct TeamCommand {
     /// Team repository directory. Defaults to the current directory.
-    #[arg(long, value_name = "PATH")]
-    pub repo: Option<PathBuf>,
+    #[arg(long, default_value = ".", value_name = "PATH")]
+    pub repo: PathBuf,
 
     /// Team management subcommand.
     #[command(subcommand)]
@@ -3496,88 +3496,102 @@ fn unselected_catalogs(live: &resolver::LiveResolution) -> Vec<materialize::Unse
 }
 
 fn run_team(options: &GlobalOptions, command: TeamCommand) -> DaloResult<()> {
-    let repo_origin = if command.repo.is_some() {
-        " (from --repo)"
-    } else {
-        ""
-    };
-    let repo = command.repo.unwrap_or_else(|| PathBuf::from("."));
-    let result = match command.command {
-        TeamSubcommand::Init(args) => team_manifest::init_team_manifest(
-            &repo,
-            &args.id,
-            args.name.as_deref(),
-            options.dry_run,
-        )
-        .and_then(|report| print_team_manifest_mutation(options, &report)),
-        TeamSubcommand::Show => team_manifest::show_team_manifest(&repo).and_then(|report| {
+    let repo = command.repo;
+    let result = (|| match command.command {
+        TeamSubcommand::Init(args) => {
+            let report = team_manifest::init_team_manifest(
+                &repo,
+                &args.id,
+                args.name.as_deref(),
+                options.dry_run,
+            )?;
+            print_team_manifest_mutation(options, &report)
+        }
+        TeamSubcommand::Show => {
+            let report = team_manifest::show_team_manifest(&repo)?;
             if options.json {
                 print_json(&report)
             } else {
                 status::print_team_manifest_view(&report);
                 Ok(())
             }
-        }),
-        TeamSubcommand::Catalog(command) => match command.command {
-            TeamCatalogSubcommand::Update(args) => team_manifest::update_team_catalog_pin(
-                &repo,
-                &args.id,
-                &args.from_ref,
-                options.dry_run,
-                args.accept_risk.as_deref(),
-            )
-            .and_then(|report| {
-                if options.json {
-                    print_json(&report)?;
-                } else {
-                    status::print_team_catalog_update(&report);
-                    print_team_manifest_next_step(&report.path, report.updated);
+        }
+        TeamSubcommand::Catalog(command) => {
+            let report = match command.command {
+                TeamCatalogSubcommand::Update(args) => {
+                    let report = team_manifest::update_team_catalog_pin(
+                        &repo,
+                        &args.id,
+                        &args.from_ref,
+                        options.dry_run,
+                        args.accept_risk.as_deref(),
+                    )?;
+                    if options.json {
+                        print_json(&report)?;
+                    } else {
+                        status::print_team_catalog_update(&report);
+                        print_team_manifest_next_step(&report.path, report.updated);
+                    }
+                    if !report.blocking_reasons.is_empty() {
+                        return Err(DaloError::StateError {
+                            reason: format!(
+                                "team catalog pin was not updated: {}",
+                                report.blocking_reasons.join("; ")
+                            ),
+                        });
+                    }
+                    return Ok(());
                 }
-                if report.blocking_reasons.is_empty() {
-                    Ok(())
-                } else {
-                    Err(DaloError::StateError {
-                        reason: format!(
-                            "team catalog pin was not updated: {}",
-                            report.blocking_reasons.join("; ")
-                        ),
-                    })
+                TeamCatalogSubcommand::Add(args) => team_manifest::add_team_catalog(
+                    &repo,
+                    &args.id,
+                    &args.url,
+                    team_manifest::AddTeamCatalogOptions {
+                        version: &args.version,
+                        skills: &args.skills,
+                        priority: args.priority,
+                        namespace: args.namespace.as_deref(),
+                        dry_run: options.dry_run,
+                    },
+                )?,
+                TeamCatalogSubcommand::Skills(args) => team_manifest::set_team_catalog_skills(
+                    &repo,
+                    &args.id,
+                    &args.skills,
+                    options.dry_run,
+                )?,
+                TeamCatalogSubcommand::Version(args) => team_manifest::set_team_catalog_version(
+                    &repo,
+                    &args.id,
+                    &args.version,
+                    options.dry_run,
+                )?,
+                TeamCatalogSubcommand::Remove(args) => {
+                    team_manifest::remove_team_catalog(&repo, &args.id, options.dry_run)?
                 }
-            }),
-            TeamCatalogSubcommand::Add(args) => team_manifest::add_team_catalog(
-                &repo,
-                &args.id,
-                &args.url,
-                team_manifest::AddTeamCatalogOptions {
-                    version: &args.version,
-                    skills: &args.skills,
-                    priority: args.priority,
-                    namespace: args.namespace.as_deref(),
-                    dry_run: options.dry_run,
-                },
-            )
-            .and_then(|report| print_team_manifest_mutation(options, &report)),
-            TeamCatalogSubcommand::Skills(args) => team_manifest::set_team_catalog_skills(
-                &repo,
-                &args.id,
-                &args.skills,
-                options.dry_run,
-            )
-            .and_then(|report| print_team_manifest_mutation(options, &report)),
-            TeamCatalogSubcommand::Version(args) => team_manifest::set_team_catalog_version(
-                &repo,
-                &args.id,
-                &args.version,
-                options.dry_run,
-            )
-            .and_then(|report| print_team_manifest_mutation(options, &report)),
-            TeamCatalogSubcommand::Remove(args) => {
-                team_manifest::remove_team_catalog(&repo, &args.id, options.dry_run)
-                    .and_then(|report| print_team_manifest_mutation(options, &report))
-            }
-        },
+            };
+            print_team_manifest_mutation(options, &report)
+        }
+    })()
+    .map_err(|error| contextualize_team_cli_error(error, &repo));
+    result
+}
+
+fn contextualize_team_cli_error(error: DaloError, repo: &std::path::Path) -> DaloError {
+    let DaloError::InvalidStorePath { path, reason } = error else {
+        return error;
     };
-    result.map_err(|error| error.with_team_repository_origin(repo_origin))
+    if !reason.starts_with("team repository ") {
+        return DaloError::InvalidStorePath { path, reason };
+    }
+    let origin = (repo != std::path::Path::new(".")).then_some(" (from --repo)");
+    let message = format!(
+        "team repository `{}` {}{}",
+        path.display(),
+        reason.trim_start_matches("team repository "),
+        origin.unwrap_or_default()
+    );
+    DaloError::Io(std::io::Error::other(message))
 }
 
 fn print_team_manifest_mutation(

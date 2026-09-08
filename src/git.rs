@@ -255,6 +255,44 @@ pub fn resolve_manifest_revision(path: &Path, revision: &str) -> DaloResult<Stri
     }
 }
 
+/// Return whether a failed revision lookup found no matching Git object.
+pub(crate) fn revision_is_missing(path: &Path, revision: &str) -> bool {
+    revision_is_missing_with_program("git", path, revision)
+}
+
+fn revision_is_missing_with_program(program: &str, path: &Path, revision: &str) -> bool {
+    let is_abbreviated_hash =
+        (4..40).contains(&revision.len()) && revision.bytes().all(|byte| byte.is_ascii_hexdigit());
+    if is_abbreviated_hash {
+        let disambiguate = format!("--disambiguate={revision}");
+        return run_git_program(
+            program,
+            path,
+            &["rev-parse", &disambiguate],
+            GIT_LOCAL_TIMEOUT,
+        )
+        .is_ok_and(|output| output.trim().is_empty());
+    }
+
+    [
+        format!("refs/remotes/origin/{revision}"),
+        format!("refs/heads/{revision}"),
+        format!("refs/tags/{revision}"),
+    ]
+    .iter()
+    .all(|reference| {
+        matches!(
+            run_git_program(
+                program,
+                path,
+                &["show-ref", "--verify", "--quiet", reference],
+                GIT_LOCAL_TIMEOUT,
+            ),
+            Err(DaloError::CommandFailed { status, .. }) if status == "1"
+        )
+    })
+}
+
 /// Validate a human-authored manifest revision before it reaches Git.
 pub fn validate_manifest_revision(revision: &str) -> DaloResult<()> {
     // A manifest pin must name a single concrete commit, tag, or ref -- not a
@@ -1367,6 +1405,34 @@ mod tests {
 
         assert!(message.contains("Could not refresh this source"));
         assert!(message.contains("Git said: fatal: not possible"));
+    }
+
+    #[test]
+    fn revision_is_missing_should_not_classify_ambiguous_hash_as_missing() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let fake_git = write_executable(
+            temp_dir.path(),
+            "fake-git",
+            "#!/bin/sh\nprintf '%s\\n' 0123456789abcdef0123456789abcdef01234567 0123456789abcdef0123456789abcdef01234568\n",
+        );
+
+        assert!(!revision_is_missing_with_program(
+            fake_git.to_str().expect("fake git path should be utf-8"),
+            temp_dir.path(),
+            "0123",
+        ));
+    }
+
+    #[test]
+    fn revision_is_missing_should_not_classify_other_git_failures_as_missing() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let fake_git = write_executable(temp_dir.path(), "fake-git", "#!/bin/sh\nexit 2\n");
+
+        assert!(!revision_is_missing_with_program(
+            fake_git.to_str().expect("fake git path should be utf-8"),
+            temp_dir.path(),
+            "does-not-exist",
+        ));
     }
 
     #[test]
