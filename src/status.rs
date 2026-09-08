@@ -618,7 +618,7 @@ fn next_health_attention_message(report: &StatusReport) -> Option<String> {
                 .to_owned(),
         );
     }
-    if !report.unmanaged_skills.is_empty() {
+    if report.unmanaged_skills.iter().any(|skill| !skill.protected) {
         return Some(
             "Linked targets contain unmanaged skills; review detailed status before synchronizing."
                 .to_owned(),
