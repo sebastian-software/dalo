@@ -3497,7 +3497,7 @@ fn unselected_catalogs(live: &resolver::LiveResolution) -> Vec<materialize::Unse
 
 fn run_team(options: &GlobalOptions, command: TeamCommand) -> DaloResult<()> {
     let repo = command.repo;
-    let result = (|| match command.command {
+    (|| match command.command {
         TeamSubcommand::Init(args) => {
             let report = team_manifest::init_team_manifest(
                 &repo,
@@ -3573,8 +3573,7 @@ fn run_team(options: &GlobalOptions, command: TeamCommand) -> DaloResult<()> {
             print_team_manifest_mutation(options, &report)
         }
     })()
-    .map_err(|error| contextualize_team_cli_error(error, &repo));
-    result
+    .map_err(|error| contextualize_team_cli_error(error, &repo))
 }
 
 fn contextualize_team_cli_error(error: DaloError, repo: &std::path::Path) -> DaloError {
