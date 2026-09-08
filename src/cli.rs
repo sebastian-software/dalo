@@ -1625,7 +1625,7 @@ fn run_plugin_review(
             );
         }
         for fact in &decision.facts {
-            println!("  {}: {}", fact.label, fact.human_value);
+            println!("  {}: {}", fact.label, format_review_fact(fact));
         }
         for target in &decision.targets {
             println!(
@@ -2024,6 +2024,147 @@ fn format_display_values(values: &[impl std::fmt::Display]) -> String {
         .map(std::string::ToString::to_string)
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+fn format_review_fact(fact: &plugin_review::ReviewFact) -> String {
+    match fact.label.as_str() {
+        "matcher" => parse_legacy_debug_strings(&fact.value).map_or_else(
+            || fact.value.clone(),
+            |values| plugin_review::format_quoted_tokens(&values),
+        ),
+        "capabilities" => format_legacy_enum_values(&fact.value),
+        "event" => fact.value.split_once('/').map_or_else(
+            || fact.value.clone(),
+            |(subject, phase)| {
+                format!(
+                    "{}/{}",
+                    snake_case_identifier(subject),
+                    snake_case_identifier(phase)
+                )
+            },
+        ),
+        "failure_policy" => match fact.value.as_str() {
+            "failopen" => "fail_open".to_owned(),
+            "failclosed" => "fail_closed".to_owned(),
+            _ => fact.value.clone(),
+        },
+        _ => fact.value.clone(),
+    }
+}
+
+fn format_legacy_enum_values(value: &str) -> String {
+    let Some(inner) = value
+        .strip_prefix('[')
+        .and_then(|value| value.strip_suffix(']'))
+    else {
+        return value.to_owned();
+    };
+    if inner.is_empty() {
+        return "none".to_owned();
+    }
+    inner
+        .split(", ")
+        .map(snake_case_identifier)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn snake_case_identifier(value: &str) -> String {
+    let mut result = String::with_capacity(value.len());
+    for character in value.chars() {
+        if character.is_ascii_uppercase() && !result.is_empty() {
+            result.push('_');
+        }
+        result.extend(character.to_lowercase());
+    }
+    result
+}
+
+fn parse_legacy_debug_strings(value: &str) -> Option<Vec<String>> {
+    let mut characters = value.chars().peekable();
+    if characters.next()? != '[' {
+        return None;
+    }
+    let mut values = Vec::new();
+    loop {
+        while characters
+            .peek()
+            .is_some_and(|character| character.is_whitespace())
+        {
+            characters.next();
+        }
+        if characters.peek() == Some(&']') {
+            characters.next();
+            return Some(values);
+        }
+        if characters.next()? != '"' {
+            return None;
+        }
+        let mut parsed = String::new();
+        loop {
+            match characters.next()? {
+                '"' => break,
+                '\\' => match characters.next()? {
+                    '\\' => parsed.push('\\'),
+                    '"' => parsed.push('"'),
+                    'n' => parsed.push('\n'),
+                    'r' => parsed.push('\r'),
+                    't' => parsed.push('\t'),
+                    '0' => parsed.push('\0'),
+                    'x' => parsed.push(char::from_u32(parse_hex_digits(&mut characters, 2)?)?),
+                    'u' => {
+                        if characters.next()? != '{' {
+                            return None;
+                        }
+                        let codepoint = parse_hex_digits_until(&mut characters, '}')?;
+                        parsed.push(char::from_u32(codepoint)?);
+                    }
+                    _ => return None,
+                },
+                character => parsed.push(character),
+            }
+        }
+        values.push(parsed);
+        while characters
+            .peek()
+            .is_some_and(|character| character.is_whitespace())
+        {
+            characters.next();
+        }
+        match characters.next()? {
+            ',' => {}
+            ']' => return Some(values),
+            _ => return None,
+        }
+    }
+}
+
+fn parse_hex_digits(
+    characters: &mut std::iter::Peekable<std::str::Chars<'_>>,
+    count: usize,
+) -> Option<u32> {
+    let mut value = 0;
+    for _ in 0..count {
+        value = value * 16 + characters.next()?.to_digit(16)?;
+    }
+    Some(value)
+}
+
+fn parse_hex_digits_until(
+    characters: &mut std::iter::Peekable<std::str::Chars<'_>>,
+    terminator: char,
+) -> Option<u32> {
+    let mut value = 0;
+    let mut digits = 0;
+    while let Some(&character) = characters.peek() {
+        characters.next();
+        if character == terminator {
+            return (digits > 0).then_some(value);
+        }
+        value = value * 16 + character.to_digit(16)?;
+        digits += 1;
+    }
+    None
 }
 
 fn valid_plugin_rule_id(value: &str) -> bool {

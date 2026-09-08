@@ -1509,7 +1509,7 @@ pub fn compose_results(effect: HookEffect, results: &[PortableHookResult]) -> Co
                 context.push(reason);
             }
             _ => conflicts.push(format!(
-                "hook `{}` returned an output incompatible with {effect:?}",
+                "hook `{}` returned an output incompatible with {effect}",
                 result.hook
             )),
         }
@@ -1722,6 +1722,20 @@ matcher = { tool_names = ["Bash"] }
         let outcome = compose_results(HookEffect::RewriteInput, &results);
         assert!(outcome.value.is_none());
         assert!(!outcome.conflicts.is_empty());
+
+        let incompatible = compose_results(
+            HookEffect::AllowDeny,
+            &[PortableHookResult {
+                hook: "team:conflict".to_owned(),
+                output: PortableHookOutput::RewriteInput {
+                    input: serde_json::json!({"command": "blocked"}),
+                },
+            }],
+        );
+        assert_eq!(
+            incompatible.conflicts,
+            ["hook `team:conflict` returned an output incompatible with allow_deny"]
+        );
     }
 
     #[test]

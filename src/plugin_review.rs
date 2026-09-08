@@ -152,9 +152,6 @@ pub struct ReviewFact {
     pub label: String,
     /// Human- and machine-readable value.
     pub value: String,
-    /// User-facing rendering of the value, omitted from the v1 JSON schema.
-    #[serde(skip)]
-    pub(crate) human_value: String,
 }
 
 /// Target-specific component mapping retained from the installation plan.
@@ -525,15 +522,13 @@ fn member_decision(
         ) {
             Ok(audit) => {
                 content_hash = Some(audit.content_hash.clone());
-                facts.push(fact_with_display(
+                facts.push(fact(
                     "audit_status",
                     format!("{:?}", audit.status).to_ascii_lowercase(),
-                    audit.status,
                 ));
-                facts.push(fact_with_display(
+                facts.push(fact(
                     "audit_coverage",
                     format!("{:?}", audit.coverage).to_ascii_lowercase(),
-                    audit.coverage,
                 ));
                 facts.push(fact("audit_findings", audit.static_findings.len()));
                 if audit.is_blocking() {
@@ -628,16 +623,11 @@ fn tool_decision(
         diagnostic: status.diagnostic.clone(),
         facts: vec![
             fact("entry", &status.tool.entry),
-            fact_with_display(
+            fact(
                 "runtime",
                 format!("{:?}", status.tool.runtime).to_ascii_lowercase(),
-                status.tool.runtime,
             ),
-            fact_with_display(
-                "capabilities",
-                format!("{:?}", status.tool.capabilities),
-                format_display_values(&status.tool.capabilities),
-            ),
+            fact("capabilities", format!("{:?}", status.tool.capabilities)),
             fact("environment", status.tool.env.join(",")),
             fact("closure_files", status.tool.files.len()),
         ],
@@ -690,26 +680,19 @@ fn hook_decision(
         diagnostic: status.diagnostic.clone(),
         facts: vec![
             fact("tool", &status.hook.tool_source_ref),
-            fact_with_display(
+            fact(
                 "event",
                 format!("{:?}/{:?}", descriptor.subject, descriptor.phase),
-                format!("{}/{}", descriptor.subject, descriptor.phase),
             ),
-            fact_with_display(
+            fact(
                 "effect",
                 format!("{:?}", descriptor.effect).to_ascii_lowercase(),
-                descriptor.effect,
             ),
-            fact_with_display(
-                "matcher",
-                format!("{:?}", descriptor.matcher.tool_names),
-                format_quoted_tokens(&descriptor.matcher.tool_names),
-            ),
+            fact("matcher", format!("{:?}", descriptor.matcher.tool_names)),
             fact("timeout_ms", descriptor.timeout_ms),
-            fact_with_display(
+            fact(
                 "failure_policy",
                 format!("{:?}", descriptor.failure_policy).to_ascii_lowercase(),
-                descriptor.failure_policy,
             ),
             fact("bindings", descriptor.bindings.len()),
         ],
@@ -720,25 +703,6 @@ fn hook_decision(
             &status.hook.source_ref,
         ),
     }
-}
-
-fn fact_with_display(label: &str, value: impl ToString, human_value: impl ToString) -> ReviewFact {
-    ReviewFact {
-        label: label.to_owned(),
-        value: value.to_string(),
-        human_value: human_value.to_string(),
-    }
-}
-
-fn format_display_values(values: &[impl std::fmt::Display]) -> String {
-    if values.is_empty() {
-        return "none".to_owned();
-    }
-    values
-        .iter()
-        .map(std::string::ToString::to_string)
-        .collect::<Vec<_>>()
-        .join(", ")
 }
 
 pub(crate) fn format_quoted_tokens(values: &[String]) -> String {
@@ -802,8 +766,10 @@ fn target_facts(
 }
 
 fn fact(label: &str, value: impl ToString) -> ReviewFact {
-    let value = value.to_string();
-    fact_with_display(label, &value, &value)
+    ReviewFact {
+        label: label.to_owned(),
+        value: value.to_string(),
+    }
 }
 
 const fn kind_id(kind: ReviewDecisionKind) -> &'static str {
