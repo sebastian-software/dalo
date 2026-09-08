@@ -53,9 +53,10 @@ passive Dalo update notices can recommend the matching upgrade command. It never
 updates the launcher or cached executable behind npm's back.
 
 Release-metadata lookups time out after 30 seconds; archive downloads use a
-10-second connection and 120-second body timeout and are retried up to three
-times on transient failures. Network errors include their underlying cause and
-a hint for selecting an exact version.
+10-second response-header timeout and a 120-second body timeout and may be
+retried up to twice on transient failures (three total attempts). Network
+errors include their underlying cause and a hint for selecting an exact
+version.
 When invoked by npm, the launcher also honors `npm_config_proxy`,
 `npm_config_https_proxy`, and `npm_config_noproxy` as fallbacks.
 
