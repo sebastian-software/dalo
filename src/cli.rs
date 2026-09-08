@@ -2033,6 +2033,14 @@ fn format_review_fact(fact: &plugin_review::ReviewFact) -> String {
             |values| plugin_review::format_quoted_tokens(&values),
         ),
         "capabilities" => format_legacy_enum_values(&fact.value),
+        "effect" => match fact.value.as_str() {
+            "addcontext" => "add_context".to_owned(),
+            "allowdeny" => "allow_deny".to_owned(),
+            "rewriteinput" => "rewrite_input".to_owned(),
+            "replaceoutput" => "replace_output".to_owned(),
+            "continueworkflow" => "continue_workflow".to_owned(),
+            _ => fact.value.clone(),
+        },
         "event" => fact.value.split_once('/').map_or_else(
             || fact.value.clone(),
             |(subject, phase)| {

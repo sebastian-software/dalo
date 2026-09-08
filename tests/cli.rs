@@ -763,6 +763,8 @@ fn human_plugin_tool_hook_status_and_review_reports_use_stable_display_values() 
         .stdout(predicate::str::contains(
             "matcher: \"Bash, Write\" \"Read\"",
         ))
+        .stdout(predicate::str::contains("effect: allow_deny"))
+        .stdout(predicate::str::contains("effect: allowdeny").not())
         .stdout(predicate::str::contains("ToolExecution").not())
         .stdout(predicate::str::contains("Pending").not());
     fixture.assert_never_executed();
