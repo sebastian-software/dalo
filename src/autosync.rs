@@ -1140,8 +1140,8 @@ fn disable_scheduler(state: &AutosyncInstallState, runner: &dyn CommandRunner) -
                 return Err(DaloError::CommandFailed {
                     program: "systemctl".to_owned(),
                     args: format!("--user disable --now {}.timer", state.identifier),
-                    cwd: env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
                     status: disable.status,
+                    summary: None,
                     stderr: disable.stderr.trim().to_owned(),
                 });
             }
@@ -1258,8 +1258,8 @@ fn read_crontab(runner: &dyn CommandRunner) -> DaloResult<String> {
         Err(DaloError::CommandFailed {
             program: "crontab".to_owned(),
             args: "-l".to_owned(),
-            cwd: env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             status: result.status,
+            summary: None,
             stderr: result.stderr.trim().to_owned(),
         })
     }
@@ -1278,8 +1278,8 @@ fn require_success(
         Err(DaloError::CommandFailed {
             program: program.to_owned(),
             args: args.join(" "),
-            cwd: env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             status: result.status,
+            summary: None,
             stderr: result.stderr.trim().to_owned(),
         })
     }

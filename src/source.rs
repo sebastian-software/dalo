@@ -1364,11 +1364,8 @@ mod tests {
                 Err(DaloError::CommandFailed {
                     program: "git".to_owned(),
                     args: "clone".to_owned(),
-                    cwd: checkout
-                        .parent()
-                        .unwrap_or_else(|| std::path::Path::new("."))
-                        .to_path_buf(),
                     status: "timed out after 1s".to_owned(),
+                    summary: None,
                     stderr: "git command timed out".to_owned(),
                 })
             },
