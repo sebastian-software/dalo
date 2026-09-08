@@ -50,6 +50,27 @@ pub struct LiveResolution {
     pub agents: AgentResolution,
 }
 
+/// Effective reasons why an active skill remains in the resolved set.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ActiveSkillCause {
+    /// The skill belongs to the built-in local source.
+    LocalSource,
+    /// The source is configured as trusted.
+    TrustedSource,
+    /// A persisted approval record matches the skill.
+    Approval {
+        /// Approval scope, such as `skill`, `source`, `author`, or `org`.
+        scope: String,
+        /// Canonical persisted approval value.
+        value: String,
+    },
+    /// A catalog selection directly or transitively keeps the skill active.
+    CatalogSelection {
+        /// Original configured selection reference to unselect.
+        selector: String,
+    },
+}
+
 impl LiveResolution {
     /// Collect sources whose incomplete inputs make recorded-link removals unsafe.
     ///
@@ -350,6 +371,94 @@ struct Candidate {
 /// callers can surface them as diagnostics.
 pub fn resolve_from_config(config: &UserConfig, approvals: Vec<ApprovalRecord>) -> LiveResolution {
     resolve_from_config_with_plugin_inventories(config, approvals).live
+}
+
+/// Determine the effective activation causes for one active skill.
+///
+/// This intentionally derives the causes from the same approval and catalog
+/// expansion rules used by [`resolve`], so remediation advice cannot claim that
+/// revoking a narrower approval will deactivate a skill that remains active for
+/// another reason.
+pub(crate) fn active_skill_causes(
+    live: &LiveResolution,
+    active: &ResolvedSkill,
+    approvals: &[ApprovalRecord],
+) -> Vec<ActiveSkillCause> {
+    let Some(scan) = live.scans.iter().find(|scan| {
+        scan.source.id == active.source_id
+            && scan.inventory.as_ref().is_some_and(|inventory| {
+                inventory
+                    .skills
+                    .iter()
+                    .any(|skill| skill.source_ref == active.source_ref)
+            })
+    }) else {
+        return Vec::new();
+    };
+    let Some(inventory) = scan.inventory.as_ref() else {
+        return Vec::new();
+    };
+    let Some(record) = inventory
+        .skills
+        .iter()
+        .find(|skill| skill.source_ref == active.source_ref)
+    else {
+        return Vec::new();
+    };
+    let candidate = Candidate {
+        skill: active.clone(),
+        owners: record.owners.clone(),
+        trusted: scan.source.trusted,
+        requires: record.requires.clone(),
+    };
+    if !is_approved(&candidate, approvals) {
+        return Vec::new();
+    }
+
+    let mut causes = Vec::new();
+    if candidate.skill.source_kind == SourceKind::Local {
+        causes.push(ActiveSkillCause::LocalSource);
+    }
+    if candidate.trusted {
+        causes.push(ActiveSkillCause::TrustedSource);
+    }
+    for approval in approvals {
+        let matches = approval_matches_skill(approval, &candidate)
+            || approval_matches_source(approval, &candidate)
+            || approval_matches_owner(approval, &candidate);
+        if matches {
+            causes.push(ActiveSkillCause::Approval {
+                scope: approval.scope.clone(),
+                value: approval.value.clone(),
+            });
+        }
+    }
+
+    if scan.source.kind == SourceKind::Catalog {
+        // Derive the durable selector from the configured root, rather than
+        // from the expanded selection. This keeps a dependency's remediation
+        // actionable: unselecting the root also removes its requires closure.
+        let mut selectors = BTreeSet::new();
+        for selector in &scan.source.selection {
+            let Some(root) = inventory
+                .skills
+                .iter()
+                .find(|skill| selection_ref_matches_skill(selector, skill, &scan.source.path))
+            else {
+                continue;
+            };
+            if catalog_selection_reaches(root, record, &inventory.skills) {
+                selectors.insert(root.slot_name.clone());
+            }
+        }
+        causes.extend(
+            selectors
+                .into_iter()
+                .map(|selector| ActiveSkillCause::CatalogSelection { selector }),
+        );
+    }
+
+    causes
 }
 
 /// Resolve one configuration while retaining internal plugin scan facts for
@@ -1103,6 +1212,32 @@ fn closure_for_selection(
         }
     }
     result
+}
+
+fn catalog_selection_reaches(
+    root: &SkillRecord,
+    target: &SkillRecord,
+    skills: &[SkillRecord],
+) -> bool {
+    let mut queue = VecDeque::from([root]);
+    let mut seen = BTreeSet::new();
+    while let Some(skill) = queue.pop_front() {
+        if !seen.insert(skill.source_ref.as_str()) {
+            continue;
+        }
+        if skill.source_ref == target.source_ref {
+            return true;
+        }
+        for requirement in &skill.requires {
+            if let Some(required) = skills
+                .iter()
+                .find(|candidate| ref_matches_skill(requirement, candidate))
+            {
+                queue.push_back(required);
+            }
+        }
+    }
+    false
 }
 
 fn selection_ref_matches_skill(

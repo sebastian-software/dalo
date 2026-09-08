@@ -9295,6 +9295,134 @@ fn resolve_remove_owned_should_explain_how_to_revoke_an_active_skill_approval() 
 }
 
 #[test]
+fn resolve_remove_owned_should_explain_how_to_revoke_broader_approvals() {
+    for (scope, value, body) in [
+        ("source", "team", "# Review\n"),
+        (
+            "author",
+            "team:platform",
+            "---\nowners: [platform]\n---\n# Review\n",
+        ),
+        (
+            "org",
+            "team:example-org",
+            "---\nowners: [example-org]\n---\n# Review\n",
+        ),
+    ] {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store = store::comparable_path(&temp_dir.path().join("store"));
+        let target = temp_dir.path().join("skills");
+        let repo = temp_dir.path().join("team-repo");
+        create_git_skill_repo_with_skill(&repo, "review", body);
+        setup_store_with_target(&store, &target);
+        add_source(&store, "team", &repo);
+        set_source_untrusted(&store, "team");
+
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .args(["approve", scope, value])
+            .assert()
+            .success();
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .arg("sync")
+            .assert()
+            .success();
+
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .args(["resolve", "remove-owned", "generic:review"])
+            .assert()
+            .success()
+            .stdout(predicate::str::contains(format!(
+                "approve revoke {scope} {value}"
+            )));
+    }
+}
+
+#[test]
+fn resolve_remove_owned_should_explain_how_to_remove_an_active_local_skill() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = store::comparable_path(&temp_dir.path().join("store"));
+    let target = temp_dir.path().join("skills");
+    setup_store_with_skill_and_target(&store, &target);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "remove-owned", "generic:review"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("rm -rf -- "))
+        .stdout(predicate::str::contains("local/skills/review"));
+}
+
+#[test]
+fn resolve_remove_owned_should_point_to_catalog_selection_root_for_required_skill() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = store::comparable_path(&temp_dir.path().join("store"));
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_skill_repo_with_required_pair(&repo);
+    setup_store_with_target(&store, &target);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "alpha"])
+        .assert()
+        .success();
+
+    // A trusted catalog activates the required dependency without a direct
+    // selection or per-skill approval of `beta`.
+    let paths = store::StorePaths::new(store.clone());
+    let mut config = store::read_config(&paths).expect("config should be readable");
+    config
+        .sources
+        .iter_mut()
+        .find(|source| source.id == "marketing")
+        .expect("catalog source should exist")
+        .trusted = true;
+    store::write_config(&paths, &config).expect("config should be writable");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    assert!(target.join("beta").exists());
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "remove-owned", "generic:beta"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "source select marketing --unselect alpha",
+        ))
+        .stdout(predicate::str::contains("approve revoke skill marketing:beta").not());
+}
+
+#[test]
 fn resolve_remove_owned_should_not_warn_for_an_inactive_skill() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = store::comparable_path(&temp_dir.path().join("store"));

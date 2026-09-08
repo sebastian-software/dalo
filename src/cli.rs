@@ -4242,51 +4242,93 @@ fn active_remove_owned_next_step(
 
     let config = store::read_config(paths)?;
     let approvals = store::read_approvals(paths)?.approvals;
-    let live = resolver::resolve_from_config(&config, approvals);
-    let active = live.resolution.active_skills.into_iter().find(|skill| {
-        skill.slot_name == report.slot_name
-            && (report.recorded_source_ref.as_deref() == Some(skill.source_ref.as_str())
-                || report.recorded_source_ref.is_none() && report.store_path == skill.path)
-    });
+    let live = resolver::resolve_from_config(&config, approvals.clone());
+    let active = live
+        .resolution
+        .active_skills
+        .iter()
+        .find(|skill| {
+            skill.slot_name == report.slot_name
+                && (report.recorded_source_ref.as_deref() == Some(skill.source_ref.as_str())
+                    || report.recorded_source_ref.is_none() && report.store_path == skill.path)
+        })
+        .cloned();
     let Some(active) = active else {
         return Ok(None);
     };
-
-    let selected_catalog = live
-        .scans
+    let causes = resolver::active_skill_causes(&live, &active, &approvals);
+    let commands = active_remove_owned_commands(paths, &active, &causes);
+    if commands.is_empty() {
+        return Ok(None);
+    }
+    let commands = commands
         .iter()
-        .find(|scan| {
-            scan.source.id == active.source_id && scan.source.kind == source::SourceKind::Catalog
-        })
-        .and_then(|scan| {
-            let inventory = scan.inventory.as_ref()?;
-            let skill = inventory
-                .skills
-                .iter()
-                .find(|skill| skill.source_ref == active.source_ref)?;
-            catalog::skill_is_selected(skill, &scan.source.selection, &scan.source.path)
-                .then_some(())
-        })
-        .is_some();
-    let deactivate = if selected_catalog {
-        let selector = active
-            .source_ref
-            .strip_prefix(&format!("{}:", active.source_id))
-            .unwrap_or(&active.slot_name);
-        store::dalo_command(
-            &paths.root,
-            &format!("source select {} --unselect {}", active.source_id, selector),
-        )
-    } else {
-        store::dalo_command(
-            &paths.root,
-            &format!("approve revoke skill {}", active.source_ref),
-        )
-    };
+        .map(|command| format!("`{command}`"))
+        .collect::<Vec<_>>()
+        .join(" and ");
     Ok(Some(format!(
-        "`{}` is still active; the next sync will recreate this link — deactivate it with `{deactivate}`",
-        active.source_ref
+        "`{}` is still active; the next sync will recreate this link — deactivate it with {}",
+        active.source_ref, commands
     )))
+}
+
+fn active_remove_owned_commands(
+    paths: &store::StorePaths,
+    active: &resolver::ResolvedSkill,
+    causes: &[resolver::ActiveSkillCause],
+) -> Vec<String> {
+    if causes
+        .iter()
+        .any(|cause| matches!(cause, resolver::ActiveSkillCause::LocalSource))
+    {
+        return vec![format!(
+            "rm -rf -- {}",
+            crate::error::shell_quote_path(&active.path)
+        )];
+    }
+
+    if causes
+        .iter()
+        .any(|cause| matches!(cause, resolver::ActiveSkillCause::CatalogSelection { .. }))
+    {
+        return causes
+            .iter()
+            .filter_map(|cause| {
+                let resolver::ActiveSkillCause::CatalogSelection { selector } = cause else {
+                    return None;
+                };
+                Some(store::dalo_command(
+                    &paths.root,
+                    &format!("source select {} --unselect {}", active.source_id, selector),
+                ))
+            })
+            .collect();
+    }
+
+    if causes
+        .iter()
+        .any(|cause| matches!(cause, resolver::ActiveSkillCause::TrustedSource))
+    {
+        return (active.source_kind != source::SourceKind::Local)
+            .then(|| {
+                store::dalo_command(&paths.root, &format!("source remove {}", active.source_id))
+            })
+            .into_iter()
+            .collect();
+    }
+
+    causes
+        .iter()
+        .filter_map(|cause| {
+            let resolver::ActiveSkillCause::Approval { scope, value } = cause else {
+                return None;
+            };
+            Some(store::dalo_command(
+                &paths.root,
+                &format!("approve revoke {scope} {value}"),
+            ))
+        })
+        .collect()
 }
 
 fn run_doctor(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
