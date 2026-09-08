@@ -1008,22 +1008,22 @@ dalo completions fish &gt; dalo.fish
 <tr>
 <td><code>team init</code></td>
 <td><code>TeamManifestMutationReport</code></td>
-<td><code>path</code>, <code>action</code>, <code>dry_run</code>, resulting <code>manifest</code></td>
+<td><code>path</code>, <code>action</code>, <code>dry_run</code>, optional <code>warnings[]</code>, resulting <code>manifest</code></td>
 </tr>
 <tr>
 <td><code>team catalog add</code></td>
 <td><code>TeamManifestMutationReport</code></td>
-<td><code>path</code>, <code>action</code>, <code>catalog_id</code>, <code>dry_run</code>, resulting <code>manifest</code></td>
+<td><code>path</code>, <code>action</code>, <code>catalog_id</code>, <code>dry_run</code>, optional <code>warnings[]</code>, resulting <code>manifest</code></td>
 </tr>
 <tr>
 <td><code>team catalog skills</code></td>
 <td><code>TeamManifestMutationReport</code></td>
-<td><code>path</code>, <code>action</code>, <code>catalog_id</code>, <code>dry_run</code>, resulting <code>manifest</code></td>
+<td><code>path</code>, <code>action</code>, <code>catalog_id</code>, <code>dry_run</code>, optional <code>warnings[]</code>, resulting <code>manifest</code></td>
 </tr>
 <tr>
 <td><code>team catalog version</code></td>
 <td><code>TeamManifestMutationReport</code></td>
-<td><code>path</code>, <code>action</code>, <code>catalog_id</code>, <code>dry_run</code>, resulting <code>manifest</code></td>
+<td><code>path</code>, <code>action</code>, <code>catalog_id</code>, <code>dry_run</code>, optional <code>warnings[]</code>, resulting <code>manifest</code></td>
 </tr>
 <tr>
 <td><code>team catalog update</code></td>
@@ -1033,7 +1033,7 @@ dalo completions fish &gt; dalo.fish
 <tr>
 <td><code>team catalog remove</code></td>
 <td><code>TeamManifestMutationReport</code></td>
-<td><code>path</code>, <code>action</code>, <code>catalog_id</code>, <code>dry_run</code>, resulting <code>manifest</code></td>
+<td><code>path</code>, <code>action</code>, <code>catalog_id</code>, <code>dry_run</code>, optional <code>warnings[]</code>, resulting <code>manifest</code></td>
 </tr>
 <tr>
 <td><code>team show</code></td>
@@ -1608,7 +1608,10 @@ namespace = &quot;marketing&quot;
 <li>any <code>+skill</code> or bare <code>skill</code>: whitelist mode</li>
 <li>exclusions always win over inclusions</li>
 </ul>
-<p>Unknown or ambiguous filter references block sync. Manifest-derived catalogs
+<p>Unknown or ambiguous filter references block sync. <code>team catalog add</code> rejects
+missing or non-Git local paths before writing the manifest, warns for absolute
+paths because they are not portable to another checkout, and defers remote
+access checks to <code>sync</code> so team authoring remains usable offline. Manifest-derived catalogs
 are untrusted by default, so their newly selected skills remain pending until a
 local approval matches. <code>source select</code>, <code>source priority</code>, <code>source remove</code>, and
 pin advancement reject derived catalogs; edit and review <code>dalo.toml</code> instead.
