@@ -559,7 +559,7 @@ failure_policy = "fail_closed"
 retry = "never"
 error_visibility = "model_and_user"
 blocking_scope = "matched_event"
-matcher = { tool_names = ["Bash"] }
+matcher = { tool_names = ["Bash, Write", "Read"] }
 "#,
         )
         .unwrap();
@@ -630,7 +630,9 @@ fn plugin_tool_inventory_should_report_pending_tool_without_execution() {
         .stdout(predicate::str::contains(
             "event: tool_call.before effect=allow_deny",
         ))
-        .stdout(predicate::str::contains("matcher: tool_names=Bash"))
+        .stdout(predicate::str::contains(
+            "matcher: tool_names=\"Bash, Write\" \"Read\"",
+        ))
         .stdout(predicate::str::contains("bindings: none"))
         .stdout(predicate::str::contains("ToolUnavailable").not());
     fixture
@@ -668,6 +670,46 @@ fn human_plugin_tool_hook_status_and_review_reports_use_stable_display_values() 
         .stdout(predicate::str::contains("\"state\": \"pending_approval\""));
 
     fixture.select_plugin();
+    let review_json = fixture
+        .command()
+        .args(["--json", "plugin", "review", "local:quality"])
+        .output()
+        .expect("plugin review JSON should run");
+    assert!(review_json.status.success());
+    let review: serde_json::Value =
+        serde_json::from_slice(&review_json.stdout).expect("plugin review JSON should parse");
+    assert_eq!(review["schema_version"], 1);
+    let decisions = review["decisions"]
+        .as_array()
+        .expect("review decisions should be an array");
+    let hook_decision = decisions
+        .iter()
+        .find(|decision| decision["id"] == "hook:local:quality#hook:protect-shell")
+        .expect("hook review decision should be present");
+    let review_fact = |decision: &serde_json::Value, label: &str| {
+        decision["facts"]
+            .as_array()
+            .expect("review facts should be an array")
+            .iter()
+            .find(|fact| fact["label"] == label)
+            .and_then(|fact| fact["value"].as_str())
+            .map(str::to_owned)
+            .expect("review fact should have a string value")
+    };
+    assert_eq!(review_fact(hook_decision, "event"), "ToolCall/Before");
+    assert_eq!(
+        review_fact(hook_decision, "matcher"),
+        "[\"Bash, Write\", \"Read\"]"
+    );
+    assert_eq!(review_fact(hook_decision, "failure_policy"), "failclosed");
+    let tool_decision = decisions
+        .iter()
+        .find(|decision| decision["id"] == "tool:local:quality#tool:detector")
+        .expect("tool review decision should be present");
+    assert_eq!(
+        review_fact(tool_decision, "capabilities"),
+        "[FilesystemRead]"
+    );
     fixture
         .command()
         .args(["plugin", "list"])
@@ -708,6 +750,7 @@ fn human_plugin_tool_hook_status_and_review_reports_use_stable_display_values() 
         .stdout(predicate::str::contains("pending_approval"))
         .stdout(predicate::str::contains("pendingapproval").not())
         .stdout(predicate::str::contains("state=Blocked").not());
+    fixture.approve_tool();
     fixture
         .command()
         .args(["plugin", "review", "local:quality"])
@@ -716,7 +759,10 @@ fn human_plugin_tool_hook_status_and_review_reports_use_stable_display_values() 
         .success()
         .stdout(predicate::str::contains("state=selected"))
         .stdout(predicate::str::contains("state=pending"))
-        .stdout(predicate::str::contains("boundary: tool_execution"))
+        .stdout(predicate::str::contains("boundary: hook_binding"))
+        .stdout(predicate::str::contains(
+            "matcher: \"Bash, Write\" \"Read\"",
+        ))
         .stdout(predicate::str::contains("ToolExecution").not())
         .stdout(predicate::str::contains("Pending").not());
     fixture.assert_never_executed();

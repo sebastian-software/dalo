@@ -152,6 +152,9 @@ pub struct ReviewFact {
     pub label: String,
     /// Human- and machine-readable value.
     pub value: String,
+    /// User-facing rendering of the value, omitted from the v1 JSON schema.
+    #[serde(skip)]
+    pub(crate) human_value: String,
 }
 
 /// Target-specific component mapping retained from the installation plan.
@@ -522,8 +525,16 @@ fn member_decision(
         ) {
             Ok(audit) => {
                 content_hash = Some(audit.content_hash.clone());
-                facts.push(fact("audit_status", audit.status));
-                facts.push(fact("audit_coverage", audit.coverage));
+                facts.push(fact_with_display(
+                    "audit_status",
+                    format!("{:?}", audit.status).to_ascii_lowercase(),
+                    audit.status,
+                ));
+                facts.push(fact_with_display(
+                    "audit_coverage",
+                    format!("{:?}", audit.coverage).to_ascii_lowercase(),
+                    audit.coverage,
+                ));
                 facts.push(fact("audit_findings", audit.static_findings.len()));
                 if audit.is_blocking() {
                     state = ReviewDecisionState::Blocked;
@@ -617,9 +628,14 @@ fn tool_decision(
         diagnostic: status.diagnostic.clone(),
         facts: vec![
             fact("entry", &status.tool.entry),
-            fact("runtime", status.tool.runtime),
-            fact(
+            fact_with_display(
+                "runtime",
+                format!("{:?}", status.tool.runtime).to_ascii_lowercase(),
+                status.tool.runtime,
+            ),
+            fact_with_display(
                 "capabilities",
+                format!("{:?}", status.tool.capabilities),
                 format_display_values(&status.tool.capabilities),
             ),
             fact("environment", status.tool.env.join(",")),
@@ -674,17 +690,27 @@ fn hook_decision(
         diagnostic: status.diagnostic.clone(),
         facts: vec![
             fact("tool", &status.hook.tool_source_ref),
-            fact(
+            fact_with_display(
                 "event",
+                format!("{:?}/{:?}", descriptor.subject, descriptor.phase),
                 format!("{}/{}", descriptor.subject, descriptor.phase),
             ),
-            fact("effect", descriptor.effect),
-            fact(
+            fact_with_display(
+                "effect",
+                format!("{:?}", descriptor.effect).to_ascii_lowercase(),
+                descriptor.effect,
+            ),
+            fact_with_display(
                 "matcher",
-                format_display_values(&descriptor.matcher.tool_names),
+                format!("{:?}", descriptor.matcher.tool_names),
+                format_quoted_tokens(&descriptor.matcher.tool_names),
             ),
             fact("timeout_ms", descriptor.timeout_ms),
-            fact("failure_policy", descriptor.failure_policy),
+            fact_with_display(
+                "failure_policy",
+                format!("{:?}", descriptor.failure_policy).to_ascii_lowercase(),
+                descriptor.failure_policy,
+            ),
             fact("bindings", descriptor.bindings.len()),
         ],
         targets: target_facts(
@@ -693,6 +719,14 @@ fn hook_decision(
             &status.hook.source_ref,
             &status.hook.source_ref,
         ),
+    }
+}
+
+fn fact_with_display(label: &str, value: impl ToString, human_value: impl ToString) -> ReviewFact {
+    ReviewFact {
+        label: label.to_owned(),
+        value: value.to_string(),
+        human_value: human_value.to_string(),
     }
 }
 
@@ -705,6 +739,32 @@ fn format_display_values(values: &[impl std::fmt::Display]) -> String {
         .map(std::string::ToString::to_string)
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+pub(crate) fn format_quoted_tokens(values: &[String]) -> String {
+    if values.is_empty() {
+        return "none".to_owned();
+    }
+    values
+        .iter()
+        .map(|value| format!("\"{}\"", escape_display_token(value)))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn escape_display_token(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        match character {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            character if character.is_control() => {
+                escaped.push_str(&format!("\\u{{{:x}}}", character as u32));
+            }
+            character => escaped.push(character),
+        }
+    }
+    escaped
 }
 
 fn target_facts(
@@ -742,10 +802,8 @@ fn target_facts(
 }
 
 fn fact(label: &str, value: impl ToString) -> ReviewFact {
-    ReviewFact {
-        label: label.to_owned(),
-        value: value.to_string(),
-    }
+    let value = value.to_string();
+    fact_with_display(label, &value, &value)
 }
 
 const fn kind_id(kind: ReviewDecisionKind) -> &'static str {
