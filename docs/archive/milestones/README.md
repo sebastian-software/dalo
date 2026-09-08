@@ -95,8 +95,8 @@ Every implementation PR should run the narrowest useful validation for the miles
 
 ```sh
 cargo fmt --check
-cargo test
-cargo clippy --all-targets --all-features -- -D warnings
+cargo test --locked
+cargo clippy --locked --all-targets --all-features -- -D warnings
 git diff --check
 ```
 

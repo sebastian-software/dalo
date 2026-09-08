@@ -24,7 +24,7 @@ sh tests/docs.sh
 sh tests/workflows.sh
 (cd npm && npm ci && npm run check-version && npm test)
 cargo clippy --locked --all-targets --all-features -- -D warnings
-cargo build --release --locked
+cargo build --release --locked --target "$(rustc -vV | sed -n 's/^host: //p')"
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
 ```
 
@@ -42,7 +42,12 @@ The site check compares the committed render under `site/` with what
 once with `pnpm --dir site install`. `site/README.md` describes the build.
 
 The MSRV job installs the toolchain named by `rust-version` in `Cargo.toml`, so
-that number lives in one place.
+that number lives in one place. To run the same check locally:
+
+```sh
+msrv="$(sed -n 's/^rust-version = \"\(.*\)\"/\1/p' Cargo.toml | head -n 1)"
+cargo +"$msrv" check --locked --all-targets --all-features
+```
 
 The standards-drift job runs `standards check` from
 [`@sebastian-software/standards`](https://github.com/sebastian-software/standards)
