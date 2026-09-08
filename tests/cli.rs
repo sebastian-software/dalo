@@ -3262,6 +3262,30 @@ fn status_should_degrade_gracefully_for_invalid_autosync_state() {
 }
 
 #[test]
+fn autosync_run_should_report_dry_run_as_an_invalid_argument() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--dry-run", "autosync", "run"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains(
+            "the internal scheduled runner does not support --dry-run",
+        ))
+        .stderr(predicate::str::contains("check failed").not());
+}
+
+#[test]
 fn autosync_run_should_persist_success_and_previous_success_time() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
