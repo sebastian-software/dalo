@@ -341,11 +341,19 @@ pub fn disable_pack_for_targets(
 #[derive(Debug)]
 struct PendingPackRefresh {
     entry_index: usize,
-    updated_entry_index: usize,
-    previous_commit: String,
-    commit: String,
     old_body: String,
     pack: InstructionPack,
+    provenance: PendingPackRefreshProvenance,
+}
+
+#[derive(Debug)]
+enum PendingPackRefreshProvenance {
+    Local,
+    Source {
+        updated_entry_index: usize,
+        previous_commit: String,
+        commit: String,
+    },
 }
 
 #[derive(Debug, Default)]
@@ -354,11 +362,13 @@ struct PendingInstructionTargetSync {
     removal_entry_indexes: Vec<usize>,
 }
 
-/// Reconcile source-backed packs that are already active in the user lock.
+/// Reconcile source-backed packs and migrate legacy local packs in the user lock.
 ///
 /// Source approval is checked again on every sync. The previously rendered
 /// managed block must still match its immutable source revision before Dalo
 /// will replace it, so revoked trust or external block edits fail closed.
+/// Local packs retain their lock provenance and only migrate blocks that match
+/// Dalo's exact legacy rendering.
 /// Packs owned by manifest-derived sources removed in the same sync are
 /// deactivated inside the same target-and-lock transaction.
 pub fn refresh_active_packs(
@@ -385,69 +395,78 @@ pub fn refresh_active_packs(
                 .push(entry_index);
             continue;
         }
-        if entry.source_id == "local" {
-            continue;
-        }
-        let source = sources
-            .iter()
-            .find(|source| source.id == entry.source_id)
-            .ok_or_else(|| {
-                DaloError::StateError {
-                    reason: format!(
-                        "active instruction pack `{}` references missing source `{}`; restore the source or disable the pack",
-                        pack_ref(&entry.source_id, &entry.pack_id),
-                        entry.source_id
-                    ),
-                }
-            })?;
-        if !source.enabled {
-            return Err(DaloError::StateError {
-                reason: format!(
-                    "active instruction pack `{}` references disabled source `{}`; enable the source or disable the pack",
-                    pack_ref(&entry.source_id, &entry.pack_id),
-                    entry.source_id
-                ),
-            });
-        }
-        ensure_instruction_source_approved(source, approvals, Some(&entry.pack_id))?;
-
-        let previous_commit = entry.commit.clone().ok_or_else(|| DaloError::StateError {
-            reason: format!(
-                "active instruction pack `{}` has no immutable source provenance; review and re-enable the pack",
-                pack_ref(&entry.source_id, &entry.pack_id)
-            ),
-        })?;
-        let commit = validate_source_pack(paths, source, &entry.pack_id, None)?;
-        let pack = read_source_pack(source, &entry.pack_id)?;
-        let relative_path = PathBuf::from("instructions").join(format!("{}.md", entry.pack_id));
-        let old_body = if previous_commit == commit {
-            pack.body.clone()
+        let (old_body, pack, provenance) = if entry.source_id == "local" {
+            let pack = read_local_pack(paths, &entry.pack_id)?;
+            (pack.body.clone(), pack, PendingPackRefreshProvenance::Local)
         } else {
-            git::read_file_at_commit(&source.path, &previous_commit, &relative_path).map_err(
-                |error| DaloError::StateError {
+            let source = sources
+                .iter()
+                .find(|source| source.id == entry.source_id)
+                .ok_or_else(|| {
+                    DaloError::StateError {
+                        reason: format!(
+                            "active instruction pack `{}` references missing source `{}`; restore the source or disable the pack",
+                            pack_ref(&entry.source_id, &entry.pack_id),
+                            entry.source_id
+                        ),
+                    }
+                })?;
+            if !source.enabled {
+                return Err(DaloError::StateError {
                     reason: format!(
-                        "could not verify the previously rendered revision of `{}`: {error}; restore the source history or review and re-enable the pack",
-                        pack_ref(&entry.source_id, &entry.pack_id)
+                        "active instruction pack `{}` references disabled source `{}`; enable the source or disable the pack",
+                        pack_ref(&entry.source_id, &entry.pack_id),
+                        source.id
                     ),
+                });
+            }
+            ensure_instruction_source_approved(source, approvals, Some(&entry.pack_id))?;
+
+            let previous_commit = entry.commit.clone().ok_or_else(|| DaloError::StateError {
+                reason: format!(
+                    "active instruction pack `{}` has no immutable source provenance; review and re-enable the pack",
+                    pack_ref(&entry.source_id, &entry.pack_id)
+                ),
+            })?;
+            let commit = validate_source_pack(paths, source, &entry.pack_id, None)?;
+            let pack = read_source_pack(source, &entry.pack_id)?;
+            let relative_path = PathBuf::from("instructions").join(format!("{}.md", entry.pack_id));
+            let old_body = if previous_commit == commit {
+                pack.body.clone()
+            } else {
+                git::read_file_at_commit(&source.path, &previous_commit, &relative_path).map_err(
+                    |error| DaloError::StateError {
+                        reason: format!(
+                            "could not verify the previously rendered revision of `{}`: {error}; restore the source history or review and re-enable the pack",
+                            pack_ref(&entry.source_id, &entry.pack_id)
+                        ),
+                    },
+                )?
+            };
+            let updated_entry_index = active[..entry_index]
+                .iter()
+                .filter(|candidate| !removed_source_ids.contains(&candidate.source_id))
+                .count();
+            (
+                old_body,
+                pack,
+                PendingPackRefreshProvenance::Source {
+                    updated_entry_index,
+                    previous_commit,
+                    commit,
                 },
-            )?
+            )
         };
         let target = lock_entry_target_path(paths, &entry.target);
-        let updated_entry_index = active[..entry_index]
-            .iter()
-            .filter(|candidate| !removed_source_ids.contains(&candidate.source_id))
-            .count();
         grouped
             .entry(target)
             .or_default()
             .refreshes
             .push(PendingPackRefresh {
                 entry_index,
-                updated_entry_index,
-                previous_commit,
-                commit,
                 old_body,
                 pack,
+                provenance,
             });
     }
 
@@ -520,27 +539,42 @@ pub fn refresh_active_packs(
                 });
             }
 
-            if refresh.previous_commit != refresh.commit || needs_metadata_migration {
+            let source_changed = match &refresh.provenance {
+                PendingPackRefreshProvenance::Local => false,
+                PendingPackRefreshProvenance::Source {
+                    previous_commit,
+                    commit,
+                    ..
+                } => previous_commit != commit,
+            };
+            if source_changed || needs_metadata_migration {
                 let next_block = render_pack_managed_block_with_line_ending(
                     &marker,
                     &refresh.pack.body,
                     line_ending,
                 )?;
                 rendered = render_pack_block(&rendered, &marker, &refresh.pack.body)?;
-                updated[refresh.updated_entry_index].commit = Some(refresh.commit.clone());
-                updated[refresh.updated_entry_index].version = refresh.pack.version.clone();
-                operations.push(InstructionSyncOperation {
-                    source_id: entry.source_id.clone(),
-                    pack_id: entry.pack_id.clone(),
-                    target: target.clone(),
-                    action: if next_block == actual {
-                        "unchanged".to_owned()
-                    } else {
-                        "refreshed".to_owned()
-                    },
-                    previous_commit: refresh.previous_commit,
-                    commit: refresh.commit,
-                });
+                if let PendingPackRefreshProvenance::Source {
+                    updated_entry_index,
+                    previous_commit,
+                    commit,
+                } = refresh.provenance
+                {
+                    updated[updated_entry_index].commit = Some(commit.clone());
+                    updated[updated_entry_index].version = refresh.pack.version.clone();
+                    operations.push(InstructionSyncOperation {
+                        source_id: entry.source_id.clone(),
+                        pack_id: entry.pack_id.clone(),
+                        target: target.clone(),
+                        action: if next_block == actual {
+                            "unchanged".to_owned()
+                        } else {
+                            "refreshed".to_owned()
+                        },
+                        previous_commit,
+                        commit,
+                    });
+                }
             }
         }
 
