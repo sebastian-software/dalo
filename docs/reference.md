@@ -989,7 +989,7 @@ adds the same isolated semantic review as `dalo audit`.
 
 `approve list` also surfaces every persisted accepted-risk audit, with its
 source reference, exact content hash, acceptance reason/timestamp, scope
-binding, and a command for re-inspection. The human output labels these
+binding, and a same-store command for re-inspection. The human output labels these
 exceptions explicitly and explains that `@sha256:` suffixes bind a record to
 an exact content or contract hash.
 

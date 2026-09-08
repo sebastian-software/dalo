@@ -143,7 +143,7 @@ pub fn list(paths: &StorePaths) -> DaloResult<ApprovalListReport> {
                     reason: acceptance.reason,
                     accepted_at_unix: acceptance.accepted_at_unix,
                     scope_hash: acceptance.scope_hash,
-                    audit_command: audit_command(&report.source_ref, &report.skill_path),
+                    audit_command: audit_command(paths, &report.source_ref, &report.skill_path),
                 })
         })
         .collect();
@@ -155,7 +155,7 @@ pub fn list(paths: &StorePaths) -> DaloResult<ApprovalListReport> {
     })
 }
 
-fn audit_command(source_ref: &str, skill_path: &std::path::Path) -> String {
+fn audit_command(paths: &StorePaths, source_ref: &str, skill_path: &std::path::Path) -> String {
     // Path audits use a synthetic source ref that is an identity, not a valid
     // CLI selector. Replay them from the persisted directory instead, and
     // quote every target as one shell word because it may contain metacharacters.
@@ -164,9 +164,12 @@ fn audit_command(source_ref: &str, skill_path: &std::path::Path) -> String {
     } else {
         source_ref.to_owned()
     };
-    format!(
-        "dalo audit {}",
-        crate::error::shell_quote_path(std::path::Path::new(&target))
+    store::dalo_command(
+        &paths.root,
+        &format!(
+            "audit {}",
+            crate::error::shell_quote_path(std::path::Path::new(&target))
+        ),
     )
 }
 
@@ -385,12 +388,18 @@ mod tests {
         assert_eq!(acceptance.reason, "reviewed exception");
         assert_eq!(acceptance.accepted_at_unix, 200);
         assert_eq!(acceptance.scope_hash, "cafebabe");
-        assert_eq!(acceptance.audit_command, "dalo audit 'catalog:danger-tool'");
+        assert_eq!(
+            acceptance.audit_command,
+            store::dalo_command(&paths.root, "audit 'catalog:danger-tool'")
+        );
         let path_acceptance = &report.accepted_risks[1];
         assert_eq!(path_acceptance.source_ref, "path:danger@cafebabe");
         assert_eq!(
             path_acceptance.audit_command,
-            format!("dalo audit {}", crate::error::shell_quote_path(path_target))
+            store::dalo_command(
+                &paths.root,
+                &format!("audit {}", crate::error::shell_quote_path(path_target)),
+            )
         );
     }
 
