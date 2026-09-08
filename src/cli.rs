@@ -1785,7 +1785,7 @@ fn run_tool(options: &GlobalOptions, command: ToolCommand) -> DaloResult<()> {
             println!("contract hash: {}", report.tool.contract_hash);
             println!("plugin package hash: {}", report.plugin_package_hash);
             println!("entry: {} ({})", report.tool.entry, report.tool.runtime);
-            println!("argv: {}", format_display_values(&report.tool.argv));
+            println!("argv: {}", format_argv(&report.tool.argv));
             println!(
                 "capabilities: {}",
                 format_display_values(&report.tool.capabilities)
@@ -2021,6 +2021,32 @@ fn format_display_values(values: &[impl std::fmt::Display]) -> String {
         .map(std::string::ToString::to_string)
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+fn format_argv(values: &[String]) -> String {
+    if values.is_empty() {
+        return "none".to_owned();
+    }
+    values
+        .iter()
+        .map(|value| format!("\"{}\"", escape_display_token(value)))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn escape_display_token(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        match character {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            character if character.is_control() => {
+                escaped.push_str(&format!("\\u{{{:x}}}", character as u32));
+            }
+            character => escaped.push(character),
+        }
+    }
+    escaped
 }
 
 fn valid_plugin_rule_id(value: &str) -> bool {
