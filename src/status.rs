@@ -1171,9 +1171,9 @@ pub fn print_approval_list(report: &ApprovalListReport) {
 }
 
 fn print_accepted_risk_summary(acceptance: &AcceptedRiskSummary) {
+    println!("  {}", term::terminal_safe_text(&acceptance.source_ref),);
     println!(
-        "  {} @sha256:{}",
-        term::terminal_safe_text(&acceptance.source_ref),
+        "    content hash: {}",
         term::terminal_safe_text(&acceptance.content_hash)
     );
     println!(
