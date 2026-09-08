@@ -17,7 +17,7 @@ use sha2::{Digest, Sha256};
 use tempfile::tempfile;
 
 #[cfg(unix)]
-use rustix::process::{Pid, Signal, kill_process_group};
+use rustix::process::{Pid, Signal, kill_process_group, test_kill_process_group};
 
 use crate::error::{DaloError, DaloResult};
 use crate::hook::{
@@ -29,6 +29,7 @@ use crate::store::StorePaths;
 use crate::tool;
 
 const MAX_HANDLER_OUTPUT: u64 = 4 * 1024 * 1024;
+const HANDLER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Exact hidden-dispatch invocation selected by a native sidecar.
 #[derive(Debug, Clone)]
@@ -268,6 +269,7 @@ fn invoke_hook(
         }
         thread::sleep(Duration::from_millis(5));
     };
+    terminate_handler_process_group(&mut child)?;
     let stdout = stdout_reader.join().map_err(|_| DaloError::StateError {
         reason: "hook stdout reader failed".to_owned(),
     })??;
@@ -292,14 +294,81 @@ fn invoke_hook(
     Ok(output)
 }
 
-fn terminate_handler_process(child: &mut Child) {
+/// What the kernel reported about the handler process group when it was
+/// signalled or probed with `kill(-pgid, …)`.
+#[cfg(unix)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProcessGroupProbe {
+    /// At least one member is still there.
+    Present,
+    /// Nothing is left to signal.
+    Gone,
+}
+
+/// Interpret a `kill(-pgid, …)` result.
+///
+/// macOS reports an empty process group as `EPERM` after its leader has been
+/// reaped. Linux uses `EPERM` for a live group whose members cannot be
+/// signalled, so only macOS can treat it as gone.
+#[cfg(unix)]
+fn interpret_process_group_signal(
+    result: Result<(), rustix::io::Errno>,
+) -> Result<ProcessGroupProbe, rustix::io::Errno> {
+    match result {
+        Ok(()) => Ok(ProcessGroupProbe::Present),
+        Err(rustix::io::Errno::SRCH) => Ok(ProcessGroupProbe::Gone),
+        #[cfg(target_os = "macos")]
+        Err(rustix::io::Errno::PERM) => Ok(ProcessGroupProbe::Gone),
+        Err(error) => Err(error),
+    }
+}
+
+fn terminate_handler_process_group(child: &mut Child) -> DaloResult<()> {
     #[cfg(unix)]
     {
         let process_group = Pid::from_child(child);
-        if kill_process_group(process_group, Signal::KILL).is_ok() {
-            let _ = child.wait();
-            return;
+        if let Err(error) =
+            interpret_process_group_signal(kill_process_group(process_group, Signal::KILL))
+        {
+            return Err(DaloError::StateError {
+                reason: format!("failed to terminate hook-handler process group: {error}"),
+            });
         }
+        let _ = child.wait();
+        let deadline = Instant::now() + HANDLER_SHUTDOWN_TIMEOUT;
+        loop {
+            match interpret_process_group_signal(test_kill_process_group(process_group)) {
+                Ok(ProcessGroupProbe::Gone) => return Ok(()),
+                Ok(ProcessGroupProbe::Present) if Instant::now() < deadline => {
+                    thread::sleep(Duration::from_millis(10));
+                }
+                Ok(ProcessGroupProbe::Present) => {
+                    return Err(DaloError::StateError {
+                        reason: "hook-handler process group survived termination; output was not audited"
+                            .to_owned(),
+                    });
+                }
+                Err(error) => {
+                    return Err(DaloError::StateError {
+                        reason: format!(
+                            "failed to verify hook-handler process-group termination: {error}"
+                        ),
+                    });
+                }
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        child.kill()?;
+        child.wait()?;
+        Ok(())
+    }
+}
+
+fn terminate_handler_process(child: &mut Child) {
+    if terminate_handler_process_group(child).is_ok() {
+        return;
     }
     let _ = child.kill();
     let _ = child.wait();
@@ -810,6 +879,38 @@ matcher = { tool_names = ["Bash"] }
         assert!(
             started.elapsed() < Duration::from_secs(1),
             "timeout should terminate the handler and join output readers"
+        );
+    }
+
+    #[test]
+    fn dispatcher_terminates_background_child_holding_handler_output_pipes() {
+        let (_temp, paths, status) = fixture(
+            "#!/bin/sh\n/bin/sleep 10 &\nprintf '%s' 'not-json'\n",
+            2_000,
+        );
+        let projection = compile_and_store(&paths, HookProvider::Claude, status);
+
+        let started = Instant::now();
+        let output = dispatch(
+            &paths,
+            &DispatchRequest {
+                provider: HookProvider::Claude,
+                projection: &projection.fingerprint,
+                event: "PreToolUse",
+                group: "group-0000",
+            },
+            br#"{"session_id":"s","cwd":"/tmp","tool_name":"Bash","tool_use_id":"t"}"#,
+        )
+        .expect("failed handler output should be translated to a fail-closed denial");
+
+        assert_eq!(output["hookSpecificOutput"]["permissionDecision"], "deny");
+        assert_eq!(
+            output["hookSpecificOutput"]["permissionDecisionReason"],
+            "hook handler returned malformed output"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "dispatcher should terminate pipe-holding descendants before joining readers"
         );
     }
 
