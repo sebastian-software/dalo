@@ -1218,7 +1218,10 @@ fn apply_plan(
 
     for operation in operations.iter_mut() {
         let kind = operation.kind;
-        if let Err(error) = apply_operation(paths, operation) {
+        let recorded = previous_owned_skills
+            .iter()
+            .any(|record| record.link_path == operation.link_path);
+        if let Err(error) = apply_operation(paths, operation, recorded) {
             return Err(std::io::Error::other(format!(
                 "failed to apply {} operation at `{}`: {error}",
                 kind.as_str(),
@@ -1308,7 +1311,11 @@ fn apply_plan(
     Ok(())
 }
 
-fn apply_operation(paths: &StorePaths, operation: &mut MaterializeOperation) -> DaloResult<()> {
+fn apply_operation(
+    paths: &StorePaths,
+    operation: &mut MaterializeOperation,
+    recorded: bool,
+) -> DaloResult<()> {
     #[cfg(test)]
     if should_fail_apply_for_test(&operation.link_path) {
         return Err(std::io::Error::other("injected apply failure").into());
@@ -1326,7 +1333,12 @@ fn apply_operation(paths: &StorePaths, operation: &mut MaterializeOperation) -> 
                         return Ok(());
                     };
                     let target = fs::read_link(&operation.link_path)?;
-                    if !is_owned_link_target(paths, &operation.link_path, desired_path, &target) {
+                    let target_is_owned = if recorded {
+                        is_owned_link_target(paths, &operation.link_path, desired_path, &target)
+                    } else {
+                        link_target_matches(&operation.link_path, &target, desired_path)
+                    };
+                    if !target_is_owned {
                         operation.kind = MaterializeOperationKind::Conflict;
                         operation.status = MaterializeOperationStatus::Blocked;
                         operation.reason =
@@ -2418,6 +2430,50 @@ mod tests {
             fs::read_link(&link_path).expect("foreign symlink should survive"),
             foreign_dir
         );
+    }
+
+    #[test]
+    fn apply_plan_should_preserve_unrecorded_relink_after_in_store_target_swap() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let target_dir = temp_dir.path().join("target");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        fs::create_dir_all(&target_dir).expect("target should be created");
+        let desired_store_dir = store_root.join("local/skills/review");
+        let swapped_store_dir = store_root.join("sources/other/checkout/skills/review-v2");
+        fs::create_dir_all(&desired_store_dir).expect("desired store directory should be created");
+        fs::create_dir_all(&swapped_store_dir).expect("swapped store directory should be created");
+        let link_path = target_dir.join("review");
+        unix_fs::symlink(&desired_store_dir, &link_path)
+            .expect("desired unrecorded symlink should be created");
+        write_state_with_target(&store_root, &target_dir);
+        let paths = StorePaths::new(store_root);
+        let resolution = resolution_with_skill("review", &desired_store_dir);
+        let state = store::read_state(&paths).expect("state should be readable");
+        let desired_links = desired_links(&state, &resolution, &BTreeMap::new());
+        let mut operations =
+            build_plan(&paths, &state, &desired_links, &[]).expect("plan should be created");
+        assert_eq!(operations[0].kind, MaterializeOperationKind::Relink);
+        let _rollback = MaterializationRollback {
+            state: state.clone(),
+            links: snapshot_links(&operations).expect("snapshot should succeed"),
+        };
+
+        fs::remove_file(&link_path).expect("desired symlink should be removed for the swap");
+        unix_fs::symlink(&swapped_store_dir, &link_path)
+            .expect("swapped foreign symlink should be created");
+        let mut state = state;
+
+        apply_plan(&paths, &mut state, &mut operations, &desired_links)
+            .expect("apply should succeed");
+
+        assert_eq!(operations[0].kind, MaterializeOperationKind::Conflict);
+        assert_eq!(operations[0].status, MaterializeOperationStatus::Blocked);
+        assert_eq!(
+            fs::read_link(&link_path).expect("swapped foreign symlink should survive"),
+            swapped_store_dir
+        );
+        assert!(state.owned_skills.is_empty());
     }
 
     #[test]
