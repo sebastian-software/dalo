@@ -72,6 +72,12 @@ grep -q 'npm uninstall --global getdalo' "$root/docs/uninstall.md"
 grep -q 'dalo approve skill' "$root/docs/troubleshooting.md"
 grep -q 'source_provenance_mismatch' "$root/docs/troubleshooting.md"
 grep -q 'SourceProvenance' "$root/docs/reference.md"
+grep -Fq 'Git availability' "$root/docs/reference.md"
+refute 'reference.md still promises a GitHub CLI doctor check' \
+  grep -Fq 'GitHub CLI' "$root/docs/reference.md"
+grep -Fq 'Git availability' "$root/site/index.html"
+refute 'site/index.html still promises a Git auth doctor check' \
+  grep -Fq 'Git auth' "$root/site/index.html"
 grep -q 'blocking or failed security audits' "$root/docs/reference.md"
 grep -q 'blocked materialization operations' "$root/docs/reference.md"
 grep -q 'SyncReport.degraded_sources\[\]' "$root/docs/reference.md"
