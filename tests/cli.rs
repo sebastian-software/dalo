@@ -7096,7 +7096,7 @@ fn resolve_keep_should_protect_unmanaged_skill() {
 #[test]
 fn protected_skill_should_be_kept_without_failing_sync_or_status_check() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
-    let store = temp_dir.path().join("store");
+    let store = store::comparable_path(&temp_dir.path().join("store"));
     let target = temp_dir.path().join("skills");
     setup_store_with_target(&store, &target);
     create_unmanaged_skill(&target, "review");
@@ -7114,6 +7114,17 @@ fn protected_skill_should_be_kept_without_failing_sync_or_status_check() {
     dalo_command()
         .args(["--store"])
         .arg(&store)
+        .arg("next")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "Next: {}",
+            store::dalo_command(&store, "sync")
+        )));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
         .args(["sync", "--check"])
         .assert()
         .success()
@@ -7125,6 +7136,62 @@ fn protected_skill_should_be_kept_without_failing_sync_or_status_check() {
         .args(["status", "--check"])
         .assert()
         .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("next")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("All synced ✓"));
+}
+
+#[test]
+fn next_should_suggest_pending_approval_when_another_skill_is_kept() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = store::comparable_path(&temp_dir.path().join("store"));
+    let target = temp_dir.path().join("skills");
+    let source = temp_dir.path().join("team-repo");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    let local = store.join("local/skills/review");
+    std::fs::create_dir_all(&local).expect("local skill dir should be created");
+    std::fs::write(local.join("SKILL.md"), "# Managed review\n")
+        .expect("local skill should be written");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "keep", "review"])
+        .assert()
+        .success();
+
+    create_git_skill_repo_with_skill(&source, "launch", "# Launch\n");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "team"])
+        .arg(&source)
+        .assert()
+        .success();
+    set_source_untrusted(&store, "team");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("next")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("pending approvals: 1"))
+        .stdout(predicate::str::contains(format!(
+            "Next: {}",
+            store::dalo_command(&store, "approve skill team:launch")
+        )));
 }
 
 #[test]
