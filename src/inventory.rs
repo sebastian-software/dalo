@@ -1260,6 +1260,8 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
     let mut at_line_start = true;
     let mut line_indent = 0_usize;
     let mut plain_scalar_indent = None;
+    let mut same_indent_plain_scalar_may_be_mapping_key = false;
+    let mut pending_same_indent_references = 0_usize;
     let mut in_tag_property = false;
     let mut in_anchor_property = false;
 
@@ -1277,6 +1279,14 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
                     // so a leading quote remains scalar content rather than a
                     // quoted-scalar delimiter.
                     scalar_can_start = false;
+                } else if plain_scalar_indent == Some(line_indent) {
+                    // A same-indented line can either continue a plain scalar or
+                    // start a sibling mapping key. Keep it as scalar text unless
+                    // a mapping-value indicator proves otherwise. References seen
+                    // before that indicator remain provisional so decorated keys
+                    // still count, while literal scalar text does not.
+                    scalar_can_start = false;
+                    same_indent_plain_scalar_may_be_mapping_key = true;
                 } else {
                     plain_scalar_indent = None;
                     scalar_can_start = true;
@@ -1346,25 +1356,35 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
             '#' if previous.is_none_or(char::is_whitespace) => in_comment = true,
             '\'' if scalar_can_start => in_single_quote = true,
             '"' if scalar_can_start => in_double_quote = true,
-            '&' if scalar_can_start
+            '&' if (scalar_can_start || same_indent_plain_scalar_may_be_mapping_key)
                 && yaml_anchor_or_alias_starts(previous, chars.peek().copied()) =>
             {
-                in_anchor_property = true;
-                references += 1;
-                if references > limit {
-                    return true;
+                if same_indent_plain_scalar_may_be_mapping_key {
+                    pending_same_indent_references += 1;
+                } else {
+                    in_anchor_property = true;
+                    references += 1;
+                    if references > limit {
+                        return true;
+                    }
                 }
             }
-            '*' if scalar_can_start
+            '*' if (scalar_can_start || same_indent_plain_scalar_may_be_mapping_key)
                 && yaml_anchor_or_alias_starts(previous, chars.peek().copied()) =>
             {
-                plain_scalar_indent = Some(line_indent);
-                references += 1;
-                if references > limit {
-                    return true;
+                if same_indent_plain_scalar_may_be_mapping_key {
+                    pending_same_indent_references += 1;
+                } else {
+                    plain_scalar_indent = Some(line_indent);
+                    references += 1;
+                    if references > limit {
+                        return true;
+                    }
                 }
             }
             '\n' => {
+                same_indent_plain_scalar_may_be_mapping_key = false;
+                pending_same_indent_references = 0;
                 scalar_can_start = true;
                 at_line_start = true;
                 line_indent = 0;
@@ -1380,12 +1400,25 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
                 scalar_can_start = false;
             }
             ':' if flow_depth > 0 || chars.peek().is_some_and(|next| next.is_whitespace()) => {
+                references += pending_same_indent_references;
+                if references > limit {
+                    return true;
+                }
+                same_indent_plain_scalar_may_be_mapping_key = false;
+                pending_same_indent_references = 0;
                 plain_scalar_indent = None;
                 scalar_can_start = true;
             }
             '!' if scalar_can_start => in_tag_property = true,
             '-' | '?'
-                if scalar_can_start && chars.peek().is_some_and(|next| next.is_whitespace()) => {}
+                if (scalar_can_start || same_indent_plain_scalar_may_be_mapping_key)
+                    && chars.peek().is_some_and(|next| next.is_whitespace()) =>
+            {
+                same_indent_plain_scalar_may_be_mapping_key = false;
+                pending_same_indent_references = 0;
+                plain_scalar_indent = None;
+                scalar_can_start = true;
+            }
             character if !character.is_whitespace() => {
                 if scalar_can_start {
                     plain_scalar_indent = Some(line_indent);
@@ -2524,6 +2557,55 @@ required = true
                 .message
                 .contains("anchor/alias references exceed")
         );
+    }
+
+    #[test]
+    fn scan_source_should_reject_excessive_references_after_same_indent_plain_scalar_quote_text() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("same-indent-plain-quote-alias-bomb");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        let aliases = "*tag, ".repeat(MAX_FRONTMATTER_ANCHOR_OR_ALIAS_REFERENCES - 1);
+        fs::write(
+            skill_dir.join(SKILL_FILE),
+            format!(
+                "---\nname: same-indent-plain-quote-alias-bomb\ndescription:\n  plain\n  \"quote\ntags: [&tag bounded, {aliases}*tag]\n---\n# Same Indent Plain Quote Alias Bomb\n"
+            ),
+        )
+        .expect("alias-bomb skill should be written");
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should succeed");
+
+        assert!(inventory.skills.is_empty());
+        assert_eq!(
+            inventory.warnings[0].code,
+            InventoryWarningCode::MalformedFrontmatter
+        );
+        assert!(
+            inventory.warnings[0]
+                .message
+                .contains("anchor/alias references exceed")
+        );
+    }
+
+    #[test]
+    fn scan_source_should_ignore_anchor_alias_text_in_same_indent_plain_scalar_continuations() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("same-indent-plain-scalar-literals");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        let literal_references = "  &anchor *alias\n".repeat(9);
+        fs::write(
+            skill_dir.join(SKILL_FILE),
+            format!(
+                "---\nname: same-indent-plain-scalar-literals\ndescription:\n  plain\n{literal_references}---\n# Same Indent Plain Scalar Literals\n"
+            ),
+        )
+        .expect("literal-text skill should be written");
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should succeed");
+
+        assert_eq!(inventory.skills.len(), 1);
+        assert!(inventory.skills[0].description.is_some());
+        assert!(inventory.warnings.is_empty());
     }
 
     #[test]
