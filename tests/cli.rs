@@ -6810,6 +6810,43 @@ fn generated_delivery_timeout_should_terminate_generator_and_preserve_last_good_
     fixture.assert_last_good_link();
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn generated_delivery_should_deny_generator_tcp_connections() {
+    use std::net::TcpListener;
+
+    let fixture = GeneratedDeliveryFailureFixture::new();
+    let listener = TcpListener::bind(("127.0.0.1", 0))
+        .expect("loopback listener should be available for the sandbox probe");
+    listener
+        .set_nonblocking(true)
+        .expect("loopback listener should become nonblocking");
+    let port = listener
+        .local_addr()
+        .expect("loopback listener should have an address")
+        .port();
+
+    fixture.replace_generator(
+        &format!(
+            "#!/bin/bash\nif : > \"/dev/tcp/127.0.0.1/{port}\"; then\n  printf '# Network Escaped Generator\\n' > \"$1/codex/review/SKILL.md\"\nelse\n  printf '# TCP Denied Generator\\n' > \"$1/codex/review/SKILL.md\"\nfi\n"
+        ),
+        "attempt generator TCP connection",
+    );
+    fixture.command().arg("sync").assert().success();
+
+    assert_eq!(
+        std::fs::read_to_string(fixture.target.join("review/SKILL.md")).unwrap(),
+        "# TCP Denied Generator\n"
+    );
+    assert!(
+        matches!(
+            listener.accept(),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock
+        ),
+        "the Linux delivery sandbox must deny generator TCP connections"
+    );
+}
+
 #[test]
 fn generated_delivery_blocking_audit_should_preserve_only_last_good_derivation() {
     let fixture = GeneratedDeliveryFailureFixture::new();

@@ -176,6 +176,17 @@ grep -q 'dalo completions <bash|zsh|fish>' "$root/site/install.md"
 grep -q '^## Upgrades and Removal' "$root/site/install.md"
 grep -q 'source add <id> <git-url-or-path>' "$root/docs/reference.md"
 grep -q 'source add-catalog <id> <git-url-or-path>' "$root/docs/reference.md"
+delivery_sandbox_reference="$(awk '/^Generator execution is fail-closed/{on=1} on && /^Generated delivery has two independent approvals:/{exit} on{print}' "$root/docs/reference.md")"
+printf '%s\n' "$delivery_sandbox_reference" | grep -Fq 'Landlock ABI v4'
+printf '%s\n' "$delivery_sandbox_reference" | grep -Fq 'denies TCP connection and bind operations'
+printf '%s\n' "$delivery_sandbox_reference" | grep -Fq 'not a general read-confinement boundary'
+printf '%s\n' "$delivery_sandbox_reference" | grep -Fq 'do not cover UDP or UNIX-domain sockets'
+case "$delivery_sandbox_reference" in
+  *'Landlock ABI v3'*)
+    echo 'generated-delivery docs still claim the weaker Landlock ABI v3 boundary' >&2
+    exit 1
+    ;;
+esac
 source_select_reference="$(awk '/^### `dalo source select <id> <skill>\.\.\.`$/{on=1;next} on && /^### /{exit} on{print}' "$root/docs/reference.md")"
 source_select_page="$(awk '/id="dalo-source-select-id-skill"/{on=1;next} on && /<h3 /{exit} on{print}' "$root/site/docs/reference.html")"
 for source_select_document in "$source_select_reference" "$source_select_page"; do
