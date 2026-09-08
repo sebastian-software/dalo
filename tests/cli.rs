@@ -14175,6 +14175,116 @@ fn sync_should_migrate_legacy_metadata_bearing_instruction_block() {
 }
 
 #[test]
+fn sync_should_migrate_legacy_metadata_bearing_local_instruction_blocks() {
+    let temp = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp.path().join("store");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::write(
+        store.join("local/instructions/house-style.md"),
+        "version: 1\ntopics: formatting\n\nUse tabs, not spaces.\n",
+    )
+    .expect("local pack should be written");
+
+    let targets = ["AGENTS.md", "CLAUDE.md"];
+    for name in targets {
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .args(["instructions", "enable", "house-style"])
+            .arg(temp.path().join(name))
+            .assert()
+            .success();
+        std::fs::write(
+            temp.path().join(name),
+            "<!-- dalo:start house-style -->\nversion: 1\ntopics: formatting\n\nUse tabs, not spaces.\n<!-- dalo:end house-style -->\n",
+        )
+        .expect("legacy block should be written");
+    }
+    let lock_before = read_user_lock(&store);
+    assert!(lock_before.active_instruction_packs.iter().all(|entry| {
+        entry.source_id == "local"
+            && entry.commit.is_none()
+            && entry.version.as_deref() == Some("1")
+    }));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["status", "--check"])
+        .assert()
+        .success();
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "sync"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert!(report["instruction_operations"].is_null());
+    for name in targets {
+        assert_eq!(
+            std::fs::read_to_string(temp.path().join(name)).unwrap(),
+            "<!-- dalo:start house-style -->\nUse tabs, not spaces.\n<!-- dalo:end house-style -->\n"
+        );
+    }
+    assert_eq!(
+        read_user_lock(&store).active_instruction_packs,
+        lock_before.active_instruction_packs
+    );
+}
+
+#[test]
+fn sync_should_not_migrate_externally_changed_legacy_local_instruction_block() {
+    let temp = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp.path().join("store");
+    let target = temp.path().join("AGENTS.md");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::write(
+        store.join("local/instructions/house-style.md"),
+        "version: 1\ntopics: formatting\n\nUse tabs, not spaces.\n",
+    )
+    .expect("local pack should be written");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "house-style"])
+        .arg(&target)
+        .assert()
+        .success();
+
+    let external = "<!-- dalo:start house-style -->\nversion: 1\ntopics: formatting\n\nUser-edited policy.\n<!-- dalo:end house-style -->\n";
+    std::fs::write(&target, external).expect("external edit should be written");
+    let lock_before = std::fs::read(store.join("lock.toml")).unwrap();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("changed outside Dalo"));
+
+    assert_eq!(std::fs::read_to_string(&target).unwrap(), external);
+    assert_eq!(std::fs::read(store.join("lock.toml")).unwrap(), lock_before);
+}
+
+#[test]
 fn sync_should_block_active_instruction_pack_after_source_approval_is_revoked() {
     let temp = tempfile::tempdir().expect("tempdir should be created");
     let store = temp.path().join("store");
