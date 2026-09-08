@@ -1335,6 +1335,14 @@ fn should_print_hook_target(target: &crate::hook_sync::HookTargetReport) -> bool
     !crate::hook_sync::is_human_output_inert(target)
 }
 
+fn should_print_resolution_diagnostic(
+    resolution: &Resolution,
+    diagnostic: &resolver::ResolutionDiagnostic,
+) -> bool {
+    resolution.pending_approval_skills.is_empty()
+        || diagnostic.code != resolver::ResolutionDiagnosticCode::PendingApproval
+}
+
 /// Print a human-readable status report.
 pub fn print_status_report(report: &StatusReport) {
     let paths = HumanPathContext::for_status(report);
@@ -1595,9 +1603,18 @@ pub fn print_status_report(report: &StatusReport) {
         }
     }
 
-    if !report.resolution.diagnostics.is_empty() {
+    if report
+        .resolution
+        .diagnostics
+        .iter()
+        .any(|diagnostic| should_print_resolution_diagnostic(&report.resolution, diagnostic))
+    {
         println!("resolution diagnostics:");
-        for diagnostic in &report.resolution.diagnostics {
+        for diagnostic in
+            report.resolution.diagnostics.iter().filter(|diagnostic| {
+                should_print_resolution_diagnostic(&report.resolution, diagnostic)
+            })
+        {
             println!(
                 "  {}: {}",
                 resolver::diagnostic_code_name(diagnostic.code),
@@ -2013,16 +2030,21 @@ pub fn print_sync_report(report: &SyncReport) {
             }
         );
     }
-    for diagnostic in &report.resolution.diagnostics {
+    for diagnostic in report
+        .resolution
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| should_print_resolution_diagnostic(&report.resolution, diagnostic))
+    {
         println!(
             "{prefix}diagnostic: {}: {}",
             resolver::diagnostic_code_name(diagnostic.code),
             store::contextualize_dalo_commands(&report.store, &diagnostic.message)
         );
     }
-    println!(
-        "{prefix}security preflight: deterministic checks and compatible cached findings only; sync did not run an agent reviewer; passing is not a safety guarantee"
-    );
+    if !report.resolution.active_skills.is_empty() {
+        println!("{prefix}security preflight: deterministic checks only");
+    }
 }
 
 fn print_sync_summary(report: &SyncReport) {
