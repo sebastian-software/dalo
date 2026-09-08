@@ -658,6 +658,54 @@ fn tool_and_hook_list_check_should_fail_for_rejected_plugin_packages() {
 }
 
 #[test]
+fn tool_and_hook_warnings_should_escape_repo_controlled_terminal_sequences() {
+    let fixture = PluginToolFixture::new();
+    let controlled_package = fixture
+        .package
+        .with_file_name("quality\u{1b}[2K\u{1b}]0;pwned\u{7}");
+    std::fs::rename(&fixture.package, &controlled_package)
+        .expect("plugin package should be renamed to a controlled path");
+    std::fs::write(
+        controlled_package.join("PLUGIN.toml"),
+        "schema_version = 99\n",
+    )
+    .expect("invalid plugin manifest should be written");
+
+    for command in [["tool", "list"], ["hook", "list"]] {
+        let output = fixture
+            .command()
+            .args(command)
+            .output()
+            .expect("list command should run");
+        assert!(output.status.success());
+        assert!(
+            !output.stdout.contains(&b'\x1b'),
+            "human output must not contain raw ESC: {:?}",
+            output.stdout
+        );
+        let stdout = String::from_utf8(output.stdout).expect("output should be UTF-8");
+        assert!(stdout.contains("quality\\u{1b}[2K\\u{1b}]0;pwned\\u{7}"));
+        assert!(
+            stdout.contains("warning"),
+            "expected a useful warning: {stdout}"
+        );
+    }
+
+    let output = fixture
+        .command()
+        .arg("status")
+        .output()
+        .expect("status command should run");
+    assert!(output.status.success());
+    assert!(!output.stdout.contains(&b'\x1b'));
+    let stdout = String::from_utf8(output.stdout).expect("output should be UTF-8");
+    assert!(stdout.contains("plugin inventory warnings:"));
+    assert!(stdout.contains("quality\\u{1b}[2K\\u{1b}]0;pwned\\u{7}"));
+
+    fixture.assert_never_executed();
+}
+
+#[test]
 fn plugin_plan_should_report_selected_tool_as_pending_without_execution() {
     let fixture = PluginToolFixture::new();
     fixture.select_plugin();
@@ -2585,6 +2633,45 @@ fn audit_should_block_dangerous_skill_until_exact_hash_is_accepted() {
         .assert()
         .failure()
         .stdout(predicate::str::contains("risk accepted:").not());
+}
+
+#[test]
+fn audit_human_output_should_escape_controlled_evidence_paths() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let skill = temp_dir.path().join("skill");
+    std::fs::create_dir_all(&skill).expect("skill directory should be created");
+    std::fs::write(skill.join("SKILL.md"), "# Review\n").expect("skill should be written");
+    let controlled_file = skill.join("evil\u{1b}[2K\u{1b}]0;pwned\u{7}\n\r.sh");
+    std::fs::write(&controlled_file, "#!/bin/sh\n").expect("controlled file should be written");
+    let mut permissions = std::fs::metadata(&controlled_file)
+        .expect("controlled file metadata should be readable")
+        .permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&controlled_file, permissions)
+        .expect("controlled file should be executable");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("audit")
+        .arg(&skill)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    assert!(!output.contains(&b'\x1b'));
+    let stdout = String::from_utf8(output).expect("output should be UTF-8");
+    assert!(stdout.contains("evil\\u{1b}[2K\\u{1b}]0;pwned\\u{7}\\n\\r.sh"));
+    assert!(stdout.contains("skill contains an executable file"));
 }
 
 #[test]

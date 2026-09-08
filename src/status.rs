@@ -1124,63 +1124,93 @@ fn print_sync_next_step(store_root: &Path, reason: &str) {
 
 /// Print a human-readable layered skill security audit.
 pub fn print_audit_report(report: &AuditReport) {
-    println!("security audit: {}", report.source_ref);
-    println!("  content hash: {}", report.content_hash);
-    println!(
-        "  coverage: {}",
-        match report.coverage {
-            AuditCoverage::Complete => "complete",
-            AuditCoverage::Partial => "partial",
-        }
-    );
-    println!(
-        "  result: {}{}",
-        match report.status {
-            AuditStatus::Clean => "clean",
-            AuditStatus::Review => "review",
-            AuditStatus::Blocked => "blocked",
-        },
-        report
-            .max_severity
-            .map_or_else(String::new, |severity| format!(
-                " (max {})",
-                severity.as_str()
-            ))
-    );
+    for line in audit_report_lines(report) {
+        println!("{line}");
+    }
+}
+
+fn audit_report_lines(report: &AuditReport) -> Vec<String> {
+    let mut lines = vec![
+        format!("security audit: {}", terminal_safe_text(&report.source_ref)),
+        format!(
+            "  content hash: {}",
+            terminal_safe_text(&report.content_hash)
+        ),
+        format!(
+            "  coverage: {}",
+            match report.coverage {
+                AuditCoverage::Complete => "complete",
+                AuditCoverage::Partial => "partial",
+            }
+        ),
+        format!(
+            "  result: {}{}",
+            match report.status {
+                AuditStatus::Clean => "clean",
+                AuditStatus::Review => "review",
+                AuditStatus::Blocked => "blocked",
+            },
+            report
+                .max_severity
+                .map_or_else(String::new, |severity| format!(
+                    " (max {})",
+                    severity.as_str()
+                ))
+        ),
+    ];
     for finding in &report.static_findings {
-        print_audit_finding("static", finding);
+        lines.push(audit_finding_line("static", finding));
     }
     if let Some(review) = &report.agent_review {
-        println!(
+        lines.push(format!(
             "  agent review: {} (isolation: {}; non-authoritative)",
             review.provider.as_str(),
             review.isolation.as_str()
-        );
-        println!(
+        ));
+        lines.push(format!(
             "    assessment: {}",
-            agent_review_assessment(&review.summary, review.findings.len())
-        );
-        println!("    additional findings: {}", review.findings.len());
+            terminal_safe_text(agent_review_assessment(
+                &review.summary,
+                review.findings.len()
+            ))
+        ));
+        lines.push(format!(
+            "    additional findings: {}",
+            review.findings.len()
+        ));
         for capability in &review.expected_capabilities {
-            println!("    capability: {capability}");
+            lines.push(format!(
+                "    capability: {}",
+                terminal_safe_text(capability)
+            ));
         }
         for action in &review.expected_actions {
-            println!("    expected action: {action}");
+            lines.push(format!(
+                "    expected action: {}",
+                terminal_safe_text(action)
+            ));
         }
         for behavior in &review.undeclared_behaviors {
-            println!("    undeclared: {behavior}");
+            lines.push(format!("    undeclared: {}", terminal_safe_text(behavior)));
         }
         for finding in &review.findings {
-            print_audit_finding("agent", finding);
+            lines.push(audit_finding_line("agent", finding));
         }
-        println!("    note: {}", agent_review_disclaimer());
+        lines.push(format!("    note: {}", agent_review_disclaimer()));
     }
     if let Some(acceptance) = &report.risk_acceptance {
-        println!("  risk accepted: {}", acceptance.reason);
+        lines.push(format!(
+            "  risk accepted: {}",
+            terminal_safe_text(&acceptance.reason)
+        ));
     } else if report.status == AuditStatus::Blocked {
-        println!("  installation policy: blocked until risk is explicitly accepted");
+        lines.push("  installation policy: blocked until risk is explicitly accepted".to_owned());
     }
-    println!("  note: no findings means no known issue was detected; it is not a safety guarantee");
+    lines.push(
+        "  note: no findings means no known issue was detected; it is not a safety guarantee"
+            .to_owned(),
+    );
+    lines
 }
 
 fn agent_review_disclaimer() -> &'static str {
@@ -1195,19 +1225,19 @@ fn agent_review_assessment(summary: &str, findings_len: usize) -> &str {
     }
 }
 
-fn print_audit_finding(layer: &str, finding: &crate::audit::AuditFinding) {
+fn audit_finding_line(layer: &str, finding: &crate::audit::AuditFinding) -> String {
     let location = finding.line.map_or_else(
-        || finding.path.clone(),
-        |line| format!("{}:{line}", finding.path),
+        || terminal_safe_text(&finding.path),
+        |line| format!("{}:{line}", terminal_safe_text(&finding.path)),
     );
-    println!(
+    format!(
         "  {} {} {} [{}]: {}",
         layer,
         finding.severity.as_str(),
         location,
-        finding.category,
-        finding.message
-    );
+        terminal_safe_text(&finding.category),
+        terminal_safe_text(&finding.message)
+    )
 }
 
 fn should_print_hook_target(target: &crate::hook_sync::HookTargetReport) -> bool {
@@ -1224,9 +1254,11 @@ pub fn print_status_report(report: &StatusReport) {
         for tool in &report.tools.tools {
             println!(
                 "  {} state={:?} contract=sha256:{}",
-                tool.tool.source_ref, tool.state, tool.tool.contract_hash
+                terminal_safe_text(&tool.tool.source_ref),
+                tool.state,
+                terminal_safe_text(&tool.tool.contract_hash)
             );
-            println!("    {}", tool.diagnostic);
+            println!("    {}", terminal_safe_text(&tool.diagnostic));
         }
     }
     if !report.hooks.hooks.is_empty() {
@@ -1234,9 +1266,12 @@ pub fn print_status_report(report: &StatusReport) {
         for hook in &report.hooks.hooks {
             println!(
                 "  {} state={:?} tool_state={:?} contract=sha256:{}",
-                hook.hook.source_ref, hook.state, hook.tool_state, hook.hook.contract_hash
+                terminal_safe_text(&hook.hook.source_ref),
+                hook.state,
+                hook.tool_state,
+                terminal_safe_text(&hook.hook.contract_hash)
             );
-            println!("    {}", hook.diagnostic);
+            println!("    {}", terminal_safe_text(&hook.diagnostic));
         }
     }
     for target in &report.plugin_targets {
@@ -2039,7 +2074,7 @@ fn terminal_safe_path(path: &Path) -> String {
     terminal_safe_text(&path.to_string_lossy())
 }
 
-fn terminal_safe_text(value: &str) -> String {
+pub(crate) fn terminal_safe_text(value: &str) -> String {
     value.chars().fold(String::new(), |mut escaped, character| {
         if character.is_control() {
             escaped.extend(character.escape_default());
@@ -2953,6 +2988,69 @@ mod tests {
         assert_eq!(
             terminal_safe_text("über\u{1b}[2J-skill"),
             "über\\u{1b}[2J-skill"
+        );
+    }
+
+    #[test]
+    fn audit_report_lines_should_escape_all_untrusted_review_text() {
+        let report = AuditReport {
+            schema_version: 1,
+            source_ref: "local:evil\u{1b}[2K".to_owned(),
+            skill_path: PathBuf::from("/tmp/evil"),
+            content_hash: "sha256\u{7}".to_owned(),
+            static_engine_version: "5".to_owned(),
+            static_scan_excludes_root_source_metadata: Some(false),
+            scanned_at_unix: 0,
+            coverage: AuditCoverage::Complete,
+            status: AuditStatus::Review,
+            max_severity: Some(audit::Severity::Medium),
+            static_findings: vec![audit::AuditFinding {
+                id: "static.test".to_owned(),
+                severity: audit::Severity::Medium,
+                category: "category\u{1b}]0;spoof\u{7}".to_owned(),
+                path: "evil\u{1b}[31m.sh".to_owned(),
+                line: Some(7),
+                message: "message\nwith\rcontrols".to_owned(),
+                evidence: None,
+            }],
+            agent_review: Some(audit::AgentReview {
+                provider: audit::AgentProvider::Claude,
+                isolation: audit::AgentIsolation::NoTools,
+                prompt_version: "2".to_owned(),
+                summary: "review\u{1b}[2J summary".to_owned(),
+                max_severity: Some(audit::Severity::Medium),
+                findings: vec![audit::AuditFinding {
+                    id: "agent.test".to_owned(),
+                    severity: audit::Severity::Medium,
+                    category: "agent category\u{7}".to_owned(),
+                    path: "agent\u{1b}]8;;https://example.test\u{7}".to_owned(),
+                    line: None,
+                    message: "agent message\u{1b}\\control".to_owned(),
+                    evidence: None,
+                }],
+                expected_capabilities: vec!["filesystem\u{1b}[2J-read".to_owned()],
+                expected_actions: vec!["read\nreview input".to_owned()],
+                undeclared_behaviors: vec!["opens\rterminal title".to_owned()],
+            }),
+            risk_acceptance: Some(audit::RiskAcceptance {
+                reason: "human review\u{1b}]0;spoof\u{7}".to_owned(),
+                accepted_at_unix: 0,
+                scope_hash: "scope".to_owned(),
+            }),
+        };
+
+        let lines = audit_report_lines(&report);
+        let rendered = lines.join("\n");
+
+        assert!(rendered.contains("capability: filesystem\\u{1b}[2J-read"));
+        assert!(rendered.contains("expected action: read\\nreview input"));
+        assert!(rendered.contains("undeclared: opens\\rterminal title"));
+        assert!(rendered.contains("evil\\u{1b}[31m.sh:7"));
+        assert!(rendered.contains("message\\nwith\\rcontrols"));
+        assert!(
+            lines
+                .iter()
+                .all(|line| !line.contains(['\n', '\r', '\u{1b}', '\u{7}']))
         );
     }
 
