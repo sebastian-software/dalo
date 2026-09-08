@@ -13597,6 +13597,42 @@ fn catalog_select_should_upsert_missing_source_lock_entry() {
 }
 
 #[test]
+fn catalog_select_should_accept_a_source_qualified_slot_reference() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "marketing:copy-editing"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("copy-editing"));
+
+    assert_eq!(
+        store::read_config(&store::StorePaths::new(store))
+            .expect("config should be readable")
+            .sources
+            .iter()
+            .find(|source| source.id == "marketing")
+            .expect("catalog source should exist")
+            .selection,
+        ["skills/copy-editing".to_owned()]
+    );
+}
+
+#[test]
 fn catalog_select_should_support_path_fallback_for_duplicate_slots() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
