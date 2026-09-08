@@ -82,7 +82,7 @@ pub struct SourceConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub update_policy: Option<String>,
     /// Selected skill references for a catalog source. Each entry is a stable
-    /// frontmatter ID, a `<source-id>:<slot>` ref, or a slot name. Always empty
+    /// frontmatter ID, a slot name, or a catalog-relative path. Always empty
     /// for non-catalog sources.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub selection: Vec<String>,
