@@ -143,7 +143,7 @@ pub fn list(paths: &StorePaths) -> DaloResult<ApprovalListReport> {
                     reason: acceptance.reason,
                     accepted_at_unix: acceptance.accepted_at_unix,
                     scope_hash: acceptance.scope_hash,
-                    audit_command: format!("dalo audit {}", report.source_ref),
+                    audit_command: audit_command(&report.source_ref, &report.skill_path),
                 })
         })
         .collect();
@@ -153,6 +153,21 @@ pub fn list(paths: &StorePaths) -> DaloResult<ApprovalListReport> {
         approvals: approvals.approvals,
         accepted_risks,
     })
+}
+
+fn audit_command(source_ref: &str, skill_path: &std::path::Path) -> String {
+    // Path audits use a synthetic source ref that is an identity, not a valid
+    // CLI selector. Replay them from the persisted directory instead, and
+    // quote every target as one shell word because it may contain metacharacters.
+    let target = if source_ref.starts_with("path:") {
+        skill_path.to_string_lossy().into_owned()
+    } else {
+        source_ref.to_owned()
+    };
+    format!(
+        "dalo audit {}",
+        crate::error::shell_quote_path(std::path::Path::new(&target))
+    )
 }
 
 fn canonical_value(paths: &StorePaths, scope: &str, value: &str) -> DaloResult<String> {
@@ -307,6 +322,7 @@ mod tests {
     #[test]
     fn list_should_surface_persisted_risk_acceptances_with_exact_bindings() {
         let (_temp, paths) = init_paths();
+        let path_target = std::path::Path::new("/tmp/danger's $(touch pwned)");
         std::fs::write(
             paths.audits_dir.join("danger.json"),
             serde_json::json!({
@@ -336,17 +352,46 @@ mod tests {
             .to_string(),
         )
         .expect("audit report should be written");
+        std::fs::write(
+            paths.audits_dir.join("path.json"),
+            serde_json::json!({
+                "schema_version": 1,
+                "source_ref": "path:danger@cafebabe",
+                "skill_path": path_target,
+                "content_hash": "feedface",
+                "static_engine_version": "5",
+                "static_scan_excludes_root_source_metadata": false,
+                "scanned_at_unix": 101,
+                "coverage": "complete",
+                "status": "blocked",
+                "max_severity": "high",
+                "static_findings": [],
+                "risk_acceptance": {
+                    "reason": "reviewed path exception",
+                    "accepted_at_unix": 201,
+                    "scope_hash": "badcafe"
+                }
+            })
+            .to_string(),
+        )
+        .expect("path audit report should be written");
 
         let report = list(&paths).expect("approval list should include audits");
         assert!(report.approvals.is_empty());
-        assert_eq!(report.accepted_risks.len(), 1);
+        assert_eq!(report.accepted_risks.len(), 2);
         let acceptance = &report.accepted_risks[0];
         assert_eq!(acceptance.source_ref, "catalog:danger-tool");
         assert_eq!(acceptance.content_hash, "deadbeef");
         assert_eq!(acceptance.reason, "reviewed exception");
         assert_eq!(acceptance.accepted_at_unix, 200);
         assert_eq!(acceptance.scope_hash, "cafebabe");
-        assert_eq!(acceptance.audit_command, "dalo audit catalog:danger-tool");
+        assert_eq!(acceptance.audit_command, "dalo audit 'catalog:danger-tool'");
+        let path_acceptance = &report.accepted_risks[1];
+        assert_eq!(path_acceptance.source_ref, "path:danger@cafebabe");
+        assert_eq!(
+            path_acceptance.audit_command,
+            format!("dalo audit {}", crate::error::shell_quote_path(path_target))
+        );
     }
 
     #[test]
