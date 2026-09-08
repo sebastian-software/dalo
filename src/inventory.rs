@@ -1261,7 +1261,6 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
     let mut line_indent = 0_usize;
     let mut plain_scalar_indent = None;
     let mut same_indent_plain_scalar_may_be_mapping_key = false;
-    let mut pending_same_indent_references = 0_usize;
     let mut in_tag_property = false;
     let mut in_anchor_property = false;
 
@@ -1285,8 +1284,8 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
                     // without making a quoted scalar continuation structural.
                     // Otherwise, keep it as scalar text unless a mapping-value
                     // indicator proves it is a key. References seen before that
-                    // indicator remain provisional so decorated keys still count,
-                    // while literal scalar text does not.
+                    // indicator remain provisional so a confirmed key can discard
+                    // its literal indicator text, while scalar text does not.
                     if same_indent_line_starts_with_quoted_mapping_key(character, &chars) {
                         scalar_can_start = true;
                     } else {
@@ -1365,9 +1364,7 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
             '&' if (scalar_can_start || same_indent_plain_scalar_may_be_mapping_key)
                 && yaml_anchor_or_alias_starts(previous, chars.peek().copied()) =>
             {
-                if same_indent_plain_scalar_may_be_mapping_key {
-                    pending_same_indent_references += 1;
-                } else {
+                if !same_indent_plain_scalar_may_be_mapping_key {
                     in_anchor_property = true;
                     references += 1;
                     if references > limit {
@@ -1378,9 +1375,7 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
             '*' if (scalar_can_start || same_indent_plain_scalar_may_be_mapping_key)
                 && yaml_anchor_or_alias_starts(previous, chars.peek().copied()) =>
             {
-                if same_indent_plain_scalar_may_be_mapping_key {
-                    pending_same_indent_references += 1;
-                } else {
+                if !same_indent_plain_scalar_may_be_mapping_key {
                     plain_scalar_indent = Some(line_indent);
                     references += 1;
                     if references > limit {
@@ -1390,7 +1385,6 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
             }
             '\n' => {
                 same_indent_plain_scalar_may_be_mapping_key = false;
-                pending_same_indent_references = 0;
                 scalar_can_start = true;
                 at_line_start = true;
                 line_indent = 0;
@@ -1406,12 +1400,7 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
                 scalar_can_start = false;
             }
             ':' if flow_depth > 0 || chars.peek().is_some_and(|next| next.is_whitespace()) => {
-                references += pending_same_indent_references;
-                if references > limit {
-                    return true;
-                }
                 same_indent_plain_scalar_may_be_mapping_key = false;
-                pending_same_indent_references = 0;
                 plain_scalar_indent = None;
                 scalar_can_start = true;
             }
@@ -1421,7 +1410,6 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
                     && chars.peek().is_some_and(|next| next.is_whitespace()) =>
             {
                 same_indent_plain_scalar_may_be_mapping_key = false;
-                pending_same_indent_references = 0;
                 plain_scalar_indent = None;
                 scalar_can_start = true;
             }
@@ -1467,6 +1455,12 @@ fn same_indent_line_starts_with_quoted_mapping_key(
             continue;
         }
         if character == opening_quote && !escaped {
+            while chars
+                .peek()
+                .is_some_and(|character| character.is_whitespace())
+            {
+                chars.next();
+            }
             return chars.next() == Some(':')
                 && chars
                     .peek()

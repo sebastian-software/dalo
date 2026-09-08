@@ -1636,6 +1636,67 @@ fn status_json_should_reject_alias_bomb_after_flow_plain_scalar_quote_continuati
 }
 
 #[test]
+fn status_json_should_ignore_anchor_alias_text_in_quoted_sibling_mapping_key() {
+    assert_status_json_ignores_sibling_mapping_key_indicators(
+        "quoted-sibling-key",
+        format!("\"{}\" : ignored", "&anchor *alias ".repeat(9)),
+    );
+}
+
+#[test]
+fn status_json_should_ignore_anchor_alias_text_in_plain_sibling_mapping_key() {
+    assert_status_json_ignores_sibling_mapping_key_indicators(
+        "plain-sibling-key",
+        format!("plain {}: ignored", "&anchor *alias ".repeat(9)),
+    );
+}
+
+fn assert_status_json_ignores_sibling_mapping_key_indicators(slot: &str, key: String) {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    let skill = store.join("local/skills").join(slot);
+    std::fs::create_dir_all(&skill).expect("skill should be created");
+    std::fs::write(
+        skill.join("SKILL.md"),
+        format!("---\nname: {slot}\ndescription: plain\n{key}\n---\n# {slot}\n"),
+    )
+    .expect("skill should be written");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    let status = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let status: serde_json::Value =
+        serde_json::from_slice(&status).expect("status should emit valid JSON");
+
+    assert_eq!(
+        status["resolution"]["active_skills"]
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+    assert!(
+        status["inventory_warnings"]
+            .as_array()
+            .is_some_and(Vec::is_empty),
+        "literal anchor/alias text in sibling mapping keys must not create warnings: {status}"
+    );
+}
+
+#[test]
 fn agent_list_and_show_should_preview_canonical_provider_projections() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
