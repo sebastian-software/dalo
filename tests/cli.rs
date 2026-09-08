@@ -12162,6 +12162,102 @@ fn catalog_selection_should_stay_pending_until_explicitly_approved() {
 }
 
 #[test]
+fn approve_skill_should_use_direction_aware_sync_hints_without_changing_json_outcomes() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let store_root = store::comparable_path(&store);
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "copy-editing"])
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "skill", "marketing:copy-editing"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "next: {} to link it",
+            store::dalo_command(&store_root, "sync")
+        )));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "revoke", "skill", "marketing:copy-editing"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "next: {} to remove its links",
+            store::dalo_command(&store_root, "sync")
+        )))
+        .stdout(
+            predicate::str::contains(format!(
+                "next: {} to link it",
+                store::dalo_command(&store_root, "sync")
+            ))
+            .not(),
+        );
+
+    let grant_json = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "approve", "skill", "marketing:copy-editing"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let grant: serde_json::Value = serde_json::from_slice(&grant_json).unwrap();
+    assert_eq!(grant["approval"]["action"], "granted");
+    assert_eq!(grant["approval"]["scope"], "skill");
+    assert_eq!(grant["approval"]["value"], "marketing:copy-editing");
+    assert!(grant.get("next").is_none());
+
+    let revoke_json = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args([
+            "--json",
+            "approve",
+            "revoke",
+            "skill",
+            "marketing:copy-editing",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let revoke: serde_json::Value = serde_json::from_slice(&revoke_json).unwrap();
+    assert_eq!(revoke["action"], "revoked");
+    assert_eq!(revoke["scope"], "skill");
+    assert_eq!(revoke["value"], "marketing:copy-editing");
+    assert!(revoke.get("next").is_none());
+}
+
+#[test]
 fn sync_should_print_pending_approval_beside_existing_operations_and_name_check_reason() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

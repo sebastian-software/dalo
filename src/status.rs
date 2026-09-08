@@ -1114,7 +1114,12 @@ pub fn print_approval_report(report: &ApprovalReport, store_root: &Path) {
     };
     println!("{verb} {} {}", report.scope, report.value);
     if report.scope == "skill" && !report.dry_run && report.action != "unchanged" {
-        print_sync_next_step(store_root, "to link it");
+        let reason = if report.action == "revoked" {
+            "to remove its links"
+        } else {
+            "to link it"
+        };
+        print_sync_next_step(store_root, reason);
     }
 }
 
