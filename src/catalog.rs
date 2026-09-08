@@ -68,7 +68,7 @@ pub struct CatalogLock {
     pub source_id: String,
     /// Pinned commit the inventory snapshot was taken from.
     pub commit: String,
-    /// Selected skill references (stable ID preferred, else slot name).
+    /// Selected skill references by stable ID, slot name, or catalog-relative path.
     #[serde(default)]
     pub selected: Vec<String>,
     /// Inventory snapshot of the pinned commit, used for drift detection.
@@ -370,7 +370,8 @@ pub fn inspect_catalog(paths: &StorePaths, id: &str) -> DaloResult<CatalogInspec
 }
 
 /// Select skills from a catalog. Each ref must match an inventory entry by stable
-/// ID or slot name; unknown refs are rejected. Refreshes the lock inventory
+/// ID, slot name, or catalog-relative path; unknown refs are rejected. Refreshes
+/// the lock inventory
 /// snapshot so subsequent drift detection compares against the current commit.
 pub fn select_skills(
     paths: &StorePaths,
