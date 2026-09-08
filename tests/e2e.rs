@@ -676,9 +676,13 @@ fn e2e_manifest_source_provenance_is_visible_and_doctor_detects_pin_mismatch() {
     assert!(doctor["findings"].as_array().is_some_and(|findings| {
         findings.iter().any(|finding| {
             finding["code"] == "source_provenance_mismatch"
-                && finding["message"]
-                    .as_str()
-                    .is_some_and(|message| message.contains("does not match source-lock pin"))
+                && finding["message"].as_str().is_some_and(|message| {
+                    message.contains("does not match source-lock pin")
+                        && message.contains("declaring team's `dalo.toml`")
+                        && message.contains("then run `dalo ")
+                        && message.contains("sync` to recover the manifest-managed checkout")
+                        && !message.contains("source refresh")
+                })
         })
     }));
 }

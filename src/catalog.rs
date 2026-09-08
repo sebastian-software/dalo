@@ -165,15 +165,26 @@ pub fn catalog_checkout_pin_mismatch(
     match git::rev_parse_head(&source.path) {
         Ok(checkout) if checkout == catalog_lock.commit => None,
         Ok(checkout) => Some(format!(
-            "checkout {} does not match source-lock pin {}; restore the checkout to the pinned commit before syncing, or review `dalo source refresh {} --advance` after restoring it",
+            "checkout {} does not match source-lock pin {}; {}",
             short_commit(&checkout),
             short_commit(&catalog_lock.commit),
-            source.id
+            catalog_pin_recovery_guidance(source),
         )),
         Err(error) => Some(format!(
-            "checkout commit could not be read: {error}; restore the checkout to source-lock pin {} before syncing",
-            short_commit(&catalog_lock.commit)
+            "checkout commit could not be read: {error}; {}",
+            catalog_pin_recovery_guidance(source)
         )),
+    }
+}
+
+fn catalog_pin_recovery_guidance(source: &SourceConfig) -> String {
+    if source.declared_by.is_some() {
+        "restore the declaring team's `dalo.toml` if needed, then run `dalo sync` to recover the manifest-managed checkout".to_owned()
+    } else {
+        format!(
+            "restore the checkout to the pinned commit before syncing, or review `dalo source refresh {} --advance` after restoring it",
+            source.id
+        )
     }
 }
 

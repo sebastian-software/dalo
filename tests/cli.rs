@@ -11420,9 +11420,11 @@ fn catalog_select_should_reject_drifted_checkout_without_repinning() {
     assert!(doctor["findings"].as_array().is_some_and(|findings| {
         findings.iter().any(|finding| {
             finding["code"] == "source_provenance_mismatch"
-                && finding["message"]
-                    .as_str()
-                    .is_some_and(|message| message.contains("direct catalog source `marketing`"))
+                && finding["message"].as_str().is_some_and(|message| {
+                    message.contains("direct catalog source `marketing`")
+                        && message.contains("restore the checkout to the pinned commit")
+                        && message.contains("source refresh marketing --advance")
+                })
                 && finding["next_command"]
                     .as_str()
                     .is_some_and(|command| command.ends_with("source refresh marketing --advance"))
