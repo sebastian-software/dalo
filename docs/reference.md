@@ -1111,12 +1111,12 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `target detect` | `TargetDetectReport` | `targets[]` with `id`, `name`, `support`, `path`, `exists`, `linked` |
 | `target link` | `TargetLinkReport` | `target_id`, `path`, `canonical_path`, `status`, `created_dir` |
 | `target unlink` | `TargetUnlinkReport` | `target_id`, `status` |
-| `team init` | `TeamManifestMutationReport` | `path`, `action`, `dry_run`, resulting `manifest` |
-| `team catalog add` | `TeamManifestMutationReport` | `path`, `action`, `catalog_id`, `dry_run`, resulting `manifest` |
-| `team catalog skills` | `TeamManifestMutationReport` | `path`, `action`, `catalog_id`, `dry_run`, resulting `manifest` |
-| `team catalog version` | `TeamManifestMutationReport` | `path`, `action`, `catalog_id`, `dry_run`, resulting `manifest` |
+| `team init` | `TeamManifestMutationReport` | `path`, `action`, `dry_run`, optional `warnings[]`, resulting `manifest` |
+| `team catalog add` | `TeamManifestMutationReport` | `path`, `action`, `catalog_id`, `dry_run`, optional `warnings[]`, resulting `manifest` |
+| `team catalog skills` | `TeamManifestMutationReport` | `path`, `action`, `catalog_id`, `dry_run`, optional `warnings[]`, resulting `manifest` |
+| `team catalog version` | `TeamManifestMutationReport` | `path`, `action`, `catalog_id`, `dry_run`, optional `warnings[]`, resulting `manifest` |
 | `team catalog update` | `TeamCatalogUpdateReport` | `catalog_id`, `old_version`, `old_commit`, `from_ref`, `candidate_commit`, `outcomes[]`, `audits[]`, optional `accepted_risk_reason`, `blocking_reasons[]`, `dry_run`, `updated`, resulting `manifest` |
-| `team catalog remove` | `TeamManifestMutationReport` | `path`, `action`, `catalog_id`, `dry_run`, resulting `manifest` |
+| `team catalog remove` | `TeamManifestMutationReport` | `path`, `action`, `catalog_id`, `dry_run`, optional `warnings[]`, resulting `manifest` |
 | `team show` | `TeamManifestView` | `path`, `manifest` |
 | `source add` | `SourceAddReport` | `source`, `dry_run`, `audits[]` with one `AuditReport` per discovered skill, optional `inventory_warnings[]` (`code`, `path`, `message`) |
 | `source add-catalog` | `CatalogAddOutcome` | resulting `source`, nullable `available_skills`, `dry_run` |
@@ -1359,7 +1359,10 @@ Filter evaluation is set-based and independent of list order:
 - any `+skill` or bare `skill`: whitelist mode
 - exclusions always win over inclusions
 
-Unknown or ambiguous filter references block sync. Manifest-derived catalogs
+Unknown or ambiguous filter references block sync. `team catalog add` rejects
+missing or non-Git local paths before writing the manifest, warns for absolute
+paths because they are not portable to another checkout, and defers remote
+access checks to `sync` so team authoring remains usable offline. Manifest-derived catalogs
 are untrusted by default, so their newly selected skills remain pending until a
 local approval matches. `source select`, `source priority`, `source remove`, and
 pin advancement reject derived catalogs; edit and review `dalo.toml` instead.

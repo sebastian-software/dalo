@@ -2883,6 +2883,9 @@ pub fn print_team_manifest_mutation(report: &TeamManifestMutationReport) {
         action,
         report.path.display()
     );
+    for warning in &report.warnings {
+        println!("warning: {warning}");
+    }
 }
 
 /// Print a parsed team manifest.

@@ -1662,6 +1662,73 @@ fn team_init_should_create_only_the_manifest_without_initializing_a_store() {
 }
 
 #[test]
+fn team_manifest_mutations_should_explain_git_delivery_and_catalog_portability() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let non_git = temp_dir.path().join("non-git");
+    let git_repo = temp_dir.path().join("team-repo");
+    let catalog = temp_dir.path().join("catalog");
+    std::fs::create_dir_all(&non_git).expect("non-Git directory should be created");
+    std::fs::create_dir_all(&git_repo).expect("team repository should be created");
+    create_git_catalog_repo(&catalog);
+
+    dalo_command()
+        .args(["team", "--repo"])
+        .arg(&non_git)
+        .args(["init", "company"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("is not a Git repository"));
+
+    run_git(&git_repo, &["init", "-q"]);
+    dalo_command()
+        .args(["team", "--repo"])
+        .arg(&git_repo)
+        .args(["init", "company"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("next: commit and push dalo.toml"));
+
+    dalo_command()
+        .args(["team", "--repo"])
+        .arg(&git_repo)
+        .args(["catalog", "add", "local"])
+        .arg(&catalog)
+        .args(["--version", "main"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "absolute and will not be portable",
+        ))
+        .stdout(predicate::str::contains("next: commit and push dalo.toml"));
+
+    dalo_command()
+        .args(["team", "--repo"])
+        .arg(&git_repo)
+        .args(["catalog", "skills", "local", "+copy"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("next: commit and push dalo.toml"));
+}
+
+#[test]
+fn team_catalog_add_should_reject_a_missing_local_path_before_writing() {
+    let fixture = TeamCatalogFixture::new();
+    fixture.init_manifest();
+    let missing = fixture.repo.join("missing-catalog");
+
+    fixture
+        .team_command()
+        .args(["catalog", "add", "missing"])
+        .arg(&missing)
+        .args(["--version", "main"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("local source path"))
+        .stderr(predicate::str::contains("does not exist"));
+    assert!(fixture.manifest().catalogs.is_empty());
+}
+
+#[test]
 fn team_catalog_add_should_persist_selection_and_portable_permissions() {
     let fixture = TeamCatalogFixture::initialized_with_catalog();
     let manifest = fixture.manifest();
