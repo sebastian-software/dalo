@@ -114,8 +114,8 @@ dalo --json doctor
 </tr>
 <tr>
 <td><code>source_provenance_mismatch</code></td>
-<td>A manifest-derived catalog&#39;s declaration, generated config, checkout HEAD, or <code>source-lock.toml</code> pin disagree.</td>
-<td>Inspect <code>dalo source list</code>, review the declaring team&#39;s <code>dalo.toml</code>, then run <code>dalo sync</code> to reconcile an expected change. Restore the reviewed manifest or checkout first when the difference is unexpected.</td>
+<td>A catalog&#39;s checkout HEAD and <code>source-lock.toml</code> pin disagree; a manifest-derived catalog can also disagree with its declaration or generated config.</td>
+<td>Restore the expected checkout first. For an intentional direct-catalog update, review <code>dalo --dry-run source refresh &lt;id&gt; --advance</code>, then apply it without <code>--dry-run</code>. For a manifest catalog, review the declaring team&#39;s <code>dalo.toml</code> and run <code>dalo sync</code>.</td>
 </tr>
 <tr>
 <td><code>StoreLocked</code>, error text <code>another dalo operation is running</code></td>
@@ -571,7 +571,7 @@ repository, push the change, then run <code>dalo sync</code>.</p>
 <tr>
 <td><code>source_provenance_mismatch</code></td>
 <td>error</td>
-<td>Compare <code>dalo source list</code> with the declaring team&#39;s <code>dalo.toml</code>, then run <code>dalo sync</code> after restoring the intended declaration or checkout.</td>
+<td>Restore the intended catalog checkout. For a direct catalog, review <code>dalo --dry-run source refresh &lt;id&gt; --advance</code> before intentionally advancing its pin; for a manifest catalog, compare <code>dalo source list</code> with the declaring team&#39;s <code>dalo.toml</code>, then run <code>dalo sync</code>.</td>
 </tr>
 <tr>
 <td><code>source_store_debris</code></td>

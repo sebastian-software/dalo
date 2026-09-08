@@ -1782,7 +1782,7 @@ normal approval workflows.</p>
 <p>Unknown fields in this internal state model are retained across reads and writes for downgrade safety after additive changes. Breaking changes still require a schema-version bump. User-authored configuration remains strict.</p>
 <h2 id="source-locktoml"><a class="doc-anchor" href="#source-locktoml"><code>source-lock.toml</code></a></h2>
 <p>Schema version: <code>schema_version = 3</code>.</p>
-<p>This file stores catalog pins and inventory snapshots. It is written by catalog selection and read by drift checks.</p>
+<p>This file stores catalog pins and inventory snapshots. It is written by catalog selection and read by drift checks. <code>sync</code> and <code>doctor</code> treat a directly-added catalog checkout whose HEAD differs from this pin as degraded: they preserve recorded owned links rather than resolving drifted content. Restore the checkout to its pinned commit, then use <code>dalo source refresh &lt;id&gt; --advance</code> only for a reviewed update.</p>
 <p>Top-level fields:</p>
 <div class="doc-table"><table>
 <thead>
