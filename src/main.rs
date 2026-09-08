@@ -34,6 +34,10 @@ fn main() -> ExitCode {
             if json {
                 print_json_error(&message, code);
             } else {
+                let message = store_root.as_ref().map_or_else(
+                    || dalo::status::compact_human_text(&message),
+                    |store_root| dalo::status::compact_store_text(store_root, &message),
+                );
                 let terminal_message = terminal_safe_error_message(&message);
                 eprintln!("{}: {}", term::error_label("error"), terminal_message);
             }

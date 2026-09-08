@@ -748,8 +748,31 @@ struct HumanPathContext {
 }
 
 impl HumanPathContext {
+    fn home_only() -> Self {
+        Self {
+            roots: Vec::new(),
+            targets: Vec::new(),
+            home: std::env::var_os("HOME").map(PathBuf::from),
+        }
+    }
+
     fn store_only(store: &Path) -> Self {
         Self::from_targets(store, std::iter::empty::<(PathBuf, Vec<String>)>())
+    }
+
+    fn for_resolve_list(store: &Path) -> Self {
+        let paths = StorePaths::new(store.to_path_buf());
+        let targets = store::read_state(&paths).map_or_else(
+            |_| Vec::new(),
+            |state| {
+                state
+                    .targets
+                    .into_iter()
+                    .map(|target| (target.path, vec![target.id]))
+                    .collect()
+            },
+        );
+        Self::from_targets(store, targets)
     }
 
     fn for_status(report: &StatusReport) -> Self {
@@ -954,6 +977,30 @@ impl HumanPathContext {
     }
 }
 
+/// Render a human-facing path with the current user's home directory compacted.
+#[must_use]
+pub fn compact_human_path(path: &Path) -> String {
+    HumanPathContext::home_only().path(path)
+}
+
+/// Render human-facing text with the current user's home directory compacted.
+#[must_use]
+pub fn compact_human_text(value: &str) -> String {
+    HumanPathContext::home_only().text(value)
+}
+
+/// Render human-facing text with store and home paths compacted.
+#[must_use]
+pub fn compact_store_text(store: &Path, value: &str) -> String {
+    HumanPathContext::store_only(store).text(value)
+}
+
+/// Render a human-facing path with the store and home paths compacted.
+#[must_use]
+pub fn compact_store_path(store: &Path, path: &Path) -> String {
+    HumanPathContext::store_only(store).path(path)
+}
+
 fn labeled_path(label: &str, relative: &Path) -> String {
     if relative.as_os_str().is_empty() {
         format!("{label}:/")
@@ -1074,8 +1121,9 @@ pub fn print_init_report(report: &InitReport, next: Option<&NextActionReport>) {
 
 /// Print a compact, state-aware entry-point report.
 pub fn print_next_action_report(report: &NextActionReport) {
+    let paths = HumanPathContext::store_only(&report.store);
     println!("Dalo");
-    println!("  store: {}", report.store.display());
+    println!("  store: {}", paths.root(&report.store));
     println!(
         "  initialized: {}",
         if report.initialized { "yes" } else { "no" }
@@ -1087,10 +1135,10 @@ pub fn print_next_action_report(report: &NextActionReport) {
     println!();
     if let Some(command) = &report.command {
         println!("Next: {command}");
-        println!("  {}", report.message);
+        println!("  {}", paths.text(&report.message));
     } else {
         println!("All synced ✓");
-        println!("  {}", report.message);
+        println!("  {}", paths.text(&report.message));
     }
 }
 
@@ -2417,10 +2465,10 @@ pub fn print_instruction_pack_report(report: &InstructionPackReport) {
         } else {
             format!("{}:{}", report.source_id, report.pack_id)
         },
-        report.target.display()
+        compact_human_path(&report.target)
     );
     if let Some(warning) = &report.warning {
-        println!("warning: {warning}");
+        println!("warning: {}", compact_human_text(warning));
     }
 }
 
@@ -2538,6 +2586,7 @@ pub fn print_adopt_report(report: &AdoptReport, store_root: &Path) {
 
 /// Print a human-readable resolve list report.
 pub fn print_resolve_list_report(report: &ResolveListReport, store_root: &Path) {
+    let paths = HumanPathContext::for_resolve_list(store_root);
     if report.unmanaged_skills.is_empty()
         && report.owned_skills.is_empty()
         && report.target_warnings.is_empty()
@@ -2549,7 +2598,7 @@ pub fn print_resolve_list_report(report: &ResolveListReport, store_root: &Path) 
     if !report.unmanaged_skills.is_empty() {
         println!("unmanaged skills:");
         for skill in &report.unmanaged_skills {
-            print_unmanaged_skill_with_repair_hint(skill, store_root, None);
+            print_unmanaged_skill_with_repair_hint(skill, store_root, Some(&paths));
         }
     }
 
@@ -2559,8 +2608,8 @@ pub fn print_resolve_list_report(report: &ResolveListReport, store_root: &Path) 
             println!(
                 "  {} -> {} ({})",
                 skill.id,
-                skill.link_path.display(),
-                skill.store_path.display()
+                paths.path(&skill.link_path),
+                paths.path(&skill.store_path)
             );
         }
     }
@@ -2571,8 +2620,8 @@ pub fn print_resolve_list_report(report: &ResolveListReport, store_root: &Path) 
             println!(
                 "  {} {}: {}",
                 warning.code.as_str(),
-                warning.path.display(),
-                warning.message
+                paths.path(&warning.path),
+                paths.text(&warning.message)
             );
         }
     }
@@ -2897,16 +2946,16 @@ pub fn print_team_manifest_mutation(report: &TeamManifestMutationReport) {
     println!(
         "{prefix}{} team manifest {}{catalog}",
         action,
-        report.path.display()
+        compact_human_path(&report.path)
     );
     for warning in &report.warnings {
-        println!("warning: {warning}");
+        println!("warning: {}", compact_human_text(warning));
     }
 }
 
 /// Print a parsed team manifest.
 pub fn print_team_manifest_view(report: &TeamManifestView) {
-    println!("team manifest: {}", report.path.display());
+    println!("team manifest: {}", compact_human_path(&report.path));
     if let Some(source) = &report.manifest.source {
         println!(
             "source: {}{}",
@@ -2930,7 +2979,10 @@ pub fn print_team_manifest_view(report: &TeamManifestView) {
         };
         println!(
             "  {} version={} skills={} {}",
-            catalog.id, catalog.version, skills, catalog.url
+            catalog.id,
+            catalog.version,
+            skills,
+            compact_human_text(&catalog.url)
         );
     }
 }
@@ -2949,7 +3001,11 @@ pub fn print_team_catalog_update(report: &TeamCatalogUpdateReport) {
     } else {
         println!("  inventory:");
         for outcome in &report.outcomes {
-            println!("    {} {}", outcome.code.as_str(), outcome.message);
+            println!(
+                "    {} {}",
+                outcome.code.as_str(),
+                compact_human_text(&outcome.message)
+            );
         }
     }
     if report.audits.is_empty() {
@@ -2969,7 +3025,7 @@ pub fn print_team_catalog_update(report: &TeamCatalogUpdateReport) {
         println!("  risk accepted: {reason}");
     }
     for reason in &report.blocking_reasons {
-        println!("  blocked: {reason}");
+        println!("  blocked: {}", compact_human_text(reason));
     }
     let result = if !report.blocking_reasons.is_empty() {
         "not updated"
@@ -2982,7 +3038,7 @@ pub fn print_team_catalog_update(report: &TeamCatalogUpdateReport) {
     } else {
         "not updated"
     };
-    println!("  result: {result} ({})", report.path.display());
+    println!("  result: {result} ({})", compact_human_path(&report.path));
 }
 
 #[cfg(test)]
