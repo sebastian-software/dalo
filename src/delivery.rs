@@ -1169,6 +1169,22 @@ fn delivery_approval_aliases(value: &str) -> Option<(&str, &str)> {
     Some((slot_ref, stable_ref))
 }
 
+/// Whether an approval remains for any revision of one generated delivery.
+pub(crate) fn approval_is_recorded_for_delivery(
+    approvals: &[ApprovalRecord],
+    source_ref: &str,
+    stable_ref: &str,
+) -> bool {
+    approvals.iter().any(|record| {
+        record.scope == APPROVAL_SCOPE
+            && delivery_approval_aliases(&record.value).is_some_and(
+                |(slot_ref, approved_stable_ref)| {
+                    slot_ref == source_ref || approved_stable_ref == stable_ref
+                },
+            )
+    })
+}
+
 fn validate_identity_shape(value: &str) -> DaloResult<()> {
     let valid = value.split_once(':').is_some_and(|(source, selector)| {
         !source.is_empty()

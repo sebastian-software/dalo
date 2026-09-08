@@ -228,6 +228,7 @@ struct DesiredLink {
     derivation_hash: Option<String>,
     planned_output: Option<PathBuf>,
     blocked_reason: Option<String>,
+    withdraw_on_block: bool,
 }
 
 /// Materialize resolved skills into configured target directories.
@@ -262,6 +263,7 @@ pub fn materialize_with_degraded_sources_rollback(
     let mut state = store::read_state(paths)?;
     let mut resolution = resolution.clone();
     let all_skills = resolution.active_skills.clone();
+    let revoked_generated = revoked_generated_deliveries(paths, &resolution)?;
     let needed_generated = needed_generated_deliveries(&state, &resolution);
     let generated = crate::delivery::prepare_generated_artifacts(
         paths,
@@ -269,7 +271,7 @@ pub fn materialize_with_degraded_sources_rollback(
         &needed_generated,
         dry_run,
     )?;
-    let all_links = desired_links(&state, &resolution, &generated);
+    let all_links = desired_links(&state, &resolution, &generated, &revoked_generated);
     let mut suppressed_links = BTreeSet::new();
     let mut protected_suppressed_links = BTreeSet::new();
     let mut suppressed_link_reasons = BTreeMap::new();
@@ -284,7 +286,7 @@ pub fn materialize_with_degraded_sources_rollback(
         &mut protected_suppressed_links,
         &mut suppressed_link_reasons,
     ) {
-        links = desired_links(&state, &resolution, &generated)
+        links = desired_links(&state, &resolution, &generated, &revoked_generated)
             .into_iter()
             .filter(|link| !suppressed_links.contains(&link.link_path))
             .collect();
@@ -324,7 +326,7 @@ pub fn materialize_with_degraded_sources_rollback(
             ) {
                 break;
             }
-            links = desired_links(&state, &resolution, &generated)
+            links = desired_links(&state, &resolution, &generated, &revoked_generated)
                 .into_iter()
                 .filter(|link| !suppressed_links.contains(&link.link_path))
                 .collect();
@@ -782,10 +784,47 @@ fn needed_generated_deliveries(state: &StateFile, resolution: &Resolution) -> BT
     needed
 }
 
+/// Generated recipes with no remaining approval must withdraw any recorded link.
+/// A stale revision-bound approval instead preserves the last audited output until
+/// the current recipe is explicitly approved.
+fn revoked_generated_deliveries(
+    paths: &StorePaths,
+    resolution: &Resolution,
+) -> DaloResult<BTreeSet<String>> {
+    let approvals = store::read_approvals(paths)?;
+    Ok(resolution
+        .active_skills
+        .iter()
+        .filter_map(|skill| {
+            let SkillDelivery::Generated {
+                source_commit,
+                recipe_approved,
+                ..
+            } = &skill.delivery
+            else {
+                return None;
+            };
+            let stable_ref = skill
+                .id
+                .as_ref()
+                .map(|id| format!("{}:{id}", skill.source_id))?;
+            (source_commit.is_some()
+                && !recipe_approved
+                && !crate::delivery::approval_is_recorded_for_delivery(
+                    &approvals.approvals,
+                    &skill.source_ref,
+                    &stable_ref,
+                ))
+            .then(|| skill.source_ref.clone())
+        })
+        .collect())
+}
+
 fn desired_links(
     state: &StateFile,
     resolution: &Resolution,
     generated: &BTreeMap<String, crate::delivery::GeneratedArtifactSet>,
+    revoked_generated: &BTreeSet<String>,
 ) -> Vec<DesiredLink> {
     let mut links = Vec::new();
 
@@ -891,6 +930,7 @@ fn desired_links(
                     derivation_hash: prepared.map(|set| set.derivation_hash.clone()),
                     planned_output: outputs.first().map(|path| (*path).clone()),
                     blocked_reason: (!blocked_reason.is_empty()).then_some(blocked_reason),
+                    withdraw_on_block: revoked_generated.contains(&skill.source_ref),
                 });
                 continue;
             }
@@ -951,6 +991,7 @@ fn desired_links(
                 derivation_hash: None,
                 planned_output: None,
                 blocked_reason,
+                withdraw_on_block: false,
             });
         }
     }
@@ -985,13 +1026,19 @@ fn build_plan(
         if let Some(desired) = desired_by_link.get(&link_path)
             && let Some(reason) = &desired.blocked_reason
         {
-            operations.push(MaterializeOperation {
-                kind: MaterializeOperationKind::Conflict,
-                link_path: desired.link_path.clone(),
-                desired_path: None,
-                status: MaterializeOperationStatus::Blocked,
-                reason: Some(reason.clone()),
-            });
+            if desired.withdraw_on_block
+                && let Some(recorded) = recorded_by_link.get(&link_path)
+            {
+                operations.push(plan_undesired_recorded(paths, recorded, degraded_sources)?);
+            } else {
+                operations.push(MaterializeOperation {
+                    kind: MaterializeOperationKind::Conflict,
+                    link_path: desired.link_path.clone(),
+                    desired_path: None,
+                    status: MaterializeOperationStatus::Blocked,
+                    reason: Some(reason.clone()),
+                });
+            }
             continue;
         }
         match (
@@ -1238,7 +1285,9 @@ fn apply_plan(
                 operation.link_path == desired.link_path
                     && matches!(
                         operation.kind,
-                        MaterializeOperationKind::Conflict | MaterializeOperationKind::Keep
+                        MaterializeOperationKind::Conflict
+                            | MaterializeOperationKind::Keep
+                            | MaterializeOperationKind::Remove
                     )
             })
         })
@@ -1682,7 +1731,7 @@ mod tests {
             ("openclaw", &PathBuf::from("/source/builds/openclaw/review")),
         ]);
 
-        let links = desired_links(&state, &resolution, &BTreeMap::new());
+        let links = desired_links(&state, &resolution, &BTreeMap::new(), &BTreeSet::new());
         let operations = build_plan(
             &StorePaths::new(PathBuf::from("/store")),
             &state,
@@ -2251,6 +2300,7 @@ mod tests {
             derivation_hash: None,
             planned_output: None,
             blocked_reason: None,
+            withdraw_on_block: false,
         };
 
         let paths = StorePaths::new(temp_dir.path().join("store"));
@@ -2450,7 +2500,7 @@ mod tests {
         let paths = StorePaths::new(store_root);
         let resolution = resolution_with_skill("review", &desired_store_dir);
         let state = store::read_state(&paths).expect("state should be readable");
-        let desired_links = desired_links(&state, &resolution, &BTreeMap::new());
+        let desired_links = desired_links(&state, &resolution, &BTreeMap::new(), &BTreeSet::new());
         let mut operations =
             build_plan(&paths, &state, &desired_links, &[]).expect("plan should be created");
         assert_eq!(operations[0].kind, MaterializeOperationKind::Relink);
@@ -2508,7 +2558,7 @@ mod tests {
         };
         let resolution = resolution_with_skill("review", Path::new("/store/review"));
 
-        let links = desired_links(&state, &resolution, &BTreeMap::new());
+        let links = desired_links(&state, &resolution, &BTreeMap::new(), &BTreeSet::new());
 
         assert_eq!(links[0].target_id, "codex");
     }
