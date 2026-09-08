@@ -331,9 +331,21 @@ reference_status_section="$(awk '
   in_section && /^### / { exit }
   in_section { print }
 ' "$root/docs/reference.md")"
-reference_agent_section="$(sed -n '/^### `dalo agent list/,/^### /p' "$root/docs/reference.md")"
-reference_tool_section="$(sed -n '/^### `dalo tool list/,/^### /p' "$root/docs/reference.md")"
-reference_hook_section="$(sed -n '/^### `dalo hook list/,/^### /p' "$root/docs/reference.md")"
+reference_agent_section="$(awk '
+  /^### `dalo agent list/ { in_section = 1; next }
+  in_section && /^### / { exit }
+  in_section { print }
+' "$root/docs/reference.md")"
+reference_tool_section="$(awk '
+  /^### `dalo tool list/ { in_section = 1; next }
+  in_section && /^### / { exit }
+  in_section { print }
+' "$root/docs/reference.md")"
+reference_hook_section="$(awk '
+  /^### `dalo hook list/ { in_section = 1; next }
+  in_section && /^### / { exit }
+  in_section { print }
+' "$root/docs/reference.md")"
 printf '%s\n' "$reference_status_section" | grep -Fq '`--check` exits with code 1'
 printf '%s\n' "$reference_status_section" | grep -Fq 'full report on stdout for JSON'
 printf '%s\n' "$reference_agent_section" | grep -Fq 'source scan errors because its result is incomplete'
