@@ -1757,12 +1757,18 @@ fn run_tool(options: &GlobalOptions, command: ToolCommand) -> DaloResult<()> {
                 for item in &report.tools {
                     println!(
                         "{} state={} contract=sha256:{}",
-                        item.tool.source_ref, item.state, item.tool.contract_hash
+                        status::terminal_safe_text(&item.tool.source_ref),
+                        item.state,
+                        status::terminal_safe_text(&item.tool.contract_hash)
                     );
-                    println!("  {}", item.diagnostic);
+                    println!("  {}", status::terminal_safe_text(&item.diagnostic));
                 }
                 for warning in &report.warnings {
-                    println!("warning {}: {}", warning.path.display(), warning.message);
+                    println!(
+                        "warning {}: {}",
+                        status::terminal_safe_text(&warning.path.to_string_lossy()),
+                        status::terminal_safe_text(&warning.message)
+                    );
                 }
             }
             if args.check && !report.warnings.is_empty() {
@@ -1780,20 +1786,33 @@ fn run_tool(options: &GlobalOptions, command: ToolCommand) -> DaloResult<()> {
             if options.json {
                 return print_json(&report);
             }
-            println!("{}", report.tool.source_ref);
+            println!("{}", status::terminal_safe_text(&report.tool.source_ref));
             println!("state: {}", report.state);
-            println!("contract hash: {}", report.tool.contract_hash);
-            println!("plugin package hash: {}", report.plugin_package_hash);
-            println!("entry: {} ({})", report.tool.entry, report.tool.runtime);
+            println!(
+                "contract hash: {}",
+                status::terminal_safe_text(&report.tool.contract_hash)
+            );
+            println!(
+                "plugin package hash: {}",
+                status::terminal_safe_text(&report.plugin_package_hash)
+            );
+            println!(
+                "entry: {} ({})",
+                status::terminal_safe_text(&report.tool.entry),
+                report.tool.runtime
+            );
             println!(
                 "argv: {}",
                 plugin_review::format_quoted_tokens(&report.tool.argv)
             );
             println!(
                 "capabilities: {}",
-                format_display_values(&report.tool.capabilities)
+                status::terminal_safe_text(&format_display_values(&report.tool.capabilities))
             );
-            println!("diagnostic: {}", report.diagnostic);
+            println!(
+                "diagnostic: {}",
+                status::terminal_safe_text(&report.diagnostic)
+            );
         }
         ToolSubcommand::Audit(args) => {
             let report = tool::audit(&paths, &args.tool)?;
@@ -1802,11 +1821,11 @@ fn run_tool(options: &GlobalOptions, command: ToolCommand) -> DaloResult<()> {
             } else {
                 println!(
                     "tool audit {}: {}",
-                    report.tool,
+                    status::terminal_safe_text(&report.tool),
                     if report.passed { "passed" } else { "failed" }
                 );
                 for finding in &report.findings {
-                    println!("  {finding}");
+                    println!("  {}", status::terminal_safe_text(finding));
                 }
             }
             ensure_tool_audit_passed(&report)?;
@@ -1830,12 +1849,19 @@ fn run_hook(options: &GlobalOptions, command: HookCommand) -> DaloResult<()> {
                 for item in &report.hooks {
                     println!(
                         "{} state={} tool_state={} contract=sha256:{}",
-                        item.hook.source_ref, item.state, item.tool_state, item.hook.contract_hash
+                        status::terminal_safe_text(&item.hook.source_ref),
+                        item.state,
+                        item.tool_state,
+                        status::terminal_safe_text(&item.hook.contract_hash)
                     );
-                    println!("  {}", item.diagnostic);
+                    println!("  {}", status::terminal_safe_text(&item.diagnostic));
                 }
                 for warning in &report.warnings {
-                    println!("warning {}: {}", warning.path.display(), warning.message);
+                    println!(
+                        "warning {}: {}",
+                        status::terminal_safe_text(&warning.path.to_string_lossy()),
+                        status::terminal_safe_text(&warning.message)
+                    );
                 }
             }
             if args.check && !report.warnings.is_empty() {
@@ -1853,12 +1879,24 @@ fn run_hook(options: &GlobalOptions, command: HookCommand) -> DaloResult<()> {
             if options.json {
                 return print_json(&report);
             }
-            println!("{}", report.hook.source_ref);
+            println!(
+                "{}",
+                status::terminal_safe_text(&report.hook.source_ref)
+            );
             println!("state: {}", report.state);
             println!("tool state: {}", report.tool_state);
-            println!("contract hash: {}", report.hook.contract_hash);
-            println!("tool: {}", report.hook.tool_source_ref);
-            println!("tool contract hash: {}", report.hook.tool_contract_hash);
+            println!(
+                "contract hash: {}",
+                status::terminal_safe_text(&report.hook.contract_hash)
+            );
+            println!(
+                "tool: {}",
+                status::terminal_safe_text(&report.hook.tool_source_ref)
+            );
+            println!(
+                "tool contract hash: {}",
+                status::terminal_safe_text(&report.hook.tool_contract_hash)
+            );
             println!(
                 "event: {}.{} effect={}",
                 report.hook.descriptor.subject,
@@ -1871,9 +1909,14 @@ fn run_hook(options: &GlobalOptions, command: HookCommand) -> DaloResult<()> {
             );
             println!(
                 "bindings: {}",
-                format_display_values(&report.hook.descriptor.bindings)
+                status::terminal_safe_text(&format_display_values(
+                    &report.hook.descriptor.bindings
+                ))
             );
-            println!("diagnostic: {}", report.diagnostic);
+            println!(
+                "diagnostic: {}",
+                status::terminal_safe_text(&report.diagnostic)
+            );
         }
         HookSubcommand::Dispatch(args) => {
             let mut input = Vec::new();
