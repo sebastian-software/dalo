@@ -3193,7 +3193,7 @@ fn run_autosync(options: &GlobalOptions, command: AutosyncCommand) -> DaloResult
 
 fn run_scheduled_sync(options: &GlobalOptions, paths: &store::StorePaths) -> DaloResult<()> {
     if options.dry_run {
-        return Err(DaloError::CheckFailed {
+        return Err(DaloError::InvalidArgument {
             reason: "the internal scheduled runner does not support --dry-run".to_owned(),
         });
     }
