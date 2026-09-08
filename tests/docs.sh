@@ -217,6 +217,14 @@ if sed -n '/MSRV, dependency-audit, coverage, and site-render jobs additionally 
   echo 'CONTRIBUTING repeats the release build in the extra-jobs command set' >&2
   exit 1
 fi
+grep -Fq 'cargo build --release --locked --target "$(rustc -vV | sed -n '\''s/^host: //p'\'')"' "$root/CONTRIBUTING.md"
+grep -Fq 'cargo +"$msrv" check --locked --all-targets --all-features' "$root/CONTRIBUTING.md"
+grep -Fq 'cargo test --locked' "$root/docs/archive/milestones/README.md"
+grep -Fq 'cargo clippy --locked --all-targets --all-features -- -D warnings' "$root/docs/archive/milestones/README.md"
+refute 'milestone validation policy still uses an unlocked cargo test' \
+  grep -Fxq 'cargo test' "$root/docs/archive/milestones/README.md"
+refute 'milestone validation policy still uses an unlocked cargo clippy' \
+  grep -Fxq 'cargo clippy --all-targets --all-features -- -D warnings' "$root/docs/archive/milestones/README.md"
 grep -Fq 'cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines "$(cat coverage-threshold)"' "$root/CONTRIBUTING.md"
 grep -Fq '`coverage-threshold` holds the line-coverage gate' "$root/CONTRIBUTING.md"
 refute 'CONTRIBUTING.md restates the coverage threshold instead of reading coverage-threshold' \
