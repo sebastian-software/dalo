@@ -230,7 +230,7 @@ pub struct HookCommand {
     pub command: HookSubcommand,
 }
 
-/// Hook inspection commands. None install or execute a hook.
+/// Hook commands. The visible inspection commands do not install or execute a hook.
 #[derive(Debug, Subcommand)]
 pub enum HookSubcommand {
     /// List plugin-provided hooks and approval status.
@@ -1168,7 +1168,9 @@ fn command_ignores_dry_run(command: &Command) -> bool {
                 command: PluginSubcommand::List | PluginSubcommand::Show(_)
             })
             | Command::Tool(_)
-            | Command::Hook(_)
+            | Command::Hook(HookCommand {
+                command: HookSubcommand::List(_) | HookSubcommand::Show(_)
+            })
             | Command::Plan(_)
             | Command::Next
             | Command::Doctor(_)
@@ -1966,6 +1968,11 @@ fn run_hook(options: &GlobalOptions, command: HookCommand) -> DaloResult<()> {
             );
         }
         HookSubcommand::Dispatch(args) => {
+            if options.dry_run {
+                return Err(DaloError::CheckFailed {
+                    reason: "the internal hook dispatcher does not support --dry-run".to_owned(),
+                });
+            }
             let mut input = Vec::new();
             io::stdin()
                 .take(4 * 1024 * 1024 + 1)
