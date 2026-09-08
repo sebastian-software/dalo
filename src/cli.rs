@@ -3386,7 +3386,7 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
                 options.dry_run,
             )?;
             if options.json {
-                print_json(&outcome.source)?;
+                print_json(&outcome)?;
             } else {
                 status::print_catalog_add_report(
                     &outcome.source,
@@ -4077,21 +4077,36 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
                 if options.json {
                     print_json(&report)?;
                 } else {
-                    println!("{} tool {}", report.action, report.tool);
+                    println!(
+                        "{} tool {}{}",
+                        report.action,
+                        report.tool,
+                        if report.dry_run { " [dry-run]" } else { "" }
+                    );
                 }
             } else if args.scope == ApprovalScopeArg::Delivery {
                 let report = crate::delivery::revoke(&paths, &args.value, options.dry_run)?;
                 if options.json {
                     print_json(&report)?;
                 } else {
-                    println!("{} generated delivery {}", report.action, report.skill);
+                    println!(
+                        "{} generated delivery {}{}",
+                        report.action,
+                        report.skill,
+                        if report.dry_run { " [dry-run]" } else { "" }
+                    );
                 }
             } else if args.scope == ApprovalScopeArg::Hook {
                 let report = hook::revoke(&paths, &args.value, options.dry_run)?;
                 if options.json {
                     print_json(&report)?;
                 } else {
-                    println!("{} hook {}", report.action, report.hook);
+                    println!(
+                        "{} hook {}{}",
+                        report.action,
+                        report.hook,
+                        if report.dry_run { " [dry-run]" } else { "" }
+                    );
                 }
             } else {
                 print_approval_result(

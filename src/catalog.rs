@@ -158,13 +158,15 @@ pub struct CatalogSelectReport {
     pub migration_warnings: Vec<String>,
 }
 
-/// Result of adding a catalog source for human-oriented follow-up guidance.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Report returned after adding a catalog source.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CatalogAddOutcome {
     /// Added catalog source configuration.
     pub source: SourceConfig,
     /// Available skill count when a real checkout was created.
     pub available_skills: Option<usize>,
+    /// Whether the command ran as dry-run.
+    pub dry_run: bool,
 }
 
 /// Add a catalog source and clone it into the store.
@@ -224,6 +226,7 @@ pub fn add_catalog_source(
         return Ok(CatalogAddOutcome {
             source,
             available_skills: None,
+            dry_run,
         });
     }
 
@@ -266,6 +269,7 @@ pub fn add_catalog_source(
     Ok(CatalogAddOutcome {
         source,
         available_skills: Some(available_skills),
+        dry_run,
     })
 }
 

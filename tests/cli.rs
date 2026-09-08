@@ -10524,6 +10524,115 @@ fn catalog_add_and_sync_should_explain_how_to_select_available_skills() {
 }
 
 #[test]
+fn catalog_add_json_should_report_dry_run_and_available_skills() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+
+    let store = temp_dir.path().join("store");
+    setup_store_with_target(&store, &temp_dir.path().join("skills"));
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value =
+        serde_json::from_slice(&output).expect("catalog add JSON should parse");
+    assert_eq!(report["source"]["id"], "marketing");
+    assert_eq!(report["available_skills"], 2);
+    assert_eq!(report["dry_run"], false);
+
+    let dry_run_store = temp_dir.path().join("dry-run-store");
+    setup_store_with_target(&dry_run_store, &temp_dir.path().join("dry-run-skills"));
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&dry_run_store)
+        .args(["--json", "--dry-run", "source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value =
+        serde_json::from_slice(&output).expect("dry-run catalog add JSON should parse");
+    assert_eq!(report["source"]["id"], "marketing");
+    assert!(report["available_skills"].is_null());
+    assert_eq!(report["dry_run"], true);
+}
+
+#[test]
+fn dry_run_approval_revocations_should_be_marked_in_human_output() {
+    let fixture = PluginToolFixture::new();
+    fixture.select_plugin();
+    fixture.approve_tool();
+    fixture
+        .command()
+        .args(["approve", "hook", PluginToolFixture::HOOK_ID])
+        .assert()
+        .success();
+
+    fixture
+        .command()
+        .args([
+            "--dry-run",
+            "approve",
+            "revoke",
+            "tool",
+            PluginToolFixture::TOOL_ID,
+        ])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("revoked tool").and(predicate::str::contains("[dry-run]")),
+        );
+    fixture
+        .command()
+        .args([
+            "--dry-run",
+            "approve",
+            "revoke",
+            "hook",
+            PluginToolFixture::HOOK_ID,
+        ])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("revoked hook").and(predicate::str::contains("[dry-run]")),
+        );
+
+    let temporary = tempfile::tempdir().expect("tempdir should be created");
+    let store = temporary.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args([
+            "--dry-run",
+            "approve",
+            "revoke",
+            "delivery",
+            "company:review",
+        ])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("unchanged generated delivery")
+                .and(predicate::str::contains("[dry-run]")),
+        );
+}
+
+#[test]
 fn catalog_select_should_suggest_slot_names_for_unknown_skills() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
