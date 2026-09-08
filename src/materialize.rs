@@ -1007,7 +1007,6 @@ fn build_plan(
             }
             (Some(desired), None) => {
                 operations.push(plan_desired_unrecorded(
-                    paths,
                     desired,
                     desired_is_protected(state, desired),
                 )?);
@@ -1085,7 +1084,6 @@ fn plan_desired_recorded(
 }
 
 fn plan_desired_unrecorded(
-    paths: &StorePaths,
     desired: &DesiredLink,
     protected: bool,
 ) -> DaloResult<MaterializeOperation> {
@@ -1098,8 +1096,9 @@ fn plan_desired_unrecorded(
             status: MaterializeOperationStatus::Applied,
             reason: None,
         },
+        // An unrecorded symlink is foreign unless it already resolves to this exact slot.
         ActualLinkState::Symlink(target)
-            if is_owned_link_target(paths, &desired.link_path, &desired.store_path, &target) =>
+            if link_target_matches(&desired.link_path, &target, &desired.store_path) =>
         {
             MaterializeOperation {
                 kind: MaterializeOperationKind::Relink,
@@ -1107,7 +1106,7 @@ fn plan_desired_unrecorded(
                 desired_path: Some(desired.store_path.clone()),
                 status: MaterializeOperationStatus::Applied,
                 reason: Some(format!(
-                    "unrecorded owned symlink points to `{}`",
+                    "unrecorded matching symlink points to `{}`",
                     target.display()
                 )),
             }
@@ -2003,6 +2002,47 @@ mod tests {
         assert_eq!(
             fs::read_link(&state.owned_skills[0].link_path).expect("link should be readable"),
             skill_dir
+        );
+    }
+
+    #[test]
+    fn materialize_should_block_unrecorded_store_symlink_to_a_different_target() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let store_root = temp_dir.path().join("store");
+        let target_dir = temp_dir.path().join("target");
+        store::init_store(store_root.clone(), false).expect("init should succeed");
+        fs::create_dir_all(&target_dir).expect("target should be created");
+        let skill_dir = store_root.join("local/skills/review");
+        let foreign_store_dir = store_root.join("sources/other/checkout/skills/review-v2");
+        fs::create_dir_all(&skill_dir).expect("skill should be created");
+        fs::create_dir_all(&foreign_store_dir).expect("foreign store path should be created");
+        let link_path = target_dir.join("review");
+        unix_fs::symlink(&foreign_store_dir, &link_path)
+            .expect("foreign symlink should be created");
+        write_state_with_target(&store_root, &target_dir);
+        let paths = StorePaths::new(store_root);
+
+        let report = materialize(&paths, &resolution_with_skill("review", &skill_dir), false)
+            .expect("materialize should succeed");
+
+        assert_eq!(
+            report.operations[0].kind,
+            MaterializeOperationKind::Conflict
+        );
+        assert_eq!(
+            report.operations[0].status,
+            MaterializeOperationStatus::Blocked
+        );
+        assert_eq!(
+            fs::read_link(&link_path).expect("foreign symlink should survive"),
+            foreign_store_dir
+        );
+        assert!(
+            store::read_state(&paths)
+                .expect("state should be readable")
+                .owned_skills
+                .is_empty(),
+            "foreign symlink must not become an owned state record"
         );
     }
 
