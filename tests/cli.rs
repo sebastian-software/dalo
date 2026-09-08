@@ -4865,6 +4865,77 @@ fn approve_cli_should_grant_list_revoke_and_dry_run() {
 }
 
 #[test]
+fn approve_list_should_render_accepted_risk_context_and_quote_path_targets() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    let skill_path = temp_dir.path().join("danger's $(touch pwned)");
+    std::fs::create_dir_all(&skill_path).expect("skill path should be created");
+    std::fs::write(
+        store.join("audits/path.json"),
+        serde_json::json!({
+            "schema_version": 1,
+            "source_ref": "path:danger@cafebabe",
+            "skill_path": skill_path,
+            "content_hash": "feedface",
+            "static_engine_version": "5",
+            "static_scan_excludes_root_source_metadata": false,
+            "scanned_at_unix": 101,
+            "coverage": "complete",
+            "status": "blocked",
+            "static_findings": [],
+            "risk_acceptance": {
+                "reason": "reviewed path exception",
+                "accepted_at_unix": 201,
+                "scope_hash": "badcafe"
+            }
+        })
+        .to_string(),
+    )
+    .expect("audit report should be written");
+
+    let quoted_path = format!(
+        "'{}'",
+        skill_path.to_string_lossy().replace('\'', "'\"'\"'")
+    );
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("accepted-risk audits:"))
+        .stdout(predicate::str::contains("reviewed path exception"))
+        .stdout(predicate::str::contains(format!(
+            "run: dalo audit {quoted_path}"
+        )));
+
+    let json = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "approve", "list"])
+        .output()
+        .expect("JSON approve list should run");
+    assert!(json.status.success());
+    let report: serde_json::Value =
+        serde_json::from_slice(&json.stdout).expect("approve list JSON should parse");
+    assert_eq!(
+        report["accepted_risks"][0]["source_ref"],
+        "path:danger@cafebabe"
+    );
+    assert_eq!(
+        report["accepted_risks"][0]["reason"],
+        "reviewed path exception"
+    );
+}
+
+#[test]
 fn approve_skill_not_found_should_point_non_catalog_sources_at_status() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
