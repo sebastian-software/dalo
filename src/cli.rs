@@ -4347,7 +4347,7 @@ fn active_remove_owned_commands(
                 };
                 Some(store::dalo_command(
                     &paths.root,
-                    &format!("source select {} --unselect {}", active.source_id, selector),
+                    &format!("source unselect {} {}", active.source_id, selector),
                 ))
             })
             .collect();

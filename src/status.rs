@@ -2638,10 +2638,7 @@ pub fn print_catalog_advance_report(report: &CatalogAdvanceReport, store_root: &
 fn print_catalog_unselect_hint(store_root: &Path, source_id: &str, skill: &str) {
     println!(
         "    run: {}",
-        store::dalo_command(
-            store_root,
-            &format!("source select {source_id} --unselect {skill}")
-        )
+        store::dalo_command(store_root, &format!("source unselect {source_id} {skill}"))
     );
 }
 
