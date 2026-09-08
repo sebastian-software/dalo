@@ -10964,6 +10964,83 @@ fn catalog_select_should_reuse_inventory_snapshot_at_unchanged_pin() {
 }
 
 #[test]
+fn catalog_select_should_reject_drifted_checkout_without_repinning() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "copy-editing"])
+        .assert()
+        .success();
+    let config_before = std::fs::read(store.join("config.toml")).expect("config readable");
+    let source_lock_before =
+        std::fs::read(store.join("source-lock.toml")).expect("source lock readable");
+    let catalog_before = read_source_lock(&store)
+        .catalog("marketing")
+        .expect("catalog lock exists")
+        .clone();
+    let pin_before = catalog_before.commit.clone();
+
+    std::fs::write(
+        repo.join("skills/copy-editing/SKILL.md"),
+        "# copy-editing v2\n",
+    )
+    .expect("upstream skill should be updated");
+    run_git(&repo, &["add", "."]);
+    commit_test_repo(&repo, "update catalog skill");
+
+    let checkout = store.join("sources/marketing/checkout");
+    run_git(&checkout, &["fetch", "origin"]);
+    run_git(&checkout, &["reset", "--hard", "origin/main"]);
+    assert_ne!(test_git_head(&checkout), pin_before);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "launch-copy"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("checkout is at"))
+        .stderr(predicate::str::contains(
+            "restore the pinned checkout before advancing",
+        ));
+    assert_eq!(
+        std::fs::read(store.join("config.toml")).expect("config readable"),
+        config_before
+    );
+    assert_eq!(
+        std::fs::read(store.join("source-lock.toml")).expect("source lock readable"),
+        source_lock_before
+    );
+
+    run_git(&checkout, &["reset", "--hard", &pin_before]);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "refresh", "marketing", "--advance"])
+        .assert()
+        .success();
+    let catalog_after = read_source_lock(&store)
+        .catalog("marketing")
+        .expect("catalog lock exists")
+        .clone();
+    assert_ne!(catalog_after.commit, pin_before);
+    assert_ne!(catalog_after.inventory, catalog_before.inventory);
+}
+
+#[test]
 fn catalog_select_should_upsert_missing_source_lock_entry() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

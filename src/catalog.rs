@@ -306,6 +306,13 @@ pub fn select_skills(
         });
     }
     let source_path = configured_source.path;
+    // A selection edit may update selected content hashes, but it must never
+    // turn an externally moved checkout into a new catalog pin. Advancing that
+    // boundary requires the reviewed source-refresh flow.
+    let original_lock = read_source_lock(paths)?;
+    if let Some(catalog_lock) = original_lock.catalog(id) {
+        ensure_catalog_checkout_matches_pin(id, &source_path, catalog_lock)?;
+    }
     let scan = scan_catalog(&source_path)?;
     let candidates = catalog_candidates_from_scan(&source_path, &scan);
     let mut resolved = Vec::with_capacity(refs.len());
@@ -334,7 +341,6 @@ pub fn select_skills(
     // Validate and snapshot every durable input before changing either config or
     // the catalog lock. This keeps a malformed lock from becoming a partial
     // selection update and gives us a rollback baseline for a later config write.
-    let original_lock = read_source_lock(paths)?;
     let mut lock = original_lock.clone();
     let mut config = store::read_config(paths)?;
     let known_sources = config
@@ -910,15 +916,7 @@ pub fn advance_catalog(
         .catalog(id)
         .ok_or_else(|| DaloError::unknown_source(id, Vec::new()))?
         .clone();
-    let checkout_commit = git::rev_parse_head(&source.path)?;
-    if checkout_commit != old_lock.commit {
-        return Err(DaloError::StateError {
-            reason: format!(
-                "catalog `{id}` checkout is at {checkout_commit}, but its pin is {}; restore the pinned checkout before advancing",
-                old_lock.commit
-            ),
-        });
-    }
+    ensure_catalog_checkout_matches_pin(id, &source.path, &old_lock)?;
 
     git::fetch(&source.path)?;
     git::prune_worktrees(&source.path)?;
@@ -1004,6 +1002,26 @@ fn ensure_catalog_checkout(id: &str, path: &Path) -> DaloResult<()> {
         Ok(false) => Err(unavailable(None)),
         Err(error) => Err(unavailable(Some(&error))),
     }
+}
+
+/// Reject operations that would use a catalog checkout outside its persisted
+/// pin. Catalog advancement is an explicit reviewed operation, not a side
+/// effect of selection edits.
+fn ensure_catalog_checkout_matches_pin(
+    id: &str,
+    path: &Path,
+    catalog_lock: &CatalogLock,
+) -> DaloResult<()> {
+    let checkout_commit = git::rev_parse_head(path)?;
+    if checkout_commit != catalog_lock.commit {
+        return Err(DaloError::StateError {
+            reason: format!(
+                "catalog `{id}` checkout is at {checkout_commit}, but its pin is {}; restore the pinned checkout before advancing",
+                catalog_lock.commit
+            ),
+        });
+    }
+    Ok(())
 }
 
 fn cleanup_obsolete_catalog_staging(
