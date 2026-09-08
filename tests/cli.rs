@@ -4140,7 +4140,7 @@ fn closed_pipe_should_terminate_without_a_print_panic() {
 
 #[cfg(unix)]
 #[test]
-fn hidden_hook_dispatch_runs_a_staged_codex_projection_end_to_end() {
+fn hidden_hook_dispatch_rejects_dry_run_and_runs_a_staged_codex_projection_end_to_end() {
     let temp = tempfile::tempdir().expect("temporary directory should be created");
     let store = store::comparable_path(&temp.path().join("store"));
     dalo::store::init_store(store.clone(), false).expect("store should initialize");
@@ -4162,6 +4162,7 @@ runtime = "executable"
 platforms = ["macos", "linux"]
 argv = []
 cwd = "tool_root"
+env = ["DALO_HOOK_DISPATCH_MARKER"]
 capabilities = []
 availability = "required"
 
@@ -4183,9 +4184,10 @@ matcher = { tool_names = ["Bash"] }
     )
     .expect("hook manifest should be written");
     let entry = package.join("bin/check");
+    let execution_marker = temp.path().join("hook-executed");
     std::fs::write(
         &entry,
-        "#!/bin/sh\nprintf '%s' '{\"kind\":\"deny\",\"reason\":\"blocked by staged Codex policy\"}'\n",
+        "#!/bin/sh\nprintf '%s' '{\"kind\":\"deny\",\"reason\":\"blocked by staged Codex policy\"}'\nprintf '%s' executed > \"$DALO_HOOK_DISPATCH_MARKER\"\n",
     )
     .expect("hook handler should be written");
     std::fs::set_permissions(&entry, std::fs::Permissions::from_mode(0o755))
@@ -4217,6 +4219,7 @@ matcher = { tool_names = ["Bash"] }
     dalo_command()
         .args(["--store"])
         .arg(&store)
+        .arg("--dry-run")
         .args([
             "hook",
             "dispatch",
@@ -4229,11 +4232,46 @@ matcher = { tool_names = ["Bash"] }
             "--group",
             "group-0000",
         ])
+        .env("DALO_HOOK_DISPATCH_MARKER", &execution_marker)
+        .write_stdin(r#"{"session_id":"s","cwd":"/tmp","tool_name":"Bash","tool_use_id":"t"}"#)
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(predicate::str::contains("permissionDecision").not())
+        .stderr(predicate::str::contains(
+            "check failed: the internal hook dispatcher does not support --dry-run",
+        ))
+        .stderr(predicate::str::contains("--dry-run has no effect").not());
+    assert!(
+        !execution_marker.exists(),
+        "dry-run dispatch must not execute the hook handler"
+    );
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args([
+            "hook",
+            "dispatch",
+            "--provider",
+            "codex",
+            "--projection",
+            &projection.fingerprint,
+            "--event",
+            "PreToolUse",
+            "--group",
+            "group-0000",
+        ])
+        .env("DALO_HOOK_DISPATCH_MARKER", &execution_marker)
         .write_stdin(r#"{"session_id":"s","cwd":"/tmp","tool_name":"Bash","tool_use_id":"t"}"#)
         .assert()
         .success()
         .stdout(predicate::str::contains("permissionDecision\":\"deny"))
         .stdout(predicate::str::contains("blocked by staged Codex policy"));
+    assert_eq!(
+        std::fs::read_to_string(&execution_marker).expect("real dispatch should execute hook"),
+        "executed"
+    );
 }
 
 #[cfg(unix)]
