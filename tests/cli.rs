@@ -9312,7 +9312,7 @@ fn resolve_remove_owned_should_explain_how_to_deactivate_an_active_catalog_skill
         ))
         .stdout(predicate::str::contains(store::dalo_command(
             &store,
-            "source select marketing --unselect copy-editing",
+            "source unselect marketing copy-editing",
         )));
 }
 
@@ -9475,9 +9475,7 @@ fn resolve_remove_owned_should_point_to_catalog_selection_root_for_required_skil
         .args(["resolve", "remove-owned", "generic:beta"])
         .assert()
         .success()
-        .stdout(predicate::str::contains(
-            "source select marketing --unselect alpha",
-        ))
+        .stdout(predicate::str::contains("source unselect marketing alpha"))
         .stdout(predicate::str::contains("approve revoke skill marketing:beta").not());
 }
 
@@ -14465,7 +14463,7 @@ fn catalog_advance_should_block_selected_removal_without_writes() {
 
     let unselect_command = store::dalo_command(
         &store::comparable_path(&store),
-        "source select marketing --unselect copy-editing",
+        "source unselect marketing copy-editing",
     );
 
     dalo_command()
