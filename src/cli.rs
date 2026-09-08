@@ -4323,6 +4323,7 @@ fn active_remove_owned_commands(
             let resolver::ActiveSkillCause::Approval { scope, value } = cause else {
                 return None;
             };
+            let value = crate::error::shell_quote_path(std::path::Path::new(value));
             Some(store::dalo_command(
                 &paths.root,
                 &format!("approve revoke {scope} {value}"),
