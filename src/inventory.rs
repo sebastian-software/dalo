@@ -1261,6 +1261,8 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
     let mut line_indent = 0_usize;
     let mut plain_scalar_indent = None;
     let mut same_indent_plain_scalar_may_be_mapping_key = false;
+    let mut same_indent_mapping_key_property_prefix = false;
+    let mut pending_same_indent_mapping_key_references = 0_usize;
     let mut in_tag_property = false;
     let mut in_anchor_property = false;
 
@@ -1291,6 +1293,7 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
                     } else {
                         scalar_can_start = false;
                         same_indent_plain_scalar_may_be_mapping_key = true;
+                        same_indent_mapping_key_property_prefix = true;
                     }
                 } else {
                     plain_scalar_indent = None;
@@ -1364,7 +1367,15 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
             '&' if (scalar_can_start || same_indent_plain_scalar_may_be_mapping_key)
                 && yaml_anchor_or_alias_starts(previous, chars.peek().copied()) =>
             {
-                if !same_indent_plain_scalar_may_be_mapping_key {
+                if same_indent_plain_scalar_may_be_mapping_key {
+                    // A leading anchor property can decorate a sibling mapping
+                    // key, but `&` after ordinary plain-key text is scalar text.
+                    // Keep only the property-prefix reference provisional until
+                    // that line's mapping-value indicator proves the key.
+                    if same_indent_mapping_key_property_prefix {
+                        pending_same_indent_mapping_key_references += 1;
+                    }
+                } else {
                     in_anchor_property = true;
                     references += 1;
                     if references > limit {
@@ -1375,7 +1386,14 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
             '*' if (scalar_can_start || same_indent_plain_scalar_may_be_mapping_key)
                 && yaml_anchor_or_alias_starts(previous, chars.peek().copied()) =>
             {
-                if !same_indent_plain_scalar_may_be_mapping_key {
+                if same_indent_plain_scalar_may_be_mapping_key {
+                    // An alias at the start of an ambiguous same-indent line is
+                    // a possible mapping-key node. Indicators later in a plain
+                    // key remain excluded once ordinary key text was observed.
+                    if same_indent_mapping_key_property_prefix {
+                        pending_same_indent_mapping_key_references += 1;
+                    }
+                } else {
                     plain_scalar_indent = Some(line_indent);
                     references += 1;
                     if references > limit {
@@ -1385,6 +1403,8 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
             }
             '\n' => {
                 same_indent_plain_scalar_may_be_mapping_key = false;
+                same_indent_mapping_key_property_prefix = false;
+                pending_same_indent_mapping_key_references = 0;
                 scalar_can_start = true;
                 at_line_start = true;
                 line_indent = 0;
@@ -1400,20 +1420,36 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
                 scalar_can_start = false;
             }
             ':' if flow_depth > 0 || chars.peek().is_some_and(|next| next.is_whitespace()) => {
+                references += pending_same_indent_mapping_key_references;
+                if references > limit {
+                    return true;
+                }
                 same_indent_plain_scalar_may_be_mapping_key = false;
+                same_indent_mapping_key_property_prefix = false;
+                pending_same_indent_mapping_key_references = 0;
                 plain_scalar_indent = None;
                 scalar_can_start = true;
             }
-            '!' if scalar_can_start => in_tag_property = true,
+            '!' if scalar_can_start
+                || (same_indent_plain_scalar_may_be_mapping_key
+                    && same_indent_mapping_key_property_prefix) =>
+            {
+                in_tag_property = true;
+            }
             '-' | '?'
                 if (scalar_can_start || same_indent_plain_scalar_may_be_mapping_key)
                     && chars.peek().is_some_and(|next| next.is_whitespace()) =>
             {
                 same_indent_plain_scalar_may_be_mapping_key = false;
+                same_indent_mapping_key_property_prefix = false;
+                pending_same_indent_mapping_key_references = 0;
                 plain_scalar_indent = None;
                 scalar_can_start = true;
             }
             character if !character.is_whitespace() => {
+                if same_indent_plain_scalar_may_be_mapping_key {
+                    same_indent_mapping_key_property_prefix = false;
+                }
                 if scalar_can_start {
                     plain_scalar_indent = Some(line_indent);
                 }
