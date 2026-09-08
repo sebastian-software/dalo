@@ -427,8 +427,19 @@ as secondary detail.</p>
 <p>Examples:</p>
 <pre><code class="language-sh">dalo source select public review-helper
 dalo source select public review-helper public:formatter
-dalo source select public --unselect formatter
+dalo source unselect public formatter
 dalo --dry-run source select public review-helper
+</code></pre>
+<p>JSON output shape: <code>CatalogSelectReport</code>.</p>
+<h3 id="dalo-source-unselect-id-skill"><a class="doc-anchor" href="#dalo-source-unselect-id-skill"><code>dalo source unselect &lt;id&gt; &lt;skill&gt;...</code></a></h3>
+<p>Unselect catalog skills by stable frontmatter ID, slot name, catalog-relative
+path, or a source-qualified <code>&lt;source-id&gt;:&lt;slot-or-stable-id&gt;</code> reference. The
+source ID must match the catalog being changed. This is the explicit negation
+counterpart to <code>source select</code>; the legacy <code>source select --unselect</code> spelling
+remains accepted for compatibility.</p>
+<p>Examples:</p>
+<pre><code class="language-sh">dalo source unselect public formatter
+dalo --dry-run source unselect public formatter
 </code></pre>
 <p>JSON output shape: <code>CatalogSelectReport</code>.</p>
 <h3 id="dalo-source-refresh-id"><a class="doc-anchor" href="#dalo-source-refresh-id"><code>dalo source refresh &lt;id&gt;</code></a></h3>
@@ -663,7 +674,7 @@ dalo --dry-run resolve keep review-helper
 dalo --dry-run resolve unkeep review-helper
 </code></pre>
 <p>JSON output shape: <code>UnkeepReport</code>.</p>
-<h3 id="dalo-resolve-remove-owned-id"><a class="doc-anchor" href="#dalo-resolve-remove-owned-id"><code>dalo resolve remove-owned &lt;id&gt;</code></a></h3>
+<h3 id="dalo-resolve-remove-owned-targetslot"><a class="doc-anchor" href="#dalo-resolve-remove-owned-targetslot"><code>dalo resolve remove-owned &lt;target&gt;:&lt;slot&gt;</code></a></h3>
 <p>Remove a recorded owned symlink by ID. If the recorded path is already missing,
 Dalo drops the stale state record. If a different, foreign symlink occupies the
 path, Dalo leaves that symlink untouched and drops only the stale ownership

@@ -511,7 +511,8 @@ pub struct HookApprovalArgs {
 #[derive(Debug, Args)]
 pub struct AuditCommand {
     /// Existing skill path or source-qualified `<source>:<skill>` reference.
-    pub target: String,
+    #[arg(value_name = "SKILL")]
+    pub skill: String,
 
     /// Semantic-review provider selection.
     #[command(flatten)]
@@ -757,11 +758,16 @@ pub enum SourceSubcommand {
     Namespace(SourceNamespaceArgs),
     /// Inspect a catalog source's available skills.
     Inspect(SourceInspectArgs),
-    /// Select or unselect catalog skills.
+    /// Select catalog skills.
     #[command(
-        after_help = "Examples:\n  dalo source select public review-helper\n  dalo source select public review-helper formatter\n  dalo source select public --unselect formatter\n  dalo --dry-run source select public review-helper"
+        after_help = "Examples:\n  dalo source select public review-helper\n  dalo source select public review-helper formatter\n  dalo --dry-run source select public review-helper"
     )]
     Select(SourceSelectArgs),
+    /// Unselect catalog skills.
+    #[command(
+        after_help = "Examples:\n  dalo source unselect public formatter\n  dalo source unselect public formatter legacy-helper\n  dalo --dry-run source unselect public formatter"
+    )]
+    Unselect(SourceUnselectArgs),
     /// Inspect or explicitly advance a pinned catalog source.
     #[command(
         after_help = "Examples:\n  dalo source refresh public\n  dalo source refresh public --check\n  dalo --dry-run --json source refresh public --advance\n  dalo source refresh public --advance"
@@ -852,9 +858,21 @@ pub struct SourceSelectArgs {
     #[arg(required = true)]
     pub skills: Vec<String>,
 
-    /// Unselect the given skills instead of selecting them.
-    #[arg(long)]
+    /// Deprecated compatibility flag; use `source unselect` instead.
+    #[arg(long, hide = true)]
     pub unselect: bool,
+}
+
+/// Arguments for `source unselect`.
+#[derive(Debug, Args)]
+pub struct SourceUnselectArgs {
+    /// Catalog source ID.
+    pub id: String,
+
+    /// Skill references to unselect (stable ID, slot name, catalog-relative path,
+    /// or `<source-id>:<slot-or-stable-id>`).
+    #[arg(required = true)]
+    pub skills: Vec<String>,
 }
 
 /// Arguments for `source refresh`.
@@ -1047,11 +1065,11 @@ pub enum ResolveSubcommand {
     /// Adopt the referenced unmanaged skill.
     Adopt(ResolveAdoptArgs),
     /// Keep an unmanaged entry in place and treat its sync conflict as non-failing.
-    Keep(ResolveIdArg),
+    Keep(ResolveKeepArgs),
     /// Remove protection from a target slot.
-    Unkeep(ResolveIdArg),
+    Unkeep(ResolveTargetSlotArgs),
     /// Remove an owned symlink by recorded ID.
-    RemoveOwned(ResolveIdArg),
+    RemoveOwned(ResolveTargetSlotArgs),
 }
 
 /// Arguments for `resolve adopt`.
@@ -1077,11 +1095,20 @@ pub struct ResolveAdoptArgs {
     pub accept_risk: Option<String>,
 }
 
-/// Resolver item ID argument.
+/// Arguments for `resolve keep`.
 #[derive(Debug, Args)]
-pub struct ResolveIdArg {
-    /// Diagnostic or state item ID.
-    pub id: String,
+pub struct ResolveKeepArgs {
+    /// Unmanaged skill ID or unambiguous slot name.
+    #[arg(value_name = "SKILL")]
+    pub skill: String,
+}
+
+/// Arguments for target-slot based `resolve` repairs.
+#[derive(Debug, Args)]
+pub struct ResolveTargetSlotArgs {
+    /// Target slot in `<target>:<slot>` form; `unkeep` also accepts a bare slot name.
+    #[arg(value_name = "TARGET:SLOT")]
+    pub selector: String,
 }
 
 /// Execute a parsed CLI command.
@@ -3758,6 +3785,22 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             }
             Ok(())
         }
+        SourceSubcommand::Unselect(args) => {
+            ensure_initialized(&paths)?;
+            let _lock = if options.dry_run {
+                None
+            } else {
+                Some(store::StoreLock::acquire(&paths)?)
+            };
+            let report =
+                catalog::select_skills(&paths, &args.id, &args.skills, true, options.dry_run)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                status::print_catalog_select_report(&report, &options.store);
+            }
+            Ok(())
+        }
         SourceSubcommand::Refresh(args) => {
             ensure_initialized(&paths)?;
             let _lock = if args.advance && !options.dry_run {
@@ -4171,7 +4214,7 @@ fn run_resolve(options: &GlobalOptions, command: ResolveCommand) -> DaloResult<(
             } else {
                 Some(store::StoreLock::acquire(&paths)?)
             };
-            let report = adopt::keep_unmanaged_skill(&paths, &args.id, options.dry_run)?;
+            let report = adopt::keep_unmanaged_skill(&paths, &args.skill, options.dry_run)?;
             if options.json {
                 print_json(&report)?;
             } else {
@@ -4186,7 +4229,7 @@ fn run_resolve(options: &GlobalOptions, command: ResolveCommand) -> DaloResult<(
             } else {
                 Some(store::StoreLock::acquire(&paths)?)
             };
-            let report = adopt::unkeep_skill(&paths, &args.id, options.dry_run)?;
+            let report = adopt::unkeep_skill(&paths, &args.selector, options.dry_run)?;
             if options.json {
                 print_json(&report)?;
             } else {
@@ -4201,7 +4244,7 @@ fn run_resolve(options: &GlobalOptions, command: ResolveCommand) -> DaloResult<(
             } else {
                 Some(store::StoreLock::acquire(&paths)?)
             };
-            let mut report = adopt::remove_owned_skill(&paths, &args.id, options.dry_run)?;
+            let mut report = adopt::remove_owned_skill(&paths, &args.selector, options.dry_run)?;
             if !options.json && remove_owned_recreates_on_sync(report.status) {
                 report.next_step = active_remove_owned_next_step(&paths, &report)
                     .ok()
@@ -4369,7 +4412,7 @@ fn run_audit(options: &GlobalOptions, command: AuditCommand) -> DaloResult<()> {
     let agent = prepare_agent_review(command.reviewer.selected())?;
     let report = audit::audit_target(
         &paths,
-        &command.target,
+        &command.skill,
         &audit::AuditOptions {
             agent,
             refresh: command.refresh_audit,
