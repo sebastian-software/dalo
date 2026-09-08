@@ -1419,12 +1419,17 @@ fn run_plugin(options: &GlobalOptions, command: PluginCommand) -> DaloResult<()>
                         .map_or("available".to_owned(), |selected| {
                             selected.state.to_string()
                         });
-                    println!("{} state={state}", candidate.source_ref);
+                    println!(
+                        "{} state={state}",
+                        term::terminal_safe_text(&candidate.source_ref)
+                    );
                 }
                 for diagnostic in &report.resolution.diagnostics {
                     println!(
                         "warning {} {}: {}",
-                        diagnostic.code, diagnostic.subject, diagnostic.message
+                        diagnostic.code,
+                        term::terminal_safe_text(&diagnostic.subject),
+                        term::terminal_safe_text(&diagnostic.message)
                     );
                 }
             }
@@ -2027,9 +2032,11 @@ fn run_plan(options: &GlobalOptions, args: PlanArgs) -> DaloResult<()> {
         for tool in &report.tools {
             println!(
                 "  {} state={} contract=sha256:{}",
-                tool.tool.source_ref, tool.state, tool.tool.contract_hash
+                term::terminal_safe_text(&tool.tool.source_ref),
+                tool.state,
+                term::terminal_safe_text(&tool.tool.contract_hash)
             );
-            println!("    {}", tool.diagnostic);
+            println!("    {}", term::terminal_safe_text(&tool.diagnostic));
         }
     }
     if !report.hooks.is_empty() {
@@ -2037,30 +2044,37 @@ fn run_plan(options: &GlobalOptions, args: PlanArgs) -> DaloResult<()> {
         for hook in &report.hooks {
             println!(
                 "  {} state={} tool_state={} contract=sha256:{}",
-                hook.hook.source_ref, hook.state, hook.tool_state, hook.hook.contract_hash
+                term::terminal_safe_text(&hook.hook.source_ref),
+                hook.state,
+                hook.tool_state,
+                term::terminal_safe_text(&hook.hook.contract_hash)
             );
-            println!("    {}", hook.diagnostic);
+            println!("    {}", term::terminal_safe_text(&hook.diagnostic));
         }
     }
     if !report.native_plugins.is_empty() {
         println!("native package projections:");
         for native in &report.native_plugins {
+            let projection_hash = if native.projection_hash.is_empty() {
+                "-".to_owned()
+            } else {
+                term::terminal_safe_text(&native.projection_hash)
+            };
             println!(
                 "  {} {} state={} path={} hash={}",
-                native.target,
-                native.plugin,
+                term::terminal_safe_text(&native.target),
+                term::terminal_safe_text(&native.plugin),
                 native.state,
-                native.path.display(),
-                if native.projection_hash.is_empty() {
-                    "-"
-                } else {
-                    &native.projection_hash
-                }
+                term::terminal_safe_text(&native.path.to_string_lossy()),
+                projection_hash
             );
             for component in &native.components {
                 println!(
                     "    {} kind={} state={} ({})",
-                    component.identity, component.kind, component.state, component.diagnostic
+                    term::terminal_safe_text(&component.identity),
+                    term::terminal_safe_text(&component.kind),
+                    component.state,
+                    term::terminal_safe_text(&component.diagnostic)
                 );
             }
         }
@@ -2074,24 +2088,36 @@ fn run_plan(options: &GlobalOptions, args: PlanArgs) -> DaloResult<()> {
         return Ok(());
     }
     for destination in &report.destinations {
-        println!("destination {}:", destination.path.display());
+        println!(
+            "destination {}:",
+            term::terminal_safe_text(&destination.path.to_string_lossy())
+        );
         for target in &destination.logical_targets {
-            println!("  target {} [{}]", target.id, target.verification_baseline);
+            println!(
+                "  target {} [{}]",
+                term::terminal_safe_text(&target.id),
+                term::terminal_safe_text(&target.verification_baseline)
+            );
             for plugin in &target.plugins {
                 println!(
                     "    {} state={} compatibility={}",
-                    plugin.source_ref, plugin.state, plugin.compatibility
+                    term::terminal_safe_text(&plugin.source_ref),
+                    plugin.state,
+                    plugin.compatibility
                 );
                 for component in &plugin.components {
                     println!(
                         "      {} requirement={} state={} compatibility={}",
-                        component.reference,
+                        term::terminal_safe_text(&component.reference),
                         component.requirement,
                         component.canonical_state,
                         component.compatibility
                     );
                     if let Some(remediation) = &component.remediation {
-                        println!("        remediation: {remediation}");
+                        println!(
+                            "        remediation: {}",
+                            term::terminal_safe_text(remediation)
+                        );
                     }
                 }
             }

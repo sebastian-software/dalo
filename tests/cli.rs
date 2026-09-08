@@ -1873,6 +1873,130 @@ requirement = "required"
 }
 
 #[test]
+fn selected_plugin_status_and_plan_should_escape_controlled_references_without_changing_json() {
+    const REFERENCE: &str =
+        "skill:missing\u{1b}[2JCSI\u{1b}]0;OSC\u{7}BEL\u{7}line\ncarriage\rbackspace\u{8}";
+    const ESCAPED_REFERENCE: &str =
+        "skill:missing\\u{1b}[2JCSI\\u{1b}]0;OSC\\u{7}BEL\\u{7}line\\ncarriage\\rbackspace\\u{8}";
+
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = store::comparable_path(&temp_dir.path().join("store"));
+    let target = temp_dir.path().join("skills");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "link", "codex"])
+        .arg(&target)
+        .assert()
+        .success();
+
+    let plugin = store.join("local/plugins/terminal-reference");
+    std::fs::create_dir_all(&plugin).expect("plugin package directory should be created");
+    std::fs::write(
+        plugin.join("PLUGIN.toml"),
+        r#"schema_version = 1
+[plugin]
+name = "terminal-reference"
+description = "Exercises terminal-safe selected-plugin output"
+
+[[plugin.members]]
+ref = "skill:missing\u001b[2JCSI\u001b]0;OSC\u0007BEL\u0007line\ncarriage\rbackspace\b"
+requirement = "optional"
+"#,
+    )
+    .expect("plugin manifest should be written");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["plugin", "select", "local:terminal-reference"])
+        .assert()
+        .success();
+
+    let assert_human_output_is_terminal_safe = |output: &[u8]| {
+        assert!(
+            output
+                .iter()
+                .all(|byte| !byte.is_ascii_control() || *byte == b'\n'),
+            "human output must not contain raw terminal controls: {output:?}"
+        );
+        let stdout = String::from_utf8(output.to_vec()).expect("output should be UTF-8");
+        assert!(
+            stdout.contains(ESCAPED_REFERENCE),
+            "escaped reference should remain visible: {stdout}"
+        );
+    };
+
+    let status = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("status")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    assert_human_output_is_terminal_safe(&status);
+
+    let plan = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("plan")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    assert_human_output_is_terminal_safe(&plan);
+
+    let status_json = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .output()
+        .expect("status JSON should run");
+    assert!(status_json.status.success());
+    let status_json: serde_json::Value =
+        serde_json::from_slice(&status_json.stdout).expect("status JSON should parse");
+    assert_eq!(
+        status_json["plugins"]["plugins"][0]["members"][0]["reference"],
+        REFERENCE
+    );
+    assert!(
+        status_json["plugin_targets"]
+            .as_array()
+            .expect("native projection should be reported")
+            .iter()
+            .any(
+                |target| target["components"].as_array().is_some_and(|components| {
+                    components
+                        .iter()
+                        .any(|component| component["identity"] == REFERENCE)
+                })
+            )
+    );
+
+    let plan_json = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "plan"])
+        .output()
+        .expect("plan JSON should run");
+    assert!(plan_json.status.success());
+    let plan_json: serde_json::Value =
+        serde_json::from_slice(&plan_json.stdout).expect("plan JSON should parse");
+    assert_eq!(
+        plan_json["destinations"][0]["logical_targets"][0]["plugins"][0]["components"][0]["reference"],
+        REFERENCE
+    );
+}
+
+#[test]
 fn agent_list_check_should_fail_after_reporting_an_unreadable_source() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

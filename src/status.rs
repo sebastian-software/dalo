@@ -1275,23 +1275,27 @@ pub fn print_status_report(report: &StatusReport) {
         }
     }
     for target in &report.plugin_targets {
+        let projection_hash = if target.projection_hash.is_empty() {
+            "-".to_owned()
+        } else {
+            terminal_safe_text(&target.projection_hash)
+        };
         println!(
             "native plugin {} {}: state={} path={} hash={} ({})",
-            target.target,
-            target.plugin,
+            terminal_safe_text(&target.target),
+            terminal_safe_text(&target.plugin),
             target.state,
             paths.path(&target.path),
-            if target.projection_hash.is_empty() {
-                "-"
-            } else {
-                &target.projection_hash
-            },
-            target.diagnostic
+            projection_hash,
+            terminal_safe_text(&target.diagnostic)
         );
         for component in &target.components {
             println!(
                 "  {} kind={} state={} ({})",
-                component.identity, component.kind, component.state, component.diagnostic
+                terminal_safe_text(&component.identity),
+                terminal_safe_text(&component.kind),
+                component.state,
+                terminal_safe_text(&component.diagnostic)
             );
         }
     }
@@ -1350,9 +1354,13 @@ pub fn print_status_report(report: &StatusReport) {
     if !report.plugins.plugins.is_empty() {
         println!("plugins:");
         for plugin in &report.plugins.plugins {
-            println!("  {} state={}", plugin.source_ref, plugin.state);
+            println!(
+                "  {} state={}",
+                terminal_safe_text(&plugin.source_ref),
+                plugin.state
+            );
             for reason in &plugin.blocking_reasons {
-                println!("    blocked: {reason}");
+                println!("    blocked: {}", terminal_safe_text(reason));
             }
         }
     }
@@ -1361,7 +1369,9 @@ pub fn print_status_report(report: &StatusReport) {
         for diagnostic in &report.plugins.diagnostics {
             println!(
                 "  {} {}: {}",
-                diagnostic.code, diagnostic.subject, diagnostic.message
+                diagnostic.code,
+                terminal_safe_text(&diagnostic.subject),
+                terminal_safe_text(&diagnostic.message)
             );
         }
     }
@@ -1845,8 +1855,8 @@ pub fn print_sync_report(report: &SyncReport) {
     for target in &report.plugin_targets {
         println!(
             "{prefix}plugin {} {}: state={} path={} ({})",
-            target.target,
-            target.plugin,
+            terminal_safe_text(&target.target),
+            terminal_safe_text(&target.plugin),
             target.state,
             paths.path(&target.path),
             paths.text(&target.diagnostic)
