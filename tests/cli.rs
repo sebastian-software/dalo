@@ -8222,6 +8222,55 @@ fn resolve_unkeep_should_restore_normal_conflict_handling() {
 }
 
 #[test]
+fn resolve_unkeep_no_match_should_return_actionable_human_and_json_errors() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "keep", "review"])
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "unkeep", "generic:reviev"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains(
+            "skill `generic:reviev` was not found",
+        ))
+        .stderr(predicate::str::contains("did you mean `generic:review`?"));
+
+    let json = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "resolve", "unkeep", "generic:reviev"])
+        .output()
+        .expect("JSON unkeep error command should run");
+    assert_eq!(json.status.code(), Some(1));
+    assert!(json.stdout.is_empty());
+    let payload: serde_json::Value =
+        serde_json::from_slice(&json.stderr).expect("JSON unkeep error should remain valid");
+    assert_eq!(payload["error"]["code"], "expected_failure");
+    assert_eq!(
+        payload["error"]["message"],
+        "skill `generic:reviev` was not found; did you mean `generic:review`?; known skills: generic:review"
+    );
+
+    let state =
+        store::read_state(&store::StorePaths::new(store)).expect("state should be readable");
+    assert_eq!(state.protected_skills.len(), 1);
+    assert_eq!(state.protected_skills[0].target_id, "generic");
+    assert_eq!(state.protected_skills[0].slot_name, "review");
+}
+
+#[test]
 fn protection_should_follow_target_id_when_directory_moves() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

@@ -492,7 +492,19 @@ pub fn unkeep_skill(paths: &StorePaths, selector: &str, dry_run: bool) -> DaloRe
         .map(|protected| format!("{}:{}", protected.target_id, protected.slot_name))
         .collect::<Vec<_>>();
 
-    if !dry_run && !matching.is_empty() {
+    if matching.is_empty() {
+        return Err(DaloError::skill_not_found(
+            selector,
+            state
+                .protected_skills
+                .iter()
+                .map(|protected| format!("{}:{}", protected.target_id, protected.slot_name))
+                .collect(),
+            "dalo resolve list",
+        ));
+    }
+
+    if !dry_run {
         state.protected_skills.retain(|protected| {
             !matching
                 .iter()
