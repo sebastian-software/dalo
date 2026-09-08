@@ -218,7 +218,7 @@ pub fn approve(paths: &StorePaths, value: &str, dry_run: bool) -> DaloResult<Hoo
     if status.tool_state != ToolState::Ready {
         return Err(DaloError::StateError {
             reason: format!(
-                "hook `{}` references tool `{}` in state {:?}; approve and stage the exact tool first",
+                "hook `{}` references tool `{}` in state {}; approve and stage the exact tool first",
                 status.hook.source_ref, status.hook.tool_source_ref, status.tool_state
             ),
         });

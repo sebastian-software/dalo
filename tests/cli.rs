@@ -541,7 +541,7 @@ id = "detector"
 entry = "bin/detect"
 runtime = "executable"
 platforms = ["macos", "linux"]
-argv = ["--check"]
+argv = ["safe", "\u001b[2JESC spoof", "two,values"]
 cwd = "tool_root"
 capabilities = ["filesystem_read"]
 availability = "required"
@@ -633,6 +633,13 @@ fn plugin_tool_inventory_should_report_pending_tool_without_execution() {
         .stdout(predicate::str::contains("matcher: tool_names=Bash"))
         .stdout(predicate::str::contains("bindings: none"))
         .stdout(predicate::str::contains("ToolUnavailable").not());
+    fixture
+        .command()
+        .args(["approve", "hook", PluginToolFixture::HOOK_ID])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("state pending_approval"))
+        .stderr(predicate::str::contains("state PendingApproval").not());
     fixture.assert_never_executed();
 }
 
@@ -647,7 +654,11 @@ fn human_plugin_tool_hook_status_and_review_reports_use_stable_display_values() 
         .success()
         .stdout(predicate::str::contains("state: pending_approval"))
         .stdout(predicate::str::contains("entry: bin/detect (executable)"))
-        .stdout(predicate::str::contains("argv: --check"))
+        .stdout(predicate::str::contains(
+            "argv: \"safe\" \"\\u{1b}[2JESC spoof\" \"two,values\"",
+        ))
+        .stdout(predicate::str::contains("argv: safe, ").not())
+        .stdout(predicate::str::contains("two,values").count(1))
         .stdout(predicate::str::contains("capabilities: filesystem_read"));
     fixture
         .command()
