@@ -1644,6 +1644,173 @@ fn agent_list_and_show_should_preview_canonical_provider_projections() {
 }
 
 #[test]
+fn agent_plugin_show_and_review_should_escape_controlled_terminal_text_without_changing_json() {
+    const AGENT_DESCRIPTION: &str =
+        "agent\u{1b}[2JCSI\u{1b}]0;OSC\u{7}BEL\u{7}line\ncarriage\rbackspace\u{8}";
+    const PLUGIN_DESCRIPTION: &str =
+        "plugin\u{1b}[2JCSI\u{1b}]0;OSC\u{7}BEL\u{7}line\ncarriage\rbackspace\u{8}";
+    const ESCAPED_AGENT_DESCRIPTION: &str =
+        "agent\\u{1b}[2JCSI\\u{1b}]0;OSC\\u{7}BEL\\u{7}line\\ncarriage\\rbackspace\\u{8}";
+    const ESCAPED_PLUGIN_DESCRIPTION: &str =
+        "plugin\\u{1b}[2JCSI\\u{1b}]0;OSC\\u{7}BEL\\u{7}line\\ncarriage\\rbackspace\\u{8}";
+
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = store::comparable_path(&temp_dir.path().join("store"));
+    let repo = temp_dir.path().join("team-repo");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    create_git_skill_repo(&repo);
+    let agent = repo.join("agents/reviewer");
+    std::fs::create_dir_all(&agent).expect("agent package directory should be created");
+    std::fs::write(
+        agent.join("AGENT.md"),
+        r#"---
+schema_version: 1
+name: reviewer
+description: "agent\u001b[2JCSI\u001b]0;OSC\u0007BEL\u0007line\ncarriage\rbackspace\b"
+---
+Review carefully.
+"#,
+    )
+    .expect("agent package should be written");
+    let plugin = repo.join("plugins/terminal-safe");
+    std::fs::create_dir_all(&plugin).expect("plugin package directory should be created");
+    std::fs::write(
+        plugin.join("PLUGIN.toml"),
+        r#"schema_version = 1
+[plugin]
+name = "terminal-safe"
+description = "plugin\u001b[2JCSI\u001b]0;OSC\u0007BEL\u0007line\ncarriage\rbackspace\b"
+
+[[plugin.members]]
+ref = "agent:reviewer"
+requirement = "required"
+"#,
+    )
+    .expect("plugin package should be written");
+    run_git(&repo, &["add", "agents", "plugins"]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "add terminal control fixtures",
+            "-q",
+        ],
+    );
+    add_source(&store, "team", &repo);
+    set_source_untrusted(&store, "team");
+
+    let assert_human_output_is_terminal_safe = |output: &[u8], expected_description: &str| {
+        assert!(
+            !output
+                .iter()
+                .any(|byte| byte.is_ascii_control() && *byte != b'\n'),
+            "human output must not contain raw terminal controls: {output:?}"
+        );
+        let stdout = String::from_utf8(output.to_vec()).expect("output should be UTF-8");
+        assert!(
+            stdout.contains(expected_description),
+            "escaped description should remain visible: {stdout}"
+        );
+    };
+
+    let agent_show = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["agent", "show", "team:reviewer"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    assert_human_output_is_terminal_safe(&agent_show, ESCAPED_AGENT_DESCRIPTION);
+
+    let agent_json = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "agent", "show", "team:reviewer"])
+        .output()
+        .expect("agent show JSON should run");
+    assert!(agent_json.status.success());
+    let agent_json: serde_json::Value =
+        serde_json::from_slice(&agent_json.stdout).expect("agent show JSON should parse");
+    assert_eq!(agent_json["agent"]["description"], AGENT_DESCRIPTION);
+
+    let plugin_show = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["plugin", "show", "team:terminal-safe"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    assert_human_output_is_terminal_safe(&plugin_show, ESCAPED_PLUGIN_DESCRIPTION);
+
+    let plugin_json = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "plugin", "show", "team:terminal-safe"])
+        .output()
+        .expect("plugin show JSON should run");
+    assert!(plugin_json.status.success());
+    let plugin_json: serde_json::Value =
+        serde_json::from_slice(&plugin_json.stdout).expect("plugin show JSON should parse");
+    assert_eq!(plugin_json["candidate"]["description"], PLUGIN_DESCRIPTION);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["plugin", "select", "team:terminal-safe"])
+        .assert()
+        .success();
+    let review_json = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "plugin", "review", "team:terminal-safe"])
+        .output()
+        .expect("plugin review JSON should run");
+    assert!(review_json.status.success());
+    let review_json: serde_json::Value =
+        serde_json::from_slice(&review_json.stdout).expect("plugin review JSON should parse");
+    let description_fact = review_json["decisions"]
+        .as_array()
+        .expect("review decisions should be an array")
+        .iter()
+        .find_map(|decision| {
+            decision["facts"]
+                .as_array()?
+                .iter()
+                .find(|fact| fact["label"] == "description")
+        })
+        .expect("agent description fact should be present");
+    assert_eq!(description_fact["value"], AGENT_DESCRIPTION);
+
+    let review = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["plugin", "review", "team:terminal-safe"])
+        .write_stdin("q\n")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    assert_human_output_is_terminal_safe(&review, ESCAPED_AGENT_DESCRIPTION);
+}
+
+#[test]
 fn agent_list_check_should_fail_after_reporting_an_unreadable_source() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

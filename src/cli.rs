@@ -34,6 +34,7 @@ use crate::status;
 use crate::store;
 use crate::target;
 use crate::team_manifest;
+use crate::term;
 use crate::tool;
 use crate::update;
 
@@ -1337,9 +1338,15 @@ fn print_agent_list_report(report: &agent::AgentListReport, store_root: &std::pa
 }
 
 fn print_agent_show_report(report: &agent::AgentShowReport) {
-    println!("{}", report.agent.source_ref);
-    println!("description: {}", report.agent.description);
-    println!("package hash: {}", report.agent.content_hash);
+    println!("{}", term::terminal_safe_text(&report.agent.source_ref));
+    println!(
+        "description: {}",
+        term::terminal_safe_text(&report.agent.description)
+    );
+    println!(
+        "package hash: {}",
+        term::terminal_safe_text(&report.agent.content_hash)
+    );
     for compilation in &report.compilations {
         let visible_findings = compilation
             .findings
@@ -1360,7 +1367,9 @@ fn print_agent_show_report(report: &agent::AgentShowReport) {
         for finding in visible_findings {
             println!(
                 "  {}: {} — {}",
-                finding.field, finding.result, finding.message
+                term::terminal_safe_text(&finding.field),
+                finding.result,
+                term::terminal_safe_text(&finding.message)
             );
         }
     }
@@ -1430,9 +1439,15 @@ fn run_plugin(options: &GlobalOptions, command: PluginCommand) -> DaloResult<()>
                 if options.json {
                     return print_json(&report);
                 }
-                println!("{}", report.candidate.source_ref);
-                println!("description: {}", report.candidate.description);
-                println!("package hash: {}", report.candidate.package_hash);
+                println!("{}", term::terminal_safe_text(&report.candidate.source_ref));
+                println!(
+                    "description: {}",
+                    term::terminal_safe_text(&report.candidate.description)
+                );
+                println!(
+                    "package hash: {}",
+                    term::terminal_safe_text(&report.candidate.package_hash)
+                );
                 println!(
                     "selected: {}",
                     report
@@ -1446,14 +1461,16 @@ fn run_plugin(options: &GlobalOptions, command: PluginCommand) -> DaloResult<()>
                 for member in &report.candidate.members {
                     println!(
                         "  member {} requirement={}",
-                        member.reference.as_string(),
+                        term::terminal_safe_text(&member.reference.as_string()),
                         member.requirement
                     );
                 }
                 for tool in &report.candidate.tools {
                     println!(
                         "  tool {} runtime={} contract=sha256:{}",
-                        tool.source_ref, tool.runtime, tool.contract_hash
+                        term::terminal_safe_text(&tool.source_ref),
+                        tool.runtime,
+                        term::terminal_safe_text(&tool.contract_hash)
                     );
                 }
             }
@@ -1611,26 +1628,36 @@ fn run_plugin_review(
     let mut selected = std::collections::BTreeSet::new();
     for decision in &approvable {
         println!();
-        println!("decision: {}", decision.id);
+        println!("decision: {}", term::terminal_safe_text(&decision.id));
         println!("  boundary: {}", decision.kind);
-        println!("  component: {}", decision.component);
+        println!(
+            "  component: {}",
+            term::terminal_safe_text(&decision.component)
+        );
         if let Some(hash) = &decision.content_hash {
-            println!("  reviewed hash: {hash}");
+            println!("  reviewed hash: {}", term::terminal_safe_text(hash));
         }
         if let Some(value) = &decision.approval_value {
             println!(
                 "  exact approval: {} = {}",
                 decision.approval_scope.as_deref().unwrap_or(""),
-                value
+                term::terminal_safe_text(value)
             );
         }
         for fact in &decision.facts {
-            println!("  {}: {}", fact.label, format_review_fact(fact));
+            println!(
+                "  {}: {}",
+                fact.label,
+                term::terminal_safe_text(&format_review_fact(fact))
+            );
         }
         for target in &decision.targets {
             println!(
                 "  target {}: {}/{} -> {}",
-                target.target, target.state, target.compatibility, target.mapping
+                term::terminal_safe_text(&target.target),
+                target.state,
+                target.compatibility,
+                term::terminal_safe_text(&target.mapping)
             );
         }
         match read_review_answer("Approve only this displayed component contract? [y/N/q] ")? {
@@ -1647,7 +1674,7 @@ fn run_plugin_review(
     println!();
     println!("selected exact decisions: {}", selected.len());
     for id in &selected {
-        println!("  {id}");
+        println!("  {}", term::terminal_safe_text(id));
     }
     if selected.is_empty() {
         println!("review completed without grants");
@@ -1676,7 +1703,11 @@ fn run_plugin_review(
         }
     );
     for approval in committed.granted {
-        println!("  {} = {}", approval.scope, approval.value);
+        println!(
+            "  {} = {}",
+            approval.scope,
+            term::terminal_safe_text(&approval.value)
+        );
     }
     Ok(())
 }
@@ -1705,27 +1736,38 @@ fn read_review_answer(prompt: &str) -> DaloResult<ReviewAnswer> {
 }
 
 fn print_plugin_review(report: &plugin_review::PluginReviewReport) {
-    println!("plugin review {}", report.root_plugin);
-    println!("review token: {}", report.review_token);
+    println!(
+        "plugin review {}",
+        term::terminal_safe_text(&report.root_plugin)
+    );
+    println!(
+        "review token: {}",
+        term::terminal_safe_text(&report.review_token)
+    );
     println!("dependency closure:");
     for plugin in &report.plugin_closure {
         println!(
             "  {} state={} package=sha256:{} closure=sha256:{}",
-            plugin.source_ref, plugin.state, plugin.package_hash, plugin.closure_hash
+            term::terminal_safe_text(&plugin.source_ref),
+            plugin.state,
+            term::terminal_safe_text(&plugin.package_hash),
+            term::terminal_safe_text(&plugin.closure_hash)
         );
         for reason in &plugin.blocking_reasons {
-            println!("    blocked: {reason}");
+            println!("    blocked: {}", term::terminal_safe_text(reason));
         }
     }
     println!("component decisions:");
     for decision in &report.decisions {
         println!(
             "  {} state={} component={}",
-            decision.id, decision.state, decision.component
+            term::terminal_safe_text(&decision.id),
+            decision.state,
+            term::terminal_safe_text(&decision.component)
         );
-        println!("    {}", decision.diagnostic);
+        println!("    {}", term::terminal_safe_text(&decision.diagnostic));
         if let Some(hash) = &decision.content_hash {
-            println!("    hash: {hash}");
+            println!("    hash: {}", term::terminal_safe_text(hash));
         }
         if decision.approval_reused {
             println!("    exact existing approval reused");
@@ -1733,10 +1775,13 @@ fn print_plugin_review(report: &plugin_review::PluginReviewReport) {
         for target in &decision.targets {
             println!(
                 "    target {}: {}/{} -> {}",
-                target.target, target.state, target.compatibility, target.mapping
+                term::terminal_safe_text(&target.target),
+                target.state,
+                target.compatibility,
+                term::terminal_safe_text(&target.mapping)
             );
             if let Some(fallback) = &target.fallback {
-                println!("      fallback: {fallback}");
+                println!("      fallback: {}", term::terminal_safe_text(fallback));
             }
         }
     }
