@@ -2381,6 +2381,50 @@ fn team_catalog_update_unknown_from_should_be_actionable_and_keep_json_error_sch
 }
 
 #[test]
+fn team_catalog_update_full_blob_oid_should_keep_command_failure() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let repo = temp_dir.path().join("team-repo");
+    let catalog = temp_dir.path().join("catalog");
+    std::fs::create_dir_all(&repo).expect("team repository should be created");
+    create_git_catalog_repo(&catalog);
+    let blob_oid = git_stdout(
+        &catalog,
+        &["rev-parse", "HEAD:skills/copy-editing/SKILL.md"],
+    )
+    .trim()
+    .to_owned();
+    assert_eq!(blob_oid.len(), 40, "fixture should provide a full SHA-1");
+
+    dalo_command()
+        .current_dir(&repo)
+        .args(["team", "init", "company"])
+        .assert()
+        .success();
+    dalo_command()
+        .current_dir(&repo)
+        .args(["team", "catalog", "add", "marketing"])
+        .arg(&catalog)
+        .args(["--version", "main"])
+        .assert()
+        .success();
+
+    let output = dalo_command()
+        .current_dir(&repo)
+        .args(["team", "catalog", "update", "marketing", "--from"])
+        .arg(&blob_oid)
+        .output()
+        .expect("non-commit revision command should run");
+
+    assert_eq!(output.status.code(), Some(4));
+    assert!(
+        String::from_utf8(output.stderr)
+            .expect("non-commit revision stderr should be UTF-8")
+            .contains("command `git` failed with status 128"),
+        "an existing non-commit object should preserve the Git command failure"
+    );
+}
+
+#[test]
 fn team_catalog_add_should_persist_selection_and_portable_permissions() {
     let fixture = TeamCatalogFixture::initialized_with_catalog();
     let manifest = fixture.manifest();

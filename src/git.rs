@@ -261,9 +261,9 @@ pub(crate) fn revision_is_missing(path: &Path, revision: &str) -> bool {
 }
 
 fn revision_is_missing_with_program(program: &str, path: &Path, revision: &str) -> bool {
-    let is_abbreviated_hash =
-        (4..40).contains(&revision.len()) && revision.bytes().all(|byte| byte.is_ascii_hexdigit());
-    if is_abbreviated_hash {
+    let is_hex_object_id =
+        (4..=40).contains(&revision.len()) && revision.bytes().all(|byte| byte.is_ascii_hexdigit());
+    if is_hex_object_id {
         let disambiguate = format!("--disambiguate={revision}");
         return run_git_program(
             program,
