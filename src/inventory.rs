@@ -1260,6 +1260,7 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
     let mut at_line_start = true;
     let mut line_indent = 0_usize;
     let mut plain_scalar_indent = None;
+    let mut in_tag_property = false;
 
     while let Some(character) = chars.next() {
         if at_line_start && character == ' ' {
@@ -1280,6 +1281,17 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
                     scalar_can_start = true;
                 }
             }
+        }
+        if in_tag_property {
+            if character == '\n' {
+                in_tag_property = false;
+                at_line_start = true;
+                line_indent = 0;
+            } else if character.is_whitespace() {
+                in_tag_property = false;
+            }
+            previous = Some(character);
+            continue;
         }
         if in_comment {
             if character == '\n' {
@@ -1324,9 +1336,7 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
                 if scalar_can_start
                     && yaml_anchor_or_alias_starts(previous, chars.peek().copied()) =>
             {
-                if flow_depth == 0 {
-                    plain_scalar_indent = Some(line_indent);
-                }
+                plain_scalar_indent = Some(line_indent);
                 references += 1;
                 if references > limit {
                     return true;
@@ -1339,20 +1349,23 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
             }
             '[' | '{' | ',' => {
                 flow_depth += matches!(character, '[' | '{') as usize;
+                plain_scalar_indent = None;
                 scalar_can_start = true;
             }
             ']' | '}' => {
                 flow_depth = flow_depth.saturating_sub(1);
+                plain_scalar_indent = None;
                 scalar_can_start = false;
             }
             ':' if flow_depth > 0 || chars.peek().is_some_and(|next| next.is_whitespace()) => {
                 plain_scalar_indent = None;
                 scalar_can_start = true;
             }
+            '!' if scalar_can_start => in_tag_property = true,
             '-' | '?'
                 if scalar_can_start && chars.peek().is_some_and(|next| next.is_whitespace()) => {}
             character if !character.is_whitespace() => {
-                if scalar_can_start && flow_depth == 0 {
+                if scalar_can_start {
                     plain_scalar_indent = Some(line_indent);
                 }
                 scalar_can_start = false;
@@ -2473,6 +2486,34 @@ required = true
             skill_dir.join(SKILL_FILE),
             format!(
                 "---\nname: plain-quote-alias-bomb\ndescription: plain\"text\ntags: [&tag bounded, {aliases}*tag]\n---\n# Plain Quote Alias Bomb\n"
+            ),
+        )
+        .expect("skill file should be written");
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should succeed");
+
+        assert!(inventory.skills.is_empty());
+        assert_eq!(
+            inventory.warnings[0].code,
+            InventoryWarningCode::MalformedFrontmatter
+        );
+        assert!(
+            inventory.warnings[0]
+                .message
+                .contains("anchor/alias references exceed")
+        );
+    }
+
+    #[test]
+    fn scan_source_should_reject_excessive_references_after_tag_property_anchor() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("tag-property-alias-bomb");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        let aliases = "*tag, ".repeat(MAX_FRONTMATTER_ANCHOR_OR_ALIAS_REFERENCES - 1);
+        fs::write(
+            skill_dir.join(SKILL_FILE),
+            format!(
+                "---\nname: tag-property-alias-bomb\ndescription: !!str &tag bounded\ntags: [{aliases}*tag]\n---\n# Tag Property Alias Bomb\n"
             ),
         )
         .expect("skill file should be written");

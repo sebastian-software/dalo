@@ -1590,7 +1590,7 @@ fn next_should_surface_non_degrading_inventory_warnings() {
 }
 
 #[test]
-fn status_check_should_reject_alias_bomb_after_multiline_plain_scalar_quote_text() {
+fn status_json_should_reject_alias_bomb_after_flow_plain_scalar_quote_continuation() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
@@ -1601,7 +1601,7 @@ fn status_check_should_reject_alias_bomb_after_multiline_plain_scalar_quote_text
     std::fs::write(
         skill.join("SKILL.md"),
         format!(
-            "---\nname: plain-quote-alias-bomb\ndescription: plain\n  \"text\ntags: [&tag bounded, {aliases}*tag]\n---\n# Plain Quote Alias Bomb\n"
+            "---\nname: plain-quote-alias-bomb\ntags: [plain\n  \"quote, &tag bounded, {aliases}*tag]\n---\n# Plain Quote Alias Bomb\n"
         ),
     )
     .expect("alias-bomb skill should be written");
@@ -1612,16 +1612,27 @@ fn status_check_should_reject_alias_bomb_after_multiline_plain_scalar_quote_text
         .arg("sync")
         .assert()
         .success();
-    dalo_command()
+    let status = dalo_command()
         .args(["--store"])
         .arg(&store)
-        .args(["status", "--check"])
+        .args(["--json", "status"])
         .assert()
-        .failure()
-        .stdout(predicate::str::contains("malformed_frontmatter"))
-        .stdout(predicate::str::contains(
-            "anchor/alias references exceed the 16-reference safety limit",
-        ));
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let status: serde_json::Value =
+        serde_json::from_slice(&status).expect("status should emit valid JSON");
+    assert_eq!(
+        status["inventory_warnings"][0]["code"],
+        "malformed_frontmatter"
+    );
+    assert!(
+        status["inventory_warnings"][0]["message"]
+            .as_str()
+            .is_some_and(|message| message
+                .contains("anchor/alias references exceed the 16-reference safety limit"))
+    );
 }
 
 #[test]
