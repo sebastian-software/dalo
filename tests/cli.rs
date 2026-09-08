@@ -13800,7 +13800,7 @@ fn instructions_enable_disable_should_manage_block_idempotently() {
     // Author a local instruction pack and seed the target with user content.
     std::fs::write(
         store.join("local/instructions/house-style.md"),
-        "version: 1.0\n\nUse tabs, not spaces.\n",
+        "version: 1.0\ntopics: formatting\n\nUse tabs, not spaces.\n",
     )
     .expect("pack should be written");
     std::fs::write(&target_file, "# Project\n\nUser notes.\n").expect("target should be written");
@@ -13821,6 +13821,12 @@ fn instructions_enable_disable_should_manage_block_idempotently() {
     assert!(after_enable.contains("User notes."));
     assert!(after_enable.contains("Use tabs, not spaces."));
     assert!(after_enable.contains("<!-- dalo:start house-style -->"));
+    assert!(!after_enable.contains("version: 1.0"));
+    assert!(!after_enable.contains("topics: formatting"));
+    assert_eq!(
+        after_enable,
+        "# Project\n\nUser notes.\n\n<!-- dalo:start house-style -->\nUse tabs, not spaces.\n<!-- dalo:end house-style -->\n"
+    );
 
     // Enabling again is idempotent.
     enable();
@@ -13839,6 +13845,38 @@ fn instructions_enable_disable_should_manage_block_idempotently() {
     assert!(after_disable.contains("# Project"));
     assert!(after_disable.contains("User notes."));
     assert!(!after_disable.contains("dalo:start"));
+}
+
+#[test]
+fn instructions_enable_should_render_pack_without_metadata_verbatim() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target_file = temp_dir.path().join("AGENTS.md");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::write(
+        store.join("local/instructions/house-style.md"),
+        "# House style\n\nUse tabs, not spaces.\n",
+    )
+    .expect("pack should be written");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "house-style"])
+        .arg(&target_file)
+        .assert()
+        .success();
+
+    assert_eq!(
+        std::fs::read_to_string(&target_file).expect("target should be readable"),
+        "<!-- dalo:start house-style -->\n# House style\n\nUse tabs, not spaces.\n<!-- dalo:end house-style -->\n"
+    );
 }
 
 #[test]

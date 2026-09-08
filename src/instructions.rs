@@ -199,7 +199,7 @@ pub fn enable_pack_for_targets(
         target_locks.push(acquire_target_lock(paths, &target)?);
         let snapshot = target_snapshot(&target)?;
         let existing = snapshot.content.clone().unwrap_or_default();
-        let rendered = render_block(&existing, &marker_id, &resolved.pack.body)?;
+        let rendered = render_pack_block(&existing, &marker_id, &resolved.pack.body)?;
         prepared.push(PreparedInstructionMutation {
             logical_targets: destination.logical_targets.clone(),
             target,
@@ -488,8 +488,11 @@ pub fn refresh_active_packs(
         for refresh in pending.refreshes {
             let entry = &active[refresh.entry_index];
             let marker = lock_marker_id(entry);
-            let expected =
-                render_managed_block_with_line_ending(&marker, &refresh.old_body, line_ending)?;
+            let expected = render_pack_managed_block_with_line_ending(
+                &marker,
+                &refresh.old_body,
+                line_ending,
+            )?;
             let Some((start, end)) = find_block(&existing, &marker)? else {
                 return Err(DaloError::StateError {
                     reason: format!(
@@ -510,12 +513,12 @@ pub fn refresh_active_packs(
             }
 
             if refresh.previous_commit != refresh.commit {
-                let next_block = render_managed_block_with_line_ending(
+                let next_block = render_pack_managed_block_with_line_ending(
                     &marker,
                     &refresh.pack.body,
                     line_ending,
                 )?;
-                rendered = render_block(&rendered, &marker, &refresh.pack.body)?;
+                rendered = render_pack_block(&rendered, &marker, &refresh.pack.body)?;
                 updated[refresh.updated_entry_index].commit = Some(refresh.commit.clone());
                 updated[refresh.updated_entry_index].version = refresh.pack.version.clone();
                 operations.push(InstructionSyncOperation {
@@ -843,6 +846,19 @@ pub fn render_block(content: &str, pack_id: &str, body: &str) -> DaloResult<Stri
     })
 }
 
+/// Render an instruction pack after removing metadata consumed by Dalo itself.
+///
+/// The source body remains intact for locks, discovery, and overlap detection;
+/// only the managed block omits recognized metadata lines from agent-visible
+/// content.
+fn render_pack_block(content: &str, pack_id: &str, source_body: &str) -> DaloResult<String> {
+    render_block(
+        content,
+        pack_id,
+        &strip_recognized_pack_metadata(source_body),
+    )
+}
+
 #[cfg(test)]
 fn render_managed_block(pack_id: &str, body: &str) -> DaloResult<String> {
     render_managed_block_with_line_ending(pack_id, body, "\n")
@@ -866,6 +882,18 @@ fn render_managed_block_with_line_ending(
         line_ending,
         end_marker(pack_id)
     ))
+}
+
+fn render_pack_managed_block_with_line_ending(
+    pack_id: &str,
+    source_body: &str,
+    line_ending: &str,
+) -> DaloResult<String> {
+    render_managed_block_with_line_ending(
+        pack_id,
+        &strip_recognized_pack_metadata(source_body),
+        line_ending,
+    )
 }
 
 fn validate_body_markers(pack_id: &str, body: &str) -> DaloResult<()> {
@@ -941,7 +969,7 @@ fn instruction_block_drift(
         }
     };
     let marker_id = lock_marker_id(entry);
-    let expected = match render_managed_block_with_line_ending(
+    let expected = match render_pack_managed_block_with_line_ending(
         &marker_id,
         &pack.body,
         line_ending_for(&content),
@@ -1127,6 +1155,28 @@ fn parse_version(body: &str) -> Option<String> {
         .find_map(|line| line.trim().strip_prefix("version:"))
         .map(|value| value.trim().to_owned())
         .filter(|value| !value.is_empty())
+}
+
+/// Remove the leading metadata lines Dalo recognizes from agent-visible output.
+///
+/// Metadata is recognized by the same bounded scans as `parse_version` and
+/// `parse_topics`. Source line endings and all other content stay unchanged.
+fn strip_recognized_pack_metadata(body: &str) -> String {
+    let version_line = body.lines().take(5).position(|line| {
+        line.trim()
+            .strip_prefix("version:")
+            .is_some_and(|value| !value.trim().is_empty())
+    });
+    let topics_line = body.lines().take(8).position(|line| {
+        let trimmed = line.trim();
+        trimmed.strip_prefix("topics:").is_some() || trimmed.strip_prefix("tags:").is_some()
+    });
+
+    body.split_inclusive('\n')
+        .enumerate()
+        .filter(|(index, _)| Some(*index) != version_line && Some(*index) != topics_line)
+        .map(|(_, line)| line)
+        .collect()
 }
 
 /// Read a user-authored pack from `local/instructions/<id>.md`.
@@ -1384,7 +1434,7 @@ where
     let _target_lock = acquire_target_lock(paths, &target)?;
     let snapshot = target_snapshot(&target)?;
     let existing = snapshot.content.clone().unwrap_or_default();
-    let rendered = render_block(&existing, &marker_id, &pack.body)?;
+    let rendered = render_pack_block(&existing, &marker_id, &pack.body)?;
     if !dry_run {
         lock.active_instruction_packs.retain(|entry| {
             !(entry.source_id == resolved.source_id
