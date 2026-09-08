@@ -332,16 +332,27 @@ reference_status_section="$(awk '
   in_section { print }
 ' "$root/docs/reference.md")"
 reference_agent_section="$(awk '
-  /^### `dalo agent list\|show <source>:<name>`$/ { in_section = 1; next }
+  /^### `dalo agent list \[--check\]`; `dalo agent show <source>:<name>`$/ { in_section = 1; next }
+  in_section && /^### / { exit }
+  in_section { print }
+' "$root/docs/reference.md")"
+reference_tool_section="$(awk '
+  /^### `dalo tool list \[--check\]`; `dalo tool show\|audit <source:plugin#tool:id>`$/ { in_section = 1; next }
+  in_section && /^### / { exit }
+  in_section { print }
+' "$root/docs/reference.md")"
+reference_hook_section="$(awk '
+  /^### `dalo hook list \[--check\]`; `dalo hook show <source:plugin#hook:id>`$/ { in_section = 1; next }
   in_section && /^### / { exit }
   in_section { print }
 ' "$root/docs/reference.md")"
 printf '%s\n' "$reference_status_section" | grep -Fq '`--check` exits with code 1'
 printf '%s\n' "$reference_status_section" | grep -Fq 'full report on stdout for JSON'
-if printf '%s\n' "$reference_agent_section" | grep -Fq '`--check` exits with code 1'; then
-  echo 'status --check semantics must not be documented under dalo agent' >&2
-  exit 1
-fi
+printf '%s\n' "$reference_agent_section" | grep -Fq 'source scan errors because its result is incomplete'
+printf '%s\n' "$reference_agent_section" | grep -Fq 'package inventory warnings'
+printf '%s\n' "$reference_tool_section" | grep -Fq 'A failed audit returns a non-zero exit code'
+printf '%s\n' "$reference_tool_section" | grep -Fq 'rejected plugin packages produce'
+printf '%s\n' "$reference_hook_section" | grep -Fq 'rejected plugin packages produce'
 
 store_paths="$(sed -n '/impl StorePaths/,/^}/p' "$root/src/store.rs")"
 store_layout="$(awk '/^## Store Layout/{ in_section = 1; next } in_section && /^## /{ exit } in_section{ print }' "$root/docs/reference.md")"

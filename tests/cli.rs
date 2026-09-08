@@ -629,6 +629,35 @@ fn plugin_tool_inventory_should_report_pending_tool_without_execution() {
 }
 
 #[test]
+fn tool_and_hook_list_check_should_fail_for_rejected_plugin_packages() {
+    let fixture = PluginToolFixture::new();
+    std::fs::write(fixture.package.join("PLUGIN.toml"), "schema_version = 99\n")
+        .expect("invalid plugin manifest should be written");
+
+    fixture
+        .command()
+        .args(["tool", "list", "--check"])
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(predicate::str::contains("warning"))
+        .stderr(predicate::str::contains(
+            "tool list found 1 rejected plugin package",
+        ));
+    fixture
+        .command()
+        .args(["hook", "list", "--check"])
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(predicate::str::contains("warning"))
+        .stderr(predicate::str::contains(
+            "hook list found 1 rejected plugin package",
+        ));
+    fixture.assert_never_executed();
+}
+
+#[test]
 fn plugin_plan_should_report_selected_tool_as_pending_without_execution() {
     let fixture = PluginToolFixture::new();
     fixture.select_plugin();
@@ -1422,6 +1451,33 @@ fn agent_list_and_show_should_preview_canonical_provider_projections() {
         .stdout(predicate::str::contains("  tags:").not())
         .stdout(predicate::str::contains("Exact").not())
         .stdout(predicate::str::contains("Mapped").not());
+}
+
+#[test]
+fn agent_list_check_should_fail_after_reporting_an_unreadable_source() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::remove_dir_all(store.join("local")).expect("local source should be removed");
+    std::fs::write(store.join("local"), "not a source directory")
+        .expect("unreadable source fixture should be written");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["agent", "list", "--check"])
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(predicate::str::contains("warning unreadable_agent_path:"))
+        .stderr(predicate::str::contains(
+            "check failed: agent list found 1 inventory warning",
+        ));
 }
 
 #[test]
@@ -7446,8 +7502,12 @@ fn resolve_remove_owned_yes_should_not_remove_real_entry() {
         .arg(&store)
         .args(["--yes", "resolve", "remove-owned", "generic:review"])
         .assert()
-        .success()
-        .stdout(predicate::str::contains("blocked_real_entry"));
+        .failure()
+        .code(1)
+        .stdout(predicate::str::contains("blocked_real_entry"))
+        .stderr(predicate::str::contains(
+            "a real entry occupies the recorded path",
+        ));
 
     assert!(target.join("review/SKILL.md").is_file());
 }
@@ -7487,8 +7547,12 @@ fn doctor_suggested_remove_owned_should_clear_real_entry_record() {
         .arg(&store)
         .args(["resolve", "remove-owned", "generic:review"])
         .assert()
-        .success()
-        .stdout(predicate::str::contains("blocked_real_entry"));
+        .failure()
+        .code(1)
+        .stdout(predicate::str::contains("blocked_real_entry"))
+        .stderr(predicate::str::contains(
+            "a real entry occupies the recorded path",
+        ));
 
     let output = dalo_command()
         .args(["--store"])
