@@ -741,7 +741,7 @@ JSON output shape: `RemoveOwnedReport`.
 
 ### `dalo doctor`
 
-Run read-only diagnostics for store layout, config, state, lock, approvals, Git, GitHub CLI, targets, owned symlinks, dirty sources, pending approvals, required closures, instruction packs, and cloud-synced target paths.
+Run read-only diagnostics for store layout, config, state, lock, approvals, Git availability, targets, owned symlinks, dirty sources, pending approvals, required closures, instruction packs, and cloud-synced target paths.
 
 Examples:
 
