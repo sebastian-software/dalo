@@ -202,6 +202,30 @@ case "$source_selection_field" in
     exit 1
     ;;
 esac
+source_config_selection_rustdoc="$(awk '
+  /^    \/\/\/ Selected skill references for a catalog source\./ { on = 1 }
+  on { print }
+  on && /^    pub selection: Vec<String>/ { exit }
+' "$root/src/source.rs")"
+printf '%s\n' "$source_config_selection_rustdoc" | grep -Fq 'frontmatter ID, a slot name, or a catalog-relative path.'
+case "$source_config_selection_rustdoc" in
+  *'<source-id>:<slot>'*)
+    echo 'SourceConfig.selection rustdoc advertises a rejected source-qualified reference' >&2
+    exit 1
+    ;;
+esac
+catalog_select_skills_rustdoc="$(awk '
+  /^\/\/\/ Select skills from a catalog\./ { on = 1 }
+  on { print }
+  on && /^pub fn select_skills/ { exit }
+' "$root/src/catalog.rs")"
+printf '%s\n' "$catalog_select_skills_rustdoc" | grep -Fq 'ID, slot name, or catalog-relative path; unknown refs are rejected.'
+case "$catalog_select_skills_rustdoc" in
+  *'<source-id>:<slot>'*)
+    echo 'catalog::select_skills rustdoc advertises a rejected source-qualified reference' >&2
+    exit 1
+    ;;
+esac
 grep -q '`version:` entry from the first five lines' "$root/docs/reference.md"
 grep -q '`topics:` or `tags:` metadata from the first eight lines' "$root/docs/reference.md"
 if sed -n '/MSRV, dependency-audit, coverage, and site-render jobs additionally run:/,/^```$/p' "$root/CONTRIBUTING.md" \
