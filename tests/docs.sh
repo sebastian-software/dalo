@@ -538,8 +538,9 @@ diff -u "$doctor_expected" "$doctor_documented"
 # Keep the lock-drift table aligned with every production LockDriftCode name
 # so new drift categories cannot silently disappear from recovery guidance.
 lockfile_source="$root/src/lockfile.rs"
+lockfile_variants="$test_root/lock-drift-variants"
 lockfile_expected="$test_root/lock-drift-expected-codes"
-lockfile_documented="$test_root/lock-drift-documented-codes"
+lockfile_table="$test_root/lock-drift-table-codes"
 
 awk '
   /^pub enum LockDriftCode/ { in_enum = 1; next }
@@ -551,7 +552,7 @@ awk '
     print line
   }
 ' "$lockfile_source" \
-  | sort -u > "$lockfile_expected"
+  | sort -u > "$lockfile_variants"
 
 awk '
   /^fn drift_code_name/ { in_mapping = 1; next }
@@ -567,9 +568,9 @@ awk '
   }
 ' "$lockfile_source" \
   | while IFS=' ' read -r variant code; do
-      grep -Fx "$variant" "$lockfile_expected" >/dev/null && printf '%s\n' "$code"
+      grep -Fx "$variant" "$lockfile_variants" >/dev/null && printf '%s\n' "$code"
     done \
-  | sort -u > "$lockfile_documented"
+  | sort -u > "$lockfile_expected"
 
 awk '
   /^### Lock Drift$/ { in_table = 1; next }
@@ -583,19 +584,16 @@ awk '
 ' "$root/docs/troubleshooting.md" \
   | tr ', ' '\n' \
   | sed '/^$/d; s/^`//; s/`$//' \
-  | sort -u > "$test_root/lock-drift-table-codes"
+  > "$lockfile_table"
 
-for lock_code in $(cat "$lockfile_documented"); do
-  grep -Fx "$lock_code" "$test_root/lock-drift-table-codes" >/dev/null || {
-    echo "missing lock-drift troubleshooting row: $lock_code" >&2
-    exit 1
-  }
-done
-grep -Fq 'blocked_by_same_name_skill' "$root/docs/rfcs/0001-dalo-vision.md"
-if grep -Fq 'blocked_by_same_name_skill' "$root/docs/troubleshooting.md"; then
-  echo 'troubleshooting documents a non-emitted blocked_by_same_name_skill code' >&2
+duplicates="$(sort "$lockfile_table" | uniq -d)"
+test -z "$duplicates" || {
+  echo 'duplicate lock-drift troubleshooting rows:' >&2
+  printf '%s\n' "$duplicates" >&2
   exit 1
-fi
+}
+sort "$lockfile_table" -o "$lockfile_table"
+diff -u "$lockfile_expected" "$lockfile_table"
 
 store="$test_root/store"
 target="$test_root/skills"
