@@ -2748,6 +2748,9 @@ pub fn print_unkeep_report(report: &UnkeepReport) {
 /// Print a human-readable remove-owned report.
 pub fn print_remove_owned_report(report: &RemoveOwnedReport) {
     println!("{} {}", report.status.as_str(), report.link_path.display());
+    if let Some(next_step) = report.next_step.as_deref() {
+        println!("note: {next_step}");
+    }
 }
 
 /// Print a human-readable doctor report.
