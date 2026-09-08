@@ -40,7 +40,7 @@ pub fn init_repo(path: &Path) -> DaloResult<()> {
 pub fn clone_repo(url: &str, destination: &Path) -> DaloResult<()> {
     validate_remote_url(url)?;
     let cwd = destination.parent().unwrap_or_else(|| Path::new("."));
-    preflight_local_clone_source(url, cwd)?;
+    preflight_clone_source(url, cwd)?;
     let destination_arg = destination.to_string_lossy().into_owned();
     print_network_progress(&format!(
         "Cloning repository `{}`...",
@@ -49,6 +49,24 @@ pub fn clone_repo(url: &str, destination: &Path) -> DaloResult<()> {
     // `--` terminates option parsing so a user-supplied URL that looks like a
     // flag (e.g. `--upload-pack=...`) can never be treated as a git option.
     run_git_network(cwd, &["clone", "--quiet", "--", url, &destination_arg]).map(|_| ())
+}
+
+/// Check local clone sources before a later clone would mutate its destination.
+///
+/// Remote locations remain deliberately offline here: team manifest authoring
+/// must work while disconnected, and `sync` performs the authenticated remote
+/// check before it creates a managed checkout.
+pub fn preflight_clone_source(location: &str, cwd: &Path) -> DaloResult<()> {
+    preflight_local_clone_source(location, cwd)
+}
+
+/// Return whether `path` is inside a non-bare Git worktree.
+pub fn is_worktree(path: &Path) -> DaloResult<bool> {
+    match run_git(path, &["rev-parse", "--is-inside-work-tree"]) {
+        Ok(output) => Ok(output.trim() == "true"),
+        Err(DaloError::CommandFailed { status, .. }) if status == "128" => Ok(false),
+        Err(error) => Err(error),
+    }
 }
 
 /// Reject unsafe Git transports and URLs that embed credentials.

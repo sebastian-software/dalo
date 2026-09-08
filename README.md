@@ -163,10 +163,12 @@ dalo team catalog update marketing --from main
 dalo team show
 ```
 
-Use `--repo <path>` to manage another checkout. These commands only edit the
-team repository; they do not require an initialized personal Dalo store and do
-not commit or push changes. The resulting manifest pins external catalogs and
-defines the subset that every team member should resolve:
+Run team mutations from a Git checkout (or use `--repo <path>` for one). These
+commands only edit the team repository; they do not require an initialized
+personal Dalo store and do not commit or push changes. After each applied
+change, commit and push `dalo.toml` so teammates can sync it. Dalo warns when
+the directory is not a Git repository. The resulting manifest pins external
+catalogs and defines the subset that every team member should resolve:
 
 ```toml
 schema_version = 1

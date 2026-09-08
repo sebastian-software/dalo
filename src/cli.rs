@@ -17,6 +17,7 @@ use crate::catalog;
 use crate::config;
 use crate::doctor;
 use crate::error::{DaloError, DaloResult};
+use crate::git;
 use crate::hook;
 use crate::hook_dispatch;
 use crate::hook_sync;
@@ -3287,6 +3288,7 @@ fn run_team(options: &GlobalOptions, command: TeamCommand) -> DaloResult<()> {
                         print_json(&report)?;
                     } else {
                         status::print_team_catalog_update(&report);
+                        print_team_manifest_next_step(&report.path, report.updated);
                     }
                     if !report.blocking_reasons.is_empty() {
                         return Err(DaloError::StateError {
@@ -3339,7 +3341,35 @@ fn print_team_manifest_mutation(
         print_json(report)
     } else {
         status::print_team_manifest_mutation(report);
+        let changed =
+            !report.dry_run && report.action != team_manifest::TeamManifestAction::Unchanged;
+        print_team_manifest_next_step(&report.path, changed);
         Ok(())
+    }
+}
+
+/// Explain how a manifest edit becomes visible to the rest of the team.
+///
+/// A manifest can be authored outside Git for local experimentation, but it
+/// cannot reach teammates from there. This stays advisory so Dalo preserves
+/// that supported local workflow.
+fn print_team_manifest_next_step(path: &std::path::Path, changed: bool) {
+    if !changed {
+        return;
+    }
+    let Some(repo) = path.parent() else {
+        return;
+    };
+    match git::is_worktree(repo) {
+        Ok(true) => println!("next: commit and push dalo.toml"),
+        Ok(false) => eprintln!(
+            "warning: `{}` is not a Git repository; commit and push dalo.toml from a Git repository so teammates can sync it",
+            repo.display()
+        ),
+        Err(error) => eprintln!(
+            "warning: could not verify whether `{}` is a Git repository: {error}",
+            repo.display()
+        ),
     }
 }
 

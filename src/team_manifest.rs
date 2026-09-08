@@ -196,6 +196,9 @@ pub struct TeamManifestMutationReport {
     pub catalog_id: Option<String>,
     /// Whether this was a no-write preview.
     pub dry_run: bool,
+    /// Non-blocking validation or portability warnings for this mutation.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
     /// Resulting manifest.
     pub manifest: TeamManifest,
 }
@@ -344,6 +347,7 @@ pub fn init_team_manifest(
             action: TeamManifestAction::Unchanged,
             catalog_id: None,
             dry_run,
+            warnings: Vec::new(),
             manifest,
         });
     }
@@ -366,6 +370,7 @@ pub fn init_team_manifest(
         action: TeamManifestAction::Initialized,
         catalog_id: None,
         dry_run,
+        warnings: Vec::new(),
         manifest,
     })
 }
@@ -400,11 +405,17 @@ pub fn add_team_catalog(
             reason: "must match `[A-Za-z0-9._-]+`".to_owned(),
         });
     }
-    git::validate_remote_url(url)?;
+    let manifest_path = team_manifest_path(repo)?;
+    let manifest_root = manifest_path
+        .parent()
+        .expect("team manifest path has a parent");
+    let location = source::resolve_source_location(url, manifest_root);
+    git::validate_remote_url(&location)?;
+    git::preflight_clone_source(&location, manifest_root)?;
     git::validate_manifest_revision(options.version)?;
     validate_filters(options.skills)?;
     let namespace = source::validate_source_namespace(options.namespace)?;
-    mutate_team_manifest(
+    let mut report = mutate_team_manifest(
         repo,
         TeamManifestAction::CatalogAdded,
         Some(id),
@@ -428,7 +439,18 @@ pub fn add_team_catalog(
                 .sort_by(|left, right| left.id.cmp(&right.id));
             Ok(())
         },
-    )
+    )?;
+    if Path::new(url).is_absolute() {
+        report.warnings.push(format!(
+            "catalog path `{url}` is absolute and will not be portable to other team checkouts; use a path relative to the team repository or a Git URL"
+        ));
+    } else if git::looks_like_remote_location(&location) {
+        report.warnings.push(format!(
+            "catalog URL `{}` was not contacted; `dalo sync` will verify repository access",
+            git::display_remote_url(url)
+        ));
+    }
+    Ok(report)
 }
 
 /// Replace one catalog declaration's include/exclude filters.
@@ -674,6 +696,7 @@ fn mutate_team_manifest(
         action,
         catalog_id: catalog_id.map(str::to_owned),
         dry_run,
+        warnings: Vec::new(),
         manifest,
     })
 }
