@@ -1236,6 +1236,8 @@ After `dalo init`, the store contains:
 | `state.toml` | Internal target/materialization/protection state. |
 | `approvals.toml` | Local approval records. |
 | `source-lock.toml` | Catalog source pins, selections, and inventory snapshots. |
+| `catalog-advance.toml` | Durable recovery record for an interrupted catalog advance; consumed during recovery. |
+| `.catalog.lock` | Catalog coordination lock while catalog operations run. |
 | `autosync.toml` | Installed scheduler backend, schedule, exact paths, identifier, and artifacts. |
 | `autosync-run.toml` | Last attempted/successful scheduled run and its durable outcome/reason. |
 | `autosync.log`, `autosync-error.log` | Native scheduler stdout and stderr. |

@@ -400,6 +400,10 @@ printf '%s\n' "$store_layout" | grep -Fq '`plugins/state.json`'
 printf '%s\n' "$store_paths" | grep -Fq 'hook_state_file: root.join("hooks/state.json")'
 printf '%s\n' "$store_layout" | grep -Fq '`hooks/state.json`'
 printf '%s\n' "$store_layout" | grep -Fq 'created lazily, not by `dalo init`'
+printf '%s\n' "$store_paths" | grep -Fq 'catalog_advance_file: root.join("catalog-advance.toml")'
+printf '%s\n' "$store_layout" | grep -Fq '`catalog-advance.toml`'
+printf '%s\n' "$store_paths" | grep -Fq 'catalog_lock_file: root.join(".catalog.lock")'
+printf '%s\n' "$store_layout" | grep -Fq '`.catalog.lock`'
 
 target_section="$(awk '/^### `DALO_TARGET`$/{on=1;next} on && /^##|^### /{exit} on{print}' "$root/docs/reference.md")"
 reference_document="$(cat "$root/docs/reference.md")"
