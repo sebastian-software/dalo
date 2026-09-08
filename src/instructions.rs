@@ -502,7 +502,15 @@ pub fn refresh_active_packs(
                     ),
                 });
             };
-            if existing[start..end] != expected {
+            let actual = &existing[start..end];
+            let needs_metadata_migration = actual != expected
+                && actual
+                    == render_legacy_pack_managed_block_with_line_ending(
+                        &marker,
+                        &refresh.old_body,
+                        line_ending,
+                    )?;
+            if actual != expected && !needs_metadata_migration {
                 return Err(DaloError::StateError {
                     reason: format!(
                         "managed block for `{}` in `{}` changed outside Dalo; run `dalo status` and review or re-enable the pack",
@@ -512,7 +520,7 @@ pub fn refresh_active_packs(
                 });
             }
 
-            if refresh.previous_commit != refresh.commit {
+            if refresh.previous_commit != refresh.commit || needs_metadata_migration {
                 let next_block = render_pack_managed_block_with_line_ending(
                     &marker,
                     &refresh.pack.body,
@@ -525,7 +533,7 @@ pub fn refresh_active_packs(
                     source_id: entry.source_id.clone(),
                     pack_id: entry.pack_id.clone(),
                     target: target.clone(),
-                    action: if next_block == expected {
+                    action: if next_block == actual {
                         "unchanged".to_owned()
                     } else {
                         "refreshed".to_owned()
@@ -896,6 +904,16 @@ fn render_pack_managed_block_with_line_ending(
     )
 }
 
+/// Render the raw source body used by Dalo releases before pack metadata was
+/// omitted from agent-visible managed blocks.
+fn render_legacy_pack_managed_block_with_line_ending(
+    pack_id: &str,
+    source_body: &str,
+    line_ending: &str,
+) -> DaloResult<String> {
+    render_managed_block_with_line_ending(pack_id, source_body, line_ending)
+}
+
 fn validate_body_markers(pack_id: &str, body: &str) -> DaloResult<()> {
     if body.contains(START_MARKER_PREFIX) || body.contains(END_MARKER_PREFIX) {
         return Err(DaloError::MalformedInstructionBlock {
@@ -985,8 +1003,29 @@ fn instruction_block_drift(
             });
         }
     };
+    let legacy_expected = match render_legacy_pack_managed_block_with_line_ending(
+        &marker_id,
+        &pack.body,
+        line_ending_for(&content),
+    ) {
+        Ok(block) => block,
+        Err(error) => {
+            return Some(InstructionBlockDrift {
+                source_id: entry.source_id.clone(),
+                pack_id: entry.pack_id.clone(),
+                target: entry.target.clone(),
+                kind: InstructionBlockDriftKind::SourceMissing,
+                message: format!("active instruction pack body is invalid: {error}"),
+            });
+        }
+    };
     match find_block(&content, &marker_id) {
-        Ok(Some((start_idx, end_idx))) if content[start_idx..end_idx] == expected => None,
+        Ok(Some((start_idx, end_idx)))
+            if content[start_idx..end_idx] == expected
+                || content[start_idx..end_idx] == legacy_expected =>
+        {
+            None
+        }
         Ok(Some(_)) => Some(InstructionBlockDrift {
             source_id: entry.source_id.clone(),
             pack_id: entry.pack_id.clone(),
