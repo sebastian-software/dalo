@@ -34,11 +34,16 @@ fn main() -> ExitCode {
             if json {
                 print_json_error(&message, code);
             } else {
-                eprintln!(
-                    "{}: {}",
-                    term::error_label("error"),
-                    term::terminal_safe_text(&message)
+                let terminal_message = store_root.as_ref().map_or_else(
+                    || error.terminal_safe_message(),
+                    |store_root| {
+                        store::contextualize_dalo_commands(
+                            store_root,
+                            &error.terminal_safe_message(),
+                        )
+                    },
                 );
+                eprintln!("{}: {}", term::error_label("error"), terminal_message);
             }
             code.into()
         }

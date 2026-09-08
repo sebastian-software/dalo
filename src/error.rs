@@ -7,6 +7,8 @@ use std::process::ExitCode;
 
 use thiserror::Error;
 
+use crate::term;
+
 /// Crate-wide result type.
 pub type DaloResult<T> = Result<T, DaloError>;
 
@@ -255,16 +257,19 @@ pub enum DaloError {
     },
 
     /// A system command failed.
-    #[error("command `{program}` failed with status {status}: {stderr}")]
+    #[error(
+        "command `{program}` failed with status {status}: {}",
+        command_failure_message(.summary.as_deref(), .stderr)
+    )]
     CommandFailed {
         /// Program name.
         program: String,
         /// Shell-escaped-ish argument display for humans.
         args: String,
-        /// Working directory.
-        cwd: PathBuf,
         /// Exit status.
         status: String,
+        /// Dalo-generated context that precedes a command's raw standard error.
+        summary: Option<String>,
         /// Standard error output.
         stderr: String,
     },
@@ -355,6 +360,30 @@ pub(crate) fn shell_quote_path(path: &Path) -> String {
 }
 
 impl DaloError {
+    /// Render this error safely for a human terminal.
+    ///
+    /// Command failures keep their Dalo-generated paragraph separator while
+    /// escaping each untrusted component independently. Other errors have no
+    /// structured layout and are escaped as one untrusted message.
+    #[must_use]
+    pub fn terminal_safe_message(&self) -> String {
+        match self {
+            Self::CommandFailed {
+                program,
+                status,
+                summary,
+                stderr,
+                ..
+            } => format!(
+                "command `{}` failed with status {}: {}",
+                term::terminal_safe_text(program),
+                term::terminal_safe_text(status),
+                terminal_safe_command_failure_message(summary.as_deref(), stderr)
+            ),
+            _ => term::terminal_safe_text(&self.to_string()),
+        }
+    }
+
     /// Build an unknown-target error with concise recovery guidance.
     #[must_use]
     pub fn unknown_target(target: impl Into<String>, known_targets: Vec<String>) -> Self {
@@ -461,6 +490,26 @@ impl DaloError {
             Self::TomlSerialize(_) | Self::Json(_) => DaloExitCode::ExpectedFailure,
             Self::Io(_) => DaloExitCode::EnvironmentProblem,
         }
+    }
+}
+
+fn command_failure_message(summary: Option<&str>, stderr: &str) -> String {
+    match (summary, stderr.is_empty()) {
+        (Some(summary), true) => summary.to_owned(),
+        (Some(summary), false) => format!("{summary}\n\nGit said: {stderr}"),
+        (None, _) => stderr.to_owned(),
+    }
+}
+
+fn terminal_safe_command_failure_message(summary: Option<&str>, stderr: &str) -> String {
+    match (summary, stderr.is_empty()) {
+        (Some(summary), true) => term::terminal_safe_text(summary),
+        (Some(summary), false) => format!(
+            "{}\n\nGit said: {}",
+            term::terminal_safe_text(summary),
+            term::terminal_safe_text(stderr)
+        ),
+        (None, _) => term::terminal_safe_text(stderr),
     }
 }
 
@@ -824,8 +873,8 @@ mod tests {
         let error = err::<()>(Err(DaloError::CommandFailed {
             program: "git".to_owned(),
             args: "pull".to_owned(),
-            cwd: PathBuf::from("/tmp/checkout"),
             status: "exit status: 1".to_owned(),
+            summary: None,
             stderr: "boom".to_owned(),
         }));
 
@@ -833,6 +882,47 @@ mod tests {
             error.to_string(),
             "command `git` failed with status exit status: 1: boom"
         );
+    }
+
+    #[test]
+    fn command_failed_terminal_message_should_escape_data_and_preserve_git_paragraphs() {
+        let error = DaloError::CommandFailed {
+            program: "git\u{1b}]0;program\u{7}".to_owned(),
+            args: "clone".to_owned(),
+            status: "128".to_owned(),
+            summary: Some("Could not clone repository `team\u{7}`.".to_owned()),
+            stderr: "fatal: \u{1b}[2Jbad\noutput".to_owned(),
+        };
+
+        assert_eq!(
+            error.to_string(),
+            "command `git\u{1b}]0;program\u{7}` failed with status 128: Could not clone repository `team\u{7}`.\n\nGit said: fatal: \u{1b}[2Jbad\noutput"
+        );
+        assert_eq!(
+            error.terminal_safe_message(),
+            "command `git\\u{1b}]0;program\\u{7}` failed with status 128: Could not clone repository `team\\u{7}`.\n\nGit said: fatal: \\u{1b}[2Jbad\\noutput"
+        );
+        assert_eq!(
+            serde_json::to_value(error.to_string()).expect("error message should serialize"),
+            "command `git\u{1b}]0;program\u{7}` failed with status 128: Could not clone repository `team\u{7}`.\n\nGit said: fatal: \u{1b}[2Jbad\noutput"
+        );
+    }
+
+    #[test]
+    fn command_failed_should_omit_an_empty_git_stderr_section() {
+        let error = DaloError::CommandFailed {
+            program: "git".to_owned(),
+            args: "clone".to_owned(),
+            status: "128".to_owned(),
+            summary: Some("Could not clone repository.".to_owned()),
+            stderr: String::new(),
+        };
+
+        assert_eq!(
+            error.to_string(),
+            "command `git` failed with status 128: Could not clone repository."
+        );
+        assert_eq!(error.terminal_safe_message(), error.to_string());
     }
 
     #[test]
@@ -963,8 +1053,8 @@ mod tests {
             DaloError::CommandFailed {
                 program: "git".to_owned(),
                 args: "pull".to_owned(),
-                cwd: PathBuf::from("/tmp/checkout"),
                 status: "exit status: 1".to_owned(),
+                summary: None,
                 stderr: "boom".to_owned(),
             },
             DaloError::Io(io::Error::other("disk full")),

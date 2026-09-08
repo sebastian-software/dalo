@@ -447,12 +447,13 @@ fn run_git_program_with_options(
         let elapsed = start.elapsed();
         if elapsed >= timeout {
             terminate_git_process(&mut child);
+            let failure = humanize_git_failure(args, &timeout_stderr(&stderr));
             return Err(DaloError::CommandFailed {
                 program: program.to_owned(),
                 args: display_git_args(args),
-                cwd: path.to_path_buf(),
                 status: format!("timed out after {}", format_duration(timeout)),
-                stderr: humanize_git_failure(args, &timeout_stderr(&stderr)),
+                summary: failure.summary,
+                stderr: failure.stderr,
             });
         }
 
@@ -465,14 +466,15 @@ fn run_git_program_with_options(
         return Ok(stdout_text);
     }
 
+    let failure = humanize_git_failure(args, &stderr_text);
     Err(DaloError::CommandFailed {
         program: program.to_owned(),
         args: display_git_args(args),
-        cwd: path.to_path_buf(),
         status: status
             .code()
             .map_or_else(|| "signal".to_owned(), |code| code.to_string()),
-        stderr: humanize_git_failure(args, &stderr_text),
+        summary: failure.summary,
+        stderr: failure.stderr,
     })
 }
 
@@ -497,15 +499,29 @@ fn print_network_progress(message: &str) {
     }
 }
 
-fn humanize_git_failure(args: &[&str], stderr: &str) -> String {
+struct HumanizedGitFailure {
+    summary: Option<String>,
+    stderr: String,
+}
+
+fn humanize_git_failure(args: &[&str], stderr: &str) -> HumanizedGitFailure {
     let raw = redact_urls_in_text(stderr.trim());
     let Some(summary) = git_failure_summary(args) else {
-        return raw;
+        return HumanizedGitFailure {
+            summary: None,
+            stderr: raw,
+        };
     };
     if raw.is_empty() {
-        return summary;
+        return HumanizedGitFailure {
+            summary: Some(summary),
+            stderr: String::new(),
+        };
     }
-    format!("{summary}\n\nGit said: {raw}")
+    HumanizedGitFailure {
+        summary: Some(summary),
+        stderr: raw,
+    }
 }
 
 fn git_failure_summary(args: &[&str]) -> Option<String> {
@@ -1148,9 +1164,19 @@ mod tests {
             "fatal: unable to access repository",
         );
 
-        assert!(message.contains("Could not clone repository"));
-        assert!(message.contains("https://example.invalid/repo.git"));
-        assert!(message.contains("Git said: fatal: unable to access repository"));
+        assert!(
+            message
+                .summary
+                .as_deref()
+                .is_some_and(|summary| summary.contains("Could not clone repository"))
+        );
+        assert!(
+            message
+                .summary
+                .as_deref()
+                .is_some_and(|summary| summary.contains("https://example.invalid/repo.git"))
+        );
+        assert_eq!(message.stderr, "fatal: unable to access repository");
     }
 
     #[test]
@@ -1160,9 +1186,21 @@ mod tests {
             "Schwerwiegend: kein Git-Repository",
         );
 
-        assert!(message.contains("Could not clone local repository `/tmp/team`"));
-        assert!(message.contains("path is readable"));
-        assert!(!message.contains("network/proxy"));
+        assert!(message.summary.as_deref().is_some_and(|summary| {
+            summary.contains("Could not clone local repository `/tmp/team`")
+        }));
+        assert!(
+            message
+                .summary
+                .as_deref()
+                .is_some_and(|summary| summary.contains("path is readable"))
+        );
+        assert!(
+            !message
+                .summary
+                .as_deref()
+                .is_some_and(|summary| summary.contains("network/proxy"))
+        );
     }
 
     #[test]
@@ -1245,8 +1283,19 @@ mod tests {
             &format!("fatal: unable to access '{secret_url}': denied"),
         );
 
-        assert!(message.contains("https://***@example.invalid/repo.git"));
-        assert!(!message.contains("token-value"));
+        assert!(
+            message
+                .summary
+                .as_deref()
+                .is_some_and(|summary| summary.contains("https://***@example.invalid/repo.git"))
+        );
+        assert!(
+            !message
+                .summary
+                .as_deref()
+                .is_some_and(|summary| summary.contains("token-value"))
+        );
+        assert!(!message.stderr.contains("token-value"));
     }
 
     #[test]
@@ -1365,8 +1414,13 @@ mod tests {
         let message =
             humanize_git_failure(&["pull", "--ff-only", "--quiet"], "fatal: not possible");
 
-        assert!(message.contains("Could not refresh this source"));
-        assert!(message.contains("Git said: fatal: not possible"));
+        assert!(
+            message
+                .summary
+                .as_deref()
+                .is_some_and(|summary| summary.contains("Could not refresh this source"))
+        );
+        assert_eq!(message.stderr, "fatal: not possible");
     }
 
     #[test]

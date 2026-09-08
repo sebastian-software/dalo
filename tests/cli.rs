@@ -1644,6 +1644,68 @@ fn agent_list_and_show_should_preview_canonical_provider_projections() {
 }
 
 #[test]
+fn agent_list_should_escape_inventory_warning_paths_and_messages_without_changing_json() {
+    const CONTROLLED_SLOT: &str = "review\u{1b}[2J\u{1b}]0;pwned\u{7}";
+    const ESCAPED_SLOT: &str = "review\\u{1b}[2J\\u{1b}]0;pwned\\u{7}";
+
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    let package = store.join("local/agents").join(CONTROLLED_SLOT);
+    std::fs::create_dir_all(&package)
+        .expect("controlled agent package directory should be created");
+    std::fs::write(
+        package.join("AGENT.md"),
+        "---\nschema_version: 1\nname: reviewer\ndescription: Reviews code\n---\nReview carefully.\n",
+    )
+    .expect("controlled agent package should be written");
+
+    let human = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["agent", "list"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    assert!(
+        !human
+            .iter()
+            .any(|byte| byte.is_ascii_control() && *byte != b'\n'),
+        "human output must not contain raw terminal controls: {human:?}"
+    );
+    let human = String::from_utf8(human).expect("human output should be UTF-8");
+    assert!(human.contains(ESCAPED_SLOT));
+
+    let json = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "agent", "list"])
+        .output()
+        .expect("agent list JSON should run");
+    assert!(json.status.success());
+    let json: serde_json::Value =
+        serde_json::from_slice(&json.stdout).expect("agent list JSON should parse");
+    let warning = json["inventory_warnings"]
+        .as_array()
+        .expect("agent list JSON should contain inventory warnings")
+        .first()
+        .expect("controlled agent should produce one warning");
+    assert_eq!(warning["path"], package.to_string_lossy().as_ref());
+    assert!(
+        warning["message"]
+            .as_str()
+            .is_some_and(|message| message.contains(CONTROLLED_SLOT))
+    );
+}
+
+#[test]
 fn agent_plugin_show_and_review_should_escape_controlled_terminal_text_without_changing_json() {
     const AGENT_DESCRIPTION: &str =
         "agent\u{1b}[2JCSI\u{1b}]0;OSC\u{7}BEL\u{7}line\ncarriage\rbackspace\u{8}";

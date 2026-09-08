@@ -1328,8 +1328,8 @@ fn print_agent_list_report(report: &agent::AgentListReport, store_root: &std::pa
         println!(
             "warning {}: {} ({})",
             warning.code,
-            warning.path.display(),
-            warning.message
+            term::terminal_safe_text(&warning.path.to_string_lossy()),
+            term::terminal_safe_text(&warning.message)
         );
     }
     for error in &report.source_errors {
