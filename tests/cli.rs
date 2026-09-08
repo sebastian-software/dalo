@@ -9290,7 +9290,7 @@ fn resolve_remove_owned_should_explain_how_to_revoke_an_active_skill_approval() 
         ))
         .stdout(predicate::str::contains(store::dalo_command(
             &store,
-            "approve revoke skill team:review",
+            "approve revoke skill 'team:review'",
         )));
 }
 
@@ -9300,8 +9300,8 @@ fn resolve_remove_owned_should_explain_how_to_revoke_broader_approvals() {
         ("source", "team", "# Review\n"),
         (
             "author",
-            "team:platform",
-            "---\nowners: [platform]\n---\n# Review\n",
+            "team:R&D reviewer",
+            "---\nowners: [\"R&D reviewer\"]\n---\n# Review\n",
         ),
         (
             "org",
@@ -9338,7 +9338,7 @@ fn resolve_remove_owned_should_explain_how_to_revoke_broader_approvals() {
             .assert()
             .success()
             .stdout(predicate::str::contains(format!(
-                "approve revoke {scope} {value}"
+                "approve revoke {scope} '{value}'"
             )));
     }
 }
