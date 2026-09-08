@@ -11348,6 +11348,18 @@ fn catalog_select_should_reject_drifted_checkout_without_repinning() {
         .args(["source", "select", "marketing", "copy-editing"])
         .assert()
         .success();
+    approve_source(&store, "marketing");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    assert_eq!(
+        std::fs::read_to_string(target.join("copy-editing/SKILL.md"))
+            .expect("pinned skill should materialize"),
+        "# copy-editing\n"
+    );
     let config_before = std::fs::read(store.join("config.toml")).expect("config readable");
     let source_lock_before =
         std::fs::read(store.join("source-lock.toml")).expect("source lock readable");
@@ -11369,6 +11381,53 @@ fn catalog_select_should_reject_drifted_checkout_without_repinning() {
     run_git(&checkout, &["fetch", "origin"]);
     run_git(&checkout, &["reset", "--hard", "origin/main"]);
     assert_ne!(test_git_head(&checkout), pin_before);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["sync", "--check"])
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(predicate::str::contains("degraded source: marketing"))
+        .stdout(predicate::str::contains("does not match source-lock pin"))
+        .stdout(predicate::str::contains(
+            "dalo source refresh marketing --advance",
+        ));
+    assert!(
+        std::fs::symlink_metadata(target.join("copy-editing"))
+            .expect("degraded sync should preserve the owned link")
+            .file_type()
+            .is_symlink()
+    );
+    assert_eq!(
+        std::fs::read(store.join("source-lock.toml")).expect("source lock readable"),
+        source_lock_before
+    );
+
+    let doctor = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "doctor", "--check"])
+        .assert()
+        .failure()
+        .code(1)
+        .get_output()
+        .stdout
+        .clone();
+    let doctor: serde_json::Value =
+        serde_json::from_slice(&doctor).expect("doctor output should be JSON");
+    assert!(doctor["findings"].as_array().is_some_and(|findings| {
+        findings.iter().any(|finding| {
+            finding["code"] == "source_provenance_mismatch"
+                && finding["message"]
+                    .as_str()
+                    .is_some_and(|message| message.contains("direct catalog source `marketing`"))
+                && finding["next_command"]
+                    .as_str()
+                    .is_some_and(|command| command.ends_with("source refresh marketing --advance"))
+        })
+    }));
 
     dalo_command()
         .args(["--store"])

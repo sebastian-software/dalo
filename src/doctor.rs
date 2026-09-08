@@ -1249,8 +1249,8 @@ fn check_sources(
                 None,
             )),
         }
-        if source.declared_by.is_some() && source_lock.can_check_provenance() {
-            check_manifest_source_provenance(source, config, source_lock.lock(), findings);
+        if source.kind == SourceKind::Catalog && source_lock.can_check_provenance() {
+            check_catalog_source_provenance(source, config, source_lock.lock(), findings);
         }
     }
 }
@@ -1394,60 +1394,62 @@ fn source_inventory_fix_hint(source: &SourceConfig, warnings: &[InventoryWarning
     "fix the source inventory warning, then run `dalo sync`".to_owned()
 }
 
-fn check_manifest_source_provenance(
+fn check_catalog_source_provenance(
     source: &SourceConfig,
     config: &UserConfig,
     source_lock: Option<&SourceLock>,
     findings: &mut Vec<DoctorFinding>,
 ) {
-    let Some(team_id) = source.declared_by.as_deref() else {
-        return;
-    };
     let mut mismatches = Vec::new();
-    let lock_commit = source_lock
-        .and_then(|lock| lock.catalog(&source.id))
-        .map(|entry| entry.commit.as_str());
-    let checkout_commit = git::rev_parse_head(&source.path).ok();
-    match (lock_commit, checkout_commit.as_deref()) {
-        (None, _) => mismatches.push("source-lock.toml has no catalog pin".to_owned()),
-        (Some(pin), Some(checkout)) if pin != checkout => mismatches.push(format!(
-            "checkout {} does not match source-lock pin {}",
-            short_commit(checkout),
-            short_commit(pin)
-        )),
-        (Some(_), None) => mismatches.push("checkout commit could not be read".to_owned()),
-        _ => {}
+    let pin_mismatch = source_lock.map_or_else(
+        || {
+            Some(
+                "source-lock.toml has no catalog pin; restore the catalog lock before syncing"
+                    .to_owned(),
+            )
+        },
+        |source_lock| catalog::catalog_checkout_pin_mismatch(source, source_lock),
+    );
+    if let Some(reason) = pin_mismatch {
+        mismatches.push(reason);
     }
 
-    let team = config
-        .sources
-        .iter()
-        .find(|candidate| candidate.id == team_id);
-    if let Some(team) = team {
-        match crate::team_manifest::load_team_manifest(&team.path, team_id) {
-            Ok(manifest) => {
-                let declaration = manifest.catalogs.iter().find(|catalog| {
-                    crate::team_manifest::source_matches_owned_declaration(source, &catalog.id)
-                });
-                if let Some(declaration) = declaration {
-                    let expected_url =
-                        source::resolve_source_location(&declaration.url, &team.path);
-                    if source.url.as_deref() != Some(expected_url.as_str()) {
+    if let Some(team_id) = source.declared_by.as_deref() {
+        let team = config
+            .sources
+            .iter()
+            .find(|candidate| candidate.id == team_id);
+        if let Some(team) = team {
+            match crate::team_manifest::load_team_manifest(&team.path, team_id) {
+                Ok(manifest) => {
+                    let declaration = manifest.catalogs.iter().find(|catalog| {
+                        crate::team_manifest::source_matches_owned_declaration(source, &catalog.id)
+                    });
+                    if let Some(declaration) = declaration {
+                        let expected_url =
+                            source::resolve_source_location(&declaration.url, &team.path);
+                        if source.url.as_deref() != Some(expected_url.as_str()) {
+                            mismatches.push(
+                                "manifest origin does not match configured origin".to_owned(),
+                            );
+                        }
+                        if source.declared_ref.as_deref() != Some(declaration.version.as_str()) {
+                            mismatches.push(
+                                "manifest version does not match configured version".to_owned(),
+                            );
+                        }
+                    } else {
                         mismatches
-                            .push("manifest origin does not match configured origin".to_owned());
+                            .push("declaring team manifest has no matching catalog".to_owned());
                     }
-                    if source.declared_ref.as_deref() != Some(declaration.version.as_str()) {
-                        mismatches
-                            .push("manifest version does not match configured version".to_owned());
-                    }
-                } else {
-                    mismatches.push("declaring team manifest has no matching catalog".to_owned());
+                }
+                Err(error) => {
+                    mismatches.push(format!("declaring team manifest is invalid: {error}"))
                 }
             }
-            Err(error) => mismatches.push(format!("declaring team manifest is invalid: {error}")),
+        } else {
+            mismatches.push(format!("declaring team source `{team_id}` is missing"));
         }
-    } else {
-        mismatches.push(format!("declaring team source `{team_id}` is missing"));
     }
 
     if mismatches.is_empty() {
@@ -1462,19 +1464,28 @@ fn check_manifest_source_provenance(
         findings.push(ok(
             DoctorCode::SourceProvenanceOk,
             format!(
-                "manifest-derived source `{}` from `{origin}` requested `{requested}` and resolved `{resolved}`",
+                "catalog source `{}` from `{origin}` requested `{requested}` and resolved `{resolved}`",
                 source.id
             ),
         ));
     } else {
+        let management = if source.declared_by.is_some() {
+            "manifest-derived"
+        } else {
+            "direct"
+        };
         findings.push(finding_error(
             DoctorCode::SourceProvenanceMismatch,
             format!(
-                "manifest-derived source `{}` has provenance mismatch: {}",
+                "{management} catalog source `{}` has provenance mismatch: {}",
                 source.id,
                 mismatches.join("; ")
             ),
-            Some("dalo sync".to_owned()),
+            Some(if source.declared_by.is_some() {
+                "dalo sync".to_owned()
+            } else {
+                format!("dalo source refresh {} --advance", source.id)
+            }),
         ));
     }
 }

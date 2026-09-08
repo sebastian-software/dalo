@@ -1459,7 +1459,7 @@ Unknown fields in this internal state model are retained across reads and writes
 
 Schema version: `schema_version = 3`.
 
-This file stores catalog pins and inventory snapshots. It is written by catalog selection and read by drift checks.
+This file stores catalog pins and inventory snapshots. It is written by catalog selection and read by drift checks. `sync` and `doctor` treat a directly-added catalog checkout whose HEAD differs from this pin as degraded: they preserve recorded owned links rather than resolving drifted content. Restore the checkout to its pinned commit, then use `dalo source refresh <id> --advance` only for a reviewed update.
 
 Top-level fields:
 
