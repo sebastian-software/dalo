@@ -5568,6 +5568,29 @@ fn generated_delivery_process_failure_should_preserve_last_good_link() {
 }
 
 #[test]
+fn generated_delivery_revocation_should_remove_materialized_link() {
+    let fixture = GeneratedDeliveryFailureFixture::new();
+
+    fixture
+        .command()
+        .args(["approve", "revoke", "delivery", "company:review"])
+        .assert()
+        .success();
+    fixture.command().arg("sync").assert().success();
+
+    assert!(
+        std::fs::symlink_metadata(fixture.target.join("review")).is_err(),
+        "revoking a generated delivery must withdraw its Dalo-owned link"
+    );
+    assert!(
+        !std::fs::read_to_string(fixture.store.join("state.toml"))
+            .unwrap()
+            .contains("slot_name = \"review\""),
+        "withdrawn links must no longer be recorded as owned"
+    );
+}
+
+#[test]
 fn generated_delivery_timeout_should_terminate_generator_and_preserve_last_good_link() {
     let fixture = GeneratedDeliveryFailureFixture::new();
 

@@ -978,7 +978,9 @@ A pending canonical agent shown by `agent list` can be activated with
 stages the exact executable closure without running it. Delivery approval is
 inert and grants only the exact revision- and recipe-bound generated delivery.
 Hook approval grants the exact hook contract after its referenced tool is
-ready. The revoke scope is one of `skill`, `agent`, `tool`, `delivery`, `hook`,
+ready. Revoking a generated delivery withdraws its Dalo-owned materialized
+output on the next sync. The revoke scope is one of `skill`, `agent`, `tool`,
+`delivery`, `hook`,
 `source`, `author`, or `org`; Clap validates this value and exposes the choices
 to shell completion.
 Skill approval always runs the deterministic preflight first and refuses a
