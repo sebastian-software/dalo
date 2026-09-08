@@ -4,6 +4,7 @@ use std::fs;
 use std::io::{self, IsTerminal, Read};
 use std::path::PathBuf;
 
+use clap::error::ErrorKind;
 use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{Shell, generate};
 use clap_mangen::Man;
@@ -95,7 +96,26 @@ impl Cli {
     /// Parse command-line arguments from the current process.
     #[must_use]
     pub fn parse_args() -> Self {
-        Self::parse()
+        let cli = Self::parse();
+        cli.reject_json_for_plain_text_command();
+        cli
+    }
+
+    fn reject_json_for_plain_text_command(&self) {
+        let command = match &self.command {
+            Some(Command::Completions(_)) => "completions",
+            Some(Command::Manpage) => "manpage",
+            _ => return,
+        };
+
+        if self.json {
+            Cli::command()
+                .error(
+                    ErrorKind::ArgumentConflict,
+                    format!("`--json` is not supported by `dalo {command}` because it only writes plain text"),
+                )
+                .exit();
+        }
     }
 }
 

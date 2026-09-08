@@ -137,7 +137,7 @@ be fetched.</p>
 </tr>
 <tr>
 <td><code>--json</code></td>
-<td>Emit machine-readable JSON for commands that support structured output.</td>
+<td>Emit machine-readable JSON for commands that support structured output. <code>manpage</code> and <code>completions</code> reject this flag with a plain-text usage error because they generate plain text only.</td>
 </tr>
 <tr>
 <td><code>--yes</code></td>
@@ -932,7 +932,7 @@ dalo --json instructions list
 <p>JSON output shape: <code>InstructionPackListReport</code> with
 <code>active_instruction_packs[]</code> entries.</p>
 <h3 id="dalo-completions-shell"><a class="doc-anchor" href="#dalo-completions-shell"><code>dalo completions &lt;shell&gt;</code></a></h3>
-<p>Generate shell completions to stdout. Supported shell names are provided by <code>clap_complete</code>, including <code>bash</code>, <code>zsh</code>, and <code>fish</code>.</p>
+<p>Generate shell completions to stdout. Supported shell names are provided by <code>clap_complete</code>, including <code>bash</code>, <code>zsh</code>, and <code>fish</code>. This command generates plain text only; <code>dalo --json completions &lt;shell&gt;</code> exits with a plain-text usage error.</p>
 <p>Examples:</p>
 <pre><code class="language-sh">dalo completions zsh &gt; _dalo
 dalo completions bash &gt; dalo.bash
@@ -940,7 +940,7 @@ dalo completions fish &gt; dalo.fish
 </code></pre>
 <p>Release archives include generated completions. This command is also available for Cargo installs and local shell setup.</p>
 <h3 id="dalo-manpage"><a class="doc-anchor" href="#dalo-manpage"><code>dalo manpage</code></a></h3>
-<p>Generate the <code>dalo(1)</code> man page to stdout from the same Clap command definition used for <code>--help</code>.</p>
+<p>Generate the <code>dalo(1)</code> man page to stdout from the same Clap command definition used for <code>--help</code>. This command generates plain text only; <code>dalo --json manpage</code> exits with a plain-text usage error.</p>
 <p>Example:</p>
 <pre><code class="language-sh">dalo manpage &gt; dalo.1
 </code></pre>
@@ -983,7 +983,7 @@ dalo completions fish &gt; dalo.fish
 </tbody></table></div>
 <p>Scripts should treat <code>3</code> differently from <code>1</code>: it means Dalo intentionally stopped before touching state that may require review.</p>
 <h2 id="json-output-shapes"><a class="doc-anchor" href="#json-output-shapes">JSON Output Shapes</a></h2>
-<p><code>--json</code> prints one JSON value to stdout on success. Runtime errors are printed to stderr as <code>{&quot;error&quot;:{&quot;code&quot;:&quot;...&quot;,&quot;message&quot;:&quot;...&quot;}}</code> and keep the same exit code as text output. Path fields serialize as strings. Enum fields serialize as <code>snake_case</code> unless noted. Commands that mutate and support <code>--dry-run</code> include a <code>dry_run</code> boolean in their report.</p>
+<p><code>--json</code> prints one JSON value to stdout on success for commands with structured output. <code>manpage</code> and <code>completions</code> generate plain text only and reject <code>--json</code> with a plain-text usage error. Runtime errors are printed to stderr as <code>{&quot;error&quot;:{&quot;code&quot;:&quot;...&quot;,&quot;message&quot;:&quot;...&quot;}}</code> and keep the same exit code as text output. Path fields serialize as strings. Enum fields serialize as <code>snake_case</code> unless noted. Commands that mutate and support <code>--dry-run</code> include a <code>dry_run</code> boolean in their report.</p>
 <div class="doc-table"><table>
 <thead>
 <tr>
