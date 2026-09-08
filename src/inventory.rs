@@ -1281,12 +1281,18 @@ fn frontmatter_anchor_or_alias_references_exceed(frontmatter: &str, limit: usize
                     scalar_can_start = false;
                 } else if plain_scalar_indent == Some(line_indent) {
                     // A same-indented line can either continue a plain scalar or
-                    // start a sibling mapping key. Keep it as scalar text unless
-                    // a mapping-value indicator proves otherwise. References seen
-                    // before that indicator remain provisional so decorated keys
-                    // still count, while literal scalar text does not.
-                    scalar_can_start = false;
-                    same_indent_plain_scalar_may_be_mapping_key = true;
+                    // start a sibling mapping key. A quoted key proves the latter
+                    // without making a quoted scalar continuation structural.
+                    // Otherwise, keep it as scalar text unless a mapping-value
+                    // indicator proves it is a key. References seen before that
+                    // indicator remain provisional so decorated keys still count,
+                    // while literal scalar text does not.
+                    if same_indent_line_starts_with_quoted_mapping_key(character, &chars) {
+                        scalar_can_start = true;
+                    } else {
+                        scalar_can_start = false;
+                        same_indent_plain_scalar_may_be_mapping_key = true;
+                    }
                 } else {
                     plain_scalar_indent = None;
                     scalar_can_start = true;
@@ -1439,6 +1445,37 @@ fn yaml_anchor_or_alias_starts(previous: Option<char>, next: Option<char>) -> bo
     }) && next.is_some_and(|character| {
         !character.is_whitespace() && !matches!(character, '[' | ']' | '{' | '}' | ',')
     })
+}
+
+fn same_indent_line_starts_with_quoted_mapping_key(
+    opening_quote: char,
+    chars: &std::iter::Peekable<std::str::Chars<'_>>,
+) -> bool {
+    if !matches!(opening_quote, '\'' | '"') {
+        return false;
+    }
+
+    let mut chars = chars.clone();
+    let mut escaped = false;
+    while let Some(character) = chars.next() {
+        if opening_quote == '\'' && character == '\'' && chars.peek() == Some(&'\'') {
+            chars.next();
+            continue;
+        }
+        if opening_quote == '"' && !escaped && character == '\\' {
+            escaped = true;
+            continue;
+        }
+        if character == opening_quote && !escaped {
+            return chars.next() == Some(':')
+                && chars
+                    .peek()
+                    .is_none_or(|character| character.is_whitespace());
+        }
+        escaped = false;
+    }
+
+    false
 }
 
 fn frontmatter_without_block_scalar_bodies(frontmatter: &str) -> String {
@@ -2605,6 +2642,27 @@ required = true
 
         assert_eq!(inventory.skills.len(), 1);
         assert!(inventory.skills[0].description.is_some());
+        assert!(inventory.warnings.is_empty());
+    }
+
+    #[test]
+    fn scan_source_should_ignore_anchor_alias_text_in_quoted_unknown_sibling_key() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("quoted-unknown-sibling");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        let indicators = "&anchor *alias ".repeat(9);
+        fs::write(
+            skill_dir.join(SKILL_FILE),
+            format!(
+                "---\nname: quoted-unknown-sibling\ndescription: plain\n\"{indicators}\": ignored\n---\n# Quoted Unknown Sibling\n"
+            ),
+        )
+        .expect("skill file should be written");
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should succeed");
+
+        assert_eq!(inventory.skills.len(), 1);
+        assert_eq!(inventory.skills[0].description.as_deref(), Some("plain"));
         assert!(inventory.warnings.is_empty());
     }
 
