@@ -4395,7 +4395,20 @@ fn completions_should_generate_zsh_script() {
         .assert()
         .success()
         .stdout(predicate::str::contains("#compdef dalo"))
-        .stdout(predicate::str::contains("_dalo"));
+        .stdout(predicate::str::contains("_dalo"))
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn completions_should_reject_json_output() {
+    dalo_command()
+        .args(["--json", "completions", "zsh"])
+        .assert()
+        .code(2)
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains(
+            "`--json` is not supported by `dalo completions`",
+        ));
 }
 
 #[test]
@@ -4675,7 +4688,20 @@ fn manpage_should_generate_roff() {
         .assert()
         .success()
         .stdout(predicate::str::contains(".TH dalo"))
-        .stdout(predicate::str::contains(".SH DESCRIPTION"));
+        .stdout(predicate::str::contains(".SH DESCRIPTION"))
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn manpage_should_reject_json_output() {
+    dalo_command()
+        .args(["--json", "manpage"])
+        .assert()
+        .code(2)
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains(
+            "`--json` is not supported by `dalo manpage`",
+        ));
 }
 
 #[test]

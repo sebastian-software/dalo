@@ -48,7 +48,7 @@ Global flags can be placed before or after the command.
 | Flag | Meaning |
 | --- | --- |
 | `--store <PATH>` | Use a store other than the resolved default. |
-| `--json` | Emit machine-readable JSON for commands that support structured output. |
+| `--json` | Emit machine-readable JSON for commands that support structured output. `manpage` and `completions` reject this flag with a plain-text usage error because they generate plain text only. |
 | `--yes` | Compatibility flag accepted for existing scripts but hidden from command help. It is currently a no-op and never implies `--replace`, creates commits, or grants new approvals. |
 | `--dry-run` | Plan supported mutating operations without writing files, cloning, linking, or changing locks. Read-only commands ignore it. |
 | `-h`, `--help` | Print command help. |
@@ -1071,7 +1071,7 @@ JSON output shape: `InstructionPackListReport` with
 
 ### `dalo completions <shell>`
 
-Generate shell completions to stdout. Supported shell names are provided by `clap_complete`, including `bash`, `zsh`, and `fish`.
+Generate shell completions to stdout. Supported shell names are provided by `clap_complete`, including `bash`, `zsh`, and `fish`. This command generates plain text only; `dalo --json completions <shell>` exits with a plain-text usage error.
 
 Examples:
 
@@ -1085,7 +1085,7 @@ Release archives include generated completions. This command is also available f
 
 ### `dalo manpage`
 
-Generate the `dalo(1)` man page to stdout from the same Clap command definition used for `--help`.
+Generate the `dalo(1)` man page to stdout from the same Clap command definition used for `--help`. This command generates plain text only; `dalo --json manpage` exits with a plain-text usage error.
 
 Example:
 
@@ -1111,7 +1111,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 
 ## JSON Output Shapes
 
-`--json` prints one JSON value to stdout on success. Runtime errors are printed to stderr as `{"error":{"code":"...","message":"..."}}` and keep the same exit code as text output. Path fields serialize as strings. Enum fields serialize as `snake_case` unless noted. Commands that mutate and support `--dry-run` include a `dry_run` boolean in their report.
+`--json` prints one JSON value to stdout on success for commands with structured output. `manpage` and `completions` generate plain text only and reject `--json` with a plain-text usage error. Runtime errors are printed to stderr as `{"error":{"code":"...","message":"..."}}` and keep the same exit code as text output. Path fields serialize as strings. Enum fields serialize as `snake_case` unless noted. Commands that mutate and support `--dry-run` include a `dry_run` boolean in their report.
 
 | Command | Shape | Important fields |
 | --- | --- | --- |
