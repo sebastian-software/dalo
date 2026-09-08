@@ -50,6 +50,65 @@ pub struct LiveResolution {
     pub agents: AgentResolution,
 }
 
+impl LiveResolution {
+    /// Collect sources whose incomplete inputs make recorded-link removals unsafe.
+    ///
+    /// Every materialization preview and apply path must use this same set so a
+    /// partial scan or an audit failure cannot be rendered as a removal in one
+    /// command and preserved in another.
+    #[must_use]
+    pub(crate) fn degraded_sources(
+        &self,
+        audit_failures: &[crate::audit::ActiveAuditFailure],
+    ) -> Vec<crate::materialize::DegradedSource> {
+        let mut degraded = self
+            .scans
+            .iter()
+            .filter(|scan| {
+                scan.error.is_some()
+                    || scan
+                        .inventory
+                        .as_ref()
+                        .is_some_and(inventory_degrades_source_for_removal)
+            })
+            .map(|scan| crate::materialize::DegradedSource {
+                id: scan.source.id.clone(),
+                path: scan.source.path.clone(),
+                reason: scan
+                    .error
+                    .clone()
+                    .unwrap_or_else(|| "inventory warnings make removals unsafe".to_owned()),
+            })
+            .collect::<Vec<_>>();
+
+        for failure in audit_failures {
+            let reason = format!(
+                "security audit failed for {}: {}",
+                failure.source_ref, failure.reason
+            );
+            if let Some(existing) = degraded
+                .iter_mut()
+                .find(|source| source.id == failure.source_id)
+            {
+                existing.reason = format!("{}; {reason}", existing.reason);
+            } else if let Some(scan) = self
+                .scans
+                .iter()
+                .find(|scan| scan.source.id == failure.source_id)
+            {
+                degraded.push(crate::materialize::DegradedSource {
+                    id: failure.source_id.clone(),
+                    path: scan.source.path.clone(),
+                    reason,
+                });
+            }
+        }
+
+        degraded.sort_by(|left, right| left.id.cmp(&right.id));
+        degraded
+    }
+}
+
 /// Internal live-resolution facts that retain independently scanned plugin
 /// contracts without extending the public `SourceScan` API.
 #[derive(Debug, Clone)]
@@ -1361,6 +1420,48 @@ mod tests {
         };
 
         assert!(inventory_degrades_source_for_removal(&inventory));
+    }
+
+    #[test]
+    fn live_resolution_should_merge_inventory_and_audit_degradation_per_source() {
+        let source_config = source("local", SourceKind::Local, 0);
+        let live = LiveResolution {
+            scans: vec![SourceScan {
+                source: source_config,
+                inventory: Some(SourceInventory {
+                    source_id: "local".to_owned(),
+                    skills: vec![skill("local", "review")],
+                    agents: Vec::new(),
+                    plugins: Vec::new(),
+                    warnings: vec![InventoryWarning {
+                        code: InventoryWarningCode::UnreadablePath,
+                        path: PathBuf::from("/tmp/local/skills/private/SKILL.md"),
+                        message: "permission denied".to_owned(),
+                    }],
+                    agent_warnings: Vec::new(),
+                    plugin_warnings: Vec::new(),
+                }),
+                error: None,
+            }],
+            resolution: resolve_with(
+                vec![source("local", SourceKind::Local, 0)],
+                vec![inventory("local", vec![skill("local", "review")])],
+                Vec::new(),
+            ),
+            plugins: PluginResolution::default(),
+            agents: AgentResolution::default(),
+        };
+        let failures = vec![crate::audit::ActiveAuditFailure {
+            source_ref: "local:alpha".to_owned(),
+            source_id: "local".to_owned(),
+            reason: "first failure".to_owned(),
+        }];
+
+        let degraded = live.degraded_sources(&failures);
+
+        assert_eq!(degraded.len(), 1);
+        assert!(degraded[0].reason.contains("inventory warnings"));
+        assert!(degraded[0].reason.contains("local:alpha"));
     }
 
     #[test]

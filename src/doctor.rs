@@ -284,19 +284,15 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
         reconciliation_inventories = Some(resolver::inventories_with_plugins(&resolved));
         resolved.live
     });
-    if let (Some(live), Some(lock)) = (live_resolution.as_mut(), lock.as_ref()) {
-        let active_instructions = lock
-            .active_instruction_packs
-            .iter()
-            .map(|pack| format!("{}:{}", pack.source_id, pack.pack_id))
-            .collect::<BTreeSet<_>>();
-        crate::plugin::apply_component_resolution(
-            &mut live.plugins,
-            &live.resolution,
-            &live.agents,
-            &active_instructions,
-        );
-    }
+    let active_instruction_refs = lock
+        .as_ref()
+        .map(|lock| {
+            lock.active_instruction_packs
+                .iter()
+                .map(|pack| format!("{}:{}", pack.source_id, pack.pack_id))
+                .collect::<BTreeSet<_>>()
+        })
+        .unwrap_or_default();
 
     if let Some(config) = config.as_ref() {
         check_sources(config, &source_lock, &mut findings);
@@ -344,7 +340,7 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
     // blocker checks do not depend on it (they re-derive from config/state and
     // read the user lock via `unwrap_or_default`), so they must not be gated on
     // a valid lock.
-    if let (Some(config), Some(_), Some(live_resolution)) =
+    let audits = if let (Some(config), Some(_), Some(live_resolution)) =
         (config.as_ref(), state.as_ref(), live_resolution.as_ref())
     {
         check_resolution(
@@ -353,6 +349,17 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
             live_resolution,
             approvals.is_some(),
             &mut findings,
+        )
+    } else {
+        audit::ActiveAuditOutcome::default()
+    };
+    if let Some(live) = live_resolution.as_mut() {
+        resolver::degrade_audit_failures(&mut live.resolution, &audits.failures);
+        crate::plugin::apply_component_resolution(
+            &mut live.plugins,
+            &live.resolution,
+            &live.agents,
+            &active_instruction_refs,
         );
     }
     if let (Some(state), Some(live), Some(inventories)) = (
@@ -374,7 +381,12 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
     check_autosync(&paths, &mut findings);
 
     let materialization = live_resolution.as_ref().and_then(|live| {
-        match crate::materialize::materialize(&paths, &live.resolution, true) {
+        match crate::materialize::materialize_with_degraded_sources(
+            &paths,
+            &live.resolution,
+            true,
+            &live.degraded_sources(&audits.failures),
+        ) {
             Ok(report) => Some(report),
             Err(error) => {
                 findings.push(finding_error(
@@ -1571,7 +1583,7 @@ fn check_resolution(
     live_resolution: &resolver::LiveResolution,
     approvals_present: bool,
     findings: &mut Vec<DoctorFinding>,
-) {
+) -> audit::ActiveAuditOutcome {
     let resolution = &live_resolution.resolution;
 
     if approvals_present {
@@ -1707,6 +1719,8 @@ fn check_resolution(
             }
         }
     }
+
+    audits
 }
 
 fn command_succeeds(program: &str, args: &[&str]) -> bool {

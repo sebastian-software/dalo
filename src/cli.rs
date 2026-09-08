@@ -2613,7 +2613,22 @@ where
             &live.agents,
             &active_instruction_refs,
         );
-        let degraded_sources = collect_degraded_sources(&live, refresh_failures, &audits.failures);
+        let mut degraded_sources = live.degraded_sources(&audits.failures);
+        for failure in refresh_failures {
+            if let Some(existing) = degraded_sources
+                .iter_mut()
+                .find(|source| source.id == failure.id)
+            {
+                existing.reason = format!("{}; {}", existing.reason, failure.reason);
+            } else {
+                degraded_sources.push(materialize::DegradedSource {
+                    id: failure.id,
+                    path: failure.path,
+                    reason: failure.reason,
+                });
+            }
+        }
+        degraded_sources.sort_by(|left, right| left.id.cmp(&right.id));
         let inventory_warnings = live
             .scans
             .iter()
@@ -2971,70 +2986,6 @@ fn ensure_no_blocking_audits(blocking_audits: &[String]) -> DaloResult<()> {
             blocking_audits.join(", ")
         ),
     })
-}
-
-fn collect_degraded_sources(
-    live: &resolver::LiveResolution,
-    refresh_failures: Vec<source::TrackingSourceRefreshFailure>,
-    audit_failures: &[audit::ActiveAuditFailure],
-) -> Vec<materialize::DegradedSource> {
-    let mut degraded_sources = live
-        .scans
-        .iter()
-        .filter(|scan| {
-            scan.error.is_some()
-                || scan
-                    .inventory
-                    .as_ref()
-                    .is_some_and(resolver::inventory_degrades_source_for_removal)
-        })
-        .map(|scan| materialize::DegradedSource {
-            id: scan.source.id.clone(),
-            path: scan.source.path.clone(),
-            reason: scan
-                .error
-                .clone()
-                .unwrap_or_else(|| "inventory warnings make removals unsafe".to_owned()),
-        })
-        .collect::<Vec<_>>();
-    for failure in refresh_failures {
-        if let Some(existing) = degraded_sources
-            .iter_mut()
-            .find(|source| source.id == failure.id)
-        {
-            existing.reason = format!("{}; {}", existing.reason, failure.reason);
-        } else {
-            degraded_sources.push(materialize::DegradedSource {
-                id: failure.id,
-                path: failure.path,
-                reason: failure.reason,
-            });
-        }
-    }
-    for failure in audit_failures {
-        let reason = format!(
-            "security audit failed for {}: {}",
-            failure.source_ref, failure.reason
-        );
-        if let Some(existing) = degraded_sources
-            .iter_mut()
-            .find(|source| source.id == failure.source_id)
-        {
-            existing.reason = format!("{}; {reason}", existing.reason);
-        } else if let Some(scan) = live
-            .scans
-            .iter()
-            .find(|scan| scan.source.id == failure.source_id)
-        {
-            degraded_sources.push(materialize::DegradedSource {
-                id: failure.source_id.clone(),
-                path: scan.source.path.clone(),
-                reason,
-            });
-        }
-    }
-    degraded_sources.sort_by(|left, right| left.id.cmp(&right.id));
-    degraded_sources
 }
 
 fn write_sync_lock_with_rollback<F>(
@@ -3581,7 +3532,7 @@ fn run_source_remove(
     );
     ensure_no_blocking_audits(&audits.blocking)?;
     resolver::degrade_audit_failures(&mut live.resolution, &audits.failures);
-    let degraded_sources = collect_degraded_sources(&live, Vec::new(), &audits.failures);
+    let degraded_sources = live.degraded_sources(&audits.failures);
     let (materialization, rollback) = materialize::materialize_with_degraded_sources_rollback(
         paths,
         &live.resolution,
