@@ -2375,7 +2375,11 @@ fn run_instructions(options: &GlobalOptions, command: InstructionsCommand) -> Da
                     } else {
                         format!("{}:{}", pack.source_id, pack.pack_id)
                     };
-                    println!("{} -> {}", pack_ref, pack.target.display());
+                    println!(
+                        "{} -> {}",
+                        pack_ref,
+                        status::compact_human_path(&pack.target)
+                    );
                 }
             }
             Ok(())
@@ -2391,13 +2395,13 @@ fn print_instruction_pack_batch_report(report: &instructions::InstructionPackBat
             "{}:{} -> {} [{}]: {}{}",
             report.source_id,
             report.pack_id,
-            operation.target.display(),
+            status::compact_human_path(&operation.target),
             targets,
             operation.action,
             dry_run
         );
         if let Some(warning) = &operation.warning {
-            println!("  warning: {warning}");
+            println!("  warning: {}", status::compact_human_text(warning));
         }
     }
 }
@@ -3624,11 +3628,11 @@ fn print_team_manifest_next_step(path: &std::path::Path, changed: bool) {
         Ok(true) => println!("next: commit and push dalo.toml"),
         Ok(false) => eprintln!(
             "warning: `{}` is not a Git repository; commit and push dalo.toml from a Git repository so teammates can sync it",
-            repo.display()
+            status::compact_human_path(repo)
         ),
         Err(error) => eprintln!(
             "warning: could not verify whether `{}` is a Git repository: {error}",
-            repo.display()
+            status::compact_human_path(repo)
         ),
     }
 }
@@ -4313,7 +4317,10 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
                     if report.dry_run { " [dry-run]" } else { "" }
                 );
                 if let Some(path) = report.staged_path {
-                    println!("immutable tool root: {}", path.display());
+                    println!(
+                        "immutable tool root: {}",
+                        status::compact_store_path(&options.store, &path)
+                    );
                 }
             }
         }

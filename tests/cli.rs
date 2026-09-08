@@ -867,12 +867,17 @@ fn tool_approval_should_stage_an_immutable_ready_tool_and_expose_pending_hook() 
     let fixture = PluginToolFixture::new();
     fixture.select_plugin();
 
-    fixture
+    let approval = fixture
         .command()
         .args(["approve", "tool", PluginToolFixture::TOOL_ID])
         .assert()
         .success()
-        .stdout(predicate::str::contains("immutable tool root"));
+        .get_output()
+        .stdout
+        .clone();
+    let approval = String::from_utf8(approval).expect("tool approval output should be UTF-8");
+    assert!(approval.contains("immutable tool root: store:/tools/sha256/"));
+    assert!(!approval.contains(fixture.store.to_string_lossy().as_ref()));
     fixture
         .command()
         .args(["tool", "show", PluginToolFixture::TOOL_ID])
@@ -6831,6 +6836,194 @@ fn human_sync_status_and_doctor_paths_should_be_compact_but_commands_and_json_ab
 }
 
 #[test]
+fn remaining_human_path_reports_should_compact_home_and_store_paths_without_changing_json() {
+    let command = dalo_command();
+    let home = command.test_environment().home.clone();
+    drop(command);
+    let store = home.join(format!("{}store", "very-long-custom-".repeat(6)));
+    let target = home.join(format!("{}skills", "very-long-target-".repeat(6)));
+    let instruction_target = home.join(".claude/CLAUDE.md");
+    let team_repo = home.join("team-repository");
+
+    dalo_command()
+        .env("HOME", &home)
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    dalo_command()
+        .env("HOME", &home)
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "link", "generic"])
+        .arg(&target)
+        .assert()
+        .success();
+    create_unmanaged_skill(&target, "review");
+
+    let resolve = dalo_command()
+        .env("HOME", &home)
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "list"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let resolve = String::from_utf8(resolve).expect("resolve output should be UTF-8");
+    assert!(
+        resolve.contains("review -> target[generic]:/review"),
+        "{resolve}"
+    );
+    assert!(
+        !resolve.contains(target.to_string_lossy().as_ref()),
+        "{resolve}"
+    );
+
+    let resolve_json = dalo_command()
+        .env("HOME", &home)
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "resolve", "list"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let resolve_json: serde_json::Value =
+        serde_json::from_slice(&resolve_json).expect("resolve JSON should parse");
+    assert_eq!(
+        resolve_json["unmanaged_skills"][0]["path"],
+        store::comparable_path(&target.join("review"))
+            .to_string_lossy()
+            .as_ref()
+    );
+
+    let next = dalo_command()
+        .env("HOME", &home)
+        .args(["--store"])
+        .arg(&store)
+        .arg("next")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let next = String::from_utf8(next).expect("next output should be UTF-8");
+    assert!(next.contains(&format!(
+        "store: ~/{}",
+        store.file_name().expect("store has a name").to_string_lossy()
+    )));
+
+    std::fs::create_dir_all(
+        instruction_target
+            .parent()
+            .expect("instruction target has a parent"),
+    )
+    .expect("instruction target parent should be created");
+    std::fs::write(
+        store.join("local/instructions/house-style.md"),
+        "Use compact paths.\n",
+    )
+    .expect("instruction pack should be written");
+    let instructions = dalo_command()
+        .env("HOME", &home)
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "enable", "house-style"])
+        .arg(&instruction_target)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let instructions = String::from_utf8(instructions).expect("instruction output should be UTF-8");
+    assert!(
+        instructions.contains("enabled pack house-style -> ~/.claude/CLAUDE.md"),
+        "{instructions}"
+    );
+    let instruction_list = dalo_command()
+        .env("HOME", &home)
+        .args(["--store"])
+        .arg(&store)
+        .args(["instructions", "list"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let instruction_list =
+        String::from_utf8(instruction_list).expect("instruction list output should be UTF-8");
+    assert!(instruction_list.contains("house-style -> ~/.claude/CLAUDE.md"));
+
+    let instruction_json = dalo_command()
+        .env("HOME", &home)
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "instructions", "list"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let instruction_json: serde_json::Value =
+        serde_json::from_slice(&instruction_json).expect("instruction JSON should parse");
+    let instruction_json_target = instruction_json["active_instruction_packs"][0]["target"]
+        .as_str()
+        .expect("instruction target should be a JSON string");
+    assert!(instruction_json_target.starts_with('/'));
+    assert!(instruction_json_target.ends_with("/home/.claude/CLAUDE.md"));
+    assert!(!instruction_json_target.starts_with("~"));
+
+    std::fs::create_dir_all(&team_repo).expect("team repository should be created");
+    let team_init = dalo_command()
+        .env("HOME", &home)
+        .args(["team", "--repo"])
+        .arg(&team_repo)
+        .args(["init", "company"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let team_init = String::from_utf8(team_init).expect("team init output should be UTF-8");
+    assert!(team_init.contains("team manifest ~/team-repository/dalo.toml"));
+    let team_show = dalo_command()
+        .env("HOME", &home)
+        .args(["team", "--repo"])
+        .arg(&team_repo)
+        .arg("show")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let team_show = String::from_utf8(team_show).expect("team show output should be UTF-8");
+    assert!(team_show.contains("team manifest: ~/team-repository/dalo.toml"));
+
+    let team_json = dalo_command()
+        .env("HOME", &home)
+        .args(["--json", "team", "--repo"])
+        .arg(&team_repo)
+        .arg("show")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let team_json: serde_json::Value =
+        serde_json::from_slice(&team_json).expect("team JSON should parse");
+    let team_json_path = team_json["path"]
+        .as_str()
+        .expect("team path should be a JSON string");
+    assert!(team_json_path.starts_with('/'));
+    assert!(team_json_path.ends_with("/home/team-repository/dalo.toml"));
+    assert!(!team_json_path.starts_with("~"));
+}
+
+#[test]
 fn sync_path_labels_should_escape_controls_and_disambiguate_shared_targets() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store\n\u{1b}[2J");
@@ -11060,7 +11253,16 @@ fn sync_should_audit_tracking_update_before_publishing_it_to_existing_links() {
         .expect("inspection command should be the first backticked command");
     assert!(inspection_command.starts_with("dalo "));
     assert!(inspection_command.contains(" audit "));
-    assert!(inspection_command.contains(".audit-staging"));
+    assert!(inspection_command.contains("store:/sources/.audit-staging"));
+    assert!(
+        !inspection_command.contains(
+            store
+                .join("sources/.audit-staging")
+                .to_string_lossy()
+                .as_ref()
+        ),
+        "inspection command: {inspection_command}"
+    );
     assert!(!inspection_command.contains("--accept-risk"));
     assert!(subsequent_guidance.contains("`--accept-risk <reason>`"));
 
