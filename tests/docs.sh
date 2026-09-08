@@ -146,7 +146,7 @@ grep -Fq 'x-release-please-start-version' "$root/site/index.html"
 # The hero transcript is the output the current CLI prints, not the pre-0.14 one.
 grep -Fq 'target[generic]:/review -&gt; store:/local/skills/review' "$root/site/index.html"
 grep -Fq 'synced: 1 skill across 2 targets (2 created)' "$root/site/index.html"
-grep -Fq '  security preflight: deterministic checks only' "$root/site/index.html"
+grep -Fq 'security preflight: deterministic checks only' "$root/site/index.html"
 grep -Fq 'target[generic]:/review -> store:/local/skills/review' "$root/video/src/QuickstartVideo.tsx"
 refute 'the quickstart video source still uses the pre-0.14 absolute sync path' \
   grep -Fq 'applied  create     /tmp/dalo/skills/review -> /tmp/dalo/store/local/skills/review' "$root/video/src/QuickstartVideo.tsx"
@@ -171,7 +171,6 @@ grep -q 'Security preflight and review gate' "$root/site/index.html"
 grep -q 'dalo audit sebastian:pr-review' "$root/site/index.html"
 grep -q 'security audits and review gates' "$root/site/index.html"
 grep -q 'security preflight: deterministic checks and compatible cached findings only; sync did not run an agent reviewer; passing is not a safety guarantee' "$root/site/index.html"
-grep -q 'security preflight: deterministic checks and compatible cached findings only; sync did not run an agent reviewer; passing is not a safety guarantee' "$root/video/src/QuickstartVideo.tsx"
 grep -q 'durationInFrames={450}' "$root/video/src/Root.tsx"
 refute 'the site requests a CDN-hosted player instead of self-hosted assets' \
   grep -R -q -E --exclude-dir=node_modules --exclude-dir=build 'cdn\.jsdelivr\.net|AsciinemaPlayer|asciinema-player' "$root/site"

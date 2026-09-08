@@ -35,8 +35,7 @@ const lines: Line[] = [
   {at: 278, kind: 'success', content: 'applied  create     target[generic]:/review -> store:/local/skills/review'},
   {at: 306, kind: 'output', content: 'synced: 1 skill across 1 target (1 created)'},
   {at: 334, kind: 'output', content: <span style={{fontSize: 12}}>security preflight: deterministic checks only</span>},
-  {at: 356, kind: 'output', content: <span style={{fontSize: 12}}>security preflight: deterministic checks and compatible cached findings only; sync did not run an agent reviewer; passing is not a safety guarantee</span>},
-  {at: 404, kind: 'comment', content: '# exit 0 · reviewed content linked'},
+  {at: 382, kind: 'comment', content: '# exit 0 · reviewed content linked'},
 ];
 
 const DaloMark = () => (
