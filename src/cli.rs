@@ -4196,7 +4196,12 @@ fn run_resolve(options: &GlobalOptions, command: ResolveCommand) -> DaloResult<(
             } else {
                 Some(store::StoreLock::acquire(&paths)?)
             };
-            let report = adopt::remove_owned_skill(&paths, &args.id, options.dry_run)?;
+            let mut report = adopt::remove_owned_skill(&paths, &args.id, options.dry_run)?;
+            if !options.json && remove_owned_recreates_on_sync(report.status) {
+                report.next_step = active_remove_owned_next_step(&paths, &report)
+                    .ok()
+                    .flatten();
+            }
             if options.json {
                 print_json(&report)?;
             } else {
@@ -4213,6 +4218,75 @@ fn run_resolve(options: &GlobalOptions, command: ResolveCommand) -> DaloResult<(
             Ok(())
         }
     }
+}
+
+fn remove_owned_recreates_on_sync(status: adopt::RemoveOwnedStatus) -> bool {
+    matches!(
+        status,
+        adopt::RemoveOwnedStatus::Removed | adopt::RemoveOwnedStatus::DroppedMissing
+    )
+}
+
+fn active_remove_owned_next_step(
+    paths: &store::StorePaths,
+    report: &adopt::RemoveOwnedReport,
+) -> DaloResult<Option<String>> {
+    let state = store::read_state(paths)?;
+    if !state
+        .materialization_dirs
+        .iter()
+        .any(|directory| directory.path.join(&report.slot_name) == report.link_path)
+    {
+        return Ok(None);
+    }
+
+    let config = store::read_config(paths)?;
+    let approvals = store::read_approvals(paths)?.approvals;
+    let live = resolver::resolve_from_config(&config, approvals);
+    let active = live.resolution.active_skills.into_iter().find(|skill| {
+        skill.slot_name == report.slot_name
+            && (report.recorded_source_ref.as_deref() == Some(skill.source_ref.as_str())
+                || report.recorded_source_ref.is_none() && report.store_path == skill.path)
+    });
+    let Some(active) = active else {
+        return Ok(None);
+    };
+
+    let selected_catalog = live
+        .scans
+        .iter()
+        .find(|scan| {
+            scan.source.id == active.source_id && scan.source.kind == source::SourceKind::Catalog
+        })
+        .and_then(|scan| {
+            let inventory = scan.inventory.as_ref()?;
+            let skill = inventory
+                .skills
+                .iter()
+                .find(|skill| skill.source_ref == active.source_ref)?;
+            catalog::skill_is_selected(skill, &scan.source.selection, &scan.source.path)
+                .then_some(())
+        })
+        .is_some();
+    let deactivate = if selected_catalog {
+        let selector = active
+            .source_ref
+            .strip_prefix(&format!("{}:", active.source_id))
+            .unwrap_or(&active.slot_name);
+        store::dalo_command(
+            &paths.root,
+            &format!("source select {} --unselect {}", active.source_id, selector),
+        )
+    } else {
+        store::dalo_command(
+            &paths.root,
+            &format!("approve revoke skill {}", active.source_ref),
+        )
+    };
+    Ok(Some(format!(
+        "`{}` is still active; the next sync will recreate this link — deactivate it with `{deactivate}`",
+        active.source_ref
+    )))
 }
 
 fn run_doctor(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {

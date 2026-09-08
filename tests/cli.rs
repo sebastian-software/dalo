@@ -9209,6 +9209,183 @@ fn resolve_remove_owned_should_remove_only_recorded_symlink() {
 }
 
 #[test]
+fn resolve_remove_owned_should_explain_how_to_deactivate_an_active_catalog_skill() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = store::comparable_path(&temp_dir.path().join("store"));
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "copy-editing"])
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store", store.to_str().expect("store should be utf8")])
+        .args(["approve", "skill", "marketing:copy-editing"])
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "remove-owned", "generic:copy-editing"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "note: `marketing:copy-editing` is still active; the next sync will recreate this link",
+        ))
+        .stdout(predicate::str::contains(store::dalo_command(
+            &store,
+            "source select marketing --unselect copy-editing",
+        )));
+}
+
+#[test]
+fn resolve_remove_owned_should_explain_how_to_revoke_an_active_skill_approval() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = store::comparable_path(&temp_dir.path().join("store"));
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo_with_skill(&repo, "review", "# Review\n");
+    setup_store_with_target(&store, &target);
+    add_source(&store, "team", &repo);
+    set_source_untrusted(&store, "team");
+    dalo_command()
+        .args(["--store", store.to_str().expect("store should be utf8")])
+        .args(["approve", "skill", "team:review"])
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "remove-owned", "generic:review"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "note: `team:review` is still active; the next sync will recreate this link",
+        ))
+        .stdout(predicate::str::contains(store::dalo_command(
+            &store,
+            "approve revoke skill team:review",
+        )));
+}
+
+#[test]
+fn resolve_remove_owned_should_not_warn_for_an_inactive_skill() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = store::comparable_path(&temp_dir.path().join("store"));
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "copy-editing"])
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store", store.to_str().expect("store should be utf8")])
+        .args(["approve", "skill", "marketing:copy-editing"])
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args([
+            "source",
+            "select",
+            "marketing",
+            "--unselect",
+            "copy-editing",
+        ])
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "remove-owned", "generic:copy-editing"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("note:").not());
+}
+
+#[test]
+fn resolve_remove_owned_json_should_preserve_the_existing_report_contract() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = store::comparable_path(&temp_dir.path().join("store"));
+    let target = temp_dir.path().join("skills");
+    setup_store_with_skill_and_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "resolve", "remove-owned", "generic:review"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value =
+        serde_json::from_slice(&output).expect("remove-owned JSON should parse");
+    assert_eq!(report["id"], "generic:review");
+    assert_eq!(report["status"], "removed");
+    assert!(report.get("next_step").is_none());
+    assert_eq!(
+        report
+            .as_object()
+            .expect("report should be an object")
+            .len(),
+        3
+    );
+}
+
+#[test]
 fn resolve_remove_owned_yes_should_not_remove_real_entry() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

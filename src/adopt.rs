@@ -195,6 +195,22 @@ pub struct RemoveOwnedReport {
     pub link_path: PathBuf,
     /// Status.
     pub status: RemoveOwnedStatus,
+    /// Source reference stored with the removed record when the link was last
+    /// materialized. This remains internal so the established JSON report
+    /// contract stays unchanged.
+    #[serde(skip)]
+    pub(crate) recorded_source_ref: Option<String>,
+    /// Store path stored with the removed record. This supports matching legacy
+    /// records that predate persisted source references without changing the
+    /// established JSON report contract.
+    #[serde(skip)]
+    pub(crate) store_path: PathBuf,
+    /// Slot name stored with the removed record.
+    #[serde(skip)]
+    pub(crate) slot_name: String,
+    /// Human-only remediation for a link whose recorded owner is still active.
+    #[serde(skip)]
+    pub(crate) next_step: Option<String>,
 }
 
 /// Remove-owned status.
@@ -553,6 +569,14 @@ pub fn remove_owned_skill(
         id: owned_id(&record),
         link_path: record.link_path,
         status,
+        recorded_source_ref: record
+            .extra
+            .get("source_ref")
+            .and_then(toml::Value::as_str)
+            .map(ToOwned::to_owned),
+        store_path: record.store_path,
+        slot_name: record.slot_name,
+        next_step: None,
     })
 }
 
