@@ -67,6 +67,18 @@ pub enum ReviewDecisionKind {
     HookBinding,
 }
 
+impl std::fmt::Display for ReviewDecisionKind {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::SkillContent => "skill_content",
+            Self::AgentActivation => "agent_activation",
+            Self::InstructionRecommendation => "instruction_recommendation",
+            Self::ToolExecution => "tool_execution",
+            Self::HookBinding => "hook_binding",
+        })
+    }
+}
+
 /// State of one exact component boundary at snapshot time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -83,6 +95,19 @@ pub enum ReviewDecisionState {
     Unsupported,
     /// Component is visible but intentionally not activated by plugin review.
     Inactive,
+}
+
+impl std::fmt::Display for ReviewDecisionState {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Reused => "reused",
+            Self::Pending => "pending",
+            Self::Invalidated => "invalidated",
+            Self::Blocked => "blocked",
+            Self::Unsupported => "unsupported",
+            Self::Inactive => "inactive",
+        })
+    }
 }
 
 /// One exact, separately approvable (or explicitly non-approvable) boundary.
@@ -474,7 +499,7 @@ fn member_decision(
     });
     let mut content_hash = None;
     let mut facts = Vec::new();
-    let mut diagnostic = format!("canonical component is {:?}", member.state).to_lowercase();
+    let mut diagnostic = format!("canonical component is {}", member.state);
     let mut state = match member.state {
         PluginComponentState::Active => ReviewDecisionState::Reused,
         PluginComponentState::PendingApproval => ReviewDecisionState::Pending,
@@ -497,14 +522,8 @@ fn member_decision(
         ) {
             Ok(audit) => {
                 content_hash = Some(audit.content_hash.clone());
-                facts.push(fact(
-                    "audit_status",
-                    format!("{:?}", audit.status).to_lowercase(),
-                ));
-                facts.push(fact(
-                    "audit_coverage",
-                    format!("{:?}", audit.coverage).to_lowercase(),
-                ));
+                facts.push(fact("audit_status", audit.status));
+                facts.push(fact("audit_coverage", audit.coverage));
                 facts.push(fact("audit_findings", audit.static_findings.len()));
                 if audit.is_blocking() {
                     state = ReviewDecisionState::Blocked;
@@ -598,11 +617,11 @@ fn tool_decision(
         diagnostic: status.diagnostic.clone(),
         facts: vec![
             fact("entry", &status.tool.entry),
+            fact("runtime", status.tool.runtime),
             fact(
-                "runtime",
-                format!("{:?}", status.tool.runtime).to_lowercase(),
+                "capabilities",
+                format_display_values(&status.tool.capabilities),
             ),
-            fact("capabilities", format!("{:?}", status.tool.capabilities)),
             fact("environment", status.tool.env.join(",")),
             fact("closure_files", status.tool.files.len()),
         ],
@@ -657,15 +676,15 @@ fn hook_decision(
             fact("tool", &status.hook.tool_source_ref),
             fact(
                 "event",
-                format!("{:?}/{:?}", descriptor.subject, descriptor.phase),
+                format!("{}/{}", descriptor.subject, descriptor.phase),
             ),
-            fact("effect", format!("{:?}", descriptor.effect).to_lowercase()),
-            fact("matcher", format!("{:?}", descriptor.matcher.tool_names)),
-            fact("timeout_ms", descriptor.timeout_ms),
+            fact("effect", descriptor.effect),
             fact(
-                "failure_policy",
-                format!("{:?}", descriptor.failure_policy).to_lowercase(),
+                "matcher",
+                format_display_values(&descriptor.matcher.tool_names),
             ),
+            fact("timeout_ms", descriptor.timeout_ms),
+            fact("failure_policy", descriptor.failure_policy),
             fact("bindings", descriptor.bindings.len()),
         ],
         targets: target_facts(
@@ -675,6 +694,17 @@ fn hook_decision(
             &status.hook.source_ref,
         ),
     }
+}
+
+fn format_display_values(values: &[impl std::fmt::Display]) -> String {
+    if values.is_empty() {
+        return "none".to_owned();
+    }
+    values
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn target_facts(

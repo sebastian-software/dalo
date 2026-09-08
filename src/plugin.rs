@@ -160,6 +160,16 @@ pub enum ToolRuntime {
     Node,
 }
 
+impl std::fmt::Display for ToolRuntime {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Executable => "executable",
+            Self::Python => "python",
+            Self::Node => "node",
+        })
+    }
+}
+
 impl ToolRuntime {
     /// Runtime executable required on PATH, if any.
     #[must_use]
@@ -230,6 +240,17 @@ pub enum ToolCapability {
     Subprocess,
     /// Access the network.
     Network,
+}
+
+impl std::fmt::Display for ToolCapability {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::FilesystemRead => "filesystem_read",
+            Self::FilesystemWrite => "filesystem_write",
+            Self::Subprocess => "subprocess",
+            Self::Network => "network",
+        })
+    }
 }
 
 /// Required versus optional tool availability.
@@ -336,6 +357,16 @@ pub enum MemberRequirement {
     Optional,
     /// Instruction-only recommendation that never activates the pack.
     Recommended,
+}
+
+impl std::fmt::Display for MemberRequirement {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Required => "required",
+            Self::Optional => "optional",
+            Self::Recommended => "recommended",
+        })
+    }
 }
 
 /// Plugin dependency requirement.
@@ -1525,6 +1556,17 @@ pub enum PluginState {
     Shadowed,
 }
 
+impl std::fmt::Display for PluginState {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Selected => "selected",
+            Self::Blocked => "blocked",
+            Self::Declined => "declined",
+            Self::Shadowed => "shadowed",
+        })
+    }
+}
+
 /// Passive component availability state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1545,6 +1587,21 @@ pub enum PluginComponentState {
     Missing,
     /// Slot and stable-ID lookup matched different components.
     Ambiguous,
+}
+
+impl std::fmt::Display for PluginComponentState {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Active => "active",
+            Self::PendingApproval => "pending_approval",
+            Self::Shadowed => "shadowed",
+            Self::Blocked => "blocked",
+            Self::Available => "available",
+            Self::Inactive => "inactive",
+            Self::Missing => "missing",
+            Self::Ambiguous => "ambiguous",
+        })
+    }
 }
 
 /// Evaluated passive member in canonical structured output.
@@ -1592,6 +1649,18 @@ pub enum PluginDependencyState {
     Missing,
     /// Slot and stable-ID lookup selected different packages.
     Ambiguous,
+}
+
+impl std::fmt::Display for PluginDependencyState {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Selected => "selected",
+            Self::Shadowed => "shadowed",
+            Self::Declined => "declined",
+            Self::Missing => "missing",
+            Self::Ambiguous => "ambiguous",
+        })
+    }
 }
 
 /// One canonical selected or shadowed plugin.
@@ -1668,6 +1737,20 @@ pub enum PluginDiagnosticCode {
     RequiredMemberBlocked,
     /// Explicit local decline retained selection intent.
     DeclinedPlugin,
+}
+
+impl std::fmt::Display for PluginDiagnosticCode {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::InvalidStackSelection => "invalid_stack_selection",
+            Self::MissingPlugin => "missing_plugin",
+            Self::AmbiguousPluginReference => "ambiguous_plugin_reference",
+            Self::RequiredDependencyCycle => "required_dependency_cycle",
+            Self::ShadowedPlugin => "shadowed_plugin",
+            Self::RequiredMemberBlocked => "required_member_blocked",
+            Self::DeclinedPlugin => "declined_plugin",
+        })
+    }
 }
 
 /// Deterministic target-independent passive plugin resolution.
@@ -2018,7 +2101,7 @@ pub fn resolve_plugins(config: &UserConfig, inventories: &[SourceInventory]) -> 
                 {
                     blocking_reasons.push(
                         format!(
-                            "required dependency `{}` is {state:?}",
+                            "required dependency `{}` is {state}",
                             dependency.reference.as_string()
                         )
                         .to_lowercase(),
@@ -2197,11 +2280,8 @@ pub fn apply_component_resolution(
                 && member.state != PluginComponentState::Active
             {
                 plugin.blocking_reasons.push(
-                    format!(
-                        "required member `{}` is {:?}",
-                        member.reference, member.state
-                    )
-                    .to_lowercase(),
+                    format!("required member `{}` is {}", member.reference, member.state)
+                        .to_lowercase(),
                 );
             }
         }
@@ -2574,7 +2654,7 @@ fn evaluate_members(
             {
                 blocking.push(
                     format!(
-                        "required member `{}` is {:?}",
+                        "required member `{}` is {}",
                         member.reference.as_string(),
                         state
                     )

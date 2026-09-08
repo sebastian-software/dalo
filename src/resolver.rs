@@ -1014,6 +1014,12 @@ pub fn diagnostic_code_name(code: ResolutionDiagnosticCode) -> &'static str {
     }
 }
 
+impl std::fmt::Display for ResolutionDiagnosticCode {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(diagnostic_code_name(*self))
+    }
+}
+
 /// Human-readable label for a closure block reason.
 #[must_use]
 pub fn closure_block_reason_name(reason: ClosureBlockReason) -> &'static str {

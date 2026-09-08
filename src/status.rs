@@ -1223,7 +1223,7 @@ pub fn print_status_report(report: &StatusReport) {
         println!("local tools (inert inventory):");
         for tool in &report.tools.tools {
             println!(
-                "  {} state={:?} contract=sha256:{}",
+                "  {} state={} contract=sha256:{}",
                 tool.tool.source_ref, tool.state, tool.tool.contract_hash
             );
             println!("    {}", tool.diagnostic);
@@ -1233,7 +1233,7 @@ pub fn print_status_report(report: &StatusReport) {
         println!("portable hooks (inert until sync):");
         for hook in &report.hooks.hooks {
             println!(
-                "  {} state={:?} tool_state={:?} contract=sha256:{}",
+                "  {} state={} tool_state={} contract=sha256:{}",
                 hook.hook.source_ref, hook.state, hook.tool_state, hook.hook.contract_hash
             );
             println!("    {}", hook.diagnostic);
@@ -1241,7 +1241,7 @@ pub fn print_status_report(report: &StatusReport) {
     }
     for target in &report.plugin_targets {
         println!(
-            "native plugin {} {}: state={:?} path={} hash={} ({})",
+            "native plugin {} {}: state={} path={} hash={} ({})",
             target.target,
             target.plugin,
             target.state,
@@ -1315,7 +1315,7 @@ pub fn print_status_report(report: &StatusReport) {
     if !report.plugins.plugins.is_empty() {
         println!("plugins:");
         for plugin in &report.plugins.plugins {
-            println!("  {} state={:?}", plugin.source_ref, plugin.state);
+            println!("  {} state={}", plugin.source_ref, plugin.state);
             for reason in &plugin.blocking_reasons {
                 println!("    blocked: {reason}");
             }
@@ -1325,7 +1325,7 @@ pub fn print_status_report(report: &StatusReport) {
         println!("plugin diagnostics:");
         for diagnostic in &report.plugins.diagnostics {
             println!(
-                "  {:?} {}: {}",
+                "  {} {}: {}",
                 diagnostic.code, diagnostic.subject, diagnostic.message
             );
         }
@@ -1809,7 +1809,7 @@ pub fn print_sync_report(report: &SyncReport) {
     }
     for target in &report.plugin_targets {
         println!(
-            "{prefix}plugin {} {}: state={:?} path={} ({})",
+            "{prefix}plugin {} {}: state={} path={} ({})",
             target.target,
             target.plugin,
             target.state,

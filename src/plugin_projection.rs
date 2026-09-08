@@ -76,6 +76,17 @@ pub enum PluginProjectionState {
     Conflict,
 }
 
+impl std::fmt::Display for PluginProjectionState {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Ready => "ready",
+            Self::Planned => "planned",
+            Self::Blocked => "blocked",
+            Self::Conflict => "conflict",
+        })
+    }
+}
+
 /// One canonical component's native package outcome.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PluginProjectionComponent {
@@ -428,7 +439,7 @@ fn render_package(
                 native_path: None,
                 content_hash: None,
                 state: "omitted".to_owned(),
-                diagnostic: format!("canonical component is {:?}", member.state).to_lowercase(),
+                diagnostic: format!("canonical component is {}", member.state),
             });
             continue;
         }
@@ -447,7 +458,7 @@ fn render_package(
                     .ok_or_else(|| state_error(format!("active agent `{identity}` is absent from inventory")))?;
                 let compilation = agent::compile_record(record, AgentProvider::Claude);
                 let bytes = compilation.bytes.ok_or_else(|| state_error(format!(
-                    "agent `{identity}` cannot be represented safely for Claude: {:?}", compilation.overall
+                    "agent `{identity}` cannot be represented safely for Claude: {}", compilation.overall
                 )))?;
                 let relative = format!("agents/{}.md", record.slot_name);
                 write_file(&root.join(&relative), bytes.as_bytes())?;
@@ -544,10 +555,9 @@ fn append_active_components(
             }
             .to_owned(),
             diagnostic: format!(
-                "separate exact tool trust is {:?}; immutable execution remains Dalo-dispatched",
+                "separate exact tool trust is {}; immutable execution remains Dalo-dispatched",
                 tool.state
-            )
-            .to_lowercase(),
+            ),
         });
     }
     let prefix = format!("{}#hook:", plugin.source_ref);
@@ -567,10 +577,9 @@ fn append_active_components(
             }
             .to_owned(),
             diagnostic: format!(
-                "separate exact hook trust is {:?}; native sidecar ownership remains independent",
+                "separate exact hook trust is {}; native sidecar ownership remains independent",
                 hook.state
-            )
-            .to_lowercase(),
+            ),
         });
     }
 }
@@ -586,13 +595,10 @@ fn active_component_blocker(
             && tool.tool.availability == crate::plugin::ToolAvailability::Required
             && tool.state != ToolState::Ready
     }) {
-        return Some(
-            format!(
-                "required tool `{}` is {:?}; packaging never grants execution authority",
-                tool.tool.source_ref, tool.state
-            )
-            .to_lowercase(),
-        );
+        return Some(format!(
+            "required tool `{}` is {}; packaging never grants execution authority",
+            tool.tool.source_ref, tool.state
+        ));
     }
     let hook_prefix = format!("{}#hook:", plugin.source_ref);
     hooks
@@ -604,10 +610,9 @@ fn active_component_blocker(
         })
         .map(|hook| {
             format!(
-                "required hook `{}` is {:?}; packaging preserves its separate approval",
+                "required hook `{}` is {}; packaging preserves its separate approval",
                 hook.hook.source_ref, hook.state
             )
-            .to_lowercase()
         })
 }
 
