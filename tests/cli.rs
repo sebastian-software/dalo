@@ -1394,10 +1394,9 @@ fn next_should_choose_one_action_from_store_state_and_keep_init_state_aware() {
             "Next: {}",
             store::dalo_command(&store, "source add <id> <git-url-or-path>")
         )))
-        .stdout(predicate::str::contains(format!(
-            "create one in {}/local/skills",
-            store.display()
-        )))
+        .stdout(predicate::str::contains(
+            "create one in store:/local/skills",
+        ))
         .stdout(predicate::str::contains("adopt an existing skill"));
 
     create_git_skill_repo_with_skill(&source, "review", "# Review\n");
@@ -8493,7 +8492,7 @@ fn protection_should_follow_target_id_when_directory_moves() {
         .assert()
         .success()
         .stdout(predicate::str::contains(
-            moved.join("review").to_string_lossy(),
+            "review -> target[generic]:/review protected",
         ))
         .stdout(predicate::str::contains("protected"));
 }
@@ -11027,10 +11026,6 @@ fn sync_should_block_dirty_team_source() {
         "# Dirty\n",
     )
     .expect("checkout should be dirtied");
-    let checkout = store
-        .join("sources/company/checkout")
-        .canonicalize()
-        .expect("checkout should be canonicalizable");
     let mut command = dalo_command();
 
     command
@@ -11043,10 +11038,9 @@ fn sync_should_block_dirty_team_source() {
         .stderr(predicate::str::contains(
             "source `company` has local changes",
         ))
-        .stderr(predicate::str::contains(format!(
-            "git -C '{}' status",
-            checkout.display()
-        )));
+        .stderr(predicate::str::contains(
+            "git -C 'store:/sources/company/checkout' status",
+        ));
 }
 
 #[test]
@@ -14706,10 +14700,7 @@ fn instructions_enable_should_keep_local_pack_creation_guidance_for_bare_ids() {
             "instruction pack `house-style` was not found; create",
         ))
         .stderr(predicate::str::contains(
-            store
-                .join("local/instructions/house-style.md")
-                .display()
-                .to_string(),
+            "store:/local/instructions/house-style.md",
         ))
         .stderr(predicate::str::contains("source repository and sync").not());
     assert!(!target_file.exists());
