@@ -47,6 +47,19 @@ pub fn operation_status(label: &str) -> String {
     emphasize(Stream::Stdout, label)
 }
 
+/// Escape control characters in untrusted text before emitting it to a human terminal.
+#[must_use]
+pub fn terminal_safe_text(value: &str) -> String {
+    value.chars().fold(String::new(), |mut escaped, character| {
+        if character.is_control() {
+            escaped.extend(character.escape_default());
+        } else {
+            escaped.push(character);
+        }
+        escaped
+    })
+}
+
 fn emphasize(stream: Stream, label: &str) -> String {
     emphasize_for(color_enabled(stream), label)
 }
@@ -92,5 +105,13 @@ mod tests {
         assert_eq!(emphasize_for(true, "existing"), "\x1b[32mexisting\x1b[0m");
         assert_eq!(emphasize_for(true, "\x1b[31merror"), "\x1b[31merror");
         assert_eq!(emphasize_for(false, "error"), "error");
+    }
+
+    #[test]
+    fn terminal_safe_text_should_escape_controls_without_hiding_unicode() {
+        assert_eq!(
+            terminal_safe_text("über\u{1b}[2J-skill"),
+            "über\\u{1b}[2J-skill"
+        );
     }
 }
