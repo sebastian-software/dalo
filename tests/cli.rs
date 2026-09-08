@@ -2272,6 +2272,115 @@ fn team_catalog_add_should_reject_a_missing_local_path_before_writing() {
 }
 
 #[test]
+fn team_repo_errors_should_use_team_vocabulary_and_keep_json_error_schema() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let missing_repo = temp_dir.path().join("missing-team-repo");
+    let expected_message = format!(
+        "team repository `{}` was not found (from --repo)",
+        missing_repo.display()
+    );
+
+    let human = dalo_command()
+        .args(["team", "--repo"])
+        .arg(&missing_repo)
+        .arg("show")
+        .output()
+        .expect("human team error command should run");
+    assert_eq!(human.status.code(), Some(4));
+    assert_eq!(
+        String::from_utf8(human.stderr).expect("human stderr should be UTF-8"),
+        format!("error: {expected_message}\n")
+    );
+
+    let json = dalo_command()
+        .args(["--json", "team", "--repo"])
+        .arg(&missing_repo)
+        .arg("show")
+        .output()
+        .expect("JSON team error command should run");
+    assert_eq!(json.status.code(), Some(4));
+    let payload: serde_json::Value =
+        serde_json::from_slice(&json.stderr).expect("JSON team error should remain valid");
+    assert_eq!(payload.as_object().map(|object| object.len()), Some(1));
+    assert_eq!(payload["error"]["code"], "environment_problem");
+    assert_eq!(payload["error"]["message"], expected_message);
+}
+
+#[test]
+fn team_catalog_update_unknown_from_should_be_actionable_and_keep_json_error_schema() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let repo = temp_dir.path().join("team-repo");
+    let catalog = temp_dir.path().join("catalog");
+    std::fs::create_dir_all(&repo).expect("team repository should be created");
+    create_git_catalog_repo(&catalog);
+    let expected_message = format!(
+        "ref `does-not-exist` was not found in `{}`; use a branch, tag, or commit",
+        catalog.display()
+    );
+
+    dalo_command()
+        .current_dir(&repo)
+        .args(["team", "init", "company"])
+        .assert()
+        .success();
+    dalo_command()
+        .current_dir(&repo)
+        .args(["team", "catalog", "add", "marketing"])
+        .arg(&catalog)
+        .args(["--version", "main"])
+        .assert()
+        .success();
+    let manifest_path = repo.join("dalo.toml");
+    let before = std::fs::read(&manifest_path).expect("manifest should be readable");
+
+    let human = dalo_command()
+        .current_dir(&repo)
+        .args([
+            "team",
+            "catalog",
+            "update",
+            "marketing",
+            "--from",
+            "does-not-exist",
+        ])
+        .output()
+        .expect("human unknown-ref command should run");
+    assert_eq!(human.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8(human.stderr).expect("human stderr should be UTF-8"),
+        format!("error: {expected_message}\n")
+    );
+    assert_eq!(
+        std::fs::read(&manifest_path).expect("manifest should remain readable"),
+        before
+    );
+
+    let json = dalo_command()
+        .current_dir(&repo)
+        .args([
+            "--json",
+            "team",
+            "catalog",
+            "update",
+            "marketing",
+            "--from",
+            "does-not-exist",
+        ])
+        .output()
+        .expect("JSON unknown-ref command should run");
+    assert_eq!(json.status.code(), Some(1));
+    let payload: serde_json::Value =
+        serde_json::from_slice(&json.stderr).expect("JSON unknown-ref error should remain valid");
+    assert_eq!(payload.as_object().map(|object| object.len()), Some(1));
+    assert_eq!(payload["error"]["code"], "expected_failure");
+    assert_eq!(payload["error"]["message"], expected_message);
+    assert_eq!(
+        std::fs::read(&manifest_path).expect("manifest should remain readable"),
+        before
+    );
+}
+
+#[test]
 fn team_catalog_add_should_persist_selection_and_portable_permissions() {
     let fixture = TeamCatalogFixture::initialized_with_catalog();
     let manifest = fixture.manifest();
