@@ -682,9 +682,11 @@ fn resolve_candidate_reference(
     candidates: &[CatalogCandidate],
     reference: &str,
 ) -> DaloResult<CatalogCandidate> {
+    let source_prefix = format!("{source_id}:");
+    let lookup = reference.strip_prefix(&source_prefix).unwrap_or(reference);
     let matches = candidates
         .iter()
-        .filter(|candidate| candidate_matches_ref(candidate, reference))
+        .filter(|candidate| candidate_matches_ref(candidate, lookup))
         .cloned()
         .collect::<Vec<_>>();
     match matches.as_slice() {
