@@ -402,6 +402,11 @@ pub fn scan_source_with_plugin_inventory(
             .then_with(|| left.path.cmp(&right.path))
     });
     warnings.extend(duplicate_slot_warnings(source_id, &skills));
+    // A source-qualified reference identifies a slot, so multiple records with
+    // the same slot from one source cannot remain distinct downstream. Keep the
+    // first path after the deterministic sort while retaining warnings for every
+    // conflicting path above.
+    skills.dedup_by(|left, right| left.slot_name == right.slot_name);
     warnings.sort_by(|left, right| {
         left.path
             .cmp(&right.path)
@@ -2938,9 +2943,9 @@ required = true
     }
 
     #[test]
-    fn scan_source_should_report_duplicate_slot_names() {
+    fn scan_source_should_deduplicate_duplicate_slot_names_before_resolution() {
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
-        for dir_name in ["first", "second"] {
+        for dir_name in ["second", "first"] {
             let skill_dir = temp_dir.path().join(dir_name);
             fs::create_dir_all(&skill_dir).expect("skill dir should be created");
             fs::write(
@@ -2958,6 +2963,35 @@ required = true
             .count();
 
         assert_eq!(duplicate_warnings, 2);
+        assert_eq!(inventory.skills.len(), 1);
+        assert_eq!(inventory.skills[0].path, temp_dir.path().join("first"));
+
+        let source = crate::source::SourceConfig {
+            id: "company".to_owned(),
+            kind: crate::source::SourceKind::Local,
+            path: temp_dir.path().to_path_buf(),
+            priority: 0,
+            namespace: None,
+            enabled: true,
+            trusted: false,
+            url: None,
+            branch: None,
+            update_policy: None,
+            selection: Vec::new(),
+            declared_by: None,
+            declared_ref: None,
+        };
+        let resolution = crate::resolver::resolve(&crate::resolver::ResolutionInput {
+            sources: std::slice::from_ref(&source),
+            inventories: vec![inventory],
+            approvals: Vec::new(),
+        });
+
+        assert_eq!(resolution.active_skills.len(), 1);
+        assert!(resolution.unlinked_skills.is_empty());
+        assert!(resolution.diagnostics.iter().all(|diagnostic| {
+            diagnostic.code != crate::resolver::ResolutionDiagnosticCode::Shadowed
+        }));
     }
 
     #[test]
