@@ -260,6 +260,11 @@ jobs:
       - name: Guard against an incomplete standards migration
         run: test ! -f .standards/pending.json
 
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
       # `.standards/blocked.json` records an agent run that pushed a result it
       # could not validate. `blocking: true` is the CLI/stamp alignment class:
       # every verdict of that run was computed against the wrong manifest, so
@@ -299,11 +304,6 @@ jobs:
           if (state.blocking) { fail('the agent could not validate its result.'); }
           console.log('The agent marker is non-blocking; its findings are reviewer context.');
           "
-
-      - name: Set up Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
 
       # The CLI version is pinned here because a Rust-only repository has no
       # lockfile to hold it; Renovate's custom manager in renovate.json moves
