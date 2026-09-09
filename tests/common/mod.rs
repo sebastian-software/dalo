@@ -12,6 +12,28 @@ use std::ops::{Deref, DerefMut};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
+macro_rules! apply_test_environment {
+    ($command:expr, $environment:expr) => {
+        $command
+            .env_remove("DALO_STORE")
+            .env_remove("DALO_GENERATOR_TIMEOUT_SECS")
+            .env("DALO_UPDATE_CHECK", "never")
+            .env("HOME", &$environment.home)
+            .env("CODEX_HOME", &$environment.codex_home)
+            .env("CLAUDE_CONFIG_DIR", &$environment.claude_config_dir)
+            .env("OPENCODE_CONFIG_DIR", &$environment.opencode_config_dir)
+            .env("XDG_CONFIG_HOME", $environment.xdg_config_home())
+            .env("XDG_DATA_HOME", $environment.xdg_data_home())
+            .env("XDG_CACHE_HOME", $environment.xdg_cache_home())
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .env_remove("GIT_CONFIG_COUNT")
+            .env_remove("GIT_CONFIG_PARAMETERS")
+            .env("PATH", &$environment.path)
+    };
+}
+
 /// A command whose provider-related environment is private to this invocation.
 ///
 /// `TempDir` is retained for as long as the command exists, so parallel tests
@@ -119,6 +141,12 @@ impl TestEnvironment {
             .expect("test home has a parent")
             .join("xdg/cache")
     }
+
+    /// Applies the isolated environment to a command which cannot use
+    /// [`dalo_command`], such as a command running Dalo under a PTY wrapper.
+    pub fn apply_to(&self, command: &mut std::process::Command) {
+        apply_test_environment!(command, self);
+    }
 }
 
 fn executable_from_path(program: &str) -> PathBuf {
@@ -180,22 +208,7 @@ pub fn dalo_command_with_git_search_path(git_search_path: &OsStr) -> DaloCommand
 
 fn dalo_command_with_environment(environment: TestEnvironment) -> DaloCommand {
     let mut command = Command::cargo_bin("dalo").expect("binary should build");
-    command
-        .env_remove("DALO_STORE")
-        .env_remove("DALO_GENERATOR_TIMEOUT_SECS")
-        .env("HOME", &environment.home)
-        .env("CODEX_HOME", &environment.codex_home)
-        .env("CLAUDE_CONFIG_DIR", &environment.claude_config_dir)
-        .env("OPENCODE_CONFIG_DIR", &environment.opencode_config_dir)
-        .env("XDG_CONFIG_HOME", environment.xdg_config_home())
-        .env("XDG_DATA_HOME", environment.xdg_data_home())
-        .env("XDG_CACHE_HOME", environment.xdg_cache_home())
-        .env("GIT_CONFIG_GLOBAL", "/dev/null")
-        .env("GIT_CONFIG_NOSYSTEM", "1")
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env_remove("GIT_CONFIG_COUNT")
-        .env_remove("GIT_CONFIG_PARAMETERS")
-        .env("PATH", &environment.path);
+    apply_test_environment!(&mut command, &environment);
     DaloCommand {
         command,
         environment,
