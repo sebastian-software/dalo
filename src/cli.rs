@@ -3029,12 +3029,12 @@ where
         report.unrefreshed_tracking_sources = unrefreshed_tracking_sources;
         if options.dry_run && !live.plugins.plugins.is_empty() {
             let state = store::read_state(&paths)?;
-            let installation_plan = plan::build_from_facts(
+            let installation_plan = plan::build_from_facts_with_active_skills(
                 &options.store,
                 &state,
                 &live.plugins,
                 &reconciliation_inventories,
-                &report.resolution,
+                &report.resolution.active_skills,
                 &report.operations,
                 None,
             );

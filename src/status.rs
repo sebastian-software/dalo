@@ -376,12 +376,12 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         true,
     )?;
     let mut installation_plan = (!plugins.plugins.is_empty()).then(|| {
-        crate::plan::build_from_facts(
+        crate::plan::build_from_facts_with_active_skills(
             store_root,
             &state,
             &plugins,
             &reconciliation_inventories,
-            &materialization.resolution,
+            &materialization.resolution.active_skills,
             &materialization.operations,
             None,
         )

@@ -407,12 +407,12 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
         (Some(state), Some(live), Some(materialization), Some(inventories))
             if !live.plugins.plugins.is_empty() =>
         {
-            let mut plan = crate::plan::build_from_facts(
+            let mut plan = crate::plan::build_from_facts_with_active_skills(
                 store_root,
                 state,
                 &live.plugins,
                 inventories,
-                &materialization.resolution,
+                &materialization.resolution.active_skills,
                 &materialization.operations,
                 None,
             );
