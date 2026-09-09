@@ -558,7 +558,7 @@ pub fn remove_owned_skill(
         ));
     };
     let record = state.owned_skills[*index].clone();
-    let status = remove_owned_link(&record, dry_run)?;
+    let status = remove_owned_link(paths, &record, dry_run)?;
 
     if !dry_run {
         state.owned_skills.remove(*index);
@@ -803,10 +803,16 @@ fn restore_replacement_backup(link_path: &Path, backup_path: &Path) -> DaloResul
     Ok(())
 }
 
-fn remove_owned_link(record: &OwnedSkillState, dry_run: bool) -> DaloResult<RemoveOwnedStatus> {
+fn remove_owned_link(
+    paths: &StorePaths,
+    record: &OwnedSkillState,
+    dry_run: bool,
+) -> DaloResult<RemoveOwnedStatus> {
     match fs::symlink_metadata(&record.link_path) {
         Ok(metadata) if metadata.file_type().is_symlink() => {
-            if fs::read_link(&record.link_path)? != record.store_path {
+            let target = fs::read_link(&record.link_path)?;
+            let resolved = store::resolve_link_target(&record.link_path, &target);
+            if !store::path_is_same_or_descendant(&resolved, &paths.root) {
                 return Ok(RemoveOwnedStatus::DroppedForeignSymlink);
             }
             if dry_run {

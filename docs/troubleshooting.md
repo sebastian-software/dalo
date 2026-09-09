@@ -181,7 +181,7 @@ Doctor includes `ok` and `info` codes as well as warnings/errors. Codes not list
 | `broken_owned_symlink` | error | Run `dalo resolve remove-owned <id>`, then `dalo sync` if it should be recreated. |
 | `owned_path_real_entry` | error | Run `dalo resolve remove-owned <id>`; the real entry stays in place. |
 | `missing_owned_symlink` | warning | Run `dalo resolve remove-owned <id>`, then `dalo sync` if needed. |
-| `owned_symlink_repointed` | error | Run the suggested `dalo resolve remove-owned <id>` command, then `dalo sync` if the recorded skill should be recreated. |
+| `owned_symlink_repointed` | warning | Run `dalo sync` to restore the recorded store path. |
 | `dirty_source` | error for team/catalog, warning for local | The checkout has local edits to tracked files (untracked files such as `.DS_Store` no longer count). Commit, stash, discard, or intentionally keep them. |
 | `source_missing` | error | The enabled source's checkout is missing from disk or could not be read. Restore/re-clone it (or fix its permissions), or run `dalo source remove <id>`. |
 | `source_inventory_degraded` | error | For listed inventory warnings, follow the reported repair hint and then run `dalo sync`. If the inventory could not be scanned at all, inspect the reported source path and error, restore its checkout or permissions, and rerun `dalo doctor`; `dalo status` provides detail but is not itself a repair. Existing links are preserved until the source can be scanned safely. |

@@ -131,7 +131,7 @@ pub enum NextActionState {
     NoSkills,
     /// A skill needs an explicit approval record.
     PendingApproval,
-    /// The live resolution differs from the last synchronized lock.
+    /// The live resolution or materialized links need synchronization.
     SyncNeeded,
     /// A problem needs the full status report before it can be resolved.
     NeedsAttention,
@@ -529,6 +529,16 @@ pub fn build_next_action_report(store_root: &Path) -> DaloResult<NextActionRepor
             NextActionState::NeedsAttention,
             message,
             Some(store::dalo_command(store_root, "status")),
+        )
+    } else if report
+        .materialization
+        .iter()
+        .any(|operation| operation.status == MaterializeOperationStatus::Planned)
+    {
+        (
+            NextActionState::SyncNeeded,
+            "Materialized links need synchronization.".to_owned(),
+            Some(store::dalo_command(store_root, "sync")),
         )
     } else if !report.lock.drift.is_empty() {
         (
