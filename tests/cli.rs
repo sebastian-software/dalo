@@ -53,6 +53,22 @@ fn dalo_command_should_isolate_provider_environment_per_invocation() {
 }
 
 #[test]
+fn test_environment_should_isolate_raw_commands() {
+    let command = dalo_command();
+    let environment = command.test_environment();
+    let mut process = std::process::Command::new("/usr/bin/env");
+    process.env("DALO_STORE", "/host/store");
+    environment.apply_to(&mut process);
+    let output = process.output().expect("raw command should run");
+    assert!(output.status.success());
+    let output_environment = String::from_utf8(output.stdout).expect("environment should be utf8");
+
+    assert!(output_environment.contains(&format!("HOME={}", environment.home.display())));
+    assert!(output_environment.contains("DALO_UPDATE_CHECK=never"));
+    assert!(!output_environment.contains("DALO_STORE="));
+}
+
+#[test]
 fn git_fixtures_should_use_a_stable_initial_branch() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let repo = temp_dir.path().join("team-repo");
@@ -4504,8 +4520,11 @@ fn completions_should_reject_json_output() {
 
 #[test]
 fn closed_pipe_should_terminate_without_a_print_panic() {
+    let command = dalo_command();
     let executable = assert_cmd::cargo::cargo_bin("dalo");
-    let mut child = std::process::Command::new(executable)
+    let mut process = std::process::Command::new(executable);
+    command.test_environment().apply_to(&mut process);
+    let mut child = process
         .args(["completions", "bash"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -9258,9 +9277,13 @@ fn doctor_should_collapse_info_and_ok_findings_in_human_output() {
 fn doctor_emphasis_should_be_tty_only_and_honor_terminal_suppression() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("missing-store");
+    let command = dalo_command();
+    let environment = command.test_environment();
     let executable = assert_cmd::cargo::cargo_bin("dalo");
 
-    let piped = std::process::Command::new(&executable)
+    let mut piped_command = std::process::Command::new(&executable);
+    environment.apply_to(&mut piped_command);
+    let piped = piped_command
         .args(["--store"])
         .arg(&store)
         .arg("doctor")
@@ -9272,7 +9295,7 @@ fn doctor_emphasis_should_be_tty_only_and_honor_terminal_suppression() {
         "piped output must not contain ANSI controls"
     );
 
-    let emphasized = doctor_in_pseudoterminal(&executable, &store, None);
+    let emphasized = doctor_in_pseudoterminal(environment, &executable, &store, None);
     assert!(emphasized.status.success());
     assert!(
         emphasized
@@ -9284,7 +9307,7 @@ fn doctor_emphasis_should_be_tty_only_and_honor_terminal_suppression() {
     );
 
     for suppression in [("NO_COLOR", "1"), ("TERM", "dumb")] {
-        let output = doctor_in_pseudoterminal(&executable, &store, Some(suppression));
+        let output = doctor_in_pseudoterminal(environment, &executable, &store, Some(suppression));
         assert!(output.status.success());
         assert!(
             !output.stdout.contains(&0x1b),
@@ -9294,7 +9317,9 @@ fn doctor_emphasis_should_be_tty_only_and_honor_terminal_suppression() {
         );
     }
 
-    let json = std::process::Command::new(&executable)
+    let mut json_command = std::process::Command::new(&executable);
+    environment.apply_to(&mut json_command);
+    let json = json_command
         .args(["--store"])
         .arg(&store)
         .args(["--json", "doctor"])
@@ -9309,11 +9334,13 @@ fn doctor_emphasis_should_be_tty_only_and_honor_terminal_suppression() {
 
 #[cfg(unix)]
 fn doctor_in_pseudoterminal(
+    environment: &common::TestEnvironment,
     executable: &std::path::Path,
     store: &std::path::Path,
     suppression: Option<(&str, &str)>,
 ) -> std::process::Output {
     let mut command = std::process::Command::new("/usr/bin/script");
+    environment.apply_to(&mut command);
     command.env_remove("NO_COLOR").env("TERM", "xterm-256color");
     if let Some((key, value)) = suppression {
         command.env(key, value);
