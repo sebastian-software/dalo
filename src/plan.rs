@@ -1059,6 +1059,15 @@ mod tests {
     use crate::plugin::ResolvedPluginMember;
     use crate::source::SourceKind;
 
+    type BuildFromFacts = fn(
+        &Path,
+        &StateFile,
+        &PluginResolution,
+        &[SourceInventory],
+        &[MaterializeOperation],
+        Option<&str>,
+    ) -> InstallationPlan;
+
     fn active_skill(source_ref: &str, slot_name: &str) -> crate::resolver::ResolvedSkill {
         crate::resolver::ResolvedSkill {
             source_ref: source_ref.to_owned(),
@@ -1077,14 +1086,7 @@ mod tests {
 
     #[test]
     fn released_plan_and_status_attachment_apis_should_remain_callable() {
-        let _build_from_facts: fn(
-            &Path,
-            &StateFile,
-            &PluginResolution,
-            &[SourceInventory],
-            &[MaterializeOperation],
-            Option<&str>,
-        ) -> InstallationPlan = build_from_facts;
+        let _build_from_facts: BuildFromFacts = build_from_facts;
         let _tool: fn(&mut InstallationPlan, &StorePaths) -> DaloResult<()> = attach_tool_status;
         let _hook: fn(&mut InstallationPlan, &StorePaths) -> DaloResult<()> = attach_hook_status;
     }
