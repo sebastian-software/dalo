@@ -7896,17 +7896,22 @@ fn sync_should_report_empty_noop_after_init() {
         .assert()
         .success()
         .stdout(predicate::str::contains("nothing to sync"))
-        .stdout(predicate::str::contains(
-            "security preflight: deterministic checks and compatible cached findings only; sync did not run an agent reviewer; passing is not a safety guarantee",
-        ).not());
+        .stdout(predicate::str::contains("security preflight:").not());
 }
 
 #[test]
-fn sync_should_keep_security_preflight_concise_when_active_skills_are_checked() {
+fn sync_should_keep_security_preflight_concise_during_active_skill_noop() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
     setup_store_with_skill_and_target(&store, &target);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
 
     dalo_command()
         .args(["--store"])
@@ -13766,7 +13771,7 @@ fn approve_skill_should_use_direction_aware_sync_hints_without_changing_json_out
 }
 
 #[test]
-fn sync_should_print_pending_approval_beside_existing_operations_and_name_check_reason() {
+fn sync_should_keep_pending_approval_actionable_during_noop_with_active_skills() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
@@ -13792,6 +13797,21 @@ fn sync_should_print_pending_approval_beside_existing_operations_and_name_check_
         .args(["source", "select", "marketing", "copy-editing"])
         .assert()
         .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("existing"))
+        .stdout(predicate::str::contains(
+            "pending approval: marketing:copy-editing",
+        ))
+        .stdout(predicate::str::contains("diagnostic: pending_approval").not())
+        .stdout(predicate::str::contains(
+            "security preflight: deterministic checks only",
+        ));
 
     dalo_command()
         .args(["--store"])
