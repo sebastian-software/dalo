@@ -354,6 +354,28 @@ pub(crate) fn shell_quote_path(path: &Path) -> String {
     format!("'{}'", path.to_string_lossy().replace('\'', "'\"'\"'"))
 }
 
+/// Render untrusted command data as one POSIX shell word.
+///
+/// Conventional CLI identifiers remain unquoted so existing recovery output
+/// stays compact. Every other value is single-quoted, including embedded
+/// single quotes, to keep copied recovery commands from interpreting data as
+/// shell syntax.
+#[must_use]
+pub(crate) fn shell_quote_argument(value: &str) -> String {
+    if value.bytes().all(|byte| {
+        byte.is_ascii_alphanumeric()
+            || matches!(
+                byte,
+                b'_' | b'@' | b'%' | b'+' | b'=' | b':' | b',' | b'.' | b'/' | b'-'
+            )
+    }) && !value.is_empty()
+    {
+        return value.to_owned();
+    }
+
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
 impl DaloError {
     /// Build an unknown-target error with concise recovery guidance.
     #[must_use]
@@ -726,6 +748,15 @@ mod tests {
         assert_eq!(
             shell_quote_path(Path::new("/tmp/Jane's $(checkout); rm -rf nope")),
             "'/tmp/Jane'\"'\"'s $(checkout); rm -rf nope'"
+        );
+    }
+
+    #[test]
+    fn shell_quote_argument_should_preserve_safe_ids_and_quote_shell_syntax() {
+        assert_eq!(shell_quote_argument("copy-editing"), "copy-editing");
+        assert_eq!(
+            shell_quote_argument("copy editing; $(touch nope) 'quoted'"),
+            "'copy editing; $(touch nope) '\"'\"'quoted'\"'\"''"
         );
     }
 

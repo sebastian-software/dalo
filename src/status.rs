@@ -2671,11 +2671,13 @@ pub fn print_catalog_advance_report(report: &CatalogAdvanceReport, store_root: &
 }
 
 fn print_catalog_unselect_hint(store_root: &Path, source_id: &str, skill: &str) {
+    let end_of_options = if skill.starts_with('-') { " --" } else { "" };
+    let skill = crate::error::shell_quote_argument(skill);
     println!(
         "    run: {}",
         store::dalo_command(
             store_root,
-            &format!("source select {source_id} --unselect {skill}"),
+            &format!("source select {source_id} --unselect{end_of_options} {skill}"),
         )
     );
 }
