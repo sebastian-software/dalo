@@ -1007,11 +1007,13 @@ Skill approval always runs the deterministic preflight first and refuses a
 blocking result unless a reason is supplied with `--accept-risk`. `--reviewer`
 adds the same isolated semantic review as `dalo audit`.
 
-`approve list` also surfaces every persisted accepted-risk audit, with its
-source reference, exact content hash, acceptance reason/timestamp, scope
-binding, and a same-store command for re-inspection. The human output labels these
-exceptions explicitly and explains that `@sha256:` suffixes bind a record to
-an exact content or contract hash.
+`approve list` preserves each approval record and adds its recorded grant time
+when available (older ledgers are explicitly labeled as lacking it). It also
+surfaces every persisted accepted-risk audit, marking whether its exact content
+and audit binding are still active, with its source reference, reason/timestamp,
+scope binding, and a same-store command for re-inspection. The human output
+explains that `@sha256:` suffixes bind a record to an exact reviewed contract or
+recipe hash.
 
 JSON output shapes: `ApprovalListReport` for `list`; successful `approve skill`
 output is `{ "audit": AuditReport, "approval": ApprovalReport }`; `agent`,
@@ -1174,7 +1176,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `status` | `StatusReport` | `store`, `sources[]` with `skill_count`, `agent_count`, and `provenance`, `targets[]`, `inventory_warnings[]`, `agent_inventory_warnings[]`, `resolution`, dry-run `materialization[]`, `blocking_audits[]`, `audit_failures[]`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]`, `autosync` |
 | `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, skill `operations[]`, optional `instruction_operations[]` (`source_id`, `pack_id`, `target`, `action`, `previous_commit`, `commit`), `resolution`, `degraded_sources[]` (`id`, `path`, `reason`), optional `inventory_warnings[]` (`code`, `path`, `message`), optional `unrefreshed_tracking_sources[]`, `unselected_catalogs[]` (`source_id`, `available_skills`) |
 | `audit` | `AuditReport` | `schema_version`, `source_ref`, `skill_path`, `content_hash`, `static_engine_version`, `scanned_at_unix`, `coverage`, `status`, optional `max_severity`, `static_findings[]`, optional `agent_review`, optional `risk_acceptance` |
-| `approve list` | `ApprovalListReport` | `schema_version`, `approvals[]`, `accepted_risks[]` (`source_ref`, `content_hash`, `reason`, `accepted_at_unix`, `scope_hash`, `audit_command`) |
+| `approve list` | `ApprovalListReport` | `schema_version`, `approvals[]` (optional `granted_at_unix`), `accepted_risks[]` (`source_ref`, `content_hash`, `reason`, `accepted_at_unix`, `scope_hash`, `active`, `audit_command`) |
 | `approve skill` | audited approval outcome | `audit` (`AuditReport`), `approval` (`ApprovalReport`) |
 | `approve agent` / `source` / `author` / `org` | `ApprovalReport` | `scope`, `value`, `action`, `dry_run` |
 | `approve tool` / `approve revoke tool` | `ToolApprovalReport` | `tool`, content-bound `approval_value`, `action`, optional immutable `staged_path`, `dry_run` |

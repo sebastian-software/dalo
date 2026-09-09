@@ -4995,6 +4995,7 @@ mod tests {
         approvals.approvals.push(store::ApprovalRecord {
             scope: "source".to_owned(),
             value: catalog_source_id.clone(),
+            granted_at_unix: None,
         });
         store::write_approvals(&paths, &approvals).expect("approval should be written");
         let target = temp_dir.path().join("skills");

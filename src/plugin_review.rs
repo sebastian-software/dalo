@@ -366,17 +366,21 @@ pub fn commit(
     let mut granted = Vec::new();
     for id in selected {
         let decision = pending[id.as_str()];
-        let record = ApprovalRecord {
-            scope: decision
+        let record = ApprovalRecord::granted(
+            decision
                 .approval_scope
                 .clone()
                 .expect("pending approval scope"),
-            value: decision
+            decision
                 .approval_value
                 .clone()
                 .expect("pending approval value"),
-        };
-        if !approvals.approvals.contains(&record) {
+        );
+        if !approvals
+            .approvals
+            .iter()
+            .any(|approval| approval.matches(&record))
+        {
             approvals.approvals.push(record.clone());
             granted.push(record);
         }

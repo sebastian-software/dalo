@@ -929,6 +929,39 @@ pub(crate) fn read_persisted_reports(paths: &StorePaths) -> DaloResult<Vec<Audit
     Ok(reports)
 }
 
+/// Whether a persisted acceptance still covers the bytes and audit scope at
+/// its recorded path.
+///
+/// Inspection deliberately treats an unreadable path as inactive rather than
+/// failing the whole approval listing: an auditor can still see the persisted
+/// exception, but it must not be mistaken for current authority.
+pub(crate) fn risk_acceptance_is_active(report: &AuditReport) -> bool {
+    let Some(acceptance) = &report.risk_acceptance else {
+        return false;
+    };
+    let Some(exclude_root_source_metadata) = report.static_scan_excludes_root_source_metadata
+    else {
+        return false;
+    };
+    if report.status != AuditStatus::Blocked {
+        return false;
+    }
+    let Ok(scope_hash) = acceptance_scope_hash(
+        &report.source_ref,
+        report.coverage,
+        &report.static_findings,
+        report.agent_review.as_ref(),
+    ) else {
+        return false;
+    };
+    if acceptance.scope_hash != scope_hash {
+        return false;
+    }
+
+    audit_content_hash(&report.skill_path, exclude_root_source_metadata)
+        .is_ok_and(|content_hash| content_hash == report.content_hash)
+}
+
 fn resolve_target(paths: &StorePaths, target: &str) -> DaloResult<(String, PathBuf)> {
     let (logical_target, provider) = target
         .rsplit_once('@')

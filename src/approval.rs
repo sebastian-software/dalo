@@ -35,6 +35,8 @@ pub struct AcceptedRiskSummary {
     pub accepted_at_unix: u64,
     /// Hash binding the acceptance to the exact audit inputs and findings.
     pub scope_hash: String,
+    /// Whether the persisted exception still covers its current audited bytes.
+    pub active: bool,
     /// Copyable command for inspecting the persisted audit again.
     pub audit_command: String,
 }
@@ -60,11 +62,11 @@ pub fn grant(
 ) -> DaloResult<ApprovalReport> {
     let value = canonical_value(paths, scope, value)?;
     let mut approvals = store::read_approvals(paths)?;
-    let record = ApprovalRecord {
-        scope: scope.to_owned(),
-        value: value.clone(),
-    };
-    let exists = approvals.approvals.contains(&record);
+    let record = ApprovalRecord::granted(scope.to_owned(), value.clone());
+    let exists = approvals
+        .approvals
+        .iter()
+        .any(|approval| approval.matches(&record));
     if !exists {
         approvals.approvals.push(record);
         approvals.approvals.sort_by(|left, right| {
@@ -139,16 +141,18 @@ pub fn list(paths: &StorePaths) -> DaloResult<ApprovalListReport> {
     let accepted_risks = audit::read_persisted_reports(paths)?
         .into_iter()
         .filter_map(|report| {
-            report
-                .risk_acceptance
-                .map(|acceptance| AcceptedRiskSummary {
-                    source_ref: report.source_ref.clone(),
-                    content_hash: report.content_hash,
-                    reason: acceptance.reason,
-                    accepted_at_unix: acceptance.accepted_at_unix,
-                    scope_hash: acceptance.scope_hash,
-                    audit_command: audit_command(paths, &report.source_ref, &report.skill_path),
-                })
+            let active = audit::risk_acceptance_is_active(&report);
+            let audit_command = audit_command(paths, &report.source_ref, &report.skill_path);
+            let acceptance = report.risk_acceptance?;
+            Some(AcceptedRiskSummary {
+                source_ref: report.source_ref,
+                content_hash: report.content_hash,
+                reason: acceptance.reason,
+                accepted_at_unix: acceptance.accepted_at_unix,
+                scope_hash: acceptance.scope_hash,
+                active,
+                audit_command,
+            })
         })
         .collect();
 
@@ -414,6 +418,7 @@ mod tests {
         approvals.approvals.push(ApprovalRecord {
             scope: "source".to_owned(),
             value: "ghost".to_owned(),
+            granted_at_unix: None,
         });
         store::write_approvals(&paths, &approvals).expect("approvals should write");
 
@@ -439,6 +444,7 @@ mod tests {
         approvals.approvals.push(ApprovalRecord {
             scope: "skill".to_owned(),
             value: "catalog:review-helper".to_owned(),
+            granted_at_unix: None,
         });
         store::write_approvals(&paths, &approvals).expect("approvals should write");
 
@@ -460,6 +466,7 @@ mod tests {
         approvals.approvals.push(ApprovalRecord {
             scope: "agent".to_owned(),
             value: "retired-reviewer".to_owned(),
+            granted_at_unix: None,
         });
         store::write_approvals(&paths, &approvals).expect("approvals should write");
 
@@ -481,6 +488,7 @@ mod tests {
         approvals.approvals.push(ApprovalRecord {
             scope: "agent".to_owned(),
             value: "team:reviewer".to_owned(),
+            granted_at_unix: None,
         });
         store::write_approvals(&paths, &approvals).expect("approvals should write");
         std::fs::write(&paths.config_file, "schema_version = ")

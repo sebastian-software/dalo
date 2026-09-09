@@ -224,11 +224,11 @@ pub fn approve(paths: &StorePaths, value: &str, dry_run: bool) -> DaloResult<Hoo
         });
     }
     let mut approvals = store::read_approvals(paths)?;
-    let record = ApprovalRecord {
-        scope: APPROVAL_SCOPE.to_owned(),
-        value: status.approval_value.clone(),
-    };
-    let exists = approvals.approvals.contains(&record);
+    let record = ApprovalRecord::granted(APPROVAL_SCOPE.to_owned(), status.approval_value.clone());
+    let exists = approvals
+        .approvals
+        .iter()
+        .any(|approval| approval.matches(&record));
     if !exists && !dry_run {
         approvals.approvals.push(record);
         approvals.approvals.sort_by(|left, right| {

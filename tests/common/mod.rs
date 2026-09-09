@@ -341,6 +341,7 @@ pub fn approve_source(store: &Path, source: &str) {
     approvals.approvals.push(ApprovalRecord {
         scope: "source".to_owned(),
         value: source.to_owned(),
+        granted_at_unix: None,
     });
     store::write_approvals(&paths, &approvals).expect("source approval should be written");
 }

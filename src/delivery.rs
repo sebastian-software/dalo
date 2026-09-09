@@ -1085,11 +1085,11 @@ pub fn approve(
 ) -> DaloResult<DeliveryApprovalReport> {
     let mut report = inspect(paths, value)?;
     let mut approvals = store::read_approvals(paths)?;
-    let record = ApprovalRecord {
-        scope: APPROVAL_SCOPE.to_owned(),
-        value: report.approval_value.clone(),
-    };
-    let exists = approvals.approvals.contains(&record);
+    let record = ApprovalRecord::granted(APPROVAL_SCOPE.to_owned(), report.approval_value.clone());
+    let exists = approvals
+        .approvals
+        .iter()
+        .any(|approval| approval.matches(&record));
     if !exists && !dry_run {
         approvals.approvals.push(record);
         approvals.approvals.sort_by(|left, right| {
