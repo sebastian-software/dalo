@@ -1121,8 +1121,15 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         command,
     } = cli;
 
-    warn_noop_yes(yes, json);
     let Some(command) = command else {
+        if json {
+            return Err(DaloError::InvalidArgument {
+                reason:
+                    "a command is required when using --json; run `dalo --help` to list commands"
+                        .to_owned(),
+            });
+        }
+        warn_noop_yes(yes);
         if !json && io::stdout().is_terminal() {
             let options = GlobalOptions::resolve(store.as_deref(), false, dry_run)?;
             return run_next(&options);
@@ -1132,13 +1139,16 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         return Ok(());
     };
 
+    if !json {
+        warn_noop_yes(yes);
+    }
     match command {
         Command::Completions(command) => {
-            warn_noop_dry_run(dry_run, json);
+            warn_noop_dry_run(dry_run);
             return run_completions(command);
         }
         Command::Manpage => {
-            warn_noop_dry_run(dry_run, json);
+            warn_noop_dry_run(dry_run);
             return run_manpage();
         }
         _ => {}
@@ -1154,8 +1164,9 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
     } else {
         GlobalOptions::resolve(store.as_deref(), json, dry_run)?
     };
-    if command_ignores_dry_run(&command) {
-        warn_noop_dry_run(options.dry_run, options.json);
+    let ignores_dry_run = command_ignores_dry_run(&command);
+    if ignores_dry_run && !options.json {
+        warn_noop_dry_run(options.dry_run);
     }
 
     let result = match command {
@@ -1185,19 +1196,25 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
 
     if result.is_ok() {
         update::print_notice_if_ready(pending_update_notice);
+        if options.json {
+            warn_noop_yes(yes);
+            if ignores_dry_run {
+                warn_noop_dry_run(options.dry_run);
+            }
+        }
     }
 
     result
 }
 
-fn warn_noop_yes(yes: bool, json: bool) {
-    if yes && !json {
+fn warn_noop_yes(yes: bool) {
+    if yes {
         eprintln!("note: --yes is reserved for future safe prompts and is currently ignored");
     }
 }
 
-fn warn_noop_dry_run(dry_run: bool, json: bool) {
-    if dry_run && !json {
+fn warn_noop_dry_run(dry_run: bool) {
+    if dry_run {
         eprintln!("note: --dry-run has no effect for this read-only command");
     }
 }
@@ -1655,8 +1672,9 @@ fn run_plugin_review(
     paths: &store::StorePaths,
     plugin: &str,
 ) -> DaloResult<()> {
-    let report = plugin_review::build(&options.store, plugin)?;
+    let mut report = plugin_review::build(&options.store, plugin)?;
     if options.json {
+        report.interactive_approvals = plugin_review::InteractiveApprovals::SkippedInJsonMode;
         return print_json(&report);
     }
     print_plugin_review(&report);
@@ -3232,25 +3250,30 @@ fn run_scheduled_sync(options: &GlobalOptions, paths: &store::StorePaths) -> Dal
             || "store lock is held".to_owned(),
             |holder| format!("store lock held by {holder}"),
         );
-        autosync::finish_run(
+        let run = autosync::finish_run(
             paths,
             attempted,
             autosync::AutosyncRunOutcome::Skipped,
             Some(holder.clone()),
         )?;
-        println!("autosync skipped: {holder}");
+        if options.json {
+            print_json(&run)?;
+        } else {
+            println!("autosync skipped: {holder}");
+        }
         return Ok(());
     };
 
     let result = run_sync_locked(options, CheckArgs { check: true })
-        .and_then(|()| scheduled_sync_postflight(paths));
+        .and_then(|()| scheduled_sync_postflight(options, paths));
     match result {
         Ok(()) => autosync::finish_run(
             paths,
             attempted,
             autosync::AutosyncRunOutcome::Succeeded,
             None,
-        ),
+        )
+        .map(|_| ()),
         Err(error) => {
             let status_result = autosync::finish_run(
                 paths,
@@ -3268,7 +3291,7 @@ fn run_scheduled_sync(options: &GlobalOptions, paths: &store::StorePaths) -> Dal
     }
 }
 
-fn scheduled_sync_postflight(paths: &store::StorePaths) -> DaloResult<()> {
+fn scheduled_sync_postflight(options: &GlobalOptions, paths: &store::StorePaths) -> DaloResult<()> {
     let config = store::read_config(paths)?;
     let lock = store::read_user_lock(paths)?;
     let instruction_drifts = instructions::instruction_block_drifts(
@@ -3297,7 +3320,9 @@ fn scheduled_sync_postflight(paths: &store::StorePaths) -> DaloResult<()> {
         .filter(|source| source.enabled && source.kind == source::SourceKind::Catalog)
     {
         let drift = catalog::check_catalog_drift(paths, &source.id)?;
-        status::print_catalog_drift_report(&drift, &paths.root);
+        if !options.json {
+            status::print_catalog_drift_report(&drift, &paths.root);
+        }
         removed.extend(
             drift
                 .outcomes

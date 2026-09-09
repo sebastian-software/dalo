@@ -15,7 +15,17 @@ use crate::store::{self, ApprovalRecord, StorePaths};
 use crate::tool::ToolState;
 
 /// Current machine-readable aggregated-review schema.
-pub const PLUGIN_REVIEW_SCHEMA_VERSION: u32 = 1;
+pub const PLUGIN_REVIEW_SCHEMA_VERSION: u32 = 2;
+
+/// Whether this invocation can collect the displayed approval decisions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InteractiveApprovals {
+    /// Interactive mode will prompt for individual decisions and a final commit.
+    Available,
+    /// JSON mode returns the review snapshot without prompting or granting approvals.
+    SkippedInJsonMode,
+}
 
 /// One complete, inert review snapshot.
 #[derive(Debug, Clone, Serialize)]
@@ -32,6 +42,8 @@ pub struct PluginReviewReport {
     pub decisions: Vec<ReviewDecision>,
     /// Hash binding the displayed closure, contracts, and target mappings.
     pub review_token: String,
+    /// Whether this invocation can collect the displayed approval decisions.
+    pub interactive_approvals: InteractiveApprovals,
     /// Aggregated review never executes active components or mutates targets.
     pub read_only: bool,
 }
@@ -260,6 +272,7 @@ pub fn build(store_root: &Path, plugin_ref: &str) -> DaloResult<PluginReviewRepo
         installation_plan: plan,
         decisions,
         review_token,
+        interactive_approvals: InteractiveApprovals::Available,
         read_only: true,
     })
 }

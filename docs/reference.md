@@ -48,7 +48,7 @@ Global flags can be placed before or after the command.
 | Flag | Meaning |
 | --- | --- |
 | `--store <PATH>` | Use a store other than the resolved default. |
-| `--json` | Emit machine-readable JSON for commands that support structured output. `manpage` and `completions` reject this flag with a plain-text usage error because they generate plain text only. |
+| `--json` | Emit machine-readable JSON for commands that support structured output. It requires a command; bare `dalo --json` returns the standard JSON error on stderr. `manpage` and `completions` reject this flag with a plain-text usage error because they generate plain text only. |
 | `--yes` | Compatibility flag accepted for existing scripts but hidden from command help. It is currently a no-op and never implies `--replace`, creates commits, or grants new approvals. |
 | `--dry-run` | Plan supported mutating operations without writing files, cloning, linking, or changing locks. Read-only commands ignore it. |
 | `-h`, `--help` | Print command help. |
@@ -914,9 +914,10 @@ author/org/wildcard approval. Tool bytes may be content-addressed and staged as
 an inert prepare step; tools, hooks, generators, semantic reviewers, and target
 mutations are never executed by review.
 
-JSON and dry-run modes are read-only and do not prompt. Prefer the individual
-commands below for a single known component, for revocation, or when a skill's
-blocking findings require `--accept-risk`.
+JSON and dry-run modes are read-only and do not prompt. JSON reports set
+`interactive_approvals` to `skipped_in_json_mode` explicitly; no approval is
+granted. Prefer the individual commands below for a single known component,
+for revocation, or when a skill's blocking findings require `--accept-risk`.
 
 ### `dalo tool list [--check]`; `dalo tool show|audit <source:plugin#tool:id>`
 
@@ -1161,7 +1162,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `plugin list` | `PluginListReport` | `candidates[]`, canonical `resolution` |
 | `plugin show` | `PluginShowReport` | `candidate`, optional `selected` state |
 | `plugin select` / `unselect` / `decline` | `PluginMutationReport` | `plugin`, `action`, `changed`, `dry_run` |
-| `plugin review` | `PluginReviewReport` | `schema_version`, `root_plugin`, `plugin_closure[]`, `installation_plan`, separately scoped `decisions[]`, `review_token`, `read_only` |
+| `plugin review` | `PluginReviewReport` | `schema_version`, `root_plugin`, `plugin_closure[]`, `installation_plan`, separately scoped `decisions[]`, `review_token`, `interactive_approvals`, `read_only` |
 | `tool list` | `ToolListReport` | `tools[]` with exact trust/runtime/staging state, `warnings[]` |
 | `tool show` | `ToolStatusReport` | tool descriptor, package and source provenance, `approval_value`, `state`, optional `staged_path`, `diagnostic` |
 | `tool audit` | `ToolAuditReport` | `tool`, `contract_hash`, `plugin_package_hash`, `passed`, `findings[]` |
@@ -1169,6 +1170,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `hook show` | `HookStatusReport` | hook and tool contracts, package and source provenance, `approval_value`, `tool_state`, `state`, `diagnostic` |
 | `autosync install` / `uninstall` | `AutosyncMutationReport` | `action`, `dry_run`, resulting `status` |
 | `autosync status` | `AutosyncStatusReport` | `configured`, `installed`, `enabled`, backend, schedule, executable, store, artifacts, optional `scheduler_error`, optional `disabled_reason`, and optional `last_run` |
+| `autosync run` | `SyncReport` or `AutosyncRunState` | `SyncReport` when synchronization starts; `AutosyncRunState` with `outcome: "skipped"` and `reason` when another process holds the store lock. Catalog-drift and blocked failures keep the JSON sync report on stdout and emit the standard JSON error on stderr. |
 | `status` | `StatusReport` | `store`, `sources[]` with `skill_count`, `agent_count`, and `provenance`, `targets[]`, `inventory_warnings[]`, `agent_inventory_warnings[]`, `resolution`, dry-run `materialization[]`, `blocking_audits[]`, `audit_failures[]`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]`, `autosync` |
 | `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, skill `operations[]`, optional `instruction_operations[]` (`source_id`, `pack_id`, `target`, `action`, `previous_commit`, `commit`), `resolution`, `degraded_sources[]` (`id`, `path`, `reason`), optional `inventory_warnings[]` (`code`, `path`, `message`), optional `unrefreshed_tracking_sources[]`, `unselected_catalogs[]` (`source_id`, `available_skills`) |
 | `audit` | `AuditReport` | `schema_version`, `source_ref`, `skill_path`, `content_hash`, `static_engine_version`, `scanned_at_unix`, `coverage`, `status`, optional `max_severity`, `static_findings[]`, optional `agent_review`, optional `risk_acceptance` |
