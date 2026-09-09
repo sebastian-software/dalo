@@ -823,6 +823,7 @@ fn format_duration(duration: Duration) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
     use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
 
@@ -861,7 +862,7 @@ mod tests {
         .expect_err("fake git should fail");
 
         let DaloError::CommandFailed { stderr, .. } = error else {
-            panic!("expected command failure");
+            panic!("expected command failure, got: {error}");
         };
         assert!(stderr.contains("prompt=0"));
         assert!(stderr.contains("BatchMode=yes"));
@@ -893,7 +894,7 @@ mod tests {
         .expect_err("fake git should fail");
 
         let DaloError::CommandFailed { stderr, .. } = error else {
-            panic!("expected command failure");
+            panic!("expected command failure, got: {error}");
         };
         assert!(stderr.contains("ssh=ssh -i deploy-key -oBatchMode=yes"));
     }
@@ -918,7 +919,7 @@ mod tests {
         .expect_err("fake git should fail");
 
         let DaloError::CommandFailed { stderr, .. } = error else {
-            panic!("expected command failure");
+            panic!("expected command failure, got: {error}");
         };
         assert!(stderr.contains("ssh=unset"));
         assert!(!stderr.contains("BatchMode=yes"));
@@ -942,7 +943,7 @@ mod tests {
         .expect_err("hung command should time out");
 
         let DaloError::CommandFailed { status, stderr, .. } = error else {
-            panic!("expected command failure");
+            panic!("expected command failure, got: {error}");
         };
         assert!(status.contains("timed out after"));
         assert!(stderr.contains("terminal prompts are disabled"));
@@ -1463,7 +1464,25 @@ mod tests {
 
     fn write_executable(dir: &Path, name: &str, body: &str) -> PathBuf {
         let path = dir.join(name);
-        fs::write(&path, body).expect("script should be written");
+        // Keep the writable script descriptor out of the parallel test
+        // process. On Linux, a concurrent fork can otherwise inherit it before
+        // exec and make this script's own exec fail with ETXTBSY.
+        let mut writer = Command::new("sh")
+            .args(["-c", "exec cat > \"$1\"", "dalo-test-script-writer"])
+            .arg(&path)
+            .stdin(Stdio::piped())
+            .spawn()
+            .expect("script writer should start");
+        let mut stdin = writer
+            .stdin
+            .take()
+            .expect("script writer should have stdin");
+        stdin
+            .write_all(body.as_bytes())
+            .expect("script body should be written");
+        drop(stdin);
+        let status = writer.wait().expect("script writer should finish");
+        assert!(status.success(), "script writer should succeed: {status}");
         let mut permissions = fs::metadata(&path)
             .expect("script metadata should be readable")
             .permissions();
