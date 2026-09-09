@@ -13893,7 +13893,7 @@ fn catalog_select_should_accept_a_source_qualified_slot_reference() {
 }
 
 #[test]
-fn catalog_select_should_support_path_fallback_for_duplicate_slots() {
+fn catalog_select_should_choose_the_first_path_for_duplicate_slots() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
@@ -13913,13 +13913,6 @@ fn catalog_select_should_support_path_fallback_for_duplicate_slots() {
         .arg(&store)
         .args(["source", "select", "catalog", "shared"])
         .assert()
-        .failure()
-        .stderr(predicate::str::contains("ambiguous"));
-    dalo_command()
-        .args(["--store"])
-        .arg(&store)
-        .args(["source", "select", "catalog", "skills/a"])
-        .assert()
         .success();
     approve_source(&store, "catalog");
     dalo_command()
@@ -13931,6 +13924,16 @@ fn catalog_select_should_support_path_fallback_for_duplicate_slots() {
 
     let linked = std::fs::read_link(target.join("shared")).expect("selected skill should link");
     assert!(linked.ends_with("sources/catalog/checkout/skills/a"));
+    let user_lock = read_user_lock(&store);
+    assert_eq!(
+        user_lock
+            .active_skills
+            .iter()
+            .filter(|skill| skill.source_ref == "catalog:shared")
+            .count(),
+        1
+    );
+    assert!(user_lock.unlinked_skills.is_empty());
     let source_lock = read_source_lock(&store);
     assert_eq!(
         source_lock
@@ -13939,6 +13942,14 @@ fn catalog_select_should_support_path_fallback_for_duplicate_slots() {
             .selected,
         ["skills/a".to_owned()]
     );
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("shadowed catalog:shared").not())
+        .stdout(predicate::str::contains("lock drift:").not());
 }
 
 #[test]
