@@ -1066,7 +1066,7 @@ fn check_owned_symlinks(paths: &StorePaths, state: &StateFile, findings: &mut Ve
                         } else if store::comparable_path(&resolved)
                             != store::comparable_path(&owned.store_path)
                         {
-                            findings.push(finding_error(
+                            findings.push(finding_warning(
                                 DoctorCode::OwnedSymlinkRepointed,
                                 format!(
                                     "owned symlink `{}` points to `{}`, but its recorded store path is `{}`",
@@ -1074,10 +1074,7 @@ fn check_owned_symlinks(paths: &StorePaths, state: &StateFile, findings: &mut Ve
                                     resolved.display(),
                                     owned.store_path.display()
                                 ),
-                                Some(format!(
-                                    "dalo resolve remove-owned {}",
-                                    owned_selector(owned)
-                                )),
+                                Some(store::dalo_command(&paths.root, "sync")),
                             ));
                         } else {
                             findings.push(ok(

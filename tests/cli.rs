@@ -9550,6 +9550,113 @@ fn resolve_remove_owned_should_remove_only_recorded_symlink() {
 }
 
 #[test]
+fn repointed_owned_symlink_should_have_one_safe_repair_semantic() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let store_root = store::comparable_path(&store);
+    let target = temp_dir.path().join("skills");
+    setup_store_with_skill_and_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    let link = target.join("review");
+    let expected_skill = store.join("local/skills/review");
+    let repointed_skill = store.join("stale-skill");
+    std::fs::create_dir_all(&repointed_skill).expect("repointed skill should be created");
+    std::fs::remove_file(&link).expect("owned symlink should be removed");
+    std::os::unix::fs::symlink(&repointed_skill, &link)
+        .expect("repointed symlink should be created");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "doctor"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "\"code\": \"owned_symlink_repointed\"",
+        ))
+        .stdout(predicate::str::contains("\"severity\": \"warning\""))
+        .stdout(predicate::str::contains(format!(
+            "\"next_command\": \"{}\"",
+            store::dalo_command(&store_root, "sync")
+        )));
+
+    let status = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let status: serde_json::Value =
+        serde_json::from_slice(&status).expect("status JSON should parse");
+    assert!(
+        status["materialization"]
+            .as_array()
+            .is_some_and(|operations| {
+                operations.iter().any(|operation| {
+                    operation["kind"] == "relink" && operation["status"] == "planned"
+                })
+            }),
+        "status must expose the planned relink: {status}"
+    );
+
+    let next = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "next"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let next: serde_json::Value = serde_json::from_slice(&next).expect("next JSON should parse");
+    assert_eq!(next["state"], "sync_needed");
+    assert_eq!(next["command"], store::dalo_command(&store_root, "sync"));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 relinked"));
+    assert_eq!(
+        std::fs::read_link(&link).expect("relinked target should be readable"),
+        expected_skill
+    );
+
+    std::fs::remove_file(&link).expect("repaired symlink should be removable");
+    std::os::unix::fs::symlink(&repointed_skill, &link)
+        .expect("repointed symlink should be recreated");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "remove-owned", "generic:review"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("removed"));
+    assert!(
+        std::fs::symlink_metadata(&link).is_err(),
+        "remove-owned must remove a repointed symlink that stays inside the store"
+    );
+    assert!(
+        store::read_state(&store::StorePaths::new(store))
+            .expect("state should be readable")
+            .owned_skills
+            .is_empty(),
+        "remove-owned must drop the ownership record only after removing the link"
+    );
+}
+
+#[test]
 fn resolve_remove_owned_should_explain_how_to_deactivate_an_active_catalog_skill() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = store::comparable_path(&temp_dir.path().join("store"));
