@@ -14,6 +14,7 @@ use std::path::Component;
 use std::path::{Path, PathBuf};
 
 use rustix::fs::{CWD, Gid, RenameFlags, Uid, fchown, renameat_with};
+use rustix::io::Errno;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tempfile::NamedTempFile;
@@ -1856,6 +1857,37 @@ where
     BeforeReplace: FnOnce() -> DaloResult<()>,
     SyncParent: Fn(&Path) -> DaloResult<()>,
 {
+    replace_target_if_unchanged_with_file_operations(
+        snapshot,
+        content,
+        attributes,
+        before_replace,
+        sync_parent,
+        exchange_paths,
+        restore_temp_ownership,
+    )
+}
+
+fn replace_target_if_unchanged_with_file_operations<
+    BeforeReplace,
+    SyncParent,
+    ExchangePaths,
+    RestoreOwnership,
+>(
+    snapshot: &TargetSnapshot,
+    content: &str,
+    attributes: Option<TargetAttributes>,
+    before_replace: BeforeReplace,
+    sync_parent: SyncParent,
+    exchange_paths: ExchangePaths,
+    restore_ownership: RestoreOwnership,
+) -> DaloResult<()>
+where
+    BeforeReplace: FnOnce() -> DaloResult<()>,
+    SyncParent: Fn(&Path) -> DaloResult<()>,
+    ExchangePaths: Fn(&Path, &Path) -> rustix::io::Result<()>,
+    RestoreOwnership: Fn(&fs::File, TargetOwner) -> rustix::io::Result<()>,
+{
     let parent = snapshot
         .target
         .parent()
@@ -1865,48 +1897,103 @@ where
                 snapshot.target.display()
             ),
         })?;
+    let temp_file = stage_target_content(parent, content, attributes.as_ref(), &restore_ownership)?;
+    before_replace()?;
+    let operations = TargetReplacementOperations {
+        sync_parent: &sync_parent,
+        exchange_paths: &exchange_paths,
+        restore_ownership: &restore_ownership,
+    };
+
+    if snapshot.identity.is_some() {
+        replace_existing_target(
+            snapshot,
+            content,
+            parent,
+            temp_file,
+            attributes.as_ref(),
+            &operations,
+        )
+    } else {
+        replace_missing_target(snapshot, content, parent, temp_file, operations.sync_parent)
+    }
+}
+
+struct TargetReplacementOperations<'a, SyncParent, ExchangePaths, RestoreOwnership> {
+    sync_parent: &'a SyncParent,
+    exchange_paths: &'a ExchangePaths,
+    restore_ownership: &'a RestoreOwnership,
+}
+
+fn stage_target_content<RestoreOwnership>(
+    parent: &Path,
+    content: &str,
+    attributes: Option<&TargetAttributes>,
+    restore_ownership: &RestoreOwnership,
+) -> DaloResult<NamedTempFile>
+where
+    RestoreOwnership: Fn(&fs::File, TargetOwner) -> rustix::io::Result<()>,
+{
     let mut temp_file = NamedTempFile::new_in(parent)?;
     if let Some(attributes) = attributes {
         // `chown` can clear permission bits, so set ownership before the mode.
-        // Failure leaves the live instruction target untouched.
-        fchown(
-            temp_file.as_file(),
-            Some(Uid::from_raw(attributes.owner.uid)),
-            Some(Gid::from_raw(attributes.owner.gid)),
-        )
-        .map_err(std::io::Error::from)?;
+        // An EPERM only means the caller cannot preserve foreign ownership; the
+        // existing target was already opened for writing before reaching here.
+        match restore_ownership(temp_file.as_file(), attributes.owner) {
+            Ok(()) | Err(Errno::PERM) => {}
+            Err(error) => return Err(std::io::Error::from(error).into()),
+        }
         temp_file
             .as_file()
-            .set_permissions(attributes.permissions)?;
+            .set_permissions(attributes.permissions.clone())?;
     }
     temp_file.write_all(content.as_bytes())?;
     temp_file.flush()?;
     temp_file.as_file().sync_all()?;
-    before_replace()?;
+    Ok(temp_file)
+}
 
-    if snapshot.identity.is_some() {
-        replace_existing_target(snapshot, content, parent, temp_file, &sync_parent)
-    } else {
-        replace_missing_target(snapshot, content, parent, temp_file, &sync_parent)
-    }
+fn restore_temp_ownership(file: &fs::File, owner: TargetOwner) -> rustix::io::Result<()> {
+    fchown(
+        file,
+        Some(Uid::from_raw(owner.uid)),
+        Some(Gid::from_raw(owner.gid)),
+    )
 }
 
 /// Atomically swap the staged content with an existing target. The displaced
 /// file remains at the temporary path until its identity and content have been
 /// verified, so a concurrent pathname replacement is restored instead of lost.
-fn replace_existing_target<SyncParent>(
+fn replace_existing_target<SyncParent, ExchangePaths, RestoreOwnership>(
     snapshot: &TargetSnapshot,
     content: &str,
     parent: &Path,
     temp_file: NamedTempFile,
-    sync_parent: &SyncParent,
+    attributes: Option<&TargetAttributes>,
+    operations: &TargetReplacementOperations<'_, SyncParent, ExchangePaths, RestoreOwnership>,
 ) -> DaloResult<()>
 where
     SyncParent: Fn(&Path) -> DaloResult<()>,
+    ExchangePaths: Fn(&Path, &Path) -> rustix::io::Result<()>,
+    RestoreOwnership: Fn(&fs::File, TargetOwner) -> rustix::io::Result<()>,
 {
     let staged_identity = target_identity(&temp_file.as_file().metadata()?);
     let temp_path = temp_file.into_temp_path();
-    exchange_paths(&temp_path, &snapshot.target)?;
+    match (operations.exchange_paths)(&temp_path, &snapshot.target) {
+        Ok(()) => {}
+        Err(Errno::INVAL | Errno::NOTSUP) => {
+            return replace_existing_target_without_exchange(
+                snapshot,
+                content,
+                parent,
+                staged_identity,
+                temp_path,
+                attributes,
+                operations,
+            );
+        }
+        Err(error) => return Err(std::io::Error::from(error).into()),
+    }
 
     if !path_matches_snapshot(&temp_path, snapshot)? {
         return Err(restore_exchanged_target(
@@ -1915,18 +2002,56 @@ where
             staged_identity,
             temp_path,
             parent,
-            sync_parent,
+            operations,
             target_changed(snapshot),
         ));
     }
-    if let Err(error) = sync_parent(parent) {
+    if let Err(error) = (operations.sync_parent)(parent) {
         return Err(restore_exchanged_target(
             snapshot,
             content,
             staged_identity,
             temp_path,
             parent,
-            sync_parent,
+            operations,
+            error,
+        ));
+    }
+    Ok(())
+}
+
+/// Replace an existing target on filesystems without an exchange rename.
+///
+/// This verifies the snapshot immediately before a normal same-directory rename.
+/// Unlike an exchange, the rename cannot detect a pathname replacement in the
+/// tiny interval after that check, so this path is reserved for filesystems that
+/// reject exchange semantics altogether.
+fn replace_existing_target_without_exchange<SyncParent, ExchangePaths, RestoreOwnership>(
+    snapshot: &TargetSnapshot,
+    content: &str,
+    parent: &Path,
+    staged_identity: TargetIdentity,
+    temp_path: tempfile::TempPath,
+    attributes: Option<&TargetAttributes>,
+    operations: &TargetReplacementOperations<'_, SyncParent, ExchangePaths, RestoreOwnership>,
+) -> DaloResult<()>
+where
+    SyncParent: Fn(&Path) -> DaloResult<()>,
+    ExchangePaths: Fn(&Path, &Path) -> rustix::io::Result<()>,
+    RestoreOwnership: Fn(&fs::File, TargetOwner) -> rustix::io::Result<()>,
+{
+    if !path_matches_snapshot(&snapshot.target, snapshot)? {
+        return Err(target_changed(snapshot));
+    }
+    fs::rename(&temp_path, &snapshot.target)?;
+    if let Err(error) = (operations.sync_parent)(parent) {
+        return Err(restore_renamed_target(
+            snapshot,
+            content,
+            staged_identity,
+            parent,
+            attributes,
+            operations,
             error,
         ));
     }
@@ -1966,33 +2091,35 @@ where
     Ok(())
 }
 
-fn exchange_paths(left: &Path, right: &Path) -> DaloResult<()> {
+fn exchange_paths(left: &Path, right: &Path) -> rustix::io::Result<()> {
     renameat_with(CWD, left, CWD, right, RenameFlags::EXCHANGE)
-        .map_err(|error| std::io::Error::from(error).into())
 }
 
-fn restore_exchanged_target<SyncParent>(
+fn restore_exchanged_target<SyncParent, ExchangePaths, RestoreOwnership>(
     snapshot: &TargetSnapshot,
     content: &str,
     staged_identity: TargetIdentity,
     temp_path: tempfile::TempPath,
     parent: &Path,
-    sync_parent: &SyncParent,
+    operations: &TargetReplacementOperations<'_, SyncParent, ExchangePaths, RestoreOwnership>,
     original_error: DaloError,
 ) -> DaloError
 where
     SyncParent: Fn(&Path) -> DaloResult<()>,
+    ExchangePaths: Fn(&Path, &Path) -> rustix::io::Result<()>,
+    RestoreOwnership: Fn(&fs::File, TargetOwner) -> rustix::io::Result<()>,
 {
     // Do not make a check-then-exchange decision here: an external editor can
     // replace the target between those two operations. Exchange first, then
     // inspect the displaced file. If it is no longer the staged file, retain
     // it for recovery rather than dropping user-authored content.
-    if let Err(error) = exchange_paths(&temp_path, &snapshot.target) {
+    if let Err(error) = (operations.exchange_paths)(&temp_path, &snapshot.target) {
         return retain_recovery_path(
             temp_path,
             format!(
-                "{original_error}; also failed to restore instruction target `{}`: {error}",
-                snapshot.target.display()
+                "{original_error}; also failed to restore instruction target `{}`: {}",
+                snapshot.target.display(),
+                std::io::Error::from(error),
             ),
         );
     }
@@ -2008,7 +2135,68 @@ where
             ))),
         };
     }
-    match sync_parent(parent) {
+    match (operations.sync_parent)(parent) {
+        Ok(()) => original_error,
+        Err(restore_error) => DaloError::Io(std::io::Error::other(format!(
+            "{original_error}; also failed to restore instruction target `{}`: {restore_error}",
+            snapshot.target.display()
+        ))),
+    }
+}
+
+fn restore_renamed_target<SyncParent, ExchangePaths, RestoreOwnership>(
+    snapshot: &TargetSnapshot,
+    written_content: &str,
+    written_identity: TargetIdentity,
+    parent: &Path,
+    attributes: Option<&TargetAttributes>,
+    operations: &TargetReplacementOperations<'_, SyncParent, ExchangePaths, RestoreOwnership>,
+    original_error: DaloError,
+) -> DaloError
+where
+    SyncParent: Fn(&Path) -> DaloResult<()>,
+    ExchangePaths: Fn(&Path, &Path) -> rustix::io::Result<()>,
+    RestoreOwnership: Fn(&fs::File, TargetOwner) -> rustix::io::Result<()>,
+{
+    if !target_has_identity_and_content(&snapshot.target, written_identity, written_content)
+        .unwrap_or(false)
+    {
+        return DaloError::Io(std::io::Error::other(format!(
+            "{original_error}; instruction target changed during rollback; newer content was left untouched"
+        )));
+    }
+    let Some(original_content) = snapshot.content.as_deref() else {
+        return DaloError::Io(std::io::Error::other(format!(
+            "{original_error}; instruction target was unexpectedly missing its rollback snapshot"
+        )));
+    };
+    let temp_file = match stage_target_content(
+        parent,
+        original_content,
+        attributes,
+        operations.restore_ownership,
+    ) {
+        Ok(file) => file,
+        Err(error) => {
+            return DaloError::Io(std::io::Error::other(format!(
+                "{original_error}; also failed to stage instruction target rollback: {error}"
+            )));
+        }
+    };
+    if !target_has_identity_and_content(&snapshot.target, written_identity, written_content)
+        .unwrap_or(false)
+    {
+        return DaloError::Io(std::io::Error::other(format!(
+            "{original_error}; instruction target changed during rollback; newer content was left untouched"
+        )));
+    }
+    if let Err(error) = fs::rename(temp_file.into_temp_path(), &snapshot.target) {
+        return DaloError::Io(std::io::Error::other(format!(
+            "{original_error}; also failed to restore instruction target `{}`: {error}",
+            snapshot.target.display()
+        )));
+    }
+    match (operations.sync_parent)(parent) {
         Ok(()) => original_error,
         Err(restore_error) => DaloError::Io(std::io::Error::other(format!(
             "{original_error}; also failed to restore instruction target `{}`: {restore_error}",
@@ -3397,37 +3585,144 @@ mod tests {
     }
 
     #[test]
-    fn replacement_should_preserve_nondefault_owner_and_group_or_fail_before_mutation() {
+    fn replacement_should_fall_back_when_exchange_is_unsupported() {
         let temp = tempfile::tempdir().expect("tempdir should be created");
         let target = temp.path().join("AGENTS.md");
         fs::write(&target, "old\n").expect("target should be seeded");
-        let before = fs::metadata(&target).expect("target metadata should be readable");
         let snapshot = target_snapshot(&target).expect("snapshot should be readable");
-        let owner = TargetOwner {
-            uid: if before.uid() == 0 { 1 } else { 0 },
-            gid: if before.gid() == 0 { 1 } else { 0 },
-        };
-        let attributes = TargetAttributes {
-            permissions: before.permissions(),
-            owner,
-        };
+        let exchange_calls = Cell::new(0);
 
-        match replace_target_if_unchanged(&snapshot, "new\n", Some(attributes)) {
-            Ok(()) => {
-                let after = fs::metadata(&target).expect("target metadata should be readable");
-                assert_eq!(after.uid(), owner.uid);
-                assert_eq!(after.gid(), owner.gid);
-            }
-            Err(_) => {
-                assert_eq!(fs::read_to_string(&target).unwrap(), "old\n");
-                assert_eq!(
-                    target_identity(
-                        &fs::metadata(&target).expect("target metadata should be readable")
-                    ),
-                    target_identity(&before)
-                );
-            }
-        }
+        replace_target_if_unchanged_with_file_operations(
+            &snapshot,
+            "new\n",
+            None,
+            || Ok(()),
+            sync_target_parent,
+            |_, _| {
+                exchange_calls.set(exchange_calls.get() + 1);
+                Err(Errno::INVAL)
+            },
+            restore_temp_ownership,
+        )
+        .expect("unsupported exchange should fall back to rename");
+
+        assert_eq!(exchange_calls.get(), 1);
+        assert_eq!(fs::read_to_string(target).unwrap(), "new\n");
+    }
+
+    #[test]
+    fn fallback_replacement_should_reject_a_changed_target() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let target = temp.path().join("AGENTS.md");
+        fs::write(&target, "before\n").expect("target should be seeded");
+        let snapshot = target_snapshot(&target).expect("snapshot should be readable");
+
+        let error = replace_target_if_unchanged_with_file_operations(
+            &snapshot,
+            "dalo output\n",
+            None,
+            || {
+                fs::write(&target, "external edit\n")?;
+                Ok(())
+            },
+            sync_target_parent,
+            |_, _| Err(Errno::INVAL),
+            restore_temp_ownership,
+        )
+        .expect_err("fallback should reject a changed target");
+
+        assert!(matches!(error, DaloError::InstructionTargetChanged { .. }));
+        assert_eq!(fs::read_to_string(target).unwrap(), "external edit\n");
+    }
+
+    #[test]
+    fn fallback_replacement_should_restore_target_when_directory_sync_fails() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let target = temp.path().join("AGENTS.md");
+        fs::write(&target, "before\n").expect("target should be seeded");
+        let snapshot = target_snapshot(&target).expect("snapshot should be readable");
+        let sync_calls = Cell::new(0);
+
+        let error = replace_target_if_unchanged_with_file_operations(
+            &snapshot,
+            "dalo output\n",
+            None,
+            || Ok(()),
+            |parent| {
+                if sync_calls.replace(1) == 0 {
+                    Err(DaloError::Io(std::io::Error::other(
+                        "directory sync failed",
+                    )))
+                } else {
+                    sync_target_parent(parent)
+                }
+            },
+            |_, _| Err(Errno::NOTSUP),
+            restore_temp_ownership,
+        )
+        .expect_err("directory sync failure should restore fallback replacement");
+
+        assert!(error.to_string().contains("directory sync failed"));
+        assert_eq!(fs::read_to_string(target).unwrap(), "before\n");
+    }
+
+    #[test]
+    fn replacement_should_ignore_eprem_while_restoring_ownership() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let target = temp.path().join("AGENTS.md");
+        fs::write(&target, "old\n").expect("target should be seeded");
+        let metadata = fs::metadata(&target).expect("target metadata should be readable");
+        let attributes = target_attributes(&metadata);
+        let snapshot = target_snapshot(&target).expect("snapshot should be readable");
+        let ownership_calls = Cell::new(0);
+
+        replace_target_if_unchanged_with_file_operations(
+            &snapshot,
+            "new\n",
+            Some(attributes),
+            || Ok(()),
+            sync_target_parent,
+            |_, _| Err(Errno::INVAL),
+            |_, _| {
+                ownership_calls.set(ownership_calls.get() + 1);
+                Err(Errno::PERM)
+            },
+        )
+        .expect("EPERM should not block a writable target replacement");
+
+        assert_eq!(ownership_calls.get(), 1);
+        assert_eq!(fs::read_to_string(target).unwrap(), "new\n");
+    }
+
+    #[test]
+    fn replacement_should_reject_unexpected_ownership_errors_before_mutating() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let target = temp.path().join("AGENTS.md");
+        fs::write(&target, "old\n").expect("target should be seeded");
+        let metadata = fs::metadata(&target).expect("target metadata should be readable");
+        let before_identity = target_identity(&metadata);
+        let snapshot = target_snapshot(&target).expect("snapshot should be readable");
+
+        let error = replace_target_if_unchanged_with_file_operations(
+            &snapshot,
+            "new\n",
+            Some(target_attributes(&metadata)),
+            || Ok(()),
+            sync_target_parent,
+            |_, _| Err(Errno::INVAL),
+            |_, _| Err(Errno::ACCESS),
+        )
+        .expect_err("unexpected ownership error should block replacement");
+
+        let DaloError::Io(error) = error else {
+            panic!("unexpected ownership error should remain an I/O error");
+        };
+        assert_eq!(error.raw_os_error(), Some(Errno::ACCESS.raw_os_error()));
+        assert_eq!(fs::read_to_string(&target).unwrap(), "old\n");
+        assert_eq!(
+            target_identity(&fs::metadata(&target).expect("target metadata should be readable")),
+            before_identity
+        );
     }
 
     #[test]
