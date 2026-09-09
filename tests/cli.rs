@@ -14973,6 +14973,141 @@ fn catalog_refresh_should_offer_legacy_unselect_hint_for_selected_removal() {
 }
 
 #[test]
+fn catalog_refresh_should_quote_a_removed_frontmatter_id_in_its_recovery_hint() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    let injection_marker = temp_dir.path().join("shell-injection-marker");
+    let skill_id = format!(
+        "--copy editing; $(touch {}) 'quoted'",
+        injection_marker.display()
+    );
+    create_git_catalog_repo(&repo);
+    std::fs::write(
+        repo.join("skills/copy-editing/SKILL.md"),
+        format!("---\nid: \"{skill_id}\"\n---\n# Copy editing\n"),
+    )
+    .expect("stable metadata should be written");
+    run_git(&repo, &["add", "."]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "add unsafe stable id",
+            "-q",
+        ],
+    );
+    setup_store_with_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "--"])
+        .arg(&skill_id)
+        .assert()
+        .success();
+
+    std::fs::remove_dir_all(repo.join("skills/copy-editing"))
+        .expect("selected skill removed upstream");
+    run_git(&repo, &["add", "-A"]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "remove selected skill",
+            "-q",
+        ],
+    );
+
+    let quoted_skill_id = format!("'{}'", skill_id.replace('\'', "'\"'\"'"));
+    let unselect_command = store::dalo_command(
+        &store::comparable_path(&store),
+        &format!("source select marketing --unselect -- {quoted_skill_id}"),
+    );
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "refresh", "marketing"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!("run: {unselect_command}")))
+        .get_output()
+        .clone();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains(&format!("--unselect {skill_id}")),
+        "the untrusted ID must not be interpolated as shell syntax"
+    );
+
+    let json_output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "source", "refresh", "marketing"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let json: serde_json::Value =
+        serde_json::from_slice(&json_output).expect("refresh JSON should remain valid");
+    assert_eq!(json["outcomes"][0]["skill"], skill_id);
+    assert!(
+        !String::from_utf8_lossy(&json_output).contains("run:"),
+        "the human recovery hint must not alter the JSON contract"
+    );
+
+    let command = dalo_command();
+    let environment = command.test_environment();
+    let executable = assert_cmd::cargo::cargo_bin("dalo");
+    std::os::unix::fs::symlink(&executable, environment.path.join("dalo"))
+        .expect("dalo should be available to the copied shell command");
+    let mut recovery = std::process::Command::new("sh");
+    environment.apply_to(&mut recovery);
+    let recovery_output = recovery
+        .args(["-c", &unselect_command])
+        .output()
+        .expect("copied recovery command should run");
+    assert!(
+        recovery_output.status.success(),
+        "copied recovery command failed: {}",
+        String::from_utf8_lossy(&recovery_output.stderr)
+    );
+    assert!(
+        !injection_marker.exists(),
+        "the frontmatter ID must remain literal shell data"
+    );
+    assert!(
+        read_source_lock(&store)
+            .catalog("marketing")
+            .expect("catalog lock should exist")
+            .selected
+            .is_empty(),
+        "the copied command must preserve its unselect semantics"
+    );
+}
+
+#[test]
 fn catalog_advance_should_block_selected_removal_without_writes() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
