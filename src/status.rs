@@ -381,6 +381,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
             &state,
             &plugins,
             &reconciliation_inventories,
+            &materialization.resolution,
             &materialization.operations,
             None,
         )

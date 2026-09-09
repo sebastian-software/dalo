@@ -412,6 +412,7 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
                 state,
                 &live.plugins,
                 inventories,
+                &materialization.resolution,
                 &materialization.operations,
                 None,
             );
