@@ -63,6 +63,8 @@ pub struct HookSidecarPlan {
     #[serde(skip)]
     observed_bytes: Option<Vec<u8>>,
     #[serde(skip)]
+    created_file: bool,
+    #[serde(skip)]
     owned_hooks: BTreeMap<String, Vec<Value>>,
 }
 
@@ -141,7 +143,14 @@ pub fn plan_sidecar(
     let desired_bytes = if preserve_unowned {
         observed_bytes.clone()
     } else if root.as_object().is_some_and(|object| object.is_empty()) {
-        None
+        if previous.is_some_and(|entry| !entry.created_file) {
+            // The file existed before Dalo adopted it. State does not retain
+            // its exact bytes, so restore the safe empty JSON object rather
+            // than deleting a user-owned sidecar.
+            Some(b"{}".to_vec())
+        } else {
+            None
+        }
     } else {
         let mut bytes = serde_json::to_vec_pretty(&root)?;
         bytes.push(b'\n');
@@ -156,6 +165,7 @@ pub fn plan_sidecar(
     } else {
         HookSidecarAction::Update
     };
+    let created_file = previous.is_some_and(|entry| entry.created_file) || observed_bytes.is_none();
     Ok(HookSidecarPlan {
         provider,
         path: path.to_path_buf(),
@@ -166,6 +176,7 @@ pub fn plan_sidecar(
         dry_run: true,
         desired_bytes,
         observed_bytes,
+        created_file,
         owned_hooks: projection.hooks.clone(),
     })
 }
@@ -224,7 +235,7 @@ pub fn apply_sidecar(
             path: plan.path.clone(),
             projection_fingerprint: plan.projection_fingerprint.clone(),
             applied_file_hash: applied_hash,
-            created_file: plan.observed_bytes.is_none(),
+            created_file: plan.created_file,
             owned_hooks: plan.owned_hooks.clone(),
         });
         state.entries.sort_by(|left, right| {
@@ -434,7 +445,7 @@ mod tests {
     }
 
     #[test]
-    fn create_noop_and_uninstall_are_exact_and_dry_run_is_inert() {
+    fn create_update_and_uninstall_remove_a_dalo_created_sidecar() {
         let (temp, paths) = fixture();
         let sidecar = temp.path().join("codex/hooks.json");
         let desired = projection(HookProvider::Codex, &"11".repeat(32), "one");
@@ -460,7 +471,16 @@ mod tests {
         let noop = plan_sidecar(&paths, HookProvider::Codex, &sidecar, &desired).unwrap();
         assert_eq!(noop.action, HookSidecarAction::Noop);
 
-        let empty = projection(HookProvider::Codex, &"22".repeat(32), "");
+        let updated = projection(HookProvider::Codex, &"22".repeat(32), "two");
+        apply_sidecar(
+            &paths,
+            &updated,
+            plan_sidecar(&paths, HookProvider::Codex, &sidecar, &updated).unwrap(),
+            false,
+        )
+        .unwrap();
+
+        let empty = projection(HookProvider::Codex, &"33".repeat(32), "");
         let removed = apply_sidecar(
             &paths,
             &empty,
@@ -485,6 +505,43 @@ mod tests {
         assert_eq!(plan.action, HookSidecarAction::Noop);
 
         apply_sidecar(&paths, &empty, plan, false).unwrap();
+        assert_eq!(fs::read_to_string(&sidecar).unwrap(), "{}");
+    }
+
+    #[test]
+    fn adopted_empty_sidecar_is_restored_after_the_last_hook_is_removed() {
+        let (temp, paths) = fixture();
+        let sidecar = temp.path().join("claude/settings.json");
+        fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+        fs::write(&sidecar, "{}").unwrap();
+        let first = projection(HookProvider::Claude, &"11".repeat(32), "one");
+        apply_sidecar(
+            &paths,
+            &first,
+            plan_sidecar(&paths, HookProvider::Claude, &sidecar, &first).unwrap(),
+            false,
+        )
+        .unwrap();
+
+        let updated = projection(HookProvider::Claude, &"22".repeat(32), "two");
+        apply_sidecar(
+            &paths,
+            &updated,
+            plan_sidecar(&paths, HookProvider::Claude, &sidecar, &updated).unwrap(),
+            false,
+        )
+        .unwrap();
+
+        let empty = projection(HookProvider::Claude, &"33".repeat(32), "");
+        let removed = apply_sidecar(
+            &paths,
+            &empty,
+            plan_sidecar(&paths, HookProvider::Claude, &sidecar, &empty).unwrap(),
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(removed.action, HookSidecarAction::Update);
         assert_eq!(fs::read_to_string(&sidecar).unwrap(), "{}");
     }
 
