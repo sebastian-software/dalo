@@ -328,6 +328,35 @@ pub struct ApprovalRecord {
     pub scope: String,
     /// Approved identifier.
     pub value: String,
+    /// Unix timestamp recorded when Dalo granted this approval.
+    ///
+    /// Older ledgers do not carry this optional context and remain readable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub granted_at_unix: Option<u64>,
+}
+
+impl ApprovalRecord {
+    /// Construct one newly granted approval with its durable grant timestamp.
+    #[must_use]
+    pub fn granted(scope: String, value: String) -> Self {
+        Self {
+            scope,
+            value,
+            granted_at_unix: Some(now_unix()),
+        }
+    }
+
+    /// Whether this record has the same stable approval identity.
+    #[must_use]
+    pub fn matches(&self, other: &Self) -> bool {
+        self.scope == other.scope && self.value == other.value
+    }
+}
+
+fn now_unix() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs())
 }
 
 impl ApprovalsFile {

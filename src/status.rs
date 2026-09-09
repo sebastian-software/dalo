@@ -1164,6 +1164,12 @@ pub fn print_approval_list(report: &ApprovalListReport) {
                 term::terminal_safe_text(&approval.scope),
                 term::terminal_safe_text(&approval.value)
             );
+            match approval.granted_at_unix {
+                Some(granted_at_unix) => {
+                    println!("  granted at: {}", format_unix_utc(granted_at_unix));
+                }
+                None => println!("  grant date unavailable (legacy record)"),
+            }
         }
     }
 
@@ -1174,22 +1180,40 @@ pub fn print_approval_list(report: &ApprovalListReport) {
             print_accepted_risk_summary(acceptance);
         }
         println!();
-        println!("legend: @sha256:... binds an approval to an exact content or contract hash");
+    }
+
+    if !report.accepted_risks.is_empty()
+        || report
+            .approvals
+            .iter()
+            .any(|approval| approval.value.contains("@sha256:"))
+    {
         println!(
-            "accepted-risk entries are persisted audit exceptions; inspect each with its run command"
+            "legend: @sha256:... binds an approval to an exact reviewed contract or recipe hash"
+        );
+        println!(
+            "accepted-risk scope bindings cover the exact content, audit engines, coverage, and findings"
         );
     }
 }
 
 fn print_accepted_risk_summary(acceptance: &AcceptedRiskSummary) {
-    println!("  {}", term::terminal_safe_text(&acceptance.source_ref),);
+    let state = if acceptance.active {
+        "active"
+    } else {
+        "inactive"
+    };
+    println!(
+        "  {} ({state})",
+        term::terminal_safe_text(&acceptance.source_ref),
+    );
     println!(
         "    content hash: {}",
         term::terminal_safe_text(&acceptance.content_hash)
     );
     println!(
-        "    accepted at unix {}: {}",
-        acceptance.accepted_at_unix,
+        "    accepted at: {}: {}",
+        format_unix_utc(acceptance.accepted_at_unix),
         term::terminal_safe_text(&acceptance.reason)
     );
     println!(

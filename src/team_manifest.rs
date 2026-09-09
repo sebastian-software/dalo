@@ -1935,10 +1935,12 @@ mod tests {
             ApprovalRecord {
                 scope: "source".to_owned(),
                 value: legacy_id.clone(),
+                granted_at_unix: None,
             },
             ApprovalRecord {
                 scope: "skill".to_owned(),
                 value: format!("{legacy_id}:copy"),
+                granted_at_unix: None,
             },
         ]);
 

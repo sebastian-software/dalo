@@ -2181,6 +2181,7 @@ mod tests {
         ApprovalRecord {
             scope: scope.to_owned(),
             value: value.to_owned(),
+            granted_at_unix: None,
         }
     }
 

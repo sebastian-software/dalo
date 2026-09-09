@@ -1875,10 +1875,12 @@ mod tests {
         let skill_approval = ApprovalRecord {
             scope: "skill".to_owned(),
             value: "team:reviewer".to_owned(),
+            granted_at_unix: None,
         };
         let agent_approval = ApprovalRecord {
             scope: "agent".to_owned(),
             value: "team:reviewer".to_owned(),
+            granted_at_unix: None,
         };
 
         assert!(
