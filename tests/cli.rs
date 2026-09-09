@@ -281,7 +281,7 @@ requirement = "required"
         .clone();
     assert_eq!(first, second, "review JSON must be byte-identical");
     let json: serde_json::Value = serde_json::from_slice(&first).unwrap();
-    assert_eq!(json["schema_version"], 1);
+    assert_eq!(json["schema_version"], 2);
     assert_eq!(json["root_plugin"], "team:review-suite");
     assert_eq!(json["read_only"], true);
     let json_text = String::from_utf8_lossy(&first);
