@@ -678,7 +678,8 @@ fn human_plugin_tool_hook_status_and_review_reports_use_stable_display_values() 
     assert!(review_json.status.success());
     let review: serde_json::Value =
         serde_json::from_slice(&review_json.stdout).expect("plugin review JSON should parse");
-    assert_eq!(review["schema_version"], 1);
+    assert_eq!(review["schema_version"], 2);
+    assert_eq!(review["interactive_approvals"], "skipped_in_json_mode");
     let decisions = review["decisions"]
         .as_array()
         .expect("review decisions should be an array");
@@ -3349,6 +3350,24 @@ fn autosync_run_should_skip_immediately_when_store_lock_is_held() {
         .success()
         .stdout(predicate::str::contains("\"outcome\": \"skipped\""))
         .stdout(predicate::str::contains("store lock held by pid="));
+
+    let json = dalo_command()
+        .args(["--json", "--store"])
+        .arg(&store)
+        .args(["autosync", "run"])
+        .timeout(std::time::Duration::from_secs(10))
+        .output()
+        .expect("JSON autosync skip should run");
+    assert!(json.status.success());
+    let run: serde_json::Value =
+        serde_json::from_slice(&json.stdout).expect("skipped autosync output should be JSON");
+    assert_eq!(run["outcome"], "skipped");
+    assert!(
+        run["reason"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("store lock held by pid="))
+    );
+    assert!(json.stderr.is_empty());
 }
 
 #[test]
@@ -3403,6 +3422,25 @@ fn autosync_run_should_persist_actionable_block_reason() {
         .success()
         .stdout(predicate::str::contains("autosync_run_blocked"))
         .stdout(predicate::str::contains("blocked operation"));
+
+    let json = dalo_command()
+        .args(["--json", "--store"])
+        .arg(&store)
+        .args(["autosync", "run"])
+        .output()
+        .expect("JSON blocked autosync should run");
+    assert_eq!(json.status.code(), Some(1));
+    let report: serde_json::Value =
+        serde_json::from_slice(&json.stdout).expect("blocked autosync report should be JSON");
+    assert!(report["operations"].is_array());
+    let error: serde_json::Value =
+        serde_json::from_slice(&json.stderr).expect("blocked autosync error should be JSON");
+    assert_eq!(error["error"]["code"], "expected_failure");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("blocked operation"))
+    );
 }
 
 #[test]
@@ -3535,6 +3573,24 @@ fn autosync_run_should_report_selected_catalog_removal_without_advancing_pin() {
         .failure()
         .code(1)
         .stderr(predicate::str::contains("removed upstream"));
+
+    let json = dalo_command()
+        .args(["--json", "--store"])
+        .arg(&store)
+        .args(["autosync", "run"])
+        .output()
+        .expect("JSON catalog-drift autosync should run");
+    assert_eq!(json.status.code(), Some(1));
+    let report: serde_json::Value = serde_json::from_slice(&json.stdout)
+        .expect("catalog-drift autosync report should remain JSON");
+    assert!(report["operations"].is_array());
+    let error: serde_json::Value = serde_json::from_slice(&json.stderr)
+        .expect("catalog-drift autosync error should remain JSON");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("removed upstream"))
+    );
     assert_eq!(
         read_source_lock(&store)
             .catalog("marketing")
@@ -5427,6 +5483,32 @@ fn dry_run_should_note_when_status_is_read_only() {
 }
 
 #[test]
+fn ignored_global_flags_should_note_in_json_mode_without_corrupting_stdout() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    let output = dalo_command()
+        .args(["--yes", "--dry-run", "--json", "--store"])
+        .arg(&store)
+        .arg("status")
+        .output()
+        .expect("JSON status should run");
+    assert!(output.status.success());
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("JSON stdout should remain parseable");
+    assert!(report["store"].is_string());
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
+    assert!(stderr.contains("--yes is reserved for future safe prompts"));
+    assert!(stderr.contains("--dry-run has no effect for this read-only command"));
+}
+
+#[test]
 fn yes_should_note_that_it_is_currently_ignored() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -5493,6 +5575,24 @@ fn json_errors_should_render_machine_readable_stderr() {
             store.display()
         )))
         .stderr(predicate::str::contains("error:").not());
+}
+
+#[test]
+fn bare_json_should_return_a_machine_readable_error_without_help_on_stdout() {
+    let output = dalo_command()
+        .arg("--json")
+        .output()
+        .expect("bare JSON command should run");
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    let error: serde_json::Value =
+        serde_json::from_slice(&output.stderr).expect("bare JSON error should be parseable");
+    assert_eq!(error["error"]["code"], "expected_failure");
+    assert_eq!(
+        error["error"]["message"],
+        "a command is required when using --json; run `dalo --help` to list commands"
+    );
 }
 
 #[test]

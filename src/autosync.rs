@@ -452,23 +452,22 @@ pub fn finish_run(
     attempted: u64,
     outcome: AutosyncRunOutcome,
     reason: Option<String>,
-) -> DaloResult<()> {
+) -> DaloResult<AutosyncRunState> {
     let previous = read_run_state(paths)?;
     let last_successful_at_unix = if outcome == AutosyncRunOutcome::Succeeded {
         Some(now_unix())
     } else {
         previous.and_then(|state| state.last_successful_at_unix)
     };
-    write_run_state(
-        paths,
-        &AutosyncRunState {
-            schema_version: AUTOSYNC_SCHEMA_VERSION,
-            last_attempted_at_unix: attempted,
-            last_successful_at_unix,
-            outcome,
-            reason,
-        },
-    )
+    let state = AutosyncRunState {
+        schema_version: AUTOSYNC_SCHEMA_VERSION,
+        last_attempted_at_unix: attempted,
+        last_successful_at_unix,
+        outcome,
+        reason,
+    };
+    write_run_state(paths, &state)?;
+    Ok(state)
 }
 
 fn install_with(

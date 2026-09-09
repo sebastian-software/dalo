@@ -137,7 +137,7 @@ be fetched.</p>
 </tr>
 <tr>
 <td><code>--json</code></td>
-<td>Emit machine-readable JSON for commands that support structured output. <code>manpage</code> and <code>completions</code> reject this flag with a plain-text usage error because they generate plain text only.</td>
+<td>Emit machine-readable JSON for commands that support structured output. It requires a command; bare <code>dalo --json</code> returns the standard JSON error on stderr. <code>manpage</code> and <code>completions</code> reject this flag with a plain-text usage error because they generate plain text only.</td>
 </tr>
 <tr>
 <td><code>--yes</code></td>
@@ -810,9 +810,10 @@ target drift requires a fresh review. Only the displayed exact <code>skill</code
 author/org/wildcard approval. Tool bytes may be content-addressed and staged as
 an inert prepare step; tools, hooks, generators, semantic reviewers, and target
 mutations are never executed by review.</p>
-<p>JSON and dry-run modes are read-only and do not prompt. Prefer the individual
-commands below for a single known component, for revocation, or when a skill&#39;s
-blocking findings require <code>--accept-risk</code>.</p>
+<p>JSON and dry-run modes are read-only and do not prompt. JSON reports set
+<code>interactive_approvals</code> to <code>skipped_in_json_mode</code> explicitly; no approval is
+granted. Prefer the individual commands below for a single known component,
+for revocation, or when a skill&#39;s blocking findings require <code>--accept-risk</code>.</p>
 <h3 id="dalo-tool-list---check-dalo-tool-showaudit-sourceplugintoolid"><a class="doc-anchor" href="#dalo-tool-list---check-dalo-tool-showaudit-sourceplugintoolid"><code>dalo tool list [--check]</code>; <code>dalo tool show|audit &lt;source:plugin#tool:id&gt;</code></a></h3>
 <p>Inspect plugin-local executable contracts without running them:</p>
 <pre><code class="language-sh">dalo tool list --check
@@ -1143,7 +1144,7 @@ dalo completions fish &gt; dalo.fish
 <tr>
 <td><code>plugin review</code></td>
 <td><code>PluginReviewReport</code></td>
-<td><code>schema_version</code>, <code>root_plugin</code>, <code>plugin_closure[]</code>, <code>installation_plan</code>, separately scoped <code>decisions[]</code>, <code>review_token</code>, <code>read_only</code></td>
+<td><code>schema_version</code>, <code>root_plugin</code>, <code>plugin_closure[]</code>, <code>installation_plan</code>, separately scoped <code>decisions[]</code>, <code>review_token</code>, <code>interactive_approvals</code>, <code>read_only</code></td>
 </tr>
 <tr>
 <td><code>tool list</code></td>
@@ -1179,6 +1180,11 @@ dalo completions fish &gt; dalo.fish
 <td><code>autosync status</code></td>
 <td><code>AutosyncStatusReport</code></td>
 <td><code>configured</code>, <code>installed</code>, <code>enabled</code>, backend, schedule, executable, store, artifacts, optional <code>scheduler_error</code>, optional <code>disabled_reason</code>, and optional <code>last_run</code></td>
+</tr>
+<tr>
+<td><code>autosync run</code></td>
+<td><code>SyncReport</code> or <code>AutosyncRunState</code></td>
+<td><code>SyncReport</code> when synchronization starts; <code>AutosyncRunState</code> with <code>outcome: &quot;skipped&quot;</code> and <code>reason</code> when another process holds the store lock. Catalog-drift and blocked failures keep the JSON sync report on stdout and emit the standard JSON error on stderr.</td>
 </tr>
 <tr>
 <td><code>status</code></td>
