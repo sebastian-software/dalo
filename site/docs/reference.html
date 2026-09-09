@@ -884,11 +884,13 @@ to shell completion.
 Skill approval always runs the deterministic preflight first and refuses a
 blocking result unless a reason is supplied with <code>--accept-risk</code>. <code>--reviewer</code>
 adds the same isolated semantic review as <code>dalo audit</code>.</p>
-<p><code>approve list</code> also surfaces every persisted accepted-risk audit, with its
-source reference, exact content hash, acceptance reason/timestamp, scope
-binding, and a same-store command for re-inspection. The human output labels these
-exceptions explicitly and explains that <code>@sha256:</code> suffixes bind a record to
-an exact content or contract hash.</p>
+<p><code>approve list</code> preserves each approval record and adds its recorded grant time
+when available (older ledgers are explicitly labeled as lacking it). It also
+surfaces every persisted accepted-risk audit, marking whether its exact content
+and audit binding are still active, with its source reference, reason/timestamp,
+scope binding, and a same-store command for re-inspection. The human output
+explains that <code>@sha256:</code> suffixes bind a record to an exact reviewed contract or
+recipe hash.</p>
 <p>JSON output shapes: <code>ApprovalListReport</code> for <code>list</code>; successful <code>approve skill</code>
 output is <code>{ &quot;audit&quot;: AuditReport, &quot;approval&quot;: ApprovalReport }</code>; <code>agent</code>,
 <code>source</code>, <code>author</code>, and <code>org</code> mutations emit a bare <code>ApprovalReport</code>; tool,
@@ -1204,7 +1206,7 @@ dalo completions fish &gt; dalo.fish
 <tr>
 <td><code>approve list</code></td>
 <td><code>ApprovalListReport</code></td>
-<td><code>schema_version</code>, <code>approvals[]</code>, <code>accepted_risks[]</code> (<code>source_ref</code>, <code>content_hash</code>, <code>reason</code>, <code>accepted_at_unix</code>, <code>scope_hash</code>, <code>audit_command</code>)</td>
+<td><code>schema_version</code>, <code>approvals[]</code> (optional <code>granted_at_unix</code>), <code>accepted_risks[]</code> (<code>source_ref</code>, <code>content_hash</code>, <code>reason</code>, <code>accepted_at_unix</code>, <code>scope_hash</code>, <code>active</code>, <code>audit_command</code>)</td>
 </tr>
 <tr>
 <td><code>approve skill</code></td>
