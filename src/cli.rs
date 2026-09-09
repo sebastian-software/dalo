@@ -3034,6 +3034,7 @@ where
                 &state,
                 &live.plugins,
                 &reconciliation_inventories,
+                &report.resolution,
                 &report.operations,
                 None,
             );

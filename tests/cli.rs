@@ -17451,6 +17451,134 @@ fn source_namespace_should_materialize_same_named_skills_side_by_side_and_clear_
 }
 
 #[test]
+fn plan_json_should_use_namespaced_plugin_skill_target_and_report_its_conflict() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = temp.path().join("store");
+    let target = temp.path().join("skills");
+    let company_repo = temp.path().join("company-repo");
+    create_git_skill_repo_with_skill(
+        &company_repo,
+        "review",
+        "---\nname: review\n---\n# Company review\n",
+    );
+    let plugin = company_repo.join("plugins/review-suite");
+    std::fs::create_dir_all(&plugin).unwrap();
+    std::fs::write(
+        plugin.join("PLUGIN.toml"),
+        r#"schema_version = 1
+[plugin]
+name = "review-suite"
+description = "Company review workflow"
+
+[[plugin.members]]
+ref = "skill:review"
+requirement = "required"
+"#,
+    )
+    .unwrap();
+    run_git(&company_repo, &["add", "plugins"]);
+    run_git(
+        &company_repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "add review plugin",
+            "-q",
+        ],
+    );
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "link", "generic"])
+        .arg(&target)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "company"])
+        .arg(&company_repo)
+        .args(["--namespace", "company"])
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["plugin", "select", "company:review-suite"])
+        .assert()
+        .success();
+
+    let plan = |store: &std::path::Path| {
+        let output = dalo_command()
+            .args(["--store"])
+            .arg(store)
+            .args(["--json", "plan"])
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+        serde_json::from_slice::<serde_json::Value>(&output).expect("plan JSON should parse")
+    };
+    let component = |plan: &serde_json::Value| {
+        plan["destinations"]
+            .as_array()
+            .expect("plan should include the linked target")
+            .iter()
+            .flat_map(|destination| {
+                destination["logical_targets"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+            })
+            .flat_map(|target| target["plugins"].as_array().into_iter().flatten())
+            .flat_map(|plugin| plugin["components"].as_array().into_iter().flatten())
+            .find(|component| component["reference"] == "skill:review")
+            .cloned()
+            .expect("selected plugin skill should have a target component")
+    };
+
+    let initial = plan(&store);
+    let initial_component = component(&initial);
+    assert_eq!(initial_component["state"], "active");
+    assert_eq!(
+        initial_component["proposed_artifact"],
+        format!(
+            "portable skill link: {}",
+            std::fs::canonicalize(&target)
+                .expect("linked target should be canonicalizable")
+                .join("company__review")
+                .display()
+        )
+    );
+
+    std::fs::create_dir(target.join("company__review"))
+        .expect("foreign namespaced target slot should be created");
+    let conflicted = plan(&store);
+    let conflicted_component = component(&conflicted);
+    assert_eq!(conflicted_component["state"], "blocked");
+    assert_eq!(conflicted_component["compatibility"], "blocked");
+    assert_eq!(conflicted_component["blocker"]["source"], "conflict");
+    assert_eq!(
+        conflicted_component["remediation"],
+        "resolve the target slot conflict and run plan again"
+    );
+}
+
+#[test]
 fn source_namespace_should_replace_existing_links_when_set() {
     let temp = tempfile::tempdir().unwrap();
     let store = temp.path().join("store");

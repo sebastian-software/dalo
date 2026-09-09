@@ -281,6 +281,7 @@ pub fn build_installation_plan(
         &state,
         &live.plugins,
         &reconciliation_inventories,
+        &materialization.resolution,
         &materialization.operations,
         target_filter,
     );
@@ -321,6 +322,7 @@ pub fn build_from_facts(
     state: &StateFile,
     plugins: &PluginResolution,
     inventories: &[SourceInventory],
+    resolution: &crate::resolver::Resolution,
     operations: &[MaterializeOperation],
     target_filter: Option<&str>,
 ) -> InstallationPlan {
@@ -328,7 +330,14 @@ pub fn build_from_facts(
         .materialization_dirs
         .iter()
         .filter_map(|destination| {
-            destination_plan(destination, plugins, inventories, operations, target_filter)
+            destination_plan(
+                destination,
+                plugins,
+                inventories,
+                &resolution.active_skills,
+                operations,
+                target_filter,
+            )
         })
         .collect::<Vec<_>>();
     destinations.sort_by(|left, right| left.path.cmp(&right.path));
@@ -633,6 +642,7 @@ fn destination_plan(
     destination: &MaterializationDirState,
     plugins: &PluginResolution,
     inventories: &[SourceInventory],
+    active_skills: &[crate::resolver::ResolvedSkill],
     operations: &[MaterializeOperation],
     target_filter: Option<&str>,
 ) -> Option<DestinationPlan> {
@@ -641,7 +651,14 @@ fn destination_plan(
         .iter()
         .filter(|target| target_filter.is_none_or(|filter| target.as_str() == filter))
         .map(|target| {
-            logical_target_plan(target, plugins, inventories, operations, &destination.path)
+            logical_target_plan(
+                target,
+                plugins,
+                inventories,
+                active_skills,
+                operations,
+                &destination.path,
+            )
         })
         .collect::<Vec<_>>();
     if logical_targets.is_empty() {
@@ -665,13 +682,23 @@ fn logical_target_plan(
     target: &str,
     plugins: &PluginResolution,
     inventories: &[SourceInventory],
+    active_skills: &[crate::resolver::ResolvedSkill],
     operations: &[MaterializeOperation],
     destination: &Path,
 ) -> LogicalTargetPlan {
     let mut target_plugins = plugins
         .plugins
         .iter()
-        .map(|plugin| target_plugin_plan(target, plugin, inventories, operations, destination))
+        .map(|plugin| {
+            target_plugin_plan(
+                target,
+                plugin,
+                inventories,
+                active_skills,
+                operations,
+                destination,
+            )
+        })
         .collect::<Vec<_>>();
     target_plugins.sort_by(|left, right| left.source_ref.cmp(&right.source_ref));
     LogicalTargetPlan {
@@ -685,6 +712,7 @@ fn target_plugin_plan(
     target: &str,
     plugin: &crate::plugin::ResolvedPlugin,
     inventories: &[SourceInventory],
+    active_skills: &[crate::resolver::ResolvedSkill],
     operations: &[MaterializeOperation],
     destination: &Path,
 ) -> TargetPluginPlan {
@@ -692,7 +720,16 @@ fn target_plugin_plan(
     let mut components = plugin
         .members
         .iter()
-        .map(|member| component_plan(target, member, inventories, operations, destination))
+        .map(|member| {
+            component_plan(
+                target,
+                member,
+                inventories,
+                active_skills,
+                operations,
+                destination,
+            )
+        })
         .collect::<Vec<_>>();
     components.sort_by(|left, right| left.reference.cmp(&right.reference));
     for dependency in &plugin.dependencies {
@@ -768,6 +805,7 @@ fn component_plan(
     target: &str,
     member: &crate::plugin::ResolvedPluginMember,
     inventories: &[SourceInventory],
+    active_skills: &[crate::resolver::ResolvedSkill],
     operations: &[MaterializeOperation],
     destination: &Path,
 ) -> TargetComponentPlan {
@@ -777,13 +815,15 @@ fn component_plan(
     let mut selected_fallback = None;
     let proposed_artifact = if member.reference.starts_with("skill:") {
         if let Some(identity) = &member.resolved_ref {
-            let slot = identity
-                .split_once(':')
-                .map_or(identity.as_str(), |(_, slot)| slot);
-            if let Some(operation) = operations
+            let operation = active_skills
                 .iter()
-                .find(|operation| operation.link_path == destination.join(slot))
-            {
+                .find(|skill| skill.source_ref == *identity)
+                .and_then(|skill| {
+                    operations
+                        .iter()
+                        .find(|operation| operation.link_path == destination.join(&skill.slot_name))
+                });
+            if let Some(operation) = operation {
                 if operation.status == MaterializeOperationStatus::Blocked {
                     compatibility = PlanCompatibility::Blocked;
                     blocker = Some(PlanBlocker {
@@ -990,7 +1030,25 @@ fn verification_baseline(target: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::inventory::SkillDelivery;
     use crate::plugin::ResolvedPluginMember;
+    use crate::source::SourceKind;
+
+    fn active_skill(source_ref: &str, slot_name: &str) -> crate::resolver::ResolvedSkill {
+        crate::resolver::ResolvedSkill {
+            source_ref: source_ref.to_owned(),
+            slot_name: slot_name.to_owned(),
+            source_namespace: Some("company".to_owned()),
+            id: None,
+            source_id: "company".to_owned(),
+            source_kind: SourceKind::Team,
+            source_priority: 10,
+            path: PathBuf::from("/store/company/review"),
+            delivery: SkillDelivery::Direct,
+            local_override: false,
+            requires: Vec::new(),
+        }
+    }
 
     #[test]
     fn released_status_attachment_api_should_remain_callable() {
@@ -1008,7 +1066,7 @@ mod tests {
             fallback: Some("skill:review".to_owned()),
         };
 
-        let planned = component_plan("generic", &member, &[], &[], Path::new("/target"));
+        let planned = component_plan("generic", &member, &[], &[], &[], Path::new("/target"));
 
         assert_eq!(planned.compatibility, PlanCompatibility::Mapped);
         assert_eq!(planned.selected_fallback.as_deref(), Some("skill:review"));
@@ -1025,7 +1083,7 @@ mod tests {
             fallback: None,
         };
 
-        let planned = component_plan("codex", &member, &[], &[], Path::new("/target"));
+        let planned = component_plan("codex", &member, &[], &[], &[], Path::new("/target"));
 
         assert_eq!(planned.compatibility, PlanCompatibility::Blocked);
         assert_eq!(
@@ -1035,6 +1093,82 @@ mod tests {
         assert_eq!(
             planned.remediation.as_deref(),
             Some("run `dalo approve skill team:core` after review")
+        );
+    }
+
+    #[test]
+    fn active_namespaced_skill_member_uses_its_materialized_slot_operation() {
+        let member = ResolvedPluginMember {
+            reference: "skill:review".to_owned(),
+            requirement: MemberRequirement::Required,
+            state: PluginComponentState::Active,
+            resolved_ref: Some("company:review".to_owned()),
+            fallback: None,
+        };
+        let operation = MaterializeOperation {
+            kind: materialize::MaterializeOperationKind::Create,
+            link_path: PathBuf::from("/target/company__review"),
+            desired_path: Some(PathBuf::from("/store/company/review")),
+            status: MaterializeOperationStatus::Planned,
+            reason: None,
+        };
+
+        let planned = component_plan(
+            "generic",
+            &member,
+            &[],
+            &[active_skill("company:review", "company__review")],
+            &[operation],
+            Path::new("/target"),
+        );
+
+        assert_eq!(planned.state, TargetComponentState::Active);
+        assert_eq!(planned.compatibility, PlanCompatibility::Exact);
+        assert_eq!(
+            planned.proposed_artifact,
+            "portable skill link: /target/company__review"
+        );
+        assert!(planned.blocker.is_none());
+    }
+
+    #[test]
+    fn namespaced_skill_member_reports_its_materialized_target_conflict() {
+        let member = ResolvedPluginMember {
+            reference: "skill:review".to_owned(),
+            requirement: MemberRequirement::Required,
+            state: PluginComponentState::Active,
+            resolved_ref: Some("company:review".to_owned()),
+            fallback: None,
+        };
+        let operation = MaterializeOperation {
+            kind: materialize::MaterializeOperationKind::Conflict,
+            link_path: PathBuf::from("/target/company__review"),
+            desired_path: Some(PathBuf::from("/store/company/review")),
+            status: MaterializeOperationStatus::Blocked,
+            reason: Some("foreign directory blocks target slot".to_owned()),
+        };
+
+        let planned = component_plan(
+            "generic",
+            &member,
+            &[],
+            &[active_skill("company:review", "company__review")],
+            &[operation],
+            Path::new("/target"),
+        );
+
+        assert_eq!(planned.state, TargetComponentState::Blocked);
+        assert_eq!(planned.compatibility, PlanCompatibility::Blocked);
+        assert_eq!(
+            planned.blocker,
+            Some(PlanBlocker {
+                source: PlanBlockerSource::Conflict,
+                message: "foreign directory blocks target slot".to_owned(),
+            })
+        );
+        assert_eq!(
+            planned.remediation.as_deref(),
+            Some("resolve the target slot conflict and run plan again")
         );
     }
 }
