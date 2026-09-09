@@ -14909,6 +14909,70 @@ fn catalog_advance_should_update_pin_checkout_and_active_materialization() {
 }
 
 #[test]
+fn catalog_refresh_should_offer_legacy_unselect_hint_for_selected_removal() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "copy-editing"])
+        .assert()
+        .success();
+
+    std::fs::remove_dir_all(repo.join("skills/copy-editing"))
+        .expect("selected skill removed upstream");
+    run_git(&repo, &["add", "-A"]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "remove selected skill",
+            "-q",
+        ],
+    );
+
+    let unselect_command = store::dalo_command(
+        &store::comparable_path(&store),
+        "source select marketing --unselect copy-editing",
+    );
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "refresh", "marketing"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("selected_removed"))
+        .stdout(predicate::str::contains(format!("run: {unselect_command}")))
+        .get_output()
+        .clone();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout.matches(&format!("run: {unselect_command}")).count(),
+        1,
+        "the drift outcome should offer exactly one legacy-compatible unselect command"
+    );
+    assert!(!stdout.contains("source unselect marketing copy-editing"));
+}
+
+#[test]
 fn catalog_advance_should_block_selected_removal_without_writes() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
@@ -14963,16 +15027,8 @@ fn catalog_advance_should_block_selected_removal_without_writes() {
 
     let unselect_command = store::dalo_command(
         &store::comparable_path(&store),
-        "source unselect marketing copy-editing",
+        "source select marketing --unselect copy-editing",
     );
-
-    dalo_command()
-        .args(["--store"])
-        .arg(&store)
-        .args(["source", "refresh", "marketing"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(format!("run: {unselect_command}")));
 
     let output = dalo_command()
         .args(["--store"])
