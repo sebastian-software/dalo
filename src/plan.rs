@@ -276,12 +276,12 @@ pub fn build_installation_plan(
         &active_instructions,
     );
     let materialization = materialize::materialize(&paths, &live.resolution, true)?;
-    let mut plan = build_from_facts(
+    let mut plan = build_from_facts_with_active_skills(
         store_root,
         &state,
         &live.plugins,
         &reconciliation_inventories,
-        &materialization.resolution,
+        &materialization.resolution.active_skills,
         &materialization.operations,
         target_filter,
     );
@@ -316,13 +316,38 @@ pub fn build_installation_plan(
 }
 
 /// Compose typed planning facts already loaded by status or dry-run paths.
+///
+/// This compatibility wrapper retains the released six-argument planning API.
+/// Shared command paths should pass their resolved skill slots to
+/// [`build_from_facts_with_active_skills`] instead.
 #[must_use]
 pub fn build_from_facts(
     store_root: &Path,
     state: &StateFile,
     plugins: &PluginResolution,
     inventories: &[SourceInventory],
-    resolution: &crate::resolver::Resolution,
+    operations: &[MaterializeOperation],
+    target_filter: Option<&str>,
+) -> InstallationPlan {
+    build_from_facts_with_active_skills(
+        store_root,
+        state,
+        plugins,
+        inventories,
+        &[],
+        operations,
+        target_filter,
+    )
+}
+
+/// Compose typed planning facts with resolved skill slots for shared command paths.
+#[must_use]
+pub(crate) fn build_from_facts_with_active_skills(
+    store_root: &Path,
+    state: &StateFile,
+    plugins: &PluginResolution,
+    inventories: &[SourceInventory],
+    active_skills: &[crate::resolver::ResolvedSkill],
     operations: &[MaterializeOperation],
     target_filter: Option<&str>,
 ) -> InstallationPlan {
@@ -334,7 +359,7 @@ pub fn build_from_facts(
                 destination,
                 plugins,
                 inventories,
-                &resolution.active_skills,
+                active_skills,
                 operations,
                 target_filter,
             )
@@ -1051,7 +1076,15 @@ mod tests {
     }
 
     #[test]
-    fn released_status_attachment_api_should_remain_callable() {
+    fn released_plan_and_status_attachment_apis_should_remain_callable() {
+        let _build_from_facts: fn(
+            &Path,
+            &StateFile,
+            &PluginResolution,
+            &[SourceInventory],
+            &[MaterializeOperation],
+            Option<&str>,
+        ) -> InstallationPlan = build_from_facts;
         let _tool: fn(&mut InstallationPlan, &StorePaths) -> DaloResult<()> = attach_tool_status;
         let _hook: fn(&mut InstallationPlan, &StorePaths) -> DaloResult<()> = attach_hook_status;
     }
