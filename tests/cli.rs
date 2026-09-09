@@ -7361,6 +7361,41 @@ fn sync_should_not_link_dependent_when_required_slot_is_blocked() {
 
     assert!(!target.join("alpha").exists());
     assert!(target.join("beta").is_dir());
+    let lock = read_user_lock(&store);
+    assert!(
+        lock.active_skills
+            .iter()
+            .all(|skill| skill.source_ref != "company:alpha"),
+        "a dependent blocked at link time must not be recorded as delivered"
+    );
+    assert!(
+        lock.active_skills
+            .iter()
+            .any(|skill| skill.source_ref == "company:beta")
+    );
+    let status = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .output()
+        .expect("status JSON command should run");
+    assert!(status.status.success());
+    let status: serde_json::Value =
+        serde_json::from_slice(&status.stdout).expect("status JSON should parse");
+    assert!(
+        status["resolution"]["blocked_skills"]
+            .as_array()
+            .expect("blocked skills should be an array")
+            .iter()
+            .any(|skill| skill["skill"]["source_ref"] == "company:alpha")
+    );
+    assert!(
+        status["lock"]["drift"]
+            .as_array()
+            .expect("lock drift should be an array")
+            .is_empty(),
+        "status must compare the persisted lock with the post-materialization resolution"
+    );
     dalo_command()
         .args(["--store"])
         .arg(&store)
@@ -9103,6 +9138,43 @@ fn protected_requirement_should_keep_dependent_unlinked_without_failing_check() 
 
     assert!(!target.join("alpha").exists());
     assert!(target.join("beta").is_dir());
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    let lock = read_user_lock(&store);
+    assert!(
+        lock.active_skills
+            .iter()
+            .any(|skill| skill.source_ref == "company:alpha"),
+        "protected dependencies remain active even when their link is intentionally kept"
+    );
+    let status = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .output()
+        .expect("status JSON command should run");
+    assert!(status.status.success());
+    let status: serde_json::Value =
+        serde_json::from_slice(&status.stdout).expect("status JSON should parse");
+    assert!(
+        status["resolution"]["active_skills"]
+            .as_array()
+            .expect("active skills should be an array")
+            .iter()
+            .any(|skill| skill["source_ref"] == "company:alpha")
+    );
+    assert!(
+        status["lock"]["drift"]
+            .as_array()
+            .expect("lock drift should be an array")
+            .is_empty(),
+        "the persisted lock and JSON status preview must share the protected delivery state"
+    );
 }
 
 #[test]
@@ -11164,6 +11236,41 @@ fn source_remove_should_reconcile_team_links_and_remove_source_state() {
     assert!(lock.sources.iter().all(|source| source.id != "company"));
     assert!(!store.join("sources/company").exists());
     assert!(std::fs::symlink_metadata(target.join("team")).is_err());
+}
+
+#[test]
+fn source_remove_should_lock_the_post_materialization_resolution() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let company = temp_dir.path().join("company-repo");
+    let spare = temp_dir.path().join("spare-repo");
+    create_git_skill_repo_with_required_pair(&company);
+    create_git_skill_repo_with_skill(&spare, "spare", "# Spare\n");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill(&target, "beta");
+    add_source(&store, "company", &company);
+    add_source(&store, "spare", &spare);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "remove", "spare"])
+        .assert()
+        .success();
+
+    let lock = read_user_lock(&store);
+    assert!(
+        lock.active_skills
+            .iter()
+            .all(|skill| skill.source_ref != "company:alpha"),
+        "source removal must not persist a dependent blocked during reconciliation"
+    );
+    assert!(
+        lock.active_skills
+            .iter()
+            .any(|skill| skill.source_ref == "company:beta")
+    );
 }
 
 #[test]

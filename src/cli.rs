@@ -3055,7 +3055,7 @@ where
             }
             let mut lock = lockfile::build_user_lock(
                 &config.sources,
-                &live.resolution,
+                &report.resolution,
                 Some(&report),
                 Some(&live.plugins),
             );
@@ -3986,7 +3986,7 @@ fn run_source_remove(
 
     let mut user_lock = lockfile::build_user_lock(
         &plan.config.sources,
-        &live.resolution,
+        &materialization.resolution,
         Some(&materialization),
         Some(&live.plugins),
     );

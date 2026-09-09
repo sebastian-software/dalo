@@ -392,7 +392,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
     }
     let live_lock = lockfile::build_user_lock_with_head_cache(
         &config.sources,
-        &live_resolution,
+        &materialization.resolution,
         Some(&materialization),
         Some(&plugins),
         &mut source_head_cache,
