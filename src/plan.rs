@@ -318,8 +318,7 @@ pub fn build_installation_plan(
 /// Compose typed planning facts already loaded by status or dry-run paths.
 ///
 /// This compatibility wrapper retains the released six-argument planning API.
-/// Shared command paths should pass their resolved skill slots to
-/// [`build_from_facts_with_active_skills`] instead.
+/// Shared command paths use the internal planning path that accepts resolved skill slots.
 #[must_use]
 pub fn build_from_facts(
     store_root: &Path,
