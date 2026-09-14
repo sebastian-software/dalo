@@ -317,4 +317,4 @@ jobs:
         env:
           # corepack downloads pnpm on first use; never wait on a prompt in CI.
           COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
-        run: corepack pnpm --config.minimum-release-age=0 dlx @sebastian-software/standards@0.10.0 check
+        run: corepack pnpm --config.minimum-release-age=0 dlx @sebastian-software/standards@0.11.1 check
