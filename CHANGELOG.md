@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.15.1](https://github.com/sebastian-software/dalo/compare/dalo-v0.15.0...dalo-v0.15.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **approve:** show trust context ([d0591af](https://github.com/sebastian-software/dalo/commit/d0591af4215ecf562697086d8cfc45392a7aa446))
+* **autosync:** classify dry-run validation correctly ([1d55886](https://github.com/sebastian-software/dalo/commit/1d55886f703dbc2d5041212602392f85fb2d04d8))
+* **catalog:** accept source-qualified skill references ([bab3e24](https://github.com/sebastian-software/dalo/commit/bab3e24d77c854cbd42ddd969ce4187ad0178d48))
+* **catalog:** disambiguate qualified skill references ([906feaf](https://github.com/sebastian-software/dalo/commit/906feafa2f0bb160598e226df2b79b22d1b178b5))
+* **catalog:** normalize qualified selection input ([cb3e710](https://github.com/sebastian-software/dalo/commit/cb3e710443f703f454a81f02f06b3b941fd40736))
+* **catalog:** quote selected removal hint ([531794b](https://github.com/sebastian-software/dalo/commit/531794b38b1b276a6470a3477cf07f6530f70015))
+* **catalog:** show legacy unselect recovery command ([7fe3aaa](https://github.com/sebastian-software/dalo/commit/7fe3aaa5ef1b5ff66646aed26cdb884f5d1c5df6))
+* **ci:** set up Node before standards marker guard ([ec2ff73](https://github.com/sebastian-software/dalo/commit/ec2ff7322a5cb952aef9ceb655543129f677f9de))
+* **cli:** preserve JSON command contracts ([92adf48](https://github.com/sebastian-software/dalo/commit/92adf48ddc4a6d25464990ac03520d140fd8bc5e))
+* **cli:** use explicit unselect recovery command ([f9116f4](https://github.com/sebastian-software/dalo/commit/f9116f42d205c67059c7e370ebc93b30e97e7362))
+* **deps:** align remotion package versions ([a9fee93](https://github.com/sebastian-software/dalo/commit/a9fee93f9ff3e14146ac2e96ac7a02caa182beff))
+* **deps:** update actions/setup-node action to v7 ([6d5f359](https://github.com/sebastian-software/dalo/commit/6d5f3590b435b9a7c4dd8fbd0999f979e2f47876))
+* **deps:** update dependency react to v19.2.8 ([3035e04](https://github.com/sebastian-software/dalo/commit/3035e04b3055fcf926affbfefc1aed8779301a81))
+* **deps:** update dependency remotion to v4.0.521 ([6ed7ef9](https://github.com/sebastian-software/dalo/commit/6ed7ef93c866688c37264c3bce5a65584703774c))
+* **hooks:** preserve adopted empty sidecars ([7ab67e9](https://github.com/sebastian-software/dalo/commit/7ab67e90809aac2d244f5043a28a7e7aebda43b1))
+* **instructions:** fall back when exchange rename is unsupported ([15e7bc1](https://github.com/sebastian-software/dalo/commit/15e7bc1fa644a679311babcb181b6fe5f5af2449))
+* **inventory:** deduplicate same-source slots ([0d79bb3](https://github.com/sebastian-software/dalo/commit/0d79bb38a1a5b4d4c13aafcc73585ae0da6d462e))
+* list approvals without store lock ([d2bed90](https://github.com/sebastian-software/dalo/commit/d2bed90a1d778394b40cde9e94772643db21f81f))
+* **lock:** persist post-materialization resolution ([30d93ba](https://github.com/sebastian-software/dalo/commit/30d93baf26e0461f6a770af6390e29dc6107957a))
+* **plan:** avoid private rustdoc link ([433683f](https://github.com/sebastian-software/dalo/commit/433683f622c6117c410e1ed2280acb58846187dc))
+* **plan:** map namespaced plugin members to target slots ([b693aab](https://github.com/sebastian-software/dalo/commit/b693aab854e87c5337ad437531a6e68cc9cec8c5))
+* **plan:** preserve build-from-facts API ([dd057ab](https://github.com/sebastian-software/dalo/commit/dd057aba6b16502fefa6b70462587bfcf48ebfb9))
+* **plan:** preserve wrapper skill planning ([1fc5d79](https://github.com/sebastian-software/dalo/commit/1fc5d79eb9e997c0e5a61b3e3bc9f5b065aab166))
+* **plan:** simplify API signature test ([90d8ac4](https://github.com/sebastian-software/dalo/commit/90d8ac46c66f9c8746f684f79397515ede5ed6b3))
+* reconcile repointed owned symlinks ([715ae27](https://github.com/sebastian-software/dalo/commit/715ae279b1c4d54f44a51f26a8b263dab5016438))
+* **sync:** compact pending approval output ([4b14ffa](https://github.com/sebastian-software/dalo/commit/4b14ffa8f4988e145b15cf9374cc64b521b0bde7))
+
 ## [0.15.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.14.10...dalo-v0.15.0) (2026-09-08)
 
 

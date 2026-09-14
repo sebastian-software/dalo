@@ -274,8 +274,19 @@ printf '%s\n' "$crate_job" | grep -Fq 'https://crates.io/api/v1/crates/dalo/${ve
 printf '%s\n' "$crate_job" | grep -Fq 'is already published on crates.io'
 printf '%s\n' "$crate_job" | grep -Fq 'rust-lang/crates-io-auth-action@'
 printf '%s\n' "$crate_job" | grep -Fq 'id-token: write'
-printf '%s\n' "$crate_job" | grep -Fq 'CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token || secrets.CARGO_REGISTRY_TOKEN }}'
-printf '%s\n' "$crate_job" | grep -Fq 'no crates.io credential'
+printf '%s\n' "$crate_job" | grep -Fq 'CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}'
+if printf '%s\n' "$crate_job" | grep -Fq 'secrets.CARGO_REGISTRY_TOKEN'; then
+  echo 'crates.io publishing must use only the short-lived OIDC credential' >&2
+  exit 1
+fi
+if printf '%s\n' "$crate_job" | grep -Fq 'continue-on-error:'; then
+  echo 'crates.io authentication must fail closed' >&2
+  exit 1
+fi
+if printf '%s\n' "$crate_job" | grep -Fq 'no crates.io credential'; then
+  echo 'the obsolete long-lived credential fallback guard is still present' >&2
+  exit 1
+fi
 printf '%s\n' "$npm_job" | grep -Fq 'npm view "getdalo@${version}" version'
 printf '%s\n' "$npm_job" | grep -Fq 'is already published on npm'
 printf '%s\n' "$npm_job" | grep -Fq 'if test -f package-lock.json'
