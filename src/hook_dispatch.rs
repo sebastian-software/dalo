@@ -181,6 +181,31 @@ fn verify_hook(paths: &StorePaths, hook: &DispatcherHook) -> DaloResult<()> {
             reason: format!("hook `{}` contract hash mismatch", hook.identity),
         });
     }
+    // A stored projection outlives its approvals. Recheck the exact grants at
+    // execution time so revocation also disables an already installed sidecar.
+    let approvals = crate::store::read_approvals(paths)?;
+    for (scope, identity, hash) in [
+        (
+            crate::hook::APPROVAL_SCOPE,
+            &hook.identity,
+            &hook.contract_hash,
+        ),
+        (tool::APPROVAL_SCOPE, &hook.tool, &hook.tool_contract_hash),
+    ] {
+        let value = format!("{identity}@sha256:{hash}");
+        if !approvals
+            .approvals
+            .iter()
+            .any(|record| record.scope == scope && record.value == value)
+        {
+            return Err(DaloError::StateError {
+                reason: format!(
+                    "hook `{}` requires current exact {scope} approval for `{identity}`",
+                    hook.identity
+                ),
+            });
+        }
+    }
     Ok(())
 }
 
@@ -470,7 +495,10 @@ fn render_native_output(
     if context.is_empty() {
         json!({})
     } else {
-        json!({"additionalContext": context.join("\n")})
+        json!({"hookSpecificOutput": {
+            "hookEventName": event,
+            "additionalContext": context.join("\n"),
+        }})
     }
 }
 
@@ -580,6 +608,32 @@ mod tests {
 
     const CHATTY_DISPATCH_INPUT_PATH: &str = "DALO_CHATTY_DISPATCH_INPUT_PATH";
     const CHATTY_DISPATCH_WATCHDOG: Duration = Duration::from_secs(5);
+
+    #[test]
+    fn context_uses_the_native_event_envelope() {
+        let outputs = BTreeMap::from([(
+            HookEffect::AddContext,
+            vec![PortableHookResult {
+                hook: "local:design#hook:review".to_owned(),
+                output: PortableHookOutput::AddContext {
+                    context: "Review contrast.".to_owned(),
+                },
+            }],
+        )]);
+        for event in [
+            "PreToolUse",
+            "PostToolUse",
+            "PostToolUseFailure",
+            "UserPromptSubmit",
+        ] {
+            assert_eq!(
+                render_native_output(event, &outputs),
+                json!({"hookSpecificOutput": {
+                    "hookEventName": event, "additionalContext": "Review contrast.",
+                }})
+            );
+        }
+    }
 
     fn fixture(
         script: &str,

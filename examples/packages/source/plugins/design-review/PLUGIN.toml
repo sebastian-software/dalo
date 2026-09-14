@@ -1,0 +1,45 @@
+schema_version = 1
+
+[plugin]
+name = "design-review"
+description = "Example of a skill, standing instructions, and a portable context hook."
+
+[[plugin.members]]
+ref = "skill:design-review"
+requirement = "required"
+
+[[plugin.members]]
+ref = "instruction:design-context"
+requirement = "recommended"
+
+[[tool]]
+schema_version = 1
+id = "context"
+entry = "context.mjs"
+runtime = "node"
+argv = ["${input.project_dir}"]
+cwd = "tool_root"
+capabilities = []
+availability = "required"
+
+[[tool.inputs]]
+name = "project_dir"
+type = "path"
+
+[[hook]]
+schema_version = 1
+id = "review-context"
+tool = "context"
+subject = "user_prompt"
+phase = "before"
+effect = "add_context"
+requirement = "required"
+timeout_ms = 2000
+failure_policy = "report"
+retry = "never"
+error_visibility = "model_and_user"
+blocking_scope = "matched_event"
+
+[[hook.bindings]]
+input = "project_dir"
+field = "session.cwd"

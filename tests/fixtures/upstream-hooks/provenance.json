@@ -1,0 +1,100 @@
+[
+  {
+    "path": "impeccable/LICENSE",
+    "repository": "pbakaus/impeccable",
+    "revision": "cd12f8660e2dde57b9615c8a6b8ea674101f9cfc",
+    "upstream_path": "LICENSE",
+    "sha256": "02bb8c3b4e70190e3986c0404ad2fd8d639b4f534252d82379cc1b502b6d1812"
+  },
+  {
+    "path": "impeccable/NOTICE.md",
+    "repository": "pbakaus/impeccable",
+    "revision": "cd12f8660e2dde57b9615c8a6b8ea674101f9cfc",
+    "upstream_path": "NOTICE.md",
+    "sha256": "c60a093c2845fd9fb82f9c6f742ece31f379f8190b535309d32d66c45ccffdcb"
+  },
+  {
+    "path": "impeccable/.claude/settings.json",
+    "repository": "pbakaus/impeccable",
+    "revision": "cd12f8660e2dde57b9615c8a6b8ea674101f9cfc",
+    "upstream_path": ".claude/settings.json",
+    "sha256": "ee0a15fcfc244b76b896a2650a17b35e444d4311166b69a3cfa32d11f8f44851"
+  },
+  {
+    "path": "impeccable/.codex/hooks.json",
+    "repository": "pbakaus/impeccable",
+    "revision": "cd12f8660e2dde57b9615c8a6b8ea674101f9cfc",
+    "upstream_path": ".codex/hooks.json",
+    "sha256": "599afc25c1d6d083e4d4e60e1617ab05f6c5ecd52be75473f3788063219aa174"
+  },
+  {
+    "path": "impeccable/.cursor/hooks.json",
+    "repository": "pbakaus/impeccable",
+    "revision": "cd12f8660e2dde57b9615c8a6b8ea674101f9cfc",
+    "upstream_path": ".cursor/hooks.json",
+    "sha256": "95b07450ad1ea0b7adc369587b06e52404945bbaa5d87f7491fac7ffd0e6e2ae"
+  },
+  {
+    "path": "impeccable/tests/oracle/golden/hook-edit-html-fresh.json",
+    "repository": "pbakaus/impeccable",
+    "revision": "cd12f8660e2dde57b9615c8a6b8ea674101f9cfc",
+    "upstream_path": "tests/oracle/golden/hook-edit-html-fresh.json",
+    "sha256": "a4e8ff9556867b72c21659fe1bad05782fb230a516eb7454627f0c499a9034c9"
+  },
+  {
+    "path": "impeccable/tests/oracle/golden/hook-edit-clean-tsx.json",
+    "repository": "pbakaus/impeccable",
+    "revision": "cd12f8660e2dde57b9615c8a6b8ea674101f9cfc",
+    "upstream_path": "tests/oracle/golden/hook-edit-clean-tsx.json",
+    "sha256": "b670063523e14a598a2fa06790b957b34940829c9a6811da180b4562022b2b6a"
+  },
+  {
+    "path": "impeccable/tests/oracle/workspaces/hook-project/src/page.html",
+    "repository": "pbakaus/impeccable",
+    "revision": "cd12f8660e2dde57b9615c8a6b8ea674101f9cfc",
+    "upstream_path": "tests/oracle/workspaces/hook-project/src/page.html",
+    "sha256": "87dd404ece41a2b26c2284e628128a4f37eb61fa17c5f80dc83c70517e69414b"
+  },
+  {
+    "path": "impeccable/tests/oracle/workspaces/hook-project/PRODUCT.md",
+    "repository": "pbakaus/impeccable",
+    "revision": "cd12f8660e2dde57b9615c8a6b8ea674101f9cfc",
+    "upstream_path": "tests/oracle/workspaces/hook-project/PRODUCT.md",
+    "sha256": "d7fe96b0800c81d3b6868def48cf06953c401f6f13784118fcdabec02bd77305"
+  },
+  {
+    "path": "gsd/LICENSE",
+    "repository": "gsd-build/get-shit-done",
+    "revision": "bdcaab2c752d9a33a1a1ca9acf3a3c81fb991815",
+    "upstream_path": "LICENSE",
+    "sha256": "af0d31f2550b534c14251e14020f3378cf17bd21af7660e7d7b1a2ead4fcdfb4"
+  },
+  {
+    "path": "gsd/hooks/gsd-prompt-guard.js",
+    "repository": "gsd-build/get-shit-done",
+    "revision": "bdcaab2c752d9a33a1a1ca9acf3a3c81fb991815",
+    "upstream_path": "hooks/gsd-prompt-guard.js",
+    "sha256": "1232e7648cabf529a074ec4515e0f843284d721cea24eb7304a024a40acaae0f"
+  },
+  {
+    "path": "pwf/LICENSE",
+    "repository": "OthmanAdi/planning-with-files",
+    "revision": "f67e2bb7294867c37bbea150de0bf81f2c3449d3",
+    "upstream_path": "LICENSE",
+    "sha256": "4f2e5ecfaa4e0833621cfe54c0bdc2f60f086c0925540d7bdc713517eafb3c84"
+  },
+  {
+    "path": "pwf/.cursor/hooks/post-tool-use.sh",
+    "repository": "OthmanAdi/planning-with-files",
+    "revision": "f67e2bb7294867c37bbea150de0bf81f2c3449d3",
+    "upstream_path": ".cursor/hooks/post-tool-use.sh",
+    "sha256": "1b2f3b0f1fe66c29131ffa782c6a0bf6bbbccf2af3648853f474291878e4bbb2"
+  },
+  {
+    "path": "pwf/.codex/hooks.json",
+    "repository": "OthmanAdi/planning-with-files",
+    "revision": "f67e2bb7294867c37bbea150de0bf81f2c3449d3",
+    "upstream_path": ".codex/hooks.json",
+    "sha256": "4133afe76858fc1cb4ecaa568bf39854c0219c592f911eb5648265fc6b64b2fc"
+  }
+]
