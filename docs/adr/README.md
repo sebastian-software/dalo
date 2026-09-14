@@ -15,3 +15,5 @@ context, the decision in present tense, and the consequences.
 [`docs/rfcs/`](../rfcs/) keeps the long-form proposals these records summarize.
 An RFC explains the reasoning and the rejected alternatives; the ADR is the
 short, current decision. Where they disagree, the ADR wins.
+
+- [Compose the README with mdtheme](0007-compose-readme-with-mdtheme.md)
