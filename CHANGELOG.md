@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.16.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.15.1...dalo-v0.16.0) (2026-09-14)
+
+
+### Features
+
+* **plugins:** specify portable packages and verify real hook contracts ([4edad05](https://github.com/sebastian-software/dalo/commit/4edad05ae207510deef4704f2c46103abb3f4f76))
+* **plugins:** validate portable packages and enforce hook contracts ([4fdef50](https://github.com/sebastian-software/dalo/commit/4fdef503716b16fb911767a252daca0e38b67adf))
+
+
+### Bug Fixes
+
+* use the publicly accessible Sebastian footer logo ([9ad7cb4](https://github.com/sebastian-software/dalo/commit/9ad7cb479136d372f2b86ca3a8f6a3083d24d09c))
+
 ## [0.15.1](https://github.com/sebastian-software/dalo/compare/dalo-v0.15.0...dalo-v0.15.1) (2026-09-09)
 
 
