@@ -88,6 +88,19 @@ cargo test --test cli -- source_refresh
 
 If a command can mutate user files, prefer `--dry-run` coverage and tests for the blocked/unsafe path as well as the success path.
 
+For concrete third-party hook contracts, run `cargo test --locked --test
+upstream_hooks`. The [upstream fixture guide](tests/fixtures/upstream-hooks/README.md)
+documents the pinned Impeccable, Get Shit Done, and Planning with Files cases,
+their compatibility limits, and the opt-in real Impeccable engine test. The
+ordinary suite stays offline and never runs an upstream installer.
+
+The [experimental package specification](docs/spec/README.md) is backed by
+`cargo test --locked --test package_spec`. Its read-only reference validator
+can check an author source without a store:
+`cargo run --locked --quiet --example validate_package -- examples/packages/source`.
+Keep the structural schema, semantic rules, and tested examples in step when
+changing a package contract; validation is not execution approval.
+
 ## Commit Messages
 
 Dalo uses release-please, so commit messages should follow Conventional Commits. Release notes and version bumps are inferred from commits on `main`.

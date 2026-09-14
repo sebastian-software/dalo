@@ -536,6 +536,7 @@ For manual archives, upgrades, shell completions, and removal, see the
 - [Getting started](docs/getting-started.md)
 - [Command reference](docs/reference.md)
 - [Agent integration](docs/agents.md)
+- [Portable Agent Packages — experimental specification](docs/spec/README.md)
 - [Dalo in CI](docs/ci.md)
 - [Troubleshooting and FAQ](docs/troubleshooting.md)
 - [Security policy](SECURITY.md)
