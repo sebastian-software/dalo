@@ -95,11 +95,15 @@ their compatibility limits, and the opt-in real Impeccable engine test. The
 ordinary suite stays offline and never runs an upstream installer.
 
 The [experimental package specification](docs/spec/README.md) is backed by
-`cargo test --locked --test package_spec`. Its read-only reference validator
-can check an author source without a store:
-`cargo run --locked --quiet --example validate_package -- examples/packages/source`.
+`cargo test --locked --test package_spec --test package_validate_cli --test package_lifecycle`.
+The cases compare the real JSON Schema validator and production parser, exercise
+the store-independent author command, and run complete package lifecycles across
+both provider adapters. Check an author source with
+`cargo run --locked -- plugin validate examples/packages/source --json`.
 Keep the structural schema, semantic rules, and tested examples in step when
-changing a package contract; validation is not execution approval.
+changing a package contract; validation is not execution approval. The lifecycle
+tests run real Dalo and hook processes with fake provider-version probes; they
+do not launch a Claude or Codex model session.
 
 ## Commit Messages
 

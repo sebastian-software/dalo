@@ -28,6 +28,15 @@ fn source(document: &str) -> tempfile::TempDir {
     temp
 }
 
+fn fixture_source(document: &str) -> tempfile::TempDir {
+    let temp = tempfile::tempdir().unwrap();
+    let package = temp.path().join("plugins/fixture");
+    fs::create_dir_all(&package).unwrap();
+    fs::write(package.join("PLUGIN.toml"), document).unwrap();
+    fs::write(package.join("handler.mjs"), "process.exit(0);\n").unwrap();
+    temp
+}
+
 #[test]
 fn complete_author_example_has_valid_local_contracts_for_both_providers() {
     let inventory = plugin::scan_source_plugins("example", &example_root());
@@ -162,5 +171,198 @@ fn validation_does_not_resolve_members_or_create_runtime_state() {
     assert_eq!(
         fs::read(temp.path().join("plugins/design-review/context.mjs")).unwrap(),
         before
+    );
+}
+
+#[test]
+fn schema_fixtures_use_a_real_json_schema_2020_12_engine() {
+    let schema: serde_json::Value =
+        serde_json::from_str(include_str!("../docs/spec/plugin-v1.schema.json")).unwrap();
+    let validator = jsonschema::validator_for(&schema).expect("schema must compile");
+    let fixtures = [
+        ("valid", true, true),
+        ("unknown-field", false, false),
+        ("unknown-tool-field", false, false),
+        ("missing-description", false, false),
+        ("wrong-tool-version", false, false),
+        ("semantic-missing-tool", true, false),
+        ("bad-binding", true, false),
+    ];
+    for (name, schema_valid, parser_valid) in fixtures {
+        let document = fs::read_to_string(format!(
+            "{}/tests/fixtures/package-schema/{name}.toml",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .unwrap();
+        let value: toml::Value = toml::from_str(&document).unwrap();
+        let value = serde_json::to_value(value).unwrap();
+        assert_eq!(
+            validator.is_valid(&value),
+            schema_valid,
+            "schema fixture {name}"
+        );
+        let temp = fixture_source(&document);
+        let inventory = plugin::scan_source_plugins("fixture", temp.path());
+        assert_eq!(
+            !inventory.plugins.is_empty(),
+            parser_valid,
+            "production parser fixture {name}: {:?}",
+            inventory.warnings
+        );
+    }
+}
+
+#[test]
+fn author_validation_reports_reference_scope_and_external_availability() {
+    let local =
+        dalo::package_validation::validate_with_source_id("example", &example_root()).unwrap();
+    assert!(local.valid);
+    assert_eq!(local.packages[0].source_id, "example");
+    assert!(
+        local
+            .members
+            .iter()
+            .all(|member| member.status == "resolved")
+    );
+
+    let external_document = manifest().replace(
+        "ref = \"skill:design-review\"\nrequirement = \"required\"",
+        "ref = \"skill:other:design-review\"\nrequirement = \"required\"",
+    );
+    let temp = source(&external_document);
+    let report = dalo::package_validation::validate(temp.path()).unwrap();
+    assert!(!report.valid);
+    assert_eq!(report.members[0].status, "unavailable_external");
+    assert!(report.members[0].detail.contains("without a store"));
+
+    let optional_document = external_document.replace(
+        "ref = \"skill:other:design-review\"\nrequirement = \"required\"",
+        "ref = \"skill:other:design-review\"\nrequirement = \"optional\"",
+    ) + "\n[[plugin.requires]]\nref = \"plugin:other:optional\"\nrequirement = \"optional\"\n";
+    let optional_temp = source(&optional_document);
+    let optional_report = dalo::package_validation::validate(optional_temp.path()).unwrap();
+    assert!(optional_report.valid);
+    assert_eq!(optional_report.members[0].status, "unavailable_external");
+    assert_eq!(
+        optional_report.dependencies[0].status,
+        "unavailable_external"
+    );
+}
+
+#[test]
+fn required_dependency_cycles_are_reported_by_the_production_graph_resolver() {
+    let temp = tempfile::tempdir().unwrap();
+    for (name, dependency) in [("alpha", "beta"), ("beta", "alpha")] {
+        let package = temp.path().join(format!("plugins/{name}"));
+        fs::create_dir_all(&package).unwrap();
+        fs::write(
+            package.join("PLUGIN.toml"),
+            format!(
+                "schema_version = 1\n[plugin]\nname = \"{name}\"\ndescription = \"cycle\"\n\n[[plugin.requires]]\nref = \"plugin:{dependency}\"\nrequirement = \"required\"\n"
+            ),
+        )
+        .unwrap();
+    }
+    let report = dalo::package_validation::validate(temp.path()).unwrap();
+    assert!(!report.valid);
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "required_dependency_cycle")
+    );
+}
+
+#[test]
+fn malformed_or_non_markdown_instructions_do_not_resolve() {
+    let temp = tempfile::tempdir().unwrap();
+    let package = temp.path().join("plugins/example");
+    fs::create_dir_all(&package).unwrap();
+    fs::write(
+        package.join("PLUGIN.toml"),
+        "schema_version = 1\n[plugin]\nname = \"example\"\ndescription = \"instructions\"\n\n[[plugin.members]]\nref = \"instruction:style\"\nrequirement = \"recommended\"\n",
+    )
+    .unwrap();
+    fs::create_dir_all(temp.path().join("instructions")).unwrap();
+    fs::write(
+        temp.path().join("instructions/style.txt"),
+        "wrong extension",
+    )
+    .unwrap();
+    fs::write(temp.path().join("instructions/style.md"), [0xff, 0xfe]).unwrap();
+    let report = dalo::package_validation::validate(temp.path()).unwrap();
+    assert_eq!(report.members[0].status, "missing");
+    assert!(!report.diagnostics.iter().any(|diagnostic| {
+        diagnostic
+            .message
+            .contains("resolved in the supplied source tree")
+    }));
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_instruction_roots_do_not_resolve_references() {
+    let temp = tempfile::tempdir().unwrap();
+    let package = temp.path().join("plugins/example");
+    let real_instructions = temp.path().join("real-instructions");
+    fs::create_dir_all(&package).unwrap();
+    fs::create_dir_all(&real_instructions).unwrap();
+    fs::write(real_instructions.join("style.md"), "Use the house style.").unwrap();
+    fs::write(
+        package.join("PLUGIN.toml"),
+        "schema_version = 1\n[plugin]\nname = \"example\"\ndescription = \"instructions\"\n\n[[plugin.members]]\nref = \"instruction:style\"\nrequirement = \"recommended\"\n",
+    )
+    .unwrap();
+    std::os::unix::fs::symlink(&real_instructions, temp.path().join("instructions")).unwrap();
+    let report = dalo::package_validation::validate(temp.path()).unwrap();
+    assert_eq!(report.members[0].status, "missing");
+}
+
+#[test]
+fn oversized_instruction_files_do_not_resolve_references() {
+    let temp = tempfile::tempdir().unwrap();
+    let package = temp.path().join("plugins/example");
+    fs::create_dir_all(&package).unwrap();
+    fs::write(
+        package.join("PLUGIN.toml"),
+        "schema_version = 1\n[plugin]\nname = \"example\"\ndescription = \"instructions\"\n\n[[plugin.members]]\nref = \"instruction:style\"\nrequirement = \"recommended\"\n",
+    )
+    .unwrap();
+    fs::create_dir_all(temp.path().join("instructions")).unwrap();
+    fs::write(
+        temp.path().join("instructions/style.md"),
+        vec![b'x'; 1024 * 1024 + 1],
+    )
+    .unwrap();
+    let report = dalo::package_validation::validate(temp.path()).unwrap();
+    assert_eq!(report.members[0].status, "missing");
+}
+
+#[test]
+fn ambiguous_slot_and_stable_id_references_are_reported() {
+    let temp = tempfile::tempdir().unwrap();
+    let package = temp.path().join("plugins/example");
+    fs::create_dir_all(&package).unwrap();
+    fs::write(
+        package.join("PLUGIN.toml"),
+        "schema_version = 1\n[plugin]\nname = \"example\"\ndescription = \"ambiguous\"\n\n[[plugin.members]]\nref = \"skill:beta\"\nrequirement = \"required\"\n",
+    )
+    .unwrap();
+    for (slot, id) in [("alpha", "beta"), ("beta", "other")] {
+        let skill = temp.path().join(format!("skills/{slot}"));
+        fs::create_dir_all(&skill).unwrap();
+        fs::write(
+            skill.join("SKILL.md"),
+            format!("---\nname: {slot}\nid: {id}\ndescription: Fixture\n---\nBody\n"),
+        )
+        .unwrap();
+    }
+    let report = dalo::package_validation::validate(temp.path()).unwrap();
+    assert!(!report.valid);
+    assert_eq!(report.members[0].status, "ambiguous");
+    assert!(
+        report.members[0]
+            .detail
+            .contains("multiple local components")
     );
 }

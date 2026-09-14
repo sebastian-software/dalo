@@ -1,8 +1,9 @@
 # Dalo Site
 
 `dalo.sh` is hand-written HTML, CSS, and JavaScript: `index.html` is the
-landing page, `install.md` and `install.sh` are served as-is, and `docs/`
-contains the rendered copies of the repository's `docs/*.md`.
+landing page, `install.md` and `install.sh` are served as-is, `docs/` contains
+the rendered copies of the repository's `docs/*.md`, and `spec/` contains the
+versioned Portable Agent Packages pages plus its public JSON Schema.
 
 ## Build
 
@@ -14,7 +15,8 @@ node site/build.mjs --check   # fail if the checked-in output is stale
 
 `build.mjs` does three things:
 
-1. renders `docs/*.md` into `site/docs/*.html` with the site's own styles,
+1. renders `docs/*.md` and the published `docs/spec/*.md` sources into
+   `site/docs/*.html` and `site/spec/0.1/*.html` with the site's own styles,
 2. stamps the version from `Cargo.toml` into the version slots of
    `index.html` (`<span data-dalo-version>` and the JSON-LD `softwareVersion`),
    which release-please also keeps current through its `extra-files` entry,
@@ -23,6 +25,9 @@ node site/build.mjs --check   # fail if the checked-in output is stale
 
 The rendered documentation and the stamped version are committed, so the site
 stays deployable from a plain checkout and `--check` can prove they are current.
+The current specification is published at `/spec/0.1/`; `/spec/` is its static
+landing page. The versioned schema is downloadable at
+`/spec/0.1/plugin-v1.schema.json`.
 `site/build/` is generated and ignored.
 
 Run the build after changing `docs/*.md`, `index.html`, or the version.

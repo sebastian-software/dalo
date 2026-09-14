@@ -134,6 +134,33 @@ grep -Fq '<a href="/docs/reference.html">Reference</a>' "$root/site/index.html"
 refute 'the site still links its documentation as repository blobs' \
   grep -q 'blob/main/docs/' "$root/site/index.html"
 
+# The experimental package specification has an explicit version route and a
+# landing page. Its renderer also needs source-relative links: the nested spec
+# source links into docs/adr, docs/rfcs, and tests without dropping path levels.
+test -f "$root/site/spec/index.html"
+test -f "$root/site/spec/0.1/index.html"
+test -f "$root/site/spec/0.1/compatibility.html"
+test -f "$root/site/spec/0.1/plugin-v1.schema.json"
+cmp "$root/docs/spec/plugin-v1.schema.json" "$root/site/spec/0.1/plugin-v1.schema.json"
+grep -Fq 'https://dalo.sh/spec/' "$root/site/sitemap.xml"
+grep -Fq 'https://dalo.sh/spec/0.1/' "$root/site/sitemap.xml"
+grep -Fq 'https://dalo.sh/spec/0.1/compatibility.html' "$root/site/sitemap.xml"
+grep -Fq 'https://dalo.sh/spec/0.1/plugin-v1.schema.json' "$root/site/sitemap.xml"
+grep -Fq 'href="/spec/0.1/"' "$root/site/spec/index.html"
+grep -Fq 'href="/spec/0.1/compatibility.html"' "$root/site/spec/index.html"
+grep -Fq 'href="/spec/0.1/plugin-v1.schema.json"' "$root/site/spec/0.1/index.html"
+grep -Fq 'docs/adr/0006-passive-portable-plugins.md' "$root/site/spec/0.1/index.html"
+grep -Fq 'docs/rfcs/0005-portable-plugins-and-agent-stacks.md' "$root/site/spec/0.1/index.html"
+grep -Fq 'tests/fixtures/upstream-hooks/README.md' "$root/site/spec/0.1/index.html"
+grep -Fq 'href="/docs/reference.html"' "$root/site/spec/0.1/index.html"
+grep -Fq 'href="/spec/0.1/"' "$root/site/spec/0.1/compatibility.html"
+grep -Fq 'href="/spec/0.1/plugin-v1.schema.json"' "$root/site/spec/0.1/compatibility.html"
+grep -Fq 'href="/spec/"' "$root/site/index.html"
+grep -Fq '>Product</a>' "$root/site/index.html"
+grep -Fq '>Docs</a>' "$root/site/index.html"
+grep -Fq '>Spec</a>' "$root/site/index.html"
+grep -Fq '>GitHub</a>' "$root/site/index.html"
+
 # The checked-in landing page shows a real version, never a deploy placeholder.
 refute 'site/index.html still carries the deploy-time version placeholder' \
   grep -q '__DALO_VERSION__' "$root/site/index.html"

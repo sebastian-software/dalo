@@ -1,0 +1,15 @@
+schema_version = 1
+
+[plugin]
+name = "fixture"
+description = "An invalid tool fixture"
+
+[[tool]]
+schema_version = 1
+id = "handler"
+entry = "handler.mjs"
+runtime = "node"
+argv = []
+cwd = "tool_root"
+availability = "required"
+unexpected = true

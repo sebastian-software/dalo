@@ -4,8 +4,7 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use dalo::plugin;
-use serde_json::json;
+use dalo::package_validation;
 
 fn main() -> ExitCode {
     let mut args = std::env::args_os().skip(1);
@@ -22,23 +21,18 @@ fn main() -> ExitCode {
         eprintln!("source root must be an existing directory");
         return ExitCode::from(2);
     }
-    let inventory = plugin::scan_source_plugins("validation", &root);
-    let valid = !inventory.plugins.is_empty() && inventory.warnings.is_empty();
-    println!(
-        "{}",
-        json!({
-            "profile": "portable-agent-packages/0.1",
-            "valid": valid,
-            "packages": inventory.plugins,
-            "warnings": inventory.warnings,
-            "checks": "package structure, local tool files, hook contracts and bindings",
-            "not_checked": ["member/dependency resolution", "provider installation",
-                "runtime availability", "handler behavior", "trust or activation"],
-        })
-    );
-    if valid {
-        ExitCode::SUCCESS
-    } else {
-        ExitCode::FAILURE
+    match package_validation::validate(&root) {
+        Ok(report) => {
+            println!("{}", serde_json::to_string_pretty(&report).unwrap());
+            if report.valid {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
+        }
+        Err(error) => {
+            eprintln!("validation failed: {error}");
+            ExitCode::FAILURE
+        }
     }
 }

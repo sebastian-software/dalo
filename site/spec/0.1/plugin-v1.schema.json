@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Portable Agent Packages draft 0.1: PLUGIN.toml schema 1",
+  "description": "Structural schema for a JSON-compatible decoded TOML manifest. Package containment, reference resolution, hook effect compatibility and input bindings also require semantic validation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "plugin"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "plugin": {"$ref": "#/$defs/plugin"},
+    "tool": {"type": "array", "maxItems": 1024, "items": {"$ref": "#/$defs/tool"}},
+    "hook": {"type": "array", "maxItems": 1024, "items": {"$ref": "#/$defs/hook"}},
+    "providers": {"type": "object", "description": "Opaque, inert provider overlays; structural acceptance does not imply provider support."}
+  },
+  "$defs": {
+    "name": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "hookName": {"type": "string", "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$", "maxLength": 128},
+    "strings": {"type": "array", "maxItems": 1024, "items": {"type": "string"}},
+    "plugin": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "description"],
+      "properties": {
+        "name": {"$ref": "#/$defs/name"},
+        "id": {"type": "string", "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$", "maxLength": 128},
+        "description": {"type": "string", "pattern": "\\S"},
+        "version": {"type": "string"},
+        "members": {"type": "array", "maxItems": 1024, "items": {"$ref": "#/$defs/member"}},
+        "requires": {"type": "array", "maxItems": 1024, "items": {"$ref": "#/$defs/dependency"}}
+      }
+    },
+    "member": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ref", "requirement"],
+      "properties": {
+        "ref": {"type": "string", "pattern": "^(skill|agent|instruction):"},
+        "requirement": {"enum": ["required", "optional", "recommended"]},
+        "fallback": {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "skill"],
+          "properties": {"kind": {"const": "inline"}, "skill": {"type": "string", "pattern": "^skill:"}}
+        }
+      }
+    },
+    "dependency": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ref", "requirement"],
+      "properties": {
+        "ref": {"type": "string", "pattern": "^plugin:"},
+        "requirement": {"enum": ["required", "optional"]}
+      }
+    },
+    "input": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": {"type": "string"},
+        "type": {"enum": ["string", "path", "integer", "boolean"]},
+        "required": {"type": "boolean", "default": true}
+      }
+    },
+    "tool": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "id", "entry", "runtime", "argv", "cwd", "availability"],
+      "properties": {
+        "schema_version": {"const": 1},
+        "id": {"$ref": "#/$defs/name"},
+        "entry": {"type": "string", "minLength": 1},
+        "runtime": {"enum": ["executable", "python", "node"]},
+        "runtime_version": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9.+=<> -]+$"},
+        "platforms": {"type": "array", "maxItems": 1024, "items": {"enum": ["macos", "linux"]}},
+        "inputs": {"type": "array", "maxItems": 1024, "items": {"$ref": "#/$defs/input"}},
+        "argv": {"$ref": "#/$defs/strings"},
+        "files": {"$ref": "#/$defs/strings"},
+        "cwd": {"const": "tool_root"},
+        "env": {"$ref": "#/$defs/strings"},
+        "capabilities": {"type": "array", "maxItems": 1024, "items": {"enum": ["filesystem_read", "filesystem_write", "subprocess", "network"]}},
+        "availability": {"enum": ["required", "optional"]}
+      }
+    },
+    "binding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["input", "field"],
+      "properties": {
+        "input": {"type": "string"},
+        "field": {"enum": ["session.id", "session.cwd", "session.permission_mode", "actor.kind", "actor.id", "transcript.path", "session.end_reason", "prompt.text", "tool.call_id", "tool.name", "workflow.already_continued", "workflow.last_message"]}
+      }
+    },
+    "hook": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "id", "tool", "subject", "phase", "effect", "requirement", "timeout_ms", "failure_policy", "retry", "error_visibility", "blocking_scope"],
+      "properties": {
+        "schema_version": {"const": 1},
+        "id": {"$ref": "#/$defs/hookName"},
+        "tool": {"$ref": "#/$defs/hookName"},
+        "subject": {"enum": ["session", "user_prompt", "tool_call", "workflow"]},
+        "phase": {"enum": ["before", "after", "end", "completion_attempt"]},
+        "effect": {"enum": ["observe", "add_context", "allow_deny", "rewrite_input", "replace_output", "continue_workflow"]},
+        "requirement": {"enum": ["required", "optional"]},
+        "timeout_ms": {"type": "integer", "minimum": 100, "maximum": 120000},
+        "failure_policy": {"enum": ["fail_open", "fail_closed", "report"]},
+        "retry": {"const": "never"},
+        "error_visibility": {"enum": ["user", "model_and_user"]},
+        "matcher": {
+          "type": "object", "additionalProperties": false,
+          "properties": {"tool_names": {"type": "array", "maxItems": 256, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 512}}}
+        },
+        "bindings": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/binding"}},
+        "blocking_scope": {"const": "matched_event"},
+        "fallback": {"const": "omit"}
+      }
+    }
+  }
+}

@@ -1,0 +1,6 @@
+schema_version = 1
+
+[plugin]
+name = "fixture"
+description = "An invalid structural fixture"
+unexpected = true

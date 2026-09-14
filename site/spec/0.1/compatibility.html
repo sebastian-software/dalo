@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Portable Agent Packages — compatibility · Dalo specification</title>
+  <meta name="description" content="Evidence-backed provider coverage and the limits of the draft 0.1 reference implementation." />
+  <link rel="canonical" href="https://dalo.sh/spec/0.1/compatibility.html" />
+  <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#15171c" media="(prefers-color-scheme: dark)" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Dalo" />
+  <meta property="og:url" content="https://dalo.sh/spec/0.1/compatibility.html" />
+  <meta property="og:title" content="Portable Agent Packages — compatibility · Dalo specification" />
+  <meta property="og:description" content="Evidence-backed provider coverage and the limits of the draft 0.1 reference implementation." />
+  <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
+  <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
+  <link rel="preload" href="/assets/fonts/hanken-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/assets/fonts/geistmono-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/docs.css" />
+</head>
+<body class="doc-page">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header" data-scope="dark">
+  <div class="wrap header-inner">
+    <a class="brand" href="/" aria-label="Dalo home">
+      <svg class="brand-mark" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true" focusable="false">
+        <rect x="1.25" y="1.25" width="29.5" height="29.5" rx="8" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <circle cx="9" cy="9.5" r="2" fill="currentColor" />
+        <circle cx="9" cy="16" r="2" fill="currentColor" />
+        <circle cx="9" cy="22.5" r="2" fill="currentColor" />
+        <path d="M11 9.5 H17 Q22 9.5 22 16 Q22 22.5 17 22.5 H11 M11 16 H22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" />
+        <circle cx="22.5" cy="16" r="2.6" fill="var(--accent)" />
+      </svg>
+      <span class="brand-word">dalo</span>
+      <span class="brand-section">spec</span>
+    </a>
+    <nav class="site-nav" aria-label="Primary">
+      <a href="/">Product</a>
+      <a href="/docs/">Docs</a>
+      <a href="/spec/">Spec</a>
+      <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+    </nav>
+    <details class="mobile-menu">
+      <summary aria-label="Open navigation">
+        <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>
+        <span class="sr-only">Menu</span>
+      </summary>
+      <nav class="mobile-nav" aria-label="Mobile">
+        <a href="/">Product</a>
+        <a href="/docs/">Docs</a>
+        <a href="/spec/">Spec</a>
+        <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+      </nav>
+    </details>
+    <div class="header-actions">
+      <a class="ghost-btn" href="https://github.com/sebastian-software/dalo" rel="noopener">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="doc-shell wrap">
+  <nav class="doc-nav" aria-label="Specification">
+    <p class="footer-h">Specification</p>
+        <a href="/spec/0.1/">Specification</a>
+        <a href="/spec/0.1/compatibility.html" aria-current="page">Compatibility</a>
+  </nav>
+  <article class="doc-body">
+<h1 id="portable-agent-packages-compatibility">Portable Agent Packages — compatibility</h1>
+<p>This page records the evidence behind the draft 0.1 provider mappings. It is
+an evidence matrix for the Dalo reference implementation, not a promise that
+all agents interpret the same Markdown, event payload, or effect in the same
+way.</p>
+<p>The pinned adapter baselines are Claude Code <strong>2.1.233</strong> and Codex
+<strong>0.147.0</strong>. A later provider version needs fresh evidence before a consumer
+should claim compatibility. The draft adds no hook events, runtime downloads,
+or MCP integration promises.</p>
+<h2 id="evidence-matrix"><a class="doc-anchor" href="#evidence-matrix">Evidence matrix</a></h2>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Provider or fixture</th>
+<th>Supported package behavior</th>
+<th>Evidence</th>
+<th>Boundary and status</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Claude Code 2.1.233</td>
+<td><code>session/end</code> observation; <code>user_prompt/before</code> context or enforcement; tool-call before and after mappings; completion control</td>
+<td><a href="https://github.com/sebastian-software/dalo/blob/main/tests/upstream_hooks.rs" rel="noopener">Pinned adapter contract and upstream hook tests</a>; Impeccable recorded/context coverage, plus an optional <a href="https://github.com/sebastian-software/dalo/blob/main/tests/upstream_hooks.rs" rel="noopener">real engine test</a></td>
+<td>Conditional on the named event, effect, and native payload adapter. A recorded run proves the fixture path, not every Claude host configuration.</td>
+</tr>
+<tr>
+<td>Codex 0.147.0</td>
+<td><code>session/end</code> observation; <code>user_prompt/before</code> context or enforcement; tool-call before and after mappings; completion control</td>
+<td><a href="https://github.com/sebastian-software/dalo/blob/main/tests/upstream_hooks.rs" rel="noopener">Pinned adapter contract and dispatch tests</a> using the Codex baseline probe</td>
+<td>Conditional on the named event, effect, and native payload adapter. No claim of equivalent prompt, tool, or permission semantics with Claude.</td>
+</tr>
+<tr>
+<td>Impeccable fixture</td>
+<td>Context and recorded hook behavior; optional real engine execution when explicitly enabled</td>
+<td><a href="https://github.com/sebastian-software/dalo/blob/main/tests/upstream_hooks.rs" rel="noopener">Recorded-output tests</a> and the <a href="https://github.com/sebastian-software/dalo/blob/main/tests/fixtures/upstream-hooks/README.md" rel="noopener">upstream fixture guide</a></td>
+<td>The recorded/context path is the default evidence. Engine availability and output quality are separate from package validation.</td>
+</tr>
+<tr>
+<td>Get Shit Done fixture</td>
+<td>Live Node prompt guard on a Claude <code>PreToolUse</code> Bash payload</td>
+<td><a href="https://github.com/sebastian-software/dalo/blob/main/tests/upstream_hooks.rs" rel="noopener">Original guard test</a> invokes <code>gsd-prompt-guard.js</code> against suspicious and clean planning text</td>
+<td>Covers the named guard and handler inputs only; it does not certify GSD&#39;s installer, other hooks, Codex <code>apply_patch</code> payloads, or other versions.</td>
+</tr>
+<tr>
+<td>Planning with Files fixture</td>
+<td>Live Cursor Bash reminder adapted to portable context and checked through Dalo&#39;s Codex output path</td>
+<td><a href="https://github.com/sebastian-software/dalo/blob/main/tests/upstream_hooks.rs" rel="noopener">Original reminder test</a> invokes the handler with and without <code>task_plan.md</code></td>
+<td>Covers the reminder adapter and supplied project context; it does not certify Cursor&#39;s hook protocol or the project&#39;s other wrappers.</td>
+</tr>
+<tr>
+<td>Dalo author validator</td>
+<td>Package contracts, local references and dependency cycles, plus separate provider hook capability reports</td>
+<td><a href="https://github.com/sebastian-software/dalo/blob/main/tests/package_spec.rs" rel="noopener">Schema/parser conformance tests</a>, <a href="https://github.com/sebastian-software/dalo/blob/main/tests/package_validate_cli.rs" rel="noopener">CLI tests</a>, and the <a href="https://github.com/sebastian-software/dalo/blob/main/src/package_validation.rs" rel="noopener">validator</a></td>
+<td><code>dalo plugin validate</code> never executes tools or authorizes activation. External sources and runtime availability remain outside this source-only check.</td>
+</tr>
+<tr>
+<td>Dalo package lifecycle</td>
+<td>Selection, review, trust, staging, hook dispatch, update, revoke, removal, and user-file preservation</td>
+<td><a href="https://github.com/sebastian-software/dalo/blob/main/tests/package_lifecycle.rs" rel="noopener">Package lifecycle tests</a> exercise complete flows with fake provider probes and real Dalo/hook subprocesses</td>
+<td>Both provider adapters are tested, including separately enabled project <code>AGENTS.md</code> and <code>CLAUDE.md</code> blocks. This is Dalo lifecycle evidence, not provider execution certification.</td>
+</tr>
+</tbody></table></div>
+<h2 id="effect-matrix"><a class="doc-anchor" href="#effect-matrix">Effect matrix</a></h2>
+<p>The provider column describes the reference mapping at the pinned baseline. A
+checkmark means the adapter has a bounded native projection; “conditional” also
+requires the provider event and payload to match. A dash is unsupported for
+that provider in this draft and must block a required hook.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Portable effect</th>
+<th>Claude Code 2.1.233</th>
+<th>Codex 0.147.0</th>
+<th>Evidence and limit</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>observe</code></td>
+<td>✓ conditional</td>
+<td>✓ conditional</td>
+<td>Session-end observation requires user-only failure visibility. Claude completion observation also requires user-only failures to remain nonblocking.</td>
+</tr>
+<tr>
+<td><code>add_context</code></td>
+<td>✓ conditional</td>
+<td>✓ conditional</td>
+<td><a href="https://github.com/sebastian-software/dalo/blob/main/tests/upstream_hooks.rs" rel="noopener">Impeccable recordings</a> compare the complete native context envelope.</td>
+</tr>
+<tr>
+<td><code>allow_deny</code></td>
+<td>✓ conditional for supported pre-action events</td>
+<td>✓ conditional for supported pre-action events</td>
+<td>Native permission decisions need event-specific payload adaptation; the Impeccable adapter rejects control output rather than downgrading it to advice.</td>
+</tr>
+<tr>
+<td><code>rewrite_input</code></td>
+<td>✓ without changing the normal permission decision</td>
+<td>✓ with the required native <code>allow</code> pairing</td>
+<td>Exact input shapes remain provider-specific; <a href="https://github.com/sebastian-software/dalo/blob/main/src/hook_dispatch.rs" rel="noopener">dispatcher tests</a> verify the distinct envelopes.</td>
+</tr>
+<tr>
+<td><code>replace_output</code></td>
+<td>✓ on <code>PostToolUse</code> only</td>
+<td>—</td>
+<td>Claude&#39;s <code>PostToolUseFailure</code> has no replacement output. A required Codex hook using this effect is unsupported.</td>
+</tr>
+<tr>
+<td><code>continue_workflow</code></td>
+<td>✓ conditional</td>
+<td>✓ conditional</td>
+<td>Completion control is bounded to the named event; it does not promise equivalent stop behavior.</td>
+</tr>
+</tbody></table></div>
+<p>Raw native event JSON is passed to handlers and is <strong>not normalized by this
+draft</strong>. A portable handler that inspects it needs a provider-specific adapter
+and payload tests. The <a href="https://github.com/sebastian-software/dalo/blob/main/tests/upstream_hooks.rs" rel="noopener">context adapter tests</a>
+cover successful context translation and reject wrong-event or control-shaped
+outputs; they do not certify every effect or native payload.</p>
+<p>The <a href="https://github.com/sebastian-software/dalo/blob/main/src/hook_dispatch.rs" rel="noopener">dispatcher tests</a> cover failure policies,
+audiences, incompatible output, and composition conflicts. User-only failures
+produce native user diagnostics; model-and-user failures additionally use the
+event&#39;s model channel. Session-end model delivery is unsupported on both
+providers. On Claude, Stop feedback resumes the turn, so nonblocking failure
+policies require user-only visibility. These limitations are checked before
+projection and again at dispatch; unsupported required hooks cannot activate.
+See the primary <a href="https://code.claude.com/docs/en/hooks" rel="noopener">Claude hook reference</a>
+and <a href="https://developers.openai.com/codex/hooks/" rel="noopener">Codex hook reference</a> for native
+channels. The test suite verifies Dalo&#39;s responses; it does not run complete
+native model sessions.</p>
+<h2 id="reading-the-matrix"><a class="doc-anchor" href="#reading-the-matrix">Reading the matrix</a></h2>
+<p>“Supported” means the reference implementation has a bounded mapping and
+evidence for the named behavior. “Conditional” means the consumer still needs
+the provider event, payload shape, runtime, permissions, and declared inputs
+to line up. “Unsupported” means a required behavior must block activation; an
+advisory fallback cannot silently replace it.</p>
+<p>The portable result shapes and native response adaptations remain separate
+contracts. In particular, a native <code>hookSpecificOutput</code> value is not portable
+stdout, and a post-action effect cannot undo an action that already happened.
+Provider payload details require provider-specific adapter tests; the package
+schema does not normalize them.</p>
+<p>See the <a href="https://github.com/sebastian-software/dalo/blob/main/tests/fixtures/upstream-hooks/README.md" rel="noopener">upstream integration guide</a>
+for fixture commands, recordings, and the opt-in engine boundary. The
+<a href="/spec/0.1/">versioned specification</a> defines the contract and the
+<a href="/spec/0.1/plugin-v1.schema.json">downloadable JSON Schema</a> covers structural fields;
+the validator still owns containment, binding, and semantic checks.</p>
+<p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/spec/compatibility.md" rel="noopener">docs/spec/compatibility.md</a> · <a href="/spec/0.1/plugin-v1.schema.json">Download JSON Schema</a></p>
+  </article>
+</main>
+
+<footer class="site-footer doc-footer" data-scope="dark">
+  <div class="wrap footer-base">
+    <span>© 2026 <a href="https://sebastian-software.de" rel="noopener">Sebastian Software</a> · Dalo</span>
+    <span><a href="/">dalo.sh</a> · <a href="/spec/">Spec</a> · <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a> · <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a></span>
+  </div>
+</footer>
+</body>
+</html>

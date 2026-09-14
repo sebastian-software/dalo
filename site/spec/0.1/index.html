@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Portable Agent Packages — draft 0.1 · Dalo specification</title>
+  <meta name="description" content="Portable Agent Packages draft 0.1: the passive package, tool, and hook contract." />
+  <link rel="canonical" href="https://dalo.sh/spec/0.1/" />
+  <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#15171c" media="(prefers-color-scheme: dark)" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Dalo" />
+  <meta property="og:url" content="https://dalo.sh/spec/0.1/" />
+  <meta property="og:title" content="Portable Agent Packages — draft 0.1 · Dalo specification" />
+  <meta property="og:description" content="Portable Agent Packages draft 0.1: the passive package, tool, and hook contract." />
+  <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
+  <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
+  <link rel="preload" href="/assets/fonts/hanken-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/assets/fonts/geistmono-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/docs.css" />
+</head>
+<body class="doc-page">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header" data-scope="dark">
+  <div class="wrap header-inner">
+    <a class="brand" href="/" aria-label="Dalo home">
+      <svg class="brand-mark" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true" focusable="false">
+        <rect x="1.25" y="1.25" width="29.5" height="29.5" rx="8" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <circle cx="9" cy="9.5" r="2" fill="currentColor" />
+        <circle cx="9" cy="16" r="2" fill="currentColor" />
+        <circle cx="9" cy="22.5" r="2" fill="currentColor" />
+        <path d="M11 9.5 H17 Q22 9.5 22 16 Q22 22.5 17 22.5 H11 M11 16 H22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" />
+        <circle cx="22.5" cy="16" r="2.6" fill="var(--accent)" />
+      </svg>
+      <span class="brand-word">dalo</span>
+      <span class="brand-section">spec</span>
+    </a>
+    <nav class="site-nav" aria-label="Primary">
+      <a href="/">Product</a>
+      <a href="/docs/">Docs</a>
+      <a href="/spec/">Spec</a>
+      <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+    </nav>
+    <details class="mobile-menu">
+      <summary aria-label="Open navigation">
+        <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>
+        <span class="sr-only">Menu</span>
+      </summary>
+      <nav class="mobile-nav" aria-label="Mobile">
+        <a href="/">Product</a>
+        <a href="/docs/">Docs</a>
+        <a href="/spec/">Spec</a>
+        <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+      </nav>
+    </details>
+    <div class="header-actions">
+      <a class="ghost-btn" href="https://github.com/sebastian-software/dalo" rel="noopener">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="doc-shell wrap">
+  <nav class="doc-nav" aria-label="Specification">
+    <p class="footer-h">Specification</p>
+        <a href="/spec/0.1/" aria-current="page">Specification</a>
+        <a href="/spec/0.1/compatibility.html">Compatibility</a>
+  </nav>
+  <article class="doc-body">
+<h1 id="portable-agent-packages-draft-01">Portable Agent Packages — draft 0.1</h1>
+<p>Status: experimental author-facing profile, maintained in the Dalo repository.
+This is a proposal for interoperability, not an adopted ecosystem standard.
+It documents the existing <code>PLUGIN.toml</code> schema 1, tool descriptor 1, and hook
+descriptor 1. The draft number does not change those persisted versions.</p>
+<p>An author describes which skills, standing instructions, local tools, and
+event handlers belong together. A consumer validates the description and
+maps supported behavior to an agent harness. Package selection alone never
+authorizes code execution or installation of standing instructions.</p>
+<p>The specification is intended to be implementable without Dalo&#39;s CLI, store
+layout, source-priority rules, approval ledger, or internal contract hashes.
+Dalo is the first reference implementation. Its accepted architecture remains
+in <a href="https://github.com/sebastian-software/dalo/blob/main/docs/adr/0006-passive-portable-plugins.md" rel="noopener">ADR 0006</a>, with detailed semantics
+and implementation history in <a href="https://github.com/sebastian-software/dalo/blob/main/docs/rfcs/0005-portable-plugins-and-agent-stacks.md" rel="noopener">RFC 0005</a>.</p>
+<h2 id="start-with-a-complete-example"><a class="doc-anchor" href="#start-with-a-complete-example">Start with a complete example</a></h2>
+<p>The <a href="https://github.com/sebastian-software/dalo/blob/main/examples/packages/source" rel="noopener">example source</a> contains:</p>
+<pre><code class="language-text">source/
+  skills/design-review/SKILL.md
+  instructions/design-context.md
+  plugins/design-review/
+    PLUGIN.toml
+    context.mjs
+</code></pre>
+<p>The skill contains task-specific guidance. The instruction pack contains
+standing guidance. The local Node tool emits a portable context result; the
+hook binds the project directory to its named input before prompt submission.
+The example is illustrative and is not an Impeccable integration.</p>
+<p>Validate an author source without creating a store:</p>
+<pre><code class="language-sh">dalo --json plugin validate examples/packages/source
+</code></pre>
+<p>The validator prints report schema 1 with <code>valid: true</code> and exits 0 only when
+at least one package is found, package contracts pass, and required references
+resolve within the supplied source. Exit 1 means invalid or empty package
+inventory or unresolved required references. Exit 2 means invalid command usage
+or a missing source directory. Findings appear in <code>diagnostics</code>.</p>
+<p>The command uses the production scanners and dependency rules. It reads
+manifests and bounded package files without executing tools, downloading
+dependencies, granting trust, or changing harness configuration. Package validity,
+reference resolution, provider hook capabilities, and authorization are separate
+report fields. Runtime availability and native handler behavior are not certified.</p>
+<p>Use <code>--source-id company</code> for explicit same-source references such as
+<code>skill:company:review</code>; the default source identity is <code>validation</code>. References
+to other sources remain unresolved, since this command never consults the user&#39;s
+source registry. See the <a href="/docs/reference.html#dalo-plugin-validate-source-path">CLI reference</a>
+for exit codes and usage. From a checkout, replace <code>dalo</code> with
+<code>cargo run --locked --</code>; the first Cargo build may fetch Rust dependencies.</p>
+<p><a href="/spec/0.1/plugin-v1.schema.json">plugin-v1.schema.json</a> is a JSON Schema 2020-12 document
+for editor assistance and structural validation of decoded TOML. Use a TOML-aware
+editor or validate the equivalent JSON data model. Do not insert <code>$schema</code> as
+a TOML property: unknown manifest fields are rejected. JSON Schema alone cannot
+check file containment, required fallback closure, binding types, byte limits,
+or provider semantics. The reference validator adds the local semantic checks.</p>
+<h2 id="package-and-reference-contract"><a class="doc-anchor" href="#package-and-reference-contract">Package and reference contract</a></h2>
+<p>A source exposes packages only at <code>plugins/&lt;name&gt;/PLUGIN.toml</code>. Discovery is not
+recursive. A manifest is UTF-8 TOML with these top-level fields:</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>schema_version</code></td>
+<td>Required integer, exactly <code>1</code>.</td>
+</tr>
+<tr>
+<td><code>plugin</code></td>
+<td>Required package metadata and passive membership.</td>
+</tr>
+<tr>
+<td><code>tool</code></td>
+<td>Optional array of local execution descriptors.</td>
+</tr>
+<tr>
+<td><code>hook</code></td>
+<td>Optional array of event-to-tool descriptors.</td>
+</tr>
+<tr>
+<td><code>providers</code></td>
+<td>Optional opaque provider overlays. Discovery acceptance does not authorize or certify their use.</td>
+</tr>
+</tbody></table></div>
+<p><code>plugin.name</code> must equal the directory name and use lowercase letters and digits
+separated by single hyphens. <code>description</code> is required
+and must contain non-whitespace text. Optional <code>id</code> uses lowercase alphanumeric
+segments separated by dots or hyphens, up to 128 characters, and must be unique
+within a source. Optional <code>version</code> is informational; it does not select releases.</p>
+<p><code>plugin.members</code> and <code>plugin.requires</code> are arrays. Every entry has an explicit
+<code>ref</code> and <code>requirement</code>. A reference is <code>&lt;kind&gt;:&lt;selector&gt;</code> within the source or
+<code>&lt;kind&gt;:&lt;source&gt;:&lt;selector&gt;</code> with an explicit source. Consumers supply the source
+registry; the package cannot install or trust a source by naming it. Reference
+atoms are nonempty strings of at most 16 KiB and cannot contain <code>:</code>, <code>#</code>, <code>/</code>,
+or <code>\</code>. This is a reference grammar, not permission to use a selector as a
+filesystem path. Consumers must validate resolved asset identities separately.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Member kind</th>
+<th>Requirements</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>skill</code></td>
+<td><code>required</code>, <code>optional</code></td>
+<td>References an existing Agent Skill.</td>
+</tr>
+<tr>
+<td><code>instruction</code></td>
+<td><code>required</code>, <code>optional</code>, <code>recommended</code></td>
+<td>References a standing instruction pack. Activation is separate.</td>
+</tr>
+<tr>
+<td><code>agent</code></td>
+<td><code>required</code>, <code>optional</code></td>
+<td>References an agent profile; this draft does not standardize a new profile format.</td>
+</tr>
+</tbody></table></div>
+<p><code>plugin.requires</code> accepts only <code>plugin</code> references with <code>required</code> or <code>optional</code>.
+Duplicate references are invalid. Member order is not instruction precedence.
+A required missing, inactive, blocked, or incompatible member blocks activation
+for the affected target. Optional omission must remain visible. Recommended
+instructions remain inactive until the consumer&#39;s user explicitly enables them.</p>
+<p>Only an agent member may have <code>fallback = { kind = &quot;inline&quot;, skill = &quot;skill:…&quot; }</code>.
+That exact skill must also be a required member. An inline fallback may preserve
+authored guidance; it must not be treated as equivalent to required agent
+isolation or permissions.</p>
+<p>Unknown fields and descriptor versions are invalid. Consumers must not silently
+activate the known half of a package with an unsupported active descriptor.
+The <code>providers</code> map is an explicit exception for inert adapter-owned data.</p>
+<h2 id="skills-and-standing-instructions"><a class="doc-anchor" href="#skills-and-standing-instructions">Skills and standing instructions</a></h2>
+<p>Skills retain the <a href="https://agentskills.io/specification" rel="noopener">Agent Skills format</a>.
+Instructions remain Markdown, including content intended for
+<a href="https://agents.md/" rel="noopener">AGENTS.md</a> or <code>CLAUDE.md</code>. A package can reference
+<code>instruction:design-context</code>; it does not gain permission to overwrite either
+file. Dalo&#39;s source convention is <code>instructions/&lt;selector&gt;.md</code>.</p>
+<p>For draft 0.1, the consumer selects the instruction target and scope. The
+manifest has no portable project/global scope or nested-directory selector.
+A consumer must show where instructions will apply, preserve user-authored
+content, and remove only the content it owns. It must not turn project guidance
+into global guidance or silently concatenate contradictory provider files.</p>
+<p>Dalo writes owned blocks into explicitly selected files. Its provider aliases
+map Codex to <code>$CODEX_HOME/AGENTS.md</code> and Claude to
+<code>$CLAUDE_CONFIG_DIR/CLAUDE.md</code>, with their usual user-directory defaults.
+An explicit project file can be selected instead. Existing commands and
+activation requirements are in the <a href="/docs/reference.html">instruction reference</a>.
+These paths and managed-block markers are Dalo implementation details.
+The harness remains responsible for reading the file and applying its scope
+and precedence rules; identical Markdown is not a promise of identical behavior.</p>
+<h2 id="local-tools"><a class="doc-anchor" href="#local-tools">Local tools</a></h2>
+<p>Each <code>[[tool]]</code> requires <code>schema_version</code>, <code>id</code>, <code>entry</code>, <code>runtime</code>, <code>argv</code>,
+<code>cwd</code>, and <code>availability</code>. IDs are unique within the tool namespace.</p>
+<ul>
+<li><code>runtime</code> is <code>executable</code>, <code>node</code>, or <code>python</code>. An executable entry must have
+its executable bit set. <code>availability</code> is <code>required</code> or <code>optional</code>.</li>
+<li><code>entry</code> and optional <code>files</code> name regular files inside the package. The entry
+is included automatically and must not be repeated in <code>files</code>. Paths cannot
+escape the package or rely on symlinks. Include the complete executable closure.</li>
+<li><code>cwd</code> is currently only <code>tool_root</code>: the immutable staged tool directory.
+A project directory can be passed as a bound input; changing cwd is the
+handler&#39;s explicit responsibility.</li>
+<li><code>inputs</code> declare a unique name, <code>type</code> (<code>string</code>, <code>path</code>, <code>integer</code>, <code>boolean</code>),
+and optional <code>required</code>, defaulting to true.</li>
+<li><code>argv</code> is an argument vector, never a shell string. Only an entire argument
+such as <code>${input.project_dir}</code> may interpolate a declared input. Embedded
+substitutions and undeclared inputs are invalid.</li>
+<li><code>env</code> explicitly lists inherited environment variable names. Other developer
+environment variables are not implicitly passed through.</li>
+<li><code>capabilities</code> declares <code>filesystem_read</code>, <code>filesystem_write</code>, <code>subprocess</code>,
+or <code>network</code>. Claims inform review; they do not constitute an OS sandbox.</li>
+<li>Optional <code>platforms</code> contains <code>macos</code> and/or <code>linux</code>; omission is not a claim
+that every platform has the required runtime. <code>runtime_version</code> is authored
+metadata, not proof that a version was installed or enforced.</li>
+</ul>
+<p>This draft does not define binary downloads, package-manager installation,
+update scripts, or installer execution. A reviewed Impeccable engine can be
+supplied as a local tool; automatic release acquisition needs a separate design.</p>
+<h2 id="hooks"><a class="doc-anchor" href="#hooks">Hooks</a></h2>
+<p>Each <code>[[hook]]</code> names a same-package <code>tool</code> and requires its own <code>schema_version</code>
+and <code>id</code>. It also declares <code>subject</code>, <code>phase</code>, <code>effect</code>, <code>requirement</code>,
+<code>timeout_ms</code>, <code>failure_policy</code>, <code>retry</code>, <code>error_visibility</code>, and <code>blocking_scope</code>.
+The hook binds event fields to tool inputs; it cannot supply another argv vector.</p>
+<p>The current reference implementation admits the following combinations:</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Subject / phase</th>
+<th>Effects</th>
+<th>Native mapping</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>session</code> / <code>end</code></td>
+<td><code>observe</code></td>
+<td><code>SessionEnd</code></td>
+</tr>
+<tr>
+<td><code>user_prompt</code> / <code>before</code></td>
+<td><code>observe</code>, <code>add_context</code>, <code>allow_deny</code></td>
+<td><code>UserPromptSubmit</code></td>
+</tr>
+<tr>
+<td><code>tool_call</code> / <code>before</code></td>
+<td><code>observe</code>, <code>add_context</code>, <code>allow_deny</code>, <code>rewrite_input</code></td>
+<td><code>PreToolUse</code></td>
+</tr>
+<tr>
+<td><code>tool_call</code> / <code>after</code></td>
+<td><code>observe</code>, <code>add_context</code>; Claude also <code>replace_output</code></td>
+<td>Codex <code>PostToolUse</code>; Claude also <code>PostToolUseFailure</code></td>
+</tr>
+<tr>
+<td><code>workflow</code> / <code>completion_attempt</code></td>
+<td><code>observe</code>, <code>continue_workflow</code></td>
+<td><code>Stop</code></td>
+</tr>
+</tbody></table></div>
+<p>This is a bounded provider mapping, not an equivalence claim for all tools or
+events. Dalo&#39;s pinned adapter baselines are Claude Code 2.1.233 and Codex 0.147.0.
+Later versions require evidence rather than an inferred compatibility promise.</p>
+<p><code>matcher.tool_names</code> is an optional list of exact native tool names. It is valid
+only for tool-call subjects; an empty list means all covered calls. Names are
+not a universal taxonomy: <code>Edit</code>, <code>Write</code>, and <code>apply_patch</code> have different inputs.
+<code>bindings</code> map <code>{ input, field }</code> pairs with matching primitive types:</p>
+<ul>
+<li>Strings: <code>session.id</code>, <code>session.permission_mode</code>, <code>actor.kind</code>, <code>actor.id</code>,
+<code>session.end_reason</code>, <code>prompt.text</code>, <code>tool.call_id</code>, <code>tool.name</code>,
+<code>workflow.last_message</code>.</li>
+<li>Paths: <code>session.cwd</code>, <code>transcript.path</code>.</li>
+<li>Boolean: <code>workflow.already_continued</code>.</li>
+</ul>
+<p>Fields must exist for the chosen subject/phase. Every required tool input needs
+a binding. Missing runtime fields are handled according to the declared failure
+policy. The dispatcher also passes raw native event JSON on stdin. That payload
+is <strong>not normalized by this draft</strong>. A handler that inspects it needs separate
+provider payload tests or an explicit adapter. The example handler uses bound
+inputs to avoid that dependency.</p>
+<p>Portable stdout is a single JSON result. The supported shapes are:</p>
+<pre><code class="language-json">{&quot;kind&quot;:&quot;observe&quot;}
+{&quot;kind&quot;:&quot;abstain&quot;}
+{&quot;kind&quot;:&quot;add_context&quot;,&quot;context&quot;:&quot;Review contrast.&quot;}
+{&quot;kind&quot;:&quot;allow&quot;}
+{&quot;kind&quot;:&quot;deny&quot;,&quot;reason&quot;:&quot;Policy failed.&quot;}
+{&quot;kind&quot;:&quot;rewrite_input&quot;,&quot;input&quot;:{&quot;command&quot;:&quot;echo reviewed&quot;}}
+{&quot;kind&quot;:&quot;replace_output&quot;,&quot;output&quot;:{&quot;result&quot;:&quot;reviewed&quot;}}
+{&quot;kind&quot;:&quot;continue_workflow&quot;,&quot;reason&quot;:&quot;Run the remaining checks.&quot;}
+</code></pre>
+<p>These are separate examples, not a multi-line response. Results must match the
+declared effect; <code>abstain</code> is the explicit no-op for any effect. Dalo limits a
+handler response to 4 MiB, text fields to 16 KiB without NUL characters, and a
+rewritten input object to 1 MiB. A native <code>hookSpecificOutput</code> response needs explicit adaptation;
+it is not itself portable stdout. A denial does not revoke a user&#39;s harness
+permissions, and <code>allow</code> does not grant permissions the harness withheld.
+Post-action effects cannot undo actions. Conflicting controlling results must
+not silently select a winner. Dalo composes them in stable hook-identity order.</p>
+<p>Timeouts range from 100 to 120000 milliseconds. <code>retry</code> is <code>never</code> and
+<code>blocking_scope</code> is <code>matched_event</code>. <code>failure_policy</code> is <code>report</code>, <code>fail_open</code>,
+or <code>fail_closed</code>; the last is valid only for pre-action enforcement or completion
+control. Observations and output replacements require <code>report</code>.
+<code>error_visibility</code> declares <code>user</code> or <code>model_and_user</code>.
+Dalo applies the failure policy to unsuccessful exits, timeouts, malformed
+results, missing runtime bindings, and outputs incompatible with the declared
+effect. <code>report</code> and <code>fail_open</code> leave the action unchanged and surface a
+bounded diagnostic. <code>fail_closed</code> denies a pre-action gate or requests another
+workflow pass. A user-only failure exposes the detailed diagnostic through the
+native user channel and only a generic explanation when a control result needs
+a model-facing reason. Handler stderr is never copied into model context.</p>
+<p>Provider support includes these audience rules. Neither adapter can deliver
+model-visible diagnostics after <code>SessionEnd</code>; such descriptors are reported as
+unsupported. User-only failures there use a nonzero dispatcher exit because
+the event ignores ordinary context output. Claude&#39;s <code>Stop</code> context resumes the
+turn, so a nonblocking <code>report</code> or <code>fail_open</code> failure cannot promise
+<code>model_and_user</code> delivery there. Use <code>user</code>, or <code>fail_closed</code> when continuation
+is intended. Required unsupported contracts block activation; optional ones
+with an explicit omission fallback remain visibly omitted.</p>
+<p>Input rewriting preserves Claude&#39;s ordinary permission flow. Codex requires
+the native <code>allow</code> field alongside a rewrite; its independent permission and
+sandbox checks still apply. Output replacement targets Claude <code>PostToolUse</code>
+only, since its failure event accepts context but no replacement. The native
+<code>stop_hook_active</code> flag remains available through <code>workflow.already_continued</code>;
+handlers decide when to abstain to avoid repeated continuation. See the
+<a href="/spec/0.1/compatibility.html">compatibility matrix</a> for evidence and provider limits.</p>
+<p>An optional hook must explicitly declare <code>fallback = &quot;omit&quot;</code>. Required hooks
+must not declare a weakening fallback. Unsupported required enforcement must
+block activation; it cannot be replaced by advisory text.</p>
+<h2 id="validation-activation-and-interoperability"><a class="doc-anchor" href="#validation-activation-and-interoperability">Validation, activation, and interoperability</a></h2>
+<p>Consumers should distinguish three results: valid package structure, supported
+behavior for a named provider/version, and authorized activation. Success at
+one stage does not imply success at the next.</p>
+<p>Execution requires explicit user trust covering the tool bytes and invocation
+contract, plus the hook&#39;s event binding and intended effect. Consumers choose
+their own trust storage. Dalo stages immutable tool files and independently
+checks the exact tool and hook grants, including at dispatch time. A consumer
+must never infer execution approval from downloading or selecting a package.</p>
+<p>Consumers must bound untrusted parsing and file traversal. Dalo&#39;s reference
+limits are 1 MiB per manifest, 16 KiB per string, 1024 array entries, 32 levels
+of TOML nesting, 4096 package entries, 32 directory levels, 64 MiB per file,
+and 256 MiB per package. Hook matchers and bindings have a tighter 256-entry
+limit. JSON Schema string lengths count characters, so byte limits still need
+semantic validation.</p>
+<p>The <a href="https://github.com/sebastian-software/dalo/blob/main/tests/package_spec.rs" rel="noopener">conformance cases</a> exercise the structural
+schema and production parser against shared examples, distinguishing structural
+rejection from local semantic failures. They also check reference scope and
+dependency cycles. The <a href="https://github.com/sebastian-software/dalo/blob/main/tests/package_validate_cli.rs" rel="noopener">CLI cases</a> exercise
+validation without a store. The <a href="https://github.com/sebastian-software/dalo/blob/main/tests/package_lifecycle.rs" rel="noopener">package lifecycle cases</a>
+cover selection, review, approval, installation, tool-byte changes, revocation,
+and removal, with independently activated instruction blocks and preserved
+user content on both provider targets.
+The <a href="https://github.com/sebastian-software/dalo/blob/main/tests/fixtures/upstream-hooks/README.md" rel="noopener">upstream integration guide</a>
+distinguishes original hook execution from recordings and live engine tests.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Upstream case</th>
+<th>What is established</th>
+<th>Work before full package support</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Impeccable</td>
+<td>Recorded post-edit output round trips; opt-in real engine finds contrast issues without its installer.</td>
+<td>Stop deep pass, lifecycle behavior, engine acquisition, and native input coverage.</td>
+</tr>
+<tr>
+<td>Get Shit Done</td>
+<td>Its original pre-tool guard produces advisory context for tested Claude payloads.</td>
+<td>Other hooks, bootstrap, runtime dependencies, and Codex tool payloads.</td>
+</tr>
+<tr>
+<td>Planning with Files</td>
+<td>Its original Cursor reminder can run through an explicit context adapter.</td>
+<td>Its distinct Codex wrappers, session start, compaction, permission, and stop semantics.</td>
+</tr>
+</tbody></table></div>
+<p>These adaptations are maintained here; none is an upstream author&#39;s endorsement
+of this draft. A green fixture suite is not complete package certification.</p>
+<h2 id="route-to-a-stable-revision"><a class="doc-anchor" href="#route-to-a-stable-revision">Route to a stable revision</a></h2>
+<p>Before declaring 1.0, exercise full integrations with at least three independent
+packages and obtain author feedback on the metadata and maintenance burden.
+Each proposal should include an upstream revision, required behavior, provider
+versions, executable evidence, and unsupported cases. Another consumer should
+be able to implement the contract without reproducing Dalo&#39;s internal state.</p>
+<p>Open design questions include normalized tool-event payloads, declarative
+instruction scope, additional lifecycle events, runtime acquisition, and provider
+overlay semantics. MCP servers remain outside this draft. Additions need a
+versioned contract and tests; they must not reinterpret an existing schema 1
+manifest silently. Until there is joint adoption, keep the specification and
+reference implementation together and avoid claiming ecosystem governance.</p>
+<p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/spec/README.md" rel="noopener">docs/spec/README.md</a> · <a href="/spec/0.1/plugin-v1.schema.json">Download JSON Schema</a></p>
+  </article>
+</main>
+
+<footer class="site-footer doc-footer" data-scope="dark">
+  <div class="wrap footer-base">
+    <span>© 2026 <a href="https://sebastian-software.de" rel="noopener">Sebastian Software</a> · Dalo</span>
+    <span><a href="/">dalo.sh</a> · <a href="/spec/">Spec</a> · <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a> · <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a></span>
+  </div>
+</footer>
+</body>
+</html>

@@ -210,6 +210,17 @@ A source can group existing skills, canonical agents, and instruction packs in
 an inert `plugins/<name>/PLUGIN.toml` package. Selection resolves intent only:
 it never grants a skill or agent approval and never enables instructions.
 
+Authors can validate a source before adding it to a store:
+
+```sh
+dalo --json plugin validate ./my-source
+```
+
+Validation checks package contracts and local references without running tools
+or granting approvals. The [experimental package specification](https://dalo.sh/spec/0.1/)
+documents the format, with a downloadable schema and an
+[evidence-based compatibility matrix](https://dalo.sh/spec/0.1/compatibility.html).
+
 ```toml
 schema_version = 1
 
@@ -535,6 +546,7 @@ For manual archives, upgrades, shell completions, and removal, see the
 
 - [Getting started](docs/getting-started.md)
 - [Command reference](docs/reference.md)
+- [Portable Agent Packages — experimental specification](docs/spec/README.md)
 - [Agent integration](docs/agents.md)
 - [Dalo in CI](docs/ci.md)
 - [Troubleshooting and FAQ](docs/troubleshooting.md)

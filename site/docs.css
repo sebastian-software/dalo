@@ -5,6 +5,7 @@
    ============================================================ */
 
 .doc-page { background: var(--bg); }
+.doc-page .header-actions { display: none; }
 
 .doc-shell {
   display: grid;
@@ -44,7 +45,7 @@
 .doc-nav a[aria-current="page"] { color: var(--accent-text); font-weight: 600; }
 
 /* ---------- Prose ---------- */
-.doc-body { max-width: 78ch; font-size: var(--fs-body); }
+.doc-body { min-width: 0; max-width: 78ch; font-size: var(--fs-body); overflow-wrap: anywhere; }
 .doc-body > * + * { margin-top: 1.1rem; }
 .doc-body h1 { font-size: clamp(2rem, 1.6rem + 1.6vw, 2.9rem); margin-bottom: 0.4rem; }
 .doc-body h2 {
@@ -80,6 +81,7 @@
   padding: 0.08em 0.34em;
 }
 .doc-body pre {
+  max-width: 100%;
   background: var(--term-bg);
   border: 1px solid var(--term-line);
   border-radius: var(--r);
@@ -91,7 +93,7 @@
 }
 .doc-body pre code { background: none; border: 0; padding: 0; font-size: inherit; color: inherit; }
 
-.doc-table { overflow-x: auto; }
+.doc-table { max-width: 100%; overflow-x: auto; }
 .doc-body table { border-collapse: collapse; width: 100%; font-size: var(--fs-sm); }
 .doc-body th, .doc-body td {
   border: 1px solid var(--line);

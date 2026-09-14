@@ -49,6 +49,30 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://dalo.sh/spec/</loc>
+    <lastmod>__DALO_LASTMOD__</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://dalo.sh/spec/0.1/</loc>
+    <lastmod>__DALO_LASTMOD__</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://dalo.sh/spec/0.1/compatibility.html</loc>
+    <lastmod>__DALO_LASTMOD__</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://dalo.sh/spec/0.1/plugin-v1.schema.json</loc>
+    <lastmod>__DALO_LASTMOD__</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://dalo.sh/install.md</loc>
     <lastmod>__DALO_LASTMOD__</lastmod>
     <changefreq>weekly</changefreq>

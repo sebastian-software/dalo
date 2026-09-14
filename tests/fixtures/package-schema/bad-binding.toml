@@ -1,0 +1,36 @@
+schema_version = 1
+
+[plugin]
+name = "fixture"
+description = "A schema-valid semantic fixture"
+
+[[tool]]
+schema_version = 1
+id = "handler"
+entry = "handler.mjs"
+runtime = "node"
+argv = ["${input.project_dir}"]
+cwd = "tool_root"
+availability = "required"
+
+[[tool.inputs]]
+name = "project_dir"
+type = "path"
+
+[[hook]]
+schema_version = 1
+id = "context"
+tool = "handler"
+subject = "user_prompt"
+phase = "before"
+effect = "add_context"
+requirement = "required"
+timeout_ms = 1000
+failure_policy = "report"
+retry = "never"
+error_visibility = "user"
+blocking_scope = "matched_event"
+
+[[hook.bindings]]
+input = "project_dir"
+field = "session.end_reason"

@@ -127,6 +127,14 @@ pub fn dispatch(
         .iter()
         .filter(|hook| selected.contains(&hook.identity))
     {
+        if !crate::hook::provider_supports_descriptor(request.provider, &hook.descriptor) {
+            return Err(DaloError::StateError {
+                reason: format!(
+                    "hook `{}` is not supported by the verified {:?} adapter",
+                    hook.identity, request.provider
+                ),
+            });
+        }
         verify_hook(paths, hook)?;
         let output = match invoke_hook(hook, &input, native_input) {
             Ok(output) => output,
@@ -145,7 +153,20 @@ pub fn dispatch(
             reason: "dispatcher group references a missing hook contract".to_owned(),
         });
     }
-    Ok(render_native_output(request.event, &outputs))
+    // SessionEnd stdout is ignored by the pinned native adapters. Returning a
+    // failure here makes a user-only diagnostic observable through the
+    // dispatch command's non-zero exit status instead of silently reporting
+    // success with an envelope the provider will discard.
+    if request.event == "SessionEnd"
+        && let Some(reason) = session_end_failure(&outputs)
+    {
+        return Err(DaloError::StateError { reason });
+    }
+    Ok(render_native_output(
+        request.provider,
+        request.event,
+        &outputs,
+    ))
 }
 
 fn verify_hook(paths: &StorePaths, hook: &DispatcherHook) -> DaloResult<()> {
@@ -316,7 +337,53 @@ fn invoke_hook(
         serde_json::from_slice(&stdout).map_err(|error| DaloError::StateError {
             reason: format!("hook handler returned malformed output: {error}"),
         })?;
+    validate_output(hook.descriptor.effect, &output)?;
     Ok(output)
+}
+
+fn validate_output(effect: HookEffect, output: &PortableHookOutput) -> DaloResult<()> {
+    let compatible = match output {
+        // A handler may explicitly abstain from an effect. `observe` is an
+        // effect of its own and cannot silently stand in for another effect.
+        PortableHookOutput::Observe => effect == HookEffect::Observe,
+        PortableHookOutput::Abstain => true,
+        PortableHookOutput::AddContext { context } => {
+            effect == HookEffect::AddContext
+                && context.len() <= 16 * 1024
+                && !context.contains('\0')
+        }
+        PortableHookOutput::Allow => effect == HookEffect::AllowDeny,
+        PortableHookOutput::Deny { reason } => {
+            effect == HookEffect::AllowDeny && reason.len() <= 16 * 1024 && !reason.contains('\0')
+        }
+        PortableHookOutput::RewriteInput { input } => {
+            effect == HookEffect::RewriteInput
+                && input.is_object()
+                && serde_json::to_vec(input).is_ok_and(|bytes| bytes.len() <= 1024 * 1024)
+        }
+        PortableHookOutput::ReplaceOutput { output } => {
+            effect == HookEffect::ReplaceOutput
+                && serde_json::to_vec(output)
+                    .is_ok_and(|bytes| bytes.len() <= MAX_HANDLER_OUTPUT as usize)
+        }
+        PortableHookOutput::ContinueWorkflow { reason } => {
+            effect == HookEffect::ContinueWorkflow
+                && reason.len() <= 16 * 1024
+                && !reason.contains('\0')
+        }
+        // This is an internal result and is never valid on handler stdout.
+        PortableHookOutput::Failure { .. } => false,
+        PortableHookOutput::FailureDeny { .. } | PortableHookOutput::FailureContinue { .. } => {
+            false
+        }
+    };
+    if compatible {
+        Ok(())
+    } else {
+        Err(DaloError::StateError {
+            reason: format!("hook output is incompatible with declared effect {effect}"),
+        })
+    }
 }
 
 /// What the kernel reported about the handler process group when it was
@@ -422,25 +489,37 @@ fn failure_output(hook: &DispatcherHook, reason: &str) -> DaloResult<PortableHoo
         "required hook event field is unavailable"
     } else if reason.contains("exited with") {
         "hook handler exited unsuccessfully"
+    } else if reason.contains("incompatible with declared effect") {
+        "hook handler returned output incompatible with declared effect"
     } else {
         "hook handler failed validation or execution"
     }
     .to_owned();
     match (hook.descriptor.effect, hook.descriptor.failure_policy) {
         (HookEffect::AllowDeny | HookEffect::RewriteInput, HookFailurePolicy::FailClosed) => {
-            Ok(PortableHookOutput::Deny { reason: bounded })
+            Ok(PortableHookOutput::FailureDeny {
+                reason: bounded,
+                visibility: hook.descriptor.error_visibility,
+            })
         }
         (HookEffect::ContinueWorkflow, HookFailurePolicy::FailClosed) => {
-            Ok(PortableHookOutput::ContinueWorkflow { reason: bounded })
+            Ok(PortableHookOutput::FailureContinue {
+                reason: bounded,
+                visibility: hook.descriptor.error_visibility,
+            })
         }
         (_, HookFailurePolicy::FailOpen | HookFailurePolicy::Report) => {
-            Ok(PortableHookOutput::Observe)
+            Ok(PortableHookOutput::Failure {
+                reason: bounded,
+                visibility: hook.descriptor.error_visibility,
+            })
         }
         _ => Err(DaloError::StateError { reason: bounded }),
     }
 }
 
 fn render_native_output(
+    provider: HookProvider,
     event: &str,
     outputs: &BTreeMap<HookEffect, Vec<PortableHookResult>>,
 ) -> Value {
@@ -450,7 +529,16 @@ fn render_native_output(
     let mut replacement = None;
     let mut continuation = false;
     let mut conflicts = Vec::new();
+    let mut user_messages = Vec::new();
     for (effect, results) in outputs {
+        user_messages.extend(results.iter().filter_map(|result| match &result.output {
+            PortableHookOutput::Failure { reason, .. }
+            | PortableHookOutput::FailureDeny { reason, .. }
+            | PortableHookOutput::FailureContinue { reason, .. } => {
+                Some(format!("hook `{}`: {reason}", result.hook))
+            }
+            _ => None,
+        }));
         let outcome = compose_results(*effect, results);
         context.extend(outcome.context);
         denials.extend(outcome.denials);
@@ -466,40 +554,107 @@ fn render_native_output(
     let reason = denials.join("\n");
     if event == "PreToolUse" {
         if !reason.is_empty() {
-            return json!({"hookSpecificOutput": {
+            let mut specific = json!({
                 "hookEventName": event,
                 "permissionDecision": "deny",
                 "permissionDecisionReason": reason,
-            }});
+            });
+            if !context.is_empty() {
+                specific["additionalContext"] = Value::String(context.join("\n"));
+            }
+            return with_user_messages(json!({"hookSpecificOutput": specific}), user_messages);
         }
         if let Some(input) = rewrite {
-            return json!({"hookSpecificOutput": {
+            let mut specific = json!({
                 "hookEventName": event,
                 "updatedInput": input,
-                "additionalContext": context.join("\n"),
-            }});
+            });
+            // Codex requires this pairing for rewrites; Claude accepts a
+            // rewrite alone, preserving its ordinary permission prompt.
+            if provider == HookProvider::Codex {
+                specific["permissionDecision"] = Value::String("allow".to_owned());
+            }
+            if !context.is_empty() {
+                specific["additionalContext"] = Value::String(context.join("\n"));
+            }
+            return with_user_messages(json!({"hookSpecificOutput": specific}), user_messages);
         }
     }
     if event == "UserPromptSubmit" && !reason.is_empty() {
-        return json!({"decision": "block", "reason": reason});
+        let mut output = json!({"decision": "block", "reason": reason});
+        if !context.is_empty() {
+            output["hookSpecificOutput"] = json!({
+                "hookEventName": event,
+                "additionalContext": context.join("\n"),
+            });
+        }
+        return with_user_messages(output, user_messages);
     }
     if event == "Stop" && continuation {
-        return json!({"decision": "block", "reason": context.join("\n")});
+        return with_user_messages(
+            json!({"decision": "block", "reason": context.join("\n")}),
+            user_messages,
+        );
+    }
+    if event == "PostToolUse" && !reason.is_empty() {
+        let mut output = json!({"decision": "block", "reason": reason});
+        if !context.is_empty() {
+            output["hookSpecificOutput"] = json!({
+                "hookEventName": event,
+                "additionalContext": context.join("\n"),
+            });
+        }
+        return with_user_messages(output, user_messages);
+    }
+    if event == "Stop" && !reason.is_empty() {
+        return with_user_messages(
+            json!({"decision": "block", "reason": reason}),
+            user_messages,
+        );
     }
     if let Some(output) = replacement {
-        return json!({"hookSpecificOutput": {
+        let mut specific = json!({
             "hookEventName": event,
             "updatedToolOutput": output,
-        }});
+        });
+        if !context.is_empty() {
+            specific["additionalContext"] = Value::String(context.join("\n"));
+        }
+        return with_user_messages(json!({"hookSpecificOutput": specific}), user_messages);
     }
     if context.is_empty() {
-        json!({})
+        with_user_messages(json!({}), user_messages)
     } else {
-        json!({"hookSpecificOutput": {
-            "hookEventName": event,
-            "additionalContext": context.join("\n"),
-        }})
+        with_user_messages(
+            json!({"hookSpecificOutput": {
+                "hookEventName": event,
+                "additionalContext": context.join("\n"),
+            }}),
+            user_messages,
+        )
     }
+}
+
+fn with_user_messages(mut output: Value, messages: Vec<String>) -> Value {
+    if !messages.is_empty() {
+        output["systemMessage"] = Value::String(messages.join("\n"));
+    }
+    output
+}
+
+fn session_end_failure(outputs: &BTreeMap<HookEffect, Vec<PortableHookResult>>) -> Option<String> {
+    outputs
+        .values()
+        .flat_map(|results| results.iter())
+        .find_map(|result| {
+            let reason = match &result.output {
+                PortableHookOutput::Failure { reason, .. }
+                | PortableHookOutput::FailureDeny { reason, .. }
+                | PortableHookOutput::FailureContinue { reason, .. } => reason,
+                _ => return None,
+            };
+            Some(format!("hook `{}`: {reason}", result.hook))
+        })
 }
 
 fn extract_field(field: HookEventField, input: &Value) -> DaloResult<Option<String>> {
@@ -627,12 +782,309 @@ mod tests {
             "UserPromptSubmit",
         ] {
             assert_eq!(
-                render_native_output(event, &outputs),
+                render_native_output(HookProvider::Codex, event, &outputs),
                 json!({"hookSpecificOutput": {
                     "hookEventName": event, "additionalContext": "Review contrast.",
                 }})
             );
         }
+    }
+
+    #[test]
+    fn context_is_preserved_when_a_pre_tool_hook_denies() {
+        let outputs = BTreeMap::from([
+            (
+                HookEffect::AddContext,
+                vec![PortableHookResult {
+                    hook: "local:context#hook:review".to_owned(),
+                    output: PortableHookOutput::AddContext {
+                        context: "review first".to_owned(),
+                    },
+                }],
+            ),
+            (
+                HookEffect::AllowDeny,
+                vec![PortableHookResult {
+                    hook: "local:policy#hook:block".to_owned(),
+                    output: PortableHookOutput::Deny {
+                        reason: "blocked".to_owned(),
+                    },
+                }],
+            ),
+        ]);
+        let output = render_native_output(HookProvider::Codex, "PreToolUse", &outputs);
+        assert_eq!(output["hookSpecificOutput"]["permissionDecision"], "deny");
+        assert_eq!(
+            output["hookSpecificOutput"]["additionalContext"],
+            "review first"
+        );
+    }
+
+    #[test]
+    fn rewrite_is_allow_with_context_and_divergence_blocks() {
+        let outputs = BTreeMap::from([
+            (
+                HookEffect::AddContext,
+                vec![PortableHookResult {
+                    hook: "local:context#hook:review".to_owned(),
+                    output: PortableHookOutput::AddContext {
+                        context: "rewritten safely".to_owned(),
+                    },
+                }],
+            ),
+            (
+                HookEffect::RewriteInput,
+                vec![PortableHookResult {
+                    hook: "local:rewrite#hook:command".to_owned(),
+                    output: PortableHookOutput::RewriteInput {
+                        input: json!({"command": "echo safe"}),
+                    },
+                }],
+            ),
+        ]);
+        let output = render_native_output(HookProvider::Codex, "PreToolUse", &outputs);
+        assert_eq!(output["hookSpecificOutput"]["permissionDecision"], "allow");
+        assert_eq!(
+            output["hookSpecificOutput"]["additionalContext"],
+            "rewritten safely"
+        );
+
+        let divergent = BTreeMap::from([(
+            HookEffect::RewriteInput,
+            vec![
+                PortableHookResult {
+                    hook: "local:a#hook:rewrite".to_owned(),
+                    output: PortableHookOutput::RewriteInput {
+                        input: json!({"command": "one"}),
+                    },
+                },
+                PortableHookResult {
+                    hook: "local:b#hook:rewrite".to_owned(),
+                    output: PortableHookOutput::RewriteInput {
+                        input: json!({"command": "two"}),
+                    },
+                },
+            ],
+        )]);
+        let output = render_native_output(HookProvider::Codex, "PreToolUse", &divergent);
+        assert_eq!(output["hookSpecificOutput"]["permissionDecision"], "deny");
+        assert!(
+            output["hookSpecificOutput"]["permissionDecisionReason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains("divergent replacement"))
+        );
+    }
+
+    #[test]
+    fn claude_rewrite_preserves_the_normal_permission_flow() {
+        let outputs = BTreeMap::from([(
+            HookEffect::RewriteInput,
+            vec![PortableHookResult {
+                hook: "local:rewrite#hook:input".to_owned(),
+                output: PortableHookOutput::RewriteInput {
+                    input: json!({"command":"reviewed"}),
+                },
+            }],
+        )]);
+        let claude = render_native_output(HookProvider::Claude, "PreToolUse", &outputs);
+        assert_eq!(
+            claude["hookSpecificOutput"]["updatedInput"]["command"],
+            "reviewed"
+        );
+        assert!(
+            claude["hookSpecificOutput"]
+                .get("permissionDecision")
+                .is_none()
+        );
+        let codex = render_native_output(HookProvider::Codex, "PreToolUse", &outputs);
+        assert_eq!(codex["hookSpecificOutput"]["permissionDecision"], "allow");
+    }
+
+    #[test]
+    fn replacement_preserves_context_and_conflicts_stop_post_result() {
+        let outputs = BTreeMap::from([
+            (
+                HookEffect::AddContext,
+                vec![PortableHookResult {
+                    hook: "local:context#hook:review".to_owned(),
+                    output: PortableHookOutput::AddContext {
+                        context: "inspect result".to_owned(),
+                    },
+                }],
+            ),
+            (
+                HookEffect::ReplaceOutput,
+                vec![PortableHookResult {
+                    hook: "local:replace#hook:result".to_owned(),
+                    output: PortableHookOutput::ReplaceOutput {
+                        output: json!({"result": "redacted"}),
+                    },
+                }],
+            ),
+        ]);
+        let output = render_native_output(HookProvider::Codex, "PostToolUse", &outputs);
+        assert_eq!(
+            output["hookSpecificOutput"]["updatedToolOutput"]["result"],
+            "redacted"
+        );
+        assert_eq!(
+            output["hookSpecificOutput"]["additionalContext"],
+            "inspect result"
+        );
+
+        let conflict = BTreeMap::from([(
+            HookEffect::ReplaceOutput,
+            vec![
+                PortableHookResult {
+                    hook: "local:a#hook:result".to_owned(),
+                    output: PortableHookOutput::ReplaceOutput {
+                        output: json!({"result": "one"}),
+                    },
+                },
+                PortableHookResult {
+                    hook: "local:b#hook:result".to_owned(),
+                    output: PortableHookOutput::ReplaceOutput {
+                        output: json!({"result": "two"}),
+                    },
+                },
+            ],
+        )]);
+        let output = render_native_output(HookProvider::Codex, "PostToolUse", &conflict);
+        assert_eq!(output["decision"], "block");
+        assert!(
+            output["reason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains("divergent replacement"))
+        );
+    }
+
+    #[test]
+    fn failure_visibility_controls_model_context_but_keeps_user_diagnostic() {
+        let user_only = BTreeMap::from([(
+            HookEffect::AddContext,
+            vec![PortableHookResult {
+                hook: "local:review#hook:context".to_owned(),
+                output: PortableHookOutput::Failure {
+                    reason: "hook handler timed out".to_owned(),
+                    visibility: crate::hook::HookErrorVisibility::User,
+                },
+            }],
+        )]);
+        let output = render_native_output(HookProvider::Codex, "PostToolUse", &user_only);
+        assert_eq!(
+            output["systemMessage"],
+            "hook `local:review#hook:context`: hook handler timed out"
+        );
+        assert!(
+            output["hookSpecificOutput"]
+                .get("additionalContext")
+                .is_none()
+        );
+
+        let model_and_user = BTreeMap::from([(
+            HookEffect::AddContext,
+            vec![PortableHookResult {
+                hook: "local:review#hook:context".to_owned(),
+                output: PortableHookOutput::Failure {
+                    reason: "hook handler timed out".to_owned(),
+                    visibility: crate::hook::HookErrorVisibility::ModelAndUser,
+                },
+            }],
+        )]);
+        let output = render_native_output(HookProvider::Codex, "PostToolUse", &model_and_user);
+        assert_eq!(
+            output["systemMessage"],
+            "hook `local:review#hook:context`: hook handler timed out"
+        );
+        assert_eq!(
+            output["hookSpecificOutput"]["additionalContext"],
+            "hook `local:review#hook:context`: hook handler timed out"
+        );
+    }
+
+    #[test]
+    fn session_end_failure_is_returned_as_dispatch_error() {
+        let outputs = BTreeMap::from([(
+            HookEffect::Observe,
+            vec![PortableHookResult {
+                hook: "local:session#hook:cleanup".to_owned(),
+                output: PortableHookOutput::Failure {
+                    reason: "hook handler returned malformed output".to_owned(),
+                    visibility: crate::hook::HookErrorVisibility::User,
+                },
+            }],
+        )]);
+        assert_eq!(
+            session_end_failure(&outputs).as_deref(),
+            Some("hook `local:session#hook:cleanup`: hook handler returned malformed output")
+        );
+        assert!(
+            session_end_failure(&BTreeMap::from([(
+                HookEffect::Observe,
+                vec![PortableHookResult {
+                    hook: "local:session#hook:cleanup".to_owned(),
+                    output: PortableHookOutput::Observe,
+                }],
+            )]))
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn fail_closed_rewrite_failure_is_a_denial_without_a_composition_conflict() {
+        let outcome = compose_results(
+            HookEffect::RewriteInput,
+            &[PortableHookResult {
+                hook: "local:rewrite#hook:command".to_owned(),
+                output: PortableHookOutput::FailureDeny {
+                    reason: "hook handler returned malformed output".to_owned(),
+                    visibility: crate::hook::HookErrorVisibility::ModelAndUser,
+                },
+            }],
+        );
+        assert_eq!(outcome.denials, ["hook handler returned malformed output"]);
+        assert!(outcome.conflicts.is_empty());
+
+        let user_only = BTreeMap::from([(
+            HookEffect::RewriteInput,
+            vec![PortableHookResult {
+                hook: "local:rewrite#hook:command".to_owned(),
+                output: PortableHookOutput::FailureDeny {
+                    reason: "hook handler timed out".to_owned(),
+                    visibility: crate::hook::HookErrorVisibility::User,
+                },
+            }],
+        )]);
+        let output = render_native_output(HookProvider::Codex, "PreToolUse", &user_only);
+        assert_eq!(
+            output["hookSpecificOutput"]["permissionDecisionReason"],
+            "hook failure blocked this action"
+        );
+        assert_eq!(
+            output["systemMessage"],
+            "hook `local:rewrite#hook:command`: hook handler timed out"
+        );
+        assert!(
+            !output["hookSpecificOutput"]
+                .to_string()
+                .contains("timed out")
+        );
+    }
+
+    #[test]
+    fn effect_mismatch_is_rejected_before_composition() {
+        let error = validate_output(
+            HookEffect::AllowDeny,
+            &PortableHookOutput::AddContext {
+                context: "advice".to_owned(),
+            },
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("incompatible with declared effect allow_deny")
+        );
     }
 
     fn fixture(
@@ -682,6 +1134,32 @@ matcher = { tool_names = ["Bash"] }
         fs::write(&entry, script).unwrap();
         fs::set_permissions(&entry, fs::Permissions::from_mode(0o755)).unwrap();
         crate::tool::approve(&paths, "local:policy#tool:check", false).unwrap();
+        crate::hook::approve(&paths, "local:policy#hook:protect-shell", false).unwrap();
+        let status = crate::hook::show(&paths, "local:policy#hook:protect-shell").unwrap();
+        (temp, paths, status)
+    }
+
+    fn fixture_variant(
+        script: &str,
+        timeout_ms: u32,
+        effect: &str,
+        failure_policy: &str,
+        error_visibility: &str,
+    ) -> (tempfile::TempDir, StorePaths, crate::hook::HookStatusReport) {
+        let (temp, paths, _status) = fixture(script, timeout_ms);
+        let manifest_path = paths.local_dir.join("plugins/policy/PLUGIN.toml");
+        let manifest = fs::read_to_string(&manifest_path).unwrap();
+        let manifest = manifest
+            .replace("effect = \"allow_deny\"", &format!("effect = \"{effect}\""))
+            .replace(
+                "failure_policy = \"fail_closed\"",
+                &format!("failure_policy = \"{failure_policy}\""),
+            )
+            .replace(
+                "error_visibility = \"model_and_user\"",
+                &format!("error_visibility = \"{error_visibility}\""),
+            );
+        fs::write(&manifest_path, manifest).unwrap();
         crate::hook::approve(&paths, "local:policy#hook:protect-shell", false).unwrap();
         let status = crate::hook::show(&paths, "local:policy#hook:protect-shell").unwrap();
         (temp, paths, status)
@@ -772,6 +1250,71 @@ matcher = { tool_names = ["Bash"] }
                 .as_str()
                 .unwrap()
                 .contains("malformed output")
+        );
+    }
+
+    #[test]
+    fn report_failure_reaches_user_only_without_model_context() {
+        let (_temp, paths, status) = fixture_variant(
+            "#!/bin/sh\nprintf '%s' 'not-json'\n",
+            2_000,
+            "add_context",
+            "report",
+            "user",
+        );
+        let projection = compile_and_store(&paths, HookProvider::Claude, status);
+        let output = dispatch(
+            &paths,
+            &DispatchRequest {
+                provider: HookProvider::Claude,
+                projection: &projection.fingerprint,
+                event: "PreToolUse",
+                group: "group-0000",
+            },
+            br#"{"session_id":"s","cwd":"/tmp","tool_name":"Bash","tool_use_id":"t"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            output["systemMessage"],
+            "hook `local:policy#hook:protect-shell`: hook handler returned malformed output"
+        );
+        assert!(
+            output["hookSpecificOutput"]
+                .get("additionalContext")
+                .is_none()
+        );
+        assert!(
+            output["hookSpecificOutput"]
+                .get("permissionDecision")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn incompatible_handler_output_uses_fail_closed_policy() {
+        let (_temp, paths, status) = fixture_variant(
+            "#!/bin/sh\nprintf '%s' '{\"kind\":\"add_context\",\"context\":\"advice\"}'\n",
+            2_000,
+            "allow_deny",
+            "fail_closed",
+            "model_and_user",
+        );
+        let projection = compile_and_store(&paths, HookProvider::Claude, status);
+        let output = dispatch(
+            &paths,
+            &DispatchRequest {
+                provider: HookProvider::Claude,
+                projection: &projection.fingerprint,
+                event: "PreToolUse",
+                group: "group-0000",
+            },
+            br#"{"session_id":"s","cwd":"/tmp","tool_name":"Bash","tool_use_id":"t"}"#,
+        )
+        .unwrap();
+        assert_eq!(output["hookSpecificOutput"]["permissionDecision"], "deny");
+        assert_eq!(
+            output["hookSpecificOutput"]["permissionDecisionReason"],
+            "hook handler returned output incompatible with declared effect"
         );
     }
 
