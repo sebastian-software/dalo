@@ -3,16 +3,16 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Agent Target Integration · Dalo documentation</title>
-  <meta name="description" content="Supported agents, their skill directories, and how instruction packs are written." />
-  <link rel="canonical" href="https://dalo.sh/docs/agents.html" />
+  <title>Portable Agent Packages · Dalo specification</title>
+  <meta name="description" content="The experimental Portable Agent Packages draft 0.1 for passive skills, tools, instructions, and hooks." />
+  <link rel="canonical" href="https://dalo.sh/spec/" />
   <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#15171c" media="(prefers-color-scheme: dark)" />
   <meta property="og:type" content="article" />
   <meta property="og:site_name" content="Dalo" />
-  <meta property="og:url" content="https://dalo.sh/docs/agents.html" />
-  <meta property="og:title" content="Agent Target Integration · Dalo documentation" />
-  <meta property="og:description" content="Supported agents, their skill directories, and how instruction packs are written." />
+  <meta property="og:url" content="https://dalo.sh/spec/" />
+  <meta property="og:title" content="Portable Agent Packages · Dalo specification" />
+  <meta property="og:description" content="The experimental Portable Agent Packages draft 0.1 for passive skills, tools, instructions, and hooks." />
   <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
   <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
   <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
@@ -37,7 +37,7 @@
         <circle cx="22.5" cy="16" r="2.6" fill="var(--accent)" />
       </svg>
       <span class="brand-word">dalo</span>
-      <span class="brand-section">docs</span>
+      <span class="brand-section">spec</span>
     </a>
     <nav class="site-nav" aria-label="Primary">
       <a href="/">Product</a>
@@ -67,78 +67,25 @@
 </header>
 
 <main id="main" class="doc-shell wrap">
-  <nav class="doc-nav" aria-label="Documentation">
-    <p class="footer-h">Documentation</p>
-        <a href="/docs/getting-started.html">Getting started</a>
-        <a href="/docs/reference.html">Command reference</a>
-        <a href="/docs/agents.html" aria-current="page">Agent integration</a>
-        <a href="/docs/ci.html">Dalo in CI</a>
-        <a href="/docs/troubleshooting.html">Troubleshooting</a>
-        <a href="/docs/uninstall.html">Uninstall</a>
+  <nav class="doc-nav" aria-label="Specification">
+    <p class="footer-h">Specification</p>
+        <a href="/spec/0.1/">Specification</a>
+        <a href="/spec/0.1/compatibility.html">Compatibility</a>
   </nav>
   <article class="doc-body">
-<h1 id="agent-target-integration">Agent Target Integration</h1>
-<p>This page documents target directories for agent skills. Portable canonical
-agent packages are documented in the <a href="/docs/reference.html#dalo-agent-listshow-sourcename">command reference</a>.</p>
-<p>Dalo&#39;s V1 targets are directory-based. Each target links the resolved skill set into the folder that agent already reads.</p>
-<p>Run this first:</p>
-<pre><code class="language-sh">dalo init
-dalo target detect
-</code></pre>
-<h2 id="codex"><a class="doc-anchor" href="#codex">Codex</a></h2>
-<p>Default skill path:</p>
-<pre><code class="language-text">~/.agents/skills
-</code></pre>
-<p>Link and verify:</p>
-<pre><code class="language-sh">dalo target link codex
-dalo status
-dalo sync
-ls -la ~/.agents/skills
-</code></pre>
-<h2 id="claude-code"><a class="doc-anchor" href="#claude-code">Claude Code</a></h2>
-<p>Default skill path:</p>
-<pre><code class="language-text">~/.claude/skills
-</code></pre>
-<p>Link and verify:</p>
-<pre><code class="language-sh">dalo target link claude
-dalo status
-dalo sync
-ls -la ~/.claude/skills
-</code></pre>
-<h2 id="openclaw"><a class="doc-anchor" href="#openclaw">OpenClaw</a></h2>
-<p>Default skill path:</p>
-<pre><code class="language-text">~/.agents/skills
-</code></pre>
-<p>Link and verify:</p>
-<pre><code class="language-sh">dalo target link openclaw
-dalo status
-dalo sync
-ls -la ~/.agents/skills
-</code></pre>
-<p>Codex and OpenClaw can share the same physical directory. Dalo de-duplicates physical target paths during materialization.</p>
-<h2 id="hermes"><a class="doc-anchor" href="#hermes">Hermes</a></h2>
-<p>Default skill path:</p>
-<pre><code class="language-text">~/.hermes/skills
-</code></pre>
-<p>Link and verify:</p>
-<pre><code class="language-sh">dalo target link hermes
-dalo status
-dalo sync
-ls -la ~/.hermes/skills
-</code></pre>
-<h2 id="cursor-and-opencode"><a class="doc-anchor" href="#cursor-and-opencode">Cursor and OpenCode</a></h2>
-<p>Cursor and OpenCode have experimental built-in target IDs, but neither has a
-verified default path. Until their behavior is verified, use a generic target
-after you know the folder the agent reads:</p>
-<pre><code class="language-sh">dalo target link generic /path/to/agent/skills
-dalo sync
-</code></pre>
-<p>You may instead use <code>dalo target link cursor &lt;path&gt;</code> or
-<code>dalo target link opencode &lt;path&gt;</code> to record the experimental target ID. All
-three forms require an explicit path; <code>generic</code> is recommended until the adapter
-is verified.</p>
-<p>Open an issue with the expected skill path and a short verification transcript if you can confirm either target.</p>
-<p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/agents.md" rel="noopener">docs/agents.md</a></p>
+<h1>Portable Agent Packages</h1>
+<p class="doc-lede">An experimental author-facing profile for grouping skills, standing instructions, local tools, and event handlers into a package that a consumer can validate and review.</p>
+<div class="doc-cards">
+  <a class="doc-card" href="/spec/0.1/">
+    <span class="doc-card-title">Draft 0.1</span>
+    <span class="doc-card-summary">Read the versioned specification, contract fields, validation stages, and bounded hook mapping.</span>
+  </a>
+  <a class="doc-card" href="/spec/0.1/compatibility.html">
+    <span class="doc-card-title">Compatibility</span>
+    <span class="doc-card-summary">See provider evidence and the limits of the current reference fixtures.</span>
+  </a>
+</div>
+<p>Download the <a href="/spec/0.1/plugin-v1.schema.json">JSON Schema</a> for editor assistance and structural validation.</p>
   </article>
 </main>
 

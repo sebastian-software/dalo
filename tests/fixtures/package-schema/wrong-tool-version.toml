@@ -1,0 +1,14 @@
+schema_version = 1
+
+[plugin]
+name = "fixture"
+description = "A future tool fixture"
+
+[[tool]]
+schema_version = 2
+id = "handler"
+entry = "handler.mjs"
+runtime = "node"
+argv = []
+cwd = "tool_root"
+availability = "required"

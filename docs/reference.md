@@ -858,6 +858,40 @@ are best-effort observations, not a security certification.
 
 JSON output shape: `AuditReport`.
 
+### `dalo plugin validate <source-path>`
+
+Validate an author source without initializing or consulting a personal store.
+The source must contain `plugins/<name>/PLUGIN.toml` packages. Dalo uses its
+production discovery and dependency rules, reads package files, and reports
+contract errors and unresolved references. It never runs handlers, installs
+dependencies, grants trust, or changes provider files.
+
+```sh
+dalo plugin validate ./my-source
+dalo --json plugin validate ./my-source
+dalo --json plugin validate ./my-source --source-id company
+```
+
+Unqualified references resolve inside the supplied source. `--source-id`
+defaults to `validation`; set it when the source uses explicit references such
+as `skill:company:review`. Other source identities are reported as unavailable
+external references. Validation does not fetch them or read the user's source
+registry. Required unresolved references fail validation; optional omissions
+remain visible.
+
+JSON output shape: `PackageValidationReport`, report schema 1. The report keeps
+package validity, reference resolution, provider hook capabilities, and execution
+authorization separate. A provider capability result does not verify an installed
+runtime, all native tool payloads, or permission to execute code. Use `plugin
+review` and `plan` after adding and selecting a package to assess activation.
+
+Exit 0 means the checked source is valid; exit 1 means an invalid or empty package
+inventory or unresolved required references. Invalid usage or source paths exit
+2. Invalid-source reports remain on stdout with `--json`; the standard error
+envelope appears on stderr. Global `--store` and `--dry-run` have no effect on
+this read-only command. See the [package specification](spec/README.md) and
+[compatibility matrix](spec/compatibility.md) for the bounded contract.
+
 ### `dalo plugin list|show|select|unselect|decline`
 
 Inspect and manage direct local plugin selection. Plugin references use
@@ -1163,6 +1197,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `plan` | `InstallationPlan` | `schema_version`, `store`, `canonical_plugins`, `inventory_warnings[]`, `tools[]`, `hooks[]`, optional `native_plugins[]`, physical `destinations[]` with per-target plugin/component explanations |
 | `plugin list` | `PluginListReport` | `candidates[]`, canonical `resolution` |
 | `plugin show` | `PluginShowReport` | `candidate`, optional `selected` state |
+| `plugin validate` | `PackageValidationReport` | `schema_version`, `profile`, package contract checks, reference resolution, provider hook capabilities, execution authorization, `diagnostics[]` |
 | `plugin select` / `unselect` / `decline` | `PluginMutationReport` | `plugin`, `action`, `changed`, `dry_run` |
 | `plugin review` | `PluginReviewReport` | `schema_version`, `root_plugin`, `plugin_closure[]`, `installation_plan`, separately scoped `decisions[]`, `review_token`, `interactive_approvals`, `read_only` |
 | `tool list` | `ToolListReport` | `tools[]` with exact trust/runtime/staging state, `warnings[]` |

@@ -40,10 +40,23 @@
       <span class="brand-section">docs</span>
     </a>
     <nav class="site-nav" aria-label="Primary">
-      <a href="/#how">How it works</a>
-      <a href="/#quickstart">Quickstart</a>
-      <a href="/docs/">Documentation</a>
+      <a href="/">Product</a>
+      <a href="/docs/">Docs</a>
+      <a href="/spec/">Spec</a>
+      <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
     </nav>
+    <details class="mobile-menu">
+      <summary aria-label="Open navigation">
+        <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>
+        <span class="sr-only">Menu</span>
+      </summary>
+      <nav class="mobile-nav" aria-label="Mobile">
+        <a href="/">Product</a>
+        <a href="/docs/">Docs</a>
+        <a href="/spec/">Spec</a>
+        <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+      </nav>
+    </details>
     <div class="header-actions">
       <a class="ghost-btn" href="https://github.com/sebastian-software/dalo" rel="noopener">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
@@ -766,6 +779,32 @@ replace it. Protect the store like other security-sensitive user state and do
 not place it in a shared or untrusted writable directory. No-finding results
 are best-effort observations, not a security certification.</p>
 <p>JSON output shape: <code>AuditReport</code>.</p>
+<h3 id="dalo-plugin-validate-source-path"><a class="doc-anchor" href="#dalo-plugin-validate-source-path"><code>dalo plugin validate &lt;source-path&gt;</code></a></h3>
+<p>Validate an author source without initializing or consulting a personal store.
+The source must contain <code>plugins/&lt;name&gt;/PLUGIN.toml</code> packages. Dalo uses its
+production discovery and dependency rules, reads package files, and reports
+contract errors and unresolved references. It never runs handlers, installs
+dependencies, grants trust, or changes provider files.</p>
+<pre><code class="language-sh">dalo plugin validate ./my-source
+dalo --json plugin validate ./my-source
+dalo --json plugin validate ./my-source --source-id company
+</code></pre>
+<p>Unqualified references resolve inside the supplied source. <code>--source-id</code>
+defaults to <code>validation</code>; set it when the source uses explicit references such
+as <code>skill:company:review</code>. Other source identities are reported as unavailable
+external references. Validation does not fetch them or read the user&#39;s source
+registry. Required unresolved references fail validation; optional omissions
+remain visible.</p>
+<p>JSON output shape: <code>PackageValidationReport</code>, report schema 1. The report keeps
+package validity, reference resolution, provider hook capabilities, and execution
+authorization separate. A provider capability result does not verify an installed
+runtime, all native tool payloads, or permission to execute code. Use <code>plugin review</code> and <code>plan</code> after adding and selecting a package to assess activation.</p>
+<p>Exit 0 means the checked source is valid; exit 1 means an invalid or empty package
+inventory or unresolved required references. Invalid usage or source paths exit
+2. Invalid-source reports remain on stdout with <code>--json</code>; the standard error
+envelope appears on stderr. Global <code>--store</code> and <code>--dry-run</code> have no effect on
+this read-only command. See the <a href="/spec/0.1/">package specification</a> and
+<a href="/spec/0.1/compatibility.html">compatibility matrix</a> for the bounded contract.</p>
 <h3 id="dalo-plugin-listshowselectunselectdecline"><a class="doc-anchor" href="#dalo-plugin-listshowselectunselectdecline"><code>dalo plugin list|show|select|unselect|decline</code></a></h3>
 <p>Inspect and manage direct local plugin selection. Plugin references use
 <code>&lt;source-id&gt;:&lt;slot-or-stable-id&gt;</code>.</p>
@@ -1139,6 +1178,11 @@ dalo completions fish &gt; dalo.fish
 <td><code>candidate</code>, optional <code>selected</code> state</td>
 </tr>
 <tr>
+<td><code>plugin validate</code></td>
+<td><code>PackageValidationReport</code></td>
+<td><code>schema_version</code>, <code>profile</code>, package contract checks, reference resolution, provider hook capabilities, execution authorization, <code>diagnostics[]</code></td>
+</tr>
+<tr>
 <td><code>plugin select</code> / <code>unselect</code> / <code>decline</code></td>
 <td><code>PluginMutationReport</code></td>
 <td><code>plugin</code>, <code>action</code>, <code>changed</code>, <code>dry_run</code></td>
@@ -1368,7 +1412,7 @@ existing owned link is not removed solely because the audit was incomplete.</p>
 canonical <code>resolved_commit</code>, and the observed <code>checkout_commit</code>. For catalogs,
 the resolved commit comes from <code>source-lock.toml</code>; a differing checkout commit
 is preserved in output so drift remains visible.</p>
-<p>Resolution diagnostics use these codes when present in <code>status.resolution.diagnostics</code>: <code>pending_approval</code>, <code>local_override</code>, <code>shadowed</code>, <code>required_expanded</code>, <code>cross_source_require</code>, <code>required_blocked</code>, <code>legacy_bare_approval</code>, <code>audit_failed</code>, and <code>blocked_winner_alternate_available</code>. Each JSON entry has <code>code</code>, a human-readable <code>message</code>, and optional <code>source_ref</code>. <code>blocked_winner_alternate_available</code> is advisory: its <code>source_ref</code> identifies the approved alternate, while <code>required_blocked</code> identifies the blocked winner and remains the check-blocking diagnostic. For recovery steps, see <a href="troubleshooting.html">Troubleshooting and FAQ</a>.</p>
+<p>Resolution diagnostics use these codes when present in <code>status.resolution.diagnostics</code>: <code>pending_approval</code>, <code>local_override</code>, <code>shadowed</code>, <code>required_expanded</code>, <code>cross_source_require</code>, <code>required_blocked</code>, <code>legacy_bare_approval</code>, <code>audit_failed</code>, and <code>blocked_winner_alternate_available</code>. Each JSON entry has <code>code</code>, a human-readable <code>message</code>, and optional <code>source_ref</code>. <code>blocked_winner_alternate_available</code> is advisory: its <code>source_ref</code> identifies the approved alternate, while <code>required_blocked</code> identifies the blocked winner and remains the check-blocking diagnostic. For recovery steps, see <a href="/docs/troubleshooting.html">Troubleshooting and FAQ</a>.</p>
 <h2 id="store-layout"><a class="doc-anchor" href="#store-layout">Store Layout</a></h2>
 <p>After <code>dalo init</code>, the store contains:</p>
 <div class="doc-table"><table>
@@ -2189,7 +2233,7 @@ Use concise review comments.
 <footer class="site-footer doc-footer" data-scope="dark">
   <div class="wrap footer-base">
     <span>© 2026 <a href="https://sebastian-software.de" rel="noopener">Sebastian Software</a> · Dalo</span>
-    <span><a href="/">dalo.sh</a> · <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a> · <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a></span>
+    <span><a href="/">dalo.sh</a> · <a href="/spec/">Spec</a> · <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a> · <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a></span>
   </div>
 </footer>
 </body>

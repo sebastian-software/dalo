@@ -319,6 +319,19 @@ pub enum PluginSubcommand {
     Decline(PluginDeclineArgs),
     /// Review a plugin's components and approval needs.
     Review(PluginReferenceArgs),
+    /// Validate a source tree's portable plugin packages without a store.
+    Validate(PluginValidateArgs),
+}
+
+/// Arguments for read-only author validation.
+#[derive(Debug, Args)]
+pub struct PluginValidateArgs {
+    /// Source tree containing `plugins/<name>/PLUGIN.toml` packages.
+    #[arg(value_name = "SOURCE_PATH")]
+    pub source_path: PathBuf,
+    /// Identity used when resolving unqualified references such as `skill:name`.
+    #[arg(long, default_value = "validation")]
+    pub source_id: String,
 }
 
 /// Read-only multi-target installation-plan arguments.
@@ -1154,8 +1167,16 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         _ => {}
     }
 
-    let pending_update_notice = (!json).then(update::start_notice_check).flatten();
-    let options = if matches!(command, Command::Team(_)) {
+    let package_validation = matches!(
+        &command,
+        Command::Plugin(PluginCommand {
+            command: PluginSubcommand::Validate(_)
+        })
+    );
+    let pending_update_notice = (!json && !package_validation)
+        .then(update::start_notice_check)
+        .flatten();
+    let options = if matches!(command, Command::Team(_)) || package_validation {
         GlobalOptions {
             store: PathBuf::new(),
             json,
@@ -1230,7 +1251,9 @@ fn command_ignores_dry_run(command: &Command) -> bool {
             command: AgentSubcommand::List(_) | AgentSubcommand::Show(_)
         }) | Command::Status(_)
             | Command::Plugin(PluginCommand {
-                command: PluginSubcommand::List | PluginSubcommand::Show(_)
+                command: PluginSubcommand::List
+                    | PluginSubcommand::Show(_)
+                    | PluginSubcommand::Validate(_)
             })
             | Command::Tool(_)
             | Command::Hook(HookCommand {
@@ -1451,6 +1474,43 @@ struct PluginMutationReport {
 }
 
 fn run_plugin(options: &GlobalOptions, command: PluginCommand) -> DaloResult<()> {
+    if let PluginSubcommand::Validate(args) = command.command {
+        let report =
+            crate::package_validation::validate_with_source_id(&args.source_id, &args.source_path)?;
+        if options.json {
+            print_json(&report)?;
+        } else {
+            println!(
+                "{}: {}",
+                if report.valid { "valid" } else { "invalid" },
+                term::terminal_safe_text(&args.source_path.to_string_lossy())
+            );
+            for diagnostic in &report.diagnostics {
+                println!(
+                    "{} {}: {}",
+                    diagnostic.severity,
+                    term::terminal_safe_text(&diagnostic.path.to_string_lossy()),
+                    term::terminal_safe_text(&diagnostic.message)
+                );
+            }
+            for provider in &report.providers {
+                println!(
+                    "{} {} hooks: {}",
+                    provider.provider, provider.baseline, provider.status
+                );
+                for hook in &provider.unsupported_hooks {
+                    println!("  unsupported: {}", term::terminal_safe_text(hook));
+                }
+            }
+            println!("execution: not authorized by validation");
+        }
+        if !report.valid {
+            return Err(DaloError::CheckFailed {
+                reason: "portable package validation found errors".to_owned(),
+            });
+        }
+        return Ok(());
+    }
     let paths = store::StorePaths::new(options.store.clone());
     ensure_initialized(&paths)?;
     if let PluginSubcommand::Review(args) = &command.command {
@@ -1650,6 +1710,7 @@ fn run_plugin(options: &GlobalOptions, command: PluginCommand) -> DaloResult<()>
         PluginSubcommand::List | PluginSubcommand::Show(_) | PluginSubcommand::Review(_) => {
             unreachable!("handled as read-only above")
         }
+        PluginSubcommand::Validate(_) => unreachable!("handled as read-only above"),
     };
     if !options.dry_run && report.changed {
         store::write_config(&paths, &config)?;

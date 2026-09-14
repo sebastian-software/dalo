@@ -221,6 +221,17 @@ section[data-scope="dark"] { background: var(--bg); color: var(--ink); }
 .site-nav a:hover::after { width: 100%; }
 .site-nav a[aria-current="true"] { color: var(--ink); }
 .site-nav a[aria-current="true"]::after { width: 100%; }
+.product-subnav { background: var(--bg); border-bottom: 1px solid var(--line); }
+.product-subnav-inner {
+  display: flex; gap: 1.25rem; overflow-x: auto; scrollbar-width: none;
+  padding-block: 0.62rem;
+}
+.product-subnav-inner::-webkit-scrollbar { display: none; }
+.product-subnav a {
+  flex: none; color: var(--ink-soft); text-decoration: none;
+  font-family: var(--font-mono); font-size: 0.75rem; white-space: nowrap;
+}
+.product-subnav a:hover { color: var(--accent); }
 
 .header-actions { display: flex; align-items: center; }
 .mobile-menu { display: none; position: relative; margin-left: auto; }
@@ -605,6 +616,7 @@ section[data-scope="dark"] { background: var(--bg); color: var(--ink); }
   .pipe-node, .pipe-targets { min-width: 0; }
   .pipe-arrow { rotate: 90deg; margin-inline: auto; margin-block: 0.1rem; }
   .footer-base { flex-direction: column; gap: 0.5rem; align-items: flex-start; }
+  .product-subnav-inner { gap: 1rem; }
 }
 @media (max-width: 560px) {
   .objection-grid { grid-template-columns: 1fr; }

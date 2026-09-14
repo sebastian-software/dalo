@@ -21,6 +21,7 @@ const buildDir = path.join(siteDir, "build")
 const REPO = "https://github.com/sebastian-software/dalo"
 const BLOB = `${REPO}/blob/main`
 const SITE = "https://dalo.sh"
+const SPEC_VERSION = "0.1"
 
 // Documentation pages published on dalo.sh, in reading order. The title comes
 // from each document's own first heading; only navigation label and summary
@@ -50,6 +51,27 @@ const PAGES = [
   { slug: "uninstall", label: "Uninstall", summary: "Remove targets, autosync, the store, and the binary." },
 ]
 
+const SPEC_PAGES = [
+  {
+    slug: "index",
+    source: "README.md",
+    label: "Specification",
+    summary: "Portable Agent Packages draft 0.1: the passive package, tool, and hook contract.",
+  },
+  {
+    slug: "compatibility",
+    source: "compatibility.md",
+    label: "Compatibility",
+    summary: "Evidence-backed provider coverage and the limits of the draft 0.1 reference implementation.",
+  },
+]
+
+const PUBLIC_SOURCE_ROUTES = new Map([
+  ["docs/spec/README.md", `/spec/${SPEC_VERSION}/`],
+  ["docs/spec/compatibility.md", `/spec/${SPEC_VERSION}/compatibility.html`],
+  ["docs/spec/plugin-v1.schema.json", `/spec/${SPEC_VERSION}/plugin-v1.schema.json`],
+])
+
 // Files that belong to the build step itself and are never deployed.
 const NOT_DEPLOYED = new Set(["build", "build.mjs", "node_modules", "package.json", "pnpm-lock.yaml", "README.md"])
 
@@ -72,18 +94,29 @@ const uniqueSlug = (text, seen) => {
   return count === 0 ? base : `${base}-${count}`
 }
 
-// Links are written for the repository; rewrite them for the site.
-const rewriteLink = (href) => {
+// Links are written for the repository; rewrite them for the site. Resolve
+// relative paths from the Markdown source first so nested docs retain their
+// repository meaning (for example docs/spec/README.md -> docs/adr/...).
+const rewriteLink = (href, sourcePath) => {
   if (/^(https?:|mailto:|#)/.test(href)) return href
   const [target, anchor = ""] = href.split("#")
   const suffix = anchor ? `#${anchor}` : ""
-  if (/^[\w.-]+\.md$/.test(target)) return `${target.replace(/\.md$/, ".html")}${suffix}`
-  if (target === "../site/install.md") return `/install.md${suffix}`
   if (target === "") return href
-  return `${BLOB}/${target.replace(/^\.\.\//, "")}${suffix}`
+
+  const sourceDir = path.posix.dirname(sourcePath)
+  const resolvedPath = path.posix.normalize(path.posix.join(sourceDir, target))
+  const publishedRoute = PUBLIC_SOURCE_ROUTES.get(resolvedPath)
+  if (publishedRoute) return `${publishedRoute}${suffix}`
+  if (resolvedPath === "site/install.md") return `/install.md${suffix}`
+
+  const docsMatch = resolvedPath.match(/^docs\/([^/]+)\.md$/)
+  if (docsMatch && PAGES.some((page) => page.slug === docsMatch[1])) {
+    return `/docs/${docsMatch[1]}.html${suffix}`
+  }
+  return `${BLOB}/${resolvedPath}${suffix}`
 }
 
-const renderMarkdown = (markdown) => {
+const renderMarkdown = (markdown, sourcePath) => {
   const seen = new Map()
   const marked = new Marked({ gfm: true })
   marked.use({
@@ -99,7 +132,7 @@ const renderMarkdown = (markdown) => {
       },
       link(token) {
         const text = this.parser.parseInline(token.tokens)
-        const target = rewriteLink(token.href)
+        const target = rewriteLink(token.href, sourcePath)
         const titleAttr = token.title ? ` title="${escapeHtml(token.title)}"` : ""
         const external = /^https?:/.test(target) ? ' rel="noopener"' : ""
         return `<a href="${escapeHtml(target)}"${titleAttr}${external}>${text}</a>`
@@ -113,18 +146,29 @@ const renderMarkdown = (markdown) => {
     .replaceAll("</table>", "</table></div>")
 }
 
-const NAV = (current) =>
-  PAGES.map(
-    (page) =>
-      `        <a href="/docs/${page.slug}.html"${page.slug === current ? ' aria-current="page"' : ""}>${page.label}</a>`,
-  ).join("\n")
+const NAV = (current, pages = PAGES, prefix = "/docs/") =>
+  pages
+    .map(
+      (page) =>
+        `        <a href="${prefix}${page.slug === "index" ? "" : `${page.slug}.html`}"${page.slug === current ? ' aria-current="page"' : ""}>${page.label}</a>`,
+    )
+    .join("\n")
 
-const shell = ({ slug: current, title, description, canonical, body }) => `<!doctype html>
+const shell = ({
+  slug: current,
+  title,
+  description,
+  canonical,
+  body,
+  section = "docs",
+  navPages = PAGES,
+  navPrefix = "/docs/",
+}) => `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escapeHtml(title)} · Dalo documentation</title>
+  <title>${escapeHtml(title)} · Dalo ${section === "spec" ? "specification" : "documentation"}</title>
   <meta name="description" content="${escapeHtml(description)}" />
   <link rel="canonical" href="${canonical}" />
   <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)" />
@@ -132,7 +176,7 @@ const shell = ({ slug: current, title, description, canonical, body }) => `<!doc
   <meta property="og:type" content="article" />
   <meta property="og:site_name" content="Dalo" />
   <meta property="og:url" content="${canonical}" />
-  <meta property="og:title" content="${escapeHtml(title)} · Dalo documentation" />
+  <meta property="og:title" content="${escapeHtml(title)} · Dalo ${section === "spec" ? "specification" : "documentation"}" />
   <meta property="og:description" content="${escapeHtml(description)}" />
   <meta property="og:image" content="${SITE}/assets/img/og.png" />
   <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
@@ -158,13 +202,26 @@ const shell = ({ slug: current, title, description, canonical, body }) => `<!doc
         <circle cx="22.5" cy="16" r="2.6" fill="var(--accent)" />
       </svg>
       <span class="brand-word">dalo</span>
-      <span class="brand-section">docs</span>
+      <span class="brand-section">${section}</span>
     </a>
     <nav class="site-nav" aria-label="Primary">
-      <a href="/#how">How it works</a>
-      <a href="/#quickstart">Quickstart</a>
-      <a href="/docs/">Documentation</a>
+      <a href="/">Product</a>
+      <a href="/docs/">Docs</a>
+      <a href="/spec/">Spec</a>
+      <a href="${REPO}" rel="noopener">GitHub</a>
     </nav>
+    <details class="mobile-menu">
+      <summary aria-label="Open navigation">
+        <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>
+        <span class="sr-only">Menu</span>
+      </summary>
+      <nav class="mobile-nav" aria-label="Mobile">
+        <a href="/">Product</a>
+        <a href="/docs/">Docs</a>
+        <a href="/spec/">Spec</a>
+        <a href="${REPO}" rel="noopener">GitHub</a>
+      </nav>
+    </details>
     <div class="header-actions">
       <a class="ghost-btn" href="${REPO}" rel="noopener">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
@@ -175,9 +232,9 @@ const shell = ({ slug: current, title, description, canonical, body }) => `<!doc
 </header>
 
 <main id="main" class="doc-shell wrap">
-  <nav class="doc-nav" aria-label="Documentation">
-    <p class="footer-h">Documentation</p>
-${NAV(current)}
+  <nav class="doc-nav" aria-label="${section === "spec" ? "Specification" : "Documentation"}">
+    <p class="footer-h">${section === "spec" ? "Specification" : "Documentation"}</p>
+${NAV(current, navPages, navPrefix)}
   </nav>
   <article class="doc-body">
 ${body}
@@ -187,7 +244,7 @@ ${body}
 <footer class="site-footer doc-footer" data-scope="dark">
   <div class="wrap footer-base">
     <span>© 2026 <a href="https://sebastian-software.de" rel="noopener">Sebastian Software</a> · Dalo</span>
-    <span><a href="/">dalo.sh</a> · <a href="${REPO}" rel="noopener">GitHub</a> · <a href="${REPO}/blob/main/CHANGELOG.md" rel="noopener">Changelog</a></span>
+    <span><a href="/">dalo.sh</a> · <a href="/spec/">Spec</a> · <a href="${REPO}" rel="noopener">GitHub</a> · <a href="${REPO}/blob/main/CHANGELOG.md" rel="noopener">Changelog</a></span>
   </div>
 </footer>
 </body>
@@ -195,19 +252,64 @@ ${body}
 `
 
 const docPage = async (page) => {
-  const markdown = await readFile(path.join(docsSourceDir, `${page.slug}.md`), "utf8")
+  const sourcePath = `docs/${page.slug}.md`
+  const markdown = await readFile(path.join(rootDir, sourcePath), "utf8")
   const title = markdown.match(/^#\s+(.+)$/m)?.[1]?.trim()
   if (!title) throw new Error(`docs/${page.slug}.md has no level-1 heading`)
-  const body = renderMarkdown(markdown).trimEnd()
-  const source = `${BLOB}/docs/${page.slug}.md`
+  const body = renderMarkdown(markdown, sourcePath).trimEnd()
+  const source = `${BLOB}/${sourcePath}`
   return shell({
     slug: page.slug,
     title,
     description: page.summary,
     canonical: `${SITE}/docs/${page.slug}.html`,
-    body: `${body}\n<p class="doc-source">Source: <a href="${source}" rel="noopener">docs/${page.slug}.md</a></p>`,
+    body: `${body}\n<p class="doc-source">Source: <a href="${source}" rel="noopener">${sourcePath}</a></p>`,
   })
 }
+
+const specPage = async (page) => {
+  const sourcePath = `docs/spec/${page.source}`
+  const markdown = await readFile(path.join(rootDir, sourcePath), "utf8")
+  const title = markdown.match(/^#\s+(.+)$/m)?.[1]?.trim()
+  if (!title) throw new Error(`${sourcePath} has no level-1 heading`)
+  const body = renderMarkdown(markdown, sourcePath).trimEnd()
+  const outputPath = page.slug === "index" ? `spec/${SPEC_VERSION}/` : `spec/${SPEC_VERSION}/${page.slug}.html`
+  const source = `${BLOB}/${sourcePath}`
+  return shell({
+    slug: page.slug,
+    title,
+    description: page.summary,
+    canonical: `${SITE}/${outputPath}`,
+    section: "spec",
+    navPages: SPEC_PAGES,
+    navPrefix: `/spec/${SPEC_VERSION}/`,
+    body: `${body}\n<p class="doc-source">Source: <a href="${source}" rel="noopener">${sourcePath}</a> · <a href="/spec/${SPEC_VERSION}/plugin-v1.schema.json">Download JSON Schema</a></p>`,
+  })
+}
+
+const specIndexPage = () =>
+  shell({
+    slug: "landing",
+    title: "Portable Agent Packages",
+    description: "The experimental Portable Agent Packages draft 0.1 for passive skills, tools, instructions, and hooks.",
+    canonical: `${SITE}/spec/`,
+    section: "spec",
+    navPages: SPEC_PAGES,
+    navPrefix: `/spec/${SPEC_VERSION}/`,
+    body: `<h1>Portable Agent Packages</h1>
+<p class="doc-lede">An experimental author-facing profile for grouping skills, standing instructions, local tools, and event handlers into a package that a consumer can validate and review.</p>
+<div class="doc-cards">
+  <a class="doc-card" href="/spec/${SPEC_VERSION}/">
+    <span class="doc-card-title">Draft ${SPEC_VERSION}</span>
+    <span class="doc-card-summary">Read the versioned specification, contract fields, validation stages, and bounded hook mapping.</span>
+  </a>
+  <a class="doc-card" href="/spec/${SPEC_VERSION}/compatibility.html">
+    <span class="doc-card-title">Compatibility</span>
+    <span class="doc-card-summary">See provider evidence and the limits of the current reference fixtures.</span>
+  </a>
+</div>
+<p>Download the <a href="/spec/${SPEC_VERSION}/plugin-v1.schema.json">JSON Schema</a> for editor assistance and structural validation.</p>`,
+  })
 
 const indexPage = () => {
   const items = PAGES.map(
@@ -269,6 +371,15 @@ const collect = async () => {
   const files = new Map()
   for (const page of PAGES) files.set(`docs/${page.slug}.html`, await docPage(page))
   files.set("docs/index.html", indexPage())
+  for (const page of SPEC_PAGES) {
+    const output = page.slug === "index" ? `spec/${SPEC_VERSION}/index.html` : `spec/${SPEC_VERSION}/${page.slug}.html`
+    files.set(output, await specPage(page))
+  }
+  files.set("spec/index.html", specIndexPage())
+  files.set(
+    `spec/${SPEC_VERSION}/plugin-v1.schema.json`,
+    await readFile(path.join(docsSourceDir, "spec/plugin-v1.schema.json"), "utf8"),
+  )
   files.set("index.html", stampVersion(await readFile(path.join(siteDir, "index.html"), "utf8"), version))
   files.set(
     "sitemap.xml",

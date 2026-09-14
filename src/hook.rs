@@ -1120,6 +1120,26 @@ pub fn provider_supports_descriptor(provider: HookProvider, descriptor: &HookDes
             descriptor.phase,
             descriptor.effect,
         )
+        && error_visibility_supported(provider, descriptor)
+}
+
+fn error_visibility_supported(provider: HookProvider, descriptor: &HookDescriptorV1) -> bool {
+    // SessionEnd has no model-facing output channel in either pinned adapter:
+    // Codex ignores SessionEnd stdout and Claude exposes no hook-specific
+    // context for that terminal event. A user-only diagnostic can still be
+    // delivered through the provider's hook-failure reporting.
+    if descriptor.error_visibility == HookErrorVisibility::User {
+        return true;
+    }
+    if descriptor.subject == HookSubject::Session && descriptor.phase == HookPhase::End {
+        return false;
+    }
+    // Claude resumes a turn when Stop receives model context. Delivering a
+    // report/fail-open failure that way would introduce undeclared control.
+    !(provider == HookProvider::Claude
+        && descriptor.subject == HookSubject::Workflow
+        && descriptor.phase == HookPhase::CompletionAttempt
+        && descriptor.failure_policy != HookFailurePolicy::FailClosed)
 }
 
 fn native_event(
@@ -1191,6 +1211,34 @@ pub enum PortableHookOutput {
     ContinueWorkflow {
         /// Prompt text explaining the requested continuation.
         reason: String,
+    },
+    /// A dispatcher-generated failure. Handlers cannot use this result; it is
+    /// retained separately so report and fail-open errors can reach the
+    /// declared audiences without being mistaken for an effect result.
+    #[serde(skip)]
+    Failure {
+        /// Bounded, redacted diagnostic.
+        reason: String,
+        /// Audiences that may receive the diagnostic.
+        visibility: HookErrorVisibility,
+    },
+    /// A dispatcher-generated fail-closed denial with an independently
+    /// surfaced diagnostic.
+    #[serde(skip)]
+    FailureDeny {
+        /// Bounded, redacted diagnostic.
+        reason: String,
+        /// Audiences that may receive the diagnostic.
+        visibility: HookErrorVisibility,
+    },
+    /// A dispatcher-generated fail-closed continuation with an independently
+    /// surfaced diagnostic.
+    #[serde(skip)]
+    FailureContinue {
+        /// Bounded, redacted diagnostic.
+        reason: String,
+        /// Audiences that may receive the diagnostic.
+        visibility: HookErrorVisibility,
     },
 }
 
@@ -1277,11 +1325,33 @@ pub fn compile_native_projection(
                 ),
             });
         }
+        if !error_visibility_supported(provider, descriptor) {
+            if descriptor.requirement == HookRequirement::Optional
+                && descriptor.fallback == Some(HookFallback::Omit)
+            {
+                continue;
+            }
+            return Err(DaloError::StateError {
+                reason: format!(
+                    "hook `{}` has no verified {provider:?} failure-audience mapping",
+                    status.hook.source_ref
+                ),
+            });
+        }
         let matcher = exact_matcher(&descriptor.matcher.tool_names);
-        for event in native_event(provider, descriptor.subject, descriptor.phase)
-            .expect("supported descriptor has a native event")
-            .split('|')
+        let native_events = if provider == HookProvider::Claude
+            && descriptor.subject == HookSubject::ToolCall
+            && descriptor.phase == HookPhase::After
+            && descriptor.effect == HookEffect::ReplaceOutput
         {
+            // Claude exposes `updatedToolOutput` for PostToolUse. Its
+            // PostToolUseFailure envelope accepts context only.
+            "PostToolUse"
+        } else {
+            native_event(provider, descriptor.subject, descriptor.phase)
+                .expect("supported descriptor has a native event")
+        };
+        for event in native_events.split('|') {
             grouped
                 .entry((event.to_owned(), matcher.clone()))
                 .or_default()
@@ -1484,16 +1554,39 @@ pub fn compose_results(effect: HookEffect, results: &[PortableHookResult]) -> Co
     let mut continue_workflow = false;
     let mut conflicts = Vec::new();
     for result in ordered {
+        let hook = result.hook;
         match result.output {
             PortableHookOutput::Observe
             | PortableHookOutput::Abstain
             | PortableHookOutput::Allow => {}
+            PortableHookOutput::Failure { reason, visibility } => {
+                if visibility == HookErrorVisibility::ModelAndUser {
+                    context.push(format!("hook `{hook}`: {reason}"));
+                }
+            }
+            PortableHookOutput::FailureDeny { reason, visibility } => {
+                denials.push(if visibility == HookErrorVisibility::ModelAndUser {
+                    reason
+                } else {
+                    "hook failure blocked this action".to_owned()
+                });
+            }
+            PortableHookOutput::FailureContinue { reason, visibility } => {
+                continue_workflow = true;
+                context.push(if visibility == HookErrorVisibility::ModelAndUser {
+                    format!("hook `{hook}`: {reason}")
+                } else {
+                    "hook failure requires another workflow pass".to_owned()
+                });
+            }
             PortableHookOutput::AddContext { context: value }
                 if effect == HookEffect::AddContext =>
             {
                 context.push(value)
             }
-            PortableHookOutput::Deny { reason } if effect == HookEffect::AllowDeny => {
+            PortableHookOutput::Deny { reason }
+                if matches!(effect, HookEffect::AllowDeny | HookEffect::RewriteInput) =>
+            {
                 denials.push(reason);
             }
             PortableHookOutput::RewriteInput { input } if effect == HookEffect::RewriteInput => {
@@ -1509,8 +1602,7 @@ pub fn compose_results(effect: HookEffect, results: &[PortableHookResult]) -> Co
                 context.push(reason);
             }
             _ => conflicts.push(format!(
-                "hook `{}` returned an output incompatible with {effect}",
-                result.hook
+                "hook `{hook}` returned an output incompatible with {effect}"
             )),
         }
     }
@@ -1739,6 +1831,18 @@ matcher = { tool_names = ["Bash"] }
     }
 
     #[test]
+    fn dispatcher_failure_outputs_are_not_part_of_portable_stdout() {
+        for kind in ["failure", "failure_deny", "failure_continue"] {
+            let output = serde_json::from_value::<PortableHookOutput>(json!({
+                "kind": kind,
+                "reason": "internal",
+                "visibility": "user",
+            }));
+            assert!(output.is_err(), "internal output kind must stay private");
+        }
+    }
+
+    #[test]
     fn descriptor_accepts_required_pre_action_enforcement() {
         validate_descriptor(&valid_descriptor()).expect("descriptor should be valid");
     }
@@ -1770,6 +1874,67 @@ matcher = { tool_names = ["Bash"] }
         assert!(validate_descriptor(&descriptor).is_err());
         descriptor.failure_policy = HookFailurePolicy::Report;
         validate_descriptor(&descriptor).expect("session observation should report failures");
+    }
+
+    #[test]
+    fn session_end_model_visibility_is_blocked_by_native_contract() {
+        let mut descriptor = valid_descriptor();
+        descriptor.subject = HookSubject::Session;
+        descriptor.phase = HookPhase::End;
+        descriptor.effect = HookEffect::Observe;
+        descriptor.failure_policy = HookFailurePolicy::Report;
+        descriptor.matcher = HookMatcherV1::default();
+        descriptor.bindings.clear();
+        assert!(validate_descriptor(&descriptor).is_ok());
+        assert!(!provider_supports_descriptor(
+            HookProvider::Codex,
+            &descriptor
+        ));
+        assert!(!provider_supports_descriptor(
+            HookProvider::Claude,
+            &descriptor
+        ));
+        descriptor.error_visibility = HookErrorVisibility::User;
+        assert!(provider_supports_descriptor(
+            HookProvider::Codex,
+            &descriptor
+        ));
+        assert!(provider_supports_descriptor(
+            HookProvider::Claude,
+            &descriptor
+        ));
+    }
+
+    #[test]
+    fn claude_stop_failure_context_cannot_turn_a_report_into_continuation() {
+        let mut descriptor = valid_descriptor();
+        descriptor.subject = HookSubject::Workflow;
+        descriptor.phase = HookPhase::CompletionAttempt;
+        descriptor.effect = HookEffect::ContinueWorkflow;
+        descriptor.matcher = HookMatcherV1::default();
+        descriptor.bindings.clear();
+        for policy in [HookFailurePolicy::Report, HookFailurePolicy::FailOpen] {
+            descriptor.failure_policy = policy;
+            assert!(!provider_supports_descriptor(
+                HookProvider::Claude,
+                &descriptor
+            ));
+            assert!(provider_supports_descriptor(
+                HookProvider::Codex,
+                &descriptor
+            ));
+        }
+        descriptor.failure_policy = HookFailurePolicy::FailClosed;
+        assert!(provider_supports_descriptor(
+            HookProvider::Claude,
+            &descriptor
+        ));
+        descriptor.failure_policy = HookFailurePolicy::Report;
+        descriptor.error_visibility = HookErrorVisibility::User;
+        assert!(provider_supports_descriptor(
+            HookProvider::Claude,
+            &descriptor
+        ));
     }
 
     #[test]

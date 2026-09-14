@@ -34,24 +34,30 @@ standing guidance. The local Node tool emits a portable context result; the
 hook binds the project directory to its named input before prompt submission.
 The example is illustrative and is not an Impeccable integration.
 
-From a Dalo checkout, validate it without creating a store:
+Validate an author source without creating a store:
 
 ```sh
-cargo run --locked --quiet --example validate_package -- examples/packages/source
+dalo --json plugin validate examples/packages/source
 ```
 
-The validator prints JSON with `valid: true` and exits 0 only when at least one
-package is found and all scanned packages pass structural and local semantic
-checks. Exit 1 means invalid or empty package inventory. Exit 2 means invalid
-command usage or a missing source directory. Diagnostics appear in `warnings`;
-an empty inventory with no warnings usually means the directory layout is wrong.
+The validator prints report schema 1 with `valid: true` and exits 0 only when
+at least one package is found, package contracts pass, and required references
+resolve within the supplied source. Exit 1 means invalid or empty package
+inventory or unresolved required references. Exit 2 means invalid command usage
+or a missing source directory. Findings appear in `diagnostics`.
 
-The first Cargo build may fetch Rust dependencies. The validator itself reads
-manifests and bounded package files; it never executes tools,
-downloads dependencies, grants trust, or changes harness configuration. It uses
-the same parser as Dalo discovery. It does not resolve skill, instruction, agent,
-or plugin dependencies, check runtime availability, or certify provider behavior.
-The example validator's report is experimental, not a stable Dalo CLI API.
+The command uses the production scanners and dependency rules. It reads
+manifests and bounded package files without executing tools, downloading
+dependencies, granting trust, or changing harness configuration. Package validity,
+reference resolution, provider hook capabilities, and authorization are separate
+report fields. Runtime availability and native handler behavior are not certified.
+
+Use `--source-id company` for explicit same-source references such as
+`skill:company:review`; the default source identity is `validation`. References
+to other sources remain unresolved, since this command never consults the user's
+source registry. See the [CLI reference](../reference.md#dalo-plugin-validate-source-path)
+for exit codes and usage. From a checkout, replace `dalo` with
+`cargo run --locked --`; the first Cargo build may fetch Rust dependencies.
 
 [plugin-v1.schema.json](plugin-v1.schema.json) is a JSON Schema 2020-12 document
 for editor assistance and structural validation of decoded TOML. Use a TOML-aware
@@ -214,7 +220,9 @@ Portable stdout is a single JSON result. The supported shapes are:
 ```
 
 These are separate examples, not a multi-line response. Results must match the
-declared effect. A native `hookSpecificOutput` response needs explicit adaptation;
+declared effect; `abstain` is the explicit no-op for any effect. Dalo limits a
+handler response to 4 MiB, text fields to 16 KiB without NUL characters, and a
+rewritten input object to 1 MiB. A native `hookSpecificOutput` response needs explicit adaptation;
 it is not itself portable stdout. A denial does not revoke a user's harness
 permissions, and `allow` does not grant permissions the harness withheld.
 Post-action effects cannot undo actions. Conflicting controlling results must
@@ -225,10 +233,30 @@ Timeouts range from 100 to 120000 milliseconds. `retry` is `never` and
 or `fail_closed`; the last is valid only for pre-action enforcement or completion
 control. Observations and output replacements require `report`.
 `error_visibility` declares `user` or `model_and_user`.
-These are contract fields: adapter support and actual failure delivery must be
-tested separately. In particular, Dalo's current dispatcher returns no context
-for several report/fail-open errors; this draft does not certify those error
-audiences as fully implemented.
+Dalo applies the failure policy to unsuccessful exits, timeouts, malformed
+results, missing runtime bindings, and outputs incompatible with the declared
+effect. `report` and `fail_open` leave the action unchanged and surface a
+bounded diagnostic. `fail_closed` denies a pre-action gate or requests another
+workflow pass. A user-only failure exposes the detailed diagnostic through the
+native user channel and only a generic explanation when a control result needs
+a model-facing reason. Handler stderr is never copied into model context.
+
+Provider support includes these audience rules. Neither adapter can deliver
+model-visible diagnostics after `SessionEnd`; such descriptors are reported as
+unsupported. User-only failures there use a nonzero dispatcher exit because
+the event ignores ordinary context output. Claude's `Stop` context resumes the
+turn, so a nonblocking `report` or `fail_open` failure cannot promise
+`model_and_user` delivery there. Use `user`, or `fail_closed` when continuation
+is intended. Required unsupported contracts block activation; optional ones
+with an explicit omission fallback remain visibly omitted.
+
+Input rewriting preserves Claude's ordinary permission flow. Codex requires
+the native `allow` field alongside a rewrite; its independent permission and
+sandbox checks still apply. Output replacement targets Claude `PostToolUse`
+only, since its failure event accepts context but no replacement. The native
+`stop_hook_active` flag remains available through `workflow.already_continued`;
+handlers decide when to abstain to avoid repeated continuation. See the
+[compatibility matrix](compatibility.md) for evidence and provider limits.
 
 An optional hook must explicitly declare `fallback = "omit"`. Required hooks
 must not declare a weakening fallback. Unsupported required enforcement must
@@ -253,9 +281,14 @@ and 256 MiB per package. Hook matchers and bindings have a tighter 256-entry
 limit. JSON Schema string lengths count characters, so byte limits still need
 semantic validation.
 
-The [conformance cases](../../tests/package_spec.rs) check example discovery,
-unknown fields, missing tool files, escaped paths, unsupported versions, invalid
-event/effect combinations, and binding mismatches using the production parser.
+The [conformance cases](../../tests/package_spec.rs) exercise the structural
+schema and production parser against shared examples, distinguishing structural
+rejection from local semantic failures. They also check reference scope and
+dependency cycles. The [CLI cases](../../tests/package_validate_cli.rs) exercise
+validation without a store. The [package lifecycle cases](../../tests/package_lifecycle.rs)
+cover selection, review, approval, installation, tool-byte changes, revocation,
+and removal, with independently activated instruction blocks and preserved
+user content on both provider targets.
 The [upstream integration guide](../../tests/fixtures/upstream-hooks/README.md)
 distinguishes original hook execution from recordings and live engine tests.
 

@@ -1,0 +1,14 @@
+schema_version = 1
+
+[plugin]
+name = "fixture"
+description = "A schema-valid semantic fixture"
+
+[[tool]]
+schema_version = 1
+id = "handler"
+entry = "missing.mjs"
+runtime = "node"
+argv = []
+cwd = "tool_root"
+availability = "required"
