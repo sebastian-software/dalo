@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "blocking": false,
+  "reason": "The configured pnpm agent:check gate could not run because this repository has no root package manifest; standards check passed.",
+  "detectedAt": "2026-09-16T16:08:59.000Z",
+  "expectedStandardsVersion": 15,
+  "observedStandardsVersion": 15,
+  "expectedCliVersion": "0.13.0",
+  "observedCliVersion": "0.13.0",
+  "failedChecks": [
+    "pnpm agent:check"
+  ],
+  "retry": "Verify the pull request's own CI run for the repository quality gate, then delete this marker when validation is complete."
+}
