@@ -90,7 +90,7 @@ printf '%s\n' "$ci_test_job" | grep -Fq 'cargo clippy --locked --all-targets --a
 printf '%s\n' "$ci_test_job" | grep -Fq 'cargo build --release --locked --target "${{ matrix.target }}"'
 
 # The host test job covers the two native release targets. The dedicated job
-# covers the four remaining targets, including native ARM execution and the
+# covers the three remaining targets, including native ARM execution and the
 # static-musl release-binary smoke path.
 for target in x86_64-unknown-linux-gnu aarch64-apple-darwin; do
   printf '%s\n' "$ci_test_job" | grep -Fq "$target"
@@ -99,10 +99,17 @@ done
 for target in \
   aarch64-unknown-linux-gnu \
   x86_64-unknown-linux-musl \
-  aarch64-unknown-linux-musl \
-  x86_64-apple-darwin; do
+  aarch64-unknown-linux-musl; do
   printf '%s\n' "$release_targets_job" | grep -Fq "$target"
 done
+
+# The Intel macOS build was discontinued with 1.0, so neither CI nor the
+# publish matrix may reintroduce it: a built target that no channel installs is
+# a promise nobody keeps.
+if printf '%s\n' "$release_targets_job" | grep -Fq 'x86_64-apple-darwin'; then
+  echo 'the CI release-target matrix still builds the discontinued Intel macOS target' >&2
+  exit 1
+fi
 
 release_target_entry() {
   printf '%s\n' "$release_targets_job" | awk -v target="$1" '
@@ -131,7 +138,6 @@ release_target_entry() {
 aarch64_gnu_entry="$(release_target_entry aarch64-unknown-linux-gnu)"
 x86_64_musl_entry="$(release_target_entry x86_64-unknown-linux-musl)"
 aarch64_musl_entry="$(release_target_entry aarch64-unknown-linux-musl)"
-x86_64_darwin_entry="$(release_target_entry x86_64-apple-darwin)"
 
 printf '%s\n' "$aarch64_gnu_entry" | grep -Fqx '          - os: ubuntu-24.04-arm'
 printf '%s\n' "$aarch64_gnu_entry" | grep -Fqx '            builder: cargo'
@@ -145,10 +151,6 @@ printf '%s\n' "$aarch64_musl_entry" | grep -Fqx '          - os: ubuntu-latest'
 printf '%s\n' "$aarch64_musl_entry" | grep -Fqx '            builder: cross'
 printf '%s\n' "$aarch64_musl_entry" | grep -Fqx '            test: none'
 printf '%s\n' "$aarch64_musl_entry" | grep -Fqx '            smoke: false'
-printf '%s\n' "$x86_64_darwin_entry" | grep -Fqx '          - os: macos-14'
-printf '%s\n' "$x86_64_darwin_entry" | grep -Fqx '            builder: cargo'
-printf '%s\n' "$x86_64_darwin_entry" | grep -Fqx '            test: none'
-printf '%s\n' "$x86_64_darwin_entry" | grep -Fqx '            smoke: false'
 
 printf '%s\n' "$release_targets_job" | grep -Fq 'runs-on: ${{ matrix.os }}'
 printf '%s\n' "$release_targets_job" | grep -Fq 'cross test --locked --target "${{ matrix.target }}" --lib'
@@ -411,9 +413,17 @@ for target in \
   aarch64-unknown-linux-gnu \
   x86_64-unknown-linux-musl \
   aarch64-unknown-linux-musl \
-  x86_64-apple-darwin \
   aarch64-apple-darwin; do
   printf '%s\n' "$final_release_job" | grep -Fq "$target"
+done
+
+# Five targets, not six: the finalisation gate must not wait for an Intel macOS
+# asset that the build matrix no longer produces.
+for discontinued_job in "$artifacts_job" "$final_release_job"; do
+  if printf '%s\n' "$discontinued_job" | grep -Fq 'x86_64-apple-darwin'; then
+    echo 'publish.yml still expects the discontinued Intel macOS target' >&2
+    exit 1
+  fi
 done
 
 for release_job in "$artifacts_job" "$final_release_job" "$crate_job" "$npm_job" "$homebrew_job"; do

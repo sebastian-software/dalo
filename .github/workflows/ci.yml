@@ -93,11 +93,6 @@ jobs:
             builder: cross
             test: none
             smoke: false
-          - os: macos-14
-            target: x86_64-apple-darwin
-            builder: cargo
-            test: none
-            smoke: false
 
     steps:
       - name: Checkout

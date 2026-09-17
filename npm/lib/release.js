@@ -23,15 +23,19 @@ function targetFor(platform = process.platform, arch = process.arch, libc) {
     throw new Error(`invalid DALO_LINUX_LIBC value: ${libc}; supported values are gnu and musl`);
   }
   const linuxLibc = libc || 'gnu';
+  if (platform === 'darwin' && arch === 'x64') {
+    // npm's `cpu` field cannot say "x64 on Linux only", so an Intel Mac still
+    // installs the launcher and has to be told here.
+    throw new Error('unsupported platform: darwin x64; the Intel macOS build was discontinued with Dalo 1.0 — install with `cargo install dalo`, which compiles from source');
+  }
   const targets = {
-    'darwin:x64': 'x86_64-apple-darwin',
     'darwin:arm64': 'aarch64-apple-darwin',
     'linux:x64': `x86_64-unknown-linux-${linuxLibc}`,
     'linux:arm64': `aarch64-unknown-linux-${linuxLibc}`
   };
   const target = targets[`${platform}:${arch}`];
   if (!target) {
-    throw new Error(`unsupported platform: ${platform} ${arch}; supported targets are macOS and Linux on x64 or arm64`);
+    throw new Error(`unsupported platform: ${platform} ${arch}; supported targets are macOS on arm64 and Linux on x64 or arm64`);
   }
   return target;
 }
