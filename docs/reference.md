@@ -2,6 +2,16 @@
 
 This is the user-facing reference for scripting Dalo and for understanding the files Dalo writes. It documents the current CLI and persisted schemas.
 
+## Compatibility
+
+This page describes current behavior. Whether a given command, flag, exit code,
+JSON field, persisted file, or environment variable is a stability promise is
+answered by [Compatibility and stability](compatibility.md): commands, exit
+codes, `--json` top-level shapes, persisted schemas, environment variables, and
+install channels are stable within a major version; surfaces marked
+**experimental** here may change in any release; human-readable output text,
+store-internal layout, and the Rust library API are not covered.
+
 ## Store Resolution
 
 Dalo chooses the store path in this order:
@@ -20,6 +30,7 @@ Relative store paths are resolved against the current working directory. `~` is 
 | `DALO_GIT_TIMEOUT_SECS` | Positive timeout in seconds for every Git subprocess. Invalid or zero values use the built-in defaults. |
 | `DALO_OFFLINE` | Disable passive update checks when set to a truthy value. |
 | `DALO_UPDATE_CHECK` | Set to `never` to disable passive update checks. |
+| `DALO_INSTALL_CHANNEL` | Installation context set by a launcher so the update notice recommends the matching upgrade command. |
 | `NO_COLOR` | Disable ANSI color output when set. |
 | `DALO_TARGET` | Installer-only release target override. A non-empty value takes precedence over platform detection; see [installer target variables](../site/install.md#installer-environment-variables). |
 
@@ -235,6 +246,10 @@ Built-in target IDs:
 | `generic` | none, path required | supported |
 | `cursor` | none | experimental |
 | `opencode` | none | experimental |
+
+Targets reported as `experimental` are not covered by the stability promise for
+a major version: their IDs, default paths, and behavior may change in any
+release. See [Compatibility and stability](compatibility.md#tier-2-experimental).
 
 JSON output shape: `TargetDetectReport`.
 
@@ -1314,16 +1329,24 @@ Hook and plugin projection paths are created lazily, not by `dalo init`:
 | `hooks/`, `hooks/state.json` | The first native hook projection is applied; the state file records dispatcher ownership. |
 | `plugins/`, `plugins/state.json` | The first native plugin projection is applied; the state file records projection ownership. |
 
+Provider plugin and hook projections are **experimental**: the native files
+Dalo writes under `plugins/` and `hooks/`, and the provider mappings behind
+them, track upstream harness formats and may change in any release. The store
+layout itself is internal and is not covered by the stability promise; read it
+through `dalo` commands rather than directly. See
+[Compatibility and stability](compatibility.md).
+
 Dalo rejects unsupported schema versions in persisted TOML files.
 
 ## `config.toml`
 
-Schema version: `version = 1`.
+Schema version: `version = 2`. A `version = 1` file is read and migrated
+forward on the next write.
 
 Example:
 
 ```toml
-version = 1
+version = 2
 
 [settings]
 autosync = false
@@ -1585,6 +1608,12 @@ reported as `skipped_symlink`. This keeps skill identity and approval metadata
 contained within the source being scanned.
 
 ## `PLUGIN.toml` Portable Plugins, Tools, and Hooks
+
+The `PLUGIN.toml` file format Dalo reads is stable within a major version. The
+cross-implementation [Portable Agent Packages specification](spec/README.md)
+built on it is an **experimental** draft, and so is any claim that another tool
+interprets the same file identically. See
+[Compatibility and stability](compatibility.md).
 
 Plugins are exact `plugins/<name>/PLUGIN.toml` packages. The top-level schema is
 closed: unknown fields are rejected. `schema_version = 1` and `[plugin]` with

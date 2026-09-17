@@ -107,6 +107,53 @@ grep -q 'git -C "\$TEAM_REPO" -c commit.gpgSign=false' "$root/docs/getting-start
 grep -q 'git -C "\$CATALOG_REPO" -c commit.gpgSign=false' "$root/docs/getting-started.md"
 grep -q 'dalo target link generic "\$RUNNER_TEMP/dalo-skills"' "$root/docs/ci.md"
 grep -q 'sh tests/docs.sh' "$root/CONTRIBUTING.md"
+
+# The 1.0 compatibility contract is a constraint, not prose: the page must
+# exist, name every persisted file it promises to cover, keep the three tiers
+# and the change policy, and carry the library-API statement word for word --
+# the same sentence that has to be in the lib.rs crate documentation, so
+# docs.rs and dalo.sh cannot disagree.
+compatibility="$root/docs/compatibility.md"
+test -f "$compatibility"
+for persisted_file in config.toml state.toml lock.toml approvals.toml source-lock.toml dalo.toml PLUGIN.toml; do
+  grep -Fq "\`$persisted_file\`" "$compatibility" \
+    || { echo "docs/compatibility.md does not name the persisted file $persisted_file" >&2; exit 1; }
+done
+for compatibility_section in \
+  '## Tier 1: Stable in 1.x' \
+  '## Tier 2: Experimental' \
+  '## Tier 3: Not covered' \
+  '## Change policy' \
+  '## Supported platforms' \
+  '## Support window'; do
+  grep -Fq "$compatibility_section" "$compatibility" \
+    || { echo "docs/compatibility.md is missing the section: $compatibility_section" >&2; exit 1; }
+done
+for exit_code in '`0`' '`1`' '`2`' '`3`' '`4`'; do
+  grep -Fq "| $exit_code |" "$compatibility"
+done
+grep -Fq 'Windows is supported through WSL only' "$compatibility"
+library_stance='The Rust library API is not a semver contract; the CLI, its exit codes,'
+grep -Fq "$library_stance" "$compatibility" \
+  || { echo 'docs/compatibility.md no longer states the library API stance' >&2; exit 1; }
+grep -Fq "$library_stance" "$root/src/lib.rs" \
+  || { echo 'src/lib.rs crate documentation no longer states the library API stance' >&2; exit 1; }
+# The statement belongs in the crate documentation, before the module list, so
+# docs.rs shows it in the first paragraph.
+lib_crate_docs="$(awk '/^#!\[/ { exit } { print }' "$root/src/lib.rs")"
+printf '%s\n' "$lib_crate_docs" | grep -Fq "$library_stance" \
+  || { echo 'the library API stance left the src/lib.rs crate documentation header' >&2; exit 1; }
+# Pure CLI plumbing stays out of the rendered library documentation.
+for hidden_module in cli term update; do
+  grep -B 1 -Fx "pub mod $hidden_module;" "$root/src/lib.rs" | grep -Fq '#[doc(hidden)]' \
+    || { echo "src/lib.rs no longer hides the CLI plumbing module $hidden_module" >&2; exit 1; }
+done
+grep -Fq 'docs/compatibility.md' "$root/SECURITY.md"
+grep -Fq 'docs/compatibility.md' "$root/README.md.src"
+grep -Fq 'compatibility.md' "$root/docs/reference.md"
+grep -Fq '0008-compatibility-contract.md' "$root/docs/adr/README.md"
+test -f "$root/docs/adr/0008-compatibility-contract.md"
+
 grep -q 'latest release on the default branch' "$root/SECURITY.md"
 grep -q 'security@sebastian-software.de' "$root/SECURITY.md"
 refute 'SECURITY.md still lists the 0.4.x line as supported' \
@@ -116,7 +163,7 @@ grep -q '__DALO_LASTMOD__' "$root/site/sitemap.xml"
 # The documentation published on dalo.sh is rendered from docs/*.md by
 # site/build.mjs and committed, so it must exist, carry the site styles, and be
 # reachable from the sitemap, the documentation index, and the footer.
-for document in getting-started reference agents ci troubleshooting uninstall comparison; do
+for document in getting-started reference compatibility agents ci troubleshooting uninstall comparison; do
   page="$root/site/docs/$document.html"
   test -f "$page"
   title="$(sed -n 's/^# //p' "$root/docs/$document.md" | head -n 1)"

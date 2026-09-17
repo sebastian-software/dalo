@@ -8,6 +8,16 @@ Security fixes are provided for the latest release on the default branch. Older
 releases are not patched separately — upgrade to the latest version to receive a
 fix.
 
+For the 1.x line this means: fixes land in the latest 1.x release, there is no
+long-term-support branch, and no 1.x release is patched in place. Because the
+[compatibility contract](docs/compatibility.md) forbids breaking changes inside
+1.x, upgrading to the latest 1.x to pick up a fix is meant to be uneventful.
+When 2.0 ships, the 1.x line keeps receiving security fixes for six months from
+the 2.0 release date so teams have a bounded migration window.
+
+If the only safe fix for a vulnerability is a breaking change, it ships as soon
+as it is ready and is called out in the release notes.
+
 ## Reporting a Vulnerability
 
 Report suspected vulnerabilities privately. Do not open a public issue, pull

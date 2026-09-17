@@ -11,6 +11,7 @@ context, the decision in present tense, and the consequences.
 | [0004](0004-deterministic-resolution-and-safe-materialization.md) | Deterministic Resolution and Safe Materialization | [RFC 0003](../rfcs/0003-resolution-engine.md) |
 | [0005](0005-portable-agent-profiles.md) | Portable Agent Profiles | [RFC 0004](../rfcs/0004-portable-agent-profiles.md) |
 | [0006](0006-passive-portable-plugins.md) | Passive Portable Plugins | [RFC 0005](../rfcs/0005-portable-plugins-and-agent-stacks.md) |
+| [0008](0008-compatibility-contract.md) | Compatibility Contract and Library API Stance | [Issue 802](https://github.com/sebastian-software/dalo/issues/802) |
 
 [`docs/rfcs/`](../rfcs/) keeps the long-form proposals these records summarize.
 An RFC explains the reasoning and the rejected alternatives; the ADR is the

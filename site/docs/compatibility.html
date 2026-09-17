@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Compatibility and Stability · Dalo documentation</title>
+  <meta name="description" content="What is stable in 1.x, what is experimental, and how breaking changes are announced." />
+  <link rel="canonical" href="https://dalo.sh/docs/compatibility.html" />
+  <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#15171c" media="(prefers-color-scheme: dark)" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Dalo" />
+  <meta property="og:url" content="https://dalo.sh/docs/compatibility.html" />
+  <meta property="og:title" content="Compatibility and Stability · Dalo documentation" />
+  <meta property="og:description" content="What is stable in 1.x, what is experimental, and how breaking changes are announced." />
+  <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
+  <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
+  <link rel="preload" href="/assets/fonts/hanken-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/assets/fonts/geistmono-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/docs.css" />
+</head>
+<body class="doc-page">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header" data-scope="dark">
+  <div class="wrap header-inner">
+    <a class="brand" href="/" aria-label="Dalo home">
+      <svg class="brand-mark" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true" focusable="false">
+        <rect x="1.25" y="1.25" width="29.5" height="29.5" rx="8" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <circle cx="9" cy="9.5" r="2" fill="currentColor" />
+        <circle cx="9" cy="16" r="2" fill="currentColor" />
+        <circle cx="9" cy="22.5" r="2" fill="currentColor" />
+        <path d="M11 9.5 H17 Q22 9.5 22 16 Q22 22.5 17 22.5 H11 M11 16 H22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" />
+        <circle cx="22.5" cy="16" r="2.6" fill="var(--accent)" />
+      </svg>
+      <span class="brand-word">dalo</span>
+      <span class="brand-section">docs</span>
+    </a>
+    <nav class="site-nav" aria-label="Primary">
+      <a href="/">Product</a>
+      <a href="/docs/">Docs</a>
+      <a href="/spec/">Spec</a>
+      <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+    </nav>
+    <details class="mobile-menu">
+      <summary aria-label="Open navigation">
+        <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>
+        <span class="sr-only">Menu</span>
+      </summary>
+      <nav class="mobile-nav" aria-label="Mobile">
+        <a href="/">Product</a>
+        <a href="/docs/">Docs</a>
+        <a href="/spec/">Spec</a>
+        <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+      </nav>
+    </details>
+    <div class="header-actions">
+      <a class="ghost-btn" href="https://github.com/sebastian-software/dalo" rel="noopener">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="doc-shell wrap">
+  <nav class="doc-nav" aria-label="Documentation">
+    <p class="footer-h">Documentation</p>
+        <a href="/docs/getting-started.html">Getting started</a>
+        <a href="/docs/reference.html">Command reference</a>
+        <a href="/docs/compatibility.html" aria-current="page">Compatibility</a>
+        <a href="/docs/agents.html">Agent integration</a>
+        <a href="/docs/ci.html">Dalo in CI</a>
+        <a href="/docs/troubleshooting.html">Troubleshooting</a>
+        <a href="/docs/uninstall.html">Uninstall</a>
+        <a href="/docs/comparison.html">Comparison</a>
+  </nav>
+  <article class="doc-body">
+<h1 id="compatibility-and-stability">Compatibility and Stability</h1>
+<p>This page answers one question: <strong>if I upgrade Dalo within the same major
+version, what can break?</strong></p>
+<p>It applies to the 1.x line. Dalo is still on 0.x, so nothing here is a promise
+about a released 1.0 yet — it is the contract the project commits to honor
+once 1.0 ships, and the rule the maintainers already work by. Until then a 0.x
+minor may still change any of the surfaces below, and the
+<a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">changelog</a> is the record of what did change.</p>
+<p>Everything is sorted into three tiers. If a command, flag, file, field, or
+variable is not named in tier 1, it is not a 1.x promise.</p>
+<h2 id="tier-1-stable-in-1x"><a class="doc-anchor" href="#tier-1-stable-in-1x">Tier 1: Stable in 1.x</a></h2>
+<p>These surfaces change only in a major release, and only after a deprecation
+period (see <a href="#change-policy">Change policy</a>).</p>
+<h3 id="commands-and-flags"><a class="doc-anchor" href="#commands-and-flags">Commands and flags</a></h3>
+<p>Every command and flag documented in the <a href="/docs/reference.html">command reference</a>
+under &quot;Command Reference&quot; and &quot;Global Flags&quot;, with the meaning documented
+there. New commands, new subcommands, and new optional flags are additive and
+may arrive in any minor release.</p>
+<p>The global flags are <code>--store &lt;PATH&gt;</code>, <code>--json</code>, <code>--yes</code>, <code>--dry-run</code>,
+<code>-h</code>/<code>--help</code>, and <code>-V</code>/<code>--version</code>. <code>--yes</code> is a retained no-op kept for
+existing scripts; it stays accepted for the whole 1.x line.</p>
+<h3 id="exit-codes"><a class="doc-anchor" href="#exit-codes">Exit codes</a></h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Name</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>0</code></td>
+<td>success</td>
+<td>Command completed.</td>
+</tr>
+<tr>
+<td><code>1</code></td>
+<td>expected failure</td>
+<td>User-actionable input or state problem.</td>
+</tr>
+<tr>
+<td><code>2</code></td>
+<td>usage error</td>
+<td>Invalid arguments or flags; plain text even with <code>--json</code>.</td>
+</tr>
+<tr>
+<td><code>3</code></td>
+<td>unsafe state</td>
+<td>Dalo refused to mutate because the state needs human attention.</td>
+</tr>
+<tr>
+<td><code>4</code></td>
+<td>environment problem</td>
+<td>Dependency, path, Git, filesystem, or external command problem.</td>
+</tr>
+</tbody></table></div>
+<p>A command that exits <code>0</code> today does not start exiting non-zero for the same
+input within 1.x, and no existing code is reassigned to a different meaning.
+New codes above <code>4</code> would be a breaking change and are reserved for a major.</p>
+<h3 id="--json-output"><a class="doc-anchor" href="#--json-output"><code>--json</code> output</a></h3>
+<p>The top-level shape of every report listed in
+<a href="/docs/reference.html#json-output-shapes">JSON Output Shapes</a> is stable, including the
+documented field names, their types, and the <code>snake_case</code> enum spellings in the
+&quot;Common status values&quot; table. Errors keep the documented
+<code>{&quot;error&quot;:{&quot;code&quot;:&quot;...&quot;,&quot;message&quot;:&quot;...&quot;}}</code> envelope on stderr.</p>
+<p>Within 1.x, fields are added but never removed or retyped, and no existing enum
+value is renamed. <strong>Consumers must ignore unknown fields and tolerate unknown
+enum values</strong>; that is the price of additive evolution. New enum values may be
+introduced in a minor release, so parse defensively rather than exhaustively.</p>
+<p>Reports that carry their own <code>schema_version</code> follow the same rule as persisted
+files below:</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Report</th>
+<th>Field</th>
+<th>Current</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>InstallationPlan</code> (<code>dalo plan</code>)</td>
+<td><code>schema_version</code></td>
+<td><code>1</code></td>
+</tr>
+<tr>
+<td><code>AuditReport</code> (<code>dalo audit</code>, embedded audits)</td>
+<td><code>schema_version</code></td>
+<td><code>1</code></td>
+</tr>
+<tr>
+<td><code>ApprovalListReport</code> (<code>dalo approve list</code>)</td>
+<td><code>schema_version</code></td>
+<td><code>1</code></td>
+</tr>
+<tr>
+<td><code>PackageValidationReport</code> (<code>dalo plugin validate</code>)</td>
+<td><code>schema_version</code></td>
+<td><code>1</code></td>
+</tr>
+<tr>
+<td><code>PluginReviewReport</code> (<code>dalo plugin review</code>)</td>
+<td><code>schema_version</code></td>
+<td><code>2</code></td>
+</tr>
+</tbody></table></div>
+<h3 id="persisted-files"><a class="doc-anchor" href="#persisted-files">Persisted files</a></h3>
+<p>Dalo reads and writes these files. Each carries a version field; Dalo rejects a
+version it does not support instead of guessing.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>File</th>
+<th>Location</th>
+<th>Version field</th>
+<th>Current</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><a href="/docs/reference.html#configtoml"><code>config.toml</code></a></td>
+<td>store root</td>
+<td><code>version</code></td>
+<td><code>2</code> (version <code>1</code> is read and migrated forward)</td>
+</tr>
+<tr>
+<td><a href="/docs/reference.html#statetoml"><code>state.toml</code></a></td>
+<td>store root</td>
+<td><code>schema_version</code></td>
+<td><code>1</code></td>
+</tr>
+<tr>
+<td><a href="/docs/reference.html#locktoml"><code>lock.toml</code></a></td>
+<td>store root</td>
+<td><code>schema_version</code></td>
+<td><code>6</code> (versions <code>1</code>–<code>5</code> are read and migrated forward)</td>
+</tr>
+<tr>
+<td><a href="/docs/reference.html#approvalstoml"><code>approvals.toml</code></a></td>
+<td>store root</td>
+<td><code>schema_version</code></td>
+<td><code>1</code></td>
+</tr>
+<tr>
+<td><a href="/docs/reference.html#source-locktoml"><code>source-lock.toml</code></a></td>
+<td>store root</td>
+<td><code>schema_version</code></td>
+<td><code>3</code> (versions <code>1</code> and <code>2</code> are read and migrated forward)</td>
+</tr>
+<tr>
+<td><a href="/docs/reference.html#team-repository-dalotoml"><code>dalo.toml</code></a></td>
+<td>team repository root</td>
+<td><code>schema_version</code></td>
+<td><code>1</code></td>
+</tr>
+<tr>
+<td><a href="/docs/reference.html#plugintoml-portable-plugins-tools-and-hooks"><code>PLUGIN.toml</code></a></td>
+<td><code>plugins/&lt;name&gt;/</code> in a source</td>
+<td><code>schema_version</code></td>
+<td><code>1</code> (tool descriptor <code>1</code>, hook descriptor <code>1</code>)</td>
+</tr>
+</tbody></table></div>
+<p>Two further author-facing files are versioned the same way and follow the same
+rule: <a href="/docs/reference.html#deliverytoml-provider-builds"><code>DELIVERY.toml</code></a> provider
+builds (<code>schema_version = 1</code>) and
+<a href="/docs/reference.html#agentmd-canonical-packages"><code>AGENT.md</code></a> canonical agent packages
+(<code>schema_version: 1</code> in frontmatter).</p>
+<p>The promise is: a file written by a 1.x Dalo is readable by every later 1.x
+Dalo, and a file you hand-authored against the documented schema keeps working.
+The internal layout <em>around</em> those files is not covered — see
+<a href="#tier-3-not-covered">Tier 3</a>.</p>
+<h3 id="environment-variables"><a class="doc-anchor" href="#environment-variables">Environment variables</a></h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Read by</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>DALO_STORE</code></td>
+<td>CLI</td>
+<td>Override the default store path; <code>--store</code> takes precedence.</td>
+</tr>
+<tr>
+<td><code>DALO_GIT_TIMEOUT_SECS</code></td>
+<td>CLI</td>
+<td>Positive timeout in seconds for every Git subprocess.</td>
+</tr>
+<tr>
+<td><code>DALO_OFFLINE</code></td>
+<td>CLI</td>
+<td>Disable passive update checks when truthy.</td>
+</tr>
+<tr>
+<td><code>DALO_UPDATE_CHECK</code></td>
+<td>CLI</td>
+<td><code>never</code> disables passive update checks.</td>
+</tr>
+<tr>
+<td><code>DALO_INSTALL_CHANNEL</code></td>
+<td>CLI</td>
+<td>Launcher-provided installation context used for the upgrade hint.</td>
+</tr>
+<tr>
+<td><code>NO_COLOR</code></td>
+<td>CLI</td>
+<td>Disable ANSI color output when set.</td>
+</tr>
+<tr>
+<td><code>DALO_TARGET</code></td>
+<td><code>install.sh</code></td>
+<td>Release target override; see <a href="/install.md#installer-environment-variables">installer variables</a>.</td>
+</tr>
+<tr>
+<td><code>DALO_VERIFY</code></td>
+<td><code>install.sh</code></td>
+<td>Signature-verification mode.</td>
+</tr>
+<tr>
+<td><code>DALO_LINUX_LIBC</code></td>
+<td><code>install.sh</code>, npm launcher</td>
+<td>Force <code>gnu</code> or <code>musl</code> selection.</td>
+</tr>
+<tr>
+<td><code>DALO_INSTALL_DIR</code></td>
+<td><code>install.sh</code></td>
+<td>Destination directory for the binary.</td>
+</tr>
+<tr>
+<td><code>DALO_VERSION</code></td>
+<td><code>install.sh</code>, npm launcher</td>
+<td>Pin the version to fetch.</td>
+</tr>
+<tr>
+<td><code>DALO_CACHE_DIR</code></td>
+<td>npm launcher</td>
+<td>Cache directory for downloaded archives.</td>
+</tr>
+</tbody></table></div>
+<p>An unset variable always keeps the documented default behavior. Within 1.x,
+none of these is removed and none changes meaning.</p>
+<h3 id="install-channels"><a class="doc-anchor" href="#install-channels">Install channels</a></h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Channel</th>
+<th>Name</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Hosted installer</td>
+<td><code>curl -fsSL https://dalo.sh/install.sh | sh</code></td>
+</tr>
+<tr>
+<td>npm / npx</td>
+<td><a href="https://www.npmjs.com/package/getdalo" rel="noopener"><code>getdalo</code></a></td>
+</tr>
+<tr>
+<td>Homebrew</td>
+<td><code>brew install sebastian-software/tap/dalo</code></td>
+</tr>
+<tr>
+<td>mise</td>
+<td><code>mise use -g github:sebastian-software/dalo</code></td>
+</tr>
+<tr>
+<td>Cargo</td>
+<td><code>cargo install dalo</code></td>
+</tr>
+<tr>
+<td>Release archives</td>
+<td>GitHub Releases, tag <code>dalo-v&lt;version&gt;</code></td>
+</tr>
+</tbody></table></div>
+<p>Each channel keeps publishing every 1.x release. Retiring a channel is a
+breaking change for the people who use it and happens only in a major, with the
+usual one-minor deprecation notice.</p>
+<h3 id="agent-targets"><a class="doc-anchor" href="#agent-targets">Agent targets</a></h3>
+<p>Target IDs are stable in the sense that an ID documented as supported keeps
+working and keeps its meaning. Which targets are supported, and at which level,
+is tracked in the agent matrix rather than promised here — see
+<a href="/docs/agents.html">agent integration</a> and <code>dalo target detect</code>, whose JSON reports each
+target&#39;s <code>support</code> level (<code>supported</code> or <code>experimental</code>).</p>
+<h2 id="tier-2-experimental"><a class="doc-anchor" href="#tier-2-experimental">Tier 2: Experimental</a></h2>
+<p>Experimental surfaces are usable and documented, but they may change or be
+withdrawn in any release, including a patch. They are always labeled where they
+appear.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Surface</th>
+<th>Where it is labeled</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>The Portable Agent Packages specification, draft 0.1</td>
+<td><a href="/spec/0.1/"><code>docs/spec/README.md</code></a> — &quot;experimental author-facing profile&quot;, a proposal for interoperability, not an adopted standard</td>
+</tr>
+<tr>
+<td>Provider plugin and hook projections (the native files under <code>plugins/</code> and <code>hooks/</code> in the store, and the provider mappings behind them)</td>
+<td><a href="/spec/0.1/compatibility.html"><code>docs/spec/compatibility.md</code></a> — evidence at pinned provider baselines, not a promise of equivalent semantics</td>
+</tr>
+<tr>
+<td>Targets whose <code>support</code> is <code>experimental</code> (<code>cursor</code> and <code>opencode</code> today)</td>
+<td><a href="/docs/reference.html#dalo-target-detect"><code>dalo target detect</code></a> and its <code>TargetSupport</code> field</td>
+</tr>
+</tbody></table></div>
+<p>Two distinctions are worth stating plainly:</p>
+<ul>
+<li>The <code>PLUGIN.toml</code> <strong>file format</strong> that Dalo reads is tier 1. The
+cross-implementation <strong>specification</strong> built on it is a draft, and so is any
+claim that another tool interprets it the same way.</li>
+<li>A provider projection is experimental because the <em>provider&#39;s</em> native format
+is outside Dalo&#39;s control. The portable package you authored stays stable;
+the compiled output for a given harness may need to change when that harness
+changes.</li>
+</ul>
+<h2 id="tier-3-not-covered"><a class="doc-anchor" href="#tier-3-not-covered">Tier 3: Not covered</a></h2>
+<p>These may change in any release without notice.</p>
+<ul>
+<li><strong>Human-readable output.</strong> Wording, layout, color, ordering, hints, and the
+suggested next command in text mode. Script against <code>--json</code> and the exit
+codes instead. Scraping text output is the single most common way to build a
+brittle integration.</li>
+<li><strong>Store-internal layout.</strong> Everything under the store that is not a persisted
+file named in tier 1: <code>sources/</code>, <code>local/</code>, <code>tools/</code>, <code>generated/</code>,
+<code>audits/</code>, <code>hooks/</code>, <code>plugins/</code>, <code>catalog-advance.toml</code>, <code>autosync.toml</code>,
+<code>autosync-run.toml</code>, the log files, and the lock files <code>.lock</code> and
+<code>.catalog.lock</code>. Read them with <code>dalo</code> commands, not directly.</li>
+<li><strong>The Rust library API.</strong> The Rust library API is not a semver contract; the
+CLI, its exit codes, its <code>--json</code> output, and the files Dalo persists are.
+See <a href="#the-rust-library-api">The Rust library API</a>.</li>
+<li><strong>Diagnostic and finding identifiers as an exhaustive set.</strong> Individual codes
+documented in <a href="/docs/troubleshooting.html">troubleshooting</a> keep their meaning, but
+new codes appear as Dalo learns to detect more, so treat the set as open.</li>
+<li><strong>Upstream behavior.</strong> What a given agent harness does with a materialized
+skill, instruction block, or projected hook.</li>
+</ul>
+<h2 id="change-policy"><a class="doc-anchor" href="#change-policy">Change policy</a></h2>
+<ol>
+<li><strong>Breaking changes only in a major release.</strong> Removing or renaming a
+command, flag, exit code, JSON field, environment variable, or persisted
+field is a major-version change.</li>
+<li><strong>Deprecations are announced one minor ahead.</strong> Anything scheduled for
+removal in the next major is marked deprecated at least one minor release
+earlier, documented as deprecated in the reference, and emits a runtime
+warning on stderr when used. The warning never changes the exit status and
+is suppressed in <code>--json</code> mode so machine consumers stay clean.
+<code>--agent</code> (superseded by <code>--reviewer</code>) is a retained deprecated alias that
+predates this policy: it keeps working without a warning and is documented
+as deprecated in the reference. The warning requirement applies to
+deprecations announced from now on.</li>
+<li><strong>JSON fields are never removed within 1.x.</strong> A field that becomes
+meaningless keeps being emitted with a documented inert value until the next
+major. New fields are additive; consumers ignore what they do not know.</li>
+<li><strong>Schema bumps migrate forward and fail closed on downgrade.</strong> When a
+persisted schema version increases, a newer Dalo reads and rewrites the older
+file automatically. An older Dalo that meets a newer schema version refuses
+to operate with an actionable error rather than truncating, ignoring unknown
+fields, or rewriting the file at the version it understands. Downgrade is not
+supported; restore a backup or the previous store instead.</li>
+<li><strong>Security fixes may break compatibility.</strong> If the only safe fix for a
+vulnerability is a breaking change, it ships as soon as it is ready, is
+called out in the release notes, and the reasoning is recorded.</li>
+</ol>
+<h2 id="supported-platforms"><a class="doc-anchor" href="#supported-platforms">Supported platforms</a></h2>
+<p>Dalo relies on Unix symlink APIs and <code>$HOME</code> resolution; a non-Unix build fails
+at compile time by design.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Architectures</th>
+<th>libc</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>macOS</td>
+<td><code>x86_64</code>, <code>aarch64</code></td>
+<td>system</td>
+</tr>
+<tr>
+<td>Linux</td>
+<td><code>x86_64</code>, <code>aarch64</code></td>
+<td><code>gnu</code> and <code>musl</code></td>
+</tr>
+</tbody></table></div>
+<p>The published release targets are <code>x86_64-apple-darwin</code>,
+<code>aarch64-apple-darwin</code>, <code>x86_64-unknown-linux-gnu</code>,
+<code>aarch64-unknown-linux-gnu</code>, <code>x86_64-unknown-linux-musl</code>, and
+<code>aarch64-unknown-linux-musl</code>.</p>
+<p><strong>Windows is supported through WSL only.</strong> Run Dalo inside a WSL Linux
+distribution and point targets at paths inside that distribution. There is no
+native Windows build, and native Windows is not planned for 1.x.</p>
+<p>The minimum supported Rust version for building from source is the
+<code>rust-version</code> field in <code>Cargo.toml</code>; every other mention of an MSRV is a
+derived copy. Raising the MSRV is a minor-release change, not a major one, and
+it never affects users who install a released binary.</p>
+<h2 id="support-window"><a class="doc-anchor" href="#support-window">Support window</a></h2>
+<p>Security fixes land in the latest 1.x release. Older 1.x releases are not
+patched separately, and there is no long-term-support branch: to receive a fix,
+upgrade to the latest 1.x. Because the contract above forbids breaking changes
+inside 1.x, that upgrade is meant to be uneventful.</p>
+<p>When 2.0 ships, the 1.x line receives security fixes for six months from the
+2.0 release date, so teams have a bounded window to migrate. See
+<a href="https://github.com/sebastian-software/dalo/blob/main/SECURITY.md" rel="noopener"><code>SECURITY.md</code></a> for how to report a vulnerability.</p>
+<h2 id="the-rust-library-api"><a class="doc-anchor" href="#the-rust-library-api">The Rust library API</a></h2>
+<p><code>cargo add dalo</code> works and docs.rs renders the crate, but the library is not a
+product. The Rust library API is not a semver contract; the CLI, its exit codes,
+its <code>--json</code> output, and the files Dalo persists are.</p>
+<p>Concretely:</p>
+<ul>
+<li>The crate exists so that CLI handlers stay thin and behavior can be tested
+without spawning the binary. Modules, types, function signatures, and trait
+implementations may change in any release, including a patch.</li>
+<li>Modules that are pure CLI plumbing are hidden from the rendered
+documentation. Being visible on docs.rs is not a stability signal either way.</li>
+<li>If you are integrating with Dalo, use the CLI: <code>--json</code> output plus the exit
+codes is the documented, supported integration surface, and it is covered by
+tier 1.</li>
+<li>If you need a stable Rust API, open an issue describing the use case. A
+curated library crate is a deliberate decision with its own cost, not
+something that happens by accident because a module was public.</li>
+</ul>
+<p>This is recorded as
+<a href="https://github.com/sebastian-software/dalo/blob/main/docs/adr/0008-compatibility-contract.md" rel="noopener">ADR 0008</a>.</p>
+<p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/compatibility.md" rel="noopener">docs/compatibility.md</a></p>
+  </article>
+</main>
+
+<footer class="site-footer doc-footer" data-scope="dark">
+  <div class="wrap footer-base">
+    <span>© 2026 <a href="https://sebastian-software.de" rel="noopener">Sebastian Software</a> · Dalo</span>
+    <span><a href="/">dalo.sh</a> · <a href="/spec/">Spec</a> · <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a> · <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a></span>
+  </div>
+</footer>
+</body>
+</html>
