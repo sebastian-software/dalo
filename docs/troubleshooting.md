@@ -288,6 +288,7 @@ error. Replace it with the supported form:
 | --- | --- |
 | `--yes` (global no-op) | Nothing. The flag never confirmed anything; drop it. |
 | `audit --agent <reviewer>` | `audit --reviewer <reviewer>` |
+| `source select <id> --unselect <skill>...` | `source unselect <id> <skill>...` |
 
 ### How do I remove Dalo completely?
 

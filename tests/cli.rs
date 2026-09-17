@@ -13713,13 +13713,7 @@ fn catalog_select_should_report_mutations_and_no_ops() {
     dalo_command()
         .args(["--store"])
         .arg(&store)
-        .args([
-            "source",
-            "select",
-            "marketing",
-            "--unselect",
-            "copy-editing",
-        ])
+        .args(["source", "unselect", "marketing", "copy-editing"])
         .assert()
         .success()
         .stdout(predicate::str::contains(
@@ -13733,14 +13727,7 @@ fn catalog_select_should_report_mutations_and_no_ops() {
     dalo_command()
         .args(["--store"])
         .arg(&store)
-        .args([
-            "--json",
-            "source",
-            "select",
-            "marketing",
-            "--unselect",
-            "launch-copy",
-        ])
+        .args(["--json", "source", "unselect", "marketing", "launch-copy"])
         .assert()
         .success()
         .stdout(predicate::str::contains("\"added\": []"))
@@ -13751,14 +13738,7 @@ fn catalog_select_should_report_mutations_and_no_ops() {
     dalo_command()
         .args(["--store"])
         .arg(&store)
-        .args([
-            "--json",
-            "source",
-            "select",
-            "marketing",
-            "--unselect",
-            "launch-copy",
-        ])
+        .args(["--json", "source", "unselect", "marketing", "launch-copy"])
         .assert()
         .success()
         .stdout(predicate::str::contains("\"added\": []"))
@@ -13767,12 +13747,24 @@ fn catalog_select_should_report_mutations_and_no_ops() {
     dalo_command()
         .args(["--store"])
         .arg(&store)
-        .args(["source", "select", "marketing", "--unselect", "launch-copy"])
+        .args(["source", "unselect", "marketing", "launch-copy"])
         .assert()
         .success()
         .stdout(predicate::str::contains("catalog marketing: no change"))
         .stdout(predicate::str::contains("selection: none"))
         .stdout(predicate::str::contains("next:").not());
+}
+
+#[test]
+fn source_select_should_reject_the_removed_unselect_flag() {
+    dalo_command()
+        .args(["source", "select", "marketing", "--unselect", "launch-copy"])
+        .assert()
+        .failure()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "unexpected argument \'--unselect\' found",
+        ));
 }
 
 #[test]
@@ -14327,13 +14319,7 @@ fn catalog_select_should_accept_a_source_qualified_slot_reference() {
     dalo_command()
         .args(["--store"])
         .arg(&store)
-        .args([
-            "source",
-            "select",
-            "marketing",
-            "--unselect",
-            "marketing:copy-editing",
-        ])
+        .args(["source", "unselect", "marketing", "marketing:copy-editing"])
         .assert()
         .success();
     assert!(
@@ -15086,7 +15072,7 @@ fn catalog_advance_should_update_pin_checkout_and_active_materialization() {
 }
 
 #[test]
-fn catalog_refresh_should_offer_legacy_unselect_hint_for_selected_removal() {
+fn catalog_refresh_should_offer_an_unselect_hint_for_selected_removal() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
@@ -15128,7 +15114,7 @@ fn catalog_refresh_should_offer_legacy_unselect_hint_for_selected_removal() {
 
     let unselect_command = store::dalo_command(
         &store::comparable_path(&store),
-        "source select marketing --unselect copy-editing",
+        "source unselect marketing copy-editing",
     );
     let output = dalo_command()
         .args(["--store"])
@@ -15144,9 +15130,8 @@ fn catalog_refresh_should_offer_legacy_unselect_hint_for_selected_removal() {
     assert_eq!(
         stdout.matches(&format!("run: {unselect_command}")).count(),
         1,
-        "the drift outcome should offer exactly one legacy-compatible unselect command"
+        "the drift outcome should offer exactly one unselect command"
     );
-    assert!(!stdout.contains("source unselect marketing copy-editing"));
 }
 
 #[test]
@@ -15220,7 +15205,7 @@ fn catalog_refresh_should_quote_a_removed_frontmatter_id_in_its_recovery_hint() 
     let quoted_skill_id = format!("'{}'", skill_id.replace('\'', "'\"'\"'"));
     let unselect_command = store::dalo_command(
         &store::comparable_path(&store),
-        &format!("source select marketing --unselect -- {quoted_skill_id}"),
+        &format!("source unselect marketing -- {quoted_skill_id}"),
     );
     let output = dalo_command()
         .args(["--store"])
@@ -15233,7 +15218,7 @@ fn catalog_refresh_should_quote_a_removed_frontmatter_id_in_its_recovery_hint() 
         .clone();
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        !stdout.contains(&format!("--unselect {skill_id}")),
+        !stdout.contains(&format!("source unselect marketing {skill_id}")),
         "the untrusted ID must not be interpolated as shell syntax"
     );
 
@@ -15339,7 +15324,7 @@ fn catalog_advance_should_block_selected_removal_without_writes() {
 
     let unselect_command = store::dalo_command(
         &store::comparable_path(&store),
-        "source select marketing --unselect copy-editing",
+        "source unselect marketing copy-editing",
     );
 
     let output = dalo_command()
