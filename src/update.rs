@@ -575,6 +575,27 @@ mod tests {
     }
 
     #[test]
+    fn major_release_notice_should_keep_a_single_version_prefix() {
+        assert_eq!(normalize_release_tag("dalo-v1.0.0"), Some("1.0.0"));
+
+        let latest_version = update_informer::fake(DaloGitHub, "dalo", "0.16.0", "1.0.0")
+            .check_version()
+            .expect("fake version check should succeed")
+            .expect("fake version check should return a version");
+
+        assert_eq!(
+            render_notice(
+                &latest_version.semver().to_string(),
+                "0.16.0",
+                InstallChannel::Npm,
+                None,
+            ),
+            "update available: dalo v1.0.0 (installed v0.16.0 via npm)\n\
+             upgrade with: npm install --global getdalo@latest"
+        );
+    }
+
+    #[test]
     fn each_new_version_should_be_notified_only_once() {
         let temp = tempdir().expect("tempdir");
 

@@ -9,24 +9,33 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-package="dalo-9.8.7-x86_64-unknown-linux-gnu"
 fixture_dir="${test_root}/fixture"
-mkdir -p "${fixture_dir}/${package}/completions" "${fixture_dir}/${package}/man/man1"
-printf '#!/bin/sh\necho dalo 9.8.7\n' > "${fixture_dir}/${package}/dalo"
-printf 'bash completion\n' > "${fixture_dir}/${package}/completions/dalo.bash"
-printf 'zsh completion\n' > "${fixture_dir}/${package}/completions/_dalo"
-printf 'fish completion\n' > "${fixture_dir}/${package}/completions/dalo.fish"
-printf 'man page\n' > "${fixture_dir}/${package}/man/man1/dalo.1"
-tar -C "$fixture_dir" -czf "${fixture_dir}/${package}.tar.gz" "$package"
-(
-  cd "$fixture_dir"
-  if command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 "${package}.tar.gz" > "${package}.tar.gz.sha256"
-  else
-    sha256sum "${package}.tar.gz" > "${package}.tar.gz.sha256"
-  fi
-)
-printf '{}\n' > "${fixture_dir}/${package}.tar.gz.sigstore.json"
+
+make_fixture() {
+  fixture_version="$1"
+  fixture_package="dalo-${fixture_version}-x86_64-unknown-linux-gnu"
+  mkdir -p "${fixture_dir}/${fixture_package}/completions" \
+    "${fixture_dir}/${fixture_package}/man/man1"
+  printf '#!/bin/sh\necho dalo %s\n' "$fixture_version" > "${fixture_dir}/${fixture_package}/dalo"
+  printf 'bash completion\n' > "${fixture_dir}/${fixture_package}/completions/dalo.bash"
+  printf 'zsh completion\n' > "${fixture_dir}/${fixture_package}/completions/_dalo"
+  printf 'fish completion\n' > "${fixture_dir}/${fixture_package}/completions/dalo.fish"
+  printf 'man page\n' > "${fixture_dir}/${fixture_package}/man/man1/dalo.1"
+  tar -C "$fixture_dir" -czf "${fixture_dir}/${fixture_package}.tar.gz" "$fixture_package"
+  (
+    cd "$fixture_dir"
+    if command -v shasum >/dev/null 2>&1; then
+      shasum -a 256 "${fixture_package}.tar.gz" > "${fixture_package}.tar.gz.sha256"
+    else
+      sha256sum "${fixture_package}.tar.gz" > "${fixture_package}.tar.gz.sha256"
+    fi
+  )
+  printf '{}\n' > "${fixture_dir}/${fixture_package}.tar.gz.sigstore.json"
+}
+
+package="dalo-9.8.7-x86_64-unknown-linux-gnu"
+make_fixture 9.8.7
+make_fixture 1.0.0
 
 make_path() {
   path_dir="$1"
@@ -192,6 +201,29 @@ grep -q 'Installing dalo 9.8.7' "$version_output"
 plain_version_output="${test_root}/plain-version-output"
 run_install "$auto_path" "${test_root}/plain-version-bin" "$plain_version_output" DALO_VERSION=9.8.7
 test -x "${test_root}/plain-version-bin/dalo"
+
+# The 0.x to 1.0.0 step: every accepted DALO_VERSION spelling has to resolve to
+# the same `dalo-v1.0.0` tag and `dalo-1.0.0-*` archive, with neither a doubled
+# nor a missing `v` anywhere in the download URLs.
+major_case=0
+for requested_version in 1.0.0 v1.0.0 dalo-v1.0.0; do
+  major_case=$((major_case + 1))
+  major_output="${test_root}/major-${major_case}-output"
+  major_log="${test_root}/major-${major_case}.log"
+  run_install "$auto_path" "${test_root}/major-${major_case}-bin" "$major_output" \
+    DALO_VERSION="$requested_version" DALO_FAKE_CURL_LOG="$major_log"
+  test -x "${test_root}/major-${major_case}-bin/dalo"
+  grep -q 'Installing dalo 1.0.0' "$major_output"
+  grep -Fq 'releases/download/dalo-v1.0.0/dalo-1.0.0-x86_64-unknown-linux-gnu.tar.gz' "$major_log"
+  if grep -Fq 'dalo-vv' "$major_log"; then
+    echo "DALO_VERSION=${requested_version} produced a doubled version prefix" >&2
+    exit 1
+  fi
+  if grep -Eq 'releases/download/(dalo-)?[0-9]' "$major_log"; then
+    echo "DALO_VERSION=${requested_version} produced a tag without its v prefix" >&2
+    exit 1
+  fi
+done
 
 latest_fallback_output="${test_root}/latest-fallback-output"
 run_install "$auto_path" "${test_root}/latest-fallback-bin" "$latest_fallback_output" \

@@ -67,6 +67,57 @@ GitHub is published before crates.io, npm, or the Homebrew tap dispatch. Each of
 those downstream channels depends on the final GitHub-release job, so no public
 installer path advertises an archive before GitHub makes that archive available.
 
+### Releasing 1.0.0
+
+`release-please-config.json` sets `bump-minor-pre-major: true`, so every
+`feat!:` commit below 1.0.0 produces a minor bump, not a major. The first major
+is requested explicitly, with a `Release-As:` footer on a commit that reaches
+`main`:
+
+```text
+chore(release): release dalo 1.0.0
+
+Release-As: 1.0.0
+```
+
+The footer is matched case-insensitively on the token `Release-As`, it must sit
+in the commit footer, and it works with any Conventional Commit type — including
+types the changelog normally hides, because the changelog generator keeps a
+commit that carries the footer. Pull requests are rebase-merged, which preserves
+the footer; a squash merge only preserves it when the squash body keeps it.
+Other trailers such as `Co-Authored-By:` may follow it.
+
+Release-please then opens `chore(main): release dalo 1.0.0` on
+`release-please--branches--main--components--dalo`, writes the `## [1.0.0]`
+CHANGELOG heading, and stamps `1.0.0` into `Cargo.toml`, `Cargo.lock`,
+`npm/package.json`, both `npm/package-lock.json` version paths, and the three
+annotated slots in `site/index.html` (`softwareVersion` plus the two
+`data-dalo-version` spans). Replace the generated release body with the curated
+launch notes before the draft is published.
+
+Merging that release pull request tags `dalo-v1.0.0` and runs `publish.yml`:
+six signed archives with checksums upload to a draft release, the draft is
+published once every asset is present, and crates.io, npm, and the
+`sebastian-software/homebrew-tap` dispatch follow. The tap bump compares
+versions with `sort -V`, so `1.0.0` supersedes `0.16.0` rather than losing to
+it in string order.
+
+Smoke every channel once the release page is public:
+
+```sh
+brew upgrade dalo && dalo --version
+npx getdalo@latest --version
+cargo binstall dalo && dalo --version
+mise up && dalo --version
+curl -fsSL https://dalo.sh/install.sh | sh && dalo --version
+```
+
+Then check the upgrade path itself from a 0.16 install: run any command under a
+TTY with `DALO_UPDATE_CHECK` unset and `CI` unset, and confirm the notice reads
+`update available: dalo v1.0.0 (installed v0.16.0 via <channel>)` with one `v`
+per version and the upgrade command that matches the channel it was installed
+from.
+
 ## Exit codes
 
 | Code | Meaning |

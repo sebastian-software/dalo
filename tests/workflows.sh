@@ -299,6 +299,110 @@ fi
 printf '%s\n' "$homebrew_job" | grep -Fq 'sort -V | tail -n 1'
 printf '%s\n' "$homebrew_job" | grep -Fq 'not dispatching ${version}'
 
+# Every job that needs a version parses the release tag inline. Run each of
+# those parsers instead of trusting them: a drifted one shipped the
+# `dalo-dalo-v0.4.0-*` archives, and the 0.x to 1.0.0 step is the next chance
+# for one of them to disagree with the rest.
+tag_parsers="$test_root/tag-parsers"
+awk '
+  /^[[:space:]]*case "\$TAG_NAME" in$/ { collecting = 1 }
+  collecting {
+    line = $0
+    sub(/^[[:space:]]+/, "", line)
+    print line
+  }
+  collecting && /^[[:space:]]*esac$/ { print "###END###"; collecting = 0 }
+' "$workflow" > "$tag_parsers"
+
+tag_parser_count="$(grep -c '^###END###$' "$tag_parsers" || true)"
+if [ "$tag_parser_count" -lt 6 ]; then
+  echo "expected every publish.yml job to parse the release tag, found $tag_parser_count parsers" >&2
+  exit 1
+fi
+
+tag_parser() {
+  awk -v want="$1" '
+    BEGIN { position = 1 }
+    /^###END###$/ { position += 1; next }
+    position == want { print }
+  ' "$tag_parsers"
+}
+
+parser_number=1
+while [ "$parser_number" -le "$tag_parser_count" ]; do
+  parser_script="$test_root/tag-parser-${parser_number}.sh"
+  {
+    printf '%s\n' 'set -eu'
+    printf '%s\n' 'TAG_NAME="$1"'
+    tag_parser "$parser_number"
+    printf '%s\n' 'printf "%s\n" "${version-}"'
+  } > "$parser_script"
+
+  for accepted_tag in \
+    'dalo-v1.0.0 1.0.0' \
+    'v1.0.0 1.0.0' \
+    'dalo-v10.11.12 10.11.12' \
+    'dalo-v0.16.0 0.16.0'; do
+    tag="${accepted_tag% *}"
+    expected_version="${accepted_tag#* }"
+    if ! parsed_version="$(sh "$parser_script" "$tag")"; then
+      echo "publish.yml tag parser $parser_number rejected the release tag '$tag'" >&2
+      exit 1
+    fi
+    if [ -n "$parsed_version" ] && [ "$parsed_version" != "$expected_version" ]; then
+      echo "publish.yml tag parser $parser_number read '$parsed_version' from '$tag', expected '$expected_version'" >&2
+      exit 1
+    fi
+  done
+
+  for rejected_tag in '1.0.0' 'refs/tags/dalo-v1.0.0' 'getdalo-v1.0.0' ''; do
+    if sh "$parser_script" "$rejected_tag" >/dev/null 2>&1; then
+      echo "publish.yml tag parser $parser_number accepted the unusable tag '$rejected_tag'" >&2
+      exit 1
+    fi
+  done
+  parser_number=$((parser_number + 1))
+done
+
+# The tap bump refuses to move Homebrew backwards. `sort -V`, not string order,
+# is what makes 1.0.0 win over 0.16.0.
+homebrew_gate="$({
+  awk '
+    /^[[:space:]]*newest_version=/ { collecting = 1 }
+    collecting {
+      line = $0
+      sub(/^[[:space:]]+/, "", line)
+      print line
+      found = 1
+    }
+    collecting && /^[[:space:]]*fi$/ { exit }
+    END { if (!found) exit 1 }
+  ' "$workflow"
+})"
+
+homebrew_gate_script="$test_root/homebrew-gate.sh"
+{
+  printf '%s\n' 'set -eu'
+  printf '%s\n' 'current_version="$1"'
+  printf '%s\n' 'version="$2"'
+  printf '%s\n' "$homebrew_gate"
+  printf '%s\n' 'printf "%s\n" dispatch'
+} > "$homebrew_gate_script"
+
+test "$(sh "$homebrew_gate_script" 0.16.0 1.0.0)" = dispatch
+test "$(sh "$homebrew_gate_script" 0.9.0 0.10.0)" = dispatch
+test "$(sh "$homebrew_gate_script" 1.0.0 1.0.1)" = dispatch
+sh "$homebrew_gate_script" 1.0.0 1.0.0 | grep -Fq 'already references dalo 1.0.0'
+sh "$homebrew_gate_script" 1.0.0 0.16.0 | grep -Fq 'already references dalo 1.0.0'
+
+# The major has to come from a `Release-As:` footer: `bump-minor-pre-major`
+# turns every `feat!:` below 1.0.0 into a minor bump instead.
+test "$(node -p 'require(process.argv[1]).packages["."]["bump-minor-pre-major"]' "$release_config")" = true
+grep -Fq 'Release-As: 1.0.0' "$root/docs/ci.md" || {
+  echo 'docs/ci.md no longer documents the Release-As footer that produces the major' >&2
+  exit 1
+}
+
 for downstream_job in "$crate_job" "$npm_job" "$homebrew_job"; do
   printf '%s\n' "$downstream_job" | grep -Fq "needs.release-please.outputs.release_is_draft == 'false'"
 done
