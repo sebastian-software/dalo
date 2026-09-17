@@ -14,6 +14,18 @@ plain HTML or Markdown and can be fetched directly.
 
 ## Install
 
+macOS with Homebrew:
+
+    brew install sebastian-software/tap/dalo
+
+macOS or Linux with the hosted installer (verifies the SHA-256 checksum, and
+Sigstore provenance when `cosign` is on the PATH):
+
+    curl -fsSL https://dalo.sh/install.sh | sh
+
+Then verify with `dalo --version` and `dalo doctor`. Do not edit shell startup
+files or link real agent folders without asking the user which agent to link.
+
 - [Install instructions](https://dalo.sh/install.md): Markdown written for an agent — platform detection, Homebrew and hosted-installer paths, checksum and Sigstore verification, and the post-install check.
 - [Installer script](https://dalo.sh/install.sh): the hosted installer itself, for reading before piping it to a shell.
 

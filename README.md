@@ -285,11 +285,10 @@ method once for that version. Network and cache failures are ignored, and checks
 are disabled for JSON output, CI, and `DALO_OFFLINE=1`. Set
 `DALO_UPDATE_CHECK=never` to opt out.
 
-You can also ask your agent to install Dalo:
-
-```text
-Read https://dalo.sh/install.md and install dalo for me.
-```
+You can also ask your agent to install Dalo: dalo.sh publishes an
+[`llms.txt`](https://dalo.sh/llms.txt) index and an agent-oriented
+[installation guide](https://dalo.sh/install.md), so an agent pointed at the
+site finds the verified install path on its own.
 
 For manual archives, upgrades, shell completions, and removal, see the
 [installation guide](https://dalo.sh/install.md) and
