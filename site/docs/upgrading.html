@@ -125,13 +125,17 @@ line per file that will migrate on its next write.</p>
 (<code>cargo build</code>), restoring the 0.9.2 fixture store the way <code>tests/upgrade.rs</code>
 does, and running <code>doctor</code>, <code>sync</code>, <code>doctor</code>. Only the throwaway root is
 shortened, to <code>…</code>; every other character is what the binary printed.</p>
+<p>Git does not track empty directories, so a restored fixture needs its checkouts&#39;
+empty <code>refs/</code> and <code>objects/</code> recreated before Git will recognize them. Without
+that the <code>local</code> source reports a <code>dirty_source</code> warning that no real upgrade
+produces, so the run behind this transcript recreates them first.</p>
 <h3 id="before-the-first-sync"><a class="doc-anchor" href="#before-the-first-sync">Before the first sync</a></h3>
 <pre><code class="language-text">$ dalo doctor
-summary: errors=0 warnings=1 info=5 ok=22
+summary: errors=0 warnings=0 info=5 ok=23
 info    schema_migration_pending: `config.toml` is at schema version 1 and is read as 2; the next config write persists the migration
 info    schema_migration_pending: `lock.toml` is at schema version 1 and is read as 6; the next `dalo sync` persists the migration
 info    schema_migration_pending: instruction pack `local:house-style` renders a legacy managed block in `…/AGENTS.md`; the next `dalo sync` rewrites it without pack metadata
-details: 24 info/ok findings omitted; use --json for the full report
+details: 25 info/ok findings omitted; use --json for the full report
 </code></pre>
 <p><code>doctor</code> exits <code>0</code>. These are <code>info</code> findings, not problems: nothing is broken
 and nothing is waiting for you.</p>
@@ -147,9 +151,9 @@ security preflight: deterministic checks only
 agent folder did not move.</p>
 <h3 id="after-the-first-sync"><a class="doc-anchor" href="#after-the-first-sync">After the first sync</a></h3>
 <pre><code class="language-text">$ dalo doctor
-summary: errors=0 warnings=1 info=3 ok=22
+summary: errors=0 warnings=0 info=3 ok=23
 info    schema_migration_pending: `config.toml` is at schema version 1 and is read as 2; the next config write persists the migration
-details: 24 info/ok findings omitted; use --json for the full report
+details: 25 info/ok findings omitted; use --json for the full report
 </code></pre>
 <p><code>lock.toml</code> and the instruction block are done. <code>config.toml</code> is still on
 version 1 because <strong><code>sync</code> does not write <code>config.toml</code></strong> — it migrates the
@@ -258,6 +262,8 @@ error: unexpected argument &#39;--refresh&#39; found
   tip: a similar argument exists: &#39;--refresh-audit&#39;
 
 Usage: dalo audit --refresh-audit &lt;SKILL&gt;
+
+For more information, try &#39;--help&#39;.
 </code></pre>
 <pre><code class="language-text">$ dalo source select public --unselect skills/copy-editing
 error: unexpected argument &#39;--unselect&#39; found
@@ -265,6 +271,8 @@ error: unexpected argument &#39;--unselect&#39; found
   tip: to pass &#39;--unselect&#39; as a value, use &#39;-- --unselect&#39;
 
 Usage: dalo source select &lt;ID&gt; &lt;SKILLS&gt;...
+
+For more information, try &#39;--help&#39;.
 </code></pre>
 <p><code>--yes</code> never confirmed a prompt, implied <code>--replace</code>, created a commit, or
 granted an approval — it was documented as a no-op. Removing it changes no

@@ -49,15 +49,20 @@ The transcript below is real. It was produced by building this tree
 does, and running `doctor`, `sync`, `doctor`. Only the throwaway root is
 shortened, to `…`; every other character is what the binary printed.
 
+Git does not track empty directories, so a restored fixture needs its checkouts'
+empty `refs/` and `objects/` recreated before Git will recognize them. Without
+that the `local` source reports a `dirty_source` warning that no real upgrade
+produces, so the run behind this transcript recreates them first.
+
 ### Before the first sync
 
 ```text
 $ dalo doctor
-summary: errors=0 warnings=1 info=5 ok=22
+summary: errors=0 warnings=0 info=5 ok=23
 info    schema_migration_pending: `config.toml` is at schema version 1 and is read as 2; the next config write persists the migration
 info    schema_migration_pending: `lock.toml` is at schema version 1 and is read as 6; the next `dalo sync` persists the migration
 info    schema_migration_pending: instruction pack `local:house-style` renders a legacy managed block in `…/AGENTS.md`; the next `dalo sync` rewrites it without pack metadata
-details: 24 info/ok findings omitted; use --json for the full report
+details: 25 info/ok findings omitted; use --json for the full report
 ```
 
 `doctor` exits `0`. These are `info` findings, not problems: nothing is broken
@@ -81,9 +86,9 @@ agent folder did not move.
 
 ```text
 $ dalo doctor
-summary: errors=0 warnings=1 info=3 ok=22
+summary: errors=0 warnings=0 info=3 ok=23
 info    schema_migration_pending: `config.toml` is at schema version 1 and is read as 2; the next config write persists the migration
-details: 24 info/ok findings omitted; use --json for the full report
+details: 25 info/ok findings omitted; use --json for the full report
 ```
 
 `lock.toml` and the instruction block are done. `config.toml` is still on
@@ -146,6 +151,8 @@ error: unexpected argument '--refresh' found
   tip: a similar argument exists: '--refresh-audit'
 
 Usage: dalo audit --refresh-audit <SKILL>
+
+For more information, try '--help'.
 ```
 
 ```text
@@ -155,6 +162,8 @@ error: unexpected argument '--unselect' found
   tip: to pass '--unselect' as a value, use '-- --unselect'
 
 Usage: dalo source select <ID> <SKILLS>...
+
+For more information, try '--help'.
 ```
 
 `--yes` never confirmed a prompt, implied `--replace`, created a commit, or
