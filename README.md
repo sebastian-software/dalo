@@ -103,21 +103,21 @@ A catalog skill is a good example. Selecting it does not trust it, so the next
 
 ```sh
 dalo source add-catalog sebastian https://github.com/sebastian-software/skills.sebastian-software.com.git
-dalo source select sebastian pr-review
+dalo source select sebastian effective-web
 dalo sync
 ```
 
 ```text
 synced: 2 skills across 1 target (2 unchanged)
-pending approval: sebastian:pr-review (run: dalo approve skill sebastian:pr-review)
+pending approval: sebastian:effective-web (run: dalo approve skill sebastian:effective-web)
 security preflight: deterministic checks only
 ```
 
 Review the exact skill, approve it, and sync again:
 
 ```sh
-dalo audit sebastian:pr-review --reviewer auto
-dalo approve skill sebastian:pr-review
+dalo audit sebastian:effective-web
+dalo approve skill sebastian:effective-web
 dalo sync
 ```
 
