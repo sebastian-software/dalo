@@ -573,6 +573,7 @@ For manual archives, upgrades, shell completions, and removal, see the
 - [Security overview](docs/security.md)
 - [Security policy](SECURITY.md)
 - [Support](SUPPORT.md)
+- [Discussions](https://github.com/sebastian-software/dalo/discussions)
 - [Code of conduct](CODE_OF_CONDUCT.md)
 - [Changelog](CHANGELOG.md)
 

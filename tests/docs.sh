@@ -45,6 +45,17 @@ test -f "$root/docs/archive/v1-implementation-status.md"
 grep -q '^\*\*Archived\.\*\*' "$root/docs/archive/v1-implementation-status.md"
 grep -q 'issues/836' "$root/docs/archive/v1-implementation-status.md"
 grep -q '(v1-implementation-status.md)' "$root/docs/archive/README.md"
+# A usage question has exactly one destination, named the same way by the
+# support policy and the issue-template chooser. The Question form stays because
+# the org standards seed it, so it has to redirect rather than compete.
+refute 'SUPPORT.md still hedges about Discussions being enabled' \
+  grep -q 'when it is enabled' "$root/SUPPORT.md"
+for document in "$root/SUPPORT.md" "$root/.github/ISSUE_TEMPLATE/config.yml"; do
+  grep -q 'discussions/categories/q-a' "$document"
+  grep -q 'discussions/categories/ideas' "$document"
+done
+grep -q 'discussions/categories/q-a' "$root/.github/ISSUE_TEMPLATE/question.yml"
+grep -q 'fallback' "$root/.github/ISSUE_TEMPLATE/question.yml"
 grep -q 'brew uninstall dalo' "$root/docs/uninstall.md"
 grep -q 'dalo resolve remove-owned <target>:<slot>' "$root/docs/uninstall.md"
 grep -q 'resolve list.*exact owned IDs' "$root/docs/uninstall.md"
