@@ -1,0 +1,6 @@
+schema_version = 1
+
+[[approvals]]
+scope = "skill"
+value = "public:copy-editing"
+granted_at_unix = 1789637543
