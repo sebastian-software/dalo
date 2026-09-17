@@ -7145,7 +7145,7 @@ fn approve_delivery_should_reject_an_ordinary_skill_without_a_stable_id() {
 }
 
 struct GeneratedDeliveryFailureFixture {
-    _temp: tempfile::TempDir,
+    temp: tempfile::TempDir,
     store: std::path::PathBuf,
     target: std::path::PathBuf,
     repo: std::path::PathBuf,
@@ -7236,7 +7236,7 @@ required = true
         let good_path = std::fs::canonicalize(target.join("review")).unwrap();
 
         Self {
-            _temp: temp,
+            temp,
             store,
             target,
             repo,
@@ -7274,6 +7274,63 @@ required = true
             std::fs::canonicalize(self.target.join("review")).unwrap(),
             self.good_path
         );
+    }
+
+    /// Every live process whose command line still names this fixture.
+    ///
+    /// A generator runs under `sandbox-exec` on macOS and under the
+    /// `__delivery-sandbox` launcher on Linux, and both carry the delivery
+    /// staging path — and with it this fixture's randomly named temporary
+    /// directory — in their command line, as does every descendant that
+    /// inherits the argument vector. No other process on the machine can
+    /// carry that name, so a match is a member of the generator's process
+    /// group that outlived the run.
+    fn surviving_generator_processes(&self) -> Vec<String> {
+        let marker = self
+            .temp
+            .path()
+            .file_name()
+            .expect("fixture temporary directory should have a name")
+            .to_str()
+            .expect("fixture temporary directory name should be UTF-8")
+            .to_owned();
+        let listing = std::process::Command::new("/bin/ps")
+            .args(["-A", "-ww", "-o", "pid=,args="])
+            .output()
+            .expect("ps should list the process table");
+        assert!(
+            listing.status.success(),
+            "ps should succeed, got {:?}",
+            listing.status
+        );
+        String::from_utf8_lossy(&listing.stdout)
+            .lines()
+            .filter(|line| line.contains(&marker))
+            .map(str::to_owned)
+            .collect()
+    }
+
+    /// Wait until no member of the generator's process group is left.
+    ///
+    /// The run under test must already have reaped the group before it exited,
+    /// so this normally succeeds on the first probe. It still polls, because a
+    /// descendant reparented to init can take a scheduler slice to disappear,
+    /// and it bounds the wait generously: the budget only has to outlast
+    /// scheduling delay on a loaded machine, never a surviving generator,
+    /// which spins forever and fails the assertion either way.
+    fn assert_generator_group_is_gone(&self) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        loop {
+            let survivors = self.surviving_generator_processes();
+            if survivors.is_empty() {
+                return;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "generated-delivery process group survived the timeout: {survivors:#?}"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
     }
 }
 
@@ -7315,12 +7372,25 @@ fn generated_delivery_revocation_should_remove_materialized_link() {
     );
 }
 
+/// A generator that never returns must be timed out, killed, and left unpromoted.
+///
+/// The generator forks a descendant before it starts spinning, so killing the
+/// direct child alone would leave that descendant behind: only a kill of the
+/// whole process group clears the process table. The assertions are all
+/// observable state — the reported timeout, an empty process table, the
+/// previous link — rather than a wall clock over the run, because the run also
+/// pays for process spawning, store loading, and Git work, none of which the
+/// timeout path controls, and all of which stretch under CPU contention.
 #[test]
 fn generated_delivery_timeout_should_terminate_generator_and_preserve_last_good_link() {
     let fixture = GeneratedDeliveryFailureFixture::new();
 
-    fixture.replace_generator("#!/bin/sh\nwhile :; do :; done\n", "hang generator");
-    let started = std::time::Instant::now();
+    fixture.replace_generator(
+        "#!/bin/sh\n(while :; do :; done) &\nwhile :; do :; done\n",
+        "hang generator",
+    );
+    // One second, against a production default of 120: the reported number is
+    // itself the proof that the injected budget, not the default, ran out.
     fixture
         .command()
         .env("DALO_GENERATOR_TIMEOUT_SECS", "1")
@@ -7331,10 +7401,7 @@ fn generated_delivery_timeout_should_terminate_generator_and_preserve_last_good_
             "generated delivery `company:review` timed out after 1 seconds",
         ));
 
-    assert!(
-        started.elapsed() < std::time::Duration::from_secs(10),
-        "test timeout override should keep the termination path fast"
-    );
+    fixture.assert_generator_group_is_gone();
     fixture.assert_last_good_link();
 }
 
