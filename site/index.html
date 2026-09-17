@@ -217,7 +217,7 @@
   <!-- ───────────────────────── WHAT CHANGES ───────────────────────── -->
   <section class="band band-tint" id="changes">
     <div class="wrap">
-      <h2 class="section-h reveal">What Dalo gives you today.</h2>
+      <h2 class="section-h reveal">What Dalo gives you.</h2>
       <div class="feature-rows">
 
         <article class="feature-row reveal">
@@ -285,6 +285,28 @@
         <article class="feature-row feature-row-flip reveal">
           <div class="feature-text">
             <span class="feature-index">04</span>
+            <h3>Review before delivery</h3>
+            <p>
+              A local preflight runs 15 deterministic rules over every active skill
+              before a link is created. High and critical findings block the sync until
+              someone records an explicit, content-bound exception. Catalog skills stay
+              pending until you run <code>dalo approve skill</code>, and an optional
+              sandboxed agent reviewer can add findings but never clears one.
+            </p>
+          </div>
+          <div class="feature-aside">
+            <div class="guard-card">
+              <div class="guard-line"><svg class="ic-shield" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0 1 2.6v4.8C1 11.5 4 14.8 8 16c4-1.2 7-4.5 7-8.6V2.6L8 0Zm-1 11L4 8l1.2-1.2L7 8.6l3.8-3.8L12 6l-5 5Z"/></svg> 15 deterministic rules, run locally</div>
+              <div class="guard-line"><svg class="ic-shield" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0 1 2.6v4.8C1 11.5 4 14.8 8 16c4-1.2 7-4.5 7-8.6V2.6L8 0Zm-1 11L4 8l1.2-1.2L7 8.6l3.8-3.8L12 6l-5 5Z"/></svg> high or critical findings block</div>
+              <div class="guard-line"><svg class="ic-shield" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0 1 2.6v4.8C1 11.5 4 14.8 8 16c4-1.2 7-4.5 7-8.6V2.6L8 0Zm-1 11L4 8l1.2-1.2L7 8.6l3.8-3.8L12 6l-5 5Z"/></svg> approvals are source-qualified</div>
+              <div class="guard-line"><svg class="ic-shield" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0 1 2.6v4.8C1 11.5 4 14.8 8 16c4-1.2 7-4.5 7-8.6V2.6L8 0Zm-1 11L4 8l1.2-1.2L7 8.6l3.8-3.8L12 6l-5 5Z"/></svg> agent review adds, never approves</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="feature-row reveal">
+          <div class="feature-text">
+            <span class="feature-index">05</span>
             <h3>Team-composed catalogs</h3>
             <p>
               A team repository can combine its own skills with external skill sets.
@@ -306,49 +328,53 @@
           </div>
         </article>
 
-        <article class="feature-row reveal">
-          <div class="feature-text">
-            <span class="feature-index">05</span>
-            <h3>Managed instruction packs</h3>
-            <p>
-              Shared conventions can live as versioned Markdown packs. Dalo renders
-              them into explicit managed blocks, preserves everything outside those
-              markers, and warns when active packs declare overlapping topics.
-            </p>
-          </div>
-          <div class="feature-aside">
-            <div class="guard-card">
-              <div class="guard-line"><svg class="ic-shield" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0 1 2.6v4.8C1 11.5 4 14.8 8 16c4-1.2 7-4.5 7-8.6V2.6L8 0Zm-1 11L4 8l1.2-1.2L7 8.6l3.8-3.8L12 6l-5 5Z"/></svg> instruction blocks are versioned</div>
-              <div class="guard-line"><svg class="ic-shield" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0 1 2.6v4.8C1 11.5 4 14.8 8 16c4-1.2 7-4.5 7-8.6V2.6L8 0Zm-1 11L4 8l1.2-1.2L7 8.6l3.8-3.8L12 6l-5 5Z"/></svg> unmarked text is preserved</div>
-              <div class="guard-line"><svg class="ic-shield" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0 1 2.6v4.8C1 11.5 4 14.8 8 16c4-1.2 7-4.5 7-8.6V2.6L8 0Zm-1 11L4 8l1.2-1.2L7 8.6l3.8-3.8L12 6l-5 5Z"/></svg> topic overlaps are visible</div>
-            </div>
-          </div>
-        </article>
-
         <article class="feature-row feature-row-flip reveal">
           <div class="feature-text">
             <span class="feature-index">06</span>
-            <h3>Scheduled autosync</h3>
+            <h3>Plugins with tools and hooks</h3>
             <p>
-              Install a background job with <code>dalo autosync install</code> and Dalo
-              keeps your agent folders current on a schedule through the native
-              scheduler. Scheduled runs stay fail-closed: they apply existing approvals
-              but never grant new ones or push past a blocking audit.
+              A portable package ships more than text: <code>PLUGIN.toml</code> can
+              declare executable tools and the hooks that call them on agent events.
+              Dalo approves every tool and every hook separately, by the SHA-256 hash of
+              its exact contract, and projects the approved set into the Codex and
+              Claude package layouts. Change one field and the approval is gone.
             </p>
           </div>
           <div class="feature-aside">
             <div class="store-card">
-              <span class="store-path">dalo autosync install</span>
+              <span class="store-path">PLUGIN.toml</span>
               <ul class="store-tree">
-                <li><span class="c-accent">--schedule daily</span> <span class="c-dim">hourly · daily · weekly</span></li>
-                <li><span class="c-accent">native scheduler</span> <span class="c-dim">launchd · systemd · cron</span></li>
-                <li><span class="c-accent">fail-closed</span> <span class="c-dim">no new approvals granted</span></li>
+                <li><span class="c-accent">[[tool]]</span> <span class="c-dim">staged, never run to approve</span></li>
+                <li><span class="c-accent">[[hook]]</span> <span class="c-dim">needs its tool approved first</span></li>
+                <li><span class="c-accent">@sha256:…</span> <span class="c-dim">the exact contract, hashed</span></li>
+                <li><span class="c-accent">approval</span> <span class="c-dim">re-verified before every run</span></li>
               </ul>
             </div>
           </div>
         </article>
 
       </div>
+
+      <ul class="feature-extras reveal">
+        <li>
+          <h3>Managed instruction packs</h3>
+          <p>
+            Shared conventions live as versioned Markdown. Dalo renders them into
+            explicit managed blocks, preserves everything outside those markers, and
+            warns when active packs declare overlapping topics.
+          </p>
+          <code>dalo instructions list</code>
+        </li>
+        <li>
+          <h3>Scheduled autosync</h3>
+          <p>
+            A background job keeps agent folders current hourly, daily, or weekly
+            through launchd, a systemd user timer, or cron. Scheduled runs stay
+            fail-closed: they apply existing approvals and never grant new ones.
+          </p>
+          <code>dalo autosync install</code>
+        </li>
+      </ul>
     </div>
   </section>
 
@@ -357,11 +383,12 @@
     <div class="wrap">
       <h2 class="section-h reveal">How it works</h2>
       <p class="lead lead-center reveal">
-        Dalo is a small pipeline: it turns many skill sources into one reliable set,
-        then links that set into the folders your agents already read.
+        Dalo is a small pipeline: it turns many skill sources into one reviewed set,
+        then links that set into the folders your agents already read. Nothing passes
+        the review stage without a clean audit and your approval.
       </p>
 
-      <div class="pipeline reveal" role="img" aria-label="Pipeline: local and team sources feed the Dalo store, a deterministic resolver assembles the final set, which is materialized into agent target folders.">
+      <div class="pipeline reveal" role="img" aria-label="Pipeline: local and team sources feed the Dalo store, a security preflight and your approval gate what may continue, a deterministic resolver assembles the final set, and that set is materialized into agent target folders.">
         <div class="pipe-stage">
           <div class="pipe-node">
             <span class="pipe-kicker">Sources</span>
@@ -375,6 +402,14 @@
             <span class="pipe-kicker">Store</span>
             <span class="pipe-title">~/.dalo</span>
             <span class="pipe-sub">normalized, versioned</span>
+          </div>
+        </div>
+        <svg class="pipe-arrow" viewBox="0 0 48 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M2 12h40M36 6l8 6-8 6"/></svg>
+        <div class="pipe-stage">
+          <div class="pipe-node pipe-node-gate">
+            <span class="pipe-kicker">Review</span>
+            <span class="pipe-title">Preflight</span>
+            <span class="pipe-sub">audit &amp; approval gate</span>
           </div>
         </div>
         <svg class="pipe-arrow" viewBox="0 0 48 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M2 12h40M36 6l8 6-8 6"/></svg>
@@ -529,11 +564,15 @@
         </div>
         <div class="safe-item reveal">
           <h3>Trust is explicit</h3>
-          <p>Adding a source is the trust decision: team repositories you add are trusted, and their skills undergo the deterministic security preflight. Catalog skills go further — each stays pending until you approve it with <code>dalo approve skill source:skill</code>. Scheduled runs apply existing decisions but never make new ones.</p>
+          <p>Adding a source is the trust decision: a repository you add with <code>dalo source add</code> is trusted, and its skills still run through the preflight on every sync. A catalog is the opposite — each skill stays an offer until you select it and approve it with <code>dalo approve skill source:skill</code>. Approvals are source-qualified and live in your own store; scheduled runs apply existing decisions but never make new ones.</p>
         </div>
         <div class="safe-item reveal">
           <h3>Security preflight and review gate</h3>
-          <p>Every active skill is checked before sync. High or critical findings block links until explicitly accepted. <code>dalo audit</code> shows the deterministic evidence, and an optional isolated agent reviewer can add findings but can never approve content.</p>
+          <p>Every active skill is checked before sync against 15 deterministic rules, and nothing it cannot read passes silently. High or critical findings block links until an explicit, content-bound risk acceptance covers them. <code>dalo audit</code> shows the evidence, and an optional sandboxed agent reviewer can add findings but never clears one. Read the <a href="/docs/security.html">security overview</a> for every guarantee and its limits.</p>
+        </div>
+        <div class="safe-item reveal">
+          <h3>Executables are approved by hash</h3>
+          <p>A plugin's tools and hooks are approved one at a time, by the SHA-256 hash of the exact contract — entry, arguments, environment, staged files, and for a hook the tool it calls. Dalo re-checks that approval before it dispatches a handler, so revoking one disables an already-installed sidecar.</p>
         </div>
         <div class="safe-item reveal">
           <h3>Visible conflicts</h3>
@@ -552,6 +591,11 @@
           <p><code>dalo doctor</code> checks store structure, lockfiles, Git availability, target paths, and broken symlinks, so you can trust the result.</p>
         </div>
       </div>
+
+      <p class="safe-foot reveal">
+        None of this makes a third-party skill safe. It makes the decision to run one
+        explicit, reviewable, and reproducible — and the limits are written down too.
+      </p>
     </div>
   </section>
 
