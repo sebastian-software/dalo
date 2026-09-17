@@ -1106,7 +1106,7 @@ pub fn print_init_report(report: &InitReport, next: Option<&NextActionReport>) {
             "  1. {}",
             store::dalo_command(
                 &report.store,
-                "target link <codex|claude|openclaw|hermes|generic> [path]"
+                &format!("target link <{}> [path]", crate::target::LINK_HINT_TARGETS)
             )
         );
         let local_skills_dir = StorePaths::new(report.store.clone()).local_skills_dir;
@@ -1516,7 +1516,7 @@ pub fn print_status_report(report: &StatusReport) {
             "  none linked (run: {})",
             store::dalo_command(
                 &report.store,
-                "target link <codex|claude|openclaw|hermes|generic> [path]"
+                &format!("target link <{}> [path]", crate::target::LINK_HINT_TARGETS)
             )
         );
     } else {
@@ -1913,7 +1913,7 @@ pub fn print_sync_report(report: &SyncReport) {
                 report.resolution.active_skills.len(),
                 store::dalo_command(
                     &report.store,
-                    "target link <codex|claude|openclaw|hermes|generic> [path]"
+                    &format!("target link <{}> [path]", crate::target::LINK_HINT_TARGETS)
                 )
             );
         } else if report.resolution.pending_approval_skills.is_empty()

@@ -4932,8 +4932,9 @@ fn init_should_create_store_layout() {
         .stdout(predicate::str::contains("created"))
         .stdout(predicate::str::contains("Store ready."))
         .stdout(predicate::str::contains(format!(
-            "dalo --store '{}' target link <codex|claude|openclaw|hermes|generic> [path]",
-            store.display()
+            "dalo --store '{}' target link <{}> [path]",
+            store.display(),
+            dalo::target::LINK_HINT_TARGETS
         )))
         .stdout(predicate::str::contains(format!(
             "dalo --store '{}' sync",
@@ -4972,8 +4973,9 @@ fn init_human_paths_should_compact_home_and_store_without_changing_json_or_comma
     assert!(stdout.contains("created  create_dir   store:/local/skills"));
     assert!(stdout.contains("created  write_file   store:/config.toml"));
     assert!(stdout.contains(&format!(
-        "dalo --store '{}' target link <codex|claude|openclaw|hermes|generic> [path]",
-        store.display()
+        "dalo --store '{}' target link <{}> [path]",
+        store.display(),
+        dalo::target::LINK_HINT_TARGETS
     )));
     assert!(stdout.contains(&format!("dalo --store '{}' sync", store.display())));
     assert!(
@@ -5568,9 +5570,10 @@ fn status_and_sync_should_explain_missing_targets_for_active_skills() {
         .success()
         .stdout(predicate::str::contains("targets:"))
         .stdout(predicate::str::contains("none linked"))
-        .stdout(predicate::str::contains(
-            "<codex|claude|openclaw|hermes|generic> [path]",
-        ));
+        .stdout(predicate::str::contains(format!(
+            "<{}> [path]",
+            dalo::target::LINK_HINT_TARGETS
+        )));
     dalo_command()
         .args(["--store"])
         .arg(&store)
@@ -5587,9 +5590,10 @@ fn status_and_sync_should_explain_missing_targets_for_active_skills() {
         .stdout(predicate::str::contains(
             "1 skills resolved but no targets are linked",
         ))
-        .stdout(predicate::str::contains(
-            "<codex|claude|openclaw|hermes|generic> [path]",
-        ));
+        .stdout(predicate::str::contains(format!(
+            "<{}> [path]",
+            dalo::target::LINK_HINT_TARGETS
+        )));
     dalo_command()
         .args(["--store"])
         .arg(&store)
@@ -5930,9 +5934,10 @@ fn init_hints_should_include_store_only_when_it_is_not_effectively_default() {
         .arg("init")
         .assert()
         .success()
-        .stdout(predicate::str::contains(
-            "1. dalo target link <codex|claude|openclaw|hermes|generic> [path]",
-        ))
+        .stdout(predicate::str::contains(format!(
+            "1. dalo target link <{}> [path]",
+            dalo::target::LINK_HINT_TARGETS
+        )))
         .stdout(predicate::str::contains("1. dalo --store").not());
 
     let custom_root =
@@ -5947,7 +5952,7 @@ fn init_hints_should_include_store_only_when_it_is_not_effectively_default() {
             "1. {}",
             store::dalo_command(
                 &custom_root,
-                "target link <codex|claude|openclaw|hermes|generic> [path]"
+                &format!("target link <{}> [path]", dalo::target::LINK_HINT_TARGETS)
             )
         )));
 }
