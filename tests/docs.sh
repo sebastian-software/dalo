@@ -255,6 +255,45 @@ grep -Fq 'compatibility.md' "$root/docs/reference.md"
 grep -Fq '0008-compatibility-contract.md' "$root/docs/adr/README.md"
 test -f "$root/docs/adr/0008-compatibility-contract.md"
 
+# The upgrading guide is the page a 0.x user is sent to, so it has to exist, be
+# rendered, link the compatibility contract and the security overview, and name
+# every spelling 1.0 removed together with its replacement.
+#
+# MAINTENANCE: this list is the breaking-change inventory for the 1.0 line. The
+# CHANGELOG cannot be the source here, because 0.16.0 is not released and the
+# `!:` commits that carry these removals have no released tag between them yet.
+# Whenever another `!:` commit lands before 1.0, add the removed spelling to
+# this list and document it in docs/upgrading.md in the same pull request.
+upgrading="$root/docs/upgrading.md"
+test -f "$upgrading"
+for removed_spelling in '`--yes`' 'audit --agent <reviewer>' 'select <id> --unselect' '`--refresh`' 'target ID `cursor`'; do
+  grep -Fq -e "$removed_spelling" "$upgrading" \
+    || { echo "docs/upgrading.md does not name the removed spelling $removed_spelling" >&2; exit 1; }
+done
+for upgrading_replacement in \
+  'audit --reviewer <reviewer>' \
+  'source unselect <id> <skill>...' \
+  '`--refresh-audit`' \
+  'dalo target link generic ~/.cursor/skills'; do
+  grep -Fq -e "$upgrading_replacement" "$upgrading" \
+    || { echo "docs/upgrading.md does not name the replacement $upgrading_replacement" >&2; exit 1; }
+done
+grep -Fq '(compatibility.md)' "$upgrading" \
+  || { echo 'docs/upgrading.md no longer links the compatibility contract' >&2; exit 1; }
+grep -Fq '(security.md)' "$upgrading" \
+  || { echo 'docs/upgrading.md no longer links the security overview' >&2; exit 1; }
+grep -Fq 'schema_migration_pending' "$upgrading"
+# The 1.0 release-notes link is a placeholder until #817 wires it; the sentence
+# has to stay findable so it cannot be forgotten.
+grep -Fq 'Release notes: see the 1.0.0 entry in' "$upgrading"
+# Reachable from the contract it demonstrates, the README, and the FAQ.
+grep -Fq '(upgrading.md)' "$compatibility"
+grep -Fq '(docs/upgrading.md)' "$root/README.md"
+grep -Fq '(docs/upgrading.md)' "$root/README.md.src"
+grep -Fq '(upgrading.md)' "$root/docs/troubleshooting.md"
+grep -Fq 'I upgraded and doctor reports `schema_migration_pending`' \
+  "$root/docs/troubleshooting.md"
+
 grep -q 'latest release on the default branch' "$root/SECURITY.md"
 # Both private channels must stay named. GitHub private vulnerability reporting
 # is enabled on the repository, and it is the channel a reporter finds first.
@@ -268,7 +307,7 @@ grep -q '__DALO_LASTMOD__' "$root/site/sitemap.xml"
 # The documentation published on dalo.sh is rendered from docs/*.md by
 # site/build.mjs and committed, so it must exist, carry the site styles, and be
 # reachable from the sitemap, the documentation index, and the footer.
-for document in getting-started team reference compatibility plugins agents ci troubleshooting uninstall comparison; do
+for document in getting-started team reference compatibility upgrading plugins agents ci troubleshooting uninstall comparison; do
   page="$root/site/docs/$document.html"
   test -f "$page"
   title="$(sed -n 's/^# //p' "$root/docs/$document.md" | head -n 1)"
