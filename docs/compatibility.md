@@ -217,7 +217,9 @@ These may change in any release without notice.
 Upgrading needs no migration step. A newer Dalo reads an older file, upgrades
 it in memory, and writes the current version the next time it writes that file
 at all. Nothing is unlinked, no approval has to be granted again, and no
-"migrate once" command exists to forget.
+"migrate once" command exists to forget. Which older shapes are accepted on
+read, and what Dalo does with each, is listed under
+[Accepted 0.x Store Shapes](reference.md#accepted-0x-store-shapes).
 
 Because the rewrite is lazy, a file that no command has written yet keeps its
 old version on disk — a store carried since 0.6 can still hold `version = 1` in
