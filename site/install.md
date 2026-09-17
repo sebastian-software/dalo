@@ -128,10 +128,14 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
    ```sh
    dalo source add-catalog sebastian https://github.com/sebastian-software/skills.sebastian-software.com.git
    dalo source inspect sebastian
-   dalo source select sebastian pr-review
-   dalo approve skill sebastian:pr-review
+   dalo source select sebastian effective-web
+   dalo approve skill sebastian:effective-web
    dalo sync
    ```
+
+   `dalo source inspect sebastian` lists what the catalog currently publishes.
+   Select a name from that list: a name the catalog does not carry fails with
+   exit `1` and prints the known ones.
 
 9. Run a final health check:
 
