@@ -1811,7 +1811,7 @@ fn detect_agent_provider() -> DaloResult<AgentProvider> {
         .ok_or_else(|| DaloError::AgentUnavailable {
             requested: "auto".to_owned(),
             reason: if command_available("codex") {
-                "Codex was found but is not auto-selected because its CLI cannot disable the read-only shell; choose `--agent codex` explicitly after reviewing that boundary"
+                "Codex was found but is not auto-selected because its CLI cannot disable the read-only shell; choose `--reviewer codex` explicitly after reviewing that boundary"
                     .to_owned()
             } else {
                 "neither Claude nor OpenCode with enforceable no-tool mode was found on PATH"

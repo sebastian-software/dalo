@@ -3982,7 +3982,7 @@ fn audit_agent_auto_should_prefer_an_enforceable_no_tool_provider() {
         .arg(&store)
         .args(["--json", "audit"])
         .arg(&skill)
-        .args(["--agent", "auto"])
+        .args(["--reviewer", "auto"])
         .assert()
         .success()
         .stderr(predicate::str::contains(
@@ -3998,7 +3998,7 @@ fn audit_agent_auto_should_prefer_an_enforceable_no_tool_provider() {
         .arg(&store)
         .args(["--json", "audit"])
         .arg(&skill)
-        .args(["--agent", "codex", "--refresh"])
+        .args(["--reviewer", "codex", "--refresh"])
         .assert()
         .success()
         .stderr(predicate::str::contains(
@@ -4040,7 +4040,7 @@ fn audit_should_explain_a_present_but_failing_provider() {
         .arg(&store)
         .args(["audit"])
         .arg(&skill)
-        .args(["--agent", "auto"])
+        .args(["--reviewer", "auto"])
         .assert()
         .failure()
         .code(4)
@@ -4075,7 +4075,7 @@ fn audit_should_check_explicit_provider_before_printing_egress_warning() {
         .arg(&store)
         .args(["audit"])
         .arg(&skill)
-        .args(["--agent", "codex"])
+        .args(["--reviewer", "codex"])
         .assert()
         .failure()
         .code(4)
@@ -4103,19 +4103,22 @@ fn audit_help_should_prefer_refresh_audit_and_keep_refresh_as_hidden_alias() {
 }
 
 #[test]
-fn reviewer_should_accept_the_agent_alias_but_reject_both_flags() {
-    dalo_command()
-        .args(["audit", "missing", "--reviewer", "auto", "--agent", "codex"])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("cannot be used with"));
-
-    dalo_command()
-        .args(["audit", "missing", "--agent", "bogus"])
-        .assert()
-        .failure()
-        .code(2)
-        .stderr(predicate::str::contains("--agent <REVIEWER>"));
+fn reviewer_should_reject_the_removed_agent_alias() {
+    for args in [
+        vec!["audit", "missing", "--agent", "codex"],
+        vec!["adopt", "missing", "--agent", "codex"],
+        vec!["approve", "skill", "local:missing", "--agent", "codex"],
+        vec!["resolve", "adopt", "missing", "--agent", "codex"],
+    ] {
+        dalo_command()
+            .args(args)
+            .assert()
+            .failure()
+            .code(2)
+            .stderr(predicate::str::contains(
+                "unexpected argument \'--agent\' found",
+            ));
+    }
 }
 
 #[test]
@@ -4141,7 +4144,7 @@ fn refresh_alias_should_work_for_all_audit_related_commands() {
 }
 
 #[test]
-fn audit_agent_opencode_should_attach_snapshot_with_all_tools_denied() {
+fn audit_reviewer_opencode_should_attach_snapshot_with_all_tools_denied() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let skill = temp_dir.path().join("review-helper");
@@ -4187,7 +4190,7 @@ printf '%s\n' '{"summary":"No suspicious behavior found.","findings":[],"expecte
         .arg(&store)
         .args(["--json", "audit"])
         .arg(&skill)
-        .args(["--agent", "opencode"])
+        .args(["--reviewer", "opencode"])
         .assert()
         .success()
         .stderr(predicate::str::contains(
