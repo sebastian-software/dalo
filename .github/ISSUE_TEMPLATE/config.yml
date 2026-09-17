@@ -1,5 +1,11 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Ask a question
+    url: https://github.com/sebastian-software/dalo/discussions/categories/q-a
+    about: Usage questions belong in Discussions Q&A, where answers stay findable. Include the version, the platform, and the exact command.
+  - name: Share an idea
+    url: https://github.com/sebastian-software/dalo/discussions/categories/ideas
+    about: Half-formed ideas and "would it make sense if…" go to Discussions Ideas. Open a Feature request once the problem is concrete.
   - name: Report a security vulnerability by email
     url: https://github.com/sebastian-software/dalo/blob/main/SECURITY.md
     about: Do not open a public issue. Email security@sebastian-software.de — this route always works, whatever the repository's settings are.

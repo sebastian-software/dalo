@@ -1,5 +1,5 @@
-name: Question
-description: Ask a focused usage or contributor question.
+name: Question (fallback)
+description: Only when Discussions is unavailable to you. Usage questions belong in Discussions Q&A.
 title: "[Question]: "
 labels:
   - question
@@ -7,7 +7,12 @@ body:
   - type: markdown
     attributes:
       value: |
-        Read `SUPPORT.md` and the documentation first. When this repository has Discussions enabled, ask there instead.
+        **Ask in [Discussions → Q&A](https://github.com/sebastian-software/dalo/discussions/categories/q-a) instead.**
+        That is where questions get answered and stay findable for the next person with the same one.
+
+        This form exists only as a fallback for people who cannot use Discussions.
+        Read [`SUPPORT.md`](https://github.com/sebastian-software/dalo/blob/main/SUPPORT.md)
+        and the documentation first. A question opened here may be moved to Discussions.
 
   - type: textarea
     id: question
