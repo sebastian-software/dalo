@@ -96,6 +96,21 @@ grep -q 'dalo approve skill <source-id>:<skill>' "$root/docs/troubleshooting.md"
 grep -q '`source_store_debris`' "$root/docs/troubleshooting.md"
 grep -q '`skipped_symlink`' "$root/docs/troubleshooting.md"
 grep -q 'security audit blocked' "$root/docs/troubleshooting.md"
+# Project-scoped agent folders ship as a documented recipe in 1.0; the FAQ entry
+# and the matrix section must both stay reachable and keep pointing at the
+# roadmap issue that tracks the first-class target.
+grep -Fq "### Can Dalo manage my repository's \`.claude/skills\`?" \
+  "$root/docs/troubleshooting.md"
+for document in "$root/docs/troubleshooting.md" "$root/docs/agents.md"; do
+  grep -Fq 'https://github.com/sebastian-software/dalo/issues/851' "$document" ||
+    {
+      echo "$document no longer links the project-scoped target issue #851" >&2
+      exit 1
+    }
+done
+grep -q '^## Project-scoped folders$' "$root/docs/agents.md"
+grep -Fq '(troubleshooting.md#can-dalo-manage-my-repositorys-claudeskills)' \
+  "$root/docs/agents.md"
 grep -q -- '--refresh-audit' "$root/docs/reference.md"
 grep -q 'audits\[\]' "$root/docs/reference.md"
 grep -q 'security-audit block' "$root/docs/ci.md"

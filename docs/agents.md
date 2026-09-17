@@ -34,6 +34,45 @@ Every observation below was made on 2026-09-17 on macOS, in a throwaway `HOME`
 holding a single probe skill whose directory is a symlink to a directory
 elsewhere — the exact shape `dalo sync` produces.
 
+## Project-scoped folders
+
+Dalo 1.0 links **user-level** folders. Every agent in the matrix also reads a
+project-level folder — `.claude/skills` for Claude Code, `.agents/skills` for
+Codex and OpenClaw, `.opencode/skills` for OpenCode, `.hermes/skills` for
+Hermes — and a target can be pointed at one of those paths inside a repository:
+
+```sh
+dalo target link claude /path/to/repo/.claude/skills
+dalo target link generic /path/to/repo/.agents/skills
+dalo sync
+ls -la /path/to/repo/.claude/skills
+```
+
+Both directories then hold one symlink per active skill, exactly as a user-level
+target does.
+
+Read the caveats before you rely on this. A target ID holds exactly one path, so
+covering two folders in one repository consumes two target IDs and takes those
+IDs away from your home directory; a second repository has no ID left. Targets
+live in the store, not in the repository, so a teammate or a second machine has
+to run the same commands by hand. The symlinks point at absolute store paths and
+must not be committed:
+
+```gitignore
+/.claude/skills/
+/.agents/skills/
+```
+
+`dalo target detect` prints one informational line when the working directory
+holds a project-scoped agent folder that no linked target covers. It does not
+link anything.
+
+A first-class per-repository target — declared in the repository, shared across
+clones — is tracked in
+[#851](https://github.com/sebastian-software/dalo/issues/851). The
+[FAQ entry](troubleshooting.md#can-dalo-manage-my-repositorys-claudeskills)
+has the full recipe.
+
 ## Codex
 
 Default skill path:
