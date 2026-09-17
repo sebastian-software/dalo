@@ -48,6 +48,12 @@ const PAGES = [
     summary: "What is stable in 1.x, what is experimental, and how breaking changes are announced.",
   },
   {
+    slug: "plugins",
+    label: "Plugins",
+    summary:
+      "Portable plugin packages, their typed tools and hooks, and the separate approvals each one needs.",
+  },
+  {
     slug: "agents",
     label: "Agent integration",
     summary: "Supported agents, their skill directories, and how instruction packs are written.",

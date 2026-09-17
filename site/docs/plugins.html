@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Portable Plugins, Tools, and Hooks · Dalo documentation</title>
+  <meta name="description" content="Portable plugin packages, their typed tools and hooks, and the separate approvals each one needs." />
+  <link rel="canonical" href="https://dalo.sh/docs/plugins.html" />
+  <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#15171c" media="(prefers-color-scheme: dark)" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Dalo" />
+  <meta property="og:url" content="https://dalo.sh/docs/plugins.html" />
+  <meta property="og:title" content="Portable Plugins, Tools, and Hooks · Dalo documentation" />
+  <meta property="og:description" content="Portable plugin packages, their typed tools and hooks, and the separate approvals each one needs." />
+  <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
+  <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
+  <link rel="preload" href="/assets/fonts/hanken-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/assets/fonts/geistmono-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/docs.css" />
+</head>
+<body class="doc-page">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header" data-scope="dark">
+  <div class="wrap header-inner">
+    <a class="brand" href="/" aria-label="Dalo home">
+      <svg class="brand-mark" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true" focusable="false">
+        <rect x="1.25" y="1.25" width="29.5" height="29.5" rx="8" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <circle cx="9" cy="9.5" r="2" fill="currentColor" />
+        <circle cx="9" cy="16" r="2" fill="currentColor" />
+        <circle cx="9" cy="22.5" r="2" fill="currentColor" />
+        <path d="M11 9.5 H17 Q22 9.5 22 16 Q22 22.5 17 22.5 H11 M11 16 H22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" />
+        <circle cx="22.5" cy="16" r="2.6" fill="var(--accent)" />
+      </svg>
+      <span class="brand-word">dalo</span>
+      <span class="brand-section">docs</span>
+    </a>
+    <nav class="site-nav" aria-label="Primary">
+      <a href="/">Product</a>
+      <a href="/docs/">Docs</a>
+      <a href="/spec/">Spec</a>
+      <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+    </nav>
+    <details class="mobile-menu">
+      <summary aria-label="Open navigation">
+        <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>
+        <span class="sr-only">Menu</span>
+      </summary>
+      <nav class="mobile-nav" aria-label="Mobile">
+        <a href="/">Product</a>
+        <a href="/docs/">Docs</a>
+        <a href="/spec/">Spec</a>
+        <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+      </nav>
+    </details>
+    <div class="header-actions">
+      <a class="ghost-btn" href="https://github.com/sebastian-software/dalo" rel="noopener">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="doc-shell wrap">
+  <nav class="doc-nav" aria-label="Documentation">
+    <p class="footer-h">Documentation</p>
+        <a href="/docs/getting-started.html">Getting started</a>
+        <a href="/docs/team.html">Team repository</a>
+        <a href="/docs/reference.html">Command reference</a>
+        <a href="/docs/compatibility.html">Compatibility</a>
+        <a href="/docs/plugins.html" aria-current="page">Plugins</a>
+        <a href="/docs/agents.html">Agent integration</a>
+        <a href="/docs/ci.html">Dalo in CI</a>
+        <a href="/docs/troubleshooting.html">Troubleshooting</a>
+        <a href="/docs/security.html">Security overview</a>
+        <a href="/docs/uninstall.html">Uninstall</a>
+        <a href="/docs/comparison.html">Comparison</a>
+  </nav>
+  <article class="doc-body">
+<h1 id="portable-plugins-tools-and-hooks">Portable Plugins, Tools, and Hooks</h1>
+<p>A plugin is a passive package. It groups skills, canonical agents, and
+instruction packs that belong together, and it may declare a narrowly typed
+local executable and a hook that binds it to a provider event.</p>
+<p>Nothing in a plugin is active by itself. Selecting a plugin resolves intent
+only: it never grants a skill or agent approval, never enables instructions,
+and never runs a tool. Every executable boundary is a separate, exact approval
+that is bound to a hash, and any change to the contract invalidates it.</p>
+<p>This guide walks the whole path. For field-by-field rules, see the
+<a href="/docs/reference.html#plugintoml-portable-plugins-tools-and-hooks"><code>PLUGIN.toml</code> reference</a>.
+The cross-implementation
+<a href="https://dalo.sh/spec/0.1/" rel="noopener">Portable Agent Packages specification</a> is an
+experimental draft, with a downloadable schema and an
+<a href="https://dalo.sh/spec/0.1/compatibility.html" rel="noopener">evidence-based compatibility matrix</a>.</p>
+<h2 id="validate-a-source-before-anyone-adds-it"><a class="doc-anchor" href="#validate-a-source-before-anyone-adds-it">Validate a source before anyone adds it</a></h2>
+<p>Authors can check a source without a personal store:</p>
+<pre><code class="language-sh">dalo plugin validate ./my-source
+dalo --json plugin validate ./my-source
+dalo --json plugin validate ./my-source --source-id company
+</code></pre>
+<p>Validation applies the production discovery and dependency rules, reads package
+files, and reports contract errors and unresolved references. It never runs
+handlers, installs dependencies, grants trust, or changes provider files.
+Unqualified references resolve inside the supplied source; <code>--source-id</code>
+defaults to <code>validation</code> and should be set when the package uses explicit
+references such as <code>skill:company:review</code>.</p>
+<h2 id="the-package"><a class="doc-anchor" href="#the-package">The package</a></h2>
+<p>A package lives at <code>plugins/&lt;name&gt;/PLUGIN.toml</code> inside a source. The top-level
+schema is closed: unknown fields are rejected.</p>
+<pre><code class="language-toml">schema_version = 1
+
+[plugin]
+name = &quot;review-workflow&quot;
+description = &quot;Shared review behavior across supported agents.&quot;
+
+[[plugin.members]]
+ref = &quot;skill:review&quot;
+requirement = &quot;required&quot;
+
+[[plugin.members]]
+ref = &quot;agent:reviewer&quot;
+requirement = &quot;optional&quot;
+[plugin.members.fallback]
+kind = &quot;inline&quot;
+skill = &quot;skill:review&quot;
+
+[[plugin.members]]
+ref = &quot;instruction:engineering-defaults&quot;
+requirement = &quot;recommended&quot;
+</code></pre>
+<p>Members carry <code>ref</code>, <code>requirement</code> (<code>required</code>, <code>optional</code>, or <code>recommended</code>),
+and an optional <code>fallback</code>. Members may reference skills, agents, or
+instructions; <code>recommended</code> is only valid for instructions. A fallback is only
+valid for an agent member, uses <code>kind = &quot;inline&quot;</code>, names a skill in <code>skill</code>,
+and that skill must also be a required member. Dependencies between packages
+use <code>[[plugin.requires]]</code> with a <code>ref</code> and a <code>required</code> or <code>optional</code>
+<code>requirement</code>.</p>
+<h2 id="select-a-plugin"><a class="doc-anchor" href="#select-a-plugin">Select a plugin</a></h2>
+<p>The source root <code>dalo.toml</code> can select a package for everyone who uses that
+source:</p>
+<pre><code class="language-toml">[source]
+id = &quot;company&quot;
+
+[selection]
+plugins = [{ ref = &quot;company:review-workflow&quot;, requirement = &quot;required&quot; }]
+</code></pre>
+<p>A local selection is additive on top of that stack:</p>
+<pre><code class="language-sh">dalo plugin list
+dalo plugin show company:review-workflow
+dalo plugin select company:review-workflow
+dalo plugin unselect company:review-workflow
+</code></pre>
+<p><code>plugin unselect</code> removes only that local origin and never edits the
+source-authored stack. <code>plugin decline</code> keeps the selected intent but blocks the
+plugin with a local policy record; it needs a unique lower-kebab <code>--rule-id</code> and
+a non-empty <code>--reason</code>.</p>
+<h2 id="preview-before-anything-is-written"><a class="doc-anchor" href="#preview-before-anything-is-written">Preview before anything is written</a></h2>
+<pre><code class="language-sh">dalo plan
+dalo plan --target codex --json
+</code></pre>
+<p>The plan reports every linked target without writing provider state. A
+recommended instruction stays inactive until the explicit
+<code>dalo instructions enable</code> flow has completed.</p>
+<h2 id="review-the-whole-closure-at-once"><a class="doc-anchor" href="#review-the-whole-closure-at-once">Review the whole closure at once</a></h2>
+<pre><code class="language-sh">dalo plugin review company:review-workflow
+dalo --dry-run plugin review company:review-workflow
+dalo --json plugin review company:review-workflow
+</code></pre>
+<p><code>plugin review</code> turns the selected plugin and its dependency closure into one
+coherent session. It still asks separately for each pending skill, agent, tool,
+and hook contract, shows exact hashes and Codex/Claude mappings, and then asks
+once more before committing that explicit set with one atomic approval-ledger
+write. It never creates plugin-, source-, author-, organization-, or wildcard
+trust.</p>
+<p><code>--json</code> and <code>--dry-run</code> are strictly read-only: they never prompt, stage
+executable bytes, run external reviewers, or write provider targets. Use the
+individual <code>dalo approve ...</code> commands when reviewing just one known boundary,
+when revoking, or when a blocking skill audit needs an explicit <code>--accept-risk</code>
+reason.</p>
+<h2 id="tools"><a class="doc-anchor" href="#tools">Tools</a></h2>
+<p>A package may declare a narrowly typed local executable. Discovery, <code>status</code>,
+<code>doctor</code>, <code>plan</code>, and <code>sync --dry-run</code> only inventory and hash it; they never
+run it. Execution trust is a separate, exact contract approval.</p>
+<pre><code class="language-toml">[[tool]]
+schema_version = 1
+id = &quot;detector&quot;
+entry = &quot;tools/detect.py&quot;
+runtime = &quot;python&quot;
+runtime_version = &quot;&gt;=3.11&quot;
+platforms = [&quot;macos&quot;, &quot;linux&quot;]
+argv = [&quot;--path&quot;, &quot;${input.path}&quot;]
+files = [&quot;tools/rules.json&quot;]
+cwd = &quot;tool_root&quot;
+env = [&quot;DALO_LOG&quot;]
+capabilities = [&quot;filesystem_read&quot;]
+availability = &quot;required&quot;
+
+[[tool.inputs]]
+name = &quot;path&quot;
+type = &quot;path&quot;
+required = true
+</code></pre>
+<p><code>schema_version</code>, <code>id</code>, <code>entry</code>, <code>runtime</code> (<code>executable</code>, <code>python</code>, or <code>node</code>),
+<code>argv</code>, <code>cwd</code> (<code>tool_root</code>), and <code>availability</code> (<code>required</code> or <code>optional</code>) are
+required. <code>runtime_version</code>, <code>platforms</code> (<code>macos</code>, <code>linux</code>), <code>inputs</code>, <code>files</code>,
+<code>env</code>, and <code>capabilities</code> (<code>filesystem_read</code>, <code>filesystem_write</code>, <code>subprocess</code>,
+or <code>network</code>) are optional. Inputs are closed <code>name</code>, <code>type</code> (<code>string</code>, <code>path</code>,
+<code>integer</code>, <code>boolean</code>), and optional <code>required</code> records. Paths must be
+plugin-root-relative and stay inside the plugin-owned closure.</p>
+<pre><code class="language-sh">dalo tool list
+dalo tool show company:review-workflow#tool:detector
+dalo tool audit company:review-workflow#tool:detector
+dalo approve tool company:review-workflow#tool:detector
+dalo approve revoke tool company:review-workflow#tool:detector
+</code></pre>
+<p>Approval records include the deterministic tool-contract hash. Approved bytes
+are atomically promoted below Dalo&#39;s immutable content-addressed tool root;
+changing the entry, referenced files, runtime, input/argv contract, environment,
+working directory, platform, availability, or capabilities requires approval
+again. An unrelated plugin README change retains the approval and is still
+visible through the changed whole-package provenance hash.</p>
+<h2 id="hooks"><a class="doc-anchor" href="#hooks">Hooks</a></h2>
+<p>An approved tool can be bound to a portable hook through a second, independent
+approval. The binding is typed and cannot change the tool-owned argv template:</p>
+<pre><code class="language-toml">[[hook]]
+schema_version = 1
+id = &quot;check-shell&quot;
+tool = &quot;detector&quot;
+subject = &quot;tool_call&quot;
+phase = &quot;before&quot;
+effect = &quot;allow_deny&quot;
+requirement = &quot;required&quot;
+timeout_ms = 2000
+failure_policy = &quot;fail_closed&quot;
+retry = &quot;never&quot;
+error_visibility = &quot;model_and_user&quot;
+blocking_scope = &quot;matched_event&quot;
+bindings = [{ input = &quot;path&quot;, field = &quot;session.cwd&quot; }]
+matcher = { tool_names = [&quot;Bash&quot;] }
+</code></pre>
+<pre><code class="language-sh">dalo hook list
+dalo hook show company:review-workflow#hook:check-shell
+dalo approve hook company:review-workflow#hook:check-shell
+dalo sync --dry-run
+dalo sync
+dalo approve revoke hook company:review-workflow#hook:check-shell
+</code></pre>
+<p>The hook approval covers the exact tool hash, event, effect, matcher, typed
+bindings, timeout, failure behavior, and blocking scope. Sync projects only
+selected and independently approved hooks into structurally owned Codex or
+Claude entries. Provider event JSON travels over stdin to Dalo&#39;s dispatcher;
+it is never interpolated into a shell command. Native files use compare-and-swap
+and preserve foreign settings, while <code>status</code> and <code>doctor</code> report disabled,
+managed-only, unverified, drifted, conflicted, and revoked states separately.</p>
+<p>The full list of admitted subjects, phases, effects, failure policies, and
+event fields is in the
+<a href="/docs/reference.html#plugintoml-portable-plugins-tools-and-hooks">hook reference</a>.</p>
+<h2 id="native-provider-packages"><a class="doc-anchor" href="#native-provider-packages">Native provider packages</a></h2>
+<p>Selected coherent plugins are rendered as one independently owned native
+package per linked provider. The same <code>company:review-workflow</code> selection
+produces a Codex package with <code>.codex-plugin/plugin.json</code> and a Claude package
+with <code>.claude-plugin/plugin.json</code>; both contain supported <code>skills/</code>, while
+Claude can additionally contain compiled <code>agents/</code>. Codex agents and standing
+instruction packs remain explicit external projections because those concepts
+do not belong in the Codex plugin layout. Dalo records every omission,
+component fingerprint, adapter baseline, immutable artifact hash, and owned
+provider path in <code>plugins/state.json</code>.</p>
+<p>Claude&#39;s package is linked into its configured skills directory, where
+skills-directory plugin loading can discover it. The Codex package is kept
+below the Codex configuration root at <code>plugins/dalo/&lt;native-name&gt;</code>; Dalo does
+not silently rewrite a user&#39;s marketplace catalog or plugin enablement.
+<code>dalo plan</code>, <code>status</code>, <code>doctor</code>, and <code>sync --dry-run</code> show both paths and every
+component outcome before mutation. Required tools and hooks must retain their
+separate exact approvals or the package projection is blocked. Ordinary
+harness-neutral skills still use the existing byte-identical direct symlinks.</p>
+<h2 id="related"><a class="doc-anchor" href="#related">Related</a></h2>
+<ul>
+<li><a href="/docs/reference.html">Command reference</a> — every flag, JSON shape, and diagnostic code</li>
+<li><a href="/docs/security.html">Security overview</a> — trust boundaries and the stated limits</li>
+<li><a href="/docs/compatibility.html">Compatibility and stability</a> — what the 1.x contract covers</li>
+<li><a href="/docs/troubleshooting.html">Troubleshooting and FAQ</a> — the command that clears each finding</li>
+</ul>
+<p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/plugins.md" rel="noopener">docs/plugins.md</a></p>
+  </article>
+</main>
+
+<footer class="site-footer doc-footer" data-scope="dark">
+  <div class="wrap footer-base">
+    <span>© 2026 <a href="https://sebastian-software.de" rel="noopener">Sebastian Software</a> · Dalo</span>
+    <span><a href="/">dalo.sh</a> · <a href="/spec/">Spec</a> · <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a> · <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a></span>
+  </div>
+</footer>
+</body>
+</html>
