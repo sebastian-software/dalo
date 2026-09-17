@@ -1,9 +1,12 @@
 # Dalo Site
 
 `dalo.sh` is hand-written HTML, CSS, and JavaScript: `index.html` is the
-landing page, `install.md` and `install.sh` are served as-is, `docs/` contains
-the rendered copies of the repository's `docs/*.md`, and `spec/` contains the
-versioned Portable Agent Packages pages plus its public JSON Schema.
+landing page, `install.md`, `install.sh`, and `llms.txt` are served as-is,
+`docs/` contains the rendered copies of the repository's `docs/*.md`, and
+`spec/` contains the versioned Portable Agent Packages pages plus its public
+JSON Schema. `llms.txt` is the plain-text index agents read instead of scraping
+the landing page; `build.mjs` copies every deployable file in `site/` into
+`site/build/`, so it needs no build-script entry of its own.
 
 ## Build
 
@@ -44,6 +47,8 @@ Before redeploying `dalo.sh`, verify the static site against the shipped repo st
 - Footer links resolve on `main`, including `README.md`, docs, issues,
   `LICENSE-MIT`, and `LICENSE-APACHE`.
 - `install.sh` and `install.md` resolve from `https://dalo.sh/` and match README install guidance.
+- `llms.txt` is in `site/build/`, every link in it resolves, and the landing page
+  still advertises it through `<link rel="alternate" type="text/plain">`.
 - `pnpm run render` in `video/` has refreshed `site/assets/dalo-quickstart.mp4` after video source changes.
 - Runtime assets are self-hosted; the homepage makes no CDN/player request.
 - `site/sitemap.xml` lists every published page.

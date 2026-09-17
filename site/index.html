@@ -31,6 +31,10 @@
   <link rel="preload" href="/assets/fonts/hanken-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="/assets/fonts/geistmono-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="/styles.css" />
+
+  <!-- Plain-text entry points for agents: the llms.txt index and the install guide. -->
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt" />
+  <link rel="alternate" type="text/markdown" href="/install.md" title="Install Dalo with an agent" />
   <!-- x-release-please-start-version -->
   <script type="application/ld+json">
   {
@@ -131,6 +135,9 @@
             </button>
             <button class="install-method" type="button" data-install-method="npx" data-command-value="npx getdalo init" aria-pressed="false">
               npx <span>Node 20+</span>
+            </button>
+            <button class="install-method" type="button" data-install-method="agent" data-command-value="Read https://dalo.sh/install.md and install dalo for me." aria-pressed="false">
+              With your agent <span>Claude Code, Codex</span>
             </button>
           </div>
           <div class="install-copy">
@@ -494,6 +501,9 @@
             <button class="install-method" type="button" data-install-method="npx" data-command-value="npx getdalo init" aria-pressed="false">
               npx <span>Node 20+</span>
             </button>
+            <button class="install-method" type="button" data-install-method="agent" data-command-value="Read https://dalo.sh/install.md and install dalo for me." aria-pressed="false">
+              With your agent <span>Claude Code, Codex</span>
+            </button>
           </div>
           <div class="install-copy">
             <code id="install-command" data-install-command>curl -fsSL https://dalo.sh/install.sh | sh</code>
@@ -756,8 +766,8 @@
     <div class="wrap">
       <h2 class="section-h reveal">Built to rely on.</h2>
       <p class="lead reveal">
-        Dalo is v<span data-dalo-version>0.15.1</span>, <!-- x-release-please-version -->
-        and everything a team workflow rests on ships today: local, team, and
+        Dalo is v<span data-dalo-version>0.15.1</span>. <!-- x-release-please-version -->
+        Everything a team workflow depends on has shipped: local, team, and
         catalog sources; deterministic resolution;
         security audits and review gates; safe sync; adoption; diagnostics; and
         instruction packs. These are the commitments the 1.x line is written to keep.

@@ -609,10 +609,12 @@ section[data-scope="dark"] { background: var(--bg); color: var(--ink); }
 .trust-foot a { color: var(--accent-text); }
 
 
+/* Four promises read as a block of two rows, not as three plus an orphan. */
 .promise-grid {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 1rem;
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem;
   margin-top: clamp(2rem, 1rem + 3vw, 3.2rem);
 }
+@media (max-width: 720px) { .promise-grid { grid-template-columns: 1fr; } }
 .promise {
   display: flex; flex-direction: column; gap: 0.7rem;
   border: 1px solid var(--line); border-radius: var(--r-lg);
@@ -719,7 +721,8 @@ section[data-scope="dark"] { background: var(--bg); color: var(--ink); }
 @media (max-width: 420px) {
   .hero-cta { flex-direction: column; align-items: stretch; }
   .hero-cta .btn { justify-content: center; }
-  .install-methods:not([hidden]) { display: flex; border-radius: var(--r); }
-  .install-method { flex: 1 1 33.333%; justify-content: center; padding-inline: 0.5rem; }
+  /* Four methods no longer fit on one phone-width row; two rows of two do. */
+  .install-methods:not([hidden]) { display: grid; grid-template-columns: 1fr 1fr; border-radius: var(--r); }
+  .install-method { justify-content: center; padding-inline: 0.5rem; text-align: center; }
   .install-method span { display: none; }
 }
