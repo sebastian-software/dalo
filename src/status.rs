@@ -1960,7 +1960,7 @@ pub fn print_sync_report(report: &SyncReport) {
             let repair_hint = if is_unmanaged_entry_conflict(operation) {
                 format!(
                     " ({})",
-                    unmanaged_repair_hint(&report.store, &operation.link_path)
+                    unmanaged_repair_hint(&report.store, unmanaged_selector(&operation.link_path))
                 )
             } else {
                 String::new()
@@ -2763,6 +2763,18 @@ fn print_unmanaged_skill_with_repair_hint(
         marker,
         unmanaged_repair_hint(store_root, std::path::Path::new(&skill.id))
     );
+}
+
+/// The selector a repair hint names for an unmanaged target entry.
+///
+/// `status` already reports the bare slot name, and that is the spelling the
+/// documentation shows, so `sync` names the same thing rather than the absolute
+/// link path it happens to hold. The full path stays the fallback for a link
+/// path with no final component, which cannot occur for a target slot.
+fn unmanaged_selector(link_path: &Path) -> &Path {
+    link_path
+        .file_name()
+        .map_or(link_path, |slot| Path::new(slot))
 }
 
 fn unmanaged_repair_hint(store_root: &Path, selector: &Path) -> String {
