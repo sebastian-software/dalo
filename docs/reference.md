@@ -66,9 +66,26 @@ Global flags can be placed before or after the command.
 ## Update Notices
 
 After a successful interactive command, Dalo checks for a newer GitHub release
-at most once per 24 hours. The cached check uses a one-second network timeout and
+at most once per 24 hours. The check uses a one-second network timeout and
 never changes the command's exit status. Checks are skipped for `--json`, CI,
 `DALO_OFFLINE=1`, and `DALO_UPDATE_CHECK=never`.
+
+The check runs beside the command on its own thread. A command that finishes
+first waits up to 150 milliseconds for the answer, so even a command that takes
+ten milliseconds prints the notice in the same run. When the release API is
+slower than that, the command exits without waiting further and the answer is
+recorded instead, so the next interactive command prints the notice with no
+network access at all. A check that never reported back leaves a pending record
+and is retried after five minutes rather than counting as the day's check; the
+24-hour interval starts from a check that actually reached the release API.
+
+The result lives in `last-check` inside `${XDG_CACHE_HOME:-~/.cache}/dalo/update-notices`,
+a versioned `key=value` record holding the schema version, whether the check
+completed, the version that ran it, and the newer release it found. A record
+written by an unrecognized schema or by a different installed version is
+ignored, which makes the next command check again. Deleting the directory only
+costs one extra check. A fresh install has no record, so its first interactive
+command checks immediately instead of staying silent for the first day.
 
 Dalo never modifies its own executable. If the installed version is outdated,
 the notice recommends an upgrade command for Homebrew, npm/npx, mise, Cargo, or

@@ -283,8 +283,10 @@ cargo install dalo
 Successful interactive commands check for a newer GitHub release at most once
 per day. The check is advisory: Dalo never replaces its own executable. When an
 update is available, it prints the upgrade command for the detected installation
-method once for that version. Network and cache failures are ignored, and checks
-are disabled for JSON output, CI, and `DALO_OFFLINE=1`. Set
+method once for that version — in the same run when the release API answers
+within 150 milliseconds, otherwise on the next command, which reads the
+recorded answer without any network access. Network and cache failures are
+ignored, and checks are disabled for JSON output, CI, and `DALO_OFFLINE=1`. Set
 `DALO_UPDATE_CHECK=never` to opt out.
 
 You can also ask your agent to install Dalo: dalo.sh publishes an
