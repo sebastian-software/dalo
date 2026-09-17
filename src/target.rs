@@ -154,6 +154,13 @@ pub struct TargetUnlinkReport {
     pub status: TargetUnlinkStatus,
 }
 
+/// Built-in target IDs as the `target link` hints spell them.
+///
+/// [`registry`] is the source of truth; `link_hint_should_name_every_builtin`
+/// keeps this list and the CLI long help in step with it, so a newly supported
+/// target cannot be left out of the command Dalo tells people to run.
+pub const LINK_HINT_TARGETS: &str = "codex|claude|openclaw|hermes|opencode|generic";
+
 /// Return the built-in target registry.
 #[must_use]
 pub fn registry() -> &'static [TargetRegistryEntry] {
@@ -542,6 +549,26 @@ mod tests {
             [
                 "codex", "claude", "openclaw", "hermes", "opencode", "generic",
             ]
+        );
+    }
+
+    #[test]
+    fn link_hint_should_name_every_builtin() {
+        // The hints told people to run
+        // `dalo target link <codex|claude|openclaw|hermes|generic>` long after
+        // `opencode` became a supported built-in, so the command Dalo prints
+        // has to be derived from the registry, not maintained beside it.
+        let ids = registry().iter().map(|entry| entry.id).collect::<Vec<_>>();
+
+        assert_eq!(
+            LINK_HINT_TARGETS,
+            ids.join("|"),
+            "the target link hint fell behind the registry"
+        );
+        assert!(
+            crate::cli::AFTER_LONG_HELP
+                .contains(&format!("dalo target link <{LINK_HINT_TARGETS}> [path]")),
+            "the CLI long help fell behind the registry"
         );
     }
 

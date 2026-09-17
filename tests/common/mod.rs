@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+pub mod scenario;
+
 use assert_cmd::Command;
 use dalo::catalog::{self, SourceLock};
 use dalo::config::UserConfig;
@@ -146,6 +148,18 @@ impl TestEnvironment {
     /// [`dalo_command`], such as a command running Dalo under a PTY wrapper.
     pub fn apply_to(&self, command: &mut std::process::Command) {
         apply_test_environment!(command, self);
+    }
+
+    /// Builds another Dalo command inside this already-created environment.
+    ///
+    /// [`dalo_command`] creates a fresh environment per invocation, which is
+    /// what most tests want. Measurements need many commands to observe the
+    /// same `HOME` and provider directories, so the environment is built once
+    /// and reused here.
+    pub fn command(&self) -> Command {
+        let mut command = Command::cargo_bin("dalo").expect("binary should build");
+        apply_test_environment!(&mut command, self);
+        command
     }
 }
 
@@ -442,6 +456,59 @@ pub struct GitRevParseLogger {
 }
 
 pub fn git_rev_parse_logger(temp_dir: &Path) -> GitRevParseLogger {
+    let (path_env, real_git) = install_git_wrapper(
+        temp_dir,
+        "git-wrapper-bin",
+        "#!/bin/sh\n\
+         if [ \"$1\" = \"rev-parse\" ] && [ \"$2\" = \"HEAD\" ]; then\n\
+         \tprintf '%s\\n' \"$PWD\" >> \"$DALO_GIT_REV_PARSE_LOG\"\n\
+         fi\n\
+         exec \"$DALO_REAL_GIT\" \"$@\"\n",
+    );
+    GitRevParseLogger {
+        path_env,
+        log: temp_dir.join("git-rev-parse.log"),
+        real_git,
+    }
+}
+
+/// A `git` wrapper which records every invocation, not only `rev-parse HEAD`.
+///
+/// The performance smoke test uses it to bound how many Git subprocesses a
+/// no-op `sync` spawns, which is the shape a hot-path regression takes.
+pub struct GitInvocationLogger {
+    pub path_env: OsString,
+    pub log: PathBuf,
+    pub real_git: String,
+}
+
+impl GitInvocationLogger {
+    /// Returns the argument line of every recorded `git` invocation.
+    pub fn invocations(&self) -> Vec<String> {
+        std::fs::read_to_string(&self.log)
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_owned)
+            .collect()
+    }
+}
+
+pub fn git_invocation_logger(temp_dir: &Path) -> GitInvocationLogger {
+    let (path_env, real_git) = install_git_wrapper(
+        temp_dir,
+        "git-invocation-bin",
+        "#!/bin/sh\n\
+         printf '%s\\n' \"$*\" >> \"$DALO_GIT_INVOCATION_LOG\"\n\
+         exec \"$DALO_REAL_GIT\" \"$@\"\n",
+    );
+    GitInvocationLogger {
+        path_env,
+        log: temp_dir.join("git-invocations.log"),
+        real_git,
+    }
+}
+
+fn install_git_wrapper(temp_dir: &Path, directory: &str, script: &str) -> (OsString, String) {
     let real_git_output = std::process::Command::new("sh")
         .args(["-c", "command -v git"])
         .output()
@@ -455,27 +522,15 @@ pub fn git_rev_parse_logger(temp_dir: &Path) -> GitRevParseLogger {
         .trim()
         .to_owned();
 
-    let bin = temp_dir.join("git-wrapper-bin");
+    let bin = temp_dir.join(directory);
     std::fs::create_dir_all(&bin).expect("wrapper bin should be created");
     let wrapper = bin.join("git");
-    std::fs::write(
-        &wrapper,
-        "#!/bin/sh\n\
-         if [ \"$1\" = \"rev-parse\" ] && [ \"$2\" = \"HEAD\" ]; then\n\
-         \tprintf '%s\\n' \"$PWD\" >> \"$DALO_GIT_REV_PARSE_LOG\"\n\
-         fi\n\
-         exec \"$DALO_REAL_GIT\" \"$@\"\n",
-    )
-    .expect("git wrapper should be written");
+    std::fs::write(&wrapper, script).expect("git wrapper should be written");
     let mut permissions = std::fs::metadata(&wrapper)
         .expect("git wrapper metadata should be readable")
         .permissions();
     permissions.set_mode(0o755);
     std::fs::set_permissions(&wrapper, permissions).expect("git wrapper should be executable");
 
-    GitRevParseLogger {
-        path_env: bin.into_os_string(),
-        log: temp_dir.join("git-rev-parse.log"),
-        real_git,
-    }
+    (bin.into_os_string(), real_git)
 }

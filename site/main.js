@@ -23,8 +23,12 @@ document.documentElement.classList.add("js");
     revealEls.forEach(function (el) { revealObserver.observe(el); });
   }
 
-  // Active-section highlight in the header nav.
-  var navLinks = Array.prototype.slice.call(document.querySelectorAll(".site-nav a"));
+  // Active-section highlight in the header nav. Only in-page anchors describe a
+  // section; passing a path like "/docs/" to querySelector throws and would take
+  // the rest of this script — install picker, copy buttons — down with it.
+  var navLinks = Array.prototype.slice
+    .call(document.querySelectorAll(".site-nav a"))
+    .filter(function (a) { return (a.getAttribute("href") || "").charAt(0) === "#"; });
   var sections = navLinks
     .map(function (a) { return document.querySelector(a.getAttribute("href")); })
     .filter(Boolean);

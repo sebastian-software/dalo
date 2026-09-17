@@ -73,6 +73,7 @@
         <a href="/docs/team.html">Team repository</a>
         <a href="/docs/reference.html">Command reference</a>
         <a href="/docs/compatibility.html">Compatibility</a>
+        <a href="/docs/upgrading.html">Upgrading to 1.0</a>
         <a href="/docs/plugins.html">Plugins</a>
         <a href="/docs/agents.html">Agent integration</a>
         <a href="/docs/ci.html" aria-current="page">Dalo in CI</a>
@@ -141,6 +142,69 @@ public latest release stays available.</p>
 <p>GitHub is published before crates.io, npm, or the Homebrew tap dispatch. Each of
 those downstream channels depends on the final GitHub-release job, so no public
 installer path advertises an archive before GitHub makes that archive available.</p>
+<h3 id="releasing-100"><a class="doc-anchor" href="#releasing-100">Releasing 1.0.0</a></h3>
+<p><code>release-please-config.json</code> sets <code>bump-minor-pre-major: true</code>, so every
+<code>feat!:</code> commit below 1.0.0 produces a minor bump, not a major. The first major
+is requested explicitly, with a <code>Release-As:</code> footer on a commit that reaches
+<code>main</code>:</p>
+<pre><code class="language-text">chore(release): release dalo 1.0.0
+
+Release-As: 1.0.0
+</code></pre>
+<p>The footer is matched case-insensitively on the token <code>Release-As</code>, it must sit
+in the commit footer, and it works with any Conventional Commit type — including
+types the changelog normally hides, because the changelog generator keeps a
+commit that carries the footer. Pull requests are rebase-merged, which preserves
+the footer; a squash merge only preserves it when the squash body keeps it.
+Other trailers such as <code>Co-Authored-By:</code> may follow it.</p>
+<p>Release-please then opens <code>chore(main): release dalo 1.0.0</code> on
+<code>release-please--branches--main--components--dalo</code>, writes the <code>## [1.0.0]</code>
+CHANGELOG heading, and stamps <code>1.0.0</code> into <code>Cargo.toml</code>, <code>Cargo.lock</code>,
+<code>npm/package.json</code>, both <code>npm/package-lock.json</code> version paths, and the three
+annotated slots in <code>site/index.html</code> (<code>softwareVersion</code> plus the two
+<code>data-dalo-version</code> spans). Replace the generated release body with the curated
+launch notes from <code>.github/release-notes/&lt;version&gt;.md</code> before the draft is
+published, as described under <a href="#curated-release-notes">Curated release notes</a>.</p>
+<p>Merging that release pull request tags <code>dalo-v1.0.0</code> and runs <code>publish.yml</code>:
+six signed archives with checksums upload to a draft release, the draft is
+published once every asset is present, and crates.io, npm, and the
+<code>sebastian-software/homebrew-tap</code> dispatch follow. The tap bump compares
+versions with <code>sort -V</code>, so <code>1.0.0</code> supersedes <code>0.16.0</code> rather than losing to
+it in string order.</p>
+<p>Smoke every channel once the release page is public:</p>
+<pre><code class="language-sh">brew upgrade dalo &amp;&amp; dalo --version
+npx getdalo@latest --version
+cargo binstall dalo &amp;&amp; dalo --version
+mise up &amp;&amp; dalo --version
+curl -fsSL https://dalo.sh/install.sh | sh &amp;&amp; dalo --version
+</code></pre>
+<p>Then check the upgrade path itself from a 0.16 install: run any command under a
+TTY with <code>DALO_UPDATE_CHECK</code> unset and <code>CI</code> unset, and confirm the notice reads
+<code>update available: dalo v1.0.0 (installed v0.16.0 via &lt;channel&gt;)</code> with one <code>v</code>
+per version and the upgrade command that matches the channel it was installed
+from.</p>
+<h3 id="curated-release-notes"><a class="doc-anchor" href="#curated-release-notes">Curated release notes</a></h3>
+<p>Release-please generates a commit list. For a release that a newcomer will read,
+that list is the appendix, not the story, so the narrative is written ahead of
+time and committed to the repository:</p>
+<ul>
+<li>The body for 1.0.0 is
+<a href="https://github.com/sebastian-software/dalo/blob/main/.github/release-notes/1.0.0.md" rel="noopener"><code>.github/release-notes/1.0.0.md</code></a>.
+A later release that needs the same treatment adds
+<code>.github/release-notes/&lt;version&gt;.md</code> beside it; releases without such a file
+keep the generated body unchanged.</li>
+<li><strong>Before the draft is published</strong>, replace the draft release body with that
+file&#39;s contents, then a <code>---</code> divider, then the generated commit list
+unchanged. <code>publish.yml</code> only flips <code>--draft=false</code>; it never rewrites the
+body, so the edit survives publication.</li>
+<li><strong>After the release pull request is merged</strong>, add the same text above the
+generated entry in <code>CHANGELOG.md</code> in a separate <code>docs:</code> commit. Release-please
+owns that file and appends new entries at the top, so the narrative goes in
+after its pull request rather than as a hand-written heading it has to parse.</li>
+<li>The notes repeat the breaking-change inventory that <code>docs/upgrading.md</code>
+carries, and <code>tests/docs.sh</code> checks both against the same list. A <code>!:</code> commit
+that lands before the tag has to be added to all three in one pull request.</li>
+</ul>
 <h2 id="exit-codes"><a class="doc-anchor" href="#exit-codes">Exit codes</a></h2>
 <div class="doc-table"><table>
 <thead>

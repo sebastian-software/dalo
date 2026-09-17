@@ -103,21 +103,21 @@ A catalog skill is a good example. Selecting it does not trust it, so the next
 
 ```sh
 dalo source add-catalog sebastian https://github.com/sebastian-software/skills.sebastian-software.com.git
-dalo source select sebastian pr-review
+dalo source select sebastian effective-web
 dalo sync
 ```
 
 ```text
 synced: 2 skills across 1 target (2 unchanged)
-pending approval: sebastian:pr-review (run: dalo approve skill sebastian:pr-review)
+pending approval: sebastian:effective-web (run: dalo approve skill sebastian:effective-web)
 security preflight: deterministic checks only
 ```
 
 Review the exact skill, approve it, and sync again:
 
 ```sh
-dalo audit sebastian:pr-review --reviewer auto
-dalo approve skill sebastian:pr-review
+dalo audit sebastian:effective-web
+dalo approve skill sebastian:effective-web
 dalo sync
 ```
 
@@ -285,11 +285,10 @@ method once for that version. Network and cache failures are ignored, and checks
 are disabled for JSON output, CI, and `DALO_OFFLINE=1`. Set
 `DALO_UPDATE_CHECK=never` to opt out.
 
-You can also ask your agent to install Dalo:
-
-```text
-Read https://dalo.sh/install.md and install dalo for me.
-```
+You can also ask your agent to install Dalo: dalo.sh publishes an
+[`llms.txt`](https://dalo.sh/llms.txt) index and an agent-oriented
+[installation guide](https://dalo.sh/install.md), so an agent pointed at the
+site finds the verified install path on its own.
 
 For manual archives, upgrades, shell completions, and removal, see the
 [installation guide](https://dalo.sh/install.md) and
@@ -301,6 +300,7 @@ For manual archives, upgrades, shell completions, and removal, see the
 - [Team repository guide](docs/team.md)
 - [Command reference](docs/reference.md)
 - [Compatibility and stability](docs/compatibility.md)
+- [Upgrading to 1.0](docs/upgrading.md)
 - [Plugins, tools, and hooks](docs/plugins.md)
 - [Portable Agent Packages — experimental specification](docs/spec/README.md)
 - [Agent integration](docs/agents.md)

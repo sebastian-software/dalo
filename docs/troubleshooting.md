@@ -25,8 +25,8 @@ dalo --json doctor
 | sync reason `scan degraded`, output `degraded source:` | Dalo could not safely scan an enabled source. Recorded owned links are preserved so an incomplete scan cannot delete them. | Restore or re-clone the source checkout, or remove the source with `dalo source remove <id>`. Do not adopt or delete the preserved target link as an unmanaged blocker. |
 | `lock drift` | Live resolution differs from the last `lock.toml`. | Run `dalo status` to inspect the drift, then `dalo sync` when the change is expected. |
 | `source_provenance_mismatch` | A catalog's checkout HEAD and `source-lock.toml` pin disagree; a manifest-derived catalog can also disagree with its declaration or generated config. | Restore the expected checkout first. For an intentional direct-catalog update, review `dalo --dry-run source refresh <id> --advance`, then apply it without `--dry-run`. For a manifest catalog, review the declaring team's `dalo.toml` and run `dalo sync`. |
-| `StoreLocked`, error text `another dalo operation is running` | Another Dalo command currently owns `.lock`, or a stale lock file remains. | Wait for the other command. If no Dalo process is running, inspect and remove the stale `.lock` file in the store. |
-| `owned_path_real_entry` | Dalo has an ownership record, but a real file or directory now exists at that path. | Run `dalo resolve remove-owned <id>`. Dalo drops the ownership record and leaves the real entry intact. |
+| `StoreLocked`, error text `another dalo operation is running` | Another Dalo command currently holds the store lock. | Wait for the other command and retry. The lock is an advisory lock the operating system releases when that process exits, so the `.lock` file staying behind is normal and never the cause; do not delete it. |
+| `owned_path_real_entry` | Dalo has an ownership record, but a real file or directory now exists at that path. | Run `dalo resolve remove-owned <id>`. It drops the ownership record and leaves the real entry intact, and it reports `blocked_real_entry` and exits `1` to say the link itself was not removed — that is the expected outcome here, not a failure. The slot then shows up as an ordinary unmanaged entry, so adopt, keep, rename, or remove it next. |
 | `missing_owned_symlink`, `broken_owned_symlink`, `foreign_owned_symlink` | A recorded owned symlink is missing, broken, or points outside the store. | Run `dalo resolve remove-owned <id>`, then `dalo sync` if the skill should be linked again. |
 | `instruction_block_drift` | A managed instruction block is missing, malformed, stale, or points to a missing pack. | Re-render with `dalo instructions enable <pack> <file>`, or disable with `dalo instructions disable <pack> <file>` if no longer wanted. |
 | `selected_removed` from catalog drift | A selected catalog skill disappeared upstream. | Unselect it with `dalo source unselect <catalog> <skill>`, or wait for a catalog fix before syncing. |
@@ -179,7 +179,7 @@ Doctor includes `ok` and `info` codes as well as warnings/errors. Codes not list
 | `cloud_synced_target` | warning | Prefer a non-cloud-synced target path if sync software interferes with symlinks. |
 | `foreign_owned_symlink` | error | Run `dalo resolve remove-owned <id>`. |
 | `broken_owned_symlink` | error | Run `dalo resolve remove-owned <id>`, then `dalo sync` if it should be recreated. |
-| `owned_path_real_entry` | error | Run `dalo resolve remove-owned <id>`; the real entry stays in place. |
+| `owned_path_real_entry` | error | Run `dalo resolve remove-owned <id>`; the real entry stays in place and the command reports `blocked_real_entry` with exit `1` while still dropping the record. See [Fast Recovery Paths](#fast-recovery-paths). |
 | `missing_owned_symlink` | warning | Run `dalo resolve remove-owned <id>`, then `dalo sync` if needed. |
 | `owned_symlink_repointed` | warning | Run `dalo sync` to restore the recorded store path. |
 | `dirty_source` | error for team/catalog, warning for local | The checkout has local edits to tracked files (untracked files such as `.DS_Store` no longer count). Commit, stash, discard, or intentionally keep them. |
@@ -336,6 +336,18 @@ Undo the redirection by linking the target back to its default path, for example
 
 Go to the checkout shown by `dalo doctor`, then commit, stash, or discard the edits with normal Git commands. Dalo does not decide this for you because the edits may be user or agent work.
 
+### I upgraded and doctor reports `schema_migration_pending`
+
+Nothing is wrong. Dalo migrates a persisted file the next time it writes that
+file, so a store carried over from 0.x keeps the old version on disk until
+then, and `doctor` prints one `info` line per file that is still waiting. Run
+`dalo sync` and the `lock.toml`, state, and instruction-block lines clear;
+`config.toml` clears the next time you change a setting, add a source, or link
+a target, and `source-lock.toml` on the next `source select`, `source
+unselect`, or `source refresh`. These are `info` findings, so `doctor --check`
+still exits `0`. See [Upgrading to 1.0](upgrading.md) for the full first-run
+transcript.
+
 ### My script uses a flag Dalo no longer accepts
 
 Dalo removed its pre-1.0 compatibility spellings before the 1.0 line froze
@@ -348,6 +360,15 @@ error. Replace it with the supported form:
 | `audit --agent <reviewer>` | `audit --reviewer <reviewer>` |
 | `source select <id> --unselect <skill>...` | `source unselect <id> <skill>...` |
 | `--refresh` (audit, adopt, approve skill, resolve adopt) | `--refresh-audit` |
+
+### How long should `sync` take?
+
+Measured numbers for a store of 10 sources and 200 skills, and the caveats that
+come with them, are in
+[Designed scale and performance envelope](compatibility.md#designed-scale-and-performance-envelope).
+If your own `sync` is much slower than that, the usual cause is network round
+trips: a no-op `sync` still fetches every tracking team source. `dalo status`
+and `dalo doctor` never fetch, so use them in a shell prompt or a watch loop.
 
 ### How do I remove Dalo completely?
 

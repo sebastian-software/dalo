@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Upgrading to 1.0 · Dalo documentation</title>
+  <meta name="description" content="Move a 0.x store to 1.0: what the first sync migrates, which spellings were removed, and how to recover." />
+  <link rel="canonical" href="https://dalo.sh/docs/upgrading.html" />
+  <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#15171c" media="(prefers-color-scheme: dark)" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Dalo" />
+  <meta property="og:url" content="https://dalo.sh/docs/upgrading.html" />
+  <meta property="og:title" content="Upgrading to 1.0 · Dalo documentation" />
+  <meta property="og:description" content="Move a 0.x store to 1.0: what the first sync migrates, which spellings were removed, and how to recover." />
+  <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
+  <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
+  <link rel="preload" href="/assets/fonts/hanken-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/assets/fonts/geistmono-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/docs.css" />
+</head>
+<body class="doc-page">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header" data-scope="dark">
+  <div class="wrap header-inner">
+    <a class="brand" href="/" aria-label="Dalo home">
+      <svg class="brand-mark" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true" focusable="false">
+        <rect x="1.25" y="1.25" width="29.5" height="29.5" rx="8" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <circle cx="9" cy="9.5" r="2" fill="currentColor" />
+        <circle cx="9" cy="16" r="2" fill="currentColor" />
+        <circle cx="9" cy="22.5" r="2" fill="currentColor" />
+        <path d="M11 9.5 H17 Q22 9.5 22 16 Q22 22.5 17 22.5 H11 M11 16 H22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" />
+        <circle cx="22.5" cy="16" r="2.6" fill="var(--accent)" />
+      </svg>
+      <span class="brand-word">dalo</span>
+      <span class="brand-section">docs</span>
+    </a>
+    <nav class="site-nav" aria-label="Primary">
+      <a href="/">Product</a>
+      <a href="/docs/">Docs</a>
+      <a href="/spec/">Spec</a>
+      <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+    </nav>
+    <details class="mobile-menu">
+      <summary aria-label="Open navigation">
+        <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>
+        <span class="sr-only">Menu</span>
+      </summary>
+      <nav class="mobile-nav" aria-label="Mobile">
+        <a href="/">Product</a>
+        <a href="/docs/">Docs</a>
+        <a href="/spec/">Spec</a>
+        <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+      </nav>
+    </details>
+    <div class="header-actions">
+      <a class="ghost-btn" href="https://github.com/sebastian-software/dalo" rel="noopener">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="doc-shell wrap">
+  <nav class="doc-nav" aria-label="Documentation">
+    <p class="footer-h">Documentation</p>
+        <a href="/docs/getting-started.html">Getting started</a>
+        <a href="/docs/team.html">Team repository</a>
+        <a href="/docs/reference.html">Command reference</a>
+        <a href="/docs/compatibility.html">Compatibility</a>
+        <a href="/docs/upgrading.html" aria-current="page">Upgrading to 1.0</a>
+        <a href="/docs/plugins.html">Plugins</a>
+        <a href="/docs/agents.html">Agent integration</a>
+        <a href="/docs/ci.html">Dalo in CI</a>
+        <a href="/docs/troubleshooting.html">Troubleshooting</a>
+        <a href="/docs/security.html">Security overview</a>
+        <a href="/docs/uninstall.html">Uninstall</a>
+        <a href="/docs/comparison.html">Comparison</a>
+  </nav>
+  <article class="doc-body">
+<h1 id="upgrading-to-10">Upgrading to 1.0</h1>
+<p>This page is for someone who already runs Dalo 0.x and is moving to 1.0. It
+answers four questions: do I have to do anything, what does the first run
+print, which spellings are gone, and what happens if I have to go back.</p>
+<blockquote>
+<p><strong>Release notes: <a href="https://github.com/sebastian-software/dalo/releases/tag/dalo-v1.0.0" rel="noopener">what 1.0 changes, and
+why</a></strong> —
+the highlights since 0.6, the breaking changes with their replacements, and
+the same upgrade summary in short. The identical text opens the 1.0.0 entry in
+<a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">CHANGELOG.md</a>.</p>
+</blockquote>
+<p><strong>Short answer: install the new binary and run <code>dalo sync</code>. There is no
+migration command, nothing is unlinked, and no approval has to be granted
+again.</strong> The rest of this page is what you see while that happens, plus the
+four CLI spellings that were removed before the 1.x line froze.</p>
+<h2 id="supported-upgrade-paths"><a class="doc-anchor" href="#supported-upgrade-paths">Supported upgrade paths</a></h2>
+<p>Any store written by Dalo <strong>0.6.0 or later</strong> opens in 1.0 with no manual steps.
+There is no intermediate version you have to install on the way.</p>
+<p>This is not a claim; it is a test. <code>tests/upgrade.rs</code> restores a store written
+by the <em>released</em> 0.6.0, 0.9.2, 0.12.0, and 0.15.1 binaries into a temporary
+root and runs what a person runs after upgrading — <code>status</code>, <code>doctor --check</code>,
+<code>sync --dry-run</code>, <code>sync</code>, <code>sync</code> again, <code>status --json</code>. For every fixture it
+asserts that the resolved skill set is unchanged, that no owned symlink is
+removed or repointed, that an unmanaged directory is left alone, that the
+second <code>sync</code> is a pure no-op, and that <code>doctor --check</code> exits <code>0</code>. The
+fixtures live in
+<a href="https://github.com/sebastian-software/dalo/blob/main/tests/fixtures/stores/README.md" rel="noopener"><code>tests/fixtures/stores/</code></a>
+and every persisted file in them is byte for byte what the released binary
+wrote.</p>
+<p>A store older than 0.6.0 is not covered by a fixture. Dalo still carries the
+read paths for it, but the honest answer is that nobody tests it — take a copy
+of the store first.</p>
+<h2 id="what-the-first-run-does"><a class="doc-anchor" href="#what-the-first-run-does">What the first run does</a></h2>
+<p>Migration is lazy. A newer Dalo reads an older file, upgrades it in memory, and
+persists the current version the next time it writes that file at all. Because
+of that, a file no command has written yet keeps its old version on disk, which
+is correct but invisible — so <code>dalo doctor</code> prints one <code>schema_migration_pending</code>
+line per file that will migrate on its next write.</p>
+<p>The transcript below is real. It was produced by building this tree
+(<code>cargo build</code>), restoring the 0.9.2 fixture store the way <code>tests/upgrade.rs</code>
+does, and running <code>doctor</code>, <code>sync</code>, <code>doctor</code>. Only the throwaway root is
+shortened, to <code>…</code>; every other character is what the binary printed.</p>
+<p>Git does not track empty directories, so a restored fixture needs its checkouts&#39;
+empty <code>refs/</code> and <code>objects/</code> recreated before Git will recognize them. Without
+that the <code>local</code> source reports a <code>dirty_source</code> warning that no real upgrade
+produces, so the run behind this transcript recreates them first.</p>
+<h3 id="before-the-first-sync"><a class="doc-anchor" href="#before-the-first-sync">Before the first sync</a></h3>
+<pre><code class="language-text">$ dalo doctor
+summary: errors=0 warnings=0 info=5 ok=23
+info    schema_migration_pending: `config.toml` is at schema version 1 and is read as 2; the next config write persists the migration
+info    schema_migration_pending: `lock.toml` is at schema version 1 and is read as 6; the next `dalo sync` persists the migration
+info    schema_migration_pending: instruction pack `local:house-style` renders a legacy managed block in `…/AGENTS.md`; the next `dalo sync` rewrites it without pack metadata
+details: 25 info/ok findings omitted; use --json for the full report
+</code></pre>
+<p><code>doctor</code> exits <code>0</code>. These are <code>info</code> findings, not problems: nothing is broken
+and nothing is waiting for you.</p>
+<h3 id="the-sync-itself"><a class="doc-anchor" href="#the-sync-itself">The sync itself</a></h3>
+<pre><code class="language-text">$ dalo sync
+existing noop       target[generic]:/copy-editing -&gt; store:/sources/public/checkout/skills/copy-editing
+existing noop       target[generic]:/local-note -&gt; store:/local/skills/local-note
+existing noop       target[generic]:/team-review -&gt; store:/sources/team/checkout/skills/team-review
+synced: 3 skills across 1 target (3 unchanged)
+security preflight: deterministic checks only
+</code></pre>
+<p>Every link is <code>noop</code>. The migration happened inside the files Dalo owns; the
+agent folder did not move.</p>
+<h3 id="after-the-first-sync"><a class="doc-anchor" href="#after-the-first-sync">After the first sync</a></h3>
+<pre><code class="language-text">$ dalo doctor
+summary: errors=0 warnings=0 info=3 ok=23
+info    schema_migration_pending: `config.toml` is at schema version 1 and is read as 2; the next config write persists the migration
+details: 25 info/ok findings omitted; use --json for the full report
+</code></pre>
+<p><code>lock.toml</code> and the instruction block are done. <code>config.toml</code> is still on
+version 1 because <strong><code>sync</code> does not write <code>config.toml</code></strong> — it migrates the
+first time you change a setting, add a source, or link a target. Leaving it is
+safe; the line is there so the state is visible rather than silent.</p>
+<h3 id="which-file-migrates-when"><a class="doc-anchor" href="#which-file-migrates-when">Which file migrates when</a></h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>File</th>
+<th>Migrates on</th>
+<th>Reported by <code>doctor</code> until then</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>lock.toml</code> (1–5 → 6)</td>
+<td>the next <code>dalo sync</code></td>
+<td>yes</td>
+</tr>
+<tr>
+<td><code>state.toml</code> protected slot recorded as a path</td>
+<td>the next state write, which <code>sync</code> performs</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>An instruction managed block that still carries pack metadata</td>
+<td>the next <code>dalo sync</code></td>
+<td>yes</td>
+</tr>
+<tr>
+<td><code>config.toml</code> (1 → 2)</td>
+<td>the next config write: a setting, a source, a target</td>
+<td>yes</td>
+</tr>
+<tr>
+<td><code>source-lock.toml</code> (1–2 → 3)</td>
+<td>the next catalog write: <code>source select</code>, <code>source unselect</code>, or <code>source refresh</code></td>
+<td>yes</td>
+</tr>
+</tbody></table></div>
+<p>A store carried since 0.6.0 shows all five at once, plus one warning that is
+<strong>not</strong> automatic, because only a person can decide what the record meant:</p>
+<pre><code class="language-text">warning legacy_approval_record: legacy approval `launch-copy` found for `public:launch-copy`; re-approve as `public:launch-copy` next=dalo approve skill public:launch-copy
+info    schema_migration_pending: `config.toml` is at schema version 1 and is read as 2; the next config write persists the migration
+info    schema_migration_pending: `lock.toml` is at schema version 1 and is read as 6; the next `dalo sync` persists the migration
+info    schema_migration_pending: `source-lock.toml` is at schema version 2 and is read as 3; the next catalog write persists the migration
+info    schema_migration_pending: instruction pack `local:house-style` renders a legacy managed block in `…/AGENTS.md`; the next `dalo sync` rewrites it without pack metadata
+info    schema_migration_pending: protected slot `keep-mine` is recorded as an absolute path and is read as a target slot; the next state write persists the migration
+</code></pre>
+<p>An approval that names only a skill, without its source, is ambiguous across
+sources. Dalo keeps the skill pending and names the exact command to re-grant
+it; run that command once and the warning is gone. Every other line clears
+itself.</p>
+<p>The full list of older shapes Dalo accepts on read is
+<a href="/docs/reference.html#accepted-0x-store-shapes">Accepted 0.x Store Shapes</a>.</p>
+<h2 id="removed-flags-and-spellings"><a class="doc-anchor" href="#removed-flags-and-spellings">Removed flags and spellings</a></h2>
+<p>Four CLI spellings and one target ID were removed before 1.0 froze the surface,
+so that no deprecated spelling enters the 1.x line. Each one now fails loudly
+instead of quietly doing something else. The error lines below are what the
+current binary actually prints.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Removed</th>
+<th>Replacement</th>
+<th>What you see now</th>
+<th>Exit</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>--yes</code> (global)</td>
+<td>none — drop it</td>
+<td><code>error: unexpected argument &#39;--yes&#39; found</code></td>
+<td><code>2</code></td>
+</tr>
+<tr>
+<td><code>audit --agent &lt;reviewer&gt;</code></td>
+<td><code>audit --reviewer &lt;reviewer&gt;</code></td>
+<td><code>error: unexpected argument &#39;--agent&#39; found</code></td>
+<td><code>2</code></td>
+</tr>
+<tr>
+<td><code>source select &lt;id&gt; --unselect &lt;skill&gt;...</code></td>
+<td><code>source unselect &lt;id&gt; &lt;skill&gt;...</code></td>
+<td><code>error: unexpected argument &#39;--unselect&#39; found</code></td>
+<td><code>2</code></td>
+</tr>
+<tr>
+<td><code>--refresh</code> (<code>audit</code>, <code>adopt</code>, <code>approve skill</code>, <code>resolve adopt</code>)</td>
+<td><code>--refresh-audit</code></td>
+<td><code>error: unexpected argument &#39;--refresh&#39; found</code></td>
+<td><code>2</code></td>
+</tr>
+<tr>
+<td>target ID <code>cursor</code></td>
+<td><code>dalo target link generic ~/.cursor/skills</code></td>
+<td><code>error: unknown target `cursor`; known targets: claude, codex, generic, hermes, openclaw, opencode</code></td>
+<td><code>1</code></td>
+</tr>
+</tbody></table></div>
+<p>Two of them come with clap&#39;s own hint, which is usually enough to fix a script
+without reading anything else:</p>
+<pre><code class="language-text">$ dalo audit public:copy-editing --refresh
+error: unexpected argument &#39;--refresh&#39; found
+
+  tip: a similar argument exists: &#39;--refresh-audit&#39;
+
+Usage: dalo audit --refresh-audit &lt;SKILL&gt;
+
+For more information, try &#39;--help&#39;.
+</code></pre>
+<pre><code class="language-text">$ dalo source select public --unselect skills/copy-editing
+error: unexpected argument &#39;--unselect&#39; found
+
+  tip: to pass &#39;--unselect&#39; as a value, use &#39;-- --unselect&#39;
+
+Usage: dalo source select &lt;ID&gt; &lt;SKILLS&gt;...
+
+For more information, try &#39;--help&#39;.
+</code></pre>
+<p><code>--yes</code> never confirmed a prompt, implied <code>--replace</code>, created a commit, or
+granted an approval — it was documented as a no-op. Removing it changes no
+behavior beyond the new error, so a script that passed it can simply stop.</p>
+<h3 id="about-cursor"><a class="doc-anchor" href="#about-cursor">About Cursor</a></h3>
+<p>The <code>cursor</code> target ID is gone because symlink discovery could not be verified
+against a current Cursor release, and Dalo does not ship an unverified promise.
+Nothing about your setup has to change:</p>
+<pre><code class="language-sh">dalo target link generic ~/.cursor/skills
+</code></pre>
+<p>That materializes into exactly the same directory. Cursor also reads
+<code>~/.agents/skills</code>, so a linked <code>codex</code> or <code>openclaw</code> target already reaches it
+without a second link.</p>
+<h2 id="other-changes-a-0x-user-notices"><a class="doc-anchor" href="#other-changes-a-0x-user-notices">Other changes a 0.x user notices</a></h2>
+<p>Only behavior confirmed against this tree is listed here.</p>
+<ul>
+<li><strong><code>doctor</code> prints migration lines in text mode.</strong> <code>schema_migration_pending</code>
+is exempt from the usual &quot;info findings omitted&quot; summary, because it
+describes a change Dalo is going to make to your own files. It is an <code>info</code>
+finding, so it does not affect <code>doctor --check</code>.</li>
+<li><strong>Instruction managed blocks lose their pack metadata.</strong> The next <code>sync</code>
+re-renders the block without it — but only when the block still matches
+Dalo&#39;s exact older rendering byte for byte. A block you edited by hand is
+left alone and reported instead.</li>
+<li><strong>A bare skill approval stays pending.</strong> See the warning above; it was
+already rejected in 0.6.0, and 1.0 now names the command that fixes it.</li>
+<li><strong><code>opencode</code> is a supported built-in target</strong> with the default path
+<code>~/.config/opencode/skills</code>, and no built-in target is labelled experimental
+any more.</li>
+<li><strong>A protected unmanaged skill is re-recorded as a target slot.</strong> A 0.6.0
+store recorded it as an absolute path; <code>sync</code> rewrites it so a later <code>sync</code>
+cannot mistake the slot for an orphan and unlink it. Nothing on disk moves.</li>
+</ul>
+<h2 id="downgrade"><a class="doc-anchor" href="#downgrade">Downgrade</a></h2>
+<p>Downgrade is not supported, and Dalo fails closed rather than pretending
+otherwise. An older binary that meets a file written by a newer one refuses to
+read it. It never truncates the file, ignores fields it does not know, or
+rewrites it at the version it understands.</p>
+<p>How far back you go decides what you see. <strong>No persisted schema version changed
+between 0.15.1 and 1.0</strong>, so going back to 0.15.1 still reads a store this
+binary wrote — <code>status</code> and <code>sync</code> both work. Go back further and the refusal
+is explicit. This is the released 0.12.0 binary against a store the current
+binary had just synced:</p>
+<pre><code class="language-text">$ dalo status
+error: unsupported schema version 6 in `…/lock.toml`; this dalo supports version 4; upgrade dalo
+</code></pre>
+<p><code>status</code> and <code>sync</code> exit <code>1</code> and write nothing. <code>doctor</code> still exits <code>0</code>,
+because it is a report, and surfaces the same refusal as an error finding:</p>
+<pre><code class="language-text">error   lock_invalid: user lock could not be read: unsupported schema version 6 in `…/lock.toml`; this dalo supports version 4; upgrade dalo next=dalo sync
+error: check failed: doctor found 1 error findings
+</code></pre>
+<p><code>doctor --check</code> exits <code>1</code>. Afterwards <code>lock.toml</code> still reads
+<code>schema_version = 6</code>: the store was not modified.</p>
+<p>Before 0.12.0 the file is rejected while parsing instead, because those
+releases reject unknown fields before they reach the version check. The outcome
+is identical — exit <code>1</code>, nothing written.</p>
+<p><strong>To recover, upgrade Dalo again.</strong> The store was not touched, so the newer
+binary picks up exactly where it left off. If you must stay on the older
+version, restore the store from a backup taken before the newer binary ran;
+there is no supported way to convert a newer store back.</p>
+<h2 id="where-the-promise-lives"><a class="doc-anchor" href="#where-the-promise-lives">Where the promise lives</a></h2>
+<ul>
+<li><a href="/docs/compatibility.html">Compatibility and stability</a> — what 1.x guarantees, what
+is experimental, and the change policy that governs every future removal.
+Its <a href="/docs/compatibility.html#upgrade-and-downgrade">Upgrade and downgrade</a> section
+is the contract this page demonstrates.</li>
+<li><a href="/docs/security.html">Security overview</a> — the trust boundaries, the approval model,
+and what the preflight does and does not block.</li>
+<li><a href="/docs/troubleshooting.html">Troubleshooting and FAQ</a> — every diagnostic code with
+the command that clears it.</li>
+</ul>
+<p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/upgrading.md" rel="noopener">docs/upgrading.md</a></p>
+  </article>
+</main>
+
+<footer class="site-footer doc-footer" data-scope="dark">
+  <div class="wrap footer-base">
+    <span>© 2026 <a href="https://sebastian-software.de" rel="noopener">Sebastian Software</a> · Dalo</span>
+    <span><a href="/">dalo.sh</a> · <a href="/spec/">Spec</a> · <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a> · <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a></span>
+  </div>
+</footer>
+</body>
+</html>

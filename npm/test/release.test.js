@@ -28,7 +28,7 @@ const {
 const execFileAsync = promisify(execFile);
 
 test('publishes discovery and supported-platform metadata', () => {
-  assert.equal(packageManifest.description, 'One source of truth for the skills your AI agents run.');
+  assert.equal(packageManifest.description, "Your team's agent skills, versioned like code.");
   assert.equal(packageManifest.homepage, 'https://dalo.sh');
   assert.equal(packageManifest.bugs.url, 'https://github.com/sebastian-software/dalo/issues');
   assert.deepEqual(packageManifest.keywords, ['dalo', 'ai', 'agents', 'skills', 'cli']);
@@ -116,6 +116,10 @@ test('parses release tags and checksum files strictly', () => {
   assert.equal(versionFromTag('v0.6.0'), '0.6.0');
   assert.equal(normalizeTag('0.6.0'), 'dalo-v0.6.0');
   assert.equal(normalizeTag('v0.6.0'), 'dalo-v0.6.0');
+  assert.equal(versionFromTag('dalo-v1.0.0'), '1.0.0');
+  assert.equal(normalizeTag('1.0.0'), 'dalo-v1.0.0');
+  assert.equal(normalizeTag('v1.0.0'), 'dalo-v1.0.0');
+  assert.equal(normalizeTag('dalo-v1.0.0'), 'dalo-v1.0.0');
   assert.equal(normalizeTag('latest'), 'latest');
   assert.throws(() => normalizeTag('release-0.6'), /use X\.Y\.Z/);
   const checksums = `${'a'.repeat(64)}  other.tar.gz\n${'b'.repeat(64)} *dalo.tar.gz\n`;
@@ -127,6 +131,12 @@ test('parses release tags and checksum files strictly', () => {
 test('orders short version cores without throwing', () => {
   assert.ok(compareVersions('1.0', '1.0.1') < 0);
   assert.equal(compareVersions('1.0', '1.0.0'), 0);
+});
+
+test('prefers the first major over the highest 0.x cache entry', () => {
+  assert.ok(compareVersions('0.16.0', '1.0.0') < 0);
+  assert.ok(compareVersions('1.0.0', '0.16.0') > 0);
+  assert.ok(compareVersions('0.9.0', '0.16.0') < 0);
 });
 
 test('identifies npm and npx launcher executions for update guidance', () => {

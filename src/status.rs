@@ -1106,7 +1106,7 @@ pub fn print_init_report(report: &InitReport, next: Option<&NextActionReport>) {
             "  1. {}",
             store::dalo_command(
                 &report.store,
-                "target link <codex|claude|openclaw|hermes|generic> [path]"
+                &format!("target link <{}> [path]", crate::target::LINK_HINT_TARGETS)
             )
         );
         let local_skills_dir = StorePaths::new(report.store.clone()).local_skills_dir;
@@ -1516,7 +1516,7 @@ pub fn print_status_report(report: &StatusReport) {
             "  none linked (run: {})",
             store::dalo_command(
                 &report.store,
-                "target link <codex|claude|openclaw|hermes|generic> [path]"
+                &format!("target link <{}> [path]", crate::target::LINK_HINT_TARGETS)
             )
         );
     } else {
@@ -1913,7 +1913,7 @@ pub fn print_sync_report(report: &SyncReport) {
                 report.resolution.active_skills.len(),
                 store::dalo_command(
                     &report.store,
-                    "target link <codex|claude|openclaw|hermes|generic> [path]"
+                    &format!("target link <{}> [path]", crate::target::LINK_HINT_TARGETS)
                 )
             );
         } else if report.resolution.pending_approval_skills.is_empty()
@@ -1960,7 +1960,7 @@ pub fn print_sync_report(report: &SyncReport) {
             let repair_hint = if is_unmanaged_entry_conflict(operation) {
                 format!(
                     " ({})",
-                    unmanaged_repair_hint(&report.store, &operation.link_path)
+                    unmanaged_repair_hint(&report.store, unmanaged_selector(&operation.link_path))
                 )
             } else {
                 String::new()
@@ -2763,6 +2763,18 @@ fn print_unmanaged_skill_with_repair_hint(
         marker,
         unmanaged_repair_hint(store_root, std::path::Path::new(&skill.id))
     );
+}
+
+/// The selector a repair hint names for an unmanaged target entry.
+///
+/// `status` already reports the bare slot name, and that is the spelling the
+/// documentation shows, so `sync` names the same thing rather than the absolute
+/// link path it happens to hold. The full path stays the fallback for a link
+/// path with no final component, which cannot occur for a target slot.
+fn unmanaged_selector(link_path: &Path) -> &Path {
+    link_path
+        .file_name()
+        .map_or(link_path, |slot| Path::new(slot))
 }
 
 fn unmanaged_repair_hint(store_root: &Path, selector: &Path) -> String {

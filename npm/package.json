@@ -1,7 +1,7 @@
 {
   "name": "getdalo",
-  "version": "0.15.1",
-  "description": "One source of truth for the skills your AI agents run.",
+  "version": "0.16.0",
+  "description": "Your team's agent skills, versioned like code.",
   "keywords": [
     "dalo",
     "ai",

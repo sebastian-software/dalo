@@ -31,6 +31,10 @@
   <link rel="preload" href="/assets/fonts/hanken-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="/assets/fonts/geistmono-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="/styles.css" />
+
+  <!-- Plain-text entry points for agents: the llms.txt index and the install guide. -->
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt" />
+  <link rel="alternate" type="text/markdown" href="/install.md" title="Install Dalo with an agent" />
   <!-- x-release-please-start-version -->
   <script type="application/ld+json">
   {
@@ -40,7 +44,7 @@
     "url": "https://dalo.sh/",
     "description": "Dalo keeps your team's agent skills in Git: one approved set, resolved the same way on every machine and reviewed before it reaches any agent folder.",
     "sameAs": "https://github.com/sebastian-software/dalo",
-    "softwareVersion": "0.15.1",
+    "softwareVersion": "0.16.0",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "macOS, Linux",
     "offers": {
@@ -104,7 +108,7 @@
     <a href="#recovery">Recovery</a>
     <a href="#targets">Targets</a>
     <a href="#compare">Compare</a>
-    <a href="#roadmap">Roadmap</a>
+    <a href="#stability">Stability</a>
   </div>
 </nav>
 
@@ -114,7 +118,7 @@
   <section class="hero" data-scope="dark">
     <div class="wrap hero-grid">
       <div class="hero-copy">
-        <p class="kicker reveal"><span class="dot"></span> Rust CLI · macOS &amp; Linux · v<span data-dalo-version>0.15.1</span></p> <!-- x-release-please-version -->
+        <p class="kicker reveal"><span class="dot"></span> Rust CLI · macOS &amp; Linux · v<span data-dalo-version>0.16.0</span></p> <!-- x-release-please-version -->
         <h1 class="reveal">Your team's agent skills, versioned like code.</h1>
         <p class="hero-lede reveal">
           For engineers and team leads who run Claude Code, Codex, or another agent
@@ -163,9 +167,9 @@
           </div>
           <pre class="terminal-body"><code><span class="ln"><span class="prompt">$</span> dalo sync</span>
 <span class="ln c-dim">dalo store: ~/.dalo</span>
-<span class="ln c-dim">target[generic]: ~/.agents/skills</span>
+<span class="ln c-dim">target[codex]: ~/.agents/skills</span>
 <span class="ln c-dim">target[claude]: ~/.claude/skills</span>
-<span class="ln"><span class="c-ok">applied  create</span>     target[generic]:/review -&gt; store:/local/skills/review</span>
+<span class="ln"><span class="c-ok">applied  create</span>     target[codex]:/review -&gt; store:/local/skills/review</span>
 <span class="ln"><span class="c-ok">applied  create</span>     target[claude]:/review -&gt; store:/local/skills/review</span>
 <span class="ln c-dim">synced: 1 skill across 2 targets (2 created)</span>
 <span class="ln c-dim">security preflight: deterministic checks only</span></code></pre>
@@ -217,7 +221,7 @@
   <!-- ───────────────────────── WHAT CHANGES ───────────────────────── -->
   <section class="band band-tint" id="changes">
     <div class="wrap">
-      <h2 class="section-h reveal">What Dalo gives you today.</h2>
+      <h2 class="section-h reveal">What Dalo gives you.</h2>
       <div class="feature-rows">
 
         <article class="feature-row reveal">
@@ -285,6 +289,28 @@
         <article class="feature-row feature-row-flip reveal">
           <div class="feature-text">
             <span class="feature-index">04</span>
+            <h3>Review before delivery</h3>
+            <p>
+              A local preflight runs 15 deterministic rules over every active skill
+              before a link is created. High and critical findings block the sync until
+              someone records an explicit, content-bound exception. Catalog skills stay
+              pending until you run <code>dalo approve skill</code>, and an optional
+              sandboxed agent reviewer can add findings but never clears one.
+            </p>
+          </div>
+          <div class="feature-aside">
+            <div class="guard-card">
+              <div class="guard-line"><svg class="ic-shield" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0 1 2.6v4.8C1 11.5 4 14.8 8 16c4-1.2 7-4.5 7-8.6V2.6L8 0Zm-1 11L4 8l1.2-1.2L7 8.6l3.8-3.8L12 6l-5 5Z"/></svg> 15 deterministic rules, run locally</div>
+              <div class="guard-line"><svg class="ic-shield" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0 1 2.6v4.8C1 11.5 4 14.8 8 16c4-1.2 7-4.5 7-8.6V2.6L8 0Zm-1 11L4 8l1.2-1.2L7 8.6l3.8-3.8L12 6l-5 5Z"/></svg> high or critical findings block</div>
+              <div class="guard-line"><svg class="ic-shield" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0 1 2.6v4.8C1 11.5 4 14.8 8 16c4-1.2 7-4.5 7-8.6V2.6L8 0Zm-1 11L4 8l1.2-1.2L7 8.6l3.8-3.8L12 6l-5 5Z"/></svg> approvals are source-qualified</div>
+              <div class="guard-line"><svg class="ic-shield" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0 1 2.6v4.8C1 11.5 4 14.8 8 16c4-1.2 7-4.5 7-8.6V2.6L8 0Zm-1 11L4 8l1.2-1.2L7 8.6l3.8-3.8L12 6l-5 5Z"/></svg> agent review adds, never approves</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="feature-row reveal">
+          <div class="feature-text">
+            <span class="feature-index">05</span>
             <h3>Team-composed catalogs</h3>
             <p>
               A team repository can combine its own skills with external skill sets.
@@ -306,49 +332,53 @@
           </div>
         </article>
 
-        <article class="feature-row reveal">
-          <div class="feature-text">
-            <span class="feature-index">05</span>
-            <h3>Managed instruction packs</h3>
-            <p>
-              Shared conventions can live as versioned Markdown packs. Dalo renders
-              them into explicit managed blocks, preserves everything outside those
-              markers, and warns when active packs declare overlapping topics.
-            </p>
-          </div>
-          <div class="feature-aside">
-            <div class="guard-card">
-              <div class="guard-line"><svg class="ic-shield" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0 1 2.6v4.8C1 11.5 4 14.8 8 16c4-1.2 7-4.5 7-8.6V2.6L8 0Zm-1 11L4 8l1.2-1.2L7 8.6l3.8-3.8L12 6l-5 5Z"/></svg> instruction blocks are versioned</div>
-              <div class="guard-line"><svg class="ic-shield" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0 1 2.6v4.8C1 11.5 4 14.8 8 16c4-1.2 7-4.5 7-8.6V2.6L8 0Zm-1 11L4 8l1.2-1.2L7 8.6l3.8-3.8L12 6l-5 5Z"/></svg> unmarked text is preserved</div>
-              <div class="guard-line"><svg class="ic-shield" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0 1 2.6v4.8C1 11.5 4 14.8 8 16c4-1.2 7-4.5 7-8.6V2.6L8 0Zm-1 11L4 8l1.2-1.2L7 8.6l3.8-3.8L12 6l-5 5Z"/></svg> topic overlaps are visible</div>
-            </div>
-          </div>
-        </article>
-
         <article class="feature-row feature-row-flip reveal">
           <div class="feature-text">
             <span class="feature-index">06</span>
-            <h3>Scheduled autosync</h3>
+            <h3>Plugins with tools and hooks</h3>
             <p>
-              Install a background job with <code>dalo autosync install</code> and Dalo
-              keeps your agent folders current on a schedule through the native
-              scheduler. Scheduled runs stay fail-closed: they apply existing approvals
-              but never grant new ones or push past a blocking audit.
+              A portable package ships more than text: <code>PLUGIN.toml</code> can
+              declare executable tools and the hooks that call them on agent events.
+              Dalo approves every tool and every hook separately, by the SHA-256 hash of
+              its exact contract, and projects the approved set into the Codex and
+              Claude package layouts. Change one field and the approval is gone.
             </p>
           </div>
           <div class="feature-aside">
             <div class="store-card">
-              <span class="store-path">dalo autosync install</span>
+              <span class="store-path">PLUGIN.toml</span>
               <ul class="store-tree">
-                <li><span class="c-accent">--schedule daily</span> <span class="c-dim">hourly · daily · weekly</span></li>
-                <li><span class="c-accent">native scheduler</span> <span class="c-dim">launchd · systemd · cron</span></li>
-                <li><span class="c-accent">fail-closed</span> <span class="c-dim">no new approvals granted</span></li>
+                <li><span class="c-accent">[[tool]]</span> <span class="c-dim">staged, never run to approve</span></li>
+                <li><span class="c-accent">[[hook]]</span> <span class="c-dim">needs its tool approved first</span></li>
+                <li><span class="c-accent">@sha256:…</span> <span class="c-dim">the exact contract, hashed</span></li>
+                <li><span class="c-accent">approval</span> <span class="c-dim">re-verified before every run</span></li>
               </ul>
             </div>
           </div>
         </article>
 
       </div>
+
+      <ul class="feature-extras reveal">
+        <li>
+          <h3>Managed instruction packs</h3>
+          <p>
+            Shared conventions live as versioned Markdown. Dalo renders them into
+            explicit managed blocks, preserves everything outside those markers, and
+            warns when active packs declare overlapping topics.
+          </p>
+          <code>dalo instructions list</code>
+        </li>
+        <li>
+          <h3>Scheduled autosync</h3>
+          <p>
+            A background job keeps agent folders current hourly, daily, or weekly
+            through launchd, a systemd user timer, or cron. Scheduled runs stay
+            fail-closed: they apply existing approvals and never grant new ones.
+          </p>
+          <code>dalo autosync install</code>
+        </li>
+      </ul>
     </div>
   </section>
 
@@ -357,11 +387,12 @@
     <div class="wrap">
       <h2 class="section-h reveal">How it works</h2>
       <p class="lead lead-center reveal">
-        Dalo is a small pipeline: it turns many skill sources into one reliable set,
-        then links that set into the folders your agents already read.
+        Dalo is a small pipeline: it turns many skill sources into one reviewed set,
+        then links that set into the folders your agents already read. Nothing passes
+        the review stage without a clean audit and your approval.
       </p>
 
-      <div class="pipeline reveal" role="img" aria-label="Pipeline: local and team sources feed the Dalo store, a deterministic resolver assembles the final set, which is materialized into agent target folders.">
+      <div class="pipeline reveal" role="img" aria-label="Pipeline: local and team sources feed the Dalo store, a security preflight and your approval gate what may continue, a deterministic resolver assembles the final set, and that set is materialized into agent target folders.">
         <div class="pipe-stage">
           <div class="pipe-node">
             <span class="pipe-kicker">Sources</span>
@@ -375,6 +406,14 @@
             <span class="pipe-kicker">Store</span>
             <span class="pipe-title">~/.dalo</span>
             <span class="pipe-sub">normalized, versioned</span>
+          </div>
+        </div>
+        <svg class="pipe-arrow" viewBox="0 0 48 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M2 12h40M36 6l8 6-8 6"/></svg>
+        <div class="pipe-stage">
+          <div class="pipe-node pipe-node-gate">
+            <span class="pipe-kicker">Review</span>
+            <span class="pipe-title">Preflight</span>
+            <span class="pipe-sub">audit &amp; approval gate</span>
           </div>
         </div>
         <svg class="pipe-arrow" viewBox="0 0 48 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M2 12h40M36 6l8 6-8 6"/></svg>
@@ -424,15 +463,15 @@
         </li>
         <li class="step reveal">
           <span class="step-n">3</span>
-          <h3>Sync</h3>
-          <p>Resolve every active source into one set and link it into your agent folders. Safe to run any time; dirty edits block instead of getting lost.</p>
-          <code class="step-cmd">dalo sync</code>
+          <h3>Review and approve</h3>
+          <p>Read the evidence with <code>dalo audit company:release-helper</code> before anything reaches an agent folder, then record the decision. Approvals are source-qualified and stay in your own store.</p>
+          <code class="step-cmd">dalo approve skill company:release-helper</code>
         </li>
         <li class="step reveal">
           <span class="step-n">4</span>
-          <h3>Promote <span class="soon">planned</span></h3>
-          <p>When a local skill proves useful, send it upstream through a PR-first flow so the whole team gets it. On the roadmap for a future release.</p>
-          <code class="step-cmd step-cmd-soon">dalo promote release-notes --target company</code>
+          <h3>Sync</h3>
+          <p>Resolve every active source into one set and link it into your agent folders. Safe to run any time; dirty edits block instead of getting lost.</p>
+          <code class="step-cmd">dalo sync</code>
         </li>
       </ol>
     </div>
@@ -500,11 +539,11 @@
 <span class="ln c-dim"># try a real public catalog</span>
 <span class="ln"><span class="prompt">$</span> dalo source add-catalog sebastian https://github.com/sebastian-software/skills.sebastian-software.com.git</span>
 <span class="ln"><span class="prompt">$</span> dalo source inspect sebastian</span>
-<span class="ln"><span class="prompt">$</span> dalo source select sebastian pr-review</span>
-<span class="ln"><span class="prompt">$</span> dalo audit sebastian:pr-review</span>
-<span class="ln"><span class="prompt">$</span> dalo approve skill sebastian:pr-review</span>
+<span class="ln"><span class="prompt">$</span> dalo source select sebastian effective-web</span>
+<span class="ln"><span class="prompt">$</span> dalo audit sebastian:effective-web</span>
+<span class="ln"><span class="prompt">$</span> dalo approve skill sebastian:effective-web</span>
 <span class="ln"><span class="prompt">$</span> dalo sync</span>
-<span class="ln c-dim">security preflight: deterministic checks and compatible cached findings only; sync did not run an agent reviewer; passing is not a safety guarantee</span></code></pre>
+<span class="ln c-dim">security preflight: deterministic checks only</span></code></pre>
         </div>
         <div class="video-demo">
           <video autoplay loop muted playsinline controls preload="metadata" aria-label="Fifteen-second Dalo secure-sync video">
@@ -529,11 +568,15 @@
         </div>
         <div class="safe-item reveal">
           <h3>Trust is explicit</h3>
-          <p>Adding a source is the trust decision: team repositories you add are trusted, and their skills undergo the deterministic security preflight. Catalog skills go further — each stays pending until you approve it with <code>dalo approve skill source:skill</code>. Scheduled runs apply existing decisions but never make new ones.</p>
+          <p>Adding a source is the trust decision: a repository you add with <code>dalo source add</code> is trusted, and its skills still run through the preflight on every sync. A catalog is the opposite — each skill stays an offer until you select it and approve it with <code>dalo approve skill source:skill</code>. Approvals are source-qualified and live in your own store; scheduled runs apply existing decisions but never make new ones.</p>
         </div>
         <div class="safe-item reveal">
           <h3>Security preflight and review gate</h3>
-          <p>Every active skill is checked before sync. High or critical findings block links until explicitly accepted. <code>dalo audit</code> shows the deterministic evidence, and an optional isolated agent reviewer can add findings but can never approve content.</p>
+          <p>Every active skill is checked before sync against 15 deterministic rules, and nothing it cannot read passes silently. High or critical findings block links until an explicit, content-bound risk acceptance covers them. <code>dalo audit</code> shows the evidence, and an optional sandboxed agent reviewer can add findings but never clears one. Read the <a href="/docs/security.html">security overview</a> for every guarantee and its limits.</p>
+        </div>
+        <div class="safe-item reveal">
+          <h3>Executables are approved by hash</h3>
+          <p>A plugin's tools and hooks are approved one at a time, by the SHA-256 hash of the exact contract — entry, arguments, environment, staged files, and for a hook the tool it calls. Dalo re-checks that approval before it dispatches a handler, so revoking one disables an already-installed sidecar.</p>
         </div>
         <div class="safe-item reveal">
           <h3>Visible conflicts</h3>
@@ -552,6 +595,11 @@
           <p><code>dalo doctor</code> checks store structure, lockfiles, Git availability, target paths, and broken symlinks, so you can trust the result.</p>
         </div>
       </div>
+
+      <p class="safe-foot reveal">
+        None of this makes a third-party skill safe. It makes the decision to run one
+        explicit, reviewable, and reproducible — and the limits are written down too.
+      </p>
     </div>
   </section>
 
@@ -579,13 +627,20 @@
         </div>
         <pre class="terminal-body"><code><span class="ln"><span class="prompt">$</span> dalo synk</span>
 <span class="ln c-block">error: unrecognized subcommand 'synk'</span>
-<span class="ln c-warn">tip: a similar subcommand exists: 'sync'</span>
+<span class="ln"> </span>
+<span class="ln c-warn">  tip: a similar subcommand exists: 'sync'</span>
+<span class="ln"> </span>
+<span class="ln c-dim">Usage: dalo [OPTIONS] [COMMAND]</span>
+<span class="ln"> </span>
+<span class="ln c-dim">For more information, try '--help'.</span>
 <span class="ln"> </span>
 <span class="ln"><span class="prompt">$</span> dalo approve skill company:relese-helper</span>
-<span class="ln c-block">error: skill 'company:relese-helper' was not found; known skills: company:new-skill, company:release-helper</span>
+<span class="ln c-block">error: skill `company:relese-helper` was not found; did you mean `company:release-helper`?; known skills: company:new-skill, company:release-helper</span>
 <span class="ln"> </span>
 <span class="ln"><span class="prompt">$</span> dalo sync</span>
-<span class="ln c-warn">pending approval: sebastian:tech-docs (run: dalo approve skill sebastian:tech-docs)</span></code></pre>
+<span class="ln c-dim">dalo store: ~/.dalo</span>
+<span class="ln c-block">nothing materialized: resolution is incomplete</span>
+<span class="ln c-warn">  pending approval: sebastian:effective-web (run: dalo approve skill sebastian:effective-web)</span></code></pre>
       </div>
     </div>
   </section>
@@ -707,21 +762,113 @@
     </div>
   </section>
 
-  <!-- ───────────────────────── ROADMAP ───────────────────────── -->
-  <section class="band" id="roadmap">
+  <!-- ───────────────────────── STABILITY ───────────────────────── -->
+  <section class="band" id="stability">
     <div class="wrap">
-      <h2 class="section-h reveal">Early, and honest about it.</h2>
+      <h2 class="section-h reveal">Built to rely on.</h2>
       <p class="lead reveal">
-        Dalo is v<span data-dalo-version>0.15.1</span>. <!-- x-release-please-version -->
-        These features work today: local, team, and catalog
-        sources; deterministic resolution; security audits and review gates; safe
-        sync; adoption; diagnostics; and instruction packs. Here's what's
-        intentionally deferred to later releases.
+        Dalo is v<span data-dalo-version>0.16.0</span>. <!-- x-release-please-version -->
+        Everything a team workflow depends on has shipped: local, team, and
+        catalog sources; deterministic resolution;
+        security audits and review gates; safe sync; adoption; diagnostics; and
+        instruction packs. These are the commitments the 1.x line is written to keep.
       </p>
-      <ul class="roadmap-list reveal">
-        <li><span class="rm-tag">later</span> PR-first promotion of local skills into team repos</li>
-        <li><span class="rm-tag">later</span> Catalog pin updates as ready-to-review pull requests</li>
-        <li><span class="rm-tag">later</span> More verified agent adapters and package managers</li>
+
+      <ul class="trust-strip reveal" aria-label="Checkable facts about this project">
+        <li>
+          <a href="https://github.com/sebastian-software/dalo/releases" rel="noopener">
+            <span class="trust-n">34</span>
+            <span class="trust-l">releases since 0.1, every one of them public</span>
+          </a>
+        </li>
+        <li>
+          <a href="https://github.com/sebastian-software/dalo/blob/main/coverage-threshold" rel="noopener">
+            <span class="trust-n">1011</span>
+            <span class="trust-l">tests, behind a gate of 86.9% line coverage</span>
+          </a>
+        </li>
+        <li>
+          <a href="/docs/compatibility.html#supported-platforms">
+            <span class="trust-n">6</span>
+            <span class="trust-l">signed release targets, and six install channels</span>
+          </a>
+        </li>
+        <li>
+          <a href="https://github.com/sebastian-software/dalo/issues?q=is%3Aissue+label%3Asecurity+is%3Aclosed" rel="noopener">
+            <span class="trust-n">4</span>
+            <span class="trust-l">findings from the 2026-09 audit round, all closed</span>
+          </a>
+        </li>
+      </ul>
+      <p class="trust-foot reveal">
+        Private vulnerability reporting is enabled on the repository, and
+        <a href="https://github.com/sebastian-software/dalo/blob/main/SECURITY.md" rel="noopener">SECURITY.md</a>
+        states the response times. No tracking, no cookies, nothing loaded from a
+        third party. Built and maintained by
+        <a href="https://oss.sebastian-software.com" rel="noopener">Sebastian Software</a>.
+      </p>
+
+      <div class="promise-grid">
+        <article class="promise reveal">
+          <h3>The surface you script against holds</h3>
+          <p>
+            Commands, flags, exit codes, <code>--json</code> shapes, environment
+            variables, and every file Dalo persists are tier 1: additive inside
+            1.x, breaking only in a major, each deprecation announced a minor
+            ahead and never silently.
+          </p>
+          <a class="promise-proof" href="/docs/compatibility.html">Read the 1.x compatibility contract</a>
+        </article>
+        <article class="promise reveal">
+          <h3>Your store upgrades itself</h3>
+          <p>
+            A store written by 0.6.0 or later opens with no migration command, no
+            re-approval, and nothing unlinked. That is a test, not a claim: the
+            suite replays stores written by the released 0.6.0, 0.9.2, 0.12.0,
+            and 0.15.1 binaries.
+          </p>
+          <a class="promise-proof" href="/docs/upgrading.html">See what the first run does</a>
+        </article>
+        <article class="promise reveal">
+          <h3>Signed builds, six ways to install</h3>
+          <p>
+            Every release publishes archives for six targets — macOS and Linux,
+            x86_64 and aarch64, gnu and musl — each with a SHA-256 checksum and a
+            Sigstore bundle. Six install channels keep publishing every 1.x
+            release; retiring one is a breaking change.
+          </p>
+          <a class="promise-proof" href="/install.md">Read the installation guide</a>
+        </article>
+        <article class="promise reveal">
+          <h3>Security fixes stay with the 1.x line</h3>
+          <p>
+            Report privately through the repository's security tab or
+            <a href="mailto:security@sebastian-software.de">security@sebastian-software.de</a>;
+            fixes land in the latest 1.x release. When 2.0 ships, 1.x keeps
+            receiving them for six months.
+          </p>
+          <a class="promise-proof" href="/docs/security.html">Read the security overview</a>
+        </article>
+      </div>
+
+      <h3 class="next-h reveal">What's next</h3>
+      <p class="next-lede reveal">
+        Deferred work is tracked as issues, not as prose on this page. Everything
+        below is open and linked, collected under
+        <a href="https://github.com/sebastian-software/dalo/issues/836" rel="noopener">epic&nbsp;#836</a>.
+      </p>
+      <ul class="next-list reveal">
+        <li><a href="https://github.com/sebastian-software/dalo/issues/828" rel="noopener">Promote: PR-first promotion of a local skill into a team repository <span class="next-id">#828</span></a></li>
+        <li><a href="https://github.com/sebastian-software/dalo/issues/829" rel="noopener">Catalog pin updates as ready-to-review pull requests <span class="next-id">#829</span></a></li>
+        <li><a href="https://github.com/sebastian-software/dalo/issues/830" rel="noopener">Native Windows support <span class="next-id">#830</span></a></li>
+        <li><a href="https://github.com/sebastian-software/dalo/issues/831" rel="noopener">More verified agent adapters: Cursor, Windsurf, Copilot, Gemini CLI <span class="next-id">#831</span></a></li>
+        <li><a href="https://github.com/sebastian-software/dalo/issues/832" rel="noopener">More install channels: Nix, AUR, Debian and RPM packages <span class="next-id">#832</span></a></li>
+        <li><a href="https://github.com/sebastian-software/dalo/issues/833" rel="noopener">Rename/adapt flow for same-name conflicts and an interactive resolve assistant <span class="next-id">#833</span></a></li>
+        <li><a href="https://github.com/sebastian-software/dalo/issues/834" rel="noopener">Notify on blocked scheduled syncs (desktop, webhook, or mail) <span class="next-id">#834</span></a></li>
+        <li><a href="https://github.com/sebastian-software/dalo/issues/835" rel="noopener">Convert a drifted managed instruction block into a local instruction pack <span class="next-id">#835</span></a></li>
+        <li><a href="https://github.com/sebastian-software/dalo/issues/851" rel="noopener">Project-scoped targets: link a repository's own agent folders as a first-class target <span class="next-id">#851</span></a></li>
+        <li><a href="https://github.com/sebastian-software/dalo/issues/853" rel="noopener">Non-catalog external sources with subpath scoping <span class="next-id">#853</span></a></li>
+        <li><a href="https://github.com/sebastian-software/dalo/issues/854" rel="noopener">Forge adapters beyond GitHub for PR-creating flows <span class="next-id">#854</span></a></li>
       </ul>
     </div>
   </section>
@@ -738,6 +885,9 @@
         </a>
         <a class="btn btn-quiet" href="#quickstart">Read the quickstart</a>
       </div>
+      <p class="cta-note reveal">
+        Useful? <a href="https://github.com/sebastian-software/dalo/stargazers" rel="noopener">Star the repository</a> — it is the only number this page asks you for.
+      </p>
     </div>
   </section>
 
@@ -767,7 +917,7 @@
         <a href="#quickstart">Quickstart</a>
         <a href="#targets">Targets</a>
         <a href="#compare">Compare</a>
-        <a href="#roadmap">Roadmap</a>
+        <a href="#stability">Stability</a>
       </div>
       <div class="footer-col">
         <p class="footer-h">Docs</p>

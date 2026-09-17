@@ -19,10 +19,25 @@ for document in "$root/README.md" "$root/site/index.html" "$root/site/install.md
 done
 for document in "$root/README.md" "$root/site/index.html" "$root/site/install.md"; do
   grep -q 'brew install sebastian-software/tap/dalo' "$document"
-  grep -q 'dalo source select sebastian pr-review' "$document"
-  grep -q 'dalo approve skill sebastian:pr-review' "$document"
 done
-grep -q 'dalo audit sebastian:pr-review --reviewer auto' "$root/README.md"
+# The pages that tell a reader to select a skill from the public catalog have to
+# name a skill that catalog actually publishes; `sebastian:pr-review` never
+# existed and every one of those commands exited 1. Keep this list in step with
+# https://github.com/sebastian-software/skills.sebastian-software.com.
+catalog_skill='effective-web'
+for document in "$root/README.md" "$root/site/install.md"; do
+  grep -q "dalo source select sebastian $catalog_skill" "$document"
+  grep -q "dalo approve skill sebastian:$catalog_skill" "$document"
+done
+# The README recovery path uses the deterministic audit, not the optional agent
+# reviewer: `--reviewer auto` needs an installed and authenticated agent CLI and
+# exits 4 without one, which is not a recovery step.
+refute 'the README recovery path requires an authenticated agent reviewer' \
+  grep -q 'dalo audit sebastian:.* --reviewer auto' "$root/README.md"
+# site/index.html is re-recorded from the release candidate in #822; until then
+# only require that its quickstart still selects and approves the same skill.
+grep -q 'dalo source select sebastian ' "$root/site/index.html"
+grep -q 'dalo approve skill sebastian:' "$root/site/index.html"
 # The security overview is the single page an evaluator is pointed at, so it has
 # to exist and stay reachable from the README and the reporting policy.
 test -f "$root/docs/security.md"
@@ -57,6 +72,14 @@ done
 grep -q 'discussions/categories/q-a' "$root/.github/ISSUE_TEMPLATE/question.yml"
 grep -q 'fallback' "$root/.github/ISSUE_TEMPLATE/question.yml"
 grep -q 'brew uninstall dalo' "$root/docs/uninstall.md"
+# Removing Dalo has to name every built-in target, or a linked one is left
+# behind with its owned symlinks. `opencode` was missing from this list.
+for builtin_target in codex claude openclaw hermes opencode generic; do
+  grep -Fq "dalo target unlink $builtin_target" "$root/docs/uninstall.md" \
+    || { echo "docs/uninstall.md does not unlink the built-in target $builtin_target" >&2; exit 1; }
+done
+grep -Fq 'ls -la ~/.config/opencode/skills' "$root/docs/uninstall.md" \
+  || { echo 'docs/uninstall.md final check skips the OpenCode skill directory' >&2; exit 1; }
 grep -q 'dalo resolve remove-owned <target>:<slot>' "$root/docs/uninstall.md"
 grep -q 'resolve list.*exact owned IDs' "$root/docs/uninstall.md"
 grep -q '^## 4. Disable Autosync$' "$root/docs/uninstall.md"
@@ -180,7 +203,7 @@ printf '%s\n' "$readme_first_screen" | grep -Fxq 'dalo sync' \
   || { echo 'the README no longer reaches `dalo sync` within its first screen' >&2; exit 1; }
 # Recovery guidance stays in the README: one worked example whose output names
 # the next command, plus the pointer to the full finding list.
-grep -Fq 'pending approval: sebastian:pr-review (run: dalo approve skill sebastian:pr-review)' "$root/README.md"
+grep -Fq "pending approval: sebastian:$catalog_skill (run: dalo approve skill sebastian:$catalog_skill)" "$root/README.md"
 grep -Fq '(docs/troubleshooting.md)' "$root/README.md"
 
 # Portable plugins, tools, and hooks are reference-grade material: one link away
@@ -212,6 +235,7 @@ for compatibility_section in \
   '## Tier 2: Experimental' \
   '## Tier 3: Not covered' \
   '## Change policy' \
+  '## Designed scale and performance envelope' \
   '## Supported platforms' \
   '## Support window'; do
   grep -Fq "$compatibility_section" "$compatibility" \
@@ -221,6 +245,18 @@ for exit_code in '`0`' '`1`' '`2`' '`3`' '`4`'; do
   grep -Fq "| $exit_code |" "$compatibility"
 done
 grep -Fq 'Windows is supported through WSL only' "$compatibility"
+# The published performance numbers have to stay an envelope, stay attributed to
+# the hardware they were taken on, and stay reproducible by the test that
+# produced them -- otherwise they read as a promise nobody measured.
+grep -Fq 'These numbers are an envelope, not a promise' "$compatibility" \
+  || { echo 'docs/compatibility.md no longer frames the numbers as an envelope' >&2; exit 1; }
+grep -Fq 'Apple M1 Ultra' "$compatibility" \
+  || { echo 'docs/compatibility.md no longer names the measurement hardware' >&2; exit 1; }
+envelope_command='cargo test --release --locked --test performance -- --ignored --nocapture'
+grep -Fq "$envelope_command" "$compatibility" \
+  || { echo 'docs/compatibility.md no longer shows how to reproduce the envelope' >&2; exit 1; }
+test -f "$root/tests/performance.rs" \
+  || { echo 'the performance measurement and smoke test are missing' >&2; exit 1; }
 library_stance='The Rust library API is not a semver contract; the CLI, its exit codes,'
 grep -Fq "$library_stance" "$compatibility" \
   || { echo 'docs/compatibility.md no longer states the library API stance' >&2; exit 1; }
@@ -242,6 +278,61 @@ grep -Fq 'compatibility.md' "$root/docs/reference.md"
 grep -Fq '0008-compatibility-contract.md' "$root/docs/adr/README.md"
 test -f "$root/docs/adr/0008-compatibility-contract.md"
 
+# The upgrading guide is the page a 0.x user is sent to, so it has to exist, be
+# rendered, link the compatibility contract and the security overview, and name
+# every spelling 1.0 removed together with its replacement.
+#
+# MAINTENANCE: this list is the breaking-change inventory for the 1.0 line. The
+# CHANGELOG cannot be the source here, because 0.16.0 is not released and the
+# `!:` commits that carry these removals have no released tag between them yet.
+# Whenever another `!:` commit lands before 1.0, add the removed spelling to
+# this list and document it in docs/upgrading.md in the same pull request.
+upgrading="$root/docs/upgrading.md"
+test -f "$upgrading"
+# The curated 1.0 release body is committed so a maintainer can paste it over the
+# generated release notes; it repeats the same inventory, so both are checked.
+release_notes="$root/.github/release-notes/1.0.0.md"
+test -f "$release_notes"
+for breaking_document in "$upgrading" "$release_notes"; do
+  for removed_spelling in '`--yes`' 'audit --agent <reviewer>' 'select <id> --unselect' '`--refresh`' 'target ID `cursor`'; do
+    grep -Fq -e "$removed_spelling" "$breaking_document" \
+      || { echo "$breaking_document does not name the removed spelling $removed_spelling" >&2; exit 1; }
+  done
+  for upgrading_replacement in \
+    'audit --reviewer <reviewer>' \
+    'source unselect <id> <skill>...' \
+    '`--refresh-audit`' \
+    'dalo target link generic ~/.cursor/skills'; do
+    grep -Fq -e "$upgrading_replacement" "$breaking_document" \
+      || { echo "$breaking_document does not name the replacement $upgrading_replacement" >&2; exit 1; }
+  done
+done
+grep -Fq '(compatibility.md)' "$upgrading" \
+  || { echo 'docs/upgrading.md no longer links the compatibility contract' >&2; exit 1; }
+grep -Fq '(security.md)' "$upgrading" \
+  || { echo 'docs/upgrading.md no longer links the security overview' >&2; exit 1; }
+grep -Fq 'schema_migration_pending' "$upgrading"
+# The upgrading guide opens with the deep link to the 1.0.0 release page. The tag
+# format is `dalo-v<version>`, so the link only resolves once 1.0.0 is published.
+grep -Fq 'https://github.com/sebastian-software/dalo/releases/tag/dalo-v1.0.0' \
+  "$upgrading"
+# The curated release body has to keep linking the three pages it sends a reader
+# to, and docs/ci.md has to keep documenting how the file reaches the release.
+for release_notes_link in compatibility security upgrading; do
+  grep -Fq "https://github.com/sebastian-software/dalo/blob/main/docs/$release_notes_link.md" \
+    "$release_notes" \
+    || { echo "the 1.0 release notes no longer link docs/$release_notes_link.md" >&2; exit 1; }
+done
+grep -Fq '.github/release-notes/1.0.0.md' "$root/docs/ci.md" \
+  || { echo 'docs/ci.md no longer documents the curated release body' >&2; exit 1; }
+# Reachable from the contract it demonstrates, the README, and the FAQ.
+grep -Fq '(upgrading.md)' "$compatibility"
+grep -Fq '(docs/upgrading.md)' "$root/README.md"
+grep -Fq '(docs/upgrading.md)' "$root/README.md.src"
+grep -Fq '(upgrading.md)' "$root/docs/troubleshooting.md"
+grep -Fq 'I upgraded and doctor reports `schema_migration_pending`' \
+  "$root/docs/troubleshooting.md"
+
 grep -q 'latest release on the default branch' "$root/SECURITY.md"
 # Both private channels must stay named. GitHub private vulnerability reporting
 # is enabled on the repository, and it is the channel a reporter finds first.
@@ -255,7 +346,7 @@ grep -q '__DALO_LASTMOD__' "$root/site/sitemap.xml"
 # The documentation published on dalo.sh is rendered from docs/*.md by
 # site/build.mjs and committed, so it must exist, carry the site styles, and be
 # reachable from the sitemap, the documentation index, and the footer.
-for document in getting-started team reference compatibility plugins agents ci troubleshooting uninstall comparison; do
+for document in getting-started team reference compatibility upgrading plugins agents ci troubleshooting uninstall comparison; do
   page="$root/site/docs/$document.html"
   test -f "$page"
   title="$(sed -n 's/^# //p' "$root/docs/$document.md" | head -n 1)"
@@ -316,9 +407,12 @@ grep -Fq 'x-release-please-version' "$root/site/index.html"
 grep -Fq 'x-release-please-start-version' "$root/site/index.html"
 
 # The hero transcript is the output the current CLI prints, not the pre-0.14 one.
-grep -Fq 'target[generic]:/review -&gt; store:/local/skills/review' "$root/site/index.html"
+# `~/.agents/skills` is the Codex default, and `generic` refuses to be linked
+# without an explicit path, so the hero has to label that directory `codex`.
+grep -Fq 'target[codex]:/review -&gt; store:/local/skills/review' "$root/site/index.html"
+refute 'the hero labels the Codex default directory as the generic target' \
+  grep -Fq 'target[generic]: ~/.agents/skills' "$root/site/index.html"
 grep -Fq 'synced: 1 skill across 2 targets (2 created)' "$root/site/index.html"
-grep -Fq 'security preflight: deterministic checks only' "$root/site/index.html"
 grep -Fq 'target[generic]:/review -> store:/local/skills/review' "$root/video/src/QuickstartVideo.tsx"
 refute 'the quickstart video source still uses the pre-0.14 absolute sync path' \
   grep -Fq 'applied  create     /tmp/dalo/skills/review -> /tmp/dalo/store/local/skills/review' "$root/video/src/QuickstartVideo.tsx"
@@ -336,14 +430,50 @@ grep -q 'dalo-quickstart.mp4' "$root/README.md"
 grep -q 'Get it wrong. Dalo gets you back.' "$root/site/index.html"
 grep -q 'dalo synk' "$root/site/index.html"
 grep -q "a similar subcommand exists: 'sync'" "$root/site/index.html"
-grep -q "error: skill 'company:relese-helper' was not found; known skills: company:new-skill, company:release-helper" "$root/site/index.html"
-grep -q 'pending approval: sebastian:tech-docs (run: dalo approve skill sebastian:tech-docs)' "$root/site/index.html"
+grep -Fq 'error: skill `company:relese-helper` was not found; did you mean `company:release-helper`?; known skills: company:new-skill, company:release-helper' "$root/site/index.html"
+grep -Fq 'nothing materialized: resolution is incomplete' "$root/site/index.html"
+grep -Fq 'pending approval: sebastian:effective-web (run: dalo approve skill sebastian:effective-web)' "$root/site/index.html"
 grep -q 'Recover without googling.' "$root/README.md"
 grep -q 'Security preflight and review gate' "$root/site/index.html"
-grep -q 'dalo audit sebastian:pr-review' "$root/site/index.html"
+grep -q 'dalo audit sebastian:effective-web' "$root/site/index.html"
 grep -q 'security audits and review gates' "$root/site/index.html"
-grep -q 'security preflight: deterministic checks and compatible cached findings only; sync did not run an agent reviewer; passing is not a safety guarantee' "$root/site/index.html"
+# The security-preflight sentence is a shared contract: `sync` prints exactly one
+# of them, and the landing page, the demo video, the getting-started guide, and
+# the README all quote that one string. Reading the literal out of the binary
+# instead of restating it here is what makes the assertion catch the next
+# rewording, which is how the pre-0.15 sentence survived on the homepage.
+preflight_sentence="$(sed -n 's/^ *println!("{prefix}\(security preflight: [^"]*\)");$/\1/p' "$root/src/status.rs")"
+test -n "$preflight_sentence" \
+  || { echo 'src/status.rs no longer prints a recognizable security-preflight sentence' >&2; exit 1; }
+test "$(printf '%s\n' "$preflight_sentence" | wc -l | tr -d ' ')" -eq 1 \
+  || { echo 'src/status.rs prints more than one security-preflight sentence' >&2; exit 1; }
+for preflight_document in \
+  "$root/site/index.html" \
+  "$root/video/src/QuickstartVideo.tsx" \
+  "$root/docs/getting-started.md" \
+  "$root/README.md"; do
+  grep -Fq "$preflight_sentence" "$preflight_document" \
+    || { echo "$preflight_document no longer quotes the security-preflight sentence the binary prints" >&2; exit 1; }
+done
+refute 'the pre-0.15 security-preflight sentence is still quoted somewhere' \
+  grep -R -q --exclude-dir=node_modules --exclude-dir=build --exclude-dir=archive \
+    'deterministic checks and compatible cached findings only' \
+    "$root/site" "$root/video/src" "$root/docs" "$root/README.md" "$root/README.md.src"
 grep -q 'durationInFrames={450}' "$root/video/src/Root.tsx"
+# The social card is generated from the checked-in Remotion still, never edited
+# by hand, and every page shares that one file. Its pixel size is part of the
+# markup, so the PNG header is checked against the declared dimensions: bytes 16
+# to 23 of a PNG are the IHDR width and height, big-endian.
+test -f "$root/video/src/OgImage.tsx"
+grep -Fq 'render:og' "$root/video/package.json"
+grep -Fq 'pnpm run render:og' "$root/site/README.md"
+grep -Fq '<meta property="og:image:width" content="1200" />' "$root/site/index.html"
+grep -Fq '<meta property="og:image:height" content="630" />' "$root/site/index.html"
+og_image_header="$(od -An -tx1 -j16 -N8 "$root/site/assets/img/og.png" | tr -d ' \n')"
+test "$og_image_header" = "000004b000000276" \
+  || { echo 'site/assets/img/og.png is no longer the declared 1200x630' >&2; exit 1; }
+grep -Fq "Your team&rsquo;s agent skills, versioned like code." "$root/video/src/OgImage.tsx" \
+  || { echo 'the OG still no longer carries the 1.0 tagline' >&2; exit 1; }
 refute 'the site requests a CDN-hosted player instead of self-hosted assets' \
   grep -R -q -E --exclude-dir=node_modules --exclude-dir=build 'cdn\.jsdelivr\.net|AsciinemaPlayer|asciinema-player' "$root/site"
 grep -q 'DALO_VERSION' "$root/site/install.md"

@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.16.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.15.1...dalo-v0.16.0) (2026-09-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** the `--refresh` alias is no longer accepted on `audit`, `adopt`, `approve skill`, and `resolve adopt`. Use `--refresh-audit`.
+* **cli:** `dalo source select <id> --unselect <skill>...` is no longer accepted. Use `dalo source unselect <id> <skill>...`, which takes the same references and supports the same `--dry-run` and `--json` behavior.
+* **cli:** the `--agent` alias for `--reviewer` is no longer accepted on `audit`, `adopt`, `approve skill`, and `resolve adopt`. Use `--reviewer <none|auto|codex|claude|opencode>` instead.
+* **cli:** the global `--yes` flag is no longer accepted. It was a documented no-op; remove it from scripts and scheduler invocations. Nothing replaces it, because it never confirmed a prompt, implied `--replace`, created commits, or granted approvals.
+* **target:** the `cursor` target ID is removed. `dalo target link cursor <path>` and `dalo target unlink cursor` now fail with an unknown target error. Re-link the same directory with `dalo target link generic ~/.cursor/skills`.
+
+### Features
+
+* **cli:** remove the --refresh alias for --refresh-audit ([ab3d0f6](https://github.com/sebastian-software/dalo/commit/ab3d0f6dafe417ff4911fec6914cb67a79d812cd))
+* **cli:** remove the --yes no-op flag ([953cab1](https://github.com/sebastian-software/dalo/commit/953cab11a105507bf4bbbf969cd88a23726d6c8b))
+* **cli:** remove the audit --agent reviewer alias ([ed050c8](https://github.com/sebastian-software/dalo/commit/ed050c8e9dcb225e0f047409114cccd8d07df79a))
+* **cli:** remove the source select --unselect flag ([bd17999](https://github.com/sebastian-software/dalo/commit/bd179996e8837ad3358ceadb36eafd175813ee52))
+* **doctor:** report every pending store migration ([d364a7d](https://github.com/sebastian-software/dalo/commit/d364a7dbf716203ca73089afe0e141b7c07512d6)), closes [#803](https://github.com/sebastian-software/dalo/issues/803)
+* **plugins:** specify portable packages and verify real hook contracts ([4edad05](https://github.com/sebastian-software/dalo/commit/4edad05ae207510deef4704f2c46103abb3f4f76))
+* **plugins:** validate portable packages and enforce hook contracts ([4fdef50](https://github.com/sebastian-software/dalo/commit/4fdef503716b16fb911767a252daca0e38b67adf))
+* **target:** promote OpenCode and drop the unverified Cursor target ([9510d03](https://github.com/sebastian-software/dalo/commit/9510d03cf5e670363e905a5bcdf89af062dbebdd)), closes [#806](https://github.com/sebastian-software/dalo/issues/806)
+
+
+### Bug Fixes
+
+* **site:** stop the install picker labels and terminal lines from wrapping apart ([8612209](https://github.com/sebastian-software/dalo/commit/861220954c4029e4680c6f4d3a7f1d00a41eee70))
+* **site:** wrap the recovery transcripts instead of hiding the next command ([93f5c42](https://github.com/sebastian-software/dalo/commit/93f5c422196d595ea9f987452ae8812a97140897))
+* **sync:** name the slot, not the link path, in the conflict repair hint ([e7f3de1](https://github.com/sebastian-software/dalo/commit/e7f3de15965a96e9f112123c9698185f9fbfc778))
+* **target:** name every built-in target in the link hint ([929d79b](https://github.com/sebastian-software/dalo/commit/929d79b3c9fcf734b16be3eccb3f086ee474dfc6))
+* **test:** make the generator timeout test deterministic under load ([14ed4d5](https://github.com/sebastian-software/dalo/commit/14ed4d5f8c09d566dd8957a82f9e6dc733de2f82)), closes [#859](https://github.com/sebastian-software/dalo/issues/859)
+* use the publicly accessible Sebastian footer logo ([9ad7cb4](https://github.com/sebastian-software/dalo/commit/9ad7cb479136d372f2b86ca3a8f6a3083d24d09c))
+
 ## [0.15.1](https://github.com/sebastian-software/dalo/compare/dalo-v0.15.0...dalo-v0.15.1) (2026-09-09)
 
 

@@ -73,6 +73,7 @@
         <a href="/docs/team.html">Team repository</a>
         <a href="/docs/reference.html">Command reference</a>
         <a href="/docs/compatibility.html">Compatibility</a>
+        <a href="/docs/upgrading.html">Upgrading to 1.0</a>
         <a href="/docs/plugins.html">Plugins</a>
         <a href="/docs/agents.html">Agent integration</a>
         <a href="/docs/ci.html">Dalo in CI</a>
@@ -137,13 +138,13 @@ dalo --json doctor
 </tr>
 <tr>
 <td><code>StoreLocked</code>, error text <code>another dalo operation is running</code></td>
-<td>Another Dalo command currently owns <code>.lock</code>, or a stale lock file remains.</td>
-<td>Wait for the other command. If no Dalo process is running, inspect and remove the stale <code>.lock</code> file in the store.</td>
+<td>Another Dalo command currently holds the store lock.</td>
+<td>Wait for the other command and retry. The lock is an advisory lock the operating system releases when that process exits, so the <code>.lock</code> file staying behind is normal and never the cause; do not delete it.</td>
 </tr>
 <tr>
 <td><code>owned_path_real_entry</code></td>
 <td>Dalo has an ownership record, but a real file or directory now exists at that path.</td>
-<td>Run <code>dalo resolve remove-owned &lt;id&gt;</code>. Dalo drops the ownership record and leaves the real entry intact.</td>
+<td>Run <code>dalo resolve remove-owned &lt;id&gt;</code>. It drops the ownership record and leaves the real entry intact, and it reports <code>blocked_real_entry</code> and exits <code>1</code> to say the link itself was not removed — that is the expected outcome here, not a failure. The slot then shows up as an ordinary unmanaged entry, so adopt, keep, rename, or remove it next.</td>
 </tr>
 <tr>
 <td><code>missing_owned_symlink</code>, <code>broken_owned_symlink</code>, <code>foreign_owned_symlink</code></td>
@@ -659,7 +660,7 @@ repository, push the change, then run <code>dalo sync</code>.</p>
 <tr>
 <td><code>owned_path_real_entry</code></td>
 <td>error</td>
-<td>Run <code>dalo resolve remove-owned &lt;id&gt;</code>; the real entry stays in place.</td>
+<td>Run <code>dalo resolve remove-owned &lt;id&gt;</code>; the real entry stays in place and the command reports <code>blocked_real_entry</code> with exit <code>1</code> while still dropping the record. See <a href="#fast-recovery-paths">Fast Recovery Paths</a>.</td>
 </tr>
 <tr>
 <td><code>missing_owned_symlink</code></td>
@@ -964,6 +965,15 @@ line pointing at this recipe.</p>
 <code>dalo target unlink generic</code>.</p>
 <h3 id="how-do-i-recover-from-a-dirty-team-source"><a class="doc-anchor" href="#how-do-i-recover-from-a-dirty-team-source">How do I recover from a dirty team source?</a></h3>
 <p>Go to the checkout shown by <code>dalo doctor</code>, then commit, stash, or discard the edits with normal Git commands. Dalo does not decide this for you because the edits may be user or agent work.</p>
+<h3 id="i-upgraded-and-doctor-reports-schema_migration_pending"><a class="doc-anchor" href="#i-upgraded-and-doctor-reports-schema_migration_pending">I upgraded and doctor reports <code>schema_migration_pending</code></a></h3>
+<p>Nothing is wrong. Dalo migrates a persisted file the next time it writes that
+file, so a store carried over from 0.x keeps the old version on disk until
+then, and <code>doctor</code> prints one <code>info</code> line per file that is still waiting. Run
+<code>dalo sync</code> and the <code>lock.toml</code>, state, and instruction-block lines clear;
+<code>config.toml</code> clears the next time you change a setting, add a source, or link
+a target, and <code>source-lock.toml</code> on the next <code>source select</code>, <code>source unselect</code>, or <code>source refresh</code>. These are <code>info</code> findings, so <code>doctor --check</code>
+still exits <code>0</code>. See <a href="/docs/upgrading.html">Upgrading to 1.0</a> for the full first-run
+transcript.</p>
 <h3 id="my-script-uses-a-flag-dalo-no-longer-accepts"><a class="doc-anchor" href="#my-script-uses-a-flag-dalo-no-longer-accepts">My script uses a flag Dalo no longer accepts</a></h3>
 <p>Dalo removed its pre-1.0 compatibility spellings before the 1.0 line froze
 them. Each removed spelling now produces clap&#39;s ordinary unknown-argument
@@ -992,6 +1002,13 @@ error. Replace it with the supported form:</p>
 <td><code>--refresh-audit</code></td>
 </tr>
 </tbody></table></div>
+<h3 id="how-long-should-sync-take"><a class="doc-anchor" href="#how-long-should-sync-take">How long should <code>sync</code> take?</a></h3>
+<p>Measured numbers for a store of 10 sources and 200 skills, and the caveats that
+come with them, are in
+<a href="/docs/compatibility.html#designed-scale-and-performance-envelope">Designed scale and performance envelope</a>.
+If your own <code>sync</code> is much slower than that, the usual cause is network round
+trips: a no-op <code>sync</code> still fetches every tracking team source. <code>dalo status</code>
+and <code>dalo doctor</code> never fetch, so use them in a shell prompt or a watch loop.</p>
 <h3 id="how-do-i-remove-dalo-completely"><a class="doc-anchor" href="#how-do-i-remove-dalo-completely">How do I remove Dalo completely?</a></h3>
 <p>Use the uninstall guide: <a href="/docs/uninstall.html">Uninstall Dalo</a>.</p>
 <h3 id="is-promote-native-windows-or-my-agent-coming"><a class="doc-anchor" href="#is-promote-native-windows-or-my-agent-coming">Is <code>promote</code>, native Windows, or my agent coming?</a></h3>

@@ -13,6 +13,12 @@
     <priority>0.9</priority>
   </url>
   <url>
+    <loc>https://dalo.sh/news/1-0.html</loc>
+    <lastmod>__DALO_LASTMOD__</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://dalo.sh/docs/getting-started.html</loc>
     <lastmod>__DALO_LASTMOD__</lastmod>
     <changefreq>weekly</changefreq>
@@ -32,6 +38,12 @@
   </url>
   <url>
     <loc>https://dalo.sh/docs/compatibility.html</loc>
+    <lastmod>__DALO_LASTMOD__</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://dalo.sh/docs/upgrading.html</loc>
     <lastmod>__DALO_LASTMOD__</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -107,6 +119,12 @@
     <lastmod>__DALO_LASTMOD__</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://dalo.sh/llms.txt</loc>
+    <lastmod>__DALO_LASTMOD__</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
   </url>
   <url>
     <loc>https://dalo.sh/install.sh</loc>
