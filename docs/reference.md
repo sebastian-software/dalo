@@ -243,9 +243,13 @@ Built-in target IDs:
 | `claude` | `~/.claude/skills` | supported |
 | `openclaw` | `~/.agents/skills` | supported |
 | `hermes` | `~/.hermes/skills` | supported |
+| `opencode` | `~/.config/opencode/skills` | supported |
 | `generic` | none, path required | supported |
-| `cursor` | none | experimental |
-| `opencode` | none | experimental |
+
+Each built-in target names the agent release its skill directory and symlink
+behavior were verified against in the
+[agent support matrix](agents.md#support-matrix). Cursor has no built-in target
+ID; use `dalo target link generic ~/.cursor/skills`.
 
 Targets reported as `experimental` are not covered by the stability promise for
 a major version: their IDs, default paths, and behavior may change in any
@@ -1726,7 +1730,7 @@ universal_fallback = false
 [providers]
 codex = ".agents/skills/impeccable"
 claude = ".claude/skills/impeccable"
-cursor = ".cursor/skills/impeccable"
+opencode = ".opencode/skills/impeccable"
 ```
 
 Provider paths are relative to the source checkout. Each artifact must be a

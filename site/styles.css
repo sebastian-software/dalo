@@ -531,10 +531,8 @@ section[data-scope="dark"] { background: var(--bg); color: var(--ink); }
 .target:hover { border-color: var(--accent); }
 .target-name { font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; }
 .target-path { font-family: var(--font-mono); font-size: var(--fs-mono); color: var(--ink-faint); }
-.target-exp { opacity: 0.78; }
 .badge { font-family: var(--font-mono); font-size: 0.7rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; padding: 0.22rem 0.6rem; border-radius: var(--r-pill); white-space: nowrap; }
 .badge-ok { color: var(--signal); background: var(--signal-soft); }
-.badge-exp { color: var(--ink-faint); background: var(--surface-2); }
 
 /* ---------- Objection handling ---------- */
 .objection-grid {

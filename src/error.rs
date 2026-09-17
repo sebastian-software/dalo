@@ -655,7 +655,6 @@ mod tests {
             vec![
                 "claude".to_owned(),
                 "codex".to_owned(),
-                "cursor".to_owned(),
                 "generic".to_owned(),
                 "hermes".to_owned(),
                 "opencode".to_owned(),

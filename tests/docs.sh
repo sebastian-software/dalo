@@ -547,6 +547,66 @@ if assert_target_reference "$wrong_target_section" "$reference_document"; then
   exit 1
 fi
 
+# Keep the published target tables aligned with the built-in registry. The
+# expected IDs and default paths come from `src/target.rs` itself, so a target
+# cannot be added, removed, or repointed without updating every table a user
+# reads. V1 ships only verified targets, so no table may carry an
+# "experimental" or "unverified" label.
+registry_source="$root/src/target.rs"
+registry_ids="$(awk '
+  /^pub fn registry\(\)/ { inside = 1 }
+  inside && /^}/ { exit }
+  inside && /^ *id: "/ {
+    line = $0
+    sub(/^ *id: "/, "", line)
+    sub(/".*$/, "", line)
+    print line
+  }
+' "$registry_source")"
+registry_paths="$(awk '
+  /^pub fn registry\(\)/ { inside = 1 }
+  inside && /^}/ { exit }
+  inside && /default_path: Some\("/ {
+    line = $0
+    sub(/^.*default_path: Some\("/, "", line)
+    sub(/"\).*$/, "", line)
+    print line
+  }
+' "$registry_source" | sort -u)"
+test -n "$registry_ids"
+test -n "$registry_paths"
+grep -q '^## Support matrix$' "$root/docs/agents.md"
+grep -q '| Verified version | Verified on |' "$root/docs/agents.md"
+for target_id in $registry_ids; do
+  grep -Fq "| \`$target_id\` |" "$root/docs/reference.md" ||
+    {
+      echo "target \`$target_id\` is missing from the docs/reference.md target table" >&2
+      exit 1
+    }
+  grep -Fq "| \`$target_id\` |" "$root/docs/agents.md" ||
+    {
+      echo "target \`$target_id\` is missing from the docs/agents.md support matrix" >&2
+      exit 1
+    }
+done
+for target_path in $registry_paths; do
+  for document in "$root/README.md" "$root/docs/reference.md" "$root/docs/agents.md" "$root/site/index.html"; do
+    grep -Fq "$target_path" "$document" ||
+      {
+        echo "default target path $target_path is missing from $document" >&2
+        exit 1
+      }
+  done
+done
+refute 'src/target.rs still registers an experimental target' \
+  grep -q 'support: TargetSupport::Experimental' "$registry_source"
+refute 'the reference target table still labels a target experimental' \
+  grep -q '| experimental |' "$root/docs/reference.md"
+refute 'the site targets section still carries an experimental badge' \
+  grep -q 'badge-exp' "$root/site/index.html"
+refute 'the site targets section still advertises an unverified target path' \
+  grep -q 'target-path">unverified' "$root/site/index.html"
+
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/dalo-docs-test.XXXXXX")"
 
 cleanup() {
