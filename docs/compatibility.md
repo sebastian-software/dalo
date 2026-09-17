@@ -24,9 +24,8 @@ under "Command Reference" and "Global Flags", with the meaning documented
 there. New commands, new subcommands, and new optional flags are additive and
 may arrive in any minor release.
 
-The global flags are `--store <PATH>`, `--json`, `--yes`, `--dry-run`,
-`-h`/`--help`, and `-V`/`--version`. `--yes` is a retained no-op kept for
-existing scripts; it stays accepted for the whole 1.x line.
+The global flags are `--store <PATH>`, `--json`, `--dry-run`,
+`-h`/`--help`, and `-V`/`--version`.
 
 ### Exit codes
 
@@ -189,10 +188,13 @@ These may change in any release without notice.
    earlier, documented as deprecated in the reference, and emits a runtime
    warning on stderr when used. The warning never changes the exit status and
    is suppressed in `--json` mode so machine consumers stay clean.
-   `--agent` (superseded by `--reviewer`) is a retained deprecated alias that
-   predates this policy: it keeps working without a warning and is documented
-   as deprecated in the reference. The warning requirement applies to
-   deprecations announced from now on.
+   No deprecated spelling enters 1.x: the pre-1.0 shims that predated this
+   policy were removed before the line froze, so the first deprecation Dalo
+   announces will be the first one to carry the warning. A store written by an
+   older release still reads; the shapes Dalo accepts on read are listed under
+   [Accepted 0.x Store Shapes](reference.md#accepted-0x-store-shapes), and
+   removed CLI spellings are mapped to their replacements in
+   [Troubleshooting and FAQ](troubleshooting.md#my-script-uses-a-flag-dalo-no-longer-accepts).
 3. **JSON fields are never removed within 1.x.** A field that becomes
    meaningless keeps being emitted with a documented inert value until the next
    major. New fields are additive; consumers ignore what they do not know.
