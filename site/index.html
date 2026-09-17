@@ -104,7 +104,7 @@
     <a href="#recovery">Recovery</a>
     <a href="#targets">Targets</a>
     <a href="#compare">Compare</a>
-    <a href="#roadmap">Roadmap</a>
+    <a href="#stability">Stability</a>
   </div>
 </nav>
 
@@ -459,15 +459,15 @@
         </li>
         <li class="step reveal">
           <span class="step-n">3</span>
-          <h3>Sync</h3>
-          <p>Resolve every active source into one set and link it into your agent folders. Safe to run any time; dirty edits block instead of getting lost.</p>
-          <code class="step-cmd">dalo sync</code>
+          <h3>Review and approve</h3>
+          <p>Read the evidence with <code>dalo audit company:release-helper</code> before anything reaches an agent folder, then record the decision. Approvals are source-qualified and stay in your own store.</p>
+          <code class="step-cmd">dalo approve skill company:release-helper</code>
         </li>
         <li class="step reveal">
           <span class="step-n">4</span>
-          <h3>Promote <span class="soon">planned</span></h3>
-          <p>When a local skill proves useful, send it upstream through a PR-first flow so the whole team gets it. On the roadmap for a future release.</p>
-          <code class="step-cmd step-cmd-soon">dalo promote release-notes --target company</code>
+          <h3>Sync</h3>
+          <p>Resolve every active source into one set and link it into your agent folders. Safe to run any time; dirty edits block instead of getting lost.</p>
+          <code class="step-cmd">dalo sync</code>
         </li>
       </ol>
     </div>
@@ -751,21 +751,79 @@
     </div>
   </section>
 
-  <!-- ───────────────────────── ROADMAP ───────────────────────── -->
-  <section class="band" id="roadmap">
+  <!-- ───────────────────────── STABILITY ───────────────────────── -->
+  <section class="band" id="stability">
     <div class="wrap">
-      <h2 class="section-h reveal">Early, and honest about it.</h2>
+      <h2 class="section-h reveal">Built to rely on.</h2>
       <p class="lead reveal">
-        Dalo is v<span data-dalo-version>0.15.1</span>. <!-- x-release-please-version -->
-        These features work today: local, team, and catalog
-        sources; deterministic resolution; security audits and review gates; safe
-        sync; adoption; diagnostics; and instruction packs. Here's what's
-        intentionally deferred to later releases.
+        Dalo is v<span data-dalo-version>0.15.1</span>, <!-- x-release-please-version -->
+        and everything a team workflow rests on ships today: local, team, and
+        catalog sources; deterministic resolution;
+        security audits and review gates; safe sync; adoption; diagnostics; and
+        instruction packs. These are the commitments the 1.x line is written to keep.
       </p>
-      <ul class="roadmap-list reveal">
-        <li><span class="rm-tag">later</span> PR-first promotion of local skills into team repos</li>
-        <li><span class="rm-tag">later</span> Catalog pin updates as ready-to-review pull requests</li>
-        <li><span class="rm-tag">later</span> More verified agent adapters and package managers</li>
+
+      <div class="promise-grid">
+        <article class="promise reveal">
+          <h3>The surface you script against holds</h3>
+          <p>
+            Commands, flags, exit codes, <code>--json</code> shapes, environment
+            variables, and every file Dalo persists are tier 1: additive inside
+            1.x, breaking only in a major, each deprecation announced a minor
+            ahead and never silently.
+          </p>
+          <a class="promise-proof" href="/docs/compatibility.html">Read the 1.x compatibility contract</a>
+        </article>
+        <article class="promise reveal">
+          <h3>Your store upgrades itself</h3>
+          <p>
+            A store written by 0.6.0 or later opens with no migration command, no
+            re-approval, and nothing unlinked. That is a test, not a claim: the
+            suite replays stores written by the released 0.6.0, 0.9.2, 0.12.0,
+            and 0.15.1 binaries.
+          </p>
+          <a class="promise-proof" href="/docs/upgrading.html">See what the first run does</a>
+        </article>
+        <article class="promise reveal">
+          <h3>Signed builds, six ways to install</h3>
+          <p>
+            Every release publishes archives for six targets — macOS and Linux,
+            x86_64 and aarch64, gnu and musl — each with a SHA-256 checksum and a
+            Sigstore bundle. Six install channels keep publishing every 1.x
+            release; retiring one is a breaking change.
+          </p>
+          <a class="promise-proof" href="/install.md">Read the installation guide</a>
+        </article>
+        <article class="promise reveal">
+          <h3>Security fixes stay with the 1.x line</h3>
+          <p>
+            Report privately through the repository's security tab or
+            <a href="mailto:security@sebastian-software.de">security@sebastian-software.de</a>;
+            fixes land in the latest 1.x release. When 2.0 ships, 1.x keeps
+            receiving them for six months.
+          </p>
+          <a class="promise-proof" href="/docs/security.html">Read the security overview</a>
+        </article>
+      </div>
+
+      <h3 class="next-h reveal">What's next</h3>
+      <p class="next-lede reveal">
+        Deferred work is tracked as issues, not as prose on this page. Everything
+        below is open and linked, collected under
+        <a href="https://github.com/sebastian-software/dalo/issues/836" rel="noopener">epic&nbsp;#836</a>.
+      </p>
+      <ul class="next-list reveal">
+        <li><a href="https://github.com/sebastian-software/dalo/issues/828" rel="noopener">Promote: PR-first promotion of a local skill into a team repository <span class="next-id">#828</span></a></li>
+        <li><a href="https://github.com/sebastian-software/dalo/issues/829" rel="noopener">Catalog pin updates as ready-to-review pull requests <span class="next-id">#829</span></a></li>
+        <li><a href="https://github.com/sebastian-software/dalo/issues/830" rel="noopener">Native Windows support <span class="next-id">#830</span></a></li>
+        <li><a href="https://github.com/sebastian-software/dalo/issues/831" rel="noopener">More verified agent adapters: Cursor, Windsurf, Copilot, Gemini CLI <span class="next-id">#831</span></a></li>
+        <li><a href="https://github.com/sebastian-software/dalo/issues/832" rel="noopener">More install channels: Nix, AUR, Debian and RPM packages <span class="next-id">#832</span></a></li>
+        <li><a href="https://github.com/sebastian-software/dalo/issues/833" rel="noopener">Rename/adapt flow for same-name conflicts and an interactive resolve assistant <span class="next-id">#833</span></a></li>
+        <li><a href="https://github.com/sebastian-software/dalo/issues/834" rel="noopener">Notify on blocked scheduled syncs (desktop, webhook, or mail) <span class="next-id">#834</span></a></li>
+        <li><a href="https://github.com/sebastian-software/dalo/issues/835" rel="noopener">Convert a drifted managed instruction block into a local instruction pack <span class="next-id">#835</span></a></li>
+        <li><a href="https://github.com/sebastian-software/dalo/issues/851" rel="noopener">Project-scoped targets: link a repository's own agent folders as a first-class target <span class="next-id">#851</span></a></li>
+        <li><a href="https://github.com/sebastian-software/dalo/issues/853" rel="noopener">Non-catalog external sources with subpath scoping <span class="next-id">#853</span></a></li>
+        <li><a href="https://github.com/sebastian-software/dalo/issues/854" rel="noopener">Forge adapters beyond GitHub for PR-creating flows <span class="next-id">#854</span></a></li>
       </ul>
     </div>
   </section>
@@ -811,7 +869,7 @@
         <a href="#quickstart">Quickstart</a>
         <a href="#targets">Targets</a>
         <a href="#compare">Compare</a>
-        <a href="#roadmap">Roadmap</a>
+        <a href="#stability">Stability</a>
       </div>
       <div class="footer-col">
         <p class="footer-h">Docs</p>
