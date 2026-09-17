@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "studio": "remotion studio src/index.ts",
-    "render": "remotion render src/index.ts DaloQuickstart ../site/assets/dalo-quickstart.mp4 --codec=h264 --pixel-format=yuv420p --crf=24 --muted"
+    "render": "remotion render src/index.ts DaloQuickstart ../site/assets/dalo-quickstart.mp4 --codec=h264 --pixel-format=yuv420p --crf=24 --muted",
+    "render:og": "remotion still src/index.ts DaloOg ../site/assets/img/og.png --image-format=png"
   },
   "dependencies": {
     "@remotion/cli": "4.0.521",

@@ -33,6 +33,28 @@ node site/build.mjs --check   # fail if the checked-in output is stale
 
 The rendered documentation and the stamped version are committed, so the site
 stays deployable from a plain checkout and `--check` can prove they are current.
+
+## Binary assets
+
+Both binary assets are generated from checked-in Remotion sources in `video/`,
+so neither is ever edited by hand:
+
+```sh
+pnpm --dir video install
+pnpm --dir video run render      # site/assets/dalo-quickstart.mp4
+pnpm --dir video run render:og   # site/assets/img/og.png
+```
+
+`render:og` renders the `DaloOg` still (`video/src/OgImage.tsx`) at 1200x630
+using the self-hosted fonts in `site/assets/fonts` and the `data-scope="dark"`
+tokens from `styles.css`, so the social card carries the same tagline,
+typography, and colours as the hero. The landing page, every rendered
+`docs/*.html`, and the `spec/` pages all reference that one image, so a refresh
+covers the whole site. `tests/docs.sh` checks the PNG header against the
+declared `og:image:width` and `og:image:height`.
+
+Uploading the image as the repository's GitHub social preview is a separate,
+manual step in the repository settings.
 The current specification is published at `/spec/0.1/`; `/spec/` is its static
 landing page. The versioned schema is downloadable at
 `/spec/0.1/plugin-v1.schema.json`.
@@ -55,6 +77,7 @@ Before redeploying `dalo.sh`, verify the static site against the shipped repo st
 - `llms.txt` is in `site/build/`, every link in it resolves, and the landing page
   still advertises it through `<link rel="alternate" type="text/plain">`.
 - `pnpm run render` in `video/` has refreshed `site/assets/dalo-quickstart.mp4` after video source changes.
+- `pnpm run render:og` in `video/` has refreshed `site/assets/img/og.png` after tagline or brand changes.
 - Runtime assets are self-hosted; the homepage makes no CDN/player request.
 - `site/sitemap.xml` lists every published page.
 
