@@ -77,9 +77,9 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
    - `DALO_TARGET` overrides platform detection when non-empty. Use only a
      published target: `x86_64-unknown-linux-gnu`,
      `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-musl`,
-     `aarch64-unknown-linux-musl`, `x86_64-apple-darwin`, or
-     `aarch64-apple-darwin`. An unset or empty value uses detection; an
-     unrecognized value fails when the corresponding release archive is fetched.
+     `aarch64-unknown-linux-musl`, or `aarch64-apple-darwin`. An unset or empty
+     value uses detection; an unrecognized value fails when the corresponding
+     release archive is fetched.
 
 3. Ensure the install directory is on `PATH` for this session:
 
@@ -160,9 +160,9 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
 Use the archive matching the machine from the
 [latest GitHub release](https://github.com/sebastian-software/dalo/releases/latest).
 Set `VERSION` without the leading `v` and choose one of the published targets:
-`x86_64-apple-darwin`, `aarch64-apple-darwin`,
-`x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`,
-`x86_64-unknown-linux-musl`, or `aarch64-unknown-linux-musl`.
+`aarch64-apple-darwin`, `x86_64-unknown-linux-gnu`,
+`aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-musl`, or
+`aarch64-unknown-linux-musl`.
 
 ```sh
 VERSION=REPLACE_WITH_RELEASE_VERSION

@@ -294,7 +294,7 @@ test -f "$upgrading"
 release_notes="$root/.github/release-notes/1.0.0.md"
 test -f "$release_notes"
 for breaking_document in "$upgrading" "$release_notes"; do
-  for removed_spelling in '`--yes`' 'audit --agent <reviewer>' 'select <id> --unselect' '`--refresh`' 'target ID `cursor`'; do
+  for removed_spelling in '`--yes`' 'audit --agent <reviewer>' 'select <id> --unselect' '`--refresh`' 'target ID `cursor`' '`x86_64-apple-darwin`'; do
     grep -Fq -e "$removed_spelling" "$breaking_document" \
       || { echo "$breaking_document does not name the removed spelling $removed_spelling" >&2; exit 1; }
   done
@@ -302,11 +302,62 @@ for breaking_document in "$upgrading" "$release_notes"; do
     'audit --reviewer <reviewer>' \
     'source unselect <id> <skill>...' \
     '`--refresh-audit`' \
-    'dalo target link generic ~/.cursor/skills'; do
+    'dalo target link generic ~/.cursor/skills' \
+    'cargo install dalo'; do
     grep -Fq -e "$upgrading_replacement" "$breaking_document" \
       || { echo "$breaking_document does not name the replacement $upgrading_replacement" >&2; exit 1; }
   done
 done
+# The Intel macOS build was discontinued with 1.0. Only the documents that
+# record the removal may still name the retired target; a publishing or
+# installing surface that still names it would promise an archive that no
+# release produces. The CHANGELOG and the archive keep their history, and
+# `mise.lock` pins a documentation tool, not a Dalo release.
+intel_target='x86_64-apple-darwin'
+intel_allowed="CHANGELOG.md
+mise.lock
+tests/docs.sh
+tests/install.sh
+tests/workflows.sh
+docs/compatibility.md
+docs/upgrading.md
+site/docs/compatibility.html
+site/docs/upgrading.html
+site/news/1-0.html
+.github/release-notes/1.0.0.md"
+intel_offenders=""
+for tracked_file in $(cd "$root" && git ls-files); do
+  case "$tracked_file" in
+    docs/archive/*) continue ;;
+  esac
+  if printf '%s\n' "$intel_allowed" | grep -Fxq "$tracked_file"; then
+    continue
+  fi
+  if grep -Fq "$intel_target" "$root/$tracked_file" 2>/dev/null; then
+    intel_offenders="$intel_offenders $tracked_file"
+  fi
+done
+if [ -n "$intel_offenders" ]; then
+  echo "the retired target $intel_target is still named in:$intel_offenders" >&2
+  exit 1
+fi
+# The removal has to stay documented where a user looks for it, not merely be
+# absent everywhere.
+for intel_document in \
+  "$root/docs/compatibility.md" \
+  "$root/docs/upgrading.md" \
+  "$root/.github/release-notes/1.0.0.md"; do
+  grep -Fq "$intel_target" "$intel_document" \
+    || { echo "$intel_document no longer records the discontinued Intel macOS build" >&2; exit 1; }
+done
+grep -Fq 'Intel Macs are not supported' "$root/docs/compatibility.md" \
+  || { echo 'docs/compatibility.md no longer states that Intel Macs are unsupported' >&2; exit 1; }
+# The installer has to name the remaining path rather than fail on a 404.
+grep -Fq 'Intel Macs are no longer supported' "$root/site/install.sh" \
+  || { echo 'site/install.sh no longer rejects an Intel Mac with an explanation' >&2; exit 1; }
+grep -Fq 'cargo install dalo' "$root/site/install.sh" \
+  || { echo 'site/install.sh no longer points an Intel Mac at cargo install' >&2; exit 1; }
+
 grep -Fq '(compatibility.md)' "$upgrading" \
   || { echo 'docs/upgrading.md no longer links the compatibility contract' >&2; exit 1; }
 grep -Fq '(security.md)' "$upgrading" \

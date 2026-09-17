@@ -103,7 +103,7 @@ specification, provider projections, human-readable output, the store-internal
 layout, and the Rust library API. The full contract is on
 <a href="/docs/compatibility.html">Compatibility and stability</a>.</p>
 
-<p>Dalo runs on macOS and Linux, on <code>x86_64</code> and <code>aarch64</code>,
+<p>Dalo runs on macOS on Apple Silicon, and on Linux on <code>x86_64</code> and <code>aarch64</code>,
 with both <code>gnu</code> and <code>musl</code> Linux builds. Windows is
 supported through WSL only; there is no native Windows build in 1.x. Security
 fixes land in the latest 1.x release, so the fix is always an upgrade; there is
@@ -179,8 +179,9 @@ major-version change.</p>
 
 <h2 id="breaking-changes"><a class="doc-anchor" href="#breaking-changes">Breaking changes</a></h2>
 
-<p>Four CLI spellings and one target ID were removed before the 1.x surface
-froze. Each now fails loudly instead of quietly doing something else.</p>
+<p>Four CLI spellings, one target ID, and one release platform were removed
+before the 1.x surface froze. Each now fails loudly instead of quietly doing
+something else.</p>
 
 <div class="doc-table"><table>
 <thead>
@@ -192,12 +193,15 @@ froze. Each now fails loudly instead of quietly doing something else.</p>
 <tr><td><code>source select &lt;id&gt; --unselect &lt;skill&gt;...</code></td><td><code>source unselect &lt;id&gt; &lt;skill&gt;...</code></td></tr>
 <tr><td><code>--refresh</code> on <code>audit</code>, <code>adopt</code>, <code>approve skill</code>, <code>resolve adopt</code></td><td><code>--refresh-audit</code></td></tr>
 <tr><td>target ID <code>cursor</code></td><td><code>dalo target link generic ~/.cursor/skills</code></td></tr>
+<tr><td>Intel macOS release archives (<code>x86_64-apple-darwin</code>)</td><td>the Apple Silicon build; on an Intel Mac, <code>cargo install dalo</code>, which compiles from source</td></tr>
 </tbody>
 </table></div>
 
 <p>Nothing in your store changes: no persisted schema version changed between
 0.15.1 and 1.0, and Cursor reads the same directory after the
-<code>generic</code> link.</p>
+<code>generic</code> link. 0.16.0 is the last release with a published Intel
+macOS archive; the installer, Homebrew, and the npm launcher all say so on an
+Intel Mac instead of failing on a missing download.</p>
 
 <h2 id="upgrading"><a class="doc-anchor" href="#upgrading">Upgrading</a></h2>
 

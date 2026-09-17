@@ -66,7 +66,7 @@ Before any of it:
 - [ ] Every number in a draft has been re-verified against `main` at the tag,
       not against the day the draft was written. The facts that were true when
       this kit was written: 34 public releases since 0.1, 1011 tests behind an
-      86.9% line-coverage gate, six signed release targets, six install
+      86.9% line-coverage gate, five signed release targets, six install
       channels, and four findings from the 2026-09 audit round, all closed
       (#712, #713, #714, #715). The release and test counts move; the rest are
       contractual.

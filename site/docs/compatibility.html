@@ -610,7 +610,7 @@ at compile time by design.</p>
 </thead>
 <tbody><tr>
 <td>macOS</td>
-<td><code>x86_64</code>, <code>aarch64</code></td>
+<td><code>aarch64</code> (Apple Silicon)</td>
 <td>system</td>
 </tr>
 <tr>
@@ -619,10 +619,14 @@ at compile time by design.</p>
 <td><code>gnu</code> and <code>musl</code></td>
 </tr>
 </tbody></table></div>
-<p>The published release targets are <code>x86_64-apple-darwin</code>,
-<code>aarch64-apple-darwin</code>, <code>x86_64-unknown-linux-gnu</code>,
-<code>aarch64-unknown-linux-gnu</code>, <code>x86_64-unknown-linux-musl</code>, and
-<code>aarch64-unknown-linux-musl</code>.</p>
+<p>The published release targets are <code>aarch64-apple-darwin</code>,
+<code>x86_64-unknown-linux-gnu</code>, <code>aarch64-unknown-linux-gnu</code>,
+<code>x86_64-unknown-linux-musl</code>, and <code>aarch64-unknown-linux-musl</code>.</p>
+<p><strong>Intel Macs are not supported.</strong> The <code>x86_64-apple-darwin</code> build was
+discontinued with 1.0, so no installer, Homebrew formula, or npm launcher
+resolves an Intel macOS archive. <code>cargo install dalo</code> still works there,
+because it compiles from source. Dalo 0.16.0 remains the last release with a
+published Intel macOS archive.</p>
 <p><strong>Windows is supported through WSL only.</strong> Run Dalo inside a WSL Linux
 distribution and point targets at paths inside that distribution. There is no
 native Windows build, and native Windows is not planned for 1.x; it is tracked

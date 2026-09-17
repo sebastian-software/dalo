@@ -55,7 +55,7 @@ store and generic target keep the check isolated from any runner state.
 
 ## Release publication
 
-The publish workflow keeps a new GitHub release as a draft while its six target
+The publish workflow keeps a new GitHub release as a draft while its five target
 archives, checksums, and Sigstore bundles build and upload. The workflow creates
 the release tag at draft time so each matrix job can check out the exact release
 commit. A single final job verifies every expected asset and publishes the
@@ -97,7 +97,7 @@ launch notes from `.github/release-notes/<version>.md` before the draft is
 published, as described under [Curated release notes](#curated-release-notes).
 
 Merging that release pull request tags `dalo-v1.0.0` and runs `publish.yml`:
-six signed archives with checksums upload to a draft release, the draft is
+five signed archives with checksums upload to a draft release, the draft is
 published once every asset is present, and crates.io, npm, and the
 `sebastian-software/homebrew-tap` dispatch follow. The tap bump compares
 versions with `sort -V`, so `1.0.0` supersedes `0.16.0` rather than losing to

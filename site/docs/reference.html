@@ -144,13 +144,13 @@ and the <a href="https://github.com/sebastian-software/dalo/blob/main/npm/README
 <h3 id="dalo_target"><a class="doc-anchor" href="#dalo_target"><code>DALO_TARGET</code></a></h3>
 <p><code>DALO_TARGET</code> is read only by <code>https://dalo.sh/install.sh</code>; it is not a Dalo
 CLI option and does not affect an installed binary. An unset or empty value
-uses automatic detection: macOS chooses its <code>x86_64</code> or <code>aarch64</code> target, and
-Linux chooses <code>x86_64</code> or <code>aarch64</code> plus the detected (or
+uses automatic detection: macOS chooses its <code>aarch64</code> target, and Linux
+chooses <code>x86_64</code> or <code>aarch64</code> plus the detected (or
 <code>DALO_LINUX_LIBC</code>-overridden) libc. A non-empty value takes precedence and is
 used verbatim to form the release archive name. Set it only to a published target:
 <code>x86_64-unknown-linux-gnu</code>, <code>aarch64-unknown-linux-gnu</code>,
-<code>x86_64-unknown-linux-musl</code>, <code>aarch64-unknown-linux-musl</code>,
-<code>x86_64-apple-darwin</code>, or <code>aarch64-apple-darwin</code>. The installer does not
+<code>x86_64-unknown-linux-musl</code>, <code>aarch64-unknown-linux-musl</code>, or
+<code>aarch64-apple-darwin</code>. The installer does not
 pre-validate the override; another value fails when its release archive cannot
 be fetched.</p>
 <h2 id="global-flags"><a class="doc-anchor" href="#global-flags">Global Flags</a></h2>

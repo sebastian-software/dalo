@@ -222,7 +222,9 @@ folders. Find a skill on skills.sh, then let Dalo pin and deliver it. See the
 
 ## Installation
 
-Dalo supports macOS and Linux on x86_64 and ARM64. Windows is not currently
+Dalo supports macOS on Apple Silicon, and Linux on x86_64 and ARM64. Intel
+Macs are not supported: that build was discontinued with 1.0, and
+`cargo install dalo` compiles from source there. Windows is not currently
 supported.
 
 ### Hosted installer
