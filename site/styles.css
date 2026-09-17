@@ -555,6 +555,27 @@ section[data-scope="dark"] { background: var(--bg); color: var(--ink); }
 .objection-card h3 { font-size: 1.12rem; margin-bottom: 0.55rem; }
 .objection-card p { color: var(--ink-soft); font-size: var(--fs-sm); }
 
+/* ---------- Tool comparison ---------- */
+.tool-compare { margin-top: clamp(2.5rem, 1.5rem + 3vw, 4rem); }
+.tool-compare-h { font-size: 1.35rem; }
+.tool-compare-scroll {
+  margin-top: 1.2rem; max-width: 100%; overflow-x: auto;
+  border: 1px solid var(--line); border-radius: var(--r-lg);
+}
+.tool-compare table { border-collapse: collapse; width: 100%; min-width: 40rem; font-size: var(--fs-sm); }
+.tool-compare th, .tool-compare td {
+  padding: 0.7rem 0.9rem; text-align: left; vertical-align: top;
+  border-bottom: 1px solid var(--line); color: var(--ink-soft);
+}
+.tool-compare tbody tr:last-child th, .tool-compare tbody tr:last-child td { border-bottom: 0; }
+.tool-compare thead th { background: var(--surface); color: var(--ink); font-weight: 600; }
+.tool-compare tbody th { color: var(--ink); font-weight: 600; width: 22%; background: var(--bg); }
+.tool-compare th:first-child { position: sticky; left: 0; z-index: 1; }
+.tool-compare .col-dalo { background: var(--surface); color: var(--ink); }
+.tool-compare thead .col-dalo { color: var(--accent-text); }
+.tool-compare-note { margin-top: 1rem; font-size: var(--fs-sm); color: var(--ink-faint); max-width: 70ch; }
+.tool-compare-note a { color: var(--accent-text); }
+
 /* ---------- Roadmap ---------- */
 .roadmap-list { list-style: none; padding: 0; margin-top: clamp(2rem, 1rem + 2vw, 2.6rem); display: grid; gap: 0.6rem; max-width: 56rem; }
 .roadmap-list li { display: flex; align-items: center; gap: 1rem; padding: 0.9rem 1.1rem; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); font-size: var(--fs-sm); color: var(--ink); }
