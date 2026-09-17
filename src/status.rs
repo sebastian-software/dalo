@@ -2677,7 +2677,7 @@ fn print_catalog_unselect_hint(store_root: &Path, source_id: &str, skill: &str) 
         "    run: {}",
         store::dalo_command(
             store_root,
-            &format!("source select {source_id} --unselect{end_of_options} {skill}"),
+            &format!("source unselect {source_id}{end_of_options} {skill}"),
         )
     );
 }

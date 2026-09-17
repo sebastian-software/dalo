@@ -428,8 +428,7 @@ JSON output shape: `CatalogSelectReport`.
 Unselect catalog skills by stable frontmatter ID, slot name, catalog-relative
 path, or a source-qualified `<source-id>:<slot-or-stable-id>` reference. The
 source ID must match the catalog being changed. This is the explicit negation
-counterpart to `source select`; the legacy `source select --unselect` spelling
-remains accepted for compatibility.
+counterpart to `source select`.
 
 Examples:
 

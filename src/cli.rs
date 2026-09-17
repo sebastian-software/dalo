@@ -850,10 +850,6 @@ pub struct SourceSelectArgs {
     /// or `<source-id>:<slot-or-stable-id>`).
     #[arg(required = true)]
     pub skills: Vec<String>,
-
-    /// Deprecated compatibility flag; use `source unselect` instead.
-    #[arg(long, hide = true)]
-    pub unselect: bool,
 }
 
 /// Arguments for `source unselect`.
@@ -3824,13 +3820,8 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             } else {
                 Some(store::StoreLock::acquire(&paths)?)
             };
-            let report = catalog::select_skills(
-                &paths,
-                &args.id,
-                &args.skills,
-                args.unselect,
-                options.dry_run,
-            )?;
+            let report =
+                catalog::select_skills(&paths, &args.id, &args.skills, false, options.dry_run)?;
             if options.json {
                 print_json(&report)?;
             } else {
