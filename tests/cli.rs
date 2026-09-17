@@ -8952,6 +8952,53 @@ fn adopt_then_adopt_replace_should_complete_the_two_step_replacement() {
 }
 
 #[test]
+fn sync_conflict_repair_hint_should_name_the_slot_status_names() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_skill_and_target(&store, &target);
+    create_unmanaged_skill(&target, "review");
+
+    let sync = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let sync = String::from_utf8(sync).expect("sync output should be utf8");
+
+    // The conflict line has to hand back a command a reader can copy, which is
+    // the slot name `status` and `doctor` already print — not the absolute link
+    // path this code path happens to hold.
+    assert!(
+        sync.contains("adopt 'review'"),
+        "sync should name the bare slot in its repair hint:\n{sync}"
+    );
+    assert!(
+        !sync.contains(&format!("adopt '{}", target.display())),
+        "sync should not name the absolute link path in its repair hint:\n{sync}"
+    );
+
+    let status = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("status")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let status = String::from_utf8(status).expect("status output should be utf8");
+    assert!(
+        status.contains("adopt 'review'"),
+        "status should name the same slot:\n{status}"
+    );
+}
+
+#[test]
 fn sync_conflict_should_suggest_replace_after_copy_only_adoption_once() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
