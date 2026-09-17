@@ -6,6 +6,7 @@
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 
 use dalo::hook::{self, HookProvider, NativeHookProjection};
@@ -44,15 +45,17 @@ fn node() -> PathBuf {
 }
 
 struct Fixture {
-    _temp: tempfile::TempDir,
+    temp: tempfile::TempDir,
     paths: StorePaths,
     project: PathBuf,
     package: PathBuf,
     event: &'static str,
+    mode: &'static str,
+    entry: &'static str,
 }
 
 impl Fixture {
-    fn new(mode: &str, entry: &str, event: &'static str) -> Self {
+    fn new(mode: &'static str, entry: &'static str, event: &'static str) -> Self {
         let temp = tempfile::tempdir().unwrap();
         let paths = StorePaths::new(temp.path().join("store"));
         store::init_store(paths.root.clone(), false).unwrap();
@@ -120,11 +123,13 @@ matcher = {{ tool_names = ["Edit", "Write"] }}
             fs::copy(fixtures().join(entry), destination).unwrap();
         }
         Self {
-            _temp: temp,
+            temp,
             paths,
             project,
             package,
             event,
+            mode,
+            entry,
         }
     }
 
@@ -180,6 +185,49 @@ matcher = {{ tool_names = ["Edit", "Write"] }}
                 group: group["id"].as_str().unwrap(),
             },
             &serde_json::to_vec(input).unwrap(),
+        )
+    }
+
+    /// Explain an unexpected dispatch envelope.
+    ///
+    /// The dispatcher bounds handler failures to a short category, so a bare
+    /// assertion cannot say why a hook misbehaved on a machine one cannot
+    /// attach a debugger to. Re-run the staged handler exactly the way the
+    /// dispatcher does and report its raw streams alongside the envelope.
+    fn explain(&self, projection: &NativeHookProjection, actual: &Value, input: &Value) -> String {
+        let root = PathBuf::from(
+            projection.dispatcher_manifest["hooks"][0]["tool_root"]
+                .as_str()
+                .unwrap(),
+        );
+        let event = self.temp.path().join("explain-event.json");
+        fs::write(&event, input.to_string()).unwrap();
+        let mut command = std::process::Command::new(root.join("run-hook"));
+        command
+            .args([self.mode, self.entry])
+            .current_dir(&root)
+            .env_clear()
+            .stdin(fs::File::open(&event).unwrap())
+            .process_group(0);
+        let rerun = match command.output() {
+            Ok(output) => format!(
+                "rerun status: {}\nrerun stdout: {}\nrerun stderr: {}",
+                output.status,
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr),
+            ),
+            Err(error) => format!("rerun failed to start: {error}"),
+        };
+        let mut entries = fs::read_dir(&self.project)
+            .map(|dir| {
+                dir.filter_map(Result::ok)
+                    .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        entries.sort();
+        format!(
+            "dispatched envelope: {actual}\nevent input: {input}\nproject entries: {entries:?}\n{rerun}"
         )
     }
 }
@@ -290,17 +338,22 @@ fn planning_with_files_original_reminder_uses_project_cwd() {
     let fixture = Fixture::new("text", "pwf/.cursor/hooks/post-tool-use.sh", "PostToolUse");
     fixture.approve();
     let projection = fixture.install(HookProvider::Codex);
+    let input = fixture.input();
+    let actual = fixture.dispatch(&projection, &input).unwrap();
     assert_eq!(
-        fixture.dispatch(&projection, &fixture.input()).unwrap(),
-        json!({})
+        actual,
+        json!({}),
+        "without a plan file the reminder must abstain: {}",
+        fixture.explain(&projection, &actual, &input)
     );
     fs::write(fixture.project.join("task_plan.md"), "# Active plan\n").unwrap();
-    let actual = fixture.dispatch(&projection, &fixture.input()).unwrap();
+    let actual = fixture.dispatch(&projection, &input).unwrap();
     assert!(
         actual["hookSpecificOutput"]["additionalContext"]
             .as_str()
-            .unwrap()
-            .contains("[planning-with-files] Update progress.md")
+            .is_some_and(|context| context.contains("[planning-with-files] Update progress.md")),
+        "the reminder must reach the model: {}",
+        fixture.explain(&projection, &actual, &input)
     );
     assert_eq!(
         fs::read_to_string(fixture.project.join("task_plan.md")).unwrap(),

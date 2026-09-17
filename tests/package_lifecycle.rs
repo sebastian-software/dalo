@@ -199,6 +199,10 @@ blocking_scope = "matched_event"
     }
 
     fn dispatch(&self) -> Value {
+        self.dispatch_event(&json!({"session_id": "lifecycle", "prompt": "Review"}))
+    }
+
+    fn dispatch_event(&self, input: &Value) -> Value {
         let projection = hook::compile_native_projection(
             &self.paths,
             self.provider,
@@ -216,7 +220,7 @@ blocking_scope = "matched_event"
                 event: "UserPromptSubmit",
                 group: group["id"].as_str().unwrap(),
             },
-            &serde_json::to_vec(&json!({"session_id": "lifecycle", "prompt": "Review"})).unwrap(),
+            &serde_json::to_vec(input).unwrap(),
         )
         .unwrap()
     }
@@ -337,4 +341,28 @@ fn package_lifecycle_preserves_independent_trust_and_user_content() {
             format!("{USER_NOTES}\n")
         );
     }
+}
+
+/// A hook handler may ignore its event and exit at once, and the dispatcher
+/// prewrites the payload to a seekable file for exactly that reason. Sending it
+/// through a child stdin pipe instead races that exit: the write fails with
+/// `EPIPE` once the payload outgrows the pipe buffer, and a handler that did
+/// its work is reported as failed.
+#[test]
+fn dispatch_hands_an_oversized_event_to_a_handler_that_never_reads_stdin() {
+    let fixture = Fixture::new(HookProvider::Claude);
+    fixture
+        .command()
+        .args(["plugin", "select", PACKAGE])
+        .assert()
+        .success();
+    fixture.approve_review();
+    fixture.command().arg("sync").assert().success();
+    let prompt = "prompt ".repeat(64 * 1024);
+    assert!(prompt.len() > 64 * 1024, "the event must outgrow a pipe");
+    let actual = fixture.dispatch_event(&json!({"session_id": "lifecycle", "prompt": prompt}));
+    assert_eq!(
+        actual["hookSpecificOutput"]["additionalContext"], "Review version one.",
+        "a handler that never reads its event must still succeed: {actual}"
+    );
 }
