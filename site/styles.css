@@ -536,7 +536,11 @@ section[data-scope="dark"] { background: var(--bg); color: var(--ink); }
 .recovery-note { margin-top: 1.25rem; max-width: 48ch; color: var(--ink-soft); font-size: var(--fs-sm); }
 .recovery-note code { font-family: var(--font-mono); color: var(--accent-text); font-size: 0.92em; }
 .recovery-terminal { box-shadow: var(--shadow-lg); }
-.recovery-terminal .terminal-body { font-size: clamp(0.7rem, 0.61rem + 0.22vw, var(--fs-mono)); }
+.recovery-terminal .terminal-body { font-size: clamp(0.7rem, 0.61rem + 0.22vw, var(--fs-mono)); line-height: 1.55; }
+/* The point of these transcripts is the command at the end of each line, so
+   they wrap at the panel edge the way a real terminal does instead of
+   disappearing into a horizontal scroll. */
+.recovery-terminal .terminal-body .ln { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* ---------- Targets ---------- */
 .targets-grid { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: clamp(2rem, 1rem + 4vw, 4rem); align-items: start; }
