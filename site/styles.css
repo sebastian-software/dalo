@@ -290,7 +290,9 @@ section[data-scope="dark"] { background: var(--bg); color: var(--ink); }
 .hero-grid { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: clamp(2rem, 1rem + 4vw, 4.5rem); align-items: center; }
 .hero-copy { max-width: 38rem; }
 .kicker {
-  display: inline-flex; align-items: center; gap: 0.55rem;
+  /* The label and the version stamp are separate flex items; never let the
+     label wrap away from the stamp. */
+  display: inline-flex; align-items: center; gap: 0.55rem; white-space: nowrap; max-width: 100%;
   font-family: var(--font-mono); font-size: var(--fs-mono); font-weight: 500;
   letter-spacing: 0.02em; color: var(--ink-soft);
   border: 1px solid var(--line); border-radius: var(--r-pill);
@@ -329,7 +331,10 @@ section[data-scope="dark"] { background: var(--bg); color: var(--ink); }
 .terminal-title { margin-left: 0.6rem; font-family: var(--font-mono); font-size: 0.76rem; color: var(--term-dim); }
 .terminal-body {
   margin: 0; padding: 1.1rem 1.2rem; font-family: var(--font-mono); font-size: var(--fs-mono);
-  line-height: 1.85; color: var(--term-ink); overflow-x: auto; tab-size: 2;
+  line-height: 1.6; color: var(--term-ink); overflow-x: auto; tab-size: 2;
+  /* Each line is its own block; the newline between two `.ln` blocks must not
+     become an empty line of its own, so the container collapses whitespace. */
+  white-space: normal;
 }
 .terminal-body .ln { display: block; white-space: pre; }
 .prompt { color: var(--accent); font-weight: 500; }
@@ -468,11 +473,15 @@ section[data-scope="dark"] { background: var(--bg); color: var(--ink); }
 .install-picker { margin-top: 1.4rem; }
 .install-picker.hero-install { margin-top: 2rem; }
 .install-methods:not([hidden]) {
-  display: inline-flex; max-width: 100%; gap: 0.22rem; padding: 0.24rem;
-  border: 1px solid var(--line-strong); border-radius: var(--r-pill); background: var(--surface);
+  /* Four methods with their platform notes never fit one row inside a text
+     column, and a wrapped pill row looks ragged, so the picker is a fixed
+     two-by-two grid in a rounded box. */
+  display: grid; grid-template-columns: 1fr 1fr; max-width: 100%; gap: 0.22rem; padding: 0.24rem;
+  border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface);
 }
 .install-method {
-  display: inline-flex; align-items: baseline; gap: 0.42rem; min-height: 34px;
+  display: inline-flex; align-items: baseline; justify-content: center; gap: 0.42rem;
+  min-height: 34px; white-space: nowrap;
   padding: 0.38rem 0.72rem; border: 1px solid transparent; border-radius: var(--r-pill);
   background: transparent; color: var(--ink-soft); cursor: pointer;
   font: 600 var(--fs-sm) / 1 var(--font-body);
@@ -725,8 +734,7 @@ section[data-scope="dark"] { background: var(--bg); color: var(--ink); }
 @media (max-width: 420px) {
   .hero-cta { flex-direction: column; align-items: stretch; }
   .hero-cta .btn { justify-content: center; }
-  /* Four methods no longer fit on one phone-width row; two rows of two do. */
-  .install-methods:not([hidden]) { display: grid; grid-template-columns: 1fr 1fr; border-radius: var(--r); }
-  .install-method { justify-content: center; padding-inline: 0.5rem; text-align: center; }
+  /* The platform notes do not fit next to the labels on a phone. */
+  .install-method { padding-inline: 0.5rem; }
   .install-method span { display: none; }
 }
