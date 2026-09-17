@@ -266,26 +266,42 @@ test -f "$root/docs/adr/0008-compatibility-contract.md"
 # this list and document it in docs/upgrading.md in the same pull request.
 upgrading="$root/docs/upgrading.md"
 test -f "$upgrading"
-for removed_spelling in '`--yes`' 'audit --agent <reviewer>' 'select <id> --unselect' '`--refresh`' 'target ID `cursor`'; do
-  grep -Fq -e "$removed_spelling" "$upgrading" \
-    || { echo "docs/upgrading.md does not name the removed spelling $removed_spelling" >&2; exit 1; }
-done
-for upgrading_replacement in \
-  'audit --reviewer <reviewer>' \
-  'source unselect <id> <skill>...' \
-  '`--refresh-audit`' \
-  'dalo target link generic ~/.cursor/skills'; do
-  grep -Fq -e "$upgrading_replacement" "$upgrading" \
-    || { echo "docs/upgrading.md does not name the replacement $upgrading_replacement" >&2; exit 1; }
+# The curated 1.0 release body is committed so a maintainer can paste it over the
+# generated release notes; it repeats the same inventory, so both are checked.
+release_notes="$root/.github/release-notes/1.0.0.md"
+test -f "$release_notes"
+for breaking_document in "$upgrading" "$release_notes"; do
+  for removed_spelling in '`--yes`' 'audit --agent <reviewer>' 'select <id> --unselect' '`--refresh`' 'target ID `cursor`'; do
+    grep -Fq -e "$removed_spelling" "$breaking_document" \
+      || { echo "$breaking_document does not name the removed spelling $removed_spelling" >&2; exit 1; }
+  done
+  for upgrading_replacement in \
+    'audit --reviewer <reviewer>' \
+    'source unselect <id> <skill>...' \
+    '`--refresh-audit`' \
+    'dalo target link generic ~/.cursor/skills'; do
+    grep -Fq -e "$upgrading_replacement" "$breaking_document" \
+      || { echo "$breaking_document does not name the replacement $upgrading_replacement" >&2; exit 1; }
+  done
 done
 grep -Fq '(compatibility.md)' "$upgrading" \
   || { echo 'docs/upgrading.md no longer links the compatibility contract' >&2; exit 1; }
 grep -Fq '(security.md)' "$upgrading" \
   || { echo 'docs/upgrading.md no longer links the security overview' >&2; exit 1; }
 grep -Fq 'schema_migration_pending' "$upgrading"
-# The 1.0 release-notes link is a placeholder until #817 wires it; the sentence
-# has to stay findable so it cannot be forgotten.
-grep -Fq 'Release notes: see the 1.0.0 entry in' "$upgrading"
+# The upgrading guide opens with the deep link to the 1.0.0 release page. The tag
+# format is `dalo-v<version>`, so the link only resolves once 1.0.0 is published.
+grep -Fq 'https://github.com/sebastian-software/dalo/releases/tag/dalo-v1.0.0' \
+  "$upgrading"
+# The curated release body has to keep linking the three pages it sends a reader
+# to, and docs/ci.md has to keep documenting how the file reaches the release.
+for release_notes_link in compatibility security upgrading; do
+  grep -Fq "https://github.com/sebastian-software/dalo/blob/main/docs/$release_notes_link.md" \
+    "$release_notes" \
+    || { echo "the 1.0 release notes no longer link docs/$release_notes_link.md" >&2; exit 1; }
+done
+grep -Fq '.github/release-notes/1.0.0.md' "$root/docs/ci.md" \
+  || { echo 'docs/ci.md no longer documents the curated release body' >&2; exit 1; }
 # Reachable from the contract it demonstrates, the README, and the FAQ.
 grep -Fq '(upgrading.md)' "$compatibility"
 grep -Fq '(docs/upgrading.md)' "$root/README.md"

@@ -4,10 +4,11 @@ This page is for someone who already runs Dalo 0.x and is moving to 1.0. It
 answers four questions: do I have to do anything, what does the first run
 print, which spellings are gone, and what happens if I have to go back.
 
-> **Release notes: see the 1.0.0 entry in [CHANGELOG.md](../CHANGELOG.md).**
-> *(Placeholder — issue
-> [#817](https://github.com/sebastian-software/dalo/issues/817) replaces this
-> line with the deep link once the 1.0 notes are cut.)*
+> **Release notes: [what 1.0 changes, and
+> why](https://github.com/sebastian-software/dalo/releases/tag/dalo-v1.0.0)** —
+> the highlights since 0.6, the breaking changes with their replacements, and
+> the same upgrade summary in short. The identical text opens the 1.0.0 entry in
+> [CHANGELOG.md](../CHANGELOG.md).
 
 **Short answer: install the new binary and run `dalo sync`. There is no
 migration command, nothing is unlinked, and no approval has to be granted
