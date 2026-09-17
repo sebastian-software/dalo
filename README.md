@@ -151,7 +151,9 @@ success, skip, or blocking reason visible in `status` and `doctor`.
 #### Compose external skill sets for the team
 
 A team repository can include a `dalo.toml` manifest alongside its own
-`skills/` directory. Manage it from that repository with the team CLI:
+`skills/` directory. The [team repository guide](docs/team.md) walks the whole
+path, from `dalo team init` to what a teammate runs on a new laptop. Manage the
+manifest from that repository with the team CLI:
 
 ```sh
 dalo team init company --name "Company Skills"
@@ -560,6 +562,7 @@ For manual archives, upgrades, shell completions, and removal, see the
 ## Documentation
 
 - [Getting started](docs/getting-started.md)
+- [Team repository guide](docs/team.md)
 - [Command reference](docs/reference.md)
 - [Compatibility and stability](docs/compatibility.md)
 - [Portable Agent Packages — experimental specification](docs/spec/README.md)

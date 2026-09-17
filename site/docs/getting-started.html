@@ -70,6 +70,7 @@
   <nav class="doc-nav" aria-label="Documentation">
     <p class="footer-h">Documentation</p>
         <a href="/docs/getting-started.html" aria-current="page">Getting started</a>
+        <a href="/docs/team.html">Team repository</a>
         <a href="/docs/reference.html">Command reference</a>
         <a href="/docs/compatibility.html">Compatibility</a>
         <a href="/docs/agents.html">Agent integration</a>
@@ -81,41 +82,185 @@
   </nav>
   <article class="doc-body">
 <h1 id="getting-started">Getting Started</h1>
-<p>This guide walks through Dalo&#39;s core loop without touching your real agent folders
-first. Install Dalo first (see the <a href="https://github.com/sebastian-software/dalo/blob/main/README.md#installation" rel="noopener">README installation instructions</a>),
-make sure <code>git</code> is on <code>PATH</code>, and use Linux or macOS.</p>
-<h2 id="1-create-a-sandbox-store"><a class="doc-anchor" href="#1-create-a-sandbox-store">1. Create a sandbox store</a></h2>
+<p>This guide takes one machine from a fresh install to agents that read the
+team&#39;s skills. It is written for the developer side. If you own the repository
+those skills come from, read the <a href="/docs/team.html">team repository guide</a> instead — or
+afterwards.</p>
+<p>Before you start:</p>
+<ul>
+<li>install Dalo (see the <a href="https://github.com/sebastian-software/dalo/blob/main/README.md#installation" rel="noopener">README installation instructions</a>)</li>
+<li>have <code>git</code> on <code>PATH</code></li>
+<li>use Linux or macOS</li>
+</ul>
+<p>If you would rather try everything without touching your agent folders, jump to
+<a href="#explore-without-touching-your-agent-folders">Explore without touching your agent folders</a>
+and come back.</p>
+<h2 id="1-initialize-the-store"><a class="doc-anchor" href="#1-initialize-the-store">1. Initialize the store</a></h2>
+<pre><code class="language-sh">dalo init
+</code></pre>
+<p>The store is Dalo&#39;s local database: source checkouts, the private local source,
+lockfiles, approvals, and target state. It lives in <code>~/.dalo</code> unless <code>--store</code>
+or <code>DALO_STORE</code> says otherwise. Your agent folders are output, never input;
+nothing in them is read back into the store by accident.</p>
+<p><code>init</code> finishes by printing the next three steps, which are the next three
+sections of this page.</p>
+<h2 id="2-connect-an-agent"><a class="doc-anchor" href="#2-connect-an-agent">2. Connect an agent</a></h2>
+<p>Ask Dalo what it can see:</p>
+<pre><code class="language-sh">dalo target detect
+</code></pre>
+<p>The report lists every known target, the path it would use, whether that path
+exists, and whether it is already linked. Then link the agents you use:</p>
+<pre><code class="language-sh">dalo target link claude
+# or: dalo target link codex
+# or: dalo target link openclaw
+# or: dalo target link hermes
+# or: dalo target link opencode
+</code></pre>
+<p>A known target uses its default directory; pass a path to override it. The
+<code>generic</code> target always needs an explicit path:</p>
+<pre><code class="language-sh">dalo target link generic /path/to/agent/skills
+</code></pre>
+<p>Linking records a directory. It does not move or delete anything yet.</p>
+<h2 id="3-add-your-teams-skill-repository"><a class="doc-anchor" href="#3-add-your-teams-skill-repository">3. Add your team&#39;s skill repository</a></h2>
+<p>A source is a Git-backed collection of skills. A team source is trusted by
+default, so its skills do not need per-skill approval:</p>
+<pre><code class="language-sh">dalo source add company git@github.com:acme/agent-skills.git
+</code></pre>
+<p>Dalo clones it, discovers the skills under <code>skills/</code>, and runs a deterministic
+security preflight over every one of them before anything is linked.</p>
+<p>If your team repository also pins public catalogs in a <code>dalo.toml</code> manifest,
+those arrive automatically as <code>company.&lt;catalog-id&gt;</code> sources. They are
+untrusted, so their skills wait for your approval — see
+<a href="#pending-approval">pending approval</a> below.</p>
+<h2 id="4-sync"><a class="doc-anchor" href="#4-sync">4. Sync</a></h2>
+<pre><code class="language-sh">dalo sync
+</code></pre>
+<p><code>sync</code> refreshes clean tracking sources, resolves one approved skill set, and
+links that set into every linked target:</p>
+<pre><code class="language-text">target[claude]: …/skills
+applied  create     target[claude]:/incident-review -&gt; store:/sources/company/checkout/skills/incident-review
+applied  create     target[claude]:/release-notes -&gt; store:/sources/company/checkout/skills/release-notes
+synced: 2 skills across 1 target (2 created)
+security preflight: deterministic checks only
+</code></pre>
+<p>Dalo creates symlinks it owns. It never overwrites an unmanaged directory or a
+symlink it did not create; anything it cannot do safely is reported instead.</p>
+<p>Your agent now reads those skills from the folder it already uses.</p>
+<h2 id="5-read-the-state"><a class="doc-anchor" href="#5-read-the-state">5. Read the state</a></h2>
+<p>Two commands answer two different questions.</p>
+<pre><code class="language-sh">dalo status
+dalo next
+</code></pre>
+<p><code>status</code> is the full picture: sources, targets, active skills, pending
+approvals, unlinked skills, materialization blocks, resolution diagnostics, and
+lock drift. <code>dalo status --check</code> exits non-zero when anything needs attention,
+which is what you want in a script or a pipeline.</p>
+<p><code>next</code> is the opposite: one summary and exactly one copyable command.</p>
+<pre><code class="language-text">Dalo
+  store: …
+  initialized: yes
+  linked targets: 1
+  sources: 4
+  active skills: 4
+  pending approvals: 0
+
+Next: dalo status
+  Linked targets contain unmanaged skills; review detailed status before synchronizing.
+</code></pre>
+<p>In a terminal, bare <code>dalo</code> prints the same summary. Use <code>dalo next</code> explicitly
+when output is piped or scripted.</p>
+<h2 id="6-three-words-status-uses-and-the-command-that-clears-each"><a class="doc-anchor" href="#6-three-words-status-uses-and-the-command-that-clears-each">6. Three words status uses, and the command that clears each</a></h2>
+<p>The first time <code>status</code> says something surprising, it is almost always one of
+these three. The transcripts below are real output from a linked <code>claude</code>
+target.</p>
+<h3 id="pending-approval"><a class="doc-anchor" href="#pending-approval">Pending approval</a></h3>
+<p>A skill is available but untrusted, so Dalo will not link it. Catalog sources
+and catalogs pinned by a team manifest start here by design.</p>
+<pre><code class="language-text">pending approval:
+  pr-review -&gt; public:pr-review (run: dalo approve skill public:pr-review)
+</code></pre>
+<p><code>sync</code> still does all the other work and repeats the same line at the end:</p>
+<pre><code class="language-text">synced: 2 skills across 1 target (2 unchanged)
+pending approval: public:pr-review (run: dalo approve skill public:pr-review)
+</code></pre>
+<p>Read the skill first — <code>dalo audit public:pr-review</code> prints the deterministic
+findings and the exact content hash — then run the command status gave you:</p>
+<pre><code class="language-sh">dalo approve skill public:pr-review
+dalo sync
+</code></pre>
+<p>Approvals are per skill, per machine, and bound to exact content. They are
+never inherited from a teammate and never granted by a sync.</p>
+<h3 id="shadowed"><a class="doc-anchor" href="#shadowed">Shadowed</a></h3>
+<p>Two sources offer the same skill name. Dalo links exactly one of them and keeps
+the other visible instead of discarding it:</p>
+<pre><code class="language-text">unlinked skills:
+  release-notes -&gt; company:release-notes reason=shadowed by=personal:release-notes
+resolution diagnostics:
+  shadowed: skill `company:release-notes` is unlinked because `personal:release-notes` wins the same slot
+</code></pre>
+<p>The lower priority number wins. To flip the winner, change one priority:</p>
+<pre><code class="language-sh">dalo source priority company 1
+dalo sync
+</code></pre>
+<p>If both variants should stay installed side by side, give one source a
+namespace instead (<code>dalo source namespace public acme</code>); its skills are linked
+as <code>acme__release-notes</code>.</p>
+<h3 id="conflict"><a class="doc-anchor" href="#conflict">Conflict</a></h3>
+<p>Dalo wants a slot that is already occupied by a real, unmanaged directory —
+usually a skill an agent wrote directly into its own folder.</p>
+<pre><code class="language-text">materialization blocks:
+  target[claude]:/standup-notes: real unmanaged entry exists at target slot
+unmanaged skills:
+  standup-notes -&gt; target[claude]:/standup-notes (adopt: run `dalo adopt &#39;standup-notes&#39;` to copy it into the local source; use `dalo adopt &#39;standup-notes&#39; --replace` to replace the original)
+</code></pre>
+<p><code>sync</code> reports the block and leaves your file alone:</p>
+<pre><code class="language-text">blocked  conflict   target[claude]:/standup-notes -&gt; store:/sources/company/checkout/skills/standup-notes (real unmanaged entry exists at target slot) …
+synced: 4 skills across 1 target (3 unchanged, 1 blocked)
+</code></pre>
+<p>Pick one:</p>
+<pre><code class="language-sh">dalo adopt standup-notes --replace   # keep your version, let Dalo manage it
+dalo resolve keep standup-notes      # keep it unmanaged and stop reporting it
+</code></pre>
+<p><code>dalo adopt standup-notes</code> without <code>--replace</code> copies the skill into the local
+source and leaves the original directory exactly where it is.</p>
+<h2 id="7-keep-it-current"><a class="doc-anchor" href="#7-keep-it-current">7. Keep it current</a></h2>
+<p>Rerun <code>dalo sync</code> whenever the team repository moves. To let the machine do it:</p>
+<pre><code class="language-sh">dalo autosync install --schedule daily
+dalo autosync status
+</code></pre>
+<p>macOS uses launchd, Linux a systemd user timer with a marked crontab fallback.
+Scheduled runs never grant approvals and never wait on an interactive Dalo
+process; whatever they skip or block on stays visible in <code>status</code> and <code>doctor</code>.</p>
+<p>For a focused health check:</p>
+<pre><code class="language-sh">dalo doctor
+</code></pre>
+<h2 id="explore-without-touching-your-agent-folders"><a class="doc-anchor" href="#explore-without-touching-your-agent-folders">Explore without touching your agent folders</a></h2>
+<p>Everything above also works in a throwaway store with a temporary folder as the
+target. Nothing in this section writes to a real agent directory.</p>
+<h3 id="a-sandbox-store"><a class="doc-anchor" href="#a-sandbox-store">A sandbox store</a></h3>
 <pre><code class="language-sh">export DALO_STORE=&quot;$(mktemp -d)/store&quot;
 target_dir=&quot;$(mktemp -d)/skills&quot;
 
 dalo init
 dalo target link generic &quot;$target_dir&quot;
 </code></pre>
-<p>The store is Dalo&#39;s local database. It contains source checkouts, the local source, lockfiles, approvals, and target state.</p>
-<p>The target is where Dalo materializes the resolved skill set. In this sandbox it is just a temporary folder.</p>
-<p>At any point, run <code>dalo next</code> to see the store summary and the single most
-useful next command. In a terminal, bare <code>dalo</code> shows the same summary; use
-<code>dalo next</code> when output is piped or scripted.</p>
-<h2 id="2-add-a-local-skill"><a class="doc-anchor" href="#2-add-a-local-skill">2. Add a local skill</a></h2>
+<h3 id="a-local-skill"><a class="doc-anchor" href="#a-local-skill">A local skill</a></h3>
 <pre><code class="language-sh">mkdir -p &quot;$DALO_STORE/local/skills/review&quot;
 cat &gt; &quot;$DALO_STORE/local/skills/review/SKILL.md&quot; &lt;&lt;&#39;EOF&#39;
 # Review
 
 Check behavioral regressions before style nits.
 EOF
-</code></pre>
-<p>The local source is private to your machine. It is useful for experiments and overrides.</p>
-<h2 id="3-sync"><a class="doc-anchor" href="#3-sync">3. Sync</a></h2>
-<pre><code class="language-sh">dalo status
+
+dalo status
 dalo sync
 ls -la &quot;$target_dir&quot;
 </code></pre>
-<p><code>sync</code> refreshes clean tracking sources, resolves one approved skill set, and links that set into configured targets. Dalo links directories it owns and refuses to overwrite unmanaged files.</p>
-<p><code>status</code> may show a <code>lock drift</code> block here. That just means the next <code>sync</code>
-has not recorded the new skill yet; it disappears after <code>dalo sync</code>. See
-<a href="/docs/troubleshooting.html#lock-drift">Lock Drift</a> for more detail.</p>
-<h2 id="4-try-a-local-team-source"><a class="doc-anchor" href="#4-try-a-local-team-source">4. Try a local team source</a></h2>
-<p>This uses a local Git repository, so it works without network access.</p>
+<p>The local source is private to your machine: experiments and overrides live
+there. <code>status</code> may show a <code>lock drift</code> block until the next <code>sync</code> records the
+new skill; see <a href="/docs/troubleshooting.html#lock-drift">Lock Drift</a>.</p>
+<h3 id="a-local-team-source"><a class="doc-anchor" href="#a-local-team-source">A local team source</a></h3>
+<p>A local Git repository works as a source, so this needs no network access:</p>
 <pre><code class="language-sh">TEAM_REPO=&quot;$(mktemp -d)/team-skills&quot;
 mkdir -p &quot;$TEAM_REPO/skills/release-notes&quot;
 cat &gt; &quot;$TEAM_REPO/skills/release-notes/SKILL.md&quot; &lt;&lt;&#39;EOF&#39;
@@ -132,14 +277,10 @@ dalo source add company &quot;$TEAM_REPO&quot;
 dalo source list
 dalo sync
 </code></pre>
-<p>A source is a Git-backed collection of skills. Source priority decides conflicts: lower priority numbers win. A slot is the portable skill name Dalo links into target folders.</p>
-<p>Team sources are trusted by default, so their skills do not need per-skill
-approval. Sync still audits team content and blocks unaccepted high or critical
-findings. Use a catalog source when you want to review and approve individual
-skills.</p>
-<h2 id="5-try-a-catalog-source"><a class="doc-anchor" href="#5-try-a-catalog-source">5. Try a catalog source</a></h2>
-<p>This local catalog demonstrates the selection and approval flow without network
-access:</p>
+<p>Sync still audits team content and blocks unaccepted high or critical findings.</p>
+<h3 id="a-local-catalog-source"><a class="doc-anchor" href="#a-local-catalog-source">A local catalog source</a></h3>
+<p>A catalog offers many skills and installs only what you select. This is where
+<a href="#pending-approval">pending approval</a> comes from:</p>
 <pre><code class="language-sh">CATALOG_REPO=&quot;$(mktemp -d)/catalog-skills&quot;
 mkdir -p &quot;$CATALOG_REPO/skills/review-helper&quot;
 cat &gt; &quot;$CATALOG_REPO/skills/review-helper/SKILL.md&quot; &lt;&lt;&#39;EOF&#39;
@@ -157,62 +298,53 @@ dalo source inspect public
 dalo source select public review-helper
 dalo status
 </code></pre>
-<p>Catalog skills are untrusted by default. After reviewing the pending skill,
-<code>status</code> prints the exact narrow approval command. Grant only that skill, then
-sync it. The <code>lock drift</code> block is still expected until that sync records the
-new selection:</p>
+<p>Review the pending skill, grant only that skill, then sync it:</p>
 <pre><code class="language-sh">dalo audit public:review-helper
 dalo approve skill public:review-helper
 dalo sync
-</code></pre>
-<p>Optionally, add a semantic review by an agent. This requires an installed Claude
-or OpenCode CLI on your <code>PATH</code> and may send the skill&#39;s contents to the
-configured provider; without an agent CLI available it exits with an error, so
-it is not part of the core flow:</p>
-<pre><code class="language-sh">dalo audit public:review-helper --reviewer auto
 </code></pre>
 <p><code>source add</code>, <code>source select</code>, and <code>approve skill</code> run deterministic local
 preflight checks. <code>sync</code> repeats them against the exact content about to be
 linked and blocks unaccepted <code>high</code> or <code>critical</code> findings from those checks or
 a compatible cached review. <code>sync</code> does not start an agent reviewer, and a
-passing preflight is not a safety guarantee. To accept a known risk for one
-exact content hash and finding set, provide a reason:</p>
+passing preflight is not a safety guarantee.</p>
+<p>An optional semantic review by an agent needs an installed Claude or OpenCode
+CLI on <code>PATH</code> and may send the skill&#39;s contents to that provider, so it is not
+part of the core flow:</p>
+<pre><code class="language-sh">dalo audit public:review-helper --reviewer auto
+</code></pre>
+<p>To accept a known risk for one exact content hash and finding set, give a
+reason:</p>
 <pre><code class="language-sh">dalo audit public:review-helper --accept-risk &quot;reviewed pinned upstream installer&quot;
 </code></pre>
 <p>Changing any file, adding findings, or upgrading an audit or review engine
-invalidates that acceptance.</p>
-<p>Use <code>dalo approve list</code> to inspect local trust rules. Broader <code>source</code>, <code>author</code>,
-and <code>org</code> approvals are available when that is the intended policy.</p>
-<h2 id="6-move-from-sandbox-to-a-real-agent"><a class="doc-anchor" href="#6-move-from-sandbox-to-a-real-agent">6. Move from sandbox to a real agent</a></h2>
-<p>Unset the sandbox variables when you are ready to use your real store and agent folder:</p>
+invalidates that acceptance. <code>dalo approve list</code> shows the local trust rules;
+broader <code>source</code>, <code>author</code>, and <code>org</code> approvals exist when that is the intended
+policy.</p>
+<h3 id="leaving-the-sandbox"><a class="doc-anchor" href="#leaving-the-sandbox">Leaving the sandbox</a></h3>
 <pre><code class="language-sh">unset DALO_STORE
-dalo init
-dalo target detect
 </code></pre>
-<p>Then link one real target:</p>
-<pre><code class="language-sh">dalo target link codex
-# or: dalo target link claude
-# or: dalo target link openclaw
-# or: dalo target link hermes
-</code></pre>
-<p>Add your team source and sync:</p>
-<pre><code class="language-sh">dalo source add company git@github.com:acme/agent-skills.git
-dalo sync
-dalo doctor
-</code></pre>
-<h2 id="7-adopt-a-local-skill"><a class="doc-anchor" href="#7-adopt-a-local-skill">7. Adopt a local skill</a></h2>
-<p>If an agent created a useful unmanaged skill directly in its folder, inspect it first:</p>
-<pre><code class="language-sh">dalo status
-</code></pre>
-<p>Then copy it into Dalo&#39;s local source:</p>
+<p>The next command uses your real store again.</p>
+<h2 id="adopt-a-skill-an-agent-wrote"><a class="doc-anchor" href="#adopt-a-skill-an-agent-wrote">Adopt a skill an agent wrote</a></h2>
+<p>When an agent creates a useful skill directly in its own folder, <code>status</code> lists
+it under <code>unmanaged skills</code>. Copy it into the private local source:</p>
 <pre><code class="language-sh">dalo adopt release-notes
 </code></pre>
-<p>Adoption prints a local security preflight before it copies or replaces the
-unmanaged skill.</p>
-<p>Replacing the original folder with a Dalo-owned symlink is a separate explicit step:</p>
+<p>Adoption prints a local security preflight before it copies anything. Replacing
+the original folder with a Dalo-owned symlink is a separate explicit step:</p>
 <pre><code class="language-sh">dalo adopt --replace release-notes
 </code></pre>
-<p>Dalo does not commit adopted work automatically.</p>
+<p>Dalo does not commit adopted work automatically. You decide when an experiment
+is ready to move into the reviewed team repository.</p>
+<h2 id="where-to-go-next"><a class="doc-anchor" href="#where-to-go-next">Where to go next</a></h2>
+<ul>
+<li><a href="/docs/team.html">Team repository guide</a> — publish the source your teammates add</li>
+<li><a href="/docs/reference.html">Command reference</a> — every command, flag, and file format</li>
+<li><a href="/docs/agents.html">Agent integration</a> — supported agents and their directories</li>
+<li><a href="/docs/troubleshooting.html">Troubleshooting</a> — each diagnostic and the command that
+clears it</li>
+<li><a href="/docs/ci.html">Dalo in CI</a> — reproducible, non-interactive sync in a pipeline</li>
+</ul>
 <p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/getting-started.md" rel="noopener">docs/getting-started.md</a></p>
   </article>
 </main>

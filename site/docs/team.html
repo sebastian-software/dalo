@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Team Repository Guide · Dalo documentation</title>
+  <meta name="description" content="Publish a team source: pin external catalogs, advance a pin, and onboard a teammate." />
+  <link rel="canonical" href="https://dalo.sh/docs/team.html" />
+  <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#15171c" media="(prefers-color-scheme: dark)" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Dalo" />
+  <meta property="og:url" content="https://dalo.sh/docs/team.html" />
+  <meta property="og:title" content="Team Repository Guide · Dalo documentation" />
+  <meta property="og:description" content="Publish a team source: pin external catalogs, advance a pin, and onboard a teammate." />
+  <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
+  <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
+  <link rel="preload" href="/assets/fonts/hanken-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/assets/fonts/geistmono-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/docs.css" />
+</head>
+<body class="doc-page">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header" data-scope="dark">
+  <div class="wrap header-inner">
+    <a class="brand" href="/" aria-label="Dalo home">
+      <svg class="brand-mark" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true" focusable="false">
+        <rect x="1.25" y="1.25" width="29.5" height="29.5" rx="8" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <circle cx="9" cy="9.5" r="2" fill="currentColor" />
+        <circle cx="9" cy="16" r="2" fill="currentColor" />
+        <circle cx="9" cy="22.5" r="2" fill="currentColor" />
+        <path d="M11 9.5 H17 Q22 9.5 22 16 Q22 22.5 17 22.5 H11 M11 16 H22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" />
+        <circle cx="22.5" cy="16" r="2.6" fill="var(--accent)" />
+      </svg>
+      <span class="brand-word">dalo</span>
+      <span class="brand-section">docs</span>
+    </a>
+    <nav class="site-nav" aria-label="Primary">
+      <a href="/">Product</a>
+      <a href="/docs/">Docs</a>
+      <a href="/spec/">Spec</a>
+      <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+    </nav>
+    <details class="mobile-menu">
+      <summary aria-label="Open navigation">
+        <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>
+        <span class="sr-only">Menu</span>
+      </summary>
+      <nav class="mobile-nav" aria-label="Mobile">
+        <a href="/">Product</a>
+        <a href="/docs/">Docs</a>
+        <a href="/spec/">Spec</a>
+        <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+      </nav>
+    </details>
+    <div class="header-actions">
+      <a class="ghost-btn" href="https://github.com/sebastian-software/dalo" rel="noopener">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="doc-shell wrap">
+  <nav class="doc-nav" aria-label="Documentation">
+    <p class="footer-h">Documentation</p>
+        <a href="/docs/getting-started.html">Getting started</a>
+        <a href="/docs/team.html" aria-current="page">Team repository</a>
+        <a href="/docs/reference.html">Command reference</a>
+        <a href="/docs/compatibility.html">Compatibility</a>
+        <a href="/docs/agents.html">Agent integration</a>
+        <a href="/docs/ci.html">Dalo in CI</a>
+        <a href="/docs/troubleshooting.html">Troubleshooting</a>
+        <a href="/docs/security.html">Security overview</a>
+        <a href="/docs/uninstall.html">Uninstall</a>
+        <a href="/docs/comparison.html">Comparison</a>
+  </nav>
+  <article class="doc-body">
+<h1 id="team-repository-guide">Team Repository Guide</h1>
+<p>This guide is for the person who owns the repository a team syncs from. It goes
+from an empty Git repository to a manifest that pins exactly which skills every
+teammate resolves, and it ends with the two commands a teammate runs on a new
+laptop.</p>
+<p>The developer side is the <a href="/docs/getting-started.html">getting started guide</a>. Command
+syntax and file formats are in the <a href="/docs/reference.html">command reference</a>.</p>
+<h2 id="what-a-team-repository-is"><a class="doc-anchor" href="#what-a-team-repository-is">What a team repository is</a></h2>
+<p>A team repository is an ordinary Git repository with two things in it:</p>
+<ul>
+<li><code>skills/&lt;name&gt;/SKILL.md</code> — the skills your team wrote</li>
+<li><code>dalo.toml</code> — an optional manifest that pins external catalogs and selects a
+subset of their skills</li>
+</ul>
+<p>Teammates add it once with <code>dalo source add &lt;id&gt; &lt;git-url&gt;</code>. Everything else —
+which external skills exist, at which commit, in which order — travels in the
+repository and moves through code review like any other change.</p>
+<p>Two things deliberately do not travel: security approvals and the target
+folders each teammate links. Those stay personal.</p>
+<h2 id="1-create-the-repository"><a class="doc-anchor" href="#1-create-the-repository">1. Create the repository</a></h2>
+<p>Create the Git repository first, then write the manifest from inside it:</p>
+<pre><code class="language-sh">dalo team init company --name &quot;Company Skills&quot;
+</code></pre>
+<pre><code class="language-text">initialized team manifest …/company-skills/dalo.toml
+next: commit and push dalo.toml
+</code></pre>
+<p><code>company</code> is the source ID teammates will see locally. Run <code>team</code> commands from
+the checkout, or point at another one with <code>dalo team --repo ../company-skills init company</code>.</p>
+<p>Team commands only edit the team repository. They never read or initialize a
+personal Dalo store, never grant approvals, and never commit or push. The
+global <code>--store</code> flag is accepted for uniformity but has no effect here.</p>
+<h2 id="2-add-the-teams-own-skills"><a class="doc-anchor" href="#2-add-the-teams-own-skills">2. Add the team&#39;s own skills</a></h2>
+<p>Nothing special is required. Each skill is a directory under <code>skills/</code> with a
+<code>SKILL.md</code>:</p>
+<pre><code class="language-sh">mkdir -p skills/release-notes
+cat &gt; skills/release-notes/SKILL.md &lt;&lt;&#39;EOF&#39;
+# Release Notes
+
+Summarize user-visible changes first.
+EOF
+
+git add skills/release-notes
+git commit -m &quot;feat: add the release-notes skill&quot;
+</code></pre>
+<p>Skills in a team source are trusted by default, so a teammate&#39;s <code>sync</code> links
+them without a per-skill approval. Sync still audits their content and blocks
+unaccepted high or critical findings.</p>
+<h2 id="3-pin-a-public-catalog"><a class="doc-anchor" href="#3-pin-a-public-catalog">3. Pin a public catalog</a></h2>
+<p>External skill sets are added as pinned catalogs. Pin a commit, and select only
+what the team should actually get:</p>
+<pre><code class="language-sh">dalo team catalog add marketing https://github.com/coreyhaines31/marketingskills.git \
+  --version 0123456789abcdef0123456789abcdef01234567 \
+  --skill +copywriting \
+  --skill +launch
+</code></pre>
+<pre><code class="language-text">catalog_added team manifest …/company-skills/dalo.toml catalog=marketing
+next: commit and push dalo.toml
+</code></pre>
+<p><code>--version</code> accepts a commit, tag, or ref. An immutable commit is the
+reproducible choice; a branch name means different teammates can resolve
+different content. Use <code>--priority &lt;number&gt;</code> to override the derived default.</p>
+<p>The manifest now reads:</p>
+<pre><code class="language-toml">schema_version = 1
+
+[source]
+id = &quot;company&quot;
+name = &quot;Company Skills&quot;
+kind = &quot;team&quot;
+
+[[catalog]]
+id = &quot;marketing&quot;
+url = &quot;https://github.com/coreyhaines31/marketingskills.git&quot;
+version = &quot;0123456789abcdef0123456789abcdef01234567&quot;
+skills = [
+    &quot;+copywriting&quot;,
+    &quot;+launch&quot;,
+]
+</code></pre>
+<h3 id="filters"><a class="doc-anchor" href="#filters">Filters</a></h3>
+<p><code>dalo team catalog skills &lt;id&gt; [filter]...</code> replaces the whole filter list:</p>
+<pre><code class="language-sh">dalo team catalog skills marketing +copywriting +launch -seo-audit
+dalo team catalog skills marketing
+</code></pre>
+<p>The second form sets <code>skills = []</code>, which means everything. Evaluation is
+set-based and independent of order:</p>
+<ul>
+<li>omitted or empty: every skill in the catalog</li>
+<li>only <code>-name</code> entries: everything except those</li>
+<li>any <code>+name</code> entry: whitelist mode</li>
+<li>exclusions always win over inclusions</li>
+<li>a bare name counts as an include</li>
+</ul>
+<p>Unknown or ambiguous filter references block a teammate&#39;s sync, so keep the
+filters in step with the pinned commit.</p>
+<p>Check what the manifest says at any time:</p>
+<pre><code class="language-sh">dalo team show
+</code></pre>
+<pre><code class="language-text">team manifest: …/company-skills/dalo.toml
+source: company (Company Skills)
+catalogs:
+  marketing version=28a2eec94f0e18ba5582792bbeb82a25bffedf02 skills=+copywriting, +launch …
+</code></pre>
+<h2 id="4-advance-a-pin-on-purpose"><a class="doc-anchor" href="#4-advance-a-pin-on-purpose">4. Advance a pin on purpose</a></h2>
+<p>Upstream moves. Preview first:</p>
+<pre><code class="language-sh">dalo --dry-run team catalog update marketing --from main
+</code></pre>
+<pre><code class="language-text">team catalog marketing: de993fb5ea15 -&gt; 28a2eec94f0e (from main)
+  inventory:
+    selected_changed `copywriting` changed upstream
+  audits:
+    company.marketing:copywriting clean
+    company.marketing:launch clean
+  result: would update (…/company-skills/dalo.toml)
+</code></pre>
+<p>Dalo resolves the ref in a temporary clone, compares the declared version with
+the candidate inventory, and runs deterministic audits over the selected
+candidate skills. A dry run performs network reads and temporary filesystem
+work; it changes neither the repository nor any personal store.</p>
+<p>When the report looks right, run it for real:</p>
+<pre><code class="language-sh">dalo team catalog update marketing --from main
+</code></pre>
+<pre><code class="language-text">  result: updated (…/company-skills/dalo.toml)
+next: commit and push dalo.toml
+</code></pre>
+<p>The write is always an exact commit — <code>--from main</code> never leaves a floating ref
+in the manifest. A non-fast-forward candidate, a selected skill that disappeared
+upstream, an invalid selection, or a blocking audit finding prevents the write.
+<code>--accept-risk &quot;&lt;reason&gt;&quot;</code> accepts blocking security findings from that exact
+candidate only; it does not override the structural blockers.</p>
+<p>To set a version without consulting upstream, use
+<code>dalo team catalog version marketing v2.0.0</code>. To drop a catalog entirely, use
+<code>dalo team catalog remove marketing</code>; the next teammate sync removes that
+catalog&#39;s generated source state, approvals, owned links, and checkout.</p>
+<p>Changing a catalog&#39;s URL is a deliberate two-step replacement: remove the
+declaration and sync, then add the reviewed replacement URL and sync again.</p>
+<h2 id="5-commit-and-push"><a class="doc-anchor" href="#5-commit-and-push">5. Commit and push</a></h2>
+<p>Dalo never commits for you. The manifest is a reviewable file like any other:</p>
+<pre><code class="language-sh">git add dalo.toml
+git commit -m &quot;chore: advance the marketing catalog pin&quot;
+git push
+</code></pre>
+<p>Catalog mutations rewrite <code>dalo.toml</code> in canonical TOML form. Formatting may be
+normalized and comments are not preserved, so keep the rationale in the commit
+message or the pull request.</p>
+<h2 id="6-what-a-teammate-runs"><a class="doc-anchor" href="#6-what-a-teammate-runs">6. What a teammate runs</a></h2>
+<p>On their own machine, once:</p>
+<pre><code class="language-sh">dalo init
+dalo target detect
+dalo target link claude
+dalo source add company git@github.com:acme/agent-skills.git
+dalo sync
+</code></pre>
+<p>Your team skills link immediately. The catalogs you pinned show up as their own
+source, namespaced with the team ID:</p>
+<pre><code class="language-text">sources:
+  company      team priority=10   skills=1   agents=0   plugins=0   enabled
+  company.marketing catalog priority=11   skills=3   agents=0   plugins=0   enabled
+    provenance management=team_manifest origin=… requested=28a2eec94f0e… resolved=28a2eec94f0e
+</code></pre>
+<p>Their URL, version, priority, and selection are owned by your manifest.
+<code>source select</code>, <code>source priority</code>, <code>source remove</code>, and pin advancement are
+rejected for these derived catalogs on a teammate&#39;s machine — the manifest is
+the single place they change.</p>
+<h2 id="7-approvals-stay-personal"><a class="doc-anchor" href="#7-approvals-stay-personal">7. Approvals stay personal</a></h2>
+<p>Manifest-derived catalogs are untrusted, so the first sync links your team&#39;s own
+skills and leaves the catalog skills pending:</p>
+<pre><code class="language-text">synced: 1 skill across 1 target (1 created)
+pending approval: company.marketing:copywriting (run: dalo approve skill company.marketing:copywriting)
+pending approval: company.marketing:launch (run: dalo approve skill company.marketing:launch)
+</code></pre>
+<p>Each teammate reviews and approves on their own machine:</p>
+<pre><code class="language-sh">dalo audit company.marketing:copywriting
+dalo approve skill company.marketing:copywriting
+dalo approve skill company.marketing:launch
+dalo sync
+</code></pre>
+<p>Approvals are bound to exact content, so advancing a pin makes the changed
+skills pending again. That is the intended behavior: a commit you push cannot
+silently put new third-party code into a teammate&#39;s agent. If your team prefers
+a broader policy, <code>dalo approve list</code> and the <code>source</code>, <code>author</code>, and <code>org</code>
+approval scopes exist — they are still granted per machine.</p>
+<h2 id="8-keeping-machines-current"><a class="doc-anchor" href="#8-keeping-machines-current">8. Keeping machines current</a></h2>
+<p>Tell teammates to install the scheduler once:</p>
+<pre><code class="language-sh">dalo autosync install --schedule daily
+dalo autosync status
+</code></pre>
+<p>macOS uses launchd, Linux a systemd user timer with a marked crontab fallback.
+A scheduled run is a <code>dalo sync --check</code>: it refreshes clean sources and links
+what is already approved, and it stays fail-closed on dirty sources, pending
+approvals, security findings, and target conflicts. It never grants an approval.
+The last attempt, the last success, and any blocking reason stay visible in
+<code>dalo status</code> and <code>dalo doctor</code>.</p>
+<p>So the rhythm after you push a manifest change is: autosync picks it up, and a
+teammate sees either new skills or an exact <code>dalo approve skill …</code> line.</p>
+<h2 id="9-a-second-machine"><a class="doc-anchor" href="#9-a-second-machine">9. A second machine</a></h2>
+<p>Same team, new laptop. Nothing is copied from the old machine:</p>
+<pre><code class="language-sh">dalo init
+dalo target detect
+dalo target link claude
+dalo source add company git@github.com:acme/agent-skills.git
+dalo sync
+dalo next
+</code></pre>
+<p><code>dalo next</code> names the one remaining command, which on a fresh machine is
+usually the first pending approval. Approve, sync again, and the two machines
+resolve the same skill set from the same manifest.</p>
+<p>Approvals do not transfer, and that is deliberate. Personal local skills under
+<code>local/skills/</code> do not transfer either; move anything worth keeping into the
+team repository with <code>dalo adopt</code> and a commit.</p>
+<h2 id="checklist"><a class="doc-anchor" href="#checklist">Checklist</a></h2>
+<ul>
+<li><input disabled="" type="checkbox"> <code>dalo team init &lt;id&gt; --name &quot;&lt;name&gt;&quot;</code> in the repository</li>
+<li><input disabled="" type="checkbox"> team skills under <code>skills/&lt;name&gt;/SKILL.md</code></li>
+<li><input disabled="" type="checkbox"> each external catalog added with <code>--version &lt;commit&gt;</code> and explicit filters</li>
+<li><input disabled="" type="checkbox"> pins advanced through <code>dalo --dry-run team catalog update &lt;id&gt; --from &lt;ref&gt;</code> first</li>
+<li><input disabled="" type="checkbox"> <code>dalo.toml</code> committed and pushed</li>
+<li><input disabled="" type="checkbox"> teammates told the one <code>dalo source add &lt;id&gt; &lt;git-url&gt;</code> line</li>
+<li><input disabled="" type="checkbox"> teammates know approvals are theirs to grant</li>
+</ul>
+<p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/team.md" rel="noopener">docs/team.md</a></p>
+  </article>
+</main>
+
+<footer class="site-footer doc-footer" data-scope="dark">
+  <div class="wrap footer-base">
+    <span>© 2026 <a href="https://sebastian-software.de" rel="noopener">Sebastian Software</a> · Dalo</span>
+    <span><a href="/">dalo.sh</a> · <a href="/spec/">Spec</a> · <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a> · <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a></span>
+  </div>
+</footer>
+</body>
+</html>
