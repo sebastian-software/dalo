@@ -48,9 +48,8 @@ chooses `x86_64` or `aarch64` plus the detected (or
 used verbatim to form the release archive name. Set it only to a published target:
 `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`,
 `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, or
-`aarch64-apple-darwin`. The installer does not
-pre-validate the override; another value fails when its release archive cannot
-be fetched.
+`aarch64-apple-darwin`. The installer does not pre-validate the override;
+another value fails when its release archive cannot be fetched.
 
 ## Global Flags
 
