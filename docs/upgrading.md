@@ -126,12 +126,12 @@ itself.
 The full list of older shapes Dalo accepts on read is
 [Accepted 0.x Store Shapes](reference.md#accepted-0x-store-shapes).
 
-## Removed flags and spellings
+## Removed flags, spellings, and platforms
 
-Four CLI spellings and one target ID were removed before 1.0 froze the surface,
-so that no deprecated spelling enters the 1.x line. Each one now fails loudly
-instead of quietly doing something else. The error lines below are what the
-current binary actually prints.
+Four CLI spellings, one target ID, and one release platform were removed before
+1.0 froze the surface, so that nothing deprecated enters the 1.x line. Each one
+now fails loudly instead of quietly doing something else. The error lines below
+are what the current binary and installer actually print.
 
 | Removed | Replacement | What you see now | Exit |
 | --- | --- | --- | --- |
@@ -140,6 +140,7 @@ current binary actually prints.
 | `source select <id> --unselect <skill>...` | `source unselect <id> <skill>...` | `error: unexpected argument '--unselect' found` | `2` |
 | `--refresh` (`audit`, `adopt`, `approve skill`, `resolve adopt`) | `--refresh-audit` | `error: unexpected argument '--refresh' found` | `2` |
 | target ID `cursor` | `dalo target link generic ~/.cursor/skills` | ``error: unknown target `cursor`; known targets: claude, codex, generic, hermes, openclaw, opencode`` | `1` |
+| Intel macOS release archives (`x86_64-apple-darwin`) | the Apple Silicon build on an Apple Silicon Mac; `cargo install dalo` on an Intel Mac, which compiles from source | `dalo installer: Intel Macs are no longer supported` | `1` |
 
 Two of them come with clap's own hint, which is usually enough to fix a script
 without reading anything else:

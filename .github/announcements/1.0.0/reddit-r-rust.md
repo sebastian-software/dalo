@@ -77,8 +77,10 @@ Other engineering notes:
   configuration and credential helpers still apply, and hooks already present
   in a managed checkout are not disabled. The security page states that plainly
   rather than implying isolation.
-- Six published targets: macOS and Linux, `x86_64` and `aarch64`, `gnu` and
-  `musl`. Each archive ships a SHA-256 checksum and a Sigstore bundle.
+- Five published targets: macOS on Apple Silicon, Linux on `x86_64` and
+  `aarch64`, `gnu` and `musl`. Each archive ships a SHA-256 checksum and a
+  Sigstore bundle. The Intel macOS build was discontinued with 1.0;
+  `cargo install dalo` still compiles there.
 - Around a thousand tests behind a line-coverage gate in CI, and the upgrade
   path is a test rather than a promise: the suite restores stores written by
   four older released binaries, runs what a user runs after upgrading, and

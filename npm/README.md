@@ -28,7 +28,9 @@ jobs.
 ## Requirements
 
 - Node.js 20 or newer
-- macOS or Linux on x86_64 or ARM64
+- macOS on Apple Silicon, or Linux on x86_64 or ARM64. Intel Macs are not
+  supported: that build was discontinued with Dalo 1.0, and `cargo install dalo`
+  compiles from source instead.
 - `tar` on `PATH` to unpack the official release archive
 
 The first invocation of a `getdalo` package version needs network access to

@@ -70,7 +70,7 @@ Being honest about the limits, because this is a security-adjacent tool:
   steer your agent. The security page lists what is out of scope, including
   prompt injection, a compromised upstream account, and whatever a skill causes
   at runtime.
-- macOS and Linux only. Windows works through WSL; there is no native Windows
+- macOS on Apple Silicon and Linux only. Windows works through WSL; there is no native Windows
   build in the 1.x line.
 - If you just want to try one public skill quickly, `npx skills add` is less
   work and reaches many more agents. Dalo is for the case where a set has to be

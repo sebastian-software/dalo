@@ -349,13 +349,18 @@ at compile time by design.
 
 | Platform | Architectures | libc |
 | --- | --- | --- |
-| macOS | `x86_64`, `aarch64` | system |
+| macOS | `aarch64` (Apple Silicon) | system |
 | Linux | `x86_64`, `aarch64` | `gnu` and `musl` |
 
-The published release targets are `x86_64-apple-darwin`,
-`aarch64-apple-darwin`, `x86_64-unknown-linux-gnu`,
-`aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-musl`, and
-`aarch64-unknown-linux-musl`.
+The published release targets are `aarch64-apple-darwin`,
+`x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`,
+`x86_64-unknown-linux-musl`, and `aarch64-unknown-linux-musl`.
+
+**Intel Macs are not supported.** The `x86_64-apple-darwin` build was
+discontinued with 1.0, so no installer, Homebrew formula, or npm launcher
+resolves an Intel macOS archive. `cargo install dalo` still works there,
+because it compiles from source. Dalo 0.16.0 remains the last release with a
+published Intel macOS archive.
 
 **Windows is supported through WSL only.** Run Dalo inside a WSL Linux
 distribution and point targets at paths inside that distribution. There is no

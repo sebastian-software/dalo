@@ -132,7 +132,7 @@ jobs:
 or URL of the skill repository that the workflow should validate. The temporary
 store and generic target keep the check isolated from any runner state.</p>
 <h2 id="release-publication"><a class="doc-anchor" href="#release-publication">Release publication</a></h2>
-<p>The publish workflow keeps a new GitHub release as a draft while its six target
+<p>The publish workflow keeps a new GitHub release as a draft while its five target
 archives, checksums, and Sigstore bundles build and upload. The workflow creates
 the release tag at draft time so each matrix job can check out the exact release
 commit. A single final job verifies every expected asset and publishes the
@@ -166,7 +166,7 @@ annotated slots in <code>site/index.html</code> (<code>softwareVersion</code> pl
 launch notes from <code>.github/release-notes/&lt;version&gt;.md</code> before the draft is
 published, as described under <a href="#curated-release-notes">Curated release notes</a>.</p>
 <p>Merging that release pull request tags <code>dalo-v1.0.0</code> and runs <code>publish.yml</code>:
-six signed archives with checksums upload to a draft release, the draft is
+five signed archives with checksums upload to a draft release, the draft is
 published once every asset is present, and crates.io, npm, and the
 <code>sebastian-software/homebrew-tap</code> dispatch follow. The tap bump compares
 versions with <code>sort -V</code>, so <code>1.0.0</code> supersedes <code>0.16.0</code> rather than losing to
