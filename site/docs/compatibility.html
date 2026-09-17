@@ -455,7 +455,9 @@ called out in the release notes, and the reasoning is recorded.</li>
 <p>Upgrading needs no migration step. A newer Dalo reads an older file, upgrades
 it in memory, and writes the current version the next time it writes that file
 at all. Nothing is unlinked, no approval has to be granted again, and no
-&quot;migrate once&quot; command exists to forget.</p>
+&quot;migrate once&quot; command exists to forget. Which older shapes are accepted on
+read, and what Dalo does with each, is listed under
+<a href="/docs/reference.html#accepted-0x-store-shapes">Accepted 0.x Store Shapes</a>.</p>
 <p>Because the rewrite is lazy, a file that no command has written yet keeps its
 old version on disk — a store carried since 0.6 can still hold <code>version = 1</code> in
 <code>config.toml</code> long after <code>dalo sync</code> has brought <code>lock.toml</code> up to date. That is

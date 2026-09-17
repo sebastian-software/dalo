@@ -1358,6 +1358,13 @@ removed before 1.0 (see
 Dalo never migrates a shape it cannot recognize byte for byte. Anything
 ambiguous is reported as blocked instead of rewritten.
 
+Because each rewrite happens on the next write of that file, a store can hold
+several of these shapes at once. `dalo doctor` prints one
+`schema_migration_pending` line per migration still outstanding, and a
+`legacy_approval_record` warning carrying the exact command for the one shape
+that needs a decision. See
+[Upgrade and downgrade](compatibility.md#upgrade-and-downgrade).
+
 ## `config.toml`
 
 Schema version: `version = 2`. A `version = 1` file is read and migrated

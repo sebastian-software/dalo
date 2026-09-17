@@ -1577,6 +1577,12 @@ removed before 1.0 (see
 </tbody></table></div>
 <p>Dalo never migrates a shape it cannot recognize byte for byte. Anything
 ambiguous is reported as blocked instead of rewritten.</p>
+<p>Because each rewrite happens on the next write of that file, a store can hold
+several of these shapes at once. <code>dalo doctor</code> prints one
+<code>schema_migration_pending</code> line per migration still outstanding, and a
+<code>legacy_approval_record</code> warning carrying the exact command for the one shape
+that needs a decision. See
+<a href="/docs/compatibility.html#upgrade-and-downgrade">Upgrade and downgrade</a>.</p>
 <h2 id="configtoml"><a class="doc-anchor" href="#configtoml"><code>config.toml</code></a></h2>
 <p>Schema version: <code>version = 2</code>. A <code>version = 1</code> file is read and migrated
 forward on the next write.</p>
