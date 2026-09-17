@@ -32,6 +32,7 @@ dalo target unlink codex
 dalo target unlink claude
 dalo target unlink openclaw
 dalo target unlink hermes
+dalo target unlink opencode
 dalo target unlink generic
 ```
 
@@ -151,6 +152,7 @@ Inspect the agent folders you had linked, such as:
 ls -la ~/.agents/skills
 ls -la ~/.claude/skills
 ls -la ~/.hermes/skills
+ls -la ~/.config/opencode/skills
 ```
 
 Remove only broken symlinks that point into the deleted Dalo store. Leave real directories and project/user-authored files in place.
