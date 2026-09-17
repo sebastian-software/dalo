@@ -19,10 +19,25 @@ for document in "$root/README.md" "$root/site/index.html" "$root/site/install.md
 done
 for document in "$root/README.md" "$root/site/index.html" "$root/site/install.md"; do
   grep -q 'brew install sebastian-software/tap/dalo' "$document"
-  grep -q 'dalo source select sebastian pr-review' "$document"
-  grep -q 'dalo approve skill sebastian:pr-review' "$document"
 done
-grep -q 'dalo audit sebastian:pr-review --reviewer auto' "$root/README.md"
+# The pages that tell a reader to select a skill from the public catalog have to
+# name a skill that catalog actually publishes; `sebastian:pr-review` never
+# existed and every one of those commands exited 1. Keep this list in step with
+# https://github.com/sebastian-software/skills.sebastian-software.com.
+catalog_skill='effective-web'
+for document in "$root/README.md" "$root/site/install.md"; do
+  grep -q "dalo source select sebastian $catalog_skill" "$document"
+  grep -q "dalo approve skill sebastian:$catalog_skill" "$document"
+done
+# The README recovery path uses the deterministic audit, not the optional agent
+# reviewer: `--reviewer auto` needs an installed and authenticated agent CLI and
+# exits 4 without one, which is not a recovery step.
+refute 'the README recovery path requires an authenticated agent reviewer' \
+  grep -q 'dalo audit sebastian:.* --reviewer auto' "$root/README.md"
+# site/index.html is re-recorded from the release candidate in #822; until then
+# only require that its quickstart still selects and approves the same skill.
+grep -q 'dalo source select sebastian ' "$root/site/index.html"
+grep -q 'dalo approve skill sebastian:' "$root/site/index.html"
 # The security overview is the single page an evaluator is pointed at, so it has
 # to exist and stay reachable from the README and the reporting policy.
 test -f "$root/docs/security.md"
@@ -57,6 +72,14 @@ done
 grep -q 'discussions/categories/q-a' "$root/.github/ISSUE_TEMPLATE/question.yml"
 grep -q 'fallback' "$root/.github/ISSUE_TEMPLATE/question.yml"
 grep -q 'brew uninstall dalo' "$root/docs/uninstall.md"
+# Removing Dalo has to name every built-in target, or a linked one is left
+# behind with its owned symlinks. `opencode` was missing from this list.
+for builtin_target in codex claude openclaw hermes opencode generic; do
+  grep -Fq "dalo target unlink $builtin_target" "$root/docs/uninstall.md" \
+    || { echo "docs/uninstall.md does not unlink the built-in target $builtin_target" >&2; exit 1; }
+done
+grep -Fq 'ls -la ~/.config/opencode/skills' "$root/docs/uninstall.md" \
+  || { echo 'docs/uninstall.md final check skips the OpenCode skill directory' >&2; exit 1; }
 grep -q 'dalo resolve remove-owned <target>:<slot>' "$root/docs/uninstall.md"
 grep -q 'resolve list.*exact owned IDs' "$root/docs/uninstall.md"
 grep -q '^## 4. Disable Autosync$' "$root/docs/uninstall.md"
@@ -180,7 +203,7 @@ printf '%s\n' "$readme_first_screen" | grep -Fxq 'dalo sync' \
   || { echo 'the README no longer reaches `dalo sync` within its first screen' >&2; exit 1; }
 # Recovery guidance stays in the README: one worked example whose output names
 # the next command, plus the pointer to the full finding list.
-grep -Fq 'pending approval: sebastian:pr-review (run: dalo approve skill sebastian:pr-review)' "$root/README.md"
+grep -Fq "pending approval: sebastian:$catalog_skill (run: dalo approve skill sebastian:$catalog_skill)" "$root/README.md"
 grep -Fq '(docs/troubleshooting.md)' "$root/README.md"
 
 # Portable plugins, tools, and hooks are reference-grade material: one link away
@@ -408,7 +431,7 @@ grep -q "error: skill 'company:relese-helper' was not found; known skills: compa
 grep -q 'pending approval: sebastian:tech-docs (run: dalo approve skill sebastian:tech-docs)' "$root/site/index.html"
 grep -q 'Recover without googling.' "$root/README.md"
 grep -q 'Security preflight and review gate' "$root/site/index.html"
-grep -q 'dalo audit sebastian:pr-review' "$root/site/index.html"
+grep -q 'dalo audit sebastian:' "$root/site/index.html"
 grep -q 'security audits and review gates' "$root/site/index.html"
 grep -q 'security preflight: deterministic checks and compatible cached findings only; sync did not run an agent reviewer; passing is not a safety guarantee' "$root/site/index.html"
 grep -q 'durationInFrames={450}' "$root/video/src/Root.tsx"
