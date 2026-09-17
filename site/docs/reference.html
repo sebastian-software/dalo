@@ -652,7 +652,7 @@ truncation line. Both files are removed on <code>autosync uninstall</code>.</p>
 <h3 id="dalo-adopt-skill---replace"><a class="doc-anchor" href="#dalo-adopt-skill---replace"><code>dalo adopt &lt;skill&gt; [--replace]</code></a></h3>
 <p>Copy an unmanaged target skill into <code>local/skills/&lt;slot&gt;</code>. With <code>--replace</code>, Dalo replaces the original unmanaged directory with an owned symlink after copying. Without <code>--replace</code>, the original directory remains untouched.</p>
 <p>Adoption runs the same deterministic security preflight before copying or
-replacing anything. <code>--reviewer</code> (with deprecated <code>--agent</code> alias), <code>--refresh-audit</code>, and <code>--accept-risk &lt;reason&gt;</code>
+replacing anything. <code>--reviewer</code>, <code>--refresh-audit</code>, and <code>--accept-risk &lt;reason&gt;</code>
 have the same meaning as on <code>dalo approve skill</code>.</p>
 <p>The <code>&lt;skill&gt;</code> argument can be a slot name, a disambiguating path, or an ID reported by <code>status</code> or <code>resolve list</code>. If the slot name exists in more than one target, Dalo refuses the ambiguous selector and lists the paths to choose from.</p>
 <p>Before it audits or copies anything, adoption rejects a folder name or
@@ -751,7 +751,7 @@ provider&#39;s quota. Dalo never includes <code>.git</code> metadata in that sna
 containing a <code>.git</code> entry receives a blocking, partial-coverage finding instead.
 Provider processes receive only an explicit runtime and provider-authentication
 environment allowlist rather than inheriting Dalo&#39;s full environment. Omitting
-<code>--reviewer</code> is fully local. <code>--agent</code> remains a deprecated compatibility alias.</p>
+<code>--reviewer</code> is fully local.</p>
 <p>Agent review is optional and additive, not an approval mechanism. It can add
 evidence-backed findings to the deterministic audit, but it never clears a
 deterministic finding or certifies a skill as safe. A review with no additional

@@ -677,7 +677,7 @@ truncation line. Both files are removed on `autosync uninstall`.
 Copy an unmanaged target skill into `local/skills/<slot>`. With `--replace`, Dalo replaces the original unmanaged directory with an owned symlink after copying. Without `--replace`, the original directory remains untouched.
 
 Adoption runs the same deterministic security preflight before copying or
-replacing anything. `--reviewer` (with deprecated `--agent` alias), `--refresh-audit`, and `--accept-risk <reason>`
+replacing anything. `--reviewer`, `--refresh-audit`, and `--accept-risk <reason>`
 have the same meaning as on `dalo approve skill`.
 
 The `<skill>` argument can be a slot name, a disambiguating path, or an ID reported by `status` or `resolve list`. If the slot name exists in more than one target, Dalo refuses the ambiguous selector and lists the paths to choose from.
@@ -826,7 +826,7 @@ provider's quota. Dalo never includes `.git` metadata in that snapshot; a skill
 containing a `.git` entry receives a blocking, partial-coverage finding instead.
 Provider processes receive only an explicit runtime and provider-authentication
 environment allowlist rather than inheriting Dalo's full environment. Omitting
-`--reviewer` is fully local. `--agent` remains a deprecated compatibility alias.
+`--reviewer` is fully local.
 
 Agent review is optional and additive, not an approval mechanism. It can add
 evidence-backed findings to the deterministic audit, but it never clears a

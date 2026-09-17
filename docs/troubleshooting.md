@@ -287,6 +287,7 @@ error. Replace it with the supported form:
 | Removed spelling | Replacement |
 | --- | --- |
 | `--yes` (global no-op) | Nothing. The flag never confirmed anything; drop it. |
+| `audit --agent <reviewer>` | `audit --reviewer <reviewer>` |
 
 ### How do I remove Dalo completely?
 

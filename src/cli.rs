@@ -555,28 +555,12 @@ pub enum AuditAgentArg {
     Opencode,
 }
 
-/// Semantic-review selection with a deprecated `--agent` compatibility alias.
+/// Semantic-review selection shared by audit-related commands.
 #[derive(Debug, Args)]
 pub struct ReviewerArgs {
     /// Run an isolated semantic review; this may send skill contents to its provider.
     #[arg(long, value_enum, default_value_t = AuditAgentArg::None)]
     pub reviewer: AuditAgentArg,
-
-    /// Deprecated alias for `--reviewer`.
-    #[arg(
-        long = "agent",
-        value_enum,
-        value_name = "REVIEWER",
-        hide = true,
-        conflicts_with = "reviewer"
-    )]
-    pub legacy_agent: Option<AuditAgentArg>,
-}
-
-impl ReviewerArgs {
-    fn selected(&self) -> AuditAgentArg {
-        self.legacy_agent.unwrap_or(self.reviewer)
-    }
 }
 
 impl From<AuditAgentArg> for audit::AgentSelection {
@@ -4241,7 +4225,7 @@ fn run_adopt(options: &GlobalOptions, command: AdoptCommand) -> DaloResult<()> {
         &paths,
         &command.skill,
         command.replace,
-        command.reviewer.selected(),
+        command.reviewer.reviewer,
         command.refresh_audit,
         command.accept_risk,
     )
@@ -4271,7 +4255,7 @@ fn run_resolve(options: &GlobalOptions, command: ResolveCommand) -> DaloResult<(
                 &paths,
                 &args.id,
                 args.replace,
-                args.reviewer.selected(),
+                args.reviewer.reviewer,
                 args.refresh_audit,
                 args.accept_risk,
             )
@@ -4478,7 +4462,7 @@ fn run_audit(options: &GlobalOptions, command: AuditCommand) -> DaloResult<()> {
     } else {
         Some(store::StoreLock::acquire(&paths)?)
     };
-    let agent = prepare_agent_review(command.reviewer.selected())?;
+    let agent = prepare_agent_review(command.reviewer.reviewer)?;
     let report = audit::audit_target(
         &paths,
         &command.skill,
@@ -4529,7 +4513,7 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
         }
         ApproveSubcommand::Skill(args) => {
             let canonical = approval::canonical_skill(&paths, &args.value)?;
-            let agent = prepare_agent_review(args.reviewer.selected())?;
+            let agent = prepare_agent_review(args.reviewer.reviewer)?;
             let audit_report = audit::audit_target(
                 &paths,
                 &canonical,
