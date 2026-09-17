@@ -37,6 +37,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://dalo.sh/docs/upgrading.html</loc>
+    <lastmod>__DALO_LASTMOD__</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://dalo.sh/docs/plugins.html</loc>
     <lastmod>__DALO_LASTMOD__</lastmod>
     <changefreq>weekly</changefreq>
