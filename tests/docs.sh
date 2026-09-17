@@ -23,6 +23,13 @@ for document in "$root/README.md" "$root/site/index.html" "$root/site/install.md
   grep -q 'dalo approve skill sebastian:pr-review' "$document"
 done
 grep -q 'dalo audit sebastian:pr-review --reviewer auto' "$root/README.md"
+# The security overview is the single page an evaluator is pointed at, so it has
+# to exist and stay reachable from the README and the reporting policy.
+test -f "$root/docs/security.md"
+grep -q '(docs/security.md)' "$root/README.md"
+grep -q '(docs/security.md)' "$root/SECURITY.md"
+grep -q '(security.md)' "$root/docs/troubleshooting.md"
+grep -q '## What Dalo does not protect against' "$root/docs/security.md"
 grep -q 'Watch the 15-second demo' "$root/README.md"
 refute 'README.md still advertises the 20-second demo' \
   grep -q '20-second demo' "$root/README.md"

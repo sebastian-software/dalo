@@ -75,6 +75,7 @@
         <a href="/docs/agents.html">Agent integration</a>
         <a href="/docs/ci.html">Dalo in CI</a>
         <a href="/docs/troubleshooting.html" aria-current="page">Troubleshooting</a>
+        <a href="/docs/security.html">Security overview</a>
         <a href="/docs/uninstall.html">Uninstall</a>
         <a href="/docs/comparison.html">Comparison</a>
   </nav>
@@ -897,6 +898,8 @@ security gate.</p>
 <p>Then rerun <code>dalo sync</code>. Acceptance is bound to the source, exact content,
 engine versions, coverage, and findings; a relevant change invalidates it and
 requires a fresh review.</p>
+<p>The <a href="/docs/security.html">security overview</a> explains which findings block, what the
+optional reviewer adds, and what an accepted risk does and does not mean.</p>
 <h3 id="how-do-i-recover-from-a-dirty-team-source"><a class="doc-anchor" href="#how-do-i-recover-from-a-dirty-team-source">How do I recover from a dirty team source?</a></h3>
 <p>Go to the checkout shown by <code>dalo doctor</code>, then commit, stash, or discard the edits with normal Git commands. Dalo does not decide this for you because the edits may be user or agent work.</p>
 <h3 id="how-do-i-remove-dalo-completely"><a class="doc-anchor" href="#how-do-i-remove-dalo-completely">How do I remove Dalo completely?</a></h3>

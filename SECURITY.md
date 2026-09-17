@@ -1,5 +1,9 @@
 # Security Policy
 
+Evaluating Dalo rather than reporting a vulnerability? The
+[security overview](docs/security.md) describes the trust boundaries, what the
+preflight checks, and what Dalo does not protect against.
+
 Dalo clones Git repositories, reads skill metadata, writes lock/config files, and creates symlinks into agent skill folders. Security issues can affect local files, trusted automation, or agent behavior, so please report suspected vulnerabilities privately.
 
 ## Supported Versions

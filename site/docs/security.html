@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dalo Security Overview · Dalo documentation</title>
+  <meta name="description" content="Trust boundaries, what the preflight blocks, the approval model, and the stated limits." />
+  <link rel="canonical" href="https://dalo.sh/docs/security.html" />
+  <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#15171c" media="(prefers-color-scheme: dark)" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Dalo" />
+  <meta property="og:url" content="https://dalo.sh/docs/security.html" />
+  <meta property="og:title" content="Dalo Security Overview · Dalo documentation" />
+  <meta property="og:description" content="Trust boundaries, what the preflight blocks, the approval model, and the stated limits." />
+  <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
+  <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
+  <link rel="preload" href="/assets/fonts/hanken-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/assets/fonts/geistmono-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/docs.css" />
+</head>
+<body class="doc-page">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header" data-scope="dark">
+  <div class="wrap header-inner">
+    <a class="brand" href="/" aria-label="Dalo home">
+      <svg class="brand-mark" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true" focusable="false">
+        <rect x="1.25" y="1.25" width="29.5" height="29.5" rx="8" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <circle cx="9" cy="9.5" r="2" fill="currentColor" />
+        <circle cx="9" cy="16" r="2" fill="currentColor" />
+        <circle cx="9" cy="22.5" r="2" fill="currentColor" />
+        <path d="M11 9.5 H17 Q22 9.5 22 16 Q22 22.5 17 22.5 H11 M11 16 H22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" />
+        <circle cx="22.5" cy="16" r="2.6" fill="var(--accent)" />
+      </svg>
+      <span class="brand-word">dalo</span>
+      <span class="brand-section">docs</span>
+    </a>
+    <nav class="site-nav" aria-label="Primary">
+      <a href="/">Product</a>
+      <a href="/docs/">Docs</a>
+      <a href="/spec/">Spec</a>
+      <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+    </nav>
+    <details class="mobile-menu">
+      <summary aria-label="Open navigation">
+        <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>
+        <span class="sr-only">Menu</span>
+      </summary>
+      <nav class="mobile-nav" aria-label="Mobile">
+        <a href="/">Product</a>
+        <a href="/docs/">Docs</a>
+        <a href="/spec/">Spec</a>
+        <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+      </nav>
+    </details>
+    <div class="header-actions">
+      <a class="ghost-btn" href="https://github.com/sebastian-software/dalo" rel="noopener">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="doc-shell wrap">
+  <nav class="doc-nav" aria-label="Documentation">
+    <p class="footer-h">Documentation</p>
+        <a href="/docs/getting-started.html">Getting started</a>
+        <a href="/docs/reference.html">Command reference</a>
+        <a href="/docs/agents.html">Agent integration</a>
+        <a href="/docs/ci.html">Dalo in CI</a>
+        <a href="/docs/troubleshooting.html">Troubleshooting</a>
+        <a href="/docs/security.html" aria-current="page">Security overview</a>
+        <a href="/docs/uninstall.html">Uninstall</a>
+        <a href="/docs/comparison.html">Comparison</a>
+  </nav>
+  <article class="doc-body">
+<h1 id="dalo-security-overview">Dalo Security Overview</h1>
+<p>This page is for the person who has to decide whether Dalo may deliver
+third-party skills to every developer machine on a team. It describes what Dalo
+trusts, what it checks, what it cannot check, and what your team still has to do
+itself.</p>
+<p>It is not the vulnerability reporting policy. To report a suspected
+vulnerability privately, see <a href="https://github.com/sebastian-software/dalo/blob/main/SECURITY.md" rel="noopener">SECURITY.md</a>.</p>
+<p>Every statement here maps to behavior in the CLI. Where a guarantee has a limit,
+the limit is written down rather than left out.</p>
+<h2 id="the-one-paragraph-summary"><a class="doc-anchor" href="#the-one-paragraph-summary">The one-paragraph summary</a></h2>
+<p>Dalo treats skill content as untrusted data. Adding a source is your trust
+decision; everything after that is mechanical. A deterministic, local preflight
+scans every skill before it can reach an agent folder, and high or critical
+findings block the sync until a human records an explicit, content-bound
+exception. Executables that ship with a skill set — tools and hooks — are
+approved separately from the skills and from each other, by exact contract hash.
+None of this makes a skill safe. It makes the decision to run a skill explicit,
+reviewable, and reproducible.</p>
+<h2 id="trust-boundaries"><a class="doc-anchor" href="#trust-boundaries">Trust boundaries</a></h2>
+<p><strong>Adding a source is the trust decision.</strong> Dalo has two ways in, and they differ
+in trust, not in mechanics:</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Meaning</th>
+<th>Update policy</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><a href="/docs/reference.html#dalo-source-add-id-git-url-or-path---namespace-prefix"><code>dalo source add</code></a></td>
+<td>A team source you vouch for</td>
+<td><code>track</code></td>
+</tr>
+<tr>
+<td><a href="/docs/reference.html#dalo-source-add-catalog-id-git-url-or-path---namespace-prefix"><code>dalo source add-catalog</code></a></td>
+<td>An untrusted catalog of offers</td>
+<td><code>pin</code></td>
+</tr>
+</tbody></table></div>
+<p>Both clone into the store and run the deterministic preflight for every
+discovered skill. Neither materializes anything on its own.</p>
+<p>The difference is what happens next. A source added with <code>dalo source add</code> is
+recorded as trusted, and the resolver treats every skill from a trusted source
+as approved — that is the whole point of the trust decision, and it is why the
+decision deserves the same scrutiny as adding a dependency to a build. A catalog
+is the opposite: it starts untrusted with an empty selection.</p>
+<p><strong>Catalog skills stay pending until approved.</strong> A catalog skill is an offer. It
+becomes active only after an explicit selection (<code>dalo source select</code>) and an
+explicit approval (<a href="/docs/reference.html#dalo-approve"><code>dalo approve skill</code></a>). Until
+then <code>dalo status</code> lists it under pending approvals, the user lock records it as
+<code>pending_approval</code>, and <code>dalo status --check</code> exits non-zero.</p>
+<p><strong>Trust removes approval, not the security gate.</strong> Local skills and skills from
+a source marked <code>trusted = true</code> need no approval record, as documented in
+<a href="/docs/reference.html#approvalstoml"><code>approvals.toml</code></a>. They are still audited on every
+sync, and a blocking finding still stops materialization.</p>
+<p><strong>Approvals are source-qualified.</strong> An approval value is
+<code>&lt;source-id&gt;:&lt;skill&gt;</code>, never a bare name, so an approval granted for one source
+cannot be matched by a same-named skill in another source. The wider <code>source</code>,
+<code>author</code>, and <code>org</code> scopes are also source-qualified, and a legacy bare approval
+from an older Dalo is reported for re-approval rather than honored.</p>
+<p><strong>Approvals live in your own store.</strong> <code>approvals.toml</code> sits at the root of the
+personal store — <code>~/.dalo</code> by default, relocatable with <code>--store</code> or
+<code>DALO_STORE</code>. There is no repository-level approval file: a team <code>dalo.toml</code>
+declares sources and pins, never approvals.</p>
+<p><strong>Scheduled and non-interactive runs never grant approvals.</strong> Autosync installs
+a recurring <a href="/docs/reference.html#dalo-autosync-installstatusuninstall"><code>dalo sync --check</code></a>
+through launchd, a systemd user timer, or cron. Pending approvals, security
+findings, dirty sources, and target conflicts stay fail-closed: the run records
+<code>blocked</code> with a reason instead of proceeding. Non-interactive commands can use
+approvals that already exist but never create new ones, and the global <code>--yes</code>
+flag is a no-op that never grants an approval.</p>
+<p><strong>Incoming team updates are staged before they are trusted.</strong> A tracking source
+fetches into a detached worktree below <code>sources/.audit-staging/</code> and is audited
+there. The live checkout fast-forwards only after the audit passes, so target
+links keep exposing the last accepted commit while an update is blocked.</p>
+<h2 id="the-deterministic-preflight"><a class="doc-anchor" href="#the-deterministic-preflight">The deterministic preflight</a></h2>
+<p>The preflight is local, reads files, and never executes skill code. It runs on
+<code>source add</code>, on catalog selection and approval, on
+<a href="/docs/reference.html#dalo-audit-skill-or-path"><code>dalo audit</code></a>, and — against the exact
+content hash of every active skill — before
+<a href="/docs/reference.html#dalo-sync"><code>dalo sync</code></a> changes any link.</p>
+<p>It walks every entry in the skill directory, then scans each text file line by
+line. These are the rules it can report:</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Finding</th>
+<th>Severity</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>static.destructive-root-command</code></td>
+<td>critical</td>
+<td>A command can recursively delete a root or home directory</td>
+</tr>
+<tr>
+<td><code>static.remote-code-execution</code></td>
+<td>high</td>
+<td>Remote content is downloaded and handed straight to an interpreter</td>
+</tr>
+<tr>
+<td><code>static.encoded-execution</code></td>
+<td>high</td>
+<td>Content is decoded or evaluated as executable instructions</td>
+</tr>
+<tr>
+<td><code>static.persistence</code></td>
+<td>high</td>
+<td>A startup file, scheduled task, or agent configuration may be modified</td>
+</tr>
+<tr>
+<td><code>static.privileged-execution</code></td>
+<td>high</td>
+<td>Privileged command execution is requested</td>
+</tr>
+<tr>
+<td><code>static.sensitive-data-network-combination</code></td>
+<td>high</td>
+<td>Sensitive-data access and outbound network behavior appear in the same skill</td>
+</tr>
+<tr>
+<td><code>static.symlink</code></td>
+<td>high</td>
+<td>A symlink is opaque and may escape the skill directory</td>
+</tr>
+<tr>
+<td><code>static.git-metadata-entry</code></td>
+<td>high</td>
+<td>The skill carries a <code>.git</code> entry, which is never materialized or reviewed</td>
+</tr>
+<tr>
+<td><code>static.special-filesystem-entry</code></td>
+<td>high</td>
+<td>An entry is neither a regular file nor a directory</td>
+</tr>
+<tr>
+<td><code>static.instruction-override</code></td>
+<td>medium</td>
+<td>Language commonly used to override higher-priority instructions</td>
+</tr>
+<tr>
+<td><code>static.sensitive-data-access</code></td>
+<td>medium</td>
+<td>A credential or sensitive user-data location is referenced</td>
+</tr>
+<tr>
+<td><code>static.dynamic-execution</code></td>
+<td>medium</td>
+<td>Dynamically constructed command execution</td>
+</tr>
+<tr>
+<td><code>static.oversized-file</code></td>
+<td>medium</td>
+<td>A file above 1 MiB is too large for the content scan</td>
+</tr>
+<tr>
+<td><code>static.opaque-file</code></td>
+<td>medium</td>
+<td>A non-text file could not be inspected</td>
+</tr>
+<tr>
+<td><code>static.executable-file</code></td>
+<td>low</td>
+<td>The skill contains a file with an executable bit</td>
+</tr>
+</tbody></table></div>
+<p><strong>High and critical findings block.</strong> The report&#39;s status is <code>blocked</code> when any
+finding is <code>high</code> or higher and no risk acceptance covers it. <code>medium</code> and below
+produce a <code>review</code> status: they appear in the report and they do not stop a sync
+on their own. <code>dalo audit --check</code> exits non-zero only for unaccepted <code>high</code> or
+<code>critical</code> findings. That line is deliberate — persistence
+and privilege escalation are high-confidence primitives, while dynamic execution
+appears in many legitimate technical skills.</p>
+<p><strong>Unscannable content is a finding, not a gap.</strong> Oversized, non-text, symlinked,
+special, and <code>.git</code> entries mark the report&#39;s coverage as <code>partial</code> and are
+reported. Dalo does not silently pass over what it could not read.</p>
+<p><strong>Exceptions are explicit and content-bound.</strong> <code>--accept-risk &quot;&lt;reason&gt;&quot;</code> records
+a reason together with a hash over the source provenance, engine versions,
+coverage, and the exact finding set. A changed skill, a changed source, or a
+newly discovered finding invalidates the acceptance and requires a fresh
+decision.</p>
+<p><strong>Reports are cached, not authoritative forever.</strong> Reports live under
+<code>audits/</code> in the store, keyed by the source-qualified reference and the full
+directory hash, and Dalo restricts the directory and files to the current user.
+Missing, malformed, old-version, or changed-content reports are rebuilt before
+they can influence a result. This is local trust state, not a signed log: a
+process running as the same user can replace it, so do not place the store in a
+shared or untrusted writable directory.</p>
+<h2 id="the-optional-agent-reviewer"><a class="doc-anchor" href="#the-optional-agent-reviewer">The optional agent reviewer</a></h2>
+<p><code>dalo audit --reviewer auto|codex|claude|opencode</code> and
+<code>dalo approve skill --reviewer ...</code> add a semantic layer on top of the
+deterministic one. <code>sync</code> never starts a reviewer on its own.</p>
+<p>What Dalo does to constrain it:</p>
+<ul>
+<li>A fresh, non-persistent provider process per review, with user configuration,
+project rules, skills, plugins, and MCP servers disabled where the provider
+supports it.</li>
+<li>A bounded snapshot of the skill (at most 512 KiB, <code>.git</code> always excluded),
+wrapped in <code>&lt;untrusted_skill_snapshot&gt;</code> markers and introduced by a prompt
+that says the content is data and never instructions.</li>
+<li>Claude and OpenCode run with tools denied. Codex keeps its read-only,
+network-disabled sandbox shell, so Dalo never picks Codex through <code>auto</code>;
+<code>--reviewer codex</code> is an explicit acceptance of the weaker boundary.</li>
+<li>The provider process receives an explicit environment allowlist — runtime
+variables and provider authentication only — instead of inheriting Dalo&#39;s
+environment.</li>
+<li>The reviewer&#39;s output must match a fixed JSON schema, and every finding must
+cite a snapshot-relative path.</li>
+</ul>
+<p><strong>A passed review is not a safety guarantee.</strong> The reviewer is a model reading
+attacker-controlled text, and it is the layer an attacker can most plausibly
+talk to. A skill can try to argue its way to an empty finding list, and the
+free-text <code>summary</code> and <code>expected_actions</code> fields are model-controlled. So Dalo
+treats the review as additive only:</p>
+<ul>
+<li>It can raise severity and add findings. The overall status is the maximum
+across layers.</li>
+<li>It can never clear a deterministic finding, approve, endorse, or certify a
+skill.</li>
+<li>Zero findings means <em>this constrained assessment found nothing more</em> — it is
+not an endorsement.</li>
+</ul>
+<p>The block decision therefore stays anchored to the deterministic layer, which
+the reviewed skill cannot influence.</p>
+<p>One operational note: depending on the installed provider, a review sends skill
+contents to an external model provider and consumes that provider&#39;s quota.</p>
+<h2 id="tools-and-hooks"><a class="doc-anchor" href="#tools-and-hooks">Tools and hooks</a></h2>
+<p>Skills are text. Portable plugins can also ship <em>tools</em> (executables) and
+<em>hooks</em> (contracts that run a tool on an agent event). These are approved
+separately from skills and separately from each other.</p>
+<p><strong>Approval is content-addressed.</strong> The approval records are exact:</p>
+<pre><code class="language-text">tool    &lt;source-id&gt;:&lt;plugin&gt;#tool:&lt;name&gt;@sha256:&lt;contract-hash&gt;
+hook    &lt;source-id&gt;:&lt;plugin&gt;#hook:&lt;name&gt;@sha256:&lt;contract-hash&gt;
+</code></pre>
+<p>The hash is a SHA-256 over the whole contract, not over the executable alone: a
+tool hash covers its entry, runtime, argument vector, declared inputs,
+environment allowlist, capabilities, platforms, and every staged file. A hook
+hash covers its event semantics, matcher, bindings, timeout, failure policy —
+and the hash of the tool it calls.</p>
+<p>A tool approval validates the declared executable closure and stages it
+immutably under <code>tools/</code>, addressed by its exact staged content, without running
+it. A hook approval grants one exact hook contract and is refused until the tool
+it references is independently ready.</p>
+<p><strong>What re-triggers approval.</strong> Any change to a hashed field produces a different
+identity that nobody has approved. A new upstream version, an edited <code>argv</code>, a
+changed matcher or binding, a different staged file — each one lands as
+<code>pending approval</code>, or as <code>hash drift</code> when an earlier hash for that identity
+was approved. Because a hook&#39;s hash includes its tool&#39;s hash, approving a new
+tool version does not silently re-arm the hook that calls it. There is no
+wildcard and no &quot;approve this plugin forever&quot; scope for tools and hooks.</p>
+<p><strong>Approval is rechecked at execution time.</strong> A hook is installed into the
+provider as a stored projection, and a stored projection outlives its approvals.
+Before it runs a handler, Dalo re-reads <code>approvals.toml</code> and requires a current
+exact approval for both the hook and its tool, re-verifies the staged closure,
+and recomputes the contract hash. A revoked or drifted hook aborts the dispatch
+with a non-zero exit instead of silently skipping, so revocation disables an
+already-installed sidecar.</p>
+<p><strong>Inspection never executes.</strong> <code>dalo tool list|show|audit</code> and
+<code>dalo hook list|show</code> read contracts, recompute hashes, and report state; they
+do not stage, approve, project, or run anything. See
+<a href="/docs/reference.html#tools">Tools</a> and <a href="/docs/reference.html#hooks">Hooks</a> for the contract
+fields, and <a href="/docs/reference.html#dalo-approve"><code>dalo approve</code></a> for the grant and revoke
+commands.</p>
+<p><strong>Contracts are closed.</strong> Unknown fields are rejected, <code>timeout_ms</code> is bounded
+to 100–120000 ms, <code>fail_closed</code> is only valid for pre-action enforcement
+effects, and a subject/phase/effect combination must have a verified mapping in
+a supported provider. Malformed, unknown, unsafe, or unsupported contracts are
+blocked rather than passed through. Handler output is bounded and validated
+against the declared effect before it is used.</p>
+<p><strong>Know what a hook approval grants.</strong> A hook is not an observer by default.
+Depending on its declared effect it can deny a tool call, rewrite a tool&#39;s
+input, replace the model-facing result, inject context into the session, or
+force another agent turn. Approving a hook is a decision to let that plugin
+influence what your agent does — read the effect, not only the name.</p>
+<h2 id="the-os-sandbox"><a class="doc-anchor" href="#the-os-sandbox">The OS sandbox</a></h2>
+<p>Dalo normally links skill directories and runs nothing from a source. There is
+exactly one case where it executes source-provided code during <code>sync</code>: a
+<a href="/docs/reference.html#deliverytoml-provider-builds">generated delivery</a>, where an
+approved tool builds the provider-specific artifact. That generator runs inside
+an operating-system sandbox that every descendant process inherits.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Mechanism</th>
+<th>Filesystem</th>
+<th>Network</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Linux</td>
+<td>Landlock, ABI v4, fully enforced</td>
+<td>Writes only below the one delivery staging directory</td>
+<td>TCP connect and bind denied</td>
+</tr>
+<tr>
+<td>macOS</td>
+<td>Seatbelt (<code>sandbox-exec</code>) with a generated profile</td>
+<td>Writes only below the one delivery staging directory</td>
+<td>All network denied</td>
+</tr>
+<tr>
+<td>Anything else</td>
+<td>None available</td>
+<td>—</td>
+<td>Generator execution is refused</td>
+</tr>
+</tbody></table></div>
+<p>The sandbox is fail-closed. Landlock is requested as a hard requirement, so an
+older kernel makes the generator refuse to run rather than fall back to a weaker
+boundary. If the domain is not fully enforced, Dalo does not start the process.
+On a platform without either mechanism, generated delivery is simply not
+available.</p>
+<p>Beyond the sandbox, the generator is started with a cleared environment, an
+empty <code>PATH</code>, no stdin, its own process group, a bounded runtime, and bounded
+output; it must be the exact approved staged executable.</p>
+<p>Its limits, stated plainly:</p>
+<ul>
+<li><strong>It is not a read boundary.</strong> The generator can read whatever its OS user can
+read. Do not treat a generated delivery as proof that its inputs stayed
+private.</li>
+<li><strong>Linux network control is TCP-only.</strong> Landlock does not cover UDP or
+UNIX-domain sockets.</li>
+<li><strong>It covers generated delivery, not hooks.</strong> A hook handler runs with a
+cleared environment, its own process group, and a bounded timeout, but not
+inside Landlock or Seatbelt. Approving a hook is permission to run that exact
+executable with your user&#39;s authority.</li>
+<li><strong>It does not constrain your agent.</strong> The sandbox confines a process Dalo
+starts, not what your agent later does with text a skill supplied.</li>
+</ul>
+<h2 id="credentials"><a class="doc-anchor" href="#credentials">Credentials</a></h2>
+<p>Dalo stores no secrets. There is no credential store, no token file, and no
+configuration field for a password or key anywhere in the store.</p>
+<p>Git authentication stays with Git. Dalo shells out to the <code>git</code> you already have
+and lets your existing SSH agent or credential helper do the work; it never
+reads those credentials itself. Interactive prompting is disabled
+(<code>GIT_TERMINAL_PROMPT=0</code>, <code>ssh -oBatchMode=yes</code>, and a closed stdin), so a
+hanging password prompt becomes a clear failure instead of a stuck process.</p>
+<p><strong>A credential in a URL is rejected, not stored.</strong> <code>https://user:token@host/…</code>
+fails validation when the source is added, so a token never reaches
+<code>config.toml</code>. The error points you at a local path, an SSH URL, or a credential
+helper instead.</p>
+<p><strong>Userinfo that does appear is redacted.</strong> Where a URL still carries userinfo —
+in Git&#39;s own stderr, in a failed command&#39;s recorded arguments, in progress
+output, or in recorded source provenance — Dalo rewrites it to <code>***@host</code> before
+printing or persisting it, so a pasted error report does not leak a token.</p>
+<h2 id="input-hardening"><a class="doc-anchor" href="#input-hardening">Input hardening</a></h2>
+<p>Skill repositories are untrusted input, and parsing them is an attack surface of
+its own:</p>
+<ul>
+<li><strong>Bounded frontmatter.</strong> <code>SKILL.md</code> frontmatter is capped at 64 KiB, at 64
+levels of flow nesting, and at 16 YAML anchor or alias references — the last
+one because alias expansion is otherwise unbounded work. Metadata past a cap
+is not parsed: the skill is skipped with a <code>malformed frontmatter</code> inventory
+warning rather than activated with missing fields.</li>
+<li><strong>Bounded names.</strong> A slot name is at most 120 characters of <code>[a-z0-9._-]</code>,
+with <code>.</code>, <code>..</code>, leading dots, and Windows-reserved basenames rejected. Source
+IDs must be a single path component of letters, digits, <code>.</code>, <code>_</code>, and <code>-</code>,
+and <code>.</code> and <code>..</code> are rejected, so neither can escape the store layout.</li>
+<li><strong>Transport allow-list.</strong> A source URL must use <code>https</code>, <code>ssh</code>, <code>git</code>, or
+<code>file</code>, a local path, or a constrained <code>user@host:path</code> form. Schemes such as
+<code>http://</code>, <code>git+ssh://</code>, and especially <code>ext::&lt;command&gt;</code> — which would hand a
+command to Git as a transport helper — are rejected before Git is spawned.
+The same allow-list is passed to Git itself through <code>GIT_ALLOW_PROTOCOL</code>, and
+<code>GIT_PROTOCOL_FROM_USER=0</code> keeps a command-line URL from counting as
+user-approved. Clone arguments are separated with <code>--</code>, so a URL starting
+with <code>-</code> cannot become an option. Submodules are never requested, so no
+submodule content is fetched or executed.</li>
+<li><strong>Bounded scanning.</strong> Files above 1 MiB are not content-scanned and the
+reviewer snapshot is capped at 512 KiB — both produce a visible finding or
+marker rather than silence. Evidence snippets in a report are truncated, so
+one crafted line cannot flood the output.</li>
+<li><strong>Closed schemas.</strong> User-authored and persisted TOML rejects unknown fields
+and unsupported schema versions instead of guessing.</li>
+<li><strong>Escaped terminal output.</strong> Repository-controlled text — names, descriptions,
+paths, evidence snippets, Git&#39;s own stderr — has its control characters
+escaped before it reaches a human terminal, so a crafted file cannot inject
+ANSI sequences into Dalo&#39;s output or hide text from you. Color codes are
+emitted only for a fixed set of Dalo&#39;s own status words. <code>--json</code> output is
+left
+unescaped on purpose: JSON encoding handles it, and consumers are programs.</li>
+</ul>
+<h2 id="what-dalo-does-not-protect-against"><a class="doc-anchor" href="#what-dalo-does-not-protect-against">What Dalo does not protect against</a></h2>
+<p>This list matters more than the previous ones. Dalo raises the cost of a bad
+skill; it does not make running third-party instructions safe.</p>
+<ul>
+<li><strong>A malicious skill that passes both layers.</strong> The deterministic rules are
+pattern-based and read one line at a time. Logic spread across files, novel
+obfuscation, or a plain-English instruction that is harmful only in your
+context will not match a rule, and the reviewer can be argued with. Approval
+means a human decided, not that the content is safe.</li>
+<li><strong>Prompt injection against your own agent.</strong> Dalo delivers text into an agent
+folder. What your agent does when it reads that text is your agent&#39;s
+permission model, not Dalo&#39;s. A skill that passes the preflight can still try
+to steer the agent that reads it.</li>
+<li><strong>Compromised upstream hosting or maintainer accounts.</strong> If an upstream
+repository or account is taken over, a new commit is just a new commit. Pins
+and staged audits shrink the window and make the change visible; they do not
+authenticate the author. Dalo does not verify commit signatures.</li>
+<li><strong>A compromised local machine.</strong> Audit reports, approvals, and staged tool
+closures are local files owned by your user. Another process running as you
+can rewrite them. Dalo&#39;s guarantees end where your account&#39;s integrity ends.</li>
+<li><strong>A skill approval outliving the content it was granted for.</strong> Unlike a tool
+or hook approval, a <code>skill</code> approval is bound to the source-qualified name,
+not to a hash. What catches a changed skill is the audit, which re-runs
+against the new content on every sync and drops any risk acceptance that no
+longer matches. An approval says &quot;this skill may be active&quot;; the audit is what
+keeps saying &quot;this exact content is not blocking&quot;.</li>
+<li><strong>Your Git configuration.</strong> Dalo drives your own <code>git</code>, so your global and
+system Git configuration still applies, and Git hooks already present in a
+managed checkout are not disabled. Dalo restricts the transports it will
+request but does not isolate Git from your machine&#39;s configuration.</li>
+<li><strong>Skills your agent writes itself.</strong> A skill an agent drops directly into an
+agent folder is unmanaged: Dalo does not own it, does not link it, and does
+not audit it. <code>dalo status</code> reports it as an unmanaged entry, and you can
+point <code>dalo audit &lt;path&gt;</code> at it, but nothing scans it automatically.</li>
+<li><strong>What a skill does at runtime.</strong> A skill that instructs an agent to install a
+package pulls in that package&#39;s supply chain. Dalo audits the skill text, not
+the ecosystem it reaches for.</li>
+<li><strong>Availability and correctness of upstream content.</strong> Dalo reproduces what a
+pinned commit contains. It does not judge whether that content is good.</li>
+</ul>
+<h2 id="what-your-team-should-still-do"><a class="doc-anchor" href="#what-your-team-should-still-do">What your team should still do</a></h2>
+<ul>
+<li><strong>Review catalog pins in pull requests.</strong> A team <code>dalo.toml</code> pins each
+external catalog to an exact revision. Treat a version bump like a dependency
+bump: read the diff of the skills it brings in, not just the version line.</li>
+<li><strong>Pin commits, not branches.</strong> <code>dalo team catalog add --version &lt;commit&gt;</code> and
+<code>dalo team catalog version &lt;id&gt; &lt;commit&gt;</code> accept a full commit SHA. A branch
+name means whatever it means tomorrow.</li>
+<li><strong>Keep approvals personal.</strong> <code>approvals.toml</code> lives in each person&#39;s own
+store. Do not copy it between machines or users — an approval is one person&#39;s
+recorded decision, and copying it discards the review it stood for.</li>
+<li><strong>Run the checks in CI.</strong> <code>dalo status --check --json</code> fails on pending
+approvals, blocking or failed audits, lock drift, resolution diagnostics, and
+unmanaged blockers. <code>dalo doctor --check --json</code> fails on error findings such
+as a blocked security audit; pending approvals are warnings there, so run both
+rather than picking one. <code>dalo source refresh &lt;catalog&gt; --check</code> reports
+upstream catalog drift read-only. See <a href="/docs/ci.html">Dalo in CI</a>.</li>
+<li><strong>Read findings, not summaries.</strong> When you approve a third-party skill, run
+<code>dalo audit &lt;source&gt;:&lt;skill&gt;</code> first, optionally with <code>--reviewer</code>, and read
+the findings. A short summary is the part a malicious skill can most easily
+influence.</li>
+<li><strong>Write real reasons into <code>--accept-risk</code>.</strong> The reason is what a future
+colleague reads when the acceptance is invalidated by a change. &quot;reviewed
+pinned upstream installer&quot; is useful; &quot;ok&quot; is not.</li>
+<li><strong>Re-review on change.</strong> Acceptances and content-addressed approvals expire on
+purpose. When one comes back, that is the system working; treat it as a
+review, not as noise.</li>
+</ul>
+<h2 id="related"><a class="doc-anchor" href="#related">Related</a></h2>
+<ul>
+<li><a href="https://github.com/sebastian-software/dalo/blob/main/SECURITY.md" rel="noopener">SECURITY.md</a> — how to report a vulnerability privately</li>
+<li><a href="/docs/reference.html#dalo-audit-skill-or-path"><code>dalo audit</code></a> and
+<a href="/docs/reference.html#dalo-approve"><code>dalo approve</code></a> in the command reference</li>
+<li><a href="/docs/troubleshooting.html">Troubleshooting</a> — recovering from a blocked audit</li>
+<li><a href="/docs/ci.html">Dalo in CI</a> — the non-interactive checks</li>
+</ul>
+<p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/security.md" rel="noopener">docs/security.md</a></p>
+  </article>
+</main>
+
+<footer class="site-footer doc-footer" data-scope="dark">
+  <div class="wrap footer-base">
+    <span>© 2026 <a href="https://sebastian-software.de" rel="noopener">Sebastian Software</a> · Dalo</span>
+    <span><a href="/">dalo.sh</a> · <a href="/spec/">Spec</a> · <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a> · <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a></span>
+  </div>
+</footer>
+</body>
+</html>

@@ -53,6 +53,11 @@ const PAGES = [
     label: "Troubleshooting",
     summary: "Resolver, doctor, and security findings with the command that clears each one.",
   },
+  {
+    slug: "security",
+    label: "Security overview",
+    summary: "Trust boundaries, what the preflight blocks, the approval model, and the stated limits.",
+  },
   { slug: "uninstall", label: "Uninstall", summary: "Remove targets, autosync, the store, and the binary." },
   {
     slug: "comparison",
