@@ -104,6 +104,7 @@ ownership records. It does not delete real user directories.</p>
 dalo target unlink claude
 dalo target unlink openclaw
 dalo target unlink hermes
+dalo target unlink opencode
 dalo target unlink generic
 </code></pre>
 <p>Only run the targets you actually linked. <code>target unlink</code> updates Dalo state. It does not delete real files from the target directory.</p>
@@ -176,6 +177,7 @@ the hosted installer.</p>
 <pre><code class="language-sh">ls -la ~/.agents/skills
 ls -la ~/.claude/skills
 ls -la ~/.hermes/skills
+ls -la ~/.config/opencode/skills
 </code></pre>
 <p>Remove only broken symlinks that point into the deleted Dalo store. Leave real directories and project/user-authored files in place.</p>
 <p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/uninstall.md" rel="noopener">docs/uninstall.md</a></p>
