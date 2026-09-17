@@ -112,6 +112,15 @@ cargo test --test cli -- source_refresh
 
 If a command can mutate user files, prefer `--dry-run` coverage and tests for the blocked/unsafe path as well as the success path.
 
+`tests/performance.rs` holds the reference-scenario generator behind the
+published [performance envelope](docs/compatibility.md#designed-scale-and-performance-envelope).
+Its ordinary test compares a no-op `sync` on a small generated store against a
+no-op `sync` on a single-source store measured in the same run, so it guards the
+hot path without a wall-clock budget that a slow runner would trip over. Re-take
+the published numbers with `cargo test --release --locked --test performance --
+--ignored --nocapture`, and update the table in `docs/compatibility.md` together
+with the hardware it names.
+
 For concrete third-party hook contracts, run `cargo test --locked --test
 upstream_hooks`. The [upstream fixture guide](tests/fixtures/upstream-hooks/README.md)
 documents the pinned Impeccable, Get Shit Done, and Planning with Files cases,
