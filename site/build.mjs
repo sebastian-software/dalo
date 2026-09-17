@@ -38,6 +38,11 @@ const PAGES = [
     summary: "Every command, flag, config file, JSON report, and diagnostic code.",
   },
   {
+    slug: "compatibility",
+    label: "Compatibility",
+    summary: "What is stable in 1.x, what is experimental, and how breaking changes are announced.",
+  },
+  {
     slug: "agents",
     label: "Agent integration",
     summary: "Supported agents, their skill directories, and how instruction packs are written.",

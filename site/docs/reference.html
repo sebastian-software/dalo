@@ -71,6 +71,7 @@
     <p class="footer-h">Documentation</p>
         <a href="/docs/getting-started.html">Getting started</a>
         <a href="/docs/reference.html" aria-current="page">Command reference</a>
+        <a href="/docs/compatibility.html">Compatibility</a>
         <a href="/docs/agents.html">Agent integration</a>
         <a href="/docs/ci.html">Dalo in CI</a>
         <a href="/docs/troubleshooting.html">Troubleshooting</a>
@@ -80,6 +81,14 @@
   <article class="doc-body">
 <h1 id="dalo-user-reference">Dalo User Reference</h1>
 <p>This is the user-facing reference for scripting Dalo and for understanding the files Dalo writes. It documents the current CLI and persisted schemas.</p>
+<h2 id="compatibility"><a class="doc-anchor" href="#compatibility">Compatibility</a></h2>
+<p>This page describes current behavior. Whether a given command, flag, exit code,
+JSON field, persisted file, or environment variable is a stability promise is
+answered by <a href="/docs/compatibility.html">Compatibility and stability</a>: commands, exit
+codes, <code>--json</code> top-level shapes, persisted schemas, environment variables, and
+install channels are stable within a major version; surfaces marked
+<strong>experimental</strong> here may change in any release; human-readable output text,
+store-internal layout, and the Rust library API are not covered.</p>
 <h2 id="store-resolution"><a class="doc-anchor" href="#store-resolution">Store Resolution</a></h2>
 <p>Dalo chooses the store path in this order:</p>
 <ol>
@@ -111,6 +120,10 @@
 <tr>
 <td><code>DALO_UPDATE_CHECK</code></td>
 <td>Set to <code>never</code> to disable passive update checks.</td>
+</tr>
+<tr>
+<td><code>DALO_INSTALL_CHANNEL</code></td>
+<td>Installation context set by a launcher so the update notice recommends the matching upgrade command.</td>
 </tr>
 <tr>
 <td><code>NO_COLOR</code></td>
@@ -333,6 +346,9 @@ dalo --json target detect
 <td>experimental</td>
 </tr>
 </tbody></table></div>
+<p>Targets reported as <code>experimental</code> are not covered by the stability promise for
+a major version: their IDs, default paths, and behavior may change in any
+release. See <a href="/docs/compatibility.html#tier-2-experimental">Compatibility and stability</a>.</p>
 <p>JSON output shape: <code>TargetDetectReport</code>.</p>
 <h3 id="dalo-target-link-target-path"><a class="doc-anchor" href="#dalo-target-link-target-path"><code>dalo target link &lt;target&gt; [path]</code></a></h3>
 <p>Record a target materialization directory. The <code>generic</code> target requires an explicit path. Known targets can use their default path or an explicit override.</p>
@@ -1517,11 +1533,18 @@ is preserved in output so drift remains visible.</p>
 <td>The first native plugin projection is applied; the state file records projection ownership.</td>
 </tr>
 </tbody></table></div>
+<p>Provider plugin and hook projections are <strong>experimental</strong>: the native files
+Dalo writes under <code>plugins/</code> and <code>hooks/</code>, and the provider mappings behind
+them, track upstream harness formats and may change in any release. The store
+layout itself is internal and is not covered by the stability promise; read it
+through <code>dalo</code> commands rather than directly. See
+<a href="/docs/compatibility.html">Compatibility and stability</a>.</p>
 <p>Dalo rejects unsupported schema versions in persisted TOML files.</p>
 <h2 id="configtoml"><a class="doc-anchor" href="#configtoml"><code>config.toml</code></a></h2>
-<p>Schema version: <code>version = 1</code>.</p>
+<p>Schema version: <code>version = 2</code>. A <code>version = 1</code> file is read and migrated
+forward on the next write.</p>
 <p>Example:</p>
-<pre><code class="language-toml">version = 1
+<pre><code class="language-toml">version = 2
 
 [settings]
 autosync = false
@@ -1985,6 +2008,11 @@ metadata symlink whose resolved target escapes the checkout is skipped and
 reported as <code>skipped_symlink</code>. This keeps skill identity and approval metadata
 contained within the source being scanned.</p>
 <h2 id="plugintoml-portable-plugins-tools-and-hooks"><a class="doc-anchor" href="#plugintoml-portable-plugins-tools-and-hooks"><code>PLUGIN.toml</code> Portable Plugins, Tools, and Hooks</a></h2>
+<p>The <code>PLUGIN.toml</code> file format Dalo reads is stable within a major version. The
+cross-implementation <a href="/spec/0.1/">Portable Agent Packages specification</a>
+built on it is an <strong>experimental</strong> draft, and so is any claim that another tool
+interprets the same file identically. See
+<a href="/docs/compatibility.html">Compatibility and stability</a>.</p>
 <p>Plugins are exact <code>plugins/&lt;name&gt;/PLUGIN.toml</code> packages. The top-level schema is
 closed: unknown fields are rejected. <code>schema_version = 1</code> and <code>[plugin]</code> with
 <code>name</code> and <code>description</code> are required; <code>id</code>, <code>version</code>, <code>providers</code>,
