@@ -1,5 +1,5 @@
 use clap::Parser;
-use dalo::cli::{Cli, Command};
+use dalo::cli::Cli;
 use dalo::lockfile::LockedInstructionPack;
 use dalo::store;
 use predicates::prelude::*;
@@ -429,7 +429,7 @@ requirement = "required"
 }
 
 #[test]
-fn help_should_use_task_language_for_plugin_commands_and_hide_yes() {
+fn help_should_use_task_language_for_plugin_commands() {
     let mut command = dalo_command();
 
     let output = command
@@ -453,7 +453,6 @@ fn help_should_use_task_language_for_plugin_commands_and_hide_yes() {
             "top-level help should associate `{command}` with its exact description:\n{help}"
         );
     }
-    assert!(!help.contains("--yes"));
     assert!(!help.contains("provider projections"));
     assert!(!help.contains("passive portable plugins"));
     assert!(!help.contains("inert plugin-local"));
@@ -480,38 +479,17 @@ fn plan_help_should_explain_read_only_output_and_examples() {
     ] {
         assert!(help.contains(expected), "missing `{expected}` in:\n{help}");
     }
-    assert!(!help.contains("--yes"));
 }
 
 #[test]
-fn plugin_subcommand_help_should_hide_yes() {
-    for args in [
-        ["agent", "--help"],
-        ["plugin", "--help"],
-        ["tool", "--help"],
-        ["hook", "--help"],
-    ] {
-        let output = dalo_command()
-            .args(args)
-            .assert()
-            .success()
-            .get_output()
-            .stdout
-            .clone();
-        let help = String::from_utf8(output).expect("help should be UTF-8");
-        assert!(
-            !help.contains("--yes"),
-            "--yes should be hidden in:\n{help}"
-        );
-    }
-}
-
-#[test]
-fn yes_should_remain_accepted_before_or_after_a_command() {
+fn yes_should_be_rejected_as_an_unknown_argument() {
     for args in [["dalo", "--yes", "plan"], ["dalo", "plan", "--yes"]] {
-        let cli = Cli::try_parse_from(args).expect("--yes should remain accepted");
-        assert!(cli.yes);
-        assert!(matches!(cli.command, Some(Command::Plan(_))));
+        let error = Cli::try_parse_from(args).expect_err("--yes should no longer be accepted");
+        assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
+        assert!(
+            error.to_string().contains("--yes"),
+            "the error should name the removed flag:\n{error}"
+        );
     }
 }
 
@@ -5677,7 +5655,7 @@ fn ignored_global_flags_should_note_in_json_mode_without_corrupting_stdout() {
         .success();
 
     let output = dalo_command()
-        .args(["--yes", "--dry-run", "--json", "--store"])
+        .args(["--dry-run", "--json", "--store"])
         .arg(&store)
         .arg("status")
         .output()
@@ -5687,30 +5665,7 @@ fn ignored_global_flags_should_note_in_json_mode_without_corrupting_stdout() {
         serde_json::from_slice(&output.stdout).expect("JSON stdout should remain parseable");
     assert!(report["store"].is_string());
     let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
-    assert!(stderr.contains("--yes is reserved for future safe prompts"));
     assert!(stderr.contains("--dry-run has no effect for this read-only command"));
-}
-
-#[test]
-fn yes_should_note_that_it_is_currently_ignored() {
-    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
-    let store = temp_dir.path().join("store");
-    dalo_command()
-        .args(["--store"])
-        .arg(&store)
-        .arg("init")
-        .assert()
-        .success();
-
-    dalo_command()
-        .args(["--yes", "--store"])
-        .arg(&store)
-        .arg("status")
-        .assert()
-        .success()
-        .stderr(predicate::str::contains(
-            "--yes is reserved for future safe prompts",
-        ));
 }
 
 #[test]
@@ -5828,12 +5783,12 @@ fn contextualized_human_errors_should_escape_controlled_store_paths_without_chan
 }
 
 #[test]
-fn yes_should_not_corrupt_json_errors() {
+fn json_errors_should_stay_parseable_for_a_missing_store() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("missing-store");
 
     let stderr = dalo_command()
-        .args(["--yes", "--store"])
+        .args(["--store"])
         .arg(&store)
         .args(["--json", "status"])
         .assert()
@@ -5843,7 +5798,7 @@ fn yes_should_not_corrupt_json_errors() {
         .stderr
         .clone();
     let payload: serde_json::Value =
-        serde_json::from_slice(&stderr).expect("JSON error should remain parseable with --yes");
+        serde_json::from_slice(&stderr).expect("JSON error should remain parseable");
     assert_eq!(payload["error"]["code"], "expected_failure");
 }
 
@@ -7506,7 +7461,7 @@ fn sync_check_should_allow_informational_local_override_diagnostics() {
 }
 
 #[test]
-fn sync_yes_should_not_replace_unmanaged_real_directory() {
+fn sync_should_not_replace_unmanaged_real_directory() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let store_root = store::comparable_path(&store);
@@ -7544,7 +7499,7 @@ fn sync_yes_should_not_replace_unmanaged_real_directory() {
     command
         .args(["--store"])
         .arg(&store)
-        .args(["--yes", "sync"])
+        .arg("sync")
         .assert()
         .success()
         .stdout(predicate::str::contains("conflict"));
@@ -8731,7 +8686,7 @@ fn adopt_should_accept_explicit_relative_path_selector() {
 }
 
 #[test]
-fn adopt_yes_should_not_replace_original_without_replace() {
+fn adopt_should_not_replace_original_without_replace() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
@@ -8742,7 +8697,7 @@ fn adopt_yes_should_not_replace_original_without_replace() {
     command
         .args(["--store"])
         .arg(&store)
-        .args(["--yes", "adopt", "review"])
+        .args(["adopt", "review"])
         .assert()
         .success()
         .stdout(predicate::str::contains("replacement: skipped"));
@@ -9208,7 +9163,7 @@ fn status_and_resolve_list_should_warn_on_unreadable_target_paths() {
 }
 
 #[test]
-fn resolve_adopt_yes_should_copy_only_until_replace_is_explicit() {
+fn resolve_adopt_should_copy_only_until_replace_is_explicit() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
@@ -9218,13 +9173,13 @@ fn resolve_adopt_yes_should_copy_only_until_replace_is_explicit() {
     dalo_command()
         .args(["--store"])
         .arg(&store)
-        .args(["--yes", "resolve", "adopt", "review"])
+        .args(["resolve", "adopt", "review"])
         .assert()
         .success()
         .stdout(predicate::str::contains("replacement: skipped"));
     assert!(
         !std::fs::symlink_metadata(target.join("review"))
-            .expect("original should remain after --yes")
+            .expect("original should remain after adoption")
             .file_type()
             .is_symlink()
     );
@@ -10222,7 +10177,7 @@ fn resolve_remove_owned_json_should_preserve_the_existing_report_contract() {
 }
 
 #[test]
-fn resolve_remove_owned_yes_should_not_remove_real_entry() {
+fn resolve_remove_owned_should_not_remove_real_entry() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
@@ -10241,7 +10196,7 @@ fn resolve_remove_owned_yes_should_not_remove_real_entry() {
     command
         .args(["--store"])
         .arg(&store)
-        .args(["--yes", "resolve", "remove-owned", "generic:review"])
+        .args(["resolve", "remove-owned", "generic:review"])
         .assert()
         .failure()
         .code(1)

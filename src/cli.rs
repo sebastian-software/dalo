@@ -58,10 +58,6 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub json: bool,
 
-    /// Reserved compatibility flag for future safe interactive prompts.
-    #[arg(long, global = true, hide = true)]
-    pub yes: bool,
-
     /// Show planned changes without mutating state.
     #[arg(long, global = true)]
     pub dry_run: bool,
@@ -1129,7 +1125,6 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
     let Cli {
         store,
         json,
-        yes,
         dry_run,
         command,
     } = cli;
@@ -1142,7 +1137,6 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
                         .to_owned(),
             });
         }
-        warn_noop_yes(yes);
         if !json && io::stdout().is_terminal() {
             let options = GlobalOptions::resolve(store.as_deref(), false, dry_run)?;
             return run_next(&options);
@@ -1152,9 +1146,6 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         return Ok(());
     };
 
-    if !json {
-        warn_noop_yes(yes);
-    }
     match command {
         Command::Completions(command) => {
             warn_noop_dry_run(dry_run);
@@ -1217,21 +1208,12 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
 
     if result.is_ok() {
         update::print_notice_if_ready(pending_update_notice);
-        if options.json {
-            warn_noop_yes(yes);
-            if ignores_dry_run {
-                warn_noop_dry_run(options.dry_run);
-            }
+        if options.json && ignores_dry_run {
+            warn_noop_dry_run(options.dry_run);
         }
     }
 
     result
-}
-
-fn warn_noop_yes(yes: bool) {
-    if yes {
-        eprintln!("note: --yes is reserved for future safe prompts and is currently ignored");
-    }
 }
 
 fn warn_noop_dry_run(dry_run: bool) {
@@ -4858,7 +4840,6 @@ mod tests {
         let cli = Cli {
             store: None,
             json: false,
-            yes: false,
             dry_run: false,
             command: None,
         };
