@@ -1534,6 +1534,48 @@ layout itself is internal and is not covered by the stability promise; read it
 through <code>dalo</code> commands rather than directly. See
 <a href="/docs/compatibility.html">Compatibility and stability</a>.</p>
 <p>Dalo rejects unsupported schema versions in persisted TOML files.</p>
+<h3 id="accepted-0x-store-shapes"><a class="doc-anchor" href="#accepted-0x-store-shapes">Accepted 0.x Store Shapes</a></h3>
+<p>A store written by an older release keeps working. These are the shapes Dalo
+still accepts on read, what it does with each, and where you can observe it.
+None of them are CLI spellings; every deprecated flag and command spelling was
+removed before 1.0 (see
+<a href="/docs/troubleshooting.html#my-script-uses-a-flag-dalo-no-longer-accepts">Troubleshooting and FAQ</a>).</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Older shape</th>
+<th>What Dalo does</th>
+<th>Where you see it</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>A skill approval that names only the skill, without its source</td>
+<td>Rejects it as ambiguous across sources and keeps the skill pending</td>
+<td><code>legacy_bare_approval</code> resolution diagnostic, with the exact <code>dalo approve skill &lt;source-id&gt;:&lt;skill&gt;</code> to re-grant</td>
+</tr>
+<tr>
+<td><code>state.toml</code> <code>protected_skills[]</code> entries recorded as target paths</td>
+<td>Rewrites them to <code>target_id</code> plus <code>slot_name</code> on the next write</td>
+<td><code>dalo resolve list</code> and <code>doctor</code>, which report the protected slot by name</td>
+</tr>
+<tr>
+<td>A <code>source-lock.toml</code> written before the current schema version</td>
+<td>Rehashes the catalog inventory in memory and writes the current schema on the next selection or advance</td>
+<td><code>migration_warnings[]</code> on <code>source select</code> and <code>source refresh</code>, in both human output and JSON, for a sibling catalog that could not be migrated</td>
+</tr>
+<tr>
+<td>A team manifest <code>[[catalog]]</code> with <code>skills = [&quot;name&quot;]</code> bare entries</td>
+<td>Treats each bare name as an include, identical to <code>+name</code></td>
+<td>The selection of the derived catalog source, via <code>dalo source inspect &lt;team&gt;.&lt;catalog&gt;</code></td>
+</tr>
+<tr>
+<td>An instruction managed block that still carries pack metadata</td>
+<td>Re-renders it without the metadata during the next pack refresh, and only when the block still matches Dalo&#39;s exact older rendering</td>
+<td><code>dalo sync</code>, which reports the refreshed pack; an externally edited block still fails closed</td>
+</tr>
+</tbody></table></div>
+<p>Dalo never migrates a shape it cannot recognize byte for byte. Anything
+ambiguous is reported as blocked instead of rewritten.</p>
 <h2 id="configtoml"><a class="doc-anchor" href="#configtoml"><code>config.toml</code></a></h2>
 <p>Schema version: <code>version = 2</code>. A <code>version = 1</code> file is read and migrated
 forward on the next write.</p>

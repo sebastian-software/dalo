@@ -1339,6 +1339,25 @@ through `dalo` commands rather than directly. See
 
 Dalo rejects unsupported schema versions in persisted TOML files.
 
+### Accepted 0.x Store Shapes
+
+A store written by an older release keeps working. These are the shapes Dalo
+still accepts on read, what it does with each, and where you can observe it.
+None of them are CLI spellings; every deprecated flag and command spelling was
+removed before 1.0 (see
+[Troubleshooting and FAQ](troubleshooting.md#my-script-uses-a-flag-dalo-no-longer-accepts)).
+
+| Older shape | What Dalo does | Where you see it |
+| --- | --- | --- |
+| A skill approval that names only the skill, without its source | Rejects it as ambiguous across sources and keeps the skill pending | `legacy_bare_approval` resolution diagnostic, with the exact `dalo approve skill <source-id>:<skill>` to re-grant |
+| `state.toml` `protected_skills[]` entries recorded as target paths | Rewrites them to `target_id` plus `slot_name` on the next write | `dalo resolve list` and `doctor`, which report the protected slot by name |
+| A `source-lock.toml` written before the current schema version | Rehashes the catalog inventory in memory and writes the current schema on the next selection or advance | `migration_warnings[]` on `source select` and `source refresh`, in both human output and JSON, for a sibling catalog that could not be migrated |
+| A team manifest `[[catalog]]` with `skills = ["name"]` bare entries | Treats each bare name as an include, identical to `+name` | The selection of the derived catalog source, via `dalo source inspect <team>.<catalog>` |
+| An instruction managed block that still carries pack metadata | Re-renders it without the metadata during the next pack refresh, and only when the block still matches Dalo's exact older rendering | `dalo sync`, which reports the refreshed pack; an externally edited block still fails closed |
+
+Dalo never migrates a shape it cannot recognize byte for byte. Anything
+ambiguous is reported as blocked instead of rewritten.
+
 ## `config.toml`
 
 Schema version: `version = 2`. A `version = 1` file is read and migrated
