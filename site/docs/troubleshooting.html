@@ -138,13 +138,13 @@ dalo --json doctor
 </tr>
 <tr>
 <td><code>StoreLocked</code>, error text <code>another dalo operation is running</code></td>
-<td>Another Dalo command currently owns <code>.lock</code>, or a stale lock file remains.</td>
-<td>Wait for the other command. If no Dalo process is running, inspect and remove the stale <code>.lock</code> file in the store.</td>
+<td>Another Dalo command currently holds the store lock.</td>
+<td>Wait for the other command and retry. The lock is an advisory lock the operating system releases when that process exits, so the <code>.lock</code> file staying behind is normal and never the cause; do not delete it.</td>
 </tr>
 <tr>
 <td><code>owned_path_real_entry</code></td>
 <td>Dalo has an ownership record, but a real file or directory now exists at that path.</td>
-<td>Run <code>dalo resolve remove-owned &lt;id&gt;</code>. Dalo drops the ownership record and leaves the real entry intact.</td>
+<td>Run <code>dalo resolve remove-owned &lt;id&gt;</code>. It drops the ownership record and leaves the real entry intact, and it reports <code>blocked_real_entry</code> and exits <code>1</code> to say the link itself was not removed — that is the expected outcome here, not a failure. The slot then shows up as an ordinary unmanaged entry, so adopt, keep, rename, or remove it next.</td>
 </tr>
 <tr>
 <td><code>missing_owned_symlink</code>, <code>broken_owned_symlink</code>, <code>foreign_owned_symlink</code></td>
@@ -660,7 +660,7 @@ repository, push the change, then run <code>dalo sync</code>.</p>
 <tr>
 <td><code>owned_path_real_entry</code></td>
 <td>error</td>
-<td>Run <code>dalo resolve remove-owned &lt;id&gt;</code>; the real entry stays in place.</td>
+<td>Run <code>dalo resolve remove-owned &lt;id&gt;</code>; the real entry stays in place and the command reports <code>blocked_real_entry</code> with exit <code>1</code> while still dropping the record. See <a href="#fast-recovery-paths">Fast Recovery Paths</a>.</td>
 </tr>
 <tr>
 <td><code>missing_owned_symlink</code></td>
