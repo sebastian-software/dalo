@@ -34,7 +34,7 @@ const lines: Line[] = [
   {at: 250, kind: 'output', content: 'target[generic]: /tmp/dalo/skills'},
   {at: 278, kind: 'success', content: 'applied  create     target[generic]:/review -> store:/local/skills/review'},
   {at: 306, kind: 'output', content: 'synced: 1 skill across 1 target (1 created)'},
-  {at: 334, kind: 'output', content: <span style={{fontSize: 12}}>security preflight: deterministic checks only</span>},
+  {at: 334, kind: 'output', content: 'security preflight: deterministic checks only'},
   {at: 382, kind: 'comment', content: '# exit 0 · reviewed content linked'},
 ];
 
