@@ -443,11 +443,59 @@ persisted schema version increases, a newer Dalo reads and rewrites the older
 file automatically. An older Dalo that meets a newer schema version refuses
 to operate with an actionable error rather than truncating, ignoring unknown
 fields, or rewriting the file at the version it understands. Downgrade is not
-supported; restore a backup or the previous store instead.</li>
+supported; restore a backup or the previous store instead. See
+<a href="#upgrade-and-downgrade">Upgrade and downgrade</a> for what each direction
+actually does.</li>
 <li><strong>Security fixes may break compatibility.</strong> If the only safe fix for a
 vulnerability is a breaking change, it ships as soon as it is ready, is
 called out in the release notes, and the reasoning is recorded.</li>
 </ol>
+<h2 id="upgrade-and-downgrade"><a class="doc-anchor" href="#upgrade-and-downgrade">Upgrade and downgrade</a></h2>
+<h3 id="upgrade"><a class="doc-anchor" href="#upgrade">Upgrade</a></h3>
+<p>Upgrading needs no migration step. A newer Dalo reads an older file, upgrades
+it in memory, and writes the current version the next time it writes that file
+at all. Nothing is unlinked, no approval has to be granted again, and no
+&quot;migrate once&quot; command exists to forget.</p>
+<p>Because the rewrite is lazy, a file that no command has written yet keeps its
+old version on disk — a store carried since 0.6 can still hold <code>version = 1</code> in
+<code>config.toml</code> long after <code>dalo sync</code> has brought <code>lock.toml</code> up to date. That is
+not a problem to fix, but it is worth being able to see, so <code>dalo doctor</code> prints
+one <code>schema_migration_pending</code> line per file that will migrate on its next write:</p>
+<pre><code class="language-text">info    schema_migration_pending: `config.toml` is at schema version 1 and is read as 2; the next config write persists the migration
+info    schema_migration_pending: `lock.toml` is at schema version 1 and is read as 6; the next `dalo sync` persists the migration
+</code></pre>
+<p>Where an old record cannot be migrated automatically because only a person can
+decide what it meant, doctor says so as a warning and names the exact command.
+An approval record written before approvals were source-qualified is the one
+case that exists today:</p>
+<pre><code class="language-text">warning legacy_approval_record: legacy approval `launch-copy` found for `public:launch-copy`; re-approve as `public:launch-copy` next=dalo approve skill public:launch-copy
+</code></pre>
+<p>This is covered by <code>tests/upgrade.rs</code>, which runs the current binary against
+stores written by the released 0.6.0, 0.9.2, 0.12.0, and 0.15.1 binaries. See
+<a href="https://github.com/sebastian-software/dalo/blob/main/tests/fixtures/stores/README.md" rel="noopener"><code>tests/fixtures/stores/README.md</code></a>.</p>
+<h3 id="downgrade"><a class="doc-anchor" href="#downgrade">Downgrade</a></h3>
+<p>Downgrade is not supported, and Dalo fails closed rather than pretending
+otherwise. An older binary that meets a file written by a newer one refuses to
+read it; it never truncates the file, ignores the fields it does not know, or
+rewrites it at the version it understands. The store is left exactly as it was.</p>
+<p>What the older binary prints depends on how far back it is. From 0.12.0 onward
+the refusal is the explicit schema check:</p>
+<pre><code class="language-text">error: unsupported schema version 6 in `/path/to/store/lock.toml`; this dalo supports version 4; upgrade dalo
+</code></pre>
+<p>Before that, the file is rejected while parsing, because those releases reject
+unknown fields before they reach the version check:</p>
+<pre><code class="language-text">error: could not parse `/path/to/store/lock.toml`: TOML parse error at line 3, column 1
+  |
+3 | plugins = []
+</code></pre>
+<p>Either way the outcome is the same and is what matters: the command exits <code>1</code>,
+nothing is written, and the store stays readable by the newer binary. <code>status</code>,
+<code>sync</code>, and every other command that reads the lock behave identically.
+<code>doctor</code> still exits <code>0</code> because it is a report, and surfaces the refusal as a
+<code>lock_invalid</code> error finding; <code>doctor --check</code> exits <code>1</code>.</p>
+<p>To recover, upgrade Dalo again — the store was not modified. If you must stay on
+the older version, restore the store from a backup taken before the newer binary
+ran; there is no supported way to convert a newer store back.</p>
 <h2 id="supported-platforms"><a class="doc-anchor" href="#supported-platforms">Supported platforms</a></h2>
 <p>Dalo relies on Unix symlink APIs and <code>$HOME</code> resolution; a non-Unix build fails
 at compile time by design.</p>
