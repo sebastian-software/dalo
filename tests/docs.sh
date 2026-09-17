@@ -407,9 +407,12 @@ grep -Fq 'x-release-please-version' "$root/site/index.html"
 grep -Fq 'x-release-please-start-version' "$root/site/index.html"
 
 # The hero transcript is the output the current CLI prints, not the pre-0.14 one.
-grep -Fq 'target[generic]:/review -&gt; store:/local/skills/review' "$root/site/index.html"
+# `~/.agents/skills` is the Codex default, and `generic` refuses to be linked
+# without an explicit path, so the hero has to label that directory `codex`.
+grep -Fq 'target[codex]:/review -&gt; store:/local/skills/review' "$root/site/index.html"
+refute 'the hero labels the Codex default directory as the generic target' \
+  grep -Fq 'target[generic]: ~/.agents/skills' "$root/site/index.html"
 grep -Fq 'synced: 1 skill across 2 targets (2 created)' "$root/site/index.html"
-grep -Fq 'security preflight: deterministic checks only' "$root/site/index.html"
 grep -Fq 'target[generic]:/review -> store:/local/skills/review' "$root/video/src/QuickstartVideo.tsx"
 refute 'the quickstart video source still uses the pre-0.14 absolute sync path' \
   grep -Fq 'applied  create     /tmp/dalo/skills/review -> /tmp/dalo/store/local/skills/review' "$root/video/src/QuickstartVideo.tsx"
@@ -427,14 +430,50 @@ grep -q 'dalo-quickstart.mp4' "$root/README.md"
 grep -q 'Get it wrong. Dalo gets you back.' "$root/site/index.html"
 grep -q 'dalo synk' "$root/site/index.html"
 grep -q "a similar subcommand exists: 'sync'" "$root/site/index.html"
-grep -q "error: skill 'company:relese-helper' was not found; known skills: company:new-skill, company:release-helper" "$root/site/index.html"
-grep -q 'pending approval: sebastian:tech-docs (run: dalo approve skill sebastian:tech-docs)' "$root/site/index.html"
+grep -Fq 'error: skill `company:relese-helper` was not found; did you mean `company:release-helper`?; known skills: company:new-skill, company:release-helper' "$root/site/index.html"
+grep -Fq 'nothing materialized: resolution is incomplete' "$root/site/index.html"
+grep -Fq 'pending approval: sebastian:effective-web (run: dalo approve skill sebastian:effective-web)' "$root/site/index.html"
 grep -q 'Recover without googling.' "$root/README.md"
 grep -q 'Security preflight and review gate' "$root/site/index.html"
-grep -q 'dalo audit sebastian:' "$root/site/index.html"
+grep -q 'dalo audit sebastian:effective-web' "$root/site/index.html"
 grep -q 'security audits and review gates' "$root/site/index.html"
-grep -q 'security preflight: deterministic checks and compatible cached findings only; sync did not run an agent reviewer; passing is not a safety guarantee' "$root/site/index.html"
+# The security-preflight sentence is a shared contract: `sync` prints exactly one
+# of them, and the landing page, the demo video, the getting-started guide, and
+# the README all quote that one string. Reading the literal out of the binary
+# instead of restating it here is what makes the assertion catch the next
+# rewording, which is how the pre-0.15 sentence survived on the homepage.
+preflight_sentence="$(sed -n 's/^ *println!("{prefix}\(security preflight: [^"]*\)");$/\1/p' "$root/src/status.rs")"
+test -n "$preflight_sentence" \
+  || { echo 'src/status.rs no longer prints a recognizable security-preflight sentence' >&2; exit 1; }
+test "$(printf '%s\n' "$preflight_sentence" | wc -l | tr -d ' ')" -eq 1 \
+  || { echo 'src/status.rs prints more than one security-preflight sentence' >&2; exit 1; }
+for preflight_document in \
+  "$root/site/index.html" \
+  "$root/video/src/QuickstartVideo.tsx" \
+  "$root/docs/getting-started.md" \
+  "$root/README.md"; do
+  grep -Fq "$preflight_sentence" "$preflight_document" \
+    || { echo "$preflight_document no longer quotes the security-preflight sentence the binary prints" >&2; exit 1; }
+done
+refute 'the pre-0.15 security-preflight sentence is still quoted somewhere' \
+  grep -R -q --exclude-dir=node_modules --exclude-dir=build --exclude-dir=archive \
+    'deterministic checks and compatible cached findings only' \
+    "$root/site" "$root/video/src" "$root/docs" "$root/README.md" "$root/README.md.src"
 grep -q 'durationInFrames={450}' "$root/video/src/Root.tsx"
+# The social card is generated from the checked-in Remotion still, never edited
+# by hand, and every page shares that one file. Its pixel size is part of the
+# markup, so the PNG header is checked against the declared dimensions: bytes 16
+# to 23 of a PNG are the IHDR width and height, big-endian.
+test -f "$root/video/src/OgImage.tsx"
+grep -Fq 'render:og' "$root/video/package.json"
+grep -Fq 'pnpm run render:og' "$root/site/README.md"
+grep -Fq '<meta property="og:image:width" content="1200" />' "$root/site/index.html"
+grep -Fq '<meta property="og:image:height" content="630" />' "$root/site/index.html"
+og_image_header="$(od -An -tx1 -j16 -N8 "$root/site/assets/img/og.png" | tr -d ' \n')"
+test "$og_image_header" = "000004b000000276" \
+  || { echo 'site/assets/img/og.png is no longer the declared 1200x630' >&2; exit 1; }
+grep -Fq "Your team&rsquo;s agent skills, versioned like code." "$root/video/src/OgImage.tsx" \
+  || { echo 'the OG still no longer carries the 1.0 tagline' >&2; exit 1; }
 refute 'the site requests a CDN-hosted player instead of self-hosted assets' \
   grep -R -q -E --exclude-dir=node_modules --exclude-dir=build 'cdn\.jsdelivr\.net|AsciinemaPlayer|asciinema-player' "$root/site"
 grep -q 'DALO_VERSION' "$root/site/install.md"

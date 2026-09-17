@@ -141,21 +141,22 @@ and catalogs pinned by a team manifest start here by design.
 
 ```text
 pending approval:
-  pr-review -> public:pr-review (run: dalo approve skill public:pr-review)
+  review-helper -> public:review-helper (run: dalo approve skill public:review-helper)
 ```
 
 `sync` still does all the other work and repeats the same line at the end:
 
 ```text
 synced: 2 skills across 1 target (2 unchanged)
-pending approval: public:pr-review (run: dalo approve skill public:pr-review)
+pending approval: public:review-helper (run: dalo approve skill public:review-helper)
+security preflight: deterministic checks only
 ```
 
-Read the skill first — `dalo audit public:pr-review` prints the deterministic
+Read the skill first — `dalo audit public:review-helper` prints the deterministic
 findings and the exact content hash — then run the command status gave you:
 
 ```sh
-dalo approve skill public:pr-review
+dalo approve skill public:review-helper
 dalo sync
 ```
 

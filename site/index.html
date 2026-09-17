@@ -170,9 +170,9 @@
           </div>
           <pre class="terminal-body"><code><span class="ln"><span class="prompt">$</span> dalo sync</span>
 <span class="ln c-dim">dalo store: ~/.dalo</span>
-<span class="ln c-dim">target[generic]: ~/.agents/skills</span>
+<span class="ln c-dim">target[codex]: ~/.agents/skills</span>
 <span class="ln c-dim">target[claude]: ~/.claude/skills</span>
-<span class="ln"><span class="c-ok">applied  create</span>     target[generic]:/review -&gt; store:/local/skills/review</span>
+<span class="ln"><span class="c-ok">applied  create</span>     target[codex]:/review -&gt; store:/local/skills/review</span>
 <span class="ln"><span class="c-ok">applied  create</span>     target[claude]:/review -&gt; store:/local/skills/review</span>
 <span class="ln c-dim">synced: 1 skill across 2 targets (2 created)</span>
 <span class="ln c-dim">security preflight: deterministic checks only</span></code></pre>
@@ -545,11 +545,11 @@
 <span class="ln c-dim"># try a real public catalog</span>
 <span class="ln"><span class="prompt">$</span> dalo source add-catalog sebastian https://github.com/sebastian-software/skills.sebastian-software.com.git</span>
 <span class="ln"><span class="prompt">$</span> dalo source inspect sebastian</span>
-<span class="ln"><span class="prompt">$</span> dalo source select sebastian pr-review</span>
-<span class="ln"><span class="prompt">$</span> dalo audit sebastian:pr-review</span>
-<span class="ln"><span class="prompt">$</span> dalo approve skill sebastian:pr-review</span>
+<span class="ln"><span class="prompt">$</span> dalo source select sebastian effective-web</span>
+<span class="ln"><span class="prompt">$</span> dalo audit sebastian:effective-web</span>
+<span class="ln"><span class="prompt">$</span> dalo approve skill sebastian:effective-web</span>
 <span class="ln"><span class="prompt">$</span> dalo sync</span>
-<span class="ln c-dim">security preflight: deterministic checks and compatible cached findings only; sync did not run an agent reviewer; passing is not a safety guarantee</span></code></pre>
+<span class="ln c-dim">security preflight: deterministic checks only</span></code></pre>
         </div>
         <div class="video-demo">
           <video autoplay loop muted playsinline controls preload="metadata" aria-label="Fifteen-second Dalo secure-sync video">
@@ -633,13 +633,20 @@
         </div>
         <pre class="terminal-body"><code><span class="ln"><span class="prompt">$</span> dalo synk</span>
 <span class="ln c-block">error: unrecognized subcommand 'synk'</span>
-<span class="ln c-warn">tip: a similar subcommand exists: 'sync'</span>
+<span class="ln"> </span>
+<span class="ln c-warn">  tip: a similar subcommand exists: 'sync'</span>
+<span class="ln"> </span>
+<span class="ln c-dim">Usage: dalo [OPTIONS] [COMMAND]</span>
+<span class="ln"> </span>
+<span class="ln c-dim">For more information, try '--help'.</span>
 <span class="ln"> </span>
 <span class="ln"><span class="prompt">$</span> dalo approve skill company:relese-helper</span>
-<span class="ln c-block">error: skill 'company:relese-helper' was not found; known skills: company:new-skill, company:release-helper</span>
+<span class="ln c-block">error: skill `company:relese-helper` was not found; did you mean `company:release-helper`?; known skills: company:new-skill, company:release-helper</span>
 <span class="ln"> </span>
 <span class="ln"><span class="prompt">$</span> dalo sync</span>
-<span class="ln c-warn">pending approval: sebastian:tech-docs (run: dalo approve skill sebastian:tech-docs)</span></code></pre>
+<span class="ln c-dim">dalo store: ~/.dalo</span>
+<span class="ln c-block">nothing materialized: resolution is incomplete</span>
+<span class="ln c-warn">  pending approval: sebastian:effective-web (run: dalo approve skill sebastian:effective-web)</span></code></pre>
       </div>
     </div>
   </section>
