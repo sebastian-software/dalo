@@ -166,63 +166,12 @@ dalo target detect
 <td>depends on the agent</td>
 </tr>
 </tbody></table></div>
-<p>Cursor has no built-in target ID. See <a href="#cursor">Cursor</a> below.</p>
-<h2 id="how-each-row-was-verified"><a class="doc-anchor" href="#how-each-row-was-verified">How each row was verified</a></h2>
+<p>Cursor has no built-in target ID; see <a href="#cursor">Cursor</a> for the reason and the
+command that covers it.</p>
 <p>Every observation below was made on 2026-09-17 on macOS, in a throwaway <code>HOME</code>
 holding a single probe skill whose directory is a symlink to a directory
 elsewhere — the exact shape <code>dalo sync</code> produces.</p>
-<h3 id="codex"><a class="doc-anchor" href="#codex">Codex</a></h3>
-<p>Ran <code>codex debug prompt-input</code> with <code>HOME</code> pointed at the throwaway home and the
-working directory set to a scratch project. The rendered prompt listed the skill
-roots <code>r0 = $HOME/.agents/skills</code>, <code>r1 = $CODEX_HOME/skills/.system</code> and
-<code>r2 = $CWD/.agents/skills</code>, and both symlinked probe skills appeared under the
-<code>Available skills</code> heading. The
-<a href="https://developers.openai.com/codex/skills" rel="noopener">Codex skills documentation</a> states
-the same user, repository and admin locations and says Codex follows the symlink
-target when scanning them.</p>
-<h3 id="claude-code"><a class="doc-anchor" href="#claude-code">Claude Code</a></h3>
-<p>Ran <code>claude --debug --debug-file &lt;path&gt; -p</code> with <code>HOME</code> pointed at the throwaway
-home, an invalid API key and an unreachable API base URL, so the run never
-reached the model. The debug log recorded
-<code>Loading skills from: managed=/Library/Application Support/ClaudeCode/.claude/skills, user=&lt;HOME&gt;/.claude/skills, project=[&lt;cwd&gt;/.claude/skills]</code>
-followed by <code>Loaded 2 unique skills (2 unconditional, 0 conditional, managed: 0, user: 1, project: 1, additional: 0, legacy commands: 0)</code> — both of them
-symlinked directories.</p>
-<h3 id="openclaw"><a class="doc-anchor" href="#openclaw">OpenClaw</a></h3>
-<p>Installed <code>openclaw@2026.9.4</code> from npm into a temporary prefix and ran
-<code>openclaw skills list --json</code> with <code>HOME</code> pointed at the throwaway home. The
-symlinked probe skill was listed with <code>&quot;source&quot;: &quot;agents-skills-personal&quot;</code>,
-<code>&quot;eligible&quot;: true</code> and <code>&quot;modelVisible&quot;: true</code>. The
-<a href="https://docs.openclaw.ai/tools/skills" rel="noopener">OpenClaw skills documentation</a> documents
-<code>~/.agents/skills</code> as the personal skill root for the default state directory
-and <code>&lt;workspace&gt;/skills</code> plus <code>&lt;workspace&gt;/.agents/skills</code> as the project roots.</p>
-<h3 id="hermes"><a class="doc-anchor" href="#hermes">Hermes</a></h3>
-<p>Not verified on this date: Hermes ships no non-interactive command that lists
-skills, and listing them from a session requires model credentials. The latest
-release is <code>v2026.9.14</code> (2026-09-14). The user-level path <code>~/.hermes/skills</code> and
-the project-level paths come from the official
-<a href="https://hermes-agent.nousresearch.com/docs/user-guide/features/skills" rel="noopener">Hermes skills documentation</a>.
-Hermes also scans additional directories listed under <code>skills.external_dirs</code> in
-<code>~/.hermes/config.yaml</code>, which is the supported way to point it at a shared
-<code>~/.agents/skills</code>.</p>
-<h3 id="opencode"><a class="doc-anchor" href="#opencode">OpenCode</a></h3>
-<p>Ran <code>opencode --pure debug skill</code> with <code>HOME</code> pointed at the throwaway home. Both
-probe skills were listed with their symlinked locations,
-<code>&lt;HOME&gt;/.config/opencode/skills/dalo-probe/SKILL.md</code> and
-<code>&lt;cwd&gt;/.opencode/skills/dalo-probe-project/SKILL.md</code>. The
-<a href="https://opencode.ai/docs/skills/" rel="noopener">OpenCode skills documentation</a> documents
-<code>~/.config/opencode/skills/&lt;name&gt;/SKILL.md</code> as the global location; OpenCode
-additionally scans <code>~/.claude/skills</code> and <code>~/.agents/skills</code> unless
-<code>OPENCODE_DISABLE_EXTERNAL_SKILLS=1</code> is set.</p>
-<h3 id="cursor"><a class="doc-anchor" href="#cursor">Cursor</a></h3>
-<p>Not verified on this date: the installed Cursor CLI
-(<code>cursor-agent 2025.09.18-7ae6800</code>) reports <code>Not logged in</code> and offers no offline
-command that lists skills, so symlink discovery could not be observed. The
-<a href="https://cursor.com/docs/context/skills" rel="noopener">Cursor skills documentation</a> documents
-<code>~/.cursor/skills/</code> and <code>~/.agents/skills/</code> as the user-level roots and
-<code>.cursor/skills/</code>, <code>.agents/skills/</code>, <code>.claude/skills/</code> and <code>.codex/skills/</code> as
-project roots. Because that promise is unverified, Dalo 1.0 ships no <code>cursor</code>
-target ID.</p>
-<h2 id="codex-1"><a class="doc-anchor" href="#codex-1">Codex</a></h2>
+<h2 id="codex"><a class="doc-anchor" href="#codex">Codex</a></h2>
 <p>Default skill path:</p>
 <pre><code class="language-text">~/.agents/skills
 </code></pre>
@@ -232,7 +181,15 @@ dalo status
 dalo sync
 ls -la ~/.agents/skills
 </code></pre>
-<h2 id="claude-code-1"><a class="doc-anchor" href="#claude-code-1">Claude Code</a></h2>
+<p>How this row was verified: ran <code>codex debug prompt-input</code> with <code>HOME</code> pointed at
+the throwaway home and the working directory set to a scratch project. The
+rendered prompt listed the skill roots <code>r0 = $HOME/.agents/skills</code>,
+<code>r1 = $CODEX_HOME/skills/.system</code> and <code>r2 = $CWD/.agents/skills</code>, and both
+symlinked probe skills appeared under its <code>Available skills</code> heading. The
+<a href="https://developers.openai.com/codex/skills" rel="noopener">Codex skills documentation</a> states
+the same user, repository and admin locations and says Codex follows the symlink
+target when scanning them.</p>
+<h2 id="claude-code"><a class="doc-anchor" href="#claude-code">Claude Code</a></h2>
 <p>Default skill path:</p>
 <pre><code class="language-text">~/.claude/skills
 </code></pre>
@@ -242,7 +199,13 @@ dalo status
 dalo sync
 ls -la ~/.claude/skills
 </code></pre>
-<h2 id="openclaw-1"><a class="doc-anchor" href="#openclaw-1">OpenClaw</a></h2>
+<p>How this row was verified: ran <code>claude --debug --debug-file &lt;path&gt; -p</code> with
+<code>HOME</code> pointed at the throwaway home, an invalid API key and an unreachable API
+base URL, so the run never reached the model. The debug log recorded
+<code>Loading skills from: managed=/Library/Application Support/ClaudeCode/.claude/skills, user=&lt;HOME&gt;/.claude/skills, project=[&lt;cwd&gt;/.claude/skills]</code>
+followed by <code>Loaded 2 unique skills (2 unconditional, 0 conditional, managed: 0, user: 1, project: 1, additional: 0, legacy commands: 0)</code> — both of them
+symlinked directories.</p>
+<h2 id="openclaw"><a class="doc-anchor" href="#openclaw">OpenClaw</a></h2>
 <p>Default skill path:</p>
 <pre><code class="language-text">~/.agents/skills
 </code></pre>
@@ -253,7 +216,15 @@ dalo sync
 ls -la ~/.agents/skills
 </code></pre>
 <p>Codex and OpenClaw can share the same physical directory. Dalo de-duplicates physical target paths during materialization.</p>
-<h2 id="hermes-1"><a class="doc-anchor" href="#hermes-1">Hermes</a></h2>
+<p>How this row was verified: installed <code>openclaw@2026.9.4</code> from npm into a
+temporary prefix and ran <code>openclaw skills list --json</code> with <code>HOME</code> pointed at the
+throwaway home. The symlinked probe skill was listed with
+<code>&quot;source&quot;: &quot;agents-skills-personal&quot;</code>, <code>&quot;eligible&quot;: true</code> and
+<code>&quot;modelVisible&quot;: true</code>. The
+<a href="https://docs.openclaw.ai/tools/skills" rel="noopener">OpenClaw skills documentation</a> documents
+<code>~/.agents/skills</code> as the personal skill root for the default state directory
+and <code>&lt;workspace&gt;/skills</code> plus <code>&lt;workspace&gt;/.agents/skills</code> as the project roots.</p>
+<h2 id="hermes"><a class="doc-anchor" href="#hermes">Hermes</a></h2>
 <p>Default skill path:</p>
 <pre><code class="language-text">~/.hermes/skills
 </code></pre>
@@ -263,7 +234,16 @@ dalo status
 dalo sync
 ls -la ~/.hermes/skills
 </code></pre>
-<h2 id="opencode-1"><a class="doc-anchor" href="#opencode-1">OpenCode</a></h2>
+<p>How this row was verified: not verified on this date. Hermes ships no
+non-interactive command that lists skills, and listing them from a session
+requires model credentials. The latest release is <code>v2026.9.14</code> (2026-09-14). The
+user-level path <code>~/.hermes/skills</code> and the project-level paths come from the
+official
+<a href="https://hermes-agent.nousresearch.com/docs/user-guide/features/skills" rel="noopener">Hermes skills documentation</a>.
+Hermes also scans additional directories listed under <code>skills.external_dirs</code> in
+<code>~/.hermes/config.yaml</code>, which is the supported way to point it at a shared
+<code>~/.agents/skills</code>.</p>
+<h2 id="opencode"><a class="doc-anchor" href="#opencode">OpenCode</a></h2>
 <p>Default skill path:</p>
 <pre><code class="language-text">~/.config/opencode/skills
 </code></pre>
@@ -273,10 +253,17 @@ dalo status
 dalo sync
 ls -la ~/.config/opencode/skills
 </code></pre>
-<p>OpenCode also reads <code>~/.claude/skills</code> and <code>~/.agents/skills</code>, so a linked
-<code>claude</code> or <code>codex</code> target already reaches it. Link <code>opencode</code> when you want the
-resolved set in OpenCode&#39;s own directory.</p>
-<h2 id="cursor-1"><a class="doc-anchor" href="#cursor-1">Cursor</a></h2>
+<p>OpenCode also reads <code>~/.claude/skills</code> and <code>~/.agents/skills</code> unless
+<code>OPENCODE_DISABLE_EXTERNAL_SKILLS=1</code> is set, so a linked <code>claude</code> or <code>codex</code>
+target already reaches it. Link <code>opencode</code> when you want the resolved set in
+OpenCode&#39;s own directory.</p>
+<p>How this row was verified: ran <code>opencode --pure debug skill</code> with <code>HOME</code> pointed
+at the throwaway home. Both probe skills were listed with their symlinked
+locations, <code>&lt;HOME&gt;/.config/opencode/skills/dalo-probe/SKILL.md</code> and
+<code>&lt;cwd&gt;/.opencode/skills/dalo-probe-project/SKILL.md</code>. The
+<a href="https://opencode.ai/docs/skills/" rel="noopener">OpenCode skills documentation</a> documents
+<code>~/.config/opencode/skills/&lt;name&gt;/SKILL.md</code> as the global location.</p>
+<h2 id="cursor"><a class="doc-anchor" href="#cursor">Cursor</a></h2>
 <p>Cursor has no built-in target ID. Point a generic target at the folder Cursor
 reads:</p>
 <pre><code class="language-sh">dalo target link generic ~/.cursor/skills
@@ -285,6 +272,14 @@ ls -la ~/.cursor/skills
 </code></pre>
 <p>Cursor also loads <code>~/.agents/skills</code>, so a linked <code>codex</code> or <code>openclaw</code> target
 already reaches it.</p>
+<p>Why there is no <code>cursor</code> target: discovery could not be verified on this date.
+The installed Cursor CLI (<code>cursor-agent 2025.09.18-7ae6800</code>) reports
+<code>Not logged in</code> and offers no offline command that lists skills, so a symlinked
+skill directory could not be observed without signing in. The
+<a href="https://cursor.com/docs/context/skills" rel="noopener">Cursor skills documentation</a> documents
+<code>~/.cursor/skills/</code> and <code>~/.agents/skills/</code> as the user-level roots and
+<code>.cursor/skills/</code>, <code>.agents/skills/</code>, <code>.claude/skills/</code> and <code>.codex/skills/</code> as
+project roots. Dalo 1.0 does not ship a target for an unverified promise.</p>
 <h2 id="any-other-folder-based-agent"><a class="doc-anchor" href="#any-other-folder-based-agent">Any other folder-based agent</a></h2>
 <pre><code class="language-sh">dalo target link generic /path/to/agent/skills
 dalo sync
