@@ -212,6 +212,7 @@ for compatibility_section in \
   '## Tier 2: Experimental' \
   '## Tier 3: Not covered' \
   '## Change policy' \
+  '## Designed scale and performance envelope' \
   '## Supported platforms' \
   '## Support window'; do
   grep -Fq "$compatibility_section" "$compatibility" \
@@ -221,6 +222,18 @@ for exit_code in '`0`' '`1`' '`2`' '`3`' '`4`'; do
   grep -Fq "| $exit_code |" "$compatibility"
 done
 grep -Fq 'Windows is supported through WSL only' "$compatibility"
+# The published performance numbers have to stay an envelope, stay attributed to
+# the hardware they were taken on, and stay reproducible by the test that
+# produced them -- otherwise they read as a promise nobody measured.
+grep -Fq 'These numbers are an envelope, not a promise' "$compatibility" \
+  || { echo 'docs/compatibility.md no longer frames the numbers as an envelope' >&2; exit 1; }
+grep -Fq 'Apple M1 Ultra' "$compatibility" \
+  || { echo 'docs/compatibility.md no longer names the measurement hardware' >&2; exit 1; }
+envelope_command='cargo test --release --locked --test performance -- --ignored --nocapture'
+grep -Fq "$envelope_command" "$compatibility" \
+  || { echo 'docs/compatibility.md no longer shows how to reproduce the envelope' >&2; exit 1; }
+test -f "$root/tests/performance.rs" \
+  || { echo 'the performance measurement and smoke test are missing' >&2; exit 1; }
 library_stance='The Rust library API is not a semver contract; the CLI, its exit codes,'
 grep -Fq "$library_stance" "$compatibility" \
   || { echo 'docs/compatibility.md no longer states the library API stance' >&2; exit 1; }

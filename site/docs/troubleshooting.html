@@ -992,6 +992,13 @@ error. Replace it with the supported form:</p>
 <td><code>--refresh-audit</code></td>
 </tr>
 </tbody></table></div>
+<h3 id="how-long-should-sync-take"><a class="doc-anchor" href="#how-long-should-sync-take">How long should <code>sync</code> take?</a></h3>
+<p>Measured numbers for a store of 10 sources and 200 skills, and the caveats that
+come with them, are in
+<a href="/docs/compatibility.html#designed-scale-and-performance-envelope">Designed scale and performance envelope</a>.
+If your own <code>sync</code> is much slower than that, the usual cause is network round
+trips: a no-op <code>sync</code> still fetches every tracking team source. <code>dalo status</code>
+and <code>dalo doctor</code> never fetch, so use them in a shell prompt or a watch loop.</p>
 <h3 id="how-do-i-remove-dalo-completely"><a class="doc-anchor" href="#how-do-i-remove-dalo-completely">How do I remove Dalo completely?</a></h3>
 <p>Use the uninstall guide: <a href="/docs/uninstall.html">Uninstall Dalo</a>.</p>
 <h3 id="is-promote-native-windows-or-my-agent-coming"><a class="doc-anchor" href="#is-promote-native-windows-or-my-agent-coming">Is <code>promote</code>, native Windows, or my agent coming?</a></h3>

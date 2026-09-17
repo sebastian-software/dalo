@@ -349,6 +349,15 @@ error. Replace it with the supported form:
 | `source select <id> --unselect <skill>...` | `source unselect <id> <skill>...` |
 | `--refresh` (audit, adopt, approve skill, resolve adopt) | `--refresh-audit` |
 
+### How long should `sync` take?
+
+Measured numbers for a store of 10 sources and 200 skills, and the caveats that
+come with them, are in
+[Designed scale and performance envelope](compatibility.md#designed-scale-and-performance-envelope).
+If your own `sync` is much slower than that, the usual cause is network round
+trips: a no-op `sync` still fetches every tracking team source. `dalo status`
+and `dalo doctor` never fetch, so use them in a shell prompt or a watch loop.
+
 ### How do I remove Dalo completely?
 
 Use the uninstall guide: [Uninstall Dalo](uninstall.md).
