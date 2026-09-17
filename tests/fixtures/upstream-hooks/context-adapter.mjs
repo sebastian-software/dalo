@@ -1,8 +1,9 @@
 // Test-only, explicitly authored bridge, not automatic native-plugin import.
 // Only context-producing hooks are admitted. Control responses must never be
 // silently downgraded to advisory context by a package integration.
-import { readFileSync } from 'node:fs';
+import { closeSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -19,22 +20,36 @@ if (mode === 'replay') {
   const executable = mode === 'node' ? process.execPath
     : mode === 'text' ? '/bin/bash' : join(root, entry);
   const args = mode === 'engine' ? ['hook'] : [join(root, entry)];
-  const result = spawnSync(executable, args, {
-    input,
-    cwd: event.cwd,
-    // No inherited developer credentials, provider settings or launcher lookup.
-    env: {
-      PATH: '/usr/bin:/bin',
-      HOME: event.cwd,
-      XDG_CACHE_HOME: join(event.cwd, '.cache'),
-      IMPECCABLE_HOOK_HARNESS: 'claude',
-      IMPECCABLE_SKILL_DIR: root,
-      IMPECCABLE_SELF: 'impeccable',
-    },
-    encoding: 'utf8',
-    timeout: 10000,
-    maxBuffer: 1024 * 1024,
-  });
+  // A hook may exit before it reads its event, and the reminder hook below
+  // never reads stdin at all. Hand the child a seekable file the way Dalo's
+  // dispatcher hands one to this adapter: writing the payload into a child
+  // stdin pipe instead races that exit and fails the hook with EPIPE.
+  const scratch = mkdtempSync(join(tmpdir(), 'dalo-upstream-hook-'));
+  const eventFile = join(scratch, 'event.json');
+  writeFileSync(eventFile, input);
+  const stdin = openSync(eventFile, 'r');
+  let result;
+  try {
+    result = spawnSync(executable, args, {
+      stdio: [stdin, 'pipe', 'pipe'],
+      cwd: event.cwd,
+      // No inherited developer credentials, provider settings or launcher lookup.
+      env: {
+        PATH: '/usr/bin:/bin',
+        HOME: event.cwd,
+        XDG_CACHE_HOME: join(event.cwd, '.cache'),
+        IMPECCABLE_HOOK_HARNESS: 'claude',
+        IMPECCABLE_SKILL_DIR: root,
+        IMPECCABLE_SELF: 'impeccable',
+      },
+      encoding: 'utf8',
+      timeout: 10000,
+      maxBuffer: 1024 * 1024,
+    });
+  } finally {
+    closeSync(stdin);
+    rmSync(scratch, { recursive: true, force: true });
+  }
   if (result.error || result.status !== 0) {
     throw new Error(`Upstream hook failed: ${result.error ?? result.stderr}`);
   }

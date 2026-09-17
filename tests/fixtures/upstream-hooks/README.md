@@ -35,7 +35,9 @@ approves and stages those bytes using the production APIs.
 `context-adapter.mjs` is test infrastructure, not a shipped package importer.
 It invokes the original handler in the temporary project with an explicit
 environment and translates only event-matching native `additionalContext`
-into Dalo's portable `add_context` result. Tests ensure control decisions and
+into Dalo's portable `add_context` result. Like the dispatcher, it hands the
+handler its event on a seekable file rather than a pipe: a hook may exit
+before it reads stdin, and a pipe write then fails that hook with `EPIPE`. Tests ensure control decisions and
 wrong-event responses are rejected, rather than silently weakened to advice.
 Child failures also fail the adapter; the authored advisory hook uses Dalo's
 existing `failure_policy = "report"` behavior.
