@@ -5,6 +5,10 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
 ## Constraints
 
 - Only install on macOS or Linux.
+- Only Apple Silicon Macs are supported. If `uname -m` reports `x86_64` on
+  Darwin, stop: the Intel macOS build was discontinued with Dalo 1.0, and both
+  the installer and Homebrew will refuse. Tell the user that `cargo install dalo`
+  is the remaining path, because it compiles from source.
 - Do not modify shell startup files automatically.
 - Do not touch real agent skill folders until the user confirms which agent target to link.
 - On macOS with Homebrew, prefer the official
@@ -150,6 +154,8 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
 - Windows is not supported natively. Recommend WSL for Windows users; native
   Windows is tracked as
   [issue #830](https://github.com/sebastian-software/dalo/issues/830).
+- Intel Macs are not supported. Dalo 0.16.0 is the last release with an Intel
+  macOS archive; do not pin an older version to work around this.
 - If the installer cannot resolve a release or checksum, stop and show the error instead of downloading from an unofficial mirror.
 - If the install directory is not on `PATH`, the installer prints the exact export command for the current shell.
 - To remove a cached npm binary, delete `~/.cache/dalo`; uninstall a global
