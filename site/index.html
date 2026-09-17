@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Dalo · Git-backed skill management for AI agents</title>
-  <meta name="description" content="Dalo keeps every skill your AI agents run in Git, resolves them deterministically across local and team sources, and links the final set into the folders your agents already read: Codex, Claude Code, OpenClaw, Hermes." />
+  <meta name="description" content="Dalo keeps your team's agent skills in Git: one approved set, resolved the same way on every machine and reviewed before it reaches any agent folder." />
   <link rel="canonical" href="https://dalo.sh/" />
   <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#15171c" media="(prefers-color-scheme: dark)" />
@@ -13,14 +13,14 @@
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Dalo" />
   <meta property="og:url" content="https://dalo.sh/" />
-  <meta property="og:title" content="Dalo · Git-backed skill management for AI agents" />
-  <meta property="og:description" content="One source of truth for every skill your agents run. Versioned in Git, resolved deterministically, linked into the agent folders you already use." />
+  <meta property="og:title" content="Dalo · Your team's agent skills, versioned like code" />
+  <meta property="og:description" content="Dalo keeps your team's agent skills in Git: one approved set, resolved the same way on every machine and reviewed before it reaches any agent folder." />
   <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Dalo · Git-backed skill management for AI agents" />
-  <meta name="twitter:description" content="One source of truth for every skill your agents run. Versioned in Git, resolved deterministically, linked into the agent folders you already use." />
+  <meta name="twitter:title" content="Dalo · Your team's agent skills, versioned like code" />
+  <meta name="twitter:description" content="Dalo keeps your team's agent skills in Git: one approved set, resolved the same way on every machine and reviewed before it reaches any agent folder." />
   <meta name="twitter:image" content="https://dalo.sh/assets/img/og.png" />
 
   <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
@@ -38,7 +38,7 @@
     "@type": "SoftwareApplication",
     "name": "Dalo",
     "url": "https://dalo.sh/",
-    "description": "Git-backed skill management for AI agents: resolve approved skills deterministically and link them into local agent folders.",
+    "description": "Dalo keeps your team's agent skills in Git: one approved set, resolved the same way on every machine and reviewed before it reaches any agent folder.",
     "sameAs": "https://github.com/sebastian-software/dalo",
     "softwareVersion": "0.15.1",
     "applicationCategory": "DeveloperApplication",
@@ -117,18 +117,10 @@
         <p class="kicker reveal"><span class="dot"></span> Rust CLI · macOS &amp; Linux · v<span data-dalo-version>0.15.1</span></p> <!-- x-release-please-version -->
         <h1 class="reveal">Your team's agent skills, versioned like code.</h1>
         <p class="hero-lede reveal">
-          Dalo is the missing layer between "I found a useful skill" and "our agents
-          can rely on this." Keep local experiments and team skills in Git, resolve
-          one approved set, and link it into the folders your agents already read.
-          When something is off, Dalo tells you exactly what to run next — no archaeology.
+          For engineers and team leads who run Claude Code, Codex, or another agent
+          across several people and machines: keep every skill in Git, resolve one
+          approved set, and link it into the folders your agents already read.
         </p>
-        <div class="hero-cta reveal">
-          <a class="btn btn-accent" href="#quickstart">
-            Get started
-            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M2 8h11M9 4l4 4-4 4"/></svg>
-          </a>
-          <a class="btn btn-quiet" href="https://github.com/sebastian-software/dalo" rel="noopener">View on GitHub</a>
-        </div>
         <div class="install-picker hero-install reveal" data-install-picker>
           <div class="install-methods" role="group" aria-label="Choose an installation method" hidden>
             <button class="install-method" type="button" data-install-method="homebrew" data-command-value="brew install sebastian-software/tap/dalo" aria-pressed="false">
@@ -149,12 +141,17 @@
             </button>
           </div>
         </div>
-        <div class="proof-badges reveal" aria-label="Project signals">
-          <a href="https://crates.io/crates/dalo" rel="noopener">crates.io</a>
-          <a href="https://github.com/sebastian-software/dalo/actions/workflows/ci.yml" rel="noopener">CI</a>
-          <a href="https://github.com/sebastian-software/dalo/blob/main/LICENSE-MIT" rel="noopener">MIT OR Apache-2.0</a>
-          <a href="https://github.com/sebastian-software/dalo" rel="noopener">Star on GitHub</a>
-        </div>
+        <p class="hero-proof reveal">
+          Six release targets, each published with a SHA-256 checksum and Sigstore
+          provenance — and no skill reaches an agent folder before a security audit
+          and your explicit approval.
+        </p>
+        <p class="hero-next reveal">
+          <a href="#how">
+            See how it works
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M2 8h11M9 4l4 4-4 4"/></svg>
+          </a>
+        </p>
         <p class="hero-meta reveal">MIT OR Apache-2.0. Single binary, no daemon; just <code>git</code> on your PATH.</p>
       </div>
 
