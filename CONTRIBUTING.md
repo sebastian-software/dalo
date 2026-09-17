@@ -11,6 +11,30 @@ Useful project references:
 - Product and architecture background: [docs/rfcs/](docs/rfcs/)
 - Release history: [CHANGELOG.md](CHANGELOG.md)
 
+## Roadmap
+
+The roadmap lives in issues, not in prose, so that anything Dalo does not do yet
+is something you can subscribe to, react to, and comment on.
+
+- The 1.0 plan is epic
+  [#841](https://github.com/sebastian-software/dalo/issues/841). It is about the
+  promise a 1.0 makes — compatibility, a green pipeline, honest docs — rather
+  than new features.
+- Deferred features live under epic
+  [#836](https://github.com/sebastian-software/dalo/issues/836), one open issue
+  per feature: PR-first `promote`, catalog pin pull requests, native Windows,
+  more verified agent adapters, more install channels, rename/adapt and the
+  interactive resolve assistant, blocked-autosync notifications, drifted-block
+  conversion, project-scoped targets, external sources with subpath scoping, and
+  forge adapters beyond GitHub.
+- Priorities follow demand: reactions and comments on those issues decide what
+  is picked up next. There are no dates, and none of the deferred features block
+  a release.
+
+Before you build something sizeable, comment on the issue so the design is
+agreed before the diff exists. If a feature has no issue yet, open one or raise
+it in [Discussions Ideas](https://github.com/sebastian-software/dalo/discussions/categories/ideas).
+
 ## Development Setup
 
 Install the Rust toolchain used by the project and Node.js 24, then run the

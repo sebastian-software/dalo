@@ -143,7 +143,9 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
 ## Notes
 
 - Dalo shells out to `git` for source operations, so `git` must be on `PATH`.
-- Windows is not supported yet. Recommend WSL for Windows users.
+- Windows is not supported natively. Recommend WSL for Windows users; native
+  Windows is tracked as
+  [issue #830](https://github.com/sebastian-software/dalo/issues/830).
 - If the installer cannot resolve a release or checksum, stop and show the error instead of downloading from an unofficial mirror.
 - If the install directory is not on `PATH`, the installer prints the exact export command for the current shell.
 - To remove a cached npm binary, delete `~/.cache/dalo`; uninstall a global

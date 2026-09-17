@@ -36,6 +36,15 @@ refute 'README.md still advertises the 20-second demo' \
 grep -q '15-second secure-sync demo' "$root/site/index.html"
 refute 'the retired github-pr-auto-review example is still referenced' \
   grep -R -q --exclude-dir=node_modules --exclude-dir=build 'github-pr-auto-review' "$root/README.md" "$root/site"
+# The V1 status snapshot is frozen: it lives in the archive, it says so at the
+# top, and its "Still Planned" list is epic #836 instead of unowned prose. A
+# copy back under docs/rfcs/ would resurrect a second, stale roadmap.
+refute 'the V1 status snapshot is back in docs/rfcs/' \
+  test -f "$root/docs/rfcs/v1-implementation-status.md"
+test -f "$root/docs/archive/v1-implementation-status.md"
+grep -q '^\*\*Archived\.\*\*' "$root/docs/archive/v1-implementation-status.md"
+grep -q 'issues/836' "$root/docs/archive/v1-implementation-status.md"
+grep -q '(v1-implementation-status.md)' "$root/docs/archive/README.md"
 grep -q 'brew uninstall dalo' "$root/docs/uninstall.md"
 grep -q 'dalo resolve remove-owned <target>:<slot>' "$root/docs/uninstall.md"
 grep -q 'resolve list.*exact owned IDs' "$root/docs/uninstall.md"
