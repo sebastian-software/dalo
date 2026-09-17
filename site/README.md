@@ -2,11 +2,16 @@
 
 `dalo.sh` is hand-written HTML, CSS, and JavaScript: `index.html` is the
 landing page, `install.md`, `install.sh`, and `llms.txt` are served as-is,
-`docs/` contains the rendered copies of the repository's `docs/*.md`, and
-`spec/` contains the versioned Portable Agent Packages pages plus its public
-JSON Schema. `llms.txt` is the plain-text index agents read instead of scraping
-the landing page; `build.mjs` copies every deployable file in `site/` into
-`site/build/`, so it needs no build-script entry of its own.
+`docs/` contains the rendered copies of the repository's `docs/*.md`, `spec/`
+contains the versioned Portable Agent Packages pages plus its public JSON
+Schema, and `news/` holds the occasional hand-written announcement page.
+`llms.txt` is the plain-text index agents read instead of scraping the landing
+page; `build.mjs` copies every deployable file in `site/` into `site/build/`,
+so it needs no build-script entry of its own.
+
+`news/` pages are not generated either: they need no build-script entry, only a
+`sitemap.xml` entry. They reuse the documentation shell (`styles.css` plus
+`docs.css`, `body class="doc-page"`, `.doc-shell` with a small side nav).
 
 ## Build
 
