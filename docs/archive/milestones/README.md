@@ -80,14 +80,17 @@ V1.1 added the next product layer in M11–M16, in two tracks plus a readiness p
 
 ## Deferred Boundary
 
-Later work remains outside this milestone set unless explicitly pulled forward:
+Later work remains outside this milestone set unless explicitly pulled forward.
+Each entry is an open issue under epic
+[#836](https://github.com/sebastian-software/dalo/issues/836), which is the live
+record; the list below is the frozen prose it replaced:
 
-- `source refresh` lockfile PRs
-- full interactive resolve assistant
-- rename/adapt flows for conflicts
-- full PR-first `promote`
-- verified Cursor/OpenCode adapters
-- forge adapters beyond GitHub
+- `source refresh` lockfile PRs — [#829](https://github.com/sebastian-software/dalo/issues/829)
+- full interactive resolve assistant — [#833](https://github.com/sebastian-software/dalo/issues/833)
+- rename/adapt flows for conflicts — [#833](https://github.com/sebastian-software/dalo/issues/833)
+- full PR-first `promote` — [#828](https://github.com/sebastian-software/dalo/issues/828)
+- verified Cursor/OpenCode adapters — [#831](https://github.com/sebastian-software/dalo/issues/831)
+- forge adapters beyond GitHub — [#854](https://github.com/sebastian-software/dalo/issues/854)
 
 ## Validation Policy
 

@@ -1,5 +1,14 @@
 # Dalo Implementation Status Snapshot
 
+**Archived.** This snapshot is frozen at the date below and is no longer
+maintained. It lived at `docs/rfcs/v1-implementation-status.md` and is kept only
+so links and RFC readers still land on something. For what actually ships today,
+read [`CHANGELOG.md`](../../CHANGELOG.md) and
+[`docs/reference.md`](../reference.md); for what is still planned, read epic
+[#836](https://github.com/sebastian-software/dalo/issues/836), where every item
+of the "Still Planned" list below is now an open issue you can subscribe to,
+react to, and comment on. Nothing here is a commitment.
+
 Status: Superseded by `CHANGELOG.md` and `docs/archive/milestones/README.md` for release-by-release tracking
 Last updated: 2026-07-05
 Current crate version: see `Cargo.toml`
@@ -52,14 +61,18 @@ Distribution work is wired for the next tagged release:
 
 ## Still Planned
 
-- Non-catalog external sources with subpath scoping.
-- Lock-advancing `source refresh` that opens lockfile PRs (advancing a catalog's own pin already ships via `source refresh --advance`).
-- Full interactive resolve assistant.
-- Rename/adapt flows for conflicts.
-- Full PR-first `promote`.
-- Forge adapters beyond GitHub.
-- More verified target adapters beyond the current supported set.
-- Windows support.
+Each entry is an open issue under epic
+[#836](https://github.com/sebastian-software/dalo/issues/836). The issue is the
+live record; this list is the frozen prose it replaced.
+
+- Non-catalog external sources with subpath scoping — [#853](https://github.com/sebastian-software/dalo/issues/853).
+- Lock-advancing `source refresh` that opens lockfile PRs (advancing a catalog's own pin already ships via `source refresh --advance`) — [#829](https://github.com/sebastian-software/dalo/issues/829).
+- Full interactive resolve assistant — [#833](https://github.com/sebastian-software/dalo/issues/833).
+- Rename/adapt flows for conflicts — [#833](https://github.com/sebastian-software/dalo/issues/833).
+- Full PR-first `promote` — [#828](https://github.com/sebastian-software/dalo/issues/828).
+- Forge adapters beyond GitHub — [#854](https://github.com/sebastian-software/dalo/issues/854).
+- More verified target adapters beyond the current supported set — [#831](https://github.com/sebastian-software/dalo/issues/831).
+- Windows support — [#830](https://github.com/sebastian-software/dalo/issues/830).
 
 ## Intentional Deviations From Early RFC Text
 
