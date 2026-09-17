@@ -734,8 +734,7 @@ dalo --json audit public:review-helper --reviewer codex
 dalo audit public:review-helper --reviewer claude --refresh-audit
 </code></pre>
 <p>Use <code>--refresh-audit</code> to ignore a compatible cached semantic review and run the
-selected provider again. The older <code>--refresh</code> spelling remains a hidden alias
-for script compatibility.</p>
+selected provider again.</p>
 <p><code>--reviewer auto|codex|claude|opencode</code> adds a semantic review through an installed
 agent CLI. Dalo starts a fresh non-persistent reviewer and treats a bounded
 snapshot as untrusted data. Claude and OpenCode run with tools denied. Codex
