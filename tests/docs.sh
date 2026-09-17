@@ -162,6 +162,10 @@ grep -Fq '0008-compatibility-contract.md' "$root/docs/adr/README.md"
 test -f "$root/docs/adr/0008-compatibility-contract.md"
 
 grep -q 'latest release on the default branch' "$root/SECURITY.md"
+# Both private channels must stay named. GitHub private vulnerability reporting
+# is enabled on the repository, and it is the channel a reporter finds first.
+grep -q 'GitHub private vulnerability reporting' "$root/SECURITY.md"
+grep -q 'Report a vulnerability' "$root/SECURITY.md"
 grep -q 'security@sebastian-software.de' "$root/SECURITY.md"
 refute 'SECURITY.md still lists the 0.4.x line as supported' \
   grep -q '| `0\.4\.x`' "$root/SECURITY.md"
