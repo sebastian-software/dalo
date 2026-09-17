@@ -808,6 +808,79 @@ pub struct InstructionBlockDrift {
     pub message: String,
 }
 
+/// An active pack whose rendered block still uses the pre-1.0 rendering.
+///
+/// Releases before pack metadata was hidden from agents rendered `version:` and
+/// `topics:` lines into the managed block. Those blocks are still accepted, and
+/// the next `dalo sync` rewrites them, so this is a migration to announce rather
+/// than drift to repair.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LegacyInstructionBlock {
+    /// Source that owns the pack.
+    pub source_id: String,
+    /// Pack ID.
+    pub pack_id: String,
+    /// Instruction-file target that contains the block.
+    pub target: PathBuf,
+}
+
+/// Active packs whose rendered block still uses the pre-1.0 rendering.
+#[must_use]
+pub fn legacy_instruction_blocks(
+    paths: &StorePaths,
+    sources: &[SourceConfig],
+    active: &[LockedInstructionPack],
+) -> Vec<LegacyInstructionBlock> {
+    let mut legacy = active
+        .iter()
+        .filter(|entry| renders_legacy_block(paths, sources, entry))
+        .map(|entry| LegacyInstructionBlock {
+            source_id: entry.source_id.clone(),
+            pack_id: entry.pack_id.clone(),
+            target: lock_entry_target_path(paths, &entry.target),
+        })
+        .collect::<Vec<_>>();
+    legacy.sort_by(|left, right| {
+        left.target
+            .cmp(&right.target)
+            .then_with(|| left.source_id.cmp(&right.source_id))
+            .then_with(|| left.pack_id.cmp(&right.pack_id))
+    });
+    legacy
+}
+
+fn renders_legacy_block(
+    paths: &StorePaths,
+    sources: &[SourceConfig],
+    entry: &LockedInstructionPack,
+) -> bool {
+    let Ok(pack) = read_pack_for_lock_entry(paths, sources, entry) else {
+        return false;
+    };
+    let Ok(content) = fs::read_to_string(lock_entry_target_path(paths, &entry.target)) else {
+        return false;
+    };
+    let marker_id = lock_marker_id(entry);
+    let line_ending = line_ending_for(&content);
+    let Ok(current) =
+        render_pack_managed_block_with_line_ending(&marker_id, &pack.body, line_ending)
+    else {
+        return false;
+    };
+    let Ok(legacy) =
+        render_legacy_pack_managed_block_with_line_ending(&marker_id, &pack.body, line_ending)
+    else {
+        return false;
+    };
+    if current == legacy {
+        return false;
+    }
+    matches!(
+        find_block(&content, &marker_id),
+        Ok(Some((start, end))) if content[start..end] == legacy
+    )
+}
+
 /// Instruction block drift classification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]

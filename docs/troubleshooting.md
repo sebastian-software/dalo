@@ -221,6 +221,8 @@ Doctor includes `ok` and `info` codes as well as warnings/errors. Codes not list
 | `unmanaged_same_name_blocker` | error | Adopt, keep, rename, or remove the unmanaged blocker. |
 | `stale_protected_skill` | warning | Relink the target if it moved, or remove the stale marker with the suggested `dalo resolve unkeep` command. |
 | `protected_skill_kept` | info | The unmanaged slot was intentionally kept; no recovery is required. |
+| `schema_migration_pending` | info | A file written by an older Dalo is read at the current schema and is rewritten the next time that file is written. No recovery is required; see [Upgrade and downgrade](compatibility.md#upgrade-and-downgrade). |
+| `legacy_approval_record` | warning | An approval record predates source-qualified approvals, so it cannot prove which source was approved and is not honored. Review the skill, then run the reported `dalo approve skill <source-id>:<skill>` command. |
 | `store_exists`, `store_layout_ok`, `config_ok`, `state_ok`, `lock_ok`, `source_lock_ok`, `approvals_ok`, `git_available`, `local_git_ok`, `target_exists`, `duplicate_target_directory`, `owned_symlink_ok`, `source_clean`, `source_provenance_ok` | ok/info | No recovery required. |
 
 ## FAQ
