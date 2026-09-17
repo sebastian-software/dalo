@@ -274,6 +274,62 @@ requires a fresh review.
 The [security overview](security.md) explains which findings block, what the
 optional reviewer adds, and what an accepted risk does and does not mean.
 
+### Can Dalo manage my repository's `.claude/skills`?
+
+Yes, as a per-machine recipe. Dalo 1.0 links user-level folders by default, and
+a first-class per-repository target is deferred past 1.0 — it changes the
+persisted target identity in `state.toml` and `lock.toml`, which
+[the compatibility policy](compatibility.md) freezes for 1.x. It is tracked in
+[#851](https://github.com/sebastian-software/dalo/issues/851).
+
+Point targets at the repository's own agent folders. This is the exact sequence
+that was verified against the 1.0 binary:
+
+```sh
+dalo init
+dalo target link claude /path/to/repo/.claude/skills
+dalo target link generic /path/to/repo/.agents/skills
+dalo sync
+ls -la /path/to/repo/.claude/skills
+ls -la /path/to/repo/.agents/skills
+```
+
+`sync` reports `synced: 1 skill across 2 targets`, and both directories hold one
+symlink per active skill pointing into the store. Use the project path of the
+agent you care about from [the support matrix](agents.md#support-matrix):
+`.claude/skills` (Claude Code), `.agents/skills` (Codex, OpenClaw),
+`.opencode/skills` (OpenCode), `.hermes/skills` (Hermes).
+
+Caveats:
+
+- **One path per target ID.** `dalo target link generic <path>` a second time
+  prints `updated target generic -> …` and replaces the first path; it does not
+  add a target. Two folders in one repository therefore need two different
+  target IDs — for example `claude` and `generic` above — and a second
+  repository has no ID left. Pointing `claude` at a repository also removes the
+  link to your own `~/.claude/skills`.
+- **Per-machine, not per-repository.** The target is recorded in the store's
+  `state.toml`. A teammate who clones the repository, or you on a second
+  machine, must run the same `target link` commands again. Nothing in the
+  repository records the binding.
+- **Do not commit the symlinks.** After `sync`, `git status` in the repository
+  reports `?? .claude/` and `?? .agents/`. The links point at absolute store
+  paths and are meaningless on another machine, so ignore them:
+
+  ```gitignore
+  /.claude/skills/
+  /.agents/skills/
+  ```
+
+- **`dalo target detect` does not link project folders.** It scans the
+  user-level paths. When the working directory holds `.claude/skills` or
+  `.agents/skills` that no linked target covers, it prints one informational
+  line pointing at this recipe.
+
+Undo the redirection by linking the target back to its default path, for example
+`dalo target link claude` with no path argument, or drop it with
+`dalo target unlink generic`.
+
 ### How do I recover from a dirty team source?
 
 Go to the checkout shown by `dalo doctor`, then commit, stash, or discard the edits with normal Git commands. Dalo does not decide this for you because the edits may be user or agent work.

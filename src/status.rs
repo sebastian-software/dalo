@@ -2973,6 +2973,40 @@ fn instruction_block_drift_kind_label(
     }
 }
 
+/// Project-scoped agent folders Dalo can point a target at today.
+const PROJECT_AGENT_FOLDERS: [&str; 2] = [".claude/skills", ".agents/skills"];
+
+/// Print one informational line when the working directory holds a
+/// project-scoped agent folder that no linked target already covers.
+///
+/// Targets are user-level by default, and a repository-scoped target type is
+/// deferred past 1.0, so this only points at the documented recipe.
+fn print_project_folder_hint(report: &TargetDetectReport) {
+    let Ok(cwd) = std::env::current_dir() else {
+        return;
+    };
+    let linked: Vec<PathBuf> = report
+        .targets
+        .iter()
+        .filter(|target| target.linked)
+        .filter_map(|target| target.path.as_deref().map(store::comparable_path))
+        .collect();
+    let uncovered: Vec<&str> = PROJECT_AGENT_FOLDERS
+        .into_iter()
+        .filter(|relative| {
+            let candidate = cwd.join(relative);
+            candidate.is_dir() && !linked.contains(&store::comparable_path(&candidate))
+        })
+        .collect();
+    if uncovered.is_empty() {
+        return;
+    }
+    println!(
+        "this directory has project-scoped agent folders ({}); Dalo links user-level folders by default — see docs/agents.md \"Project-scoped folders\" for the per-repository recipe",
+        uncovered.join(", ")
+    );
+}
+
 /// Print a human-readable target detection report.
 pub fn print_target_detect_report(report: &TargetDetectReport, store_root: &Path) {
     for target in &report.targets {
@@ -2989,6 +3023,8 @@ pub fn print_target_detect_report(report: &TargetDetectReport, store_root: &Path
             path
         );
     }
+
+    print_project_folder_hint(report);
 
     let missing_link = report
         .targets

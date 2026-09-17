@@ -6262,6 +6262,71 @@ fn target_detect_should_suggest_the_next_action_for_each_state() {
 }
 
 #[test]
+fn target_detect_should_point_uncovered_project_folders_at_the_recipe() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let project = temp_dir.path().join("project");
+    std::fs::create_dir_all(project.join(".claude/skills"))
+        .expect("project skill directory should be created");
+    std::fs::create_dir_all(project.join(".agents/skills"))
+        .expect("project skill directory should be created");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+
+    let hint = "this directory has project-scoped agent folders";
+    let mut uncovered = dalo_command();
+    uncovered
+        .current_dir(&project)
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "detect"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "{hint} (.claude/skills, .agents/skills)"
+        )))
+        .stdout(predicate::str::contains("Project-scoped folders"));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "link", "claude"])
+        .arg(project.join(".claude/skills"))
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "link", "generic"])
+        .arg(project.join(".agents/skills"))
+        .assert()
+        .success();
+
+    let mut covered = dalo_command();
+    covered
+        .current_dir(&project)
+        .args(["--store"])
+        .arg(&store)
+        .args(["target", "detect"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(hint).not());
+
+    let mut json = dalo_command();
+    json.current_dir(&project)
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "target", "detect"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(hint).not());
+}
+
+#[test]
 fn target_link_generic_should_create_directory_and_update_state() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

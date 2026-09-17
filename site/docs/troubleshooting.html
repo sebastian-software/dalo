@@ -901,6 +901,56 @@ engine versions, coverage, and findings; a relevant change invalidates it and
 requires a fresh review.</p>
 <p>The <a href="/docs/security.html">security overview</a> explains which findings block, what the
 optional reviewer adds, and what an accepted risk does and does not mean.</p>
+<h3 id="can-dalo-manage-my-repositorys-claudeskills"><a class="doc-anchor" href="#can-dalo-manage-my-repositorys-claudeskills">Can Dalo manage my repository&#39;s <code>.claude/skills</code>?</a></h3>
+<p>Yes, as a per-machine recipe. Dalo 1.0 links user-level folders by default, and
+a first-class per-repository target is deferred past 1.0 — it changes the
+persisted target identity in <code>state.toml</code> and <code>lock.toml</code>, which
+<a href="/docs/compatibility.html">the compatibility policy</a> freezes for 1.x. It is tracked in
+<a href="https://github.com/sebastian-software/dalo/issues/851" rel="noopener">#851</a>.</p>
+<p>Point targets at the repository&#39;s own agent folders. This is the exact sequence
+that was verified against the 1.0 binary:</p>
+<pre><code class="language-sh">dalo init
+dalo target link claude /path/to/repo/.claude/skills
+dalo target link generic /path/to/repo/.agents/skills
+dalo sync
+ls -la /path/to/repo/.claude/skills
+ls -la /path/to/repo/.agents/skills
+</code></pre>
+<p><code>sync</code> reports <code>synced: 1 skill across 2 targets</code>, and both directories hold one
+symlink per active skill pointing into the store. Use the project path of the
+agent you care about from <a href="/docs/agents.html#support-matrix">the support matrix</a>:
+<code>.claude/skills</code> (Claude Code), <code>.agents/skills</code> (Codex, OpenClaw),
+<code>.opencode/skills</code> (OpenCode), <code>.hermes/skills</code> (Hermes).</p>
+<p>Caveats:</p>
+<ul>
+<li><p><strong>One path per target ID.</strong> <code>dalo target link generic &lt;path&gt;</code> a second time
+prints <code>updated target generic -&gt; …</code> and replaces the first path; it does not
+add a target. Two folders in one repository therefore need two different
+target IDs — for example <code>claude</code> and <code>generic</code> above — and a second
+repository has no ID left. Pointing <code>claude</code> at a repository also removes the
+link to your own <code>~/.claude/skills</code>.</p>
+</li>
+<li><p><strong>Per-machine, not per-repository.</strong> The target is recorded in the store&#39;s
+<code>state.toml</code>. A teammate who clones the repository, or you on a second
+machine, must run the same <code>target link</code> commands again. Nothing in the
+repository records the binding.</p>
+</li>
+<li><p><strong>Do not commit the symlinks.</strong> After <code>sync</code>, <code>git status</code> in the repository
+reports <code>?? .claude/</code> and <code>?? .agents/</code>. The links point at absolute store
+paths and are meaningless on another machine, so ignore them:</p>
+<pre><code class="language-gitignore">/.claude/skills/
+/.agents/skills/
+</code></pre>
+</li>
+<li><p><strong><code>dalo target detect</code> does not link project folders.</strong> It scans the
+user-level paths. When the working directory holds <code>.claude/skills</code> or
+<code>.agents/skills</code> that no linked target covers, it prints one informational
+line pointing at this recipe.</p>
+</li>
+</ul>
+<p>Undo the redirection by linking the target back to its default path, for example
+<code>dalo target link claude</code> with no path argument, or drop it with
+<code>dalo target unlink generic</code>.</p>
 <h3 id="how-do-i-recover-from-a-dirty-team-source"><a class="doc-anchor" href="#how-do-i-recover-from-a-dirty-team-source">How do I recover from a dirty team source?</a></h3>
 <p>Go to the checkout shown by <code>dalo doctor</code>, then commit, stash, or discard the edits with normal Git commands. Dalo does not decide this for you because the edits may be user or agent work.</p>
 <h3 id="my-script-uses-a-flag-dalo-no-longer-accepts"><a class="doc-anchor" href="#my-script-uses-a-flag-dalo-no-longer-accepts">My script uses a flag Dalo no longer accepts</a></h3>
