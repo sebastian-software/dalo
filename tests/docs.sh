@@ -112,6 +112,17 @@ grep -q 'skills = \[\]' "$root/site/index.html"
 grep -q 'dalo source add-catalog public' "$root/docs/getting-started.md"
 grep -q 'git -C "\$TEAM_REPO" -c commit.gpgSign=false' "$root/docs/getting-started.md"
 grep -q 'git -C "\$CATALOG_REPO" -c commit.gpgSign=false' "$root/docs/getting-started.md"
+# Both onboarding pages exist, each covers its own persona, and they link to
+# each other so neither audience lands on the wrong one.
+test -f "$root/docs/getting-started.md"
+test -f "$root/docs/team.md"
+grep -q 'dalo target detect' "$root/docs/getting-started.md"
+grep -q 'dalo next' "$root/docs/getting-started.md"
+grep -Fq '(team.md)' "$root/docs/getting-started.md"
+grep -q 'dalo team init' "$root/docs/team.md"
+grep -q 'dalo team catalog update' "$root/docs/team.md"
+grep -Fq '(getting-started.md)' "$root/docs/team.md"
+grep -Fq '[Team repository guide](docs/team.md)' "$root/README.md"
 grep -q 'dalo target link generic "\$RUNNER_TEMP/dalo-skills"' "$root/docs/ci.md"
 grep -q 'sh tests/docs.sh' "$root/CONTRIBUTING.md"
 
@@ -174,7 +185,7 @@ grep -q '__DALO_LASTMOD__' "$root/site/sitemap.xml"
 # The documentation published on dalo.sh is rendered from docs/*.md by
 # site/build.mjs and committed, so it must exist, carry the site styles, and be
 # reachable from the sitemap, the documentation index, and the footer.
-for document in getting-started reference compatibility agents ci troubleshooting uninstall comparison; do
+for document in getting-started team reference compatibility agents ci troubleshooting uninstall comparison; do
   page="$root/site/docs/$document.html"
   test -f "$page"
   title="$(sed -n 's/^# //p' "$root/docs/$document.md" | head -n 1)"
@@ -796,5 +807,32 @@ grep -q 'dalo --store .* approve skill public:review-helper' "$test_root/status"
 "$dalo" --store "$store" sync
 test -L "$target/review-helper"
 "$dalo" source refresh --help | grep -q 'Exit non-zero when selected skills drifted upstream'
+
+# The team guide's authoring flow: initialize a manifest, pin an external
+# catalog to an exact commit, preview the next pin, then advance it.
+team_repo="$test_root/team-repo"
+upstream="$test_root/upstream-catalog"
+mkdir -p "$upstream/skills/copywriting"
+printf '# Copywriting\n' > "$upstream/skills/copywriting/SKILL.md"
+git -C "$upstream" init -q -b main
+git -C "$upstream" add .
+git -C "$upstream" -c commit.gpgSign=false -c user.email=test@example.com -c user.name='Test User' commit -qm initial
+upstream_first="$(git -C "$upstream" rev-parse HEAD)"
+printf '# Copywriting\n\nLead with the customer outcome.\n' > "$upstream/skills/copywriting/SKILL.md"
+git -C "$upstream" add .
+git -C "$upstream" -c commit.gpgSign=false -c user.email=test@example.com -c user.name='Test User' commit -qm update
+upstream_second="$(git -C "$upstream" rev-parse HEAD)"
+mkdir -p "$team_repo"
+git -C "$team_repo" init -q -b main
+(
+  cd "$team_repo"
+  "$dalo" team init company --name 'Company Skills'
+  "$dalo" team catalog add marketing "$upstream" --version "$upstream_first" --skill +copywriting
+  "$dalo" team show | grep -Fq "version=$upstream_first"
+  "$dalo" --dry-run team catalog update marketing --from main | grep -Fq 'would update'
+  grep -Fq "version = \"$upstream_first\"" dalo.toml
+  "$dalo" team catalog update marketing --from main | grep -Fq 'result: updated'
+  grep -Fq "version = \"$upstream_second\"" dalo.toml
+) > /dev/null
 
 echo "documentation checks passed"

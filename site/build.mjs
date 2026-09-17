@@ -33,6 +33,11 @@ const PAGES = [
     summary: "Install Dalo, link an agent, add sources, and reach a first synced skill set.",
   },
   {
+    slug: "team",
+    label: "Team repository",
+    summary: "Publish a team source: pin external catalogs, advance a pin, and onboard a teammate.",
+  },
+  {
     slug: "reference",
     label: "Command reference",
     summary: "Every command, flag, config file, JSON report, and diagnostic code.",
