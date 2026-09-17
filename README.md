@@ -2,7 +2,7 @@
 
 # Dalo
 
-**One source of truth for the skills your AI agents run.**
+**Your team's agent skills, versioned like code.**
 
 [![Powered by Sebastian Software](https://img.shields.io/badge/Powered_by-Sebastian_Software-005164?style=flat)](https://oss.sebastian-software.com) [![Crates.io](https://img.shields.io/crates/v/dalo.svg)](https://crates.io/crates/dalo)
 [![npm](https://img.shields.io/npm/v/getdalo.svg)](https://www.npmjs.com/package/getdalo)
@@ -10,43 +10,17 @@
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
 [![MSRV](https://img.shields.io/badge/rust-1.94%2B-orange.svg)](Cargo.toml)
 
-Dalo turns scattered skill folders into shared, versioned infrastructure. Keep
-team skills in Git, private experiments local, and deliver one approved,
-deterministic skill set to Codex, Claude Code, OpenClaw, Hermes, OpenCode, or
-any folder-based agent.
-
-Your agents keep reading the folders they already understand. Dalo handles
-everything behind them: sources, priorities, approvals, conflicts, drift, and
-safe synchronization.
+For engineers and team leads who run Claude Code, Codex, or another agent across
+several people and machines: keep every skill in Git, resolve one approved set,
+and link it into the folders your agents already read. Your agents keep reading
+the folders they understand. Dalo handles what is behind them — sources,
+priorities, approvals, conflicts, drift, and safe synchronization.
 
 **[Visit dalo.sh](https://dalo.sh)** · **[Watch the 15-second demo](https://dalo.sh/#quickstart)** · **[Get started](docs/getting-started.md)**
 
-## Stop copying skills between agents
+## Install
 
-Skills quickly become operational knowledge: how your team reviews code,
-investigates incidents, ships releases, uses internal tooling, and makes the
-judgment calls that generic prompts cannot capture.
-
-Copying those skills by hand works until they matter. Then every machine has a
-slightly different version, local improvements get lost, public skills change
-upstream, and nobody can say with confidence what an agent is actually using.
-
-Dalo gives that knowledge a lifecycle:
-
-- **Share it in Git.** Team repositories stay reviewable and versioned.
-- **Keep experiments local.** Private work remains separate until it is ready.
-- **Resolve it predictably.** Source priority and lockfiles produce the same
-  approved skill set from the same inputs.
-- **Deliver it everywhere.** One sync links skills into every configured agent
-  folder.
-- **Stay in control.** Dalo reports conflicts and drift instead of overwriting
-  files or silently trusting new code.
-- **Recover without googling.** Errors name the fix: did-you-mean suggestions,
-  known-ID lists, and the exact next command from `sync`, `status`, and `doctor`.
-
-## See it work
-
-Install Dalo on macOS or Linux:
+Dalo runs on macOS and Linux:
 
 ```sh
 # macOS with Homebrew
@@ -54,35 +28,104 @@ brew install sebastian-software/tap/dalo
 
 # macOS or Linux with the hosted installer
 curl -fsSL https://dalo.sh/install.sh | sh
+
+# Node.js 20 or newer, without a global install
+npx getdalo --version
 ```
 
-Connect an agent, add your team's skill repository, and sync:
+Cargo, Cargo Binstall, mise, manual archives, and checksum and provenance
+verification are covered in [Installation](#installation) further down.
+
+## Five minutes to a synced skill set
+
+**1. Create the store.** It holds sources, locks, approvals, and audits. Agent
+folders stay output targets.
 
 ```sh
 dalo init
+```
+
+**2. See which agents are installed.** Detection is read-only and names the
+default skill directory of every supported agent.
+
+```sh
 dalo target detect
+```
+
+**3. Link the agents you use.** Repeat for every agent; `generic` takes an
+explicit path for anything folder-based.
+
+```sh
 dalo target link codex
+dalo target link claude
+```
+
+**4. Add your team's skill repository.** Dalo clones it into the store and runs
+a deterministic security preflight on every skill it finds.
+
+```sh
 dalo source add company git@github.com:acme/agent-skills.git
+```
+
+**5. Sync.** One command resolves the approved set and links it into every
+configured target.
+
+```sh
 dalo sync
 ```
 
-The skills from `company` now appear in Codex's normal skill directory. Link
-Claude Code, OpenClaw, Hermes, OpenCode, or a generic folder and Dalo will
-deliver the same resolved set there too.
+```text
+applied  create     target[codex]:/incident-review -> store:/sources/company/checkout/skills/incident-review
+applied  create     target[codex]:/release-notes -> store:/sources/company/checkout/skills/release-notes
+synced: 2 skills across 1 target (2 created)
+security preflight: deterministic checks only
+```
 
-Run `dalo status` to see managed, unmanaged, shadowed, blocked, or pending
-skills. Run `dalo doctor` when you want a focused health check.
-
-Prefer Node.js? Run the same CLI without a global install:
+**6. Check what an agent is actually using.** `status` lists managed,
+unmanaged, shadowed, blocked, and pending skills; `dalo doctor` adds a focused
+health check.
 
 ```sh
-npx getdalo --version
+dalo status
 ```
 
 The quickstart is also available as a
 [short MP4 video](https://dalo.sh/assets/dalo-quickstart.mp4).
 
-## How Dalo fits
+## When something is off
+
+**Recover without googling.** Every blocking state names the exact next command
+— did-you-mean suggestions, known-ID lists, and a concrete fix from `sync`,
+`status`, and `doctor`.
+
+A catalog skill is a good example. Selecting it does not trust it, so the next
+`sync` links what is approved and reports the rest instead of guessing:
+
+```sh
+dalo source add-catalog sebastian https://github.com/sebastian-software/skills.sebastian-software.com.git
+dalo source select sebastian pr-review
+dalo sync
+```
+
+```text
+synced: 2 skills across 1 target (2 unchanged)
+pending approval: sebastian:pr-review (run: dalo approve skill sebastian:pr-review)
+security preflight: deterministic checks only
+```
+
+Review the exact skill, approve it, and sync again:
+
+```sh
+dalo audit sebastian:pr-review --reviewer auto
+dalo approve skill sebastian:pr-review
+dalo sync
+```
+
+Conflicts, drift, dirty checkouts, and blocked audits behave the same way. The
+[troubleshooting guide](docs/troubleshooting.md) lists every resolver, doctor,
+and security finding with the command that clears it.
+
+## Safe by design
 
 ```text
  team repositories    public catalogs    local experiments
@@ -104,341 +147,9 @@ The quickstart is also available as a
            Codex       Claude Code     other agents
 ```
 
-The store is the source of truth. Agent folders are output targets.
-
-That boundary is what makes Dalo predictable: Git repositories remain clean
-inputs, local work has a private home, and agent directories contain only the
-resolved links Dalo owns. Existing unmanaged files remain yours.
-
-## Built for the whole skill lifecycle
-
-### Share team knowledge
-
-A team source is a Git repository containing skills. Add it once and `sync`
-refreshes clean tracking sources before resolving and linking the final set.
-
-```sh
-dalo source add company git@github.com:acme/agent-skills.git
-dalo source priority company 10
-dalo sync
-```
-
-When multiple sources offer the same skill name, source priority decides which
-one is linked by default. To keep intentional overlaps side by side, set an
-opt-in namespace on a source; its skills are installed as `namespace__skill`
-without changing the source checkout or its approval identity:
-
-```sh
-dalo source add company git@github.com:acme/company-skills.git --namespace company
-dalo source namespace public acme
-```
-
-Without a namespace, the other candidates remain visible as shadowed; they are
-not silently discarded.
-
-Install safe recurring synchronization with the native user scheduler:
-
-```sh
-dalo autosync install --schedule daily
-dalo autosync status
-```
-
-macOS uses launchd. Linux uses a systemd user timer when available and falls
-back to an isolated, marked crontab entry. Scheduled runs never wait on an
-interactive Dalo process, never grant approvals, and leave their latest
-success, skip, or blocking reason visible in `status` and `doctor`.
-
-#### Compose external skill sets for the team
-
-A team repository can include a `dalo.toml` manifest alongside its own
-`skills/` directory. The [team repository guide](docs/team.md) walks the whole
-path, from `dalo team init` to what a teammate runs on a new laptop. Manage the
-manifest from that repository with the team CLI:
-
-```sh
-dalo team init company --name "Company Skills"
-dalo team catalog add marketing https://github.com/coreyhaines31/marketingskills.git \
-  --version 0123456789abcdef0123456789abcdef01234567 \
-  --skill +copywriting \
-  --skill +launch
-dalo team catalog skills marketing +copywriting +launch +seo-audit -seo-audit
-dalo --dry-run team catalog update marketing --from main
-dalo team catalog update marketing --from main
-dalo team show
-```
-
-Run team mutations from a Git checkout (or use `--repo <path>` for one). These
-commands only edit the team repository; they do not require an initialized
-personal Dalo store and do not commit or push changes. After each applied
-change, commit and push `dalo.toml` so teammates can sync it. Dalo warns when
-the directory is not a Git repository. The resulting manifest pins external
-catalogs and defines the subset that every team member should resolve:
-
-```toml
-schema_version = 1
-
-[source]
-id = "company"
-name = "Company Skills"
-kind = "team"
-
-[[catalog]]
-id = "marketing"
-url = "https://github.com/coreyhaines31/marketingskills.git"
-version = "0123456789abcdef0123456789abcdef01234567"
-skills = ["+copywriting", "+launch", "+seo-audit", "-seo-audit"]
-```
-
-`version` accepts a Git commit, tag, or ref; an immutable commit is the most
-reproducible choice. `team catalog update --from <ref>` clones into temporary
-storage, previews selected-skill drift and deterministic audits, and writes the
-resolved exact commit only when the candidate is safe. It never commits or
-pushes the team repository. Skill filters follow these rules:
-
-- omitted or empty `skills` selects everything
-- only `-name` entries select everything except those entries
-- any `+name` entry switches to whitelist mode
-- exclusions always win, independent of entry order
-- bare names are accepted as includes for compatibility
-
-The catalog above appears locally as `company.marketing`. URL, version,
-priority, and selection remain owned by the team manifest, while security
-approval remains personal. After the first sync, each team member reviews the
-pending skills and approves an appropriate scope before they are linked.
-
-#### Compose passive portable plugins
-
-A source can group existing skills, canonical agents, and instruction packs in
-an inert `plugins/<name>/PLUGIN.toml` package. Selection resolves intent only:
-it never grants a skill or agent approval and never enables instructions.
-
-Authors can validate a source before adding it to a store:
-
-```sh
-dalo --json plugin validate ./my-source
-```
-
-Validation checks package contracts and local references without running tools
-or granting approvals. The [experimental package specification](https://dalo.sh/spec/0.1/)
-documents the format, with a downloadable schema and an
-[evidence-based compatibility matrix](https://dalo.sh/spec/0.1/compatibility.html).
-
-```toml
-schema_version = 1
-
-[plugin]
-name = "review-workflow"
-description = "Shared review behavior across supported agents."
-
-[[plugin.members]]
-ref = "skill:review"
-requirement = "required"
-
-[[plugin.members]]
-ref = "agent:reviewer"
-requirement = "optional"
-[plugin.members.fallback]
-kind = "inline"
-skill = "skill:review"
-
-[[plugin.members]]
-ref = "instruction:engineering-defaults"
-requirement = "recommended"
-```
-
-The source root `dalo.toml` selects it by reference:
-
-```toml
-[source]
-id = "company"
-
-[selection]
-plugins = [{ ref = "company:review-workflow", requirement = "required" }]
-```
-
-Inspect candidates and preview every linked target without writing provider
-state:
-
-```sh
-dalo plugin list
-dalo plugin show company:review-workflow
-dalo plan
-dalo plan --target codex --json
-dalo plugin review company:review-workflow
-```
-
-The plan reports the recommended instruction as inactive until the existing
-explicit `dalo instructions enable` flow has completed. A direct local
-selection is additive (`dalo plugin select ...`); `plugin unselect` removes
-only that local origin and never edits the source-authored stack.
-
-`plugin review` turns the selected plugin and its dependency closure into one
-coherent session. It still asks separately for each pending skill, agent, tool,
-and hook contract, shows exact hashes and Codex/Claude mappings, and then asks
-once more before committing that explicit set with one atomic approval-ledger
-write. It never creates plugin-, source-, author-, organization-, or wildcard
-trust. `--json plugin review ...` and `--dry-run plugin review ...` are strictly
-read-only and never prompt, stage executable bytes, run external reviewers, or
-write provider targets. Use the individual `dalo approve ...` commands when
-reviewing just one known boundary or when a blocking skill audit needs an
-explicit `--accept-risk` reason.
-
-Plugin packages may also declare a narrowly typed local executable. Discovery,
-`status`, `doctor`, `plan`, and `sync --dry-run` only inventory and hash it; they
-never run it. Execution trust is a separate, exact contract approval:
-
-```toml
-[[tool]]
-schema_version = 1
-id = "detector"
-entry = "tools/detect.py"
-runtime = "python"
-runtime_version = ">=3.11"
-platforms = ["macos", "linux"]
-argv = ["--path", "${input.path}"]
-files = ["tools/rules.json"]
-cwd = "tool_root"
-env = ["DALO_LOG"]
-capabilities = ["filesystem_read"]
-availability = "required"
-
-[[tool.inputs]]
-name = "path"
-type = "path"
-required = true
-```
-
-```sh
-dalo tool list
-dalo tool show company:review-workflow#tool:detector
-dalo tool audit company:review-workflow#tool:detector
-dalo approve tool company:review-workflow#tool:detector
-dalo approve revoke tool company:review-workflow#tool:detector
-```
-
-Approval records include the deterministic tool-contract hash. Approved bytes
-are atomically promoted below Dalo's immutable content-addressed tool root;
-changing the entry, referenced files, runtime, input/argv contract, environment,
-working directory, platform, availability, or capabilities requires approval
-again. An unrelated plugin README change retains the approval and is still
-visible through the changed whole-package provenance hash.
-
-An approved tool can be bound to a portable hook through a second, independent
-approval. The binding is typed and cannot change the tool-owned argv template:
-
-```toml
-[[hook]]
-schema_version = 1
-id = "check-shell"
-tool = "detector"
-subject = "tool_call"
-phase = "before"
-effect = "allow_deny"
-requirement = "required"
-timeout_ms = 2000
-failure_policy = "fail_closed"
-retry = "never"
-error_visibility = "model_and_user"
-blocking_scope = "matched_event"
-bindings = [{ input = "path", field = "session.cwd" }]
-matcher = { tool_names = ["Bash"] }
-```
-
-```sh
-dalo hook list
-dalo hook show company:review-workflow#hook:check-shell
-dalo approve hook company:review-workflow#hook:check-shell
-dalo sync --dry-run
-dalo sync
-dalo approve revoke hook company:review-workflow#hook:check-shell
-```
-
-The hook approval covers the exact tool hash, event, effect, matcher, typed
-bindings, timeout, failure behavior, and blocking scope. Sync projects only
-selected and independently approved hooks into structurally owned Codex or
-Claude entries. Provider event JSON travels over stdin to Dalo's dispatcher;
-it is never interpolated into a shell command. Native files use compare-and-swap
-and preserve foreign settings, while `status` and `doctor` report disabled,
-managed-only, unverified, drifted, conflicted, and revoked states separately.
-
-Selected coherent plugins are also rendered as one independently owned native
-package per linked provider. The same `company:review-workflow` selection
-produces a Codex package with `.codex-plugin/plugin.json` and a Claude package
-with `.claude-plugin/plugin.json`; both contain supported `skills/`, while
-Claude can additionally contain compiled `agents/`. Codex agents and standing
-instruction packs remain explicit external projections because those concepts
-do not belong in the Codex plugin layout. Dalo records every omission,
-component fingerprint, adapter baseline, immutable artifact hash, and owned
-provider path in `plugins/state.json`.
-
-Claude's package is linked into its configured skills directory, where
-skills-directory plugin loading can discover it. The Codex package is kept
-below the Codex configuration root at `plugins/dalo/<native-name>`; Dalo does
-not silently rewrite a user's marketplace catalog or plugin enablement.
-`dalo plan`, `status`, `doctor`, and `sync --dry-run` show both paths and every
-component outcome before mutation. Required tools and hooks must retain their
-separate exact approvals or the package projection is blocked. Ordinary
-harness-neutral skills still use the existing byte-identical direct symlinks.
-
-### Adopt what works locally
-
-Agents often create useful skills directly in their own folders. Dalo can copy
-one into the private local source without taking over the original:
-
-```sh
-dalo status
-dalo adopt release-notes
-```
-
-Replacing the original with a Dalo-owned link is a separate, explicit step:
-
-```sh
-dalo adopt --replace release-notes
-```
-
-Dalo does not commit adopted work automatically. You decide when an experiment
-is ready to move into a reviewed team repository.
-
-### Choose from public catalogs
-
-A catalog can offer many skills without installing all of them. Inspect it,
-select only what you need, approve the exact skill, and sync:
-
-```sh
-dalo source add-catalog sebastian https://github.com/sebastian-software/skills.sebastian-software.com.git
-dalo source inspect sebastian
-dalo source select sebastian pr-review
-dalo audit sebastian:pr-review --reviewer auto
-dalo approve skill sebastian:pr-review
-dalo sync
-```
-
-Catalog selections are pinned. `dalo source refresh <id>` reports when selected
-skills change, move, disappear, or gain same-catalog dependencies without
-silently advancing the lock. Review the exact candidate with
-`dalo --dry-run source refresh <id> --advance`, then rerun without `--dry-run`
-to update that catalog's checkout, locks, selection, and affected target links
-as one rollback-safe transaction.
-
-### Share instructions that are not skills
-
-Instruction packs keep reusable team conventions in versioned Markdown and
-render them as clearly marked managed blocks inside agent instruction files.
-
-```sh
-dalo instructions enable company:engineering-defaults --target codex --target claude
-dalo instructions list
-```
-
-Dalo only owns the marked block. Everything else in the file remains untouched,
-and overlapping topics are reported as advisory warnings. Codex and Claude
-resolve to their verified user-level instruction files; other agents require an
-explicit file path until their native mapping is verified.
-
-## Safe by design
-
-Skill management should be boring in the best possible way. Dalo is deliberately
-conservative:
+The store is the source of truth; agent folders are output targets. Git
+repositories stay clean inputs, local work has a private home, and agent
+directories contain only the resolved links Dalo owns:
 
 - unmanaged files and real directories are never overwritten during sync
 - Dalo removes or repairs only the links and managed blocks it owns
@@ -459,6 +170,31 @@ The core rule is simple:
 For the full picture — trust boundaries, what the preflight catches, and the
 list of things Dalo deliberately does not protect against — read the
 [security overview](docs/security.md).
+
+## What else Dalo does
+
+- **Public catalogs.** Add a catalog, inspect it, and select only the skills you
+  want; selections are pinned and `source refresh` reports upstream movement
+  instead of silently advancing the lock.
+  [Getting started](docs/getting-started.md)
+- **Team manifests.** A team repository can pin external catalogs to exact
+  commits and define the subset every member resolves, while approval stays
+  personal. [Team repository guide](docs/team.md)
+- **Instruction packs.** Share conventions that are not skills as managed blocks
+  inside agent instruction files; everything else in the file stays yours.
+  [Agent integration](docs/agents.md)
+- **Autosync.** Install a safe recurring sync on launchd or a systemd user timer
+  that never waits on a prompt and never grants approvals.
+  [Command reference](docs/reference.md)
+- **Portable plugins.** Group skills, agents, and instructions in an inert
+  package, with narrowly typed tools and hooks behind separate exact approvals.
+  [Plugins, tools, and hooks](docs/plugins.md)
+- **Adopt.** Copy a skill an agent wrote in its own folder into your private
+  local source, and replace the original with a managed link only if you ask.
+  [Command reference](docs/reference.md)
+- **Doctor.** `dalo doctor` turns store, target, lock, and approval health into
+  findings with a recovery command each.
+  [Troubleshooting and FAQ](docs/troubleshooting.md)
 
 ## Agent support
 
@@ -565,6 +301,7 @@ For manual archives, upgrades, shell completions, and removal, see the
 - [Team repository guide](docs/team.md)
 - [Command reference](docs/reference.md)
 - [Compatibility and stability](docs/compatibility.md)
+- [Plugins, tools, and hooks](docs/plugins.md)
 - [Portable Agent Packages — experimental specification](docs/spec/README.md)
 - [Agent integration](docs/agents.md)
 - [Dalo in CI](docs/ci.md)

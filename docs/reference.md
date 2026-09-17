@@ -1636,6 +1636,10 @@ contained within the source being scanned.
 
 ## `PLUGIN.toml` Portable Plugins, Tools, and Hooks
 
+For a worked walkthrough of authoring, selecting, reviewing, and approving a
+package, see the [plugins guide](plugins.md); this section is the field-level
+contract.
+
 The `PLUGIN.toml` file format Dalo reads is stable within a major version. The
 cross-implementation [Portable Agent Packages specification](spec/README.md)
 built on it is an **experimental** draft, and so is any claim that another tool

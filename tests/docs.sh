@@ -137,7 +137,9 @@ grep -q 'security-audit block' "$root/docs/ci.md"
 grep -q 'dalo approve skill' "$root/docs/getting-started.md"
 grep -q 'dalo approve skill' "$root/site/index.html"
 grep -q 'dalo team catalog add' "$root/site/index.html"
-grep -q 'dalo team catalog update marketing --from main' "$root/README.md"
+# The worked pin-advance example lives in the team guide; the README only
+# points at it, so the exact command is asserted where it is now documented.
+grep -q 'dalo team catalog update marketing --from main' "$root/docs/team.md"
 grep -q 'TeamCatalogUpdateReport' "$root/docs/reference.md"
 grep -q '"adoption": AdoptReport' "$root/docs/reference.md"
 grep -q '"approval": ApprovalReport' "$root/docs/reference.md"
@@ -159,6 +161,39 @@ grep -q 'dalo team catalog update' "$root/docs/team.md"
 grep -Fq '(getting-started.md)' "$root/docs/team.md"
 grep -Fq '[Team repository guide](docs/team.md)' "$root/README.md"
 grep -q 'dalo target link generic "\$RUNNER_TEMP/dalo-skills"' "$root/docs/ci.md"
+
+# The README leads with the five-minute path: a first-time reader must reach a
+# working `dalo sync` in the first screen, and every step of that path stays
+# copy-pasteable.
+for quickstart_command in \
+  'dalo init' \
+  'dalo target detect' \
+  'dalo target link codex' \
+  'dalo source add company git@github.com:acme/agent-skills.git' \
+  'dalo sync' \
+  'dalo status'; do
+  grep -Fq "$quickstart_command" "$root/README.md" \
+    || { echo "the README five-minute path no longer runs: $quickstart_command" >&2; exit 1; }
+done
+readme_first_screen="$(head -n 100 "$root/README.md")"
+printf '%s\n' "$readme_first_screen" | grep -Fxq 'dalo sync' \
+  || { echo 'the README no longer reaches `dalo sync` within its first screen' >&2; exit 1; }
+# Recovery guidance stays in the README: one worked example whose output names
+# the next command, plus the pointer to the full finding list.
+grep -Fq 'pending approval: sebastian:pr-review (run: dalo approve skill sebastian:pr-review)' "$root/README.md"
+grep -Fq '(docs/troubleshooting.md)' "$root/README.md"
+
+# Portable plugins, tools, and hooks are reference-grade material: one link away
+# from the README, never inline in it.
+test -f "$root/docs/plugins.md"
+grep -Fq '[Plugins, tools, and hooks](docs/plugins.md)' "$root/README.md"
+for plugin_topic in 'PLUGIN.toml' '[[tool]]' '[[hook]]' 'dalo plugin validate' \
+  'dalo plugin review' 'dalo approve tool' 'dalo approve hook' 'plugins/state.json'; do
+  grep -Fq "$plugin_topic" "$root/docs/plugins.md" \
+    || { echo "docs/plugins.md no longer documents $plugin_topic" >&2; exit 1; }
+  refute "the README inlines the plugin reference topic $plugin_topic again" \
+    grep -Fq "$plugin_topic" "$root/README.md"
+done
 grep -q 'sh tests/docs.sh' "$root/CONTRIBUTING.md"
 
 # The 1.0 compatibility contract is a constraint, not prose: the page must
@@ -220,7 +255,7 @@ grep -q '__DALO_LASTMOD__' "$root/site/sitemap.xml"
 # The documentation published on dalo.sh is rendered from docs/*.md by
 # site/build.mjs and committed, so it must exist, carry the site styles, and be
 # reachable from the sitemap, the documentation index, and the footer.
-for document in getting-started team reference compatibility agents ci troubleshooting uninstall comparison; do
+for document in getting-started team reference compatibility plugins agents ci troubleshooting uninstall comparison; do
   page="$root/site/docs/$document.html"
   test -f "$page"
   title="$(sed -n 's/^# //p' "$root/docs/$document.md" | head -n 1)"

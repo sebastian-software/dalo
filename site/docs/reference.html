@@ -73,6 +73,7 @@
         <a href="/docs/team.html">Team repository</a>
         <a href="/docs/reference.html" aria-current="page">Command reference</a>
         <a href="/docs/compatibility.html">Compatibility</a>
+        <a href="/docs/plugins.html">Plugins</a>
         <a href="/docs/agents.html">Agent integration</a>
         <a href="/docs/ci.html">Dalo in CI</a>
         <a href="/docs/troubleshooting.html">Troubleshooting</a>
@@ -2051,6 +2052,9 @@ metadata symlink whose resolved target escapes the checkout is skipped and
 reported as <code>skipped_symlink</code>. This keeps skill identity and approval metadata
 contained within the source being scanned.</p>
 <h2 id="plugintoml-portable-plugins-tools-and-hooks"><a class="doc-anchor" href="#plugintoml-portable-plugins-tools-and-hooks"><code>PLUGIN.toml</code> Portable Plugins, Tools, and Hooks</a></h2>
+<p>For a worked walkthrough of authoring, selecting, reviewing, and approving a
+package, see the <a href="/docs/plugins.html">plugins guide</a>; this section is the field-level
+contract.</p>
 <p>The <code>PLUGIN.toml</code> file format Dalo reads is stable within a major version. The
 cross-implementation <a href="/spec/0.1/">Portable Agent Packages specification</a>
 built on it is an <strong>experimental</strong> draft, and so is any claim that another tool
