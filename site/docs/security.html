@@ -150,8 +150,7 @@ a recurring <a href="/docs/reference.html#dalo-autosync-installstatusuninstall">
 through launchd, a systemd user timer, or cron. Pending approvals, security
 findings, dirty sources, and target conflicts stay fail-closed: the run records
 <code>blocked</code> with a reason instead of proceeding. Non-interactive commands can use
-approvals that already exist but never create new ones, and the global <code>--yes</code>
-flag is a no-op that never grants an approval.</p>
+approvals that already exist but never create new ones.</p>
 <p><strong>Incoming team updates are staged before they are trusted.</strong> A tracking source
 fetches into a detached worktree below <code>sources/.audit-staging/</code> and is audited
 there. The live checkout fast-forwards only after the audit passes, so target
