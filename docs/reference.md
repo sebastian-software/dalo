@@ -60,7 +60,6 @@ Global flags can be placed before or after the command.
 | --- | --- |
 | `--store <PATH>` | Use a store other than the resolved default. |
 | `--json` | Emit machine-readable JSON for commands that support structured output. It requires a command; bare `dalo --json` returns the standard JSON error on stderr. `manpage` and `completions` reject this flag with a plain-text usage error because they generate plain text only. |
-| `--yes` | Compatibility flag accepted for existing scripts but hidden from command help. It is currently a no-op and never implies `--replace`, creates commits, or grants new approvals. |
 | `--dry-run` | Plan supported mutating operations without writing files, cloning, linking, or changing locks. Read-only commands ignore it. |
 | `-h`, `--help` | Print command help. |
 | `-V`, `--version` | Print the installed version. |

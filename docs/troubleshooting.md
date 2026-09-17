@@ -278,6 +278,16 @@ optional reviewer adds, and what an accepted risk does and does not mean.
 
 Go to the checkout shown by `dalo doctor`, then commit, stash, or discard the edits with normal Git commands. Dalo does not decide this for you because the edits may be user or agent work.
 
+### My script uses a flag Dalo no longer accepts
+
+Dalo removed its pre-1.0 compatibility spellings before the 1.0 line froze
+them. Each removed spelling now produces clap's ordinary unknown-argument
+error. Replace it with the supported form:
+
+| Removed spelling | Replacement |
+| --- | --- |
+| `--yes` (global no-op) | Nothing. The flag never confirmed anything; drop it. |
+
 ### How do I remove Dalo completely?
 
 Use the uninstall guide: [Uninstall Dalo](uninstall.md).

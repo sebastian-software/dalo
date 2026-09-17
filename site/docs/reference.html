@@ -168,10 +168,6 @@ be fetched.</p>
 <td>Emit machine-readable JSON for commands that support structured output. It requires a command; bare <code>dalo --json</code> returns the standard JSON error on stderr. <code>manpage</code> and <code>completions</code> reject this flag with a plain-text usage error because they generate plain text only.</td>
 </tr>
 <tr>
-<td><code>--yes</code></td>
-<td>Compatibility flag accepted for existing scripts but hidden from command help. It is currently a no-op and never implies <code>--replace</code>, creates commits, or grants new approvals.</td>
-</tr>
-<tr>
 <td><code>--dry-run</code></td>
 <td>Plan supported mutating operations without writing files, cloning, linking, or changing locks. Read-only commands ignore it.</td>
 </tr>

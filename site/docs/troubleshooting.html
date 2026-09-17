@@ -902,6 +902,22 @@ requires a fresh review.</p>
 optional reviewer adds, and what an accepted risk does and does not mean.</p>
 <h3 id="how-do-i-recover-from-a-dirty-team-source"><a class="doc-anchor" href="#how-do-i-recover-from-a-dirty-team-source">How do I recover from a dirty team source?</a></h3>
 <p>Go to the checkout shown by <code>dalo doctor</code>, then commit, stash, or discard the edits with normal Git commands. Dalo does not decide this for you because the edits may be user or agent work.</p>
+<h3 id="my-script-uses-a-flag-dalo-no-longer-accepts"><a class="doc-anchor" href="#my-script-uses-a-flag-dalo-no-longer-accepts">My script uses a flag Dalo no longer accepts</a></h3>
+<p>Dalo removed its pre-1.0 compatibility spellings before the 1.0 line froze
+them. Each removed spelling now produces clap&#39;s ordinary unknown-argument
+error. Replace it with the supported form:</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Removed spelling</th>
+<th>Replacement</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>--yes</code> (global no-op)</td>
+<td>Nothing. The flag never confirmed anything; drop it.</td>
+</tr>
+</tbody></table></div>
 <h3 id="how-do-i-remove-dalo-completely"><a class="doc-anchor" href="#how-do-i-remove-dalo-completely">How do I remove Dalo completely?</a></h3>
 <p>Use the uninstall guide: <a href="/docs/uninstall.html">Uninstall Dalo</a>.</p>
 <p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/troubleshooting.md" rel="noopener">docs/troubleshooting.md</a></p>
