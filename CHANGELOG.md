@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.17.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.16.0...dalo-v0.17.0) (2026-09-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* **release:** the `x86_64-apple-darwin` release target is removed. Intel Macs are no longer supported; Apple Silicon Macs use the `aarch64-apple-darwin` build, and an Intel Mac has to build from source with `cargo install dalo`. 0.16.0 is the last release with a published Intel macOS archive.
+
+### Features
+
+* **release:** drop the x86_64 macOS build ([3323e89](https://github.com/sebastian-software/dalo/commit/3323e89b4c7a49fa428a763f22959411363ddb33))
+
 ## [0.16.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.15.1...dalo-v0.16.0) (2026-09-17)
 
 
