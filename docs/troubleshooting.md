@@ -336,6 +336,18 @@ Undo the redirection by linking the target back to its default path, for example
 
 Go to the checkout shown by `dalo doctor`, then commit, stash, or discard the edits with normal Git commands. Dalo does not decide this for you because the edits may be user or agent work.
 
+### I upgraded and doctor reports `schema_migration_pending`
+
+Nothing is wrong. Dalo migrates a persisted file the next time it writes that
+file, so a store carried over from 0.x keeps the old version on disk until
+then, and `doctor` prints one `info` line per file that is still waiting. Run
+`dalo sync` and the `lock.toml`, state, and instruction-block lines clear;
+`config.toml` clears the next time you change a setting, add a source, or link
+a target, and `source-lock.toml` on the next `source select`, `source
+unselect`, or `source refresh`. These are `info` findings, so `doctor --check`
+still exits `0`. See [Upgrading to 1.0](upgrading.md) for the full first-run
+transcript.
+
 ### My script uses a flag Dalo no longer accepts
 
 Dalo removed its pre-1.0 compatibility spellings before the 1.0 line froze
