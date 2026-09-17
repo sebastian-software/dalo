@@ -48,6 +48,11 @@ const PAGES = [
     summary: "What is stable in 1.x, what is experimental, and how breaking changes are announced.",
   },
   {
+    slug: "upgrading",
+    label: "Upgrading to 1.0",
+    summary: "Move a 0.x store to 1.0: what the first sync migrates, which spellings were removed, and how to recover.",
+  },
+  {
     slug: "plugins",
     label: "Plugins",
     summary:

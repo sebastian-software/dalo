@@ -73,6 +73,7 @@
         <a href="/docs/team.html">Team repository</a>
         <a href="/docs/reference.html">Command reference</a>
         <a href="/docs/compatibility.html" aria-current="page">Compatibility</a>
+        <a href="/docs/upgrading.html">Upgrading to 1.0</a>
         <a href="/docs/plugins.html">Plugins</a>
         <a href="/docs/agents.html">Agent integration</a>
         <a href="/docs/ci.html">Dalo in CI</a>
@@ -384,7 +385,7 @@ appear.</p>
 <td><a href="/spec/0.1/compatibility.html"><code>docs/spec/compatibility.md</code></a> — evidence at pinned provider baselines, not a promise of equivalent semantics</td>
 </tr>
 <tr>
-<td>Targets whose <code>support</code> is <code>experimental</code> (<code>cursor</code> and <code>opencode</code> today)</td>
+<td>Targets whose <code>support</code> is <code>experimental</code> — no built-in target carries that level in 1.0</td>
 <td><a href="/docs/reference.html#dalo-target-detect"><code>dalo target detect</code></a> and its <code>TargetSupport</code> field</td>
 </tr>
 </tbody></table></div>
@@ -452,6 +453,9 @@ vulnerability is a breaking change, it ships as soon as it is ready, is
 called out in the release notes, and the reasoning is recorded.</li>
 </ol>
 <h2 id="upgrade-and-downgrade"><a class="doc-anchor" href="#upgrade-and-downgrade">Upgrade and downgrade</a></h2>
+<p>If you are moving an existing 0.x setup to 1.0, <a href="/docs/upgrading.html">Upgrading to
+1.0</a> walks through the same rules with the real first-run output,
+the removed CLI spellings, and how to recover from a downgrade.</p>
 <h3 id="upgrade"><a class="doc-anchor" href="#upgrade">Upgrade</a></h3>
 <p>Upgrading needs no migration step. A newer Dalo reads an older file, upgrades
 it in memory, and writes the current version the next time it writes that file

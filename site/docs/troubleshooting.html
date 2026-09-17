@@ -73,6 +73,7 @@
         <a href="/docs/team.html">Team repository</a>
         <a href="/docs/reference.html">Command reference</a>
         <a href="/docs/compatibility.html">Compatibility</a>
+        <a href="/docs/upgrading.html">Upgrading to 1.0</a>
         <a href="/docs/plugins.html">Plugins</a>
         <a href="/docs/agents.html">Agent integration</a>
         <a href="/docs/ci.html">Dalo in CI</a>
@@ -964,6 +965,15 @@ line pointing at this recipe.</p>
 <code>dalo target unlink generic</code>.</p>
 <h3 id="how-do-i-recover-from-a-dirty-team-source"><a class="doc-anchor" href="#how-do-i-recover-from-a-dirty-team-source">How do I recover from a dirty team source?</a></h3>
 <p>Go to the checkout shown by <code>dalo doctor</code>, then commit, stash, or discard the edits with normal Git commands. Dalo does not decide this for you because the edits may be user or agent work.</p>
+<h3 id="i-upgraded-and-doctor-reports-schema_migration_pending"><a class="doc-anchor" href="#i-upgraded-and-doctor-reports-schema_migration_pending">I upgraded and doctor reports <code>schema_migration_pending</code></a></h3>
+<p>Nothing is wrong. Dalo migrates a persisted file the next time it writes that
+file, so a store carried over from 0.x keeps the old version on disk until
+then, and <code>doctor</code> prints one <code>info</code> line per file that is still waiting. Run
+<code>dalo sync</code> and the <code>lock.toml</code>, state, and instruction-block lines clear;
+<code>config.toml</code> clears the next time you change a setting, add a source, or link
+a target, and <code>source-lock.toml</code> on the next <code>source select</code>, <code>source unselect</code>, or <code>source refresh</code>. These are <code>info</code> findings, so <code>doctor --check</code>
+still exits <code>0</code>. See <a href="/docs/upgrading.html">Upgrading to 1.0</a> for the full first-run
+transcript.</p>
 <h3 id="my-script-uses-a-flag-dalo-no-longer-accepts"><a class="doc-anchor" href="#my-script-uses-a-flag-dalo-no-longer-accepts">My script uses a flag Dalo no longer accepts</a></h3>
 <p>Dalo removed its pre-1.0 compatibility spellings before the 1.0 line froze
 them. Each removed spelling now produces clap&#39;s ordinary unknown-argument
