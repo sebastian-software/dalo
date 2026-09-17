@@ -98,9 +98,8 @@ period (see <a href="#change-policy">Change policy</a>).</p>
 under &quot;Command Reference&quot; and &quot;Global Flags&quot;, with the meaning documented
 there. New commands, new subcommands, and new optional flags are additive and
 may arrive in any minor release.</p>
-<p>The global flags are <code>--store &lt;PATH&gt;</code>, <code>--json</code>, <code>--yes</code>, <code>--dry-run</code>,
-<code>-h</code>/<code>--help</code>, and <code>-V</code>/<code>--version</code>. <code>--yes</code> is a retained no-op kept for
-existing scripts; it stays accepted for the whole 1.x line.</p>
+<p>The global flags are <code>--store &lt;PATH&gt;</code>, <code>--json</code>, <code>--dry-run</code>,
+<code>-h</code>/<code>--help</code>, and <code>-V</code>/<code>--version</code>.</p>
 <h3 id="exit-codes"><a class="doc-anchor" href="#exit-codes">Exit codes</a></h3>
 <div class="doc-table"><table>
 <thead>
@@ -428,10 +427,13 @@ removal in the next major is marked deprecated at least one minor release
 earlier, documented as deprecated in the reference, and emits a runtime
 warning on stderr when used. The warning never changes the exit status and
 is suppressed in <code>--json</code> mode so machine consumers stay clean.
-<code>--agent</code> (superseded by <code>--reviewer</code>) is a retained deprecated alias that
-predates this policy: it keeps working without a warning and is documented
-as deprecated in the reference. The warning requirement applies to
-deprecations announced from now on.</li>
+No deprecated spelling enters 1.x: the pre-1.0 shims that predated this
+policy were removed before the line froze, so the first deprecation Dalo
+announces will be the first one to carry the warning. A store written by an
+older release still reads; the shapes Dalo accepts on read are listed under
+<a href="/docs/reference.html#accepted-0x-store-shapes">Accepted 0.x Store Shapes</a>, and
+removed CLI spellings are mapped to their replacements in
+<a href="/docs/troubleshooting.html#my-script-uses-a-flag-dalo-no-longer-accepts">Troubleshooting and FAQ</a>.</li>
 <li><strong>JSON fields are never removed within 1.x.</strong> A field that becomes
 meaningless keeps being emitted with a documented inert value until the next
 major. New fields are additive; consumers ignore what they do not know.</li>
