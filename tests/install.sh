@@ -73,6 +73,55 @@ grep -q -- '--retry 2' "$curl_log"
 grep -q -- "--proto =https" "$curl_log"
 grep -q -- '--tlsv1.2' "$curl_log"
 
+# The installer must stage downloads in a private directory it created itself.
+# A predictable, pre-creatable path lets another local user plant a symlink that
+# `curl -o` would then follow with the installing user's permissions.
+sh -n "${repo_root}/site/install.sh"
+if grep -q 'dalo-install\.\$\$' "${repo_root}/site/install.sh"; then
+  echo "installer rebuilt a predictable PID-based temp path" >&2
+  exit 1
+fi
+
+mktemp_path="${test_root}/mktemp-path"
+make_path "$mktemp_path"
+real_mktemp="$(command -v mktemp)"
+rm -f "${mktemp_path}/mktemp"
+mktemp_log="${test_root}/mktemp.log"
+cat > "${mktemp_path}/mktemp" <<EOF
+#!/bin/sh
+printf 'umask=%s args=%s\n' "\$(umask)" "\$*" >> "${mktemp_log}"
+exec "${real_mktemp}" "\$@"
+EOF
+chmod +x "${mktemp_path}/mktemp"
+mktemp_tmpdir="${test_root}/mktemp-tmp"
+mkdir -p "$mktemp_tmpdir"
+mktemp_output="${test_root}/mktemp-output"
+run_install "$mktemp_path" "${test_root}/mktemp-bin" "$mktemp_output" \
+  TMPDIR="$mktemp_tmpdir"
+test -x "${test_root}/mktemp-bin/dalo"
+grep -q -- "-d ${mktemp_tmpdir}/dalo-install.XXXXXX" "$mktemp_log"
+if ! grep -q '^umask=0\{0,1\}077 ' "$mktemp_log"; then
+  echo "installer staged downloads without a private umask:" >&2
+  cat "$mktemp_log" >&2
+  exit 1
+fi
+set -- "${mktemp_tmpdir}"/dalo-install.*
+test ! -e "$1"
+
+# A private staging directory is a precondition, not a nicety: without one the
+# installer must stop rather than fall back to a shared path.
+refuse_path="${test_root}/refuse-path"
+make_path "$refuse_path"
+rm -f "${refuse_path}/mktemp"
+printf '#!/bin/sh\nexit 1\n' > "${refuse_path}/mktemp"
+chmod +x "${refuse_path}/mktemp"
+refuse_output="${test_root}/refuse-output"
+if run_install "$refuse_path" "${test_root}/refuse-bin" "$refuse_output"; then
+  echo "expected the installer to fail without a private temp directory" >&2
+  exit 1
+fi
+test ! -e "${test_root}/refuse-bin/dalo"
+
 atomic_path="${test_root}/atomic-path"
 make_path "$atomic_path"
 rm -f "${atomic_path}/mv"
