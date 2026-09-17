@@ -919,6 +919,40 @@ pub fn read_approvals(paths: &StorePaths) -> DaloResult<ApprovalsFile> {
     Ok(approvals)
 }
 
+/// Read the schema version a persisted file carries *on disk*.
+///
+/// The `read_*` functions above deliberately return a migrated value, so the
+/// number they report is the current version even for a store written years
+/// ago. Reporting what still needs migrating therefore has to look at the raw
+/// file. A file that is missing, unreadable, or not valid TOML returns `None`;
+/// the surrounding diagnostics already cover those cases.
+#[must_use]
+pub fn persisted_schema_version(path: &Path, field: &str) -> Option<u32> {
+    let content = fs::read_to_string(path).ok()?;
+    let document: toml::Value = toml::from_str(&content).ok()?;
+    u32::try_from(document.get(field)?.as_integer()?).ok()
+}
+
+/// Slot names of protected-skill records still stored as an absolute path.
+///
+/// [`read_state`] migrates these to a target slot in memory, so the caller that
+/// wants to report the pending migration has to read the raw file.
+#[must_use]
+pub fn persisted_path_only_protected_skills(path: &Path) -> Vec<String> {
+    let Ok(content) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let Ok(state) = toml::from_str::<StateFile>(&content) else {
+        return Vec::new();
+    };
+    state
+        .protected_skills
+        .into_iter()
+        .filter(|protected| protected.target_id.is_empty() && protected.path.is_some())
+        .map(|protected| protected.slot_name)
+        .collect()
+}
+
 /// Parse store TOML, attaching the file path to any parser error.
 fn parse_store_toml<T: serde::de::DeserializeOwned>(path: &Path, content: &str) -> DaloResult<T> {
     toml::from_str(content).map_err(|error| DaloError::FileParse {

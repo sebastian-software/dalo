@@ -233,6 +233,10 @@ pub enum DoctorCode {
     AutosyncRunStale,
     /// Autosync metadata or native scheduler state could not be inspected.
     AutosyncStateInvalid,
+    /// A store file written by an older Dalo migrates forward on the next write.
+    SchemaMigrationPending,
+    /// An approval record predates source-qualified approvals and is not honored.
+    LegacyApprovalRecord,
 }
 
 /// Run read-only diagnostics.
@@ -251,6 +255,7 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
     let lock = read_lock(&paths, &mut findings);
     let source_lock = read_source_lock(&paths, &mut findings);
     let approvals = read_approvals(&paths, &mut findings);
+    check_pending_migrations(&paths, config.as_ref(), lock.as_ref(), &mut findings);
 
     if paths.local_dir.join(".git").is_dir() {
         findings.push(ok(
@@ -1135,6 +1140,102 @@ fn check_owned_symlinks(paths: &StorePaths, state: &StateFile, findings: &mut Ve
     }
 }
 
+/// Report every migration the next write will perform.
+///
+/// Dalo migrates persisted files lazily: a store written by 0.6 is read and
+/// upgraded in memory, and the new version reaches disk only when that file is
+/// next written. Nothing about that needs user action, but a team upgrading to
+/// 1.0 should be able to see it rather than infer it, so each pending migration
+/// gets one line. The one migration that *does* need a decision — an approval
+/// record that predates source-qualified approvals — is reported separately as
+/// a warning carrying the exact command.
+fn check_pending_migrations(
+    paths: &StorePaths,
+    config: Option<&UserConfig>,
+    lock: Option<&crate::lockfile::UserLock>,
+    findings: &mut Vec<DoctorFinding>,
+) {
+    let files = [
+        (
+            &paths.config_file,
+            "config.toml",
+            "version",
+            crate::config::CONFIG_VERSION,
+            "the next config write",
+        ),
+        (
+            &paths.state_file,
+            "state.toml",
+            "schema_version",
+            store::STATE_SCHEMA_VERSION,
+            "the next state write",
+        ),
+        (
+            &paths.lock_file,
+            "lock.toml",
+            "schema_version",
+            crate::lockfile::USER_LOCK_SCHEMA_VERSION,
+            "the next `dalo sync`",
+        ),
+        (
+            &paths.source_lock_file,
+            "source-lock.toml",
+            "schema_version",
+            catalog::SOURCE_LOCK_SCHEMA_VERSION,
+            "the next catalog write",
+        ),
+        (
+            &paths.approvals_file,
+            "approvals.toml",
+            "schema_version",
+            store::APPROVALS_SCHEMA_VERSION,
+            "the next approval write",
+        ),
+    ];
+    for (path, name, field, current, trigger) in files {
+        let Some(found) = store::persisted_schema_version(path, field) else {
+            continue;
+        };
+        if found >= current {
+            continue;
+        }
+        findings.push(info(
+            DoctorCode::SchemaMigrationPending,
+            format!(
+                "`{name}` is at schema version {found} and is read as {current}; {trigger} persists the migration"
+            ),
+        ));
+    }
+
+    for slot_name in store::persisted_path_only_protected_skills(&paths.state_file) {
+        findings.push(info(
+            DoctorCode::SchemaMigrationPending,
+            format!(
+                "protected slot `{slot_name}` is recorded as an absolute path and is read as a target slot; the next state write persists the migration"
+            ),
+        ));
+    }
+
+    let (Some(config), Some(lock)) = (config, lock) else {
+        return;
+    };
+    for block in instructions::legacy_instruction_blocks(
+        paths,
+        &config.sources,
+        &lock.active_instruction_packs,
+    ) {
+        findings.push(info(
+            DoctorCode::SchemaMigrationPending,
+            format!(
+                "instruction pack `{}:{}` renders a legacy managed block in `{}`; the next `dalo sync` rewrites it without pack metadata",
+                block.source_id,
+                block.pack_id,
+                block.target.display()
+            ),
+        ));
+    }
+}
+
 fn check_protected_skills(state: &StateFile, findings: &mut Vec<DoctorFinding>) {
     for protected in &state.protected_skills {
         let target = state
@@ -1587,10 +1688,16 @@ fn check_resolution(
     if approvals_present {
         for diagnostic in &resolution.diagnostics {
             if diagnostic.code == resolver::ResolutionDiagnosticCode::LegacyBareApproval {
+                // The diagnostic names the source-qualified replacement, so the
+                // next command can be the exact one to run rather than another
+                // report that repeats what doctor already said.
                 findings.push(finding_warning(
-                    DoctorCode::PendingApproval,
+                    DoctorCode::LegacyApprovalRecord,
                     diagnostic.message.clone(),
-                    Some("dalo status".to_owned()),
+                    diagnostic
+                        .source_ref
+                        .as_ref()
+                        .map(|source_ref| format!("dalo approve skill {source_ref}")),
                 ));
             }
         }
@@ -1905,6 +2012,8 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::AutosyncRunBlocked => "autosync_run_blocked",
         DoctorCode::AutosyncRunStale => "autosync_run_stale",
         DoctorCode::AutosyncStateInvalid => "autosync_state_invalid",
+        DoctorCode::SchemaMigrationPending => "schema_migration_pending",
+        DoctorCode::LegacyApprovalRecord => "legacy_approval_record",
     }
 }
 

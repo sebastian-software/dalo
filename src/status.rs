@@ -2843,12 +2843,11 @@ pub fn print_doctor_report(report: &DoctorReport) {
         "summary: errors={} warnings={} info={} ok={}",
         report.summary.errors, report.summary.warnings, report.summary.info, report.summary.ok
     );
-    for finding in report.findings.iter().filter(|finding| {
-        matches!(
-            finding.severity,
-            DoctorSeverity::Error | DoctorSeverity::Warning
-        )
-    }) {
+    for finding in report
+        .findings
+        .iter()
+        .filter(|finding| doctor_finding_is_printed(finding))
+    {
         for line in doctor_finding_lines(finding, &paths) {
             println!("{line}");
         }
@@ -2856,7 +2855,7 @@ pub fn print_doctor_report(report: &DoctorReport) {
     let omitted = report
         .findings
         .iter()
-        .filter(|finding| matches!(finding.severity, DoctorSeverity::Info | DoctorSeverity::Ok))
+        .filter(|finding| !doctor_finding_is_printed(finding))
         .count();
     if omitted > 0 {
         println!("details: {omitted} info/ok findings omitted; use --json for the full report");
@@ -2867,6 +2866,19 @@ pub fn print_doctor_report(report: &DoctorReport) {
             store::dalo_command(&report.store, "doctor --check")
         );
     }
+}
+
+/// Whether a finding is shown in text mode.
+///
+/// Info and ok findings are normally summarized away to keep doctor readable.
+/// Pending schema migrations are the exception: they announce a change Dalo
+/// will make to the user's own files on the next write, and a team upgrading
+/// across several minors should see that without reaching for `--json`.
+fn doctor_finding_is_printed(finding: &DoctorFinding) -> bool {
+    matches!(
+        finding.severity,
+        DoctorSeverity::Error | DoctorSeverity::Warning
+    ) || finding.code == DoctorCode::SchemaMigrationPending
 }
 
 /// Render one actionable finding without allowing finding content to control
