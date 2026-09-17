@@ -231,6 +231,69 @@ run_install "$auto_path" "${test_root}/latest-fallback-bin" "$latest_fallback_ou
 test -x "${test_root}/latest-fallback-bin/dalo"
 grep -q 'Installing dalo 9.8.7' "$latest_fallback_output"
 
+# An Intel Mac has to be told that the build was discontinued and where to go
+# instead. Without this the installer would compose a URL for an archive that
+# no release produces and fail on a bare curl 404.
+intel_path="${test_root}/intel-path"
+make_path "$intel_path"
+rm -f "${intel_path}/uname"
+cat > "${intel_path}/uname" <<'EOF'
+#!/bin/sh
+case "$1" in
+  -s) echo Darwin ;;
+  -m) echo x86_64 ;;
+  *) echo Darwin ;;
+esac
+EOF
+chmod +x "${intel_path}/uname"
+intel_output="${test_root}/intel-output"
+intel_log="${test_root}/intel-curl.log"
+if env \
+  PATH="$intel_path" \
+  HOME="${test_root}/home" \
+  DALO_INSTALL_DIR="${test_root}/intel-bin" \
+  DALO_TARGET= \
+  DALO_VERSION="dalo-v9.8.7" \
+  DALO_INSTALLER_FIXTURES="$fixture_dir" \
+  DALO_FAKE_CURL_LOG="$intel_log" \
+  /bin/sh "${repo_root}/site/install.sh" > "$intel_output" 2>&1; then
+  echo "expected the installer to refuse an Intel Mac" >&2
+  cat "$intel_output" >&2
+  exit 1
+fi
+grep -q 'Intel Macs are no longer supported' "$intel_output"
+grep -q 'discontinued with Dalo 1.0' "$intel_output"
+grep -q 'cargo install dalo' "$intel_output"
+test ! -e "${test_root}/intel-bin/dalo"
+# It must refuse before reaching the network, not after a failed download.
+if [ -e "$intel_log" ] && grep -Fq 'x86_64-apple-darwin' "$intel_log"; then
+  echo "the installer tried to download an Intel macOS archive" >&2
+  exit 1
+fi
+
+# An Apple Silicon Mac keeps resolving its own target through the same path.
+silicon_path="${test_root}/silicon-path"
+make_path "$silicon_path"
+rm -f "${silicon_path}/uname"
+cat > "${silicon_path}/uname" <<'EOF'
+#!/bin/sh
+case "$1" in
+  -s) echo Darwin ;;
+  -m) echo arm64 ;;
+  *) echo Darwin ;;
+esac
+EOF
+chmod +x "${silicon_path}/uname"
+silicon_output="${test_root}/silicon-output"
+env \
+  PATH="$silicon_path" \
+  HOME="${test_root}/home" \
+  DALO_INSTALL_DIR="${test_root}/silicon-bin" \
+  DALO_VERSION="dalo-v9.8.7" \
+  DALO_INSTALLER_FIXTURES="$fixture_dir" \
+  /bin/sh "${repo_root}/site/install.sh" > "$silicon_output" 2>&1 || true
+grep -q 'Installing dalo 9.8.7 for aarch64-apple-darwin' "$silicon_output"
+
 shadow_path="${test_root}/shadow-path"
 make_path "$shadow_path"
 printf '#!/bin/sh\necho stale dalo\n' > "${shadow_path}/dalo"

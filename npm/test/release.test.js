@@ -33,6 +33,9 @@ test('publishes discovery and supported-platform metadata', () => {
   assert.equal(packageManifest.bugs.url, 'https://github.com/sebastian-software/dalo/issues');
   assert.deepEqual(packageManifest.keywords, ['dalo', 'ai', 'agents', 'skills', 'cli']);
   assert.deepEqual(packageManifest.os, ['darwin', 'linux']);
+  // `os` and `cpu` are independent lists, so npm cannot express "x64 on Linux
+  // only". `x64` stays for Linux, and the Intel macOS rejection lives in
+  // `targetFor` instead, where it can say why.
   assert.deepEqual(packageManifest.cpu, ['x64', 'arm64']);
 });
 
@@ -50,6 +53,15 @@ test('maps supported Node platforms to release targets', () => {
   assert.equal(targetFor('linux', 'arm64', 'musl'), 'aarch64-unknown-linux-musl');
   assert.throws(() => targetFor('linux', 'x64', 'other'), /supported values are gnu and musl/);
   assert.throws(() => targetFor('win32', 'x64'), /unsupported platform/);
+});
+
+test('rejects Intel macOS with the remaining install path', () => {
+  assert.throws(() => targetFor('darwin', 'x64'), (error) => {
+    assert.match(error.message, /unsupported platform: darwin x64/);
+    assert.match(error.message, /discontinued with Dalo 1\.0/);
+    assert.match(error.message, /cargo install dalo/);
+    return true;
+  });
 });
 
 test('detects Linux libc from overrides and the runtime report', async () => {

@@ -28,13 +28,21 @@ detect_target() {
   os="$(uname -s)"
   arch="$(uname -m)"
   case "$os:$arch" in
-    Darwin:x86_64) echo "x86_64-apple-darwin" ;;
     Darwin:arm64) echo "aarch64-apple-darwin" ;;
+    Darwin:x86_64)
+      # Rosetta reports the translated architecture, so an Apple Silicon Mac
+      # never lands here: this is a real Intel Mac, and no Rosetta trick can
+      # conjure a build that is not published.
+      echo "dalo installer: Intel Macs are no longer supported" >&2
+      echo "The Intel macOS build was discontinued with Dalo 1.0; releases ship for Apple Silicon Macs and Linux." >&2
+      echo "Build from source instead: cargo install dalo" >&2
+      exit 1
+      ;;
     Linux:x86_64) echo "x86_64-unknown-linux-$(detect_linux_libc)" ;;
     Linux:aarch64 | Linux:arm64) echo "aarch64-unknown-linux-$(detect_linux_libc)" ;;
     *)
       echo "dalo installer: unsupported platform: $os $arch" >&2
-      echo "Supported targets: x86_64/aarch64 Linux and macOS." >&2
+      echo "Supported targets: Apple Silicon macOS and x86_64/aarch64 Linux." >&2
       exit 1
       ;;
   esac
