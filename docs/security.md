@@ -68,8 +68,7 @@ a recurring [`dalo sync --check`](reference.md#dalo-autosync-installstatusuninst
 through launchd, a systemd user timer, or cron. Pending approvals, security
 findings, dirty sources, and target conflicts stay fail-closed: the run records
 `blocked` with a reason instead of proceeding. Non-interactive commands can use
-approvals that already exist but never create new ones, and the global `--yes`
-flag is a no-op that never grants an approval.
+approvals that already exist but never create new ones.
 
 **Incoming team updates are staged before they are trusted.** A tracking source
 fetches into a detached worktree below `sources/.audit-staging/` and is audited
