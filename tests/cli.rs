@@ -3998,7 +3998,7 @@ fn audit_agent_auto_should_prefer_an_enforceable_no_tool_provider() {
         .arg(&store)
         .args(["--json", "audit"])
         .arg(&skill)
-        .args(["--reviewer", "codex", "--refresh"])
+        .args(["--reviewer", "codex", "--refresh-audit"])
         .assert()
         .success()
         .stderr(predicate::str::contains(
@@ -4122,13 +4122,14 @@ fn reviewer_should_reject_the_removed_agent_alias() {
 }
 
 #[test]
-fn refresh_alias_should_work_for_all_audit_related_commands() {
+fn refresh_audit_should_reject_the_removed_refresh_alias() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
     setup_store_with_target(&store, &target);
 
     for args in [
+        vec!["audit", "missing", "--refresh"],
         vec!["adopt", "missing", "--refresh"],
         vec!["approve", "skill", "local:missing", "--refresh"],
         vec!["resolve", "adopt", "missing", "--refresh"],
@@ -4139,7 +4140,10 @@ fn refresh_alias_should_work_for_all_audit_related_commands() {
             .args(args)
             .assert()
             .failure()
-            .stderr(predicate::str::contains("unexpected argument").not());
+            .code(2)
+            .stderr(predicate::str::contains(
+                "unexpected argument \'--refresh\' found",
+            ));
     }
 }
 

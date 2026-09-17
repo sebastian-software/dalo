@@ -476,7 +476,7 @@ pub struct SkillApprovalArgs {
     pub reviewer: ReviewerArgs,
 
     /// Ignore a compatible cached semantic review.
-    #[arg(long = "refresh-audit", alias = "refresh")]
+    #[arg(long = "refresh-audit")]
     pub refresh_audit: bool,
 
     /// Accept blocking findings for this exact content hash with a reason.
@@ -528,7 +528,7 @@ pub struct AuditCommand {
     pub reviewer: ReviewerArgs,
 
     /// Ignore a compatible cached semantic review.
-    #[arg(long = "refresh-audit", alias = "refresh")]
+    #[arg(long = "refresh-audit")]
     pub refresh_audit: bool,
 
     /// Exit non-zero when unaccepted high or critical findings exist.
@@ -1030,7 +1030,7 @@ pub struct AdoptCommand {
     pub reviewer: ReviewerArgs,
 
     /// Ignore a compatible cached semantic review.
-    #[arg(long = "refresh-audit", alias = "refresh")]
+    #[arg(long = "refresh-audit")]
     pub refresh_audit: bool,
 
     /// Accept blocking findings for this exact content hash with a reason.
@@ -1076,7 +1076,7 @@ pub struct ResolveAdoptArgs {
     pub reviewer: ReviewerArgs,
 
     /// Ignore a compatible cached semantic review.
-    #[arg(long = "refresh-audit", alias = "refresh")]
+    #[arg(long = "refresh-audit")]
     pub refresh_audit: bool,
 
     /// Accept blocking findings for this exact content hash with a reason.

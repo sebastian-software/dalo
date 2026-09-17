@@ -289,6 +289,7 @@ error. Replace it with the supported form:
 | `--yes` (global no-op) | Nothing. The flag never confirmed anything; drop it. |
 | `audit --agent <reviewer>` | `audit --reviewer <reviewer>` |
 | `source select <id> --unselect <skill>...` | `source unselect <id> <skill>...` |
+| `--refresh` (audit, adopt, approve skill, resolve adopt) | `--refresh-audit` |
 
 ### How do I remove Dalo completely?
 

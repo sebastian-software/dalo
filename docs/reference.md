@@ -808,8 +808,7 @@ dalo audit public:review-helper --reviewer claude --refresh-audit
 ```
 
 Use `--refresh-audit` to ignore a compatible cached semantic review and run the
-selected provider again. The older `--refresh` spelling remains a hidden alias
-for script compatibility.
+selected provider again.
 
 `--reviewer auto|codex|claude|opencode` adds a semantic review through an installed
 agent CLI. Dalo starts a fresh non-persistent reviewer and treats a bounded
