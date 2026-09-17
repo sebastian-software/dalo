@@ -20,10 +20,119 @@ const REPOSITORY: &str = "sebastian-software/dalo";
 const RELEASE_API: &str = "https://api.github.com/repos/sebastian-software/dalo/releases/latest";
 const INSTALL_RECEIPT: &str = ".dalo-install-channel";
 const CHECK_TIMEOUT: Duration = Duration::from_secs(1);
+/// How long a finished check stays authoritative before the next one runs.
+const CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+/// How long a check that never finished suppresses the next attempt.
+const RETRY_INTERVAL: Duration = Duration::from_secs(5 * 60);
+/// How long a finishing command waits for a check it started itself.
+///
+/// Short enough that an interactive command still feels immediate, long enough
+/// that a normal release-API round trip lands inside the same run. Commands
+/// that never start a check (`--json`, CI, `DALO_OFFLINE=1`,
+/// `DALO_UPDATE_CHECK=never`, non-interactive stderr) never wait at all.
+const NOTICE_WAIT: Duration = Duration::from_millis(150);
+/// Record of the last release check inside the update-notice cache directory.
+const CHECK_RECORD: &str = "last-check";
+/// Schema version of [`CHECK_RECORD`].
+///
+/// Bump it whenever the stored keys change meaning. A record written by a newer
+/// schema is ignored, which makes the next run check again.
+const CHECK_RECORD_SCHEMA: u32 = 1;
 
-/// A passive update check running alongside the requested command.
-pub struct PendingNotice {
-    receiver: Receiver<Option<String>>,
+/// Outcome of one release check.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum CheckOutcome {
+    /// The release API answered with a version newer than the running binary.
+    Newer(String),
+    /// The release API answered and the running binary is current.
+    UpToDate,
+    /// The check did not finish, so the next run retries it.
+    Failed,
+}
+
+/// A passive update notice waiting to be printed.
+///
+/// The source stays private so the CLI cannot depend on how the notice was
+/// obtained: an earlier run's record and a check started by this run print the
+/// same way.
+pub struct PendingNotice(NoticeSource);
+
+enum NoticeSource {
+    /// A newer release an earlier run already recorded.
+    Recorded(String),
+    /// A check started for this run.
+    Running(Receiver<CheckOutcome>),
+}
+
+impl PendingNotice {
+    fn recorded(latest: String) -> Self {
+        Self(NoticeSource::Recorded(latest))
+    }
+
+    fn running(receiver: Receiver<CheckOutcome>) -> Self {
+        Self(NoticeSource::Running(receiver))
+    }
+
+    /// Whether the notice needs no further wait.
+    #[cfg(test)]
+    fn is_recorded(&self) -> bool {
+        matches!(self.0, NoticeSource::Recorded(_))
+    }
+}
+
+/// What this invocation should do about the release check.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum CheckPlan {
+    /// Announce this recorded release without touching the network.
+    Announce(String),
+    /// Start a check for this run.
+    Check,
+    /// Stay silent: a recent record already answers this run.
+    Silent,
+}
+
+/// State of the recorded release check.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CheckState {
+    /// A check was started but never reported back.
+    Pending,
+    /// A check reached the release API and recorded its answer.
+    Complete,
+}
+
+impl CheckState {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Complete => "complete",
+        }
+    }
+
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "pending" => Some(Self::Pending),
+            "complete" => Some(Self::Complete),
+            _ => None,
+        }
+    }
+
+    /// How long a record in this state stays authoritative.
+    fn interval(self) -> Duration {
+        match self {
+            Self::Pending => RETRY_INTERVAL,
+            Self::Complete => CHECK_INTERVAL,
+        }
+    }
+}
+
+/// The persisted result of the last release check.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CheckRecord {
+    state: CheckState,
+    /// Version that ran the check. A different version invalidates the record.
+    installed: String,
+    /// Newer release the check found, if any.
+    latest: Option<String>,
 }
 
 /// Start a passive release check when this invocation is eligible for one.
@@ -36,12 +145,53 @@ pub fn start_notice_check() -> Option<PendingNotice> {
         return None;
     }
 
-    spawn_notice_check(check_latest_version)
+    let cache_dir = update_notice_cache_dir()?;
+    start_notice_check_in(cache_dir, env!("CARGO_PKG_VERSION"))
+}
+
+fn start_notice_check_in(cache_dir: PathBuf, installed: &str) -> Option<PendingNotice> {
+    match plan_check(read_check_record(&cache_dir), installed) {
+        CheckPlan::Silent => None,
+        CheckPlan::Announce(latest) => Some(PendingNotice::recorded(latest)),
+        CheckPlan::Check => {
+            // Claim the slot before the request so parallel and back-to-back
+            // commands do not each open their own connection.
+            write_check_record(
+                &cache_dir,
+                &CheckRecord {
+                    state: CheckState::Pending,
+                    installed: installed.to_owned(),
+                    latest: None,
+                },
+            );
+            let installed = installed.to_owned();
+            spawn_notice_check(move || {
+                let outcome = check_latest_version();
+                record_outcome(&cache_dir, &installed, &outcome);
+                outcome
+            })
+        }
+    }
+}
+
+/// Decide what to do from the recorded check and its age.
+fn plan_check(record: Option<(CheckRecord, Duration)>, installed: &str) -> CheckPlan {
+    let Some((record, age)) = record else {
+        // No record at all, including the first run after a fresh install.
+        return CheckPlan::Check;
+    };
+    if record.installed != installed || age >= record.state.interval() {
+        return CheckPlan::Check;
+    }
+    match (record.state, record.latest) {
+        (CheckState::Complete, Some(latest)) => CheckPlan::Announce(latest),
+        _ => CheckPlan::Silent,
+    }
 }
 
 fn spawn_notice_check<F>(check: F) -> Option<PendingNotice>
 where
-    F: FnOnce() -> Option<String> + Send + 'static,
+    F: FnOnce() -> CheckOutcome + Send + 'static,
 {
     let (sender, receiver) = mpsc::sync_channel(1);
     thread::Builder::new()
@@ -50,21 +200,105 @@ where
             let _ = sender.send(check());
         })
         .ok()?;
-    Some(PendingNotice { receiver })
+    Some(PendingNotice::running(receiver))
 }
 
-fn check_latest_version() -> Option<String> {
+fn check_latest_version() -> CheckOutcome {
+    // The interval is zero so `update_informer` performs the request instead of
+    // consulting its own cache: the cadence is this module's `CHECK_RECORD`,
+    // which does not seed itself with the running version and therefore lets a
+    // fresh install check on its first interactive command.
     let informer = update_informer::new(DaloGitHub, REPOSITORY, env!("CARGO_PKG_VERSION"))
+        .interval(Duration::ZERO)
         .timeout(CHECK_TIMEOUT);
-    let Ok(Some(version)) = informer.check_version() else {
-        return None;
-    };
-    Some(version.semver().to_string())
+    match informer.check_version() {
+        Ok(Some(version)) => CheckOutcome::Newer(version.semver().to_string()),
+        Ok(None) => CheckOutcome::UpToDate,
+        Err(_) => CheckOutcome::Failed,
+    }
 }
 
-/// Print a completed passive release notice without waiting for the check.
+/// Persist a finished check. An unfinished one keeps the pending record.
+fn record_outcome(cache_dir: &Path, installed: &str, outcome: &CheckOutcome) {
+    let latest = match outcome {
+        CheckOutcome::Newer(version) => Some(version.clone()),
+        CheckOutcome::UpToDate => None,
+        CheckOutcome::Failed => return,
+    };
+    write_check_record(
+        cache_dir,
+        &CheckRecord {
+            state: CheckState::Complete,
+            installed: installed.to_owned(),
+            latest,
+        },
+    );
+}
+
+fn render_check_record(record: &CheckRecord) -> String {
+    let mut text = format!(
+        "schema={CHECK_RECORD_SCHEMA}\nstate={}\ninstalled={}\n",
+        record.state.as_str(),
+        record.installed
+    );
+    if let Some(latest) = &record.latest {
+        text.push_str(&format!("latest={latest}\n"));
+    }
+    text
+}
+
+fn parse_check_record(text: &str) -> Option<CheckRecord> {
+    let mut schema = None;
+    let mut state = None;
+    let mut installed = None;
+    let mut latest = None;
+    for line in text.lines() {
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let value = value.trim();
+        match key.trim() {
+            "schema" => schema = value.parse::<u32>().ok(),
+            "state" => state = CheckState::parse(value),
+            "installed" => installed = Some(value.to_owned()),
+            "latest" => latest = Some(value.to_owned()),
+            _ => {}
+        }
+    }
+    if schema != Some(CHECK_RECORD_SCHEMA) {
+        return None;
+    }
+    Some(CheckRecord {
+        state: state?,
+        installed: installed?,
+        latest,
+    })
+}
+
+/// Read the recorded check together with how long ago it was written.
+fn read_check_record(cache_dir: &Path) -> Option<(CheckRecord, Duration)> {
+    let path = cache_dir.join(CHECK_RECORD);
+    let age = fs::metadata(&path)
+        .and_then(|metadata| metadata.modified())
+        .ok()?
+        .elapsed()
+        .unwrap_or_default();
+    let record = parse_check_record(&fs::read_to_string(&path).ok()?)?;
+    Some((record, age))
+}
+
+/// Write the record, ignoring failures: the check is advisory.
+fn write_check_record(cache_dir: &Path, record: &CheckRecord) {
+    if fs::create_dir_all(cache_dir).is_err() {
+        return;
+    }
+    let _ = fs::write(cache_dir.join(CHECK_RECORD), render_check_record(record));
+}
+
+/// Print a passive release notice, waiting at most 150 milliseconds for a check
+/// this run started.
 pub fn print_notice_if_ready(pending: Option<PendingNotice>) {
-    let Some(latest_version) = pending.and_then(take_ready_notice) else {
+    let Some(latest_version) = pending.and_then(take_notice) else {
         return;
     };
     if !mark_version_notified(&latest_version) {
@@ -84,8 +318,18 @@ pub fn print_notice_if_ready(pending: Option<PendingNotice>) {
     );
 }
 
-fn take_ready_notice(pending: PendingNotice) -> Option<String> {
-    pending.receiver.try_recv().unwrap_or_default()
+/// Resolve the notice, waiting for a running check only up to [`NOTICE_WAIT`].
+///
+/// A check that misses the window is not lost: the background thread records
+/// its answer when it still can, and the next run announces it without waiting.
+fn take_notice(pending: PendingNotice) -> Option<String> {
+    match pending.0 {
+        NoticeSource::Recorded(version) => Some(version),
+        NoticeSource::Running(receiver) => match receiver.recv_timeout(NOTICE_WAIT) {
+            Ok(CheckOutcome::Newer(version)) => Some(version),
+            _ => None,
+        },
+    }
 }
 
 fn render_notice(
@@ -186,10 +430,38 @@ impl Registry for DaloGitHub {
         let release = http_client
             .add_header("Accept", "application/vnd.github+json")
             .add_header("User-Agent", "dalo-update-informer")
-            .get::<GitHubRelease>(RELEASE_API)?;
+            .get::<GitHubRelease>(&release_api())?;
 
         Ok(normalize_release_tag(&release.tag_name).map(str::to_owned))
     }
+}
+
+/// The release endpoint to query.
+#[cfg(not(test))]
+fn release_api() -> String {
+    RELEASE_API.to_owned()
+}
+
+/// Test-only endpoint override.
+///
+/// It exists behind `cfg(test)`, so it is compiled out of the shipped binary
+/// and is not part of the CLI surface: unit tests point the check at a
+/// loopback server instead of reaching the real release API.
+#[cfg(test)]
+static TEST_RELEASE_API: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// Where an unconfigured test check goes: a closed loopback port, so a check
+/// left running by an earlier test can never reach the real release API.
+#[cfg(test)]
+const TEST_UNREACHABLE_API: &str = "http://127.0.0.1:1/no-release-api-in-tests";
+
+#[cfg(test)]
+fn release_api() -> String {
+    TEST_RELEASE_API
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
+        .unwrap_or_else(|| TEST_UNREACHABLE_API.to_owned())
 }
 
 fn normalize_release_tag(tag: &str) -> Option<&str> {
@@ -376,7 +648,90 @@ fn shell_quote(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard, PoisonError};
+    use std::time::Instant;
     use tempfile::tempdir;
+
+    /// Upper bound for how long resolving a notice may take a command.
+    ///
+    /// Generous next to [`NOTICE_WAIT`] so a loaded runner cannot fail the
+    /// test, tight enough that waiting for the request itself would.
+    const WAIT_BOUND: Duration = Duration::from_secs(2);
+
+    /// Serializes the tests that repoint the release endpoint.
+    static RELEASE_API_GUARD: Mutex<()> = Mutex::new(());
+
+    fn lock_release_api() -> MutexGuard<'static, ()> {
+        RELEASE_API_GUARD
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn set_release_api(url: Option<String>) {
+        *TEST_RELEASE_API
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = url;
+    }
+
+    /// A loopback stand-in for the release API, so no test leaves the machine.
+    struct FakeReleaseEndpoint {
+        url: String,
+    }
+
+    impl FakeReleaseEndpoint {
+        /// An endpoint that answers every request with `body`.
+        fn answering(body: &'static str) -> Self {
+            Self::serve(Some(body))
+        }
+
+        /// An endpoint that accepts the connection and never answers.
+        fn silent() -> Self {
+            Self::serve(None)
+        }
+
+        fn serve(body: Option<&'static str>) -> Self {
+            let listener =
+                std::net::TcpListener::bind(("127.0.0.1", 0)).expect("loopback port should bind");
+            let port = listener.local_addr().expect("local address").port();
+            thread::spawn(move || {
+                let mut held = Vec::new();
+                for stream in listener.incoming() {
+                    let Ok(mut stream) = stream else { continue };
+                    let mut request = [0_u8; 1024];
+                    let _ = std::io::Read::read(&mut stream, &mut request);
+                    match body {
+                        Some(body) => {
+                            let response = format!(
+                                "HTTP/1.1 200 OK\r\n\
+                                 Content-Type: application/json\r\n\
+                                 Content-Length: {}\r\n\
+                                 Connection: close\r\n\r\n{body}",
+                                body.len()
+                            );
+                            let _ = std::io::Write::write_all(&mut stream, response.as_bytes());
+                        }
+                        // Held open so the client waits rather than seeing EOF.
+                        None => held.push(stream),
+                    }
+                }
+            });
+            Self {
+                url: format!("http://127.0.0.1:{port}/releases/latest"),
+            }
+        }
+
+        fn url(&self) -> String {
+            self.url.clone()
+        }
+    }
+
+    #[test]
+    fn the_release_endpoint_should_point_at_this_project() {
+        assert_eq!(
+            RELEASE_API,
+            format!("https://api.github.com/repos/{REPOSITORY}/releases/latest")
+        );
+    }
 
     #[test]
     fn release_tags_should_accept_dalo_prefix_and_reject_unrelated_tags() {
@@ -409,14 +764,24 @@ mod tests {
             release_receiver
                 .recv()
                 .expect("test should release update check");
-            Some("9.9.9".to_owned())
+            CheckOutcome::Newer("9.9.9".to_owned())
         })
         .expect("update thread should start");
         started_receiver
             .recv_timeout(Duration::from_secs(1))
             .expect("update check should start");
 
-        assert_eq!(take_ready_notice(pending), None);
+        let start = Instant::now();
+        assert_eq!(take_notice(pending), None);
+        let waited = start.elapsed();
+        assert!(
+            waited >= NOTICE_WAIT,
+            "a started check should get its bounded wait, waited {waited:?}"
+        );
+        assert!(
+            waited < WAIT_BOUND,
+            "an unfinished check should not hold the command, waited {waited:?}"
+        );
         release_sender
             .send(())
             .expect("update check should be released");
@@ -426,12 +791,203 @@ mod tests {
     fn completed_update_check_should_return_its_notice() {
         let (sender, receiver) = mpsc::sync_channel(1);
         sender
-            .send(Some("9.9.9".to_owned()))
+            .send(CheckOutcome::Newer("9.9.9".to_owned()))
             .expect("notice should be queued");
 
         assert_eq!(
-            take_ready_notice(PendingNotice { receiver }),
+            take_notice(PendingNotice::running(receiver)),
             Some("9.9.9".to_owned())
+        );
+    }
+
+    #[test]
+    fn recorded_release_should_be_announced_without_waiting() {
+        let start = Instant::now();
+        assert_eq!(
+            take_notice(PendingNotice::recorded("9.9.9".to_owned())),
+            Some("9.9.9".to_owned())
+        );
+        assert!(start.elapsed() < NOTICE_WAIT);
+    }
+
+    #[test]
+    fn up_to_date_check_should_not_produce_a_notice() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        sender
+            .send(CheckOutcome::UpToDate)
+            .expect("outcome should be queued");
+
+        assert_eq!(take_notice(PendingNotice::running(receiver)), None);
+    }
+
+    #[test]
+    fn check_record_should_survive_a_round_trip_and_ignore_foreign_schemas() {
+        let recorded = CheckRecord {
+            state: CheckState::Complete,
+            installed: "1.2.3".to_owned(),
+            latest: Some("1.2.4".to_owned()),
+        };
+        assert_eq!(
+            parse_check_record(&render_check_record(&recorded)),
+            Some(recorded)
+        );
+
+        let up_to_date = CheckRecord {
+            state: CheckState::Pending,
+            installed: "1.2.3".to_owned(),
+            latest: None,
+        };
+        assert_eq!(
+            parse_check_record(&render_check_record(&up_to_date)),
+            Some(up_to_date)
+        );
+
+        assert_eq!(
+            parse_check_record("schema=9999\nstate=complete\ninstalled=1.2.3\n"),
+            None
+        );
+        assert_eq!(parse_check_record("not a record"), None);
+    }
+
+    #[test]
+    fn a_fresh_install_should_check_on_its_first_interactive_command() {
+        assert_eq!(plan_check(None, "1.2.3"), CheckPlan::Check);
+    }
+
+    #[test]
+    fn a_recorded_check_should_hold_for_a_day_and_then_check_again() {
+        let record = CheckRecord {
+            state: CheckState::Complete,
+            installed: "1.2.3".to_owned(),
+            latest: Some("1.2.4".to_owned()),
+        };
+
+        assert_eq!(
+            plan_check(Some((record.clone(), Duration::from_secs(60))), "1.2.3"),
+            CheckPlan::Announce("1.2.4".to_owned())
+        );
+        assert_eq!(
+            plan_check(Some((record.clone(), CHECK_INTERVAL)), "1.2.3"),
+            CheckPlan::Check
+        );
+        // A replaced binary invalidates the record whatever its age.
+        assert_eq!(
+            plan_check(Some((record, Duration::from_secs(60))), "1.2.4"),
+            CheckPlan::Check
+        );
+
+        let current = CheckRecord {
+            state: CheckState::Complete,
+            installed: "1.2.3".to_owned(),
+            latest: None,
+        };
+        assert_eq!(
+            plan_check(Some((current, Duration::from_secs(60))), "1.2.3"),
+            CheckPlan::Silent
+        );
+    }
+
+    #[test]
+    fn an_unfinished_check_should_be_retried_instead_of_burning_the_day() {
+        let record = CheckRecord {
+            state: CheckState::Pending,
+            installed: "1.2.3".to_owned(),
+            latest: None,
+        };
+
+        assert_eq!(
+            plan_check(Some((record.clone(), Duration::from_secs(60))), "1.2.3"),
+            CheckPlan::Silent
+        );
+        assert_eq!(
+            plan_check(Some((record, RETRY_INTERVAL)), "1.2.3"),
+            CheckPlan::Check
+        );
+    }
+
+    #[test]
+    fn only_a_finished_check_should_be_recorded() {
+        let temp = tempdir().expect("tempdir");
+
+        record_outcome(temp.path(), "1.2.3", &CheckOutcome::Failed);
+        assert_eq!(read_check_record(temp.path()), None);
+
+        record_outcome(
+            temp.path(),
+            "1.2.3",
+            &CheckOutcome::Newer("1.2.4".to_owned()),
+        );
+        let (record, _) = read_check_record(temp.path()).expect("record should be written");
+        assert_eq!(
+            record,
+            CheckRecord {
+                state: CheckState::Complete,
+                installed: "1.2.3".to_owned(),
+                latest: Some("1.2.4".to_owned()),
+            }
+        );
+
+        record_outcome(temp.path(), "1.2.3", &CheckOutcome::UpToDate);
+        let (record, _) = read_check_record(temp.path()).expect("record should be written");
+        assert_eq!(record.latest, None);
+    }
+
+    #[test]
+    fn a_fast_command_should_deliver_the_notice_from_a_fake_endpoint() {
+        let _guard = lock_release_api();
+        let temp = tempdir().expect("tempdir");
+        let endpoint = FakeReleaseEndpoint::answering(r#"{"tag_name":"dalo-v99.0.0"}"#);
+        set_release_api(Some(endpoint.url()));
+
+        let start = Instant::now();
+        let pending = start_notice_check_in(temp.path().to_path_buf(), env!("CARGO_PKG_VERSION"))
+            .expect("a fresh cache should start a check");
+        let notice = take_notice(pending);
+        let elapsed = start.elapsed();
+
+        set_release_api(None);
+        assert_eq!(notice, Some("99.0.0".to_owned()));
+        assert!(
+            elapsed < WAIT_BOUND,
+            "a fast command should not be held up, took {elapsed:?}"
+        );
+        let (record, _) = read_check_record(temp.path()).expect("the check should be recorded");
+        assert_eq!(record.state, CheckState::Complete);
+        assert_eq!(record.latest.as_deref(), Some("99.0.0"));
+
+        // The recorded release is announced again without any network access.
+        set_release_api(Some("http://127.0.0.1:1/never-reached".to_owned()));
+        let pending = start_notice_check_in(temp.path().to_path_buf(), env!("CARGO_PKG_VERSION"))
+            .expect("the recorded release should still be announced");
+        assert!(pending.is_recorded());
+        assert_eq!(take_notice(pending), Some("99.0.0".to_owned()));
+        set_release_api(None);
+    }
+
+    #[test]
+    fn a_slow_endpoint_should_not_delay_a_fast_command() {
+        let _guard = lock_release_api();
+        let temp = tempdir().expect("tempdir");
+        let endpoint = FakeReleaseEndpoint::silent();
+        set_release_api(Some(endpoint.url()));
+
+        let start = Instant::now();
+        let pending = start_notice_check_in(temp.path().to_path_buf(), env!("CARGO_PKG_VERSION"))
+            .expect("a fresh cache should start a check");
+        let notice = take_notice(pending);
+        let elapsed = start.elapsed();
+        set_release_api(None);
+
+        assert_eq!(notice, None);
+        assert!(
+            elapsed < WAIT_BOUND,
+            "a silent endpoint should not be waited out, took {elapsed:?}"
+        );
+        let (record, _) = read_check_record(temp.path()).expect("the attempt should be recorded");
+        assert_eq!(
+            record.state,
+            CheckState::Pending,
+            "an unfinished check stays pending so the next run retries it"
         );
     }
 

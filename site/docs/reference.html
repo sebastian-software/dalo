@@ -184,9 +184,24 @@ another value fails when its release archive cannot be fetched.</p>
 </tbody></table></div>
 <h2 id="update-notices"><a class="doc-anchor" href="#update-notices">Update Notices</a></h2>
 <p>After a successful interactive command, Dalo checks for a newer GitHub release
-at most once per 24 hours. The cached check uses a one-second network timeout and
+at most once per 24 hours. The check uses a one-second network timeout and
 never changes the command&#39;s exit status. Checks are skipped for <code>--json</code>, CI,
 <code>DALO_OFFLINE=1</code>, and <code>DALO_UPDATE_CHECK=never</code>.</p>
+<p>The check runs beside the command on its own thread. A command that finishes
+first waits up to 150 milliseconds for the answer, so even a command that takes
+ten milliseconds prints the notice in the same run. When the release API is
+slower than that, the command exits without waiting further and the answer is
+recorded instead, so the next interactive command prints the notice with no
+network access at all. A check that never reported back leaves a pending record
+and is retried after five minutes rather than counting as the day&#39;s check; the
+24-hour interval starts from a check that actually reached the release API.</p>
+<p>The result lives in <code>last-check</code> inside <code>${XDG_CACHE_HOME:-~/.cache}/dalo/update-notices</code>,
+a versioned <code>key=value</code> record holding the schema version, whether the check
+completed, the version that ran it, and the newer release it found. A record
+written by an unrecognized schema or by a different installed version is
+ignored, which makes the next command check again. Deleting the directory only
+costs one extra check. A fresh install has no record, so its first interactive
+command checks immediately instead of staying silent for the first day.</p>
 <p>Dalo never modifies its own executable. If the installed version is outdated,
 the notice recommends an upgrade command for Homebrew, npm/npx, mise, Cargo, or
 the hosted installer. Launchers may set <code>DALO_INSTALL_CHANNEL</code> so the Rust binary
