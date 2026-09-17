@@ -49,6 +49,12 @@
     <priority>0.7</priority>
   </url>
   <url>
+    <loc>https://dalo.sh/docs/security.html</loc>
+    <lastmod>__DALO_LASTMOD__</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://dalo.sh/docs/uninstall.html</loc>
     <lastmod>__DALO_LASTMOD__</lastmod>
     <changefreq>weekly</changefreq>

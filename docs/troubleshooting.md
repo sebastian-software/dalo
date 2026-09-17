@@ -271,6 +271,9 @@ Then rerun `dalo sync`. Acceptance is bound to the source, exact content,
 engine versions, coverage, and findings; a relevant change invalidates it and
 requires a fresh review.
 
+The [security overview](security.md) explains which findings block, what the
+optional reviewer adds, and what an accepted risk does and does not mean.
+
 ### How do I recover from a dirty team source?
 
 Go to the checkout shown by `dalo doctor`, then commit, stash, or discard the edits with normal Git commands. Dalo does not decide this for you because the edits may be user or agent work.

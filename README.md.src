@@ -454,6 +454,10 @@ The core rule is simple:
 
 > Dalo may manage what it owns. It does not take ownership by surprise.
 
+For the full picture — trust boundaries, what the preflight catches, and the
+list of things Dalo deliberately does not protect against — read the
+[security overview](docs/security.md).
+
 ## Agent support
 
 | Agent | Default skill directory |
@@ -563,6 +567,7 @@ For manual archives, upgrades, shell completions, and removal, see the
 - [Dalo in CI](docs/ci.md)
 - [Comparison with skills.sh and agentfiles](docs/comparison.md)
 - [Troubleshooting and FAQ](docs/troubleshooting.md)
+- [Security overview](docs/security.md)
 - [Security policy](SECURITY.md)
 - [Support](SUPPORT.md)
 - [Code of conduct](CODE_OF_CONDUCT.md)
