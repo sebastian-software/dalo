@@ -1,0 +1,45 @@
+# Dalo
+
+> Dalo is a Rust CLI that keeps a team's AI-agent skills in Git: every skill is
+> versioned in a local store, one approved set is resolved deterministically,
+> a local security preflight and an explicit approval gate what may pass, and
+> the result is linked into the skill folders agents already read. It runs on
+> macOS and Linux (Windows through WSL), needs only `git` on the PATH, ships as
+> a single binary with no daemon, and is dual-licensed MIT OR Apache-2.0.
+
+Reading order for an agent: install from install.md, get to a first sync with
+the getting-started guide, look commands up in the reference, and read the
+compatibility page before scripting against any output. Every page below is
+plain HTML or Markdown and can be fetched directly.
+
+## Install
+
+- [Install instructions](https://dalo.sh/install.md): Markdown written for an agent — platform detection, Homebrew and hosted-installer paths, checksum and Sigstore verification, and the post-install check.
+- [Installer script](https://dalo.sh/install.sh): the hosted installer itself, for reading before piping it to a shell.
+
+## Getting started
+
+- [Getting started](https://dalo.sh/docs/getting-started.html): install, link an agent target, add sources, and reach a first synced skill set.
+- [Team repository](https://dalo.sh/docs/team.html): publish a team source, pin external catalogs to a commit, advance a pin, and onboard a teammate.
+- [Command reference](https://dalo.sh/docs/reference.html): every command, flag, config file, `--json` report shape, and diagnostic code.
+- [Troubleshooting](https://dalo.sh/docs/troubleshooting.html): resolver, doctor, and security findings with the command that clears each one.
+
+## Contract and safety
+
+- [Compatibility and stability](https://dalo.sh/docs/compatibility.html): what the 1.x line promises for the CLI, exit codes, `--json` output, and persisted files — read this before automating anything.
+- [Upgrading](https://dalo.sh/docs/upgrading.html): moving a 0.6+ store forward, what the first run migrates, and what downgrading does.
+- [Security overview](https://dalo.sh/docs/security.html): trust boundaries, what the preflight blocks, the approval model, and the stated limits.
+
+## Integration
+
+- [Agent integration](https://dalo.sh/docs/agents.html): supported agents, the skill directory each one reads, and how instruction packs are written.
+- [Plugins](https://dalo.sh/docs/plugins.html): portable plugin packages, their typed tools and hooks, and the separate approvals each one needs.
+- [Comparison](https://dalo.sh/docs/comparison.html): how Dalo differs from agentfiles and skills.sh, and when each is the better fit.
+
+## Optional
+
+- [Dalo in CI](https://dalo.sh/docs/ci.html): a reproducible, non-interactive sync in a pipeline.
+- [Uninstall](https://dalo.sh/docs/uninstall.html): remove targets, autosync, the store, and the binary.
+- [Documentation index](https://dalo.sh/docs/): every published page in reading order.
+- [Portable Agent Packages specification](https://dalo.sh/spec/): the experimental draft 0.1 package profile and its JSON Schema.
+- [Source repository](https://github.com/sebastian-software/dalo): code, issues, changelog, security policy, and releases.
