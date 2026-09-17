@@ -144,7 +144,7 @@ appear.
 | --- | --- |
 | The Portable Agent Packages specification, draft 0.1 | [`docs/spec/README.md`](spec/README.md) — "experimental author-facing profile", a proposal for interoperability, not an adopted standard |
 | Provider plugin and hook projections (the native files under `plugins/` and `hooks/` in the store, and the provider mappings behind them) | [`docs/spec/compatibility.md`](spec/compatibility.md) — evidence at pinned provider baselines, not a promise of equivalent semantics |
-| Targets whose `support` is `experimental` (`cursor` and `opencode` today) | [`dalo target detect`](reference.md#dalo-target-detect) and its `TargetSupport` field |
+| Targets whose `support` is `experimental` — no built-in target carries that level in 1.0 | [`dalo target detect`](reference.md#dalo-target-detect) and its `TargetSupport` field |
 
 Two distinctions are worth stating plainly:
 
@@ -211,6 +211,10 @@ These may change in any release without notice.
    called out in the release notes, and the reasoning is recorded.
 
 ## Upgrade and downgrade
+
+If you are moving an existing 0.x setup to 1.0, [Upgrading to
+1.0](upgrading.md) walks through the same rules with the real first-run output,
+the removed CLI spellings, and how to recover from a downgrade.
 
 ### Upgrade
 

@@ -301,6 +301,7 @@ For manual archives, upgrades, shell completions, and removal, see the
 - [Team repository guide](docs/team.md)
 - [Command reference](docs/reference.md)
 - [Compatibility and stability](docs/compatibility.md)
+- [Upgrading to 1.0](docs/upgrading.md)
 - [Plugins, tools, and hooks](docs/plugins.md)
 - [Portable Agent Packages — experimental specification](docs/spec/README.md)
 - [Agent integration](docs/agents.md)
