@@ -467,6 +467,15 @@ The core rule is simple:
 Cursor and OpenCode have experimental target IDs and currently require an
 explicit path. See [agent integration](docs/agents.md) for setup details.
 
+## How Dalo compares
+
+[skills.sh](https://skills.sh) is great for discovering public skills and
+installing them into almost any agent. [agentfiles](https://github.com/Railly/agentfiles)
+puts your agents' files into an Obsidian UI. Dalo covers the team side: exact
+commit pins, explicit approval, and sync that never overwrites unmanaged
+folders. Find a skill on skills.sh, then let Dalo pin and deliver it. See the
+[full comparison](https://dalo.sh/docs/comparison.html).
+
 ## Installation
 
 Dalo supports macOS and Linux on x86_64 and ARM64. Windows is not currently
@@ -549,6 +558,7 @@ For manual archives, upgrades, shell completions, and removal, see the
 - [Portable Agent Packages — experimental specification](docs/spec/README.md)
 - [Agent integration](docs/agents.md)
 - [Dalo in CI](docs/ci.md)
+- [Comparison with skills.sh and agentfiles](docs/comparison.md)
 - [Troubleshooting and FAQ](docs/troubleshooting.md)
 - [Security policy](SECURITY.md)
 - [Support](SUPPORT.md)

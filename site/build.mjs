@@ -49,6 +49,11 @@ const PAGES = [
     summary: "Resolver, doctor, and security findings with the command that clears each one.",
   },
   { slug: "uninstall", label: "Uninstall", summary: "Remove targets, autosync, the store, and the binary." },
+  {
+    slug: "comparison",
+    label: "Comparison",
+    summary: "How Dalo compares with agentfiles and Vercel's skills CLI, and when each one is the better fit.",
+  },
 ]
 
 const SPEC_PAGES = [

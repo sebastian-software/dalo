@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dalo compared with skills.sh and agentfiles · Dalo documentation</title>
+  <meta name="description" content="How Dalo compares with agentfiles and Vercel's skills CLI, and when each one is the better fit." />
+  <link rel="canonical" href="https://dalo.sh/docs/comparison.html" />
+  <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#15171c" media="(prefers-color-scheme: dark)" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Dalo" />
+  <meta property="og:url" content="https://dalo.sh/docs/comparison.html" />
+  <meta property="og:title" content="Dalo compared with skills.sh and agentfiles · Dalo documentation" />
+  <meta property="og:description" content="How Dalo compares with agentfiles and Vercel's skills CLI, and when each one is the better fit." />
+  <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
+  <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
+  <link rel="preload" href="/assets/fonts/hanken-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/assets/fonts/geistmono-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/docs.css" />
+</head>
+<body class="doc-page">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header" data-scope="dark">
+  <div class="wrap header-inner">
+    <a class="brand" href="/" aria-label="Dalo home">
+      <svg class="brand-mark" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true" focusable="false">
+        <rect x="1.25" y="1.25" width="29.5" height="29.5" rx="8" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <circle cx="9" cy="9.5" r="2" fill="currentColor" />
+        <circle cx="9" cy="16" r="2" fill="currentColor" />
+        <circle cx="9" cy="22.5" r="2" fill="currentColor" />
+        <path d="M11 9.5 H17 Q22 9.5 22 16 Q22 22.5 17 22.5 H11 M11 16 H22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" />
+        <circle cx="22.5" cy="16" r="2.6" fill="var(--accent)" />
+      </svg>
+      <span class="brand-word">dalo</span>
+      <span class="brand-section">docs</span>
+    </a>
+    <nav class="site-nav" aria-label="Primary">
+      <a href="/">Product</a>
+      <a href="/docs/">Docs</a>
+      <a href="/spec/">Spec</a>
+      <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+    </nav>
+    <details class="mobile-menu">
+      <summary aria-label="Open navigation">
+        <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>
+        <span class="sr-only">Menu</span>
+      </summary>
+      <nav class="mobile-nav" aria-label="Mobile">
+        <a href="/">Product</a>
+        <a href="/docs/">Docs</a>
+        <a href="/spec/">Spec</a>
+        <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+      </nav>
+    </details>
+    <div class="header-actions">
+      <a class="ghost-btn" href="https://github.com/sebastian-software/dalo" rel="noopener">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="doc-shell wrap">
+  <nav class="doc-nav" aria-label="Documentation">
+    <p class="footer-h">Documentation</p>
+        <a href="/docs/getting-started.html">Getting started</a>
+        <a href="/docs/reference.html">Command reference</a>
+        <a href="/docs/agents.html">Agent integration</a>
+        <a href="/docs/ci.html">Dalo in CI</a>
+        <a href="/docs/troubleshooting.html">Troubleshooting</a>
+        <a href="/docs/uninstall.html">Uninstall</a>
+        <a href="/docs/comparison.html" aria-current="page">Comparison</a>
+  </nav>
+  <article class="doc-body">
+<h1 id="dalo-compared-with-skillssh-and-agentfiles">Dalo compared with skills.sh and agentfiles</h1>
+<p>Three tools, three different jobs. Vercel&#39;s <a href="https://skills.sh" rel="noopener">skills.sh</a> and
+its <code>skills</code> CLI make it fast to discover and install a public skill into
+almost any agent. <a href="https://github.com/Railly/agentfiles" rel="noopener">agentfiles</a> gives you
+a visual place in Obsidian to browse and edit the skills, commands, and rules
+of many agents. Dalo manages the approved, reproducible skill set that a team
+delivers to its agents.</p>
+<p>This page is a snapshot from September 2026 (skills CLI v1.6.0, agentfiles
+0.9.1, Dalo 0.15). All three projects move quickly; if something here is out
+of date, please <a href="https://github.com/sebastian-software/dalo/issues" rel="noopener">open an issue</a>.</p>
+<h2 id="at-a-glance"><a class="doc-anchor" href="#at-a-glance">At a glance</a></h2>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th></th>
+<th>Dalo</th>
+<th>skills.sh (<code>skills</code> CLI)</th>
+<th>agentfiles</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Kind</td>
+<td>CLI with a Rust library core</td>
+<td>Node.js CLI plus public directory</td>
+<td>Obsidian plugin (desktop)</td>
+</tr>
+<tr>
+<td>Main job</td>
+<td>Team-wide, reviewed skill delivery</td>
+<td>Discover and install skills</td>
+<td>Browse and edit agent files visually</td>
+</tr>
+<tr>
+<td>Sources</td>
+<td>Git repositories, catalogs, private local source</td>
+<td>GitHub, GitLab, any Git URL, local paths, archives</td>
+<td>skills.sh search, GitHub default branch</td>
+</tr>
+<tr>
+<td>Delivery into agents</td>
+<td>Symlinks from a Git-backed store</td>
+<td>Canonical copy plus symlinks (or <code>--copy</code>)</td>
+<td>Copies into each agent folder</td>
+</tr>
+<tr>
+<td>Version pinning</td>
+<td>Lockfiles with exact commits</td>
+<td>Branch or tag plus content hash</td>
+<td>Records the commit, updates to latest <code>HEAD</code></td>
+</tr>
+<tr>
+<td>Updates</td>
+<td>Preview drift, then advance explicitly</td>
+<td><code>skills update</code> pulls latest content</td>
+<td>&quot;Update all&quot; pulls latest <code>HEAD</code></td>
+</tr>
+<tr>
+<td>Existing folders</td>
+<td>Unmanaged files are never overwritten</td>
+<td>Target folder is replaced</td>
+<td>Target folder is replaced after install</td>
+</tr>
+<tr>
+<td>Review and trust</td>
+<td>Security preflight, audits, per-skill approval</td>
+<td>Audit pages on skills.sh</td>
+<td>None built in</td>
+</tr>
+<tr>
+<td>Beyond skills</td>
+<td>Instruction packs, portable plugins, approved tools and hooks</td>
+<td>Skills only</td>
+<td>Views commands, agents, and rules; installs skills only</td>
+</tr>
+<tr>
+<td>Agent coverage</td>
+<td>5 verified targets plus any folder</td>
+<td>About 80 agents</td>
+<td>17 tools</td>
+</tr>
+<tr>
+<td>Platforms</td>
+<td>macOS, Linux</td>
+<td>macOS, Linux, Windows</td>
+<td>Obsidian desktop</td>
+</tr>
+<tr>
+<td>Telemetry</td>
+<td>None</td>
+<td>Anonymous, on by default, opt-out</td>
+<td>None, according to its README</td>
+</tr>
+<tr>
+<td>License</td>
+<td>MIT or Apache-2.0</td>
+<td>MIT</td>
+<td>MIT</td>
+</tr>
+</tbody></table></div>
+<h2 id="skillssh-and-the-skills-cli"><a class="doc-anchor" href="#skillssh-and-the-skills-cli">skills.sh and the <code>skills</code> CLI</a></h2>
+<p><a href="https://skills.sh" rel="noopener">skills.sh</a> is the public directory for the Agent Skills
+ecosystem, with install leaderboards, topics, and audit pages. The
+<a href="https://github.com/vercel-labs/skills" rel="noopener"><code>skills</code> CLI</a> (<code>npx skills add owner/repo</code>) installs <code>SKILL.md</code> folders from GitHub, GitLab, any Git URL, or a
+local path into about 80 agents, in project or global scope.</p>
+<p>What it does well:</p>
+<ul>
+<li><strong>Reach.</strong> Nearly every agent has a known project and global path, and it
+also runs on Windows.</li>
+<li><strong>Discovery.</strong> Search, trending lists, and install counts make it easy to
+find a skill in the first place.</li>
+<li><strong>Low friction.</strong> One <code>npx</code> command, no store to set up. <code>skills use</code> even
+runs a skill without installing it.</li>
+<li><strong>Symlinked delivery.</strong> By default it keeps one canonical copy in
+<code>.agents/skills</code> and links it into each agent folder, much like Dalo.</li>
+</ul>
+<p>Where the model differs from Dalo:</p>
+<ul>
+<li><strong>Pinning.</strong> <code>skills-lock.json</code> records a branch or tag and a content hash,
+not a commit. <code>skills update</code> fetches the latest content for that ref, so two
+machines can resolve different code from the same lockfile.</li>
+<li><strong>Existing content.</strong> Installing clears the target directory and replaces an
+existing folder or link at the agent path. Dalo reports such a path as
+unmanaged and leaves it alone.</li>
+<li><strong>Trust.</strong> Nothing asks you to approve a skill before it lands in an agent
+folder. Dalo requires an explicit selection and approval, and blocks
+high-severity audit findings during sync.</li>
+<li><strong>Telemetry.</strong> The CLI sends anonymous usage data by default; set
+<code>DISABLE_TELEMETRY=1</code> or <code>DO_NOT_TRACK=1</code> to turn it off.</li>
+</ul>
+<h2 id="agentfiles"><a class="doc-anchor" href="#agentfiles">agentfiles</a></h2>
+<p><a href="https://github.com/Railly/agentfiles" rel="noopener">agentfiles</a> is an Obsidian plugin that
+turns a vault into a manager for the files of 17 AI tools: Claude Code, Cursor,
+Windsurf, Codex, Copilot, and more. It also ships a Claude Code conversation
+browser, a usage dashboard, and an early VS Code extension.</p>
+<p>What it does well:</p>
+<ul>
+<li><strong>A visual home.</strong> Browse, search, create, and edit skills, commands,
+agents, and rules side by side instead of in hidden dot folders.</li>
+<li><strong>Breadth of file types.</strong> It shows more than skills, including memories and
+rules, across many tools at once.</li>
+<li><strong>Marketplace on top of skills.sh.</strong> It searches skills.sh and installs from
+GitHub with size limits, path-traversal checks, and rollback on failure.</li>
+</ul>
+<p>Where the model differs from Dalo:</p>
+<ul>
+<li><strong>Copies, not links.</strong> Installs write a copy into <code>~/.agents/skills</code> and into
+each chosen agent folder, so copies can drift apart.</li>
+<li><strong>Latest, not pinned.</strong> It records the installed commit in the <code>skills</code> lock
+format, but updating always resolves the default branch&#39;s current <code>HEAD</code>.</li>
+<li><strong>Personal scope.</strong> There is no team manifest, source priority, or approval
+step; it is built for one person&#39;s vault and machine.</li>
+<li><strong>Replaces existing folders.</strong> An existing target folder is moved aside and
+deleted once the new install succeeds.</li>
+</ul>
+<h2 id="when-to-use-which"><a class="doc-anchor" href="#when-to-use-which">When to use which</a></h2>
+<ul>
+<li><strong>Use skills.sh</strong> to find skills and to try one quickly, especially on
+Windows or in an agent Dalo does not target yet.</li>
+<li><strong>Use agentfiles</strong> if you live in Obsidian and want to read and edit what
+all your agents are loading, in one visual place.</li>
+<li><strong>Use Dalo</strong> when skills are team knowledge: several people or machines need
+the same reviewed set, upstream changes must not arrive silently, and local
+experiments and hand-written agent files must stay untouched.</li>
+</ul>
+<p>They also combine. A repository you found on skills.sh is a normal Git
+repository, so Dalo can pin it as a catalog and deliver only the skills you
+select and approve:</p>
+<pre><code class="language-sh">dalo source add-catalog public https://github.com/vercel-labs/agent-skills.git
+dalo source inspect public
+</code></pre>
+<h2 id="sources"><a class="doc-anchor" href="#sources">Sources</a></h2>
+<ul>
+<li>skills CLI: <a href="https://github.com/vercel-labs/skills#readme" rel="noopener">README</a> and the
+<code>installer</code>, <code>local-lock</code>, <code>skill-lock</code>, <code>update</code>, and <code>telemetry</code> modules in
+<a href="https://github.com/vercel-labs/skills" rel="noopener">vercel-labs/skills</a>, v1.6.0</li>
+<li>skills.sh: <a href="https://skills.sh" rel="noopener">directory and leaderboard</a></li>
+<li>agentfiles: <a href="https://github.com/Railly/agentfiles#readme" rel="noopener">README</a>, <code>manifest.json</code>,
+and <code>src/marketplace.ts</code> in <a href="https://github.com/Railly/agentfiles" rel="noopener">Railly/agentfiles</a>, 0.9.1</li>
+<li>Dalo: <a href="https://github.com/sebastian-software/dalo/blob/main/README.md" rel="noopener">README</a>, <a href="/docs/reference.html">command reference</a>, and
+<a href="/docs/agents.html">agent integration</a></li>
+</ul>
+<p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/comparison.md" rel="noopener">docs/comparison.md</a></p>
+  </article>
+</main>
+
+<footer class="site-footer doc-footer" data-scope="dark">
+  <div class="wrap footer-base">
+    <span>© 2026 <a href="https://sebastian-software.de" rel="noopener">Sebastian Software</a> · Dalo</span>
+    <span><a href="/">dalo.sh</a> · <a href="/spec/">Spec</a> · <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a> · <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a></span>
+  </div>
+</footer>
+</body>
+</html>

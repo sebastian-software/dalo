@@ -116,7 +116,7 @@ grep -q '__DALO_LASTMOD__' "$root/site/sitemap.xml"
 # The documentation published on dalo.sh is rendered from docs/*.md by
 # site/build.mjs and committed, so it must exist, carry the site styles, and be
 # reachable from the sitemap, the documentation index, and the footer.
-for document in getting-started reference agents ci troubleshooting uninstall; do
+for document in getting-started reference agents ci troubleshooting uninstall comparison; do
   page="$root/site/docs/$document.html"
   test -f "$page"
   title="$(sed -n 's/^# //p' "$root/docs/$document.md" | head -n 1)"
@@ -130,6 +130,12 @@ done
 test -f "$root/site/docs/index.html"
 grep -Fq 'https://dalo.sh/docs/' "$root/site/sitemap.xml"
 grep -Fq '<a href="/docs/">All documentation</a>' "$root/site/index.html"
+# The competitor comparison is dated, linked from the homepage and the README,
+# and its homepage summary points at the full page.
+grep -Fq 'Snapshot from September 2026' "$root/site/index.html"
+grep -Fq 'href="/docs/comparison.html"' "$root/site/index.html"
+grep -Fq 'https://dalo.sh/docs/comparison.html' "$root/README.md"
+grep -Fq 'This page is a snapshot from' "$root/docs/comparison.md"
 grep -Fq '<a href="/docs/reference.html">Reference</a>' "$root/site/index.html"
 refute 'the site still links its documentation as repository blobs' \
   grep -q 'blob/main/docs/' "$root/site/index.html"

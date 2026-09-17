@@ -49,6 +49,12 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://dalo.sh/docs/comparison.html</loc>
+    <lastmod>__DALO_LASTMOD__</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://dalo.sh/spec/</loc>
     <lastmod>__DALO_LASTMOD__</lastmod>
     <changefreq>monthly</changefreq>

@@ -648,6 +648,65 @@
           <p>No drift detection, no provenance, and no clean path from local experiment to team standard.</p>
         </article>
       </div>
+
+      <div class="tool-compare reveal">
+        <h3 class="tool-compare-h">Dalo, skills.sh, and agentfiles</h3>
+        <div class="tool-compare-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col"><span class="sr-only">Aspect</span></th>
+                <th scope="col" class="col-dalo">Dalo</th>
+                <th scope="col">skills.sh</th>
+                <th scope="col">agentfiles</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Built for</th>
+                <td class="col-dalo">Teams delivering one reviewed skill set</td>
+                <td>Discovering and installing public skills</td>
+                <td>Browsing and editing agent files in Obsidian</td>
+              </tr>
+              <tr>
+                <th scope="row">Delivery</th>
+                <td class="col-dalo">Symlinks from a Git-backed store</td>
+                <td>Canonical copy plus symlinks</td>
+                <td>Copies into each agent folder</td>
+              </tr>
+              <tr>
+                <th scope="row">Pinning</th>
+                <td class="col-dalo">Exact commits in lockfiles</td>
+                <td>Branch or tag plus content hash</td>
+                <td>Updates to latest <code>HEAD</code></td>
+              </tr>
+              <tr>
+                <th scope="row">Existing folders</th>
+                <td class="col-dalo">Never overwritten</td>
+                <td>Replaced on install</td>
+                <td>Replaced on install</td>
+              </tr>
+              <tr>
+                <th scope="row">Review</th>
+                <td class="col-dalo">Preflight, audits, explicit approval</td>
+                <td>Audit pages on skills.sh</td>
+                <td>None built in</td>
+              </tr>
+              <tr>
+                <th scope="row">Reach</th>
+                <td class="col-dalo">5 verified agents plus any folder</td>
+                <td>About 80 agents, incl. Windows</td>
+                <td>17 tools</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="tool-compare-note">
+          Snapshot from September 2026. Use skills.sh to find skills, then let Dalo pin and
+          deliver the ones your team approves.
+          <a href="/docs/comparison.html">Read the full comparison</a>.
+        </p>
+      </div>
     </div>
   </section>
 
@@ -722,6 +781,7 @@
         <a href="/docs/reference.html">Reference</a>
         <a href="/docs/troubleshooting.html">Troubleshooting</a>
         <a href="/docs/uninstall.html">Uninstall</a>
+        <a href="/docs/comparison.html">Comparison</a>
         <a href="/install.md">Installation guide</a>
         <a href="https://github.com/sebastian-software/dalo/releases" rel="noopener">Releases</a>
       </div>
