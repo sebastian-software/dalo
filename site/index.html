@@ -477,7 +477,7 @@
           <li><span class="c-ok">✓</span> Single Rust binary, no daemon</li>
           <li><span class="c-ok">✓</span> Local skills work offline; public catalogs use Git</li>
           <li><span class="c-ok">✓</span> Security preflight before a skill reaches an agent</li>
-          <li><span class="c-ok">✓</span> Detects Codex, Claude Code, OpenClaw, Hermes</li>
+          <li><span class="c-ok">✓</span> Detects Codex, Claude Code, OpenClaw, Hermes, OpenCode</li>
         </ul>
       </div>
 
@@ -599,7 +599,7 @@
           Dalo syncs the resolved set into normal skill directories. Your agents keep
           reading the same paths. They never know Dalo is there.
         </p>
-        <p class="targets-note reveal">Codex and OpenClaw both default to <code>~/.agents/skills</code>, so Dalo de-duplicates the shared directory and links each slot once.</p>
+        <p class="targets-note reveal">Codex and OpenClaw both default to <code>~/.agents/skills</code>, so Dalo de-duplicates the shared directory and links each slot once. Every row was verified against a named agent release — see the <a href="/docs/agents.html#support-matrix">support matrix</a>.</p>
       </div>
 
       <ul class="target-list reveal">
@@ -607,8 +607,8 @@
         <li class="target"><span class="target-name">Claude Code</span><code class="target-path">~/.claude/skills</code><span class="badge badge-ok">supported</span></li>
         <li class="target"><span class="target-name">OpenClaw</span><code class="target-path">~/.agents/skills</code><span class="badge badge-ok">supported</span></li>
         <li class="target"><span class="target-name">Hermes</span><code class="target-path">~/.hermes/skills</code><span class="badge badge-ok">supported</span></li>
+        <li class="target"><span class="target-name">OpenCode</span><code class="target-path">~/.config/opencode/skills</code><span class="badge badge-ok">supported</span></li>
         <li class="target"><span class="target-name">Generic folder</span><code class="target-path">any path you choose</code><span class="badge badge-ok">supported</span></li>
-        <li class="target target-exp"><span class="target-name">Cursor · OpenCode</span><code class="target-path">unverified</code><span class="badge badge-exp">experimental</span></li>
       </ul>
     </div>
   </section>

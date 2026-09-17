@@ -12,8 +12,8 @@
 
 Dalo turns scattered skill folders into shared, versioned infrastructure. Keep
 team skills in Git, private experiments local, and deliver one approved,
-deterministic skill set to Codex, Claude Code, OpenClaw, Hermes, or any
-folder-based agent.
+deterministic skill set to Codex, Claude Code, OpenClaw, Hermes, OpenCode, or
+any folder-based agent.
 
 Your agents keep reading the folders they already understand. Dalo handles
 everything behind them: sources, priorities, approvals, conflicts, drift, and
@@ -67,8 +67,8 @@ dalo sync
 ```
 
 The skills from `company` now appear in Codex's normal skill directory. Link
-Claude Code, OpenClaw, Hermes, or a generic folder and Dalo will deliver the same
-resolved set there too.
+Claude Code, OpenClaw, Hermes, OpenCode, or a generic folder and Dalo will
+deliver the same resolved set there too.
 
 Run `dalo status` to see managed, unmanaged, shadowed, blocked, or pending
 skills. Run `dalo doctor` when you want a focused health check.
@@ -462,10 +462,12 @@ The core rule is simple:
 | Claude Code | `~/.claude/skills` |
 | OpenClaw | `~/.agents/skills` |
 | Hermes | `~/.hermes/skills` |
+| OpenCode | `~/.config/opencode/skills` |
 | Any folder-based agent | user-provided path |
 
-Cursor and OpenCode have experimental target IDs and currently require an
-explicit path. See [agent integration](docs/agents.md) for setup details.
+Every built-in target names the agent release it was verified against in the
+[agent support matrix](docs/agents.md#support-matrix). Cursor has no built-in
+target ID; `dalo target link generic ~/.cursor/skills` covers it.
 
 ## How Dalo compares
 

@@ -14,9 +14,11 @@ use crate::store::{self, StateFile, StorePaths, TargetState};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TargetSupport {
-    /// Supported V1 target.
+    /// Supported V1 target: its skill directory and symlink discovery are
+    /// verified against a named agent release in `docs/agents.md`.
     Supported,
-    /// Known but unverified target.
+    /// Known but unverified target. No built-in target uses this level in V1;
+    /// it stays available for targets registered before verification.
     Experimental,
 }
 
@@ -181,22 +183,16 @@ pub fn registry() -> &'static [TargetRegistryEntry] {
             support: TargetSupport::Supported,
         },
         TargetRegistryEntry {
+            id: "opencode",
+            name: "OpenCode",
+            default_path: Some("~/.config/opencode/skills"),
+            support: TargetSupport::Supported,
+        },
+        TargetRegistryEntry {
             id: "generic",
             name: "Generic folder",
             default_path: None,
             support: TargetSupport::Supported,
-        },
-        TargetRegistryEntry {
-            id: "cursor",
-            name: "Cursor",
-            default_path: None,
-            support: TargetSupport::Experimental,
-        },
-        TargetRegistryEntry {
-            id: "opencode",
-            name: "OpenCode",
-            default_path: None,
-            support: TargetSupport::Experimental,
         },
     ]
 }
@@ -544,9 +540,32 @@ mod tests {
         assert_eq!(
             ids,
             [
-                "codex", "claude", "openclaw", "hermes", "generic", "cursor", "opencode",
+                "codex", "claude", "openclaw", "hermes", "opencode", "generic",
             ]
         );
+    }
+
+    #[test]
+    fn registry_should_ship_only_verified_targets() {
+        for entry in registry() {
+            assert_eq!(
+                entry.support,
+                TargetSupport::Supported,
+                "target `{}` ships an unverified support level",
+                entry.id
+            );
+        }
+    }
+
+    #[test]
+    fn registry_should_give_every_agent_target_a_default_path() {
+        for entry in registry().iter().filter(|entry| entry.id != "generic") {
+            assert!(
+                entry.default_path.is_some(),
+                "target `{}` ships without a default skill path",
+                entry.id
+            );
+        }
     }
 
     #[test]

@@ -1076,8 +1076,10 @@ fn verification_baseline(target: &str) -> &'static str {
     match target {
         "codex" => "portable-skill-v1 + canonical-agent-codex-v1",
         "claude" => "portable-skill-v1 + canonical-agent-claude-v1",
-        "openclaw" | "hermes" | "generic" => "portable-skill-v1; no verified agent adapter",
-        _ => "experimental target; portable skill path only",
+        "openclaw" | "hermes" | "opencode" | "generic" => {
+            "portable-skill-v1; no verified agent adapter"
+        }
+        _ => "unknown target; portable skill path only",
     }
 }
 

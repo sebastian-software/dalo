@@ -331,21 +331,20 @@ dalo --json target detect
 <td>supported</td>
 </tr>
 <tr>
+<td><code>opencode</code></td>
+<td><code>~/.config/opencode/skills</code></td>
+<td>supported</td>
+</tr>
+<tr>
 <td><code>generic</code></td>
 <td>none, path required</td>
 <td>supported</td>
 </tr>
-<tr>
-<td><code>cursor</code></td>
-<td>none</td>
-<td>experimental</td>
-</tr>
-<tr>
-<td><code>opencode</code></td>
-<td>none</td>
-<td>experimental</td>
-</tr>
 </tbody></table></div>
+<p>Each built-in target names the agent release its skill directory and symlink
+behavior were verified against in the
+<a href="/docs/agents.html#support-matrix">agent support matrix</a>. Cursor has no built-in target
+ID; use <code>dalo target link generic ~/.cursor/skills</code>.</p>
 <p>Targets reported as <code>experimental</code> are not covered by the stability promise for
 a major version: their IDs, default paths, and behavior may change in any
 release. See <a href="/docs/compatibility.html#tier-2-experimental">Compatibility and stability</a>.</p>
@@ -2110,7 +2109,7 @@ universal_fallback = false
 [providers]
 codex = &quot;.agents/skills/impeccable&quot;
 claude = &quot;.claude/skills/impeccable&quot;
-cursor = &quot;.cursor/skills/impeccable&quot;
+opencode = &quot;.opencode/skills/impeccable&quot;
 </code></pre>
 <p>Provider paths are relative to the source checkout. Each artifact must be a
 real directory inside that checkout, contain <code>SKILL.md</code>, and contain no
