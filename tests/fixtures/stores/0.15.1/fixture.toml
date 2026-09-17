@@ -1,0 +1,57 @@
+# Snapshot of a Dalo store written by the released 0.15.1 binary.
+#
+# The store was built by running that binary against a throwaway root, so
+# every path below is the absolute path it persisted. `tests/upgrade.rs`
+# copies this directory to a temporary root and rewrites `origin_root` to
+# that root everywhere it appears. See tests/fixtures/stores/README.md.
+
+version = "0.15.1"
+origin_root = "/private/tmp/dalo-fixture/0.15.1"
+
+# Nested Git directories cannot be committed as `.git`, so every one was
+# renamed. The test renames them back before running any command.
+git_dir_placeholder = "dot-git"
+
+# Each bare repository is copied to `<root>/<path>` so that the source URL
+# recorded in config.toml resolves without network access.
+
+[[repos]]
+bare = "repos/team.git"
+path = "repos/team"
+
+[[repos]]
+bare = "repos/catalog.git"
+path = "repos/catalog"
+
+# Owned symlinks the fixture had in its target directory, recorded rather
+# than committed so the repository never carries a dangling symlink. The
+# test recreates each one and asserts that no upgrade removes it.
+
+[[owned_links]]
+name = "copy-editing"
+target = "store/sources/public/checkout/skills/copy-editing"
+
+[[owned_links]]
+name = "local-note"
+target = "store/local/skills/local-note"
+
+[[owned_links]]
+name = "team-review"
+target = "store/sources/team/checkout/skills/team-review"
+
+# What the released binary recorded. The upgrade test asserts that the
+# current binary preserves all of it.
+[recorded]
+active_skills = ["local:local-note", "public:copy-editing", "team:team-review"]
+pending_approval_skills = []
+instruction_packs = ["local:house-style"]
+legacy_bare_approvals = []
+
+# On-disk schema versions this fixture carries. Anything below the current
+# version must migrate forward on the first write.
+[recorded.schema]
+config = 2
+state = 1
+lock = 6
+source_lock = 3
+approvals = 1

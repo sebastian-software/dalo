@@ -1,0 +1,36 @@
+version = 2
+
+[settings]
+autosync = false
+
+[[sources]]
+id = "local"
+kind = "local"
+path = "/private/tmp/dalo-fixture/0.12.0/store/local"
+priority = 0
+enabled = true
+trusted = true
+
+[[sources]]
+id = "team"
+kind = "team"
+path = "/private/tmp/dalo-fixture/0.12.0/store/sources/team/checkout"
+priority = 10
+enabled = true
+trusted = true
+url = "/private/tmp/dalo-fixture/0.12.0/repos/team"
+update_policy = "track"
+
+[[sources]]
+id = "public"
+kind = "catalog"
+path = "/private/tmp/dalo-fixture/0.12.0/store/sources/public/checkout"
+priority = 20
+enabled = true
+trusted = false
+url = "/private/tmp/dalo-fixture/0.12.0/repos/catalog"
+update_policy = "pin"
+selection = ["skills/copy-editing"]
+
+[plugins]
+direct = []

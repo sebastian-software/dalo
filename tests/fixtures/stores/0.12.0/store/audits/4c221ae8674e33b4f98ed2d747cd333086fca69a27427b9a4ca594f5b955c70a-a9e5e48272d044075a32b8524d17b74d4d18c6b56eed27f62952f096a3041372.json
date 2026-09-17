@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "source_ref": "public:copy-editing",
+  "skill_path": "/private/tmp/dalo-fixture/0.12.0/store/sources/public/checkout/skills/copy-editing",
+  "content_hash": "4c221ae8674e33b4f98ed2d747cd333086fca69a27427b9a4ca594f5b955c70a",
+  "static_engine_version": "5",
+  "scanned_at_unix": 1789637534,
+  "coverage": "complete",
+  "status": "clean",
+  "static_findings": []
+}

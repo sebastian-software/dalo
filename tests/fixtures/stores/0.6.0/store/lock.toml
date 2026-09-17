@@ -1,0 +1,68 @@
+schema_version = 1
+unlinked_skills = []
+
+[[sources]]
+id = "local"
+kind = "local"
+path = "/private/tmp/dalo-fixture/0.6.0/store/local"
+
+[[sources]]
+id = "public"
+kind = "catalog"
+path = "/private/tmp/dalo-fixture/0.6.0/store/sources/public/checkout"
+commit = "72244388e8b2e093349c1026d6a7b4f3314db2a5"
+
+[[sources]]
+id = "team"
+kind = "team"
+path = "/private/tmp/dalo-fixture/0.6.0/store/sources/team/checkout"
+commit = "ffbd5976b8c89d491634cbb052d88b5050d641e7"
+
+[[active_skills]]
+source_ref = "public:copy-editing"
+slot_name = "copy-editing"
+source_id = "public"
+source_kind = "catalog"
+
+[[active_skills]]
+source_ref = "local:local-note"
+slot_name = "local-note"
+source_id = "local"
+source_kind = "local"
+
+[[active_skills]]
+source_ref = "team:team-review"
+slot_name = "team-review"
+source_id = "team"
+source_kind = "team"
+
+[[pending_approval_skills]]
+source_ref = "public:launch-copy"
+slot_name = "launch-copy"
+source_id = "public"
+source_kind = "catalog"
+reason = "pending_approval"
+
+[[target_materializations]]
+link_path = "/private/tmp/dalo-fixture/0.6.0/target/copy-editing"
+desired_path = "/private/tmp/dalo-fixture/0.6.0/store/sources/public/checkout/skills/copy-editing"
+kind = "noop"
+status = "existing"
+
+[[target_materializations]]
+link_path = "/private/tmp/dalo-fixture/0.6.0/target/local-note"
+desired_path = "/private/tmp/dalo-fixture/0.6.0/store/local/skills/local-note"
+kind = "noop"
+status = "existing"
+
+[[target_materializations]]
+link_path = "/private/tmp/dalo-fixture/0.6.0/target/team-review"
+desired_path = "/private/tmp/dalo-fixture/0.6.0/store/sources/team/checkout/skills/team-review"
+kind = "noop"
+status = "existing"
+
+[[active_instruction_packs]]
+pack_id = "house-style"
+target = "/private/tmp/dalo-fixture/0.6.0/instructions/AGENTS.md"
+source_id = "local"
+version = "1"

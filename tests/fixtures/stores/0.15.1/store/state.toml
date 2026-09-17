@@ -1,0 +1,39 @@
+schema_version = 1
+
+[[targets]]
+id = "generic"
+path = "/private/tmp/dalo-fixture/0.15.1/target"
+canonical_path = "/private/tmp/dalo-fixture/0.15.1/target"
+enabled = true
+
+[[materialization_dirs]]
+path = "/private/tmp/dalo-fixture/0.15.1/target"
+logical_targets = ["generic"]
+
+[[owned_skills]]
+target_id = "generic"
+slot_name = "copy-editing"
+link_path = "/private/tmp/dalo-fixture/0.15.1/target/copy-editing"
+store_path = "/private/tmp/dalo-fixture/0.15.1/store/sources/public/checkout/skills/copy-editing"
+delivery_mode = "direct"
+source_ref = "public:copy-editing"
+
+[[owned_skills]]
+target_id = "generic"
+slot_name = "local-note"
+link_path = "/private/tmp/dalo-fixture/0.15.1/target/local-note"
+store_path = "/private/tmp/dalo-fixture/0.15.1/store/local/skills/local-note"
+delivery_mode = "direct"
+source_ref = "local:local-note"
+
+[[owned_skills]]
+target_id = "generic"
+slot_name = "team-review"
+link_path = "/private/tmp/dalo-fixture/0.15.1/target/team-review"
+store_path = "/private/tmp/dalo-fixture/0.15.1/store/sources/team/checkout/skills/team-review"
+delivery_mode = "direct"
+source_ref = "team:team-review"
+
+[[protected_skills]]
+target_id = "generic"
+slot_name = "keep-mine"

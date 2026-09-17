@@ -1,0 +1,18 @@
+schema_version = 3
+
+[[catalogs]]
+source_id = "public"
+commit = "cbe9583dea51189648e1a472e01cc4ffe0513b4c"
+selected = ["skills/copy-editing"]
+
+[[catalogs.inventory]]
+slot_name = "copy-editing"
+path = "skills/copy-editing"
+content_hash = "4c221ae8674e33b4f98ed2d747cd333086fca69a27427b9a4ca594f5b955c70a"
+metadata_hash = "054bd009fb653145e77d34e891c08cff3fb951c150cf4edfff432e89ae4a8d5f"
+
+[[catalogs.inventory]]
+slot_name = "launch-copy"
+path = "skills/launch-copy"
+content_hash = ""
+metadata_hash = "b7d4dbae3d5cd81fa5ecb3532477c0b015ef465daf566981a39076c882c37e56"

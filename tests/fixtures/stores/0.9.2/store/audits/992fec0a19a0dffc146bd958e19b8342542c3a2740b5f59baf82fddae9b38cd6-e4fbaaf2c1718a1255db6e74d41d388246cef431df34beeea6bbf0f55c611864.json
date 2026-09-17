@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "source_ref": "local:local-note",
+  "skill_path": "/private/tmp/dalo-fixture/0.9.2/store/local/skills/local-note",
+  "content_hash": "992fec0a19a0dffc146bd958e19b8342542c3a2740b5f59baf82fddae9b38cd6",
+  "static_engine_version": "4",
+  "scanned_at_unix": 1789637531,
+  "coverage": "complete",
+  "status": "clean",
+  "static_findings": []
+}

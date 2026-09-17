@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "source_ref": "team:team-review",
+  "skill_path": "/private/tmp/dalo-fixture/0.15.1/store/sources/team/checkout/skills/team-review",
+  "content_hash": "ff211cd8d493f0bea7bc2f95b514fcfa5bd2295be7dad605e0660e6b7c474b57",
+  "static_engine_version": "5",
+  "static_scan_excludes_root_source_metadata": false,
+  "scanned_at_unix": 1789637542,
+  "coverage": "complete",
+  "status": "clean",
+  "static_findings": []
+}
