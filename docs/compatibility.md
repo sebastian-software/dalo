@@ -3,11 +3,11 @@
 This page answers one question: **if I upgrade Dalo within the same major
 version, what can break?**
 
-It applies to the 1.x line. Dalo is still on 0.x, so nothing here is a promise
-about a released 1.0 yet — it is the contract the project commits to honor
-once 1.0 ships, and the rule the maintainers already work by. Until then a 0.x
-minor may still change any of the surfaces below, and the
-[changelog](../CHANGELOG.md) is the record of what did change.
+It applies to the 1.x line, starting with 1.0.0. Everything below is a
+commitment, not a description: a change that would break one of these surfaces
+waits for a major release. The [changelog](../CHANGELOG.md) is the record of
+what did change in each release, and [Upgrading to 1.0](upgrading.md) covers
+the step from a 0.x store.
 
 Everything is sorted into three tiers. If a command, flag, file, field, or
 variable is not named in tier 1, it is not a 1.x promise.

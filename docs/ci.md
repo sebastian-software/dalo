@@ -67,6 +67,23 @@ GitHub is published before crates.io, npm, or the Homebrew tap dispatch. Each of
 those downstream channels depends on the final GitHub-release job, so no public
 installer path advertises an archive before GitHub makes that archive available.
 
+### Release candidate rehearsal
+
+The repeatable part of the release rehearsal runs against a clean temporary
+home, store, and generic agent target. It exercises the documented initialize,
+target, local-skill, sync, status, doctor, plan, and recovery-summary paths:
+
+```sh
+sh scripts/release-rehearsal.sh
+```
+
+CI runs the same script on its Linux and macOS jobs using the release binary
+already built for that runner. When a 1.0.0 candidate is available, set
+`DALO_REHEARSAL_EXPECTED_VERSION=1.0.0` so the rehearsal also verifies the
+candidate version. This does not replace the post-tag distribution smoke test:
+the five public channels below still have to be checked from clean machines
+after GitHub publishes the release.
+
 ### Releasing 1.0.0
 
 `release-please-config.json` sets `bump-minor-pre-major: true`, so every
