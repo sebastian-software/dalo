@@ -59,6 +59,11 @@ jobs:
       - name: Release build
         run: cargo build --release --locked --target "${{ matrix.target }}"
 
+      - name: Release-candidate CLI rehearsal
+        env:
+          DALO_REHEARSAL_BINARY: target/${{ matrix.target }}/release/dalo
+        run: sh scripts/release-rehearsal.sh
+
       - name: Documentation
         run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
 

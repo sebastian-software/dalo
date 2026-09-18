@@ -88,6 +88,7 @@ audit_job="$(ci_job_body audit)"
 printf '%s\n' "$ci_test_job" | grep -Fq 'cargo test --locked'
 printf '%s\n' "$ci_test_job" | grep -Fq 'cargo clippy --locked --all-targets --all-features -- -D warnings'
 printf '%s\n' "$ci_test_job" | grep -Fq 'cargo build --release --locked --target "${{ matrix.target }}"'
+printf '%s\n' "$ci_test_job" | grep -Fq 'sh scripts/release-rehearsal.sh'
 
 # The host test job covers the two native release targets. The dedicated job
 # covers the three remaining targets, including native ARM execution and the

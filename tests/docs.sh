@@ -139,6 +139,9 @@ grep -q 'dalo approve skill <source-id>:<skill>' "$root/docs/troubleshooting.md"
 grep -q '`source_store_debris`' "$root/docs/troubleshooting.md"
 grep -q '`skipped_symlink`' "$root/docs/troubleshooting.md"
 grep -q 'security audit blocked' "$root/docs/troubleshooting.md"
+test -x "$root/scripts/release-rehearsal.sh"
+grep -Fq 'sh scripts/release-rehearsal.sh' "$root/docs/ci.md"
+grep -Fq 'Release candidate rehearsal' "$root/site/docs/ci.html"
 # Project-scoped agent folders ship as a documented recipe in 1.0; the FAQ entry
 # and the matrix section must both stay reachable and keep pointing at the
 # roadmap issue that tracks the first-class target.
