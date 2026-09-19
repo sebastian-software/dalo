@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.17.0...dalo-v1.0.0) (2026-09-19)
+
+
+### Bug Fixes
+
+* **update:** let fast commands still deliver the update notice ([603c6b3](https://github.com/sebastian-software/dalo/commit/603c6b365c2b32e157288b0bb3380b8f2138efb5)), closes [#872](https://github.com/sebastian-software/dalo/issues/872)
+
+
+### Continuous Integration
+
+* **release:** finish 1.0 readiness rehearsal ([8e5ed43](https://github.com/sebastian-software/dalo/commit/8e5ed43a6a6d3c7c922f8c704402ca2ed68cdb30))
+
 ## [0.17.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.16.0...dalo-v0.17.0) (2026-09-17)
 
 
