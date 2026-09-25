@@ -1,24 +1,30 @@
 # Homepage concepts
 
-Six fundamentally different **light** design directions for the dalo.sh
-homepage. They are exploration, not production: nothing here is deployed
-(`site/build.mjs` only copies `site/`), and none of them replaces
-`site/index.html` yet.
+Six **light** design directions for the dalo.sh homepage, second round. They
+are exploration, not production: nothing here is deployed (`site/build.mjs`
+only copies `site/`), and none of them replaces `site/index.html` yet.
+
+Round one (newspaper, blueprint, man page, bento, Swiss poster, commit graph)
+was too dense and leaned on historical metaphors; it stays in the Git history
+at commit `5efdacb`. Round two follows the **Direction** section of
+[`BRIEF.md`](BRIEF.md): a modern technology product in the league of Vercel,
+Stripe, GitHub, and Linear, built around three core messages — one source of
+truth, reviewed before it reaches an agent, safe by default — with details
+left to the docs. Every page stays within 250–400 words of visible copy.
 
 Every concept is one self-contained HTML file with inline CSS. The fonts are
 self-hosted in [`fonts/`](fonts/) (latin subsets from Google Fonts, all SIL Open
 Font License), so the pages make no external requests — the same rule the live
-site follows. The shared content brief every concept was written against is
-[`BRIEF.md`](BRIEF.md).
+site follows.
 
 | # | Concept | Idea | Type |
 | --- | --- | --- | --- |
-| 01 | [Broadsheet](01-broadsheet/index.html) | The homepage as an editorial newspaper front page: masthead, lead story, columns, figures, letters, classifieds. | Instrument Serif, Newsreader, IBM Plex Mono |
-| 02 | [Blueprint](02-blueprint/index.html) | An engineering drawing set: the pipeline as a dimensioned schematic, title block, section cuts, tolerances, bill of materials. | IBM Plex Sans / Condensed / Mono |
-| 03 | [dalo(1)](03-manpage/index.html) | The homepage *is* the manual page, on an 80-column grid, with a live `less`-style status bar and pager keys. | JetBrains Mono |
-| 04 | [Soft bento](04-bento/index.html) | A warm, pastel product page; every tile carries a small, realistic mini UI built from real Dalo output. | Plus Jakarta Sans, DM Mono |
-| 05 | [Swiss](05-swiss/index.html) | International Typographic Style: a visible 12-column grid, huge tight type, one signal color, numerals as the graphic language. | Inter Tight, Space Mono |
-| 06 | [Commit graph](06-commit-graph/index.html) | The page structure is a git history: lanes for `main`, `local/experiment`, and a pinned catalog tell "from local experiment to team standard". | Geist, Geist Mono |
+| 01 | [Monochrome](01-monochrome/index.html) | Engineered minimalism: a hairline frame with crosshair marks, a thin-line diagram from sources through Dalo to every agent, three quiet message cells. | Geist, Geist Mono |
+| 02 | [Gradient](02-gradient/index.html) | Colorful polish: a slanted gradient band behind the hero, layered product cards, three alternating message rows. | Inter, JetBrains Mono |
+| 03 | [Product](03-product/index.html) | Show the product: a large, crafted `dalo status` window as the hero, then zoomed product crops for each message. | Mona Sans, Geist Mono |
+| 04 | [Terminal](04-terminal/index.html) | A very short page around one light terminal with Pin · Review · Sync tabs and real output (works without JS). | Hanken Grotesk, JetBrains Mono |
+| 05 | [Flow](05-flow/index.html) | One spatial node graph of glass cards: sources into a glowing Dalo card with its gates, out to every agent; later sections zoom into it. | Manrope, Geist Mono |
+| 06 | [Story](06-story/index.html) | Scrollytelling: huge type, one statement per screen, a sticky visual that changes with each core message. | Inter Tight, IBM Plex Mono |
 
 Open [`index.html`](index.html) for a gallery, or any concept directly in a
 browser (a plain `file://` URL works).

@@ -250,7 +250,7 @@ h2 { margin: 0; font-size: 46px; line-height: 1.06; letter-spacing: -.038em; fon
 .note { margin: 24px 0 0; padding-top: 20px; border-top: 1px solid var(--line); font-size: 15px; line-height: 1.6; color: var(--muted); max-width: 30em; }
 .note code, .sub code { font-size: .9em; color: var(--ink); background: rgba(14,38,44,.05); padding: 2px 6px; border-radius: 5px; }
 .center { text-align: center; }
-.center .sub { margin-left: auto; margin-right: auto; }
+.sec .center p.sub, .final p.sub { margin-left: auto; margin-right: auto; }
 
 .visual { position: relative; padding: 40px; border-radius: 22px; background: linear-gradient(180deg, rgba(255,255,255,.5), rgba(238,243,241,.6)); box-shadow: inset 0 0 0 1px var(--line); isolation: isolate; overflow: hidden; }
 .visual::before {
@@ -261,7 +261,7 @@ h2 { margin: 0; font-size: 46px; line-height: 1.06; letter-spacing: -.038em; fon
 }
 
 /* zoom 1 — sources -> set */
-.z1 { --vw: 640; --vh: 352; }
+.z1 { --vw: 640; --vh: 344; }
 .card-h { display: flex; align-items: center; gap: .8em; height: 3.8em; padding: 0 1.4em; }
 .card-h .src-t { font-size: 1.35em; }
 .card-h code.q { font-size: 1.05em; color: var(--muted); }
@@ -278,10 +278,10 @@ h2 { margin: 0; font-size: 46px; line-height: 1.06; letter-spacing: -.038em; fon
 .setcard .foot-l { display: flex; align-items: center; height: 3.4em; padding: 0 1.4em; border-top: 1px solid var(--line); font: 1.02em/1 var(--mono); color: var(--muted); }
 
 /* zoom 2 — the gates */
-.z2 { --vw: 1060; --vh: 230; }
+.z2 { --vw: 1080; --vh: 230; }
 .box { display: flex; flex-direction: column; padding: 1.8em 1.9em; }
 .box .k { font: 500 .98em/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
-.box .big { margin-top: .9em; font: 500 1.3em/1.2 var(--mono); color: var(--ink); letter-spacing: -.01em; }
+.box .big { margin-top: .9em; font: 500 1.24em/1.2 var(--mono); white-space: nowrap; color: var(--ink); letter-spacing: -.01em; }
 .box .meta { margin-top: .7em; font-size: 1.2em; color: var(--muted); }
 .box .title { margin-top: 1.1em; font-size: 1.6em; font-weight: 700; letter-spacing: -.025em; line-height: 1.15; }
 .box .desc { margin-top: .45em; font-size: 1.22em; line-height: 1.45; color: var(--muted); }
@@ -308,7 +308,7 @@ h2 { margin: 0; font-size: 46px; line-height: 1.06; letter-spacing: -.038em; fon
 .mini b { font-size: 2em; font-weight: 800; letter-spacing: -.045em; }
 .folder .card-h { height: 4.8em; border-bottom: 1px solid var(--line); }
 .folder .card-h code { font-size: 1.2em; color: var(--ink); }
-.ents { list-style: none; margin: 0; padding: .6em .8em; }
+.ents { list-style: none; margin: 0; padding: .6em .8em .8em; }
 .ents li { display: flex; align-items: center; gap: .9em; height: 6em; padding: 0 .8em; border-radius: .9em; }
 .ents li + li { margin-top: 0; }
 .ents .ico { width: 2.8em; height: 2.8em; }
@@ -389,7 +389,7 @@ h2 { margin: 0; font-size: 46px; line-height: 1.06; letter-spacing: -.038em; fon
   .ctas .row2 .btn { flex: 1; }
 
   /* hero graph turns vertical */
-  .hero-stage { --vw: 360; --vh: 612; max-width: 420px; margin-top: 44px; }
+  .hero-stage { --vw: 360; --vh: 586; max-width: 420px; margin-top: 44px; }
   .hero-stage > .n { left: calc(var(--mx) * var(--u)); top: calc(var(--my) * var(--u)); width: calc(var(--mw) * var(--u)); height: calc(var(--mh) * var(--u)); }
   .hero-stage .wires-h { display: none; }
   .hero-stage .wires-v { display: block; }
@@ -409,6 +409,7 @@ h2 { margin: 0; font-size: 46px; line-height: 1.06; letter-spacing: -.038em; fon
   .qs-head { flex-direction: column; align-items: flex-start; gap: 16px; }
   .term pre { font-size: 12.5px; padding: 18px 18px 20px; }
   .visual { padding: 20px 16px; border-radius: 18px; }
+  .term-strip { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 24px; font-size: 12px; }
 
   /* zoom diagrams become a simple vertical flow */
   .flowable { aspect-ratio: auto; container-type: normal; display: flex; flex-direction: column; align-items: stretch; }
@@ -502,7 +503,7 @@ h2 { margin: 0; font-size: 46px; line-height: 1.06; letter-spacing: -.038em; fon
     </div>
 
     <figure class="stage hero-stage" style="margin-bottom:0" aria-label="Three sources flow into dalo, pass a security preflight and an approval, and are linked into six agent folders.">
-      <div class="n halo" style="--x:390;--y:30;--w:420;--h:340;--mx:0;--my:110;--mw:360;--mh:280" aria-hidden="true"></div>
+      <div class="n halo" style="--x:390;--y:30;--w:420;--h:340;--mx:0;--my:100;--mw:360;--mh:280" aria-hidden="true"></div>
 
       <svg class="wires-h" viewBox="0 0 1200 410" aria-hidden="true">
         <defs>
@@ -551,11 +552,11 @@ h2 { margin: 0; font-size: 46px; line-height: 1.06; letter-spacing: -.038em; fon
         </g>
       </svg>
 
-      <svg class="wires-v" viewBox="0 0 360 612" aria-hidden="true">
+      <svg class="wires-v" viewBox="0 0 360 586" aria-hidden="true">
         <defs>
           <linearGradient id="v-gt" gradientUnits="userSpaceOnUse" x1="0" y1="62" x2="0" y2="116"><stop offset="0" stop-color="#a7b6b9"/><stop offset="1" stop-color="#14b8a6"/></linearGradient>
-          <linearGradient id="v-gb" gradientUnits="userSpaceOnUse" x1="0" y1="378" x2="0" y2="590"><stop offset="0" stop-color="#14b8a6"/><stop offset="1" stop-color="#34d399"/></linearGradient>
-          <filter id="v-glow" filterUnits="userSpaceOnUse" x="0" y="0" width="360" height="612"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          <linearGradient id="v-gb" gradientUnits="userSpaceOnUse" x1="0" y1="356" x2="0" y2="560"><stop offset="0" stop-color="#14b8a6"/><stop offset="1" stop-color="#34d399"/></linearGradient>
+          <filter id="v-glow" filterUnits="userSpaceOnUse" x="0" y="0" width="360" height="586"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
         </defs>
         <g stroke="url(#v-gt)">
           <path class="wire" d="M56 62C56 90 140 88 140 116"/>
@@ -563,24 +564,24 @@ h2 { margin: 0; font-size: 46px; line-height: 1.06; letter-spacing: -.038em; fon
           <path class="wire" d="M304 62C304 90 220 88 220 116"/>
         </g>
         <g stroke="url(#v-gb)">
-          <path class="wire" d="M180 378V456Q180 466 168 466"/>
-          <path class="wire" d="M180 378V456Q180 466 192 466"/>
-          <path class="wire" d="M180 378V514Q180 524 168 524"/>
-          <path class="wire" d="M180 378V514Q180 524 192 524"/>
-          <path class="wire" d="M180 378V572Q180 582 168 582"/>
-          <path class="wire" d="M180 378V572Q180 582 192 582"/>
+          <path class="wire" d="M180 356V430Q180 440 168 466"/>
+          <path class="wire" d="M180 356V430Q180 440 192 466"/>
+          <path class="wire" d="M180 356V488Q180 498 168 524"/>
+          <path class="wire" d="M180 356V488Q180 498 192 524"/>
+          <path class="wire" d="M180 356V546Q180 556 168 582"/>
+          <path class="wire" d="M180 356V546Q180 556 192 582"/>
         </g>
         <g filter="url(#v-glow)">
           <path class="pulse" pathLength="100" style="--d:-.5s;--s:55" d="M56 62C56 90 140 88 140 116"/>
           <path class="pulse" pathLength="100" style="--d:-1.9s;--s:35" d="M180 62C180 90 180 88 180 116"/>
           <path class="pulse" pathLength="100" style="--d:-2.8s;--s:70" d="M304 62C304 90 220 88 220 116"/>
-          <path class="pulse" pathLength="100" style="--d:-1.2s;--s:45" d="M180 378V456Q180 466 168 466"/>
-          <path class="pulse" pathLength="100" style="--d:-2.6s;--s:80" d="M180 378V572Q180 582 192 582"/>
+          <path class="pulse" pathLength="100" style="--d:-1.2s;--s:45" d="M180 356V430Q180 440 168 466"/>
+          <path class="pulse" pathLength="100" style="--d:-2.6s;--s:80" d="M180 356V546Q180 556 192 582"/>
         </g>
         <g>
           <circle class="port-dim" cx="56" cy="62" r="3.2"/><circle class="port-dim" cx="180" cy="62" r="3.2"/><circle class="port-dim" cx="304" cy="62" r="3.2"/>
           <circle class="port" cx="140" cy="116" r="3.2"/><circle class="port" cx="180" cy="116" r="3.2"/><circle class="port" cx="220" cy="116" r="3.2"/>
-          <circle class="port" cx="180" cy="378" r="3.2"/>
+          <circle class="port" cx="180" cy="356" r="3.2"/>
         </g>
       </svg>
 
@@ -596,7 +597,7 @@ h2 { margin: 0; font-size: 46px; line-height: 1.06; letter-spacing: -.038em; fon
       </div>
 
       <!-- dalo -->
-      <div class="n core" style="--x:450;--y:80;--w:300;--h:250;--mx:20;--my:116;--mw:320;--mh:262">
+      <div class="n core" style="--x:450;--y:80;--w:300;--h:250;--mx:20;--my:116;--mw:320;--mh:240">
         <div class="core-h"><svg width="26" height="26" style="width:2.6em;height:2.6em" aria-hidden="true"><use href="#mark"/></svg><b>dalo</b><code>~/.dalo</code></div>
         <div class="core-l">Resolved set</div>
         <ul class="set">
@@ -611,12 +612,12 @@ h2 { margin: 0; font-size: 46px; line-height: 1.06; letter-spacing: -.038em; fon
       </div>
 
       <!-- agents -->
-      <div class="n glass agent" style="--x:944;--y:25;--w:236;--h:50;--mx:0;--my:442;--mw:168;--mh:48"><span><span class="nm">Codex</span><code>~/.agents/skills</code></span><i class="live"></i></div>
-      <div class="n glass agent" style="--x:944;--y:87;--w:236;--h:50;--mx:192;--my:442;--mw:168;--mh:48"><span><span class="nm">Claude Code</span><code>~/.claude/skills</code></span><i class="live"></i></div>
-      <div class="n glass agent" style="--x:944;--y:149;--w:236;--h:50;--mx:0;--my:500;--mw:168;--mh:48"><span><span class="nm">OpenClaw</span><code>~/.agents/skills</code></span><i class="live"></i></div>
-      <div class="n glass agent" style="--x:944;--y:211;--w:236;--h:50;--mx:192;--my:500;--mw:168;--mh:48"><span><span class="nm">Hermes</span><code>~/.hermes/skills</code></span><i class="live"></i></div>
-      <div class="n glass agent" style="--x:944;--y:273;--w:236;--h:50;--mx:0;--my:558;--mw:168;--mh:48"><span><span class="nm">OpenCode</span><code>~/.config/opencode/skills</code></span><i class="live"></i></div>
-      <div class="n glass agent" style="--x:944;--y:335;--w:236;--h:50;--mx:192;--my:558;--mw:168;--mh:48"><span><span class="nm">Any folder</span><code>generic &lt;path&gt;</code></span><i class="live"></i></div>
+      <div class="n glass agent" style="--x:944;--y:25;--w:236;--h:50;--mx:0;--my:416;--mw:168;--mh:48"><span><span class="nm">Codex</span><code>~/.agents/skills</code></span><i class="live"></i></div>
+      <div class="n glass agent" style="--x:944;--y:87;--w:236;--h:50;--mx:192;--my:416;--mw:168;--mh:48"><span><span class="nm">Claude Code</span><code>~/.claude/skills</code></span><i class="live"></i></div>
+      <div class="n glass agent" style="--x:944;--y:149;--w:236;--h:50;--mx:0;--my:474;--mw:168;--mh:48"><span><span class="nm">OpenClaw</span><code>~/.agents/skills</code></span><i class="live"></i></div>
+      <div class="n glass agent" style="--x:944;--y:211;--w:236;--h:50;--mx:192;--my:474;--mw:168;--mh:48"><span><span class="nm">Hermes</span><code>~/.hermes/skills</code></span><i class="live"></i></div>
+      <div class="n glass agent" style="--x:944;--y:273;--w:236;--h:50;--mx:0;--my:532;--mw:168;--mh:48"><span><span class="nm">OpenCode</span><code>~/.config/opencode/skills</code></span><i class="live"></i></div>
+      <div class="n glass agent" style="--x:944;--y:335;--w:236;--h:50;--mx:192;--my:532;--mw:168;--mh:48"><span><span class="nm">Any folder</span><code>generic &lt;path&gt;</code></span><i class="live"></i></div>
     </figure>
   </div>
 </section>
@@ -632,34 +633,34 @@ h2 { margin: 0; font-size: 46px; line-height: 1.06; letter-spacing: -.038em; fon
     </div>
     <div class="visual">
       <div class="stage z1 flowable" role="img" aria-label="Local, team and catalog skills resolve into one set; the team's release-notes is shadowed by the local one.">
-        <svg viewBox="0 0 640 352" aria-hidden="true">
+        <svg viewBox="0 0 640 344" aria-hidden="true">
           <defs>
             <linearGradient id="z1-g" gradientUnits="userSpaceOnUse" x1="230" y1="0" x2="390" y2="0"><stop offset="0" stop-color="#a7b6b9"/><stop offset="1" stop-color="#14b8a6"/></linearGradient>
             <filter id="z1-glow" filterUnits="userSpaceOnUse" x="0" y="0" width="640" height="352"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
           </defs>
           <g stroke="url(#z1-g)">
-            <path class="wire" d="M230 82C310 82 310 162 390 162"/>
-            <path class="wire" d="M230 186C310 186 310 190 390 190"/>
-            <path class="wire" d="M230 290C310 290 310 218 390 218"/>
+            <path class="wire" d="M230 72C310 72 310 162 390 162"/>
+            <path class="wire" d="M230 172C310 172 310 190 390 190"/>
+            <path class="wire" d="M230 300C310 300 310 218 390 218"/>
           </g>
-          <path class="wire-dash" d="M230 214h22"/>
+          <path class="wire-dash" d="M230 200h22"/>
           <g filter="url(#z1-glow)">
-            <path class="pulse" pathLength="100" style="--d:-.6s;--s:56" d="M230 82C310 82 310 162 390 162"/>
-            <path class="pulse" pathLength="100" style="--d:-1.9s;--s:34" d="M230 186C310 186 310 190 390 190"/>
-            <path class="pulse" pathLength="100" style="--d:-2.9s;--s:72" d="M230 290C310 290 310 218 390 218"/>
+            <path class="pulse" pathLength="100" style="--d:-.6s;--s:56" d="M230 72C310 72 310 162 390 162"/>
+            <path class="pulse" pathLength="100" style="--d:-1.9s;--s:34" d="M230 172C310 172 310 190 390 190"/>
+            <path class="pulse" pathLength="100" style="--d:-2.9s;--s:72" d="M230 300C310 300 310 218 390 218"/>
           </g>
-          <circle class="port-dim" cx="230" cy="82" r="3.5"/><circle class="port-dim" cx="230" cy="186" r="3.5"/><circle class="port-dim" cx="230" cy="290" r="3.5"/><circle class="port-dim" cx="230" cy="214" r="3.5"/>
+          <circle class="port-dim" cx="230" cy="72" r="3.5"/><circle class="port-dim" cx="230" cy="172" r="3.5"/><circle class="port-dim" cx="230" cy="300" r="3.5"/><circle class="port-dim" cx="230" cy="200" r="3.5"/>
           <circle class="port" cx="390" cy="162" r="3.5"/><circle class="port" cx="390" cy="190" r="3.5"/><circle class="port" cx="390" cy="218" r="3.5"/>
         </svg>
-        <div class="n glass" style="--x:0;--y:30;--w:230;--h:76">
+        <div class="n glass" style="--x:0;--y:20;--w:230;--h:76">
           <div class="card-h"><span class="src-t">Local</span><code class="prio">prio 0</code></div>
           <ul class="lines"><li class="won"><code>release-notes</code></li></ul>
         </div>
-        <div class="n glass" style="--x:0;--y:134;--w:230;--h:104">
+        <div class="n glass" style="--x:0;--y:120;--w:230;--h:104">
           <div class="card-h"><span class="src-t">Team repo</span><code class="prio">prio 10</code></div>
           <ul class="lines"><li class="won"><code>incident-review</code></li><li class="shadow"><code>release-notes</code><span class="pill">shadowed</span></li></ul>
         </div>
-        <div class="n glass" style="--x:0;--y:238;--w:230;--h:76">
+        <div class="n glass" style="--x:0;--y:248;--w:230;--h:76">
           <div class="card-h"><span class="src-t">Catalog</span><code class="prio">prio 20</code></div>
           <ul class="lines"><li class="won"><code>effective-web</code></li></ul>
         </div>
@@ -684,42 +685,42 @@ h2 { margin: 0; font-size: 46px; line-height: 1.06; letter-spacing: -.038em; fon
     </div>
     <div class="visual" style="margin-top:56px">
       <div class="stage z2 flowable" role="img" aria-label="A catalog skill passes the security preflight, waits for approval, and only then reaches the agent folder.">
-        <svg viewBox="0 0 1060 230" aria-hidden="true">
+        <svg viewBox="0 0 1080 230" aria-hidden="true">
           <defs>
-            <linearGradient id="z2-g" gradientUnits="userSpaceOnUse" x1="200" y1="0" x2="580" y2="0"><stop offset="0" stop-color="#a7b6b9"/><stop offset=".45" stop-color="#14b8a6"/><stop offset="1" stop-color="#14b8a6"/></linearGradient>
-            <filter id="z2-glow" filterUnits="userSpaceOnUse" x="0" y="0" width="1060" height="230"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+            <linearGradient id="z2-g" gradientUnits="userSpaceOnUse" x1="220" y1="0" x2="600" y2="0"><stop offset="0" stop-color="#a7b6b9"/><stop offset=".45" stop-color="#14b8a6"/><stop offset="1" stop-color="#14b8a6"/></linearGradient>
+            <filter id="z2-glow" filterUnits="userSpaceOnUse" x="0" y="0" width="1080" height="230"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
           </defs>
-          <g stroke="url(#z2-g)"><path class="wire" d="M200 115H270"/><path class="wire" d="M510 115H580"/></g>
-          <path class="wire-dash" d="M820 115H890"/>
+          <g stroke="url(#z2-g)"><path class="wire" d="M220 115H290"/><path class="wire" d="M530 115H600"/></g>
+          <path class="wire-dash" d="M840 115H910"/>
           <g filter="url(#z2-glow)">
-            <path class="pulse" pathLength="100" style="--d:-.8s;--s:50" d="M200 115H270"/>
-            <path class="pulse" pathLength="100" style="--d:-2.2s;--s:60" d="M510 115H580"/>
+            <path class="pulse" pathLength="100" style="--d:-.8s;--s:50" d="M220 115H290"/>
+            <path class="pulse" pathLength="100" style="--d:-2.2s;--s:60" d="M530 115H600"/>
           </g>
-          <circle class="port-dim" cx="200" cy="115" r="3.5"/><circle class="port" cx="270" cy="115" r="3.5"/>
-          <circle class="port" cx="510" cy="115" r="3.5"/><circle class="port" cx="580" cy="115" r="3.5"/>
-          <circle class="port-dim" cx="820" cy="115" r="3.5"/><circle class="port-dim" cx="890" cy="115" r="3.5"/>
+          <circle class="port-dim" cx="220" cy="115" r="3.5"/><circle class="port" cx="290" cy="115" r="3.5"/>
+          <circle class="port" cx="530" cy="115" r="3.5"/><circle class="port" cx="600" cy="115" r="3.5"/>
+          <circle class="port-dim" cx="840" cy="115" r="3.5"/><circle class="port-dim" cx="910" cy="115" r="3.5"/>
         </svg>
-        <div class="n glass box" style="--x:0;--y:60;--w:200;--h:110">
+        <div class="n glass box" style="--x:0;--y:60;--w:220;--h:110">
           <span class="k">Catalog skill</span>
           <code class="big">sebastian:effective-web</code>
           <span class="meta">selected &middot; pinned</span>
         </div>
         <span class="vlink" aria-hidden="true"></span>
-        <div class="n glass box gatebox" style="--x:270;--y:30;--w:240;--h:170">
+        <div class="n glass box gatebox" style="--x:290;--y:30;--w:240;--h:170">
           <span class="ico" style="color:var(--accent)"><svg aria-hidden="true"><use href="#i-shield"/></svg></span>
           <span class="title">Security preflight</span>
           <span class="desc">15 deterministic rules, run locally.</span>
           <span class="chip chip-ok"><svg aria-hidden="true"><use href="#i-check"/></svg>passed</span>
         </div>
         <span class="vlink" aria-hidden="true"></span>
-        <div class="n glass box gatebox" style="--x:580;--y:30;--w:240;--h:170">
+        <div class="n glass box gatebox" style="--x:600;--y:30;--w:240;--h:170">
           <span class="ico" style="color:var(--accent)"><svg aria-hidden="true"><use href="#i-user"/></svg></span>
           <span class="title">Your approval</span>
           <span class="desc">Explicit, recorded in your store.</span>
           <span class="chip chip-wait"><i></i>pending</span>
         </div>
         <span class="vlink dim" aria-hidden="true"></span>
-        <div class="n glass box waitbox" style="--x:890;--y:60;--w:170;--h:110">
+        <div class="n glass box waitbox" style="--x:910;--y:60;--w:170;--h:110">
           <span class="k">Agent folder</span>
           <code class="big">~/.claude/skills</code>
           <span class="meta">not linked yet</span>
@@ -745,23 +746,23 @@ h2 { margin: 0; font-size: 46px; line-height: 1.06; letter-spacing: -.038em; fon
       <div class="stage z3 flowable" role="img" aria-label="In ~/.claude/skills, two links are owned by dalo; a real folder you created stays untouched.">
         <svg viewBox="0 0 600 330" aria-hidden="true">
           <defs>
-            <linearGradient id="z3-g" gradientUnits="userSpaceOnUse" x1="140" y1="0" x2="232" y2="0"><stop offset="0" stop-color="#14b8a6"/><stop offset="1" stop-color="#34d399"/></linearGradient>
+            <linearGradient id="z3-g" gradientUnits="userSpaceOnUse" x1="140" y1="0" x2="220" y2="0"><stop offset="0" stop-color="#14b8a6"/><stop offset="1" stop-color="#34d399"/></linearGradient>
             <filter id="z3-glow" filterUnits="userSpaceOnUse" x="0" y="0" width="600" height="330"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
           </defs>
           <g stroke="url(#z3-g)">
-            <path class="wire" d="M140 155C186 155 186 125 232 125"/>
-            <path class="wire" d="M140 175C186 175 186 185 232 185"/>
+            <path class="wire" d="M140 155C180 155 180 124 220 124"/>
+            <path class="wire" d="M140 175C180 175 180 184 220 184"/>
           </g>
           <g filter="url(#z3-glow)">
-            <path class="pulse" pathLength="100" style="--d:-.7s;--s:52" d="M140 155C186 155 186 125 232 125"/>
-            <path class="pulse" pathLength="100" style="--d:-2.1s;--s:30" d="M140 175C186 175 186 185 232 185"/>
+            <path class="pulse" pathLength="100" style="--d:-.7s;--s:52" d="M140 155C180 155 180 124 220 124"/>
+            <path class="pulse" pathLength="100" style="--d:-2.1s;--s:30" d="M140 175C180 175 180 184 220 184"/>
           </g>
           <circle class="port" cx="140" cy="155" r="3.5"/><circle class="port" cx="140" cy="175" r="3.5"/>
-          <circle class="port" cx="232" cy="125" r="3.5"/><circle class="port" cx="232" cy="185" r="3.5"/>
+          <circle class="port" cx="220" cy="124" r="3.5"/><circle class="port" cx="220" cy="184" r="3.5"/>
         </svg>
         <div class="n glass mini" style="--x:0;--y:125;--w:140;--h:80"><svg width="26" height="26" style="width:2.6em;height:2.6em" aria-hidden="true"><use href="#mark"/></svg><b>dalo</b></div>
         <span class="vlink" aria-hidden="true"></span>
-        <div class="n glass folder" style="--x:220;--y:24;--w:380;--h:282">
+        <div class="n glass folder" style="--x:220;--y:40;--w:380;--h:250">
           <div class="card-h"><span class="ico"><svg aria-hidden="true"><use href="#i-folder"/></svg></span><code>~/.claude/skills</code></div>
           <ul class="ents">
             <li class="own"><span class="ico"><svg aria-hidden="true"><use href="#i-link"/></svg></span><span><code class="nm">incident-review</code><code class="to">-&gt; store:/sources/company/checkout/skills/incident-review</code></span><span class="badge b-own"><svg aria-hidden="true"><use href="#i-check"/></svg>owned by dalo</span></li>
@@ -818,7 +819,7 @@ h2 { margin: 0; font-size: 46px; line-height: 1.06; letter-spacing: -.038em; fon
         <a class="btn btn-ghost" href="https://github.com/sebastian-software/dalo"><svg width="16" height="16" aria-hidden="true"><use href="#i-gh"/></svg>Star on GitHub</a>
       </div>
     </div>
-    <p class="alt"><code>brew install sebastian-software/tap/dalo</code><span>/</span><code>npx getdalo</code><span>/</span><code>cargo binstall dalo</code></p>
+    <p class="alt"><code>brew install sebastian-software/tap/dalo</code><span>/</span><code>npx getdalo init</code><span>/</span><code>cargo binstall dalo</code></p>
   </div>
 </section>
 </main>
