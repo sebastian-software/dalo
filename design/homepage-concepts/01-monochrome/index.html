@@ -115,7 +115,7 @@ code, pre, kbd { font-family: var(--mono); font-feature-settings: normal; }
 .copy.done .cp { display: none; }
 
 /* ── Hero ──────────────────────────────────────────── */
-.hero { text-align: center; padding: 88px var(--pad) 72px; }
+.hero { text-align: center; padding: 72px var(--pad) 60px; }
 .pill {
   display: inline-flex; align-items: center; gap: 10px; height: 30px; padding: 0 12px 0 6px;
   border: 1px solid var(--line); border-radius: 999px; font-size: 13px; color: var(--muted);
@@ -125,20 +125,20 @@ code, pre, kbd { font-family: var(--mono); font-feature-settings: normal; }
 .pill b { font: 500 11px/1 var(--mono); color: var(--ink); background: var(--fill-2); border: 1px solid var(--line); border-radius: 999px; padding: 4px 8px; }
 .pill i { font-style: normal; color: var(--faint); }
 h1 {
-  margin: 28px auto 0; max-width: 900px;
-  font-size: clamp(44px, 6.4vw, 76px); line-height: 1.02; font-weight: 600; letter-spacing: -.048em;
+  margin: 24px auto 0; max-width: 900px;
+  font-size: clamp(44px, 6vw, 72px); line-height: 1.02; font-weight: 600; letter-spacing: -.048em;
   text-wrap: balance;
 }
 .lede { margin: 24px auto 0; max-width: 620px; font-size: 19px; line-height: 1.55; color: var(--muted); letter-spacing: -.01em; text-wrap: pretty; }
-.ctas { margin-top: 40px; display: flex; justify-content: center; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ctas { margin-top: 36px; display: flex; justify-content: center; align-items: center; gap: 12px; flex-wrap: wrap; }
 .ctas .btn { height: 48px; padding: 0 22px; font-size: 15px; }
-.also { margin: 20px 0 0; font-size: 13px; color: var(--faint); }
+.also { margin: 18px 0 0; font-size: 13px; color: var(--faint); }
 .also a { color: var(--muted); border-bottom: 1px solid var(--line-2); padding-bottom: 1px; transition: color .15s, border-color .15s; }
 .also a:hover { color: var(--ink); border-color: var(--ink); }
 
 /* ── Flow diagram ──────────────────────────────────── */
 .stage {
-  padding: 56px var(--pad) 60px;
+  padding: 44px var(--pad) 56px;
   background:
     radial-gradient(60% 70% at 50% 50%, rgba(255,255,255,0) 0, #fff 100%),
     radial-gradient(circle at 1px 1px, #e4e4e4 1px, transparent 1.2px) 0 0 / 24px 24px;
@@ -170,12 +170,14 @@ h1 {
 .flow .beam-b { stroke-width: 1.25; stroke-opacity: .28; }
 .flow .beam-c { stroke-width: 1.75; stroke-opacity: .9; }
 @media (prefers-reduced-motion: no-preference) {
-  .flow .beam { opacity: 1; animation: beam 4.2s cubic-bezier(.45,.05,.4,1) var(--d) infinite both; }
+  .flow .beam { opacity: 1; animation: 4.2s cubic-bezier(.45,.05,.4,1) var(--d) infinite both; }
+  .flow .beam-a { animation-name: beam-a; }
+  .flow .beam-b { animation-name: beam-b; }
+  .flow .beam-c { animation-name: beam-c; }
 }
-@keyframes beam {
-  0% { stroke-dashoffset: var(--l); }
-  38%, 100% { stroke-dashoffset: calc(var(--l) - 128); }
-}
+@keyframes beam-a { 0% { stroke-dashoffset: 26; } 38%, 100% { stroke-dashoffset: -102; } }
+@keyframes beam-b { 0% { stroke-dashoffset: 10; } 38%, 100% { stroke-dashoffset: -118; } }
+@keyframes beam-c { 0% { stroke-dashoffset: 2.5; } 38%, 100% { stroke-dashoffset: -125.5; } }
 
 /* ── Section heads ─────────────────────────────────── */
 .head { padding: 96px var(--pad) 64px; text-align: center; }
@@ -397,7 +399,7 @@ h2 { margin: 0; font-size: clamp(32px, 3.6vw, 44px); line-height: 1.08; font-wei
 </g><g class="node">
   <rect x="40.5" y="270.5" width="240" height="59" rx="10"/>
   <rect class="ib" x="54.5" y="285.5" width="29" height="29" rx="7"/>
-  <g class="ic" transform="translate(0 0)"><rect x="63" y="294" width="5" height="5" rx="1.2"/><rect x="70" y="294" width="5" height="5" rx="1.2"/><rect x="63" y="301" width="5" height="5" rx="1.2"/><rect x="70" y="301" width="5" height="5" rx="1.2" stroke-dasharray="1.6 1.4"/></g>
+  <g class="ic" transform="translate(0 0)"><rect x="63" y="294" width="5" height="5" rx="1.2"/><rect x="70" y="294" width="5" height="5" rx="1.2"/><rect x="63" y="301" width="5" height="5" rx="1.2"/><rect x="70" y="301" width="5" height="5" rx="1.2" /></g>
   <text class="t" x="97" y="297">Public catalog</text>
   <text class="s" x="97" y="314">selected + pinned</text>
 </g><g class="node agent">
