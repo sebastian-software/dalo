@@ -88,8 +88,8 @@ img, svg { display: block; max-width: 100%; }
   -webkit-backdrop-filter: saturate(1.6) blur(12px); backdrop-filter: saturate(1.6) blur(12px);
 }
 .site-header .wrap { display: flex; align-items: center; height: var(--header-h); gap: 40px; }
-.brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 20px; letter-spacing: -.03em; color: var(--ink); white-space: nowrap; }
-.brand svg { flex: none; }
+.brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 20px; letter-spacing: -.03em; color: var(--ink); white-space: nowrap; }
+.brand-mark { display: block; flex: none; }
 .brand-section {
   margin-left: 2px; padding-left: 11px; border-left: 1px solid var(--line);
   font-size: 14px; font-weight: 500; letter-spacing: -.005em; color: var(--muted);

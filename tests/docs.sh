@@ -523,6 +523,9 @@ grep -Fq 'render:og' "$root/video/package.json"
 grep -Fq 'pnpm run render:og' "$root/site/README.md"
 grep -Fq '<meta property="og:image:width" content="1200" />' "$root/site/index.html"
 grep -Fq '<meta property="og:image:height" content="630" />' "$root/site/index.html"
+# The logo has one source: the repository root copy that the README shows. The
+# site serves the same bytes in its header and footer.
+cmp "$root/logo.svg" "$root/site/assets/img/logo.svg"
 og_image_header="$(od -An -tx1 -j16 -N8 "$root/site/assets/img/og.png" | tr -d ' \n')"
 test "$og_image_header" = "000004b000000276" \
   || { echo 'site/assets/img/og.png is no longer the declared 1200x630' >&2; exit 1; }
