@@ -14,6 +14,10 @@ rustPlatform.buildRustPackage {
   src = lib.cleanSource ../.;
   cargoLock.lockFile = ../Cargo.lock;
 
+  # The test suite exercises network, process, and user-store behavior; the
+  # regular CI jobs run it outside the Nix build sandbox on each supported OS.
+  doCheck = false;
+
   nativeBuildInputs = [
     git
     makeWrapper
