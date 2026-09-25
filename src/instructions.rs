@@ -431,7 +431,12 @@ pub fn refresh_active_packs(
             })?;
             let commit = validate_source_pack(paths, source, &entry.pack_id, None)?;
             let pack = read_source_pack(source, &entry.pack_id)?;
-            let relative_path = PathBuf::from("instructions").join(format!("{}.md", entry.pack_id));
+            let relative_path = source
+                .subpath
+                .as_deref()
+                .unwrap_or_else(|| Path::new(""))
+                .join("instructions")
+                .join(format!("{}.md", entry.pack_id));
             let old_body = if previous_commit == commit {
                 pack.body.clone()
             } else {
@@ -1437,8 +1442,7 @@ fn validate_source_pack(
             path: source.path.clone(),
         });
     }
-    let pack_path = source
-        .path
+    let pack_path = crate::source::scoped_source_root(&source.path, source.subpath.as_deref())?
         .join("instructions")
         .join(format!("{pack_id}.md"));
     let metadata = fs::symlink_metadata(&pack_path)
@@ -1507,7 +1511,8 @@ fn read_pack_from_dir(dir: &Path, pack_id: &str) -> DaloResult<InstructionPack> 
 }
 
 fn read_source_pack(source: &SourceConfig, pack_id: &str) -> DaloResult<InstructionPack> {
-    let dir = source.path.join("instructions");
+    let dir = crate::source::scoped_source_root(&source.path, source.subpath.as_deref())?
+        .join("instructions");
     let path = dir.join(format!("{pack_id}.md"));
     let body = fs::read_to_string(&path)
         .map_err(|_| source_instruction_pack_not_found(source, pack_id))?;
@@ -1520,8 +1525,10 @@ fn read_source_pack(source: &SourceConfig, pack_id: &str) -> DaloResult<Instruct
 
 fn source_instruction_pack_not_found(source: &SourceConfig, pack_id: &str) -> DaloError {
     let mut packs = Vec::new();
+    let source_root = crate::source::scoped_source_root(&source.path, source.subpath.as_deref())
+        .unwrap_or_else(|_| source.path.clone());
     scan_pack_dir(
-        &source.path.join("instructions"),
+        &source_root.join("instructions"),
         &source.id,
         &BTreeSet::new(),
         &mut packs,
@@ -2555,8 +2562,13 @@ pub fn discover_packs(
         if source.kind == SourceKind::Local {
             continue;
         }
+        let Ok(source_root) =
+            crate::source::scoped_source_root(&source.path, source.subpath.as_deref())
+        else {
+            continue;
+        };
         scan_pack_dir(
-            &source.path.join("instructions"),
+            &source_root.join("instructions"),
             &source.id,
             &enabled,
             &mut packs,

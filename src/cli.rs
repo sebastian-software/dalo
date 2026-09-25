@@ -791,6 +791,14 @@ pub struct SourceAddArgs {
     /// Optional prefix used to install every skill from this source.
     #[arg(long)]
     pub namespace: Option<String>,
+
+    /// Git ref to pin. Without this option, the source tracks its default branch.
+    #[arg(long = "ref")]
+    pub revision: Option<String>,
+
+    /// Directory inside the checkout that contains the source inventory.
+    #[arg(long)]
+    pub subpath: Option<std::path::PathBuf>,
 }
 
 /// Arguments for `source add-catalog`.
@@ -3759,11 +3767,13 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             };
             let location =
                 source::resolve_source_location(&args.location, &std::env::current_dir()?);
-            let report = source::add_team_source(
+            let report = source::add_team_source_scoped(
                 &paths,
                 &args.id,
                 &location,
                 args.namespace.as_deref(),
+                args.revision.as_deref(),
+                args.subpath.as_deref(),
                 options.dry_run,
             )?;
             if options.json {

@@ -828,7 +828,9 @@ pub fn preview_team_manifests(paths: &StorePaths) -> DaloResult<UserConfig> {
     let team_sources = config
         .sources
         .iter()
-        .filter(|candidate| candidate.enabled && candidate.kind == SourceKind::Team)
+        .filter(|candidate| {
+            candidate.enabled && candidate.kind == SourceKind::Team && candidate.subpath.is_none()
+        })
         .cloned()
         .collect::<Vec<_>>();
     let mut expected = BTreeSet::new();
@@ -944,7 +946,9 @@ pub fn reconcile_team_manifests(
     let team_sources = original_config
         .sources
         .iter()
-        .filter(|candidate| candidate.enabled && candidate.kind == SourceKind::Team)
+        .filter(|candidate| {
+            candidate.enabled && candidate.kind == SourceKind::Team && candidate.subpath.is_none()
+        })
         .cloned()
         .collect::<Vec<_>>();
     let mut expected = BTreeSet::new();
@@ -1465,6 +1469,7 @@ fn reconcile_catalog(
             id: source_id.to_owned(),
             kind: SourceKind::Catalog,
             path: checkout,
+            subpath: None,
             priority: declaration.priority.unwrap_or(team.priority + 1),
             namespace: declaration.namespace.clone(),
             enabled: true,
@@ -1877,6 +1882,7 @@ mod tests {
             id: "company".to_owned(),
             kind: SourceKind::Team,
             path: PathBuf::from("/team"),
+            subpath: None,
             priority: 10,
             namespace: None,
             enabled: true,
@@ -1902,6 +1908,7 @@ mod tests {
             id: legacy_id.clone(),
             kind: SourceKind::Catalog,
             path: PathBuf::from("/catalog"),
+            subpath: None,
             priority: 11,
             namespace: None,
             enabled: true,
@@ -2004,6 +2011,7 @@ mod tests {
             id: id.to_owned(),
             kind: SourceKind::Team,
             path,
+            subpath: None,
             priority: 10,
             namespace: None,
             enabled: true,
@@ -2021,6 +2029,7 @@ mod tests {
             id: "company.x.y".to_owned(),
             kind: SourceKind::Catalog,
             path: PathBuf::from("/catalog"),
+            subpath: None,
             priority: 11,
             namespace: None,
             enabled: true,

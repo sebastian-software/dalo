@@ -79,6 +79,7 @@ Lock drift compares the previous `lock.toml` with the current live resolution.
 | Code | What it means | Recovery |
 | --- | --- | --- |
 | `source_commit_changed` | A source commit changed since the lock was written. | Review source changes, then run `dalo sync` to write a fresh lock. |
+| `source_subpath_changed` | A source's configured inventory directory differs from the lock. | Review the directory change and its skills, then run `dalo sync` to write a fresh lock. |
 | `source_removed` | A source from the lock is no longer configured. | Run `dalo sync` to reconcile, or restore the source config. |
 | `source_added` | A new source is configured but absent from the lock. | Run `dalo sync` after reviewing the source. |
 | `active_removed` | A previously active skill is no longer active. | Review why it disappeared, then run `dalo sync` if expected. |

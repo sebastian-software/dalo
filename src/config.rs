@@ -94,6 +94,7 @@ impl UserConfig {
                 id: "local".to_owned(),
                 kind: SourceKind::Local,
                 path: local_path,
+                subpath: None,
                 priority: 0,
                 namespace: None,
                 enabled: true,

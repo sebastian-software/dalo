@@ -1921,7 +1921,19 @@ pub fn resolve_plugins(config: &UserConfig, inventories: &[SourceInventory]) -> 
         );
     }
     for source in config.sources.iter().filter(|source| source.enabled) {
-        let path = source.path.join(TEAM_MANIFEST_FILE);
+        let source_root =
+            match crate::source::scoped_source_root(&source.path, source.subpath.as_deref()) {
+                Ok(root) => root,
+                Err(error) => {
+                    diagnostics.push(PluginDiagnostic {
+                        code: PluginDiagnosticCode::InvalidStackSelection,
+                        subject: source.id.clone(),
+                        message: error.to_string(),
+                    });
+                    continue;
+                }
+            };
+        let path = source_root.join(TEAM_MANIFEST_FILE);
         let manifest = match team_manifest::read_manifest(&path) {
             Ok(Some(manifest)) => manifest,
             Ok(None) => continue,
@@ -2811,6 +2823,7 @@ requirement = "optional"
             id: id.to_owned(),
             kind: SourceKind::Team,
             path: path.to_path_buf(),
+            subpath: None,
             priority,
             namespace: None,
             enabled: true,
