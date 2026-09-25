@@ -157,6 +157,14 @@ document.documentElement.classList.add("js");
     });
   });
 
+  // The demo video autoplays only when the visitor has not asked for less motion.
+  if (!reduceMotion) {
+    document.querySelectorAll("video[data-autoplay]").forEach(function (video) {
+      var playing = video.play();
+      if (playing && playing.catch) playing.catch(function () {});
+    });
+  }
+
   document.querySelectorAll(".mobile-nav a").forEach(function (link) {
     link.addEventListener("click", function () {
       var menu = link.closest("details");

@@ -35,7 +35,9 @@ node site/build.mjs --check   # fail if the checked-in output is stale
    `index.html` (`<span data-dalo-version>` and the JSON-LD `softwareVersion`),
    which release-please also keeps current through its `extra-files` entry,
 3. assembles `site/build/`, the deployable tree, with `__DALO_LASTMOD__` in
-   `sitemap.xml` replaced by the build date.
+   `sitemap.xml` replaced by the build date and the landing page's release
+   count (`<strong data-dalo-releases>`) set to the number of releases in
+   `CHANGELOG.md`.
 
 The rendered documentation and the stamped version are committed, so the site
 stays deployable from a plain checkout and `--check` can prove they are current.
