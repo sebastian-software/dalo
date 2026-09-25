@@ -136,6 +136,12 @@ mise uninstall -g github:sebastian-software/dalo
 Older installations that still use the deprecated ubi backend can be removed
 with `mise uninstall -g ubi:sebastian-software/dalo`.
 
+If installed in a Nix profile:
+
+```sh
+nix profile remove dalo
+```
+
 If installed with the hosted installer or from a GitHub release archive, remove
 the copied `dalo` binary from wherever you placed it on `PATH` (by default,
 `~/.local/bin/dalo`). The hosted installer always verifies checksums; manual

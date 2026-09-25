@@ -57,6 +57,16 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
    mise use -g github:sebastian-software/dalo
    ```
 
+   On NixOS or another system with Nix, build Dalo from its source and
+   locked Rust dependencies:
+
+   ```sh
+   nix profile install github:sebastian-software/dalo
+   ```
+
+   The Nix package includes Git, which Dalo uses for source operations.
+   Upgrade that profile entry with `nix profile upgrade dalo`.
+
    When the user manages CLI tools through Node.js 20 or newer, the npm launcher
    is also supported. It verifies release checksums and caches the downloaded
    binary under `~/.cache/dalo`:

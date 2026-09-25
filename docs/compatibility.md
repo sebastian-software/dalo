@@ -119,10 +119,11 @@ none of these is removed and none changes meaning.
 | npm / npx | [`getdalo`](https://www.npmjs.com/package/getdalo) |
 | Homebrew | `brew install sebastian-software/tap/dalo` |
 | mise | `mise use -g github:sebastian-software/dalo` |
+| Nix flake | `nix profile install github:sebastian-software/dalo` |
 | Cargo | `cargo install dalo` |
 | Release archives | GitHub Releases, tag `dalo-v<version>` |
 
-Each channel keeps publishing every 1.x release. Retiring a channel is a
+Each channel remains available for every 1.x release. Retiring a channel is a
 breaking change for the people who use it and happens only in a major, with the
 usual one-minor deprecation notice.
 
