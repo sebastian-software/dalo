@@ -482,6 +482,7 @@ enum InstallChannel {
     Npx,
     Mise,
     MiseUbi,
+    Nix,
     Cargo,
     Standalone,
     Unknown,
@@ -494,6 +495,7 @@ impl InstallChannel {
             Self::Npm => "npm",
             Self::Npx => "npx",
             Self::Mise | Self::MiseUbi => "mise",
+            Self::Nix => "Nix",
             Self::Cargo => "Cargo",
             Self::Standalone => "the hosted installer",
             Self::Unknown => "an unknown installation method",
@@ -507,6 +509,7 @@ impl InstallChannel {
             Self::Npx => Some("npx getdalo@latest".to_owned()),
             Self::Mise => Some("mise upgrade github:sebastian-software/dalo".to_owned()),
             Self::MiseUbi => Some("mise upgrade ubi:sebastian-software/dalo".to_owned()),
+            Self::Nix => Some("nix profile upgrade dalo".to_owned()),
             Self::Cargo => Some(cargo_upgrade_command()),
             Self::Standalone => standalone_upgrade_command(executable),
             Self::Unknown => None,
@@ -573,8 +576,8 @@ fn detect_install_channel_from(
         return InstallChannel::Cargo;
     }
 
-    if has_standalone_receipt(executable) {
-        return InstallChannel::Standalone;
+    if let Some(channel) = read_install_receipt(executable) {
+        return channel;
     }
 
     InstallChannel::Unknown
@@ -587,17 +590,22 @@ fn parse_install_channel(channel: &str) -> Option<InstallChannel> {
         "npx" => Some(InstallChannel::Npx),
         "mise" | "mise-github" => Some(InstallChannel::Mise),
         "mise-ubi" => Some(InstallChannel::MiseUbi),
+        "nix" => Some(InstallChannel::Nix),
         "cargo" | "cargo-binstall" => Some(InstallChannel::Cargo),
         "standalone" | "installer" => Some(InstallChannel::Standalone),
         _ => None,
     }
 }
 
-fn has_standalone_receipt(executable: &Path) -> bool {
+fn read_install_receipt(executable: &Path) -> Option<InstallChannel> {
     executable
         .parent()
         .and_then(|parent| fs::read_to_string(parent.join(INSTALL_RECEIPT)).ok())
-        .is_some_and(|receipt| receipt.trim() == "standalone")
+        .and_then(|receipt| match receipt.trim() {
+            "standalone" => Some(InstallChannel::Standalone),
+            "nix" => Some(InstallChannel::Nix),
+            _ => None,
+        })
 }
 
 fn cargo_upgrade_command() -> String {
@@ -1069,6 +1077,25 @@ mod tests {
             shell_quote(executable.parent().expect("parent"))
         );
         assert_eq!(channel.upgrade_command(Some(&executable)), Some(expected));
+    }
+
+    #[test]
+    fn nix_receipt_should_select_nix_profile_upgrade() {
+        let temp = tempdir().expect("tempdir");
+        let executable = temp.path().join("bin/.dalo-wrapped");
+        fs::create_dir_all(executable.parent().expect("parent")).expect("create bin dir");
+        fs::write(
+            executable.parent().expect("parent").join(INSTALL_RECEIPT),
+            "nix\n",
+        )
+        .expect("write receipt");
+
+        let channel = detect_install_channel_from(None, Some(&executable), None, None);
+        assert_eq!(channel, InstallChannel::Nix);
+        assert_eq!(
+            channel.upgrade_command(Some(&executable)).as_deref(),
+            Some("nix profile upgrade dalo")
+        );
     }
 
     #[test]

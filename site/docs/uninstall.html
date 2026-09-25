@@ -173,6 +173,9 @@ rm -rf ~/.cache/dalo
 </code></pre>
 <p>Older installations that still use the deprecated ubi backend can be removed
 with <code>mise uninstall -g ubi:sebastian-software/dalo</code>.</p>
+<p>If installed in a Nix profile:</p>
+<pre><code class="language-sh">nix profile remove dalo
+</code></pre>
 <p>If installed with the hosted installer or from a GitHub release archive, remove
 the copied <code>dalo</code> binary from wherever you placed it on <code>PATH</code> (by default,
 <code>~/.local/bin/dalo</code>). The hosted installer always verifies checksums; manual

@@ -40,7 +40,7 @@ curl -fsSL https://dalo.sh/install.sh | sh
 npx getdalo --version
 ```
 
-Cargo, Cargo Binstall, mise, manual archives, and checksum and provenance
+Cargo, Cargo Binstall, mise, Nix, manual archives, and checksum and provenance
 verification are covered in [Installation](#installation) further down.
 
 ## Five minutes to a synced skill set
@@ -280,6 +280,9 @@ cargo binstall dalo
 
 # mise with the GitHub Releases backend
 mise use -g github:sebastian-software/dalo
+
+# Nix (builds from source and Cargo.lock)
+nix profile install github:sebastian-software/dalo
 
 # crates.io (requires Rust 1.94 or newer)
 cargo install dalo

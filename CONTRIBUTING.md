@@ -61,6 +61,10 @@ cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines "$(c
 node site/build.mjs --check
 ```
 
+The Nix job builds the flake package and runs its binary on x86_64 Linux,
+ARM64 Linux, and Apple Silicon macOS. With Nix installed, run `nix build .#dalo`
+locally to check a packaging change.
+
 The site check compares the committed render under `site/` with what
 `site/build.mjs` produces from `docs/*.md`; it needs the renderer installed
 once with `pnpm --dir site install`. `site/README.md` describes the build.
