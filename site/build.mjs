@@ -181,14 +181,10 @@ const renderMarkdown = (markdown, sourcePath) => {
   return { html, toc }
 }
 
-// The brand mark is the homepage's, byte for byte, so the header reads the same
-// on every page of the site.
-const BRAND_MARK = (size, indent) => `<svg width="${size}" height="${size}" viewBox="0 0 26 26" aria-hidden="true" focusable="false">
-${indent}  <rect width="26" height="26" rx="7.5" fill="#0b1733"/>
-${indent}  <path d="M7.5 8 C12 8 13 13 18.5 13 M7.5 13 H18.5 M7.5 18 C12 18 13 13 18.5 13" fill="none" stroke="#fff" stroke-opacity=".45" stroke-width="1.3" stroke-linecap="round"/>
-${indent}  <circle cx="7.5" cy="8" r="1.9" fill="#fff"/><circle cx="7.5" cy="13" r="1.9" fill="#fff"/><circle cx="7.5" cy="18" r="1.9" fill="#fff"/>
-${indent}  <circle cx="18.5" cy="13" r="3" fill="#e8623a"/>
-${indent}</svg>`
+// The brand mark is the homepage's logo file, so the header reads the same on
+// every page of the site.
+const BRAND_MARK = (height) =>
+  `<img class="brand-mark" src="/assets/img/logo.svg" width="${Math.round((height * 274) / 240)}" height="${height}" alt="" />`
 
 const CHEVRON =
   '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
@@ -286,7 +282,7 @@ const shell = ({
 <header class="site-header">
   <div class="wrap">
     <a class="brand" href="/" aria-label="Dalo home">
-      ${BRAND_MARK(26, "      ")}
+      ${BRAND_MARK(36)}
       dalo
       <span class="brand-section">${section}</span>
     </a>
@@ -331,7 +327,7 @@ ${body}
     <div class="footer-top">
       <div class="footer-brand">
         <a class="brand" href="/" aria-label="Dalo home">
-          ${BRAND_MARK(22, "          ")}
+          ${BRAND_MARK(30)}
           dalo
         </a>
         <p>Git-backed skill management for AI agents. Built in Rust.</p>

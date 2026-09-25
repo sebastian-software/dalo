@@ -94,7 +94,8 @@ svg { display: block; }
 /* ── Header ──────────────────────────────────────────────── */
 .site-header { position: absolute; top: 0; left: 0; right: 0; z-index: 10; }
 .site-header .wrap { display: flex; align-items: center; height: 76px; gap: 40px; }
-.brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 20px; letter-spacing: -.03em; color: var(--ink); }
+.brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 20px; letter-spacing: -.03em; color: var(--ink); }
+.brand-mark { display: block; flex: none; }
 .nav { display: flex; gap: 30px; font-size: 14.5px; font-weight: 500; color: var(--ink-2); }
 .nav a { transition: color .15s; }
 .nav a:hover, .nav a[aria-current="true"] { color: var(--ink); }
