@@ -1,6 +1,44 @@
 # Homepage concept brief
 
-Shared brief for the light homepage concepts in this folder. Every concept is a
+Shared brief for the light homepage concepts in this folder. Read the
+**Direction** section first: it is what the concepts are judged by. The facts
+below it are the pool to draw from, not a list to cover.
+
+## Direction (round 2)
+
+Round 1 (newspaper, blueprint, man page, bento, Swiss poster, commit graph) was
+rejected: the pages were far too full and several leaned on historical
+metaphors. What is wanted instead:
+
+- **A modern technology product.** Dalo should read like the tools that lead
+  in product design today — Vercel, Stripe, GitHub, Linear, Supabase, Resend,
+  Raycast. Crisp, confident, contemporary, precise. No retro, no historical or
+  print metaphors (no newspapers, drawings, typewriters, man pages, posters).
+- **Core messages first, details later.** Someone must understand what Dalo is
+  and why it matters within five seconds of looking at the hero. Everything
+  else is progressive disclosure: a few short sections, then links to the docs.
+- **Restraint.** One message per section, one visual per section, generous
+  whitespace. Headlines of a few words; supporting copy of one or two short
+  sentences. Budget: about 250–400 words of visible copy on the whole page,
+  excluding code, nav, and footer. At most 6–7 sections including hero and
+  final CTA. No walls of cards, no long bullet lists, no tables of numbers.
+- **The three core messages** (the page should be built around these):
+  1. *One source of truth.* Your team's skills live in Git; Dalo resolves one
+     pinned, approved set and links it into every agent's folder, the same on
+     every machine.
+  2. *Reviewed before it reaches an agent.* A local security preflight and an
+     explicit approval gate every skill.
+  3. *Safe by default.* Dalo only touches what it owns — never overwrites your
+     files, shows every change with `--dry-run`.
+  Supporting (short, lower on the page): works with Codex, Claude Code,
+  OpenClaw, Hermes, OpenCode and any folder; three-command quickstart; open
+  source, single Rust binary.
+- **Light** theme, polished product visuals (UI-like cards, a clean light
+  terminal or diagram, subtle depth/gradients where it fits the direction).
+  Motion is welcome but must degrade to a finished static state under
+  `prefers-reduced-motion` (screenshots are taken that way).
+
+ Every concept is a
 single self-contained `NN-slug/index.html` with inline CSS (and at most a small
 inline script for progressive enhancement). Fonts come from `../fonts/*.css`
 (self-hosted, latin subset). No CDN, no external images, no tracking — the same
