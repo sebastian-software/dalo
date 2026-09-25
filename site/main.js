@@ -64,19 +64,31 @@ document.documentElement.classList.add("js");
     area.style.top = "-999px";
     document.body.appendChild(area);
     area.select();
-    document.execCommand("copy");
+    var copied = false;
+    try { copied = document.execCommand("copy"); } catch (error) { copied = false; }
     document.body.removeChild(area);
+    return copied;
   }
 
+  var copyStatus = document.getElementById("copy-status");
+
+  // state is true (copied), false (idle), or "error" (the browser refused).
   function setCopyState(button, state) {
     var label = button.querySelector("span");
     if (!button.dataset.copyLabel && label) {
       button.dataset.copyLabel = label.textContent;
     }
-    button.dataset.copied = state ? "true" : "false";
+    button.dataset.copied = state === true ? "true" : state === "error" ? "error" : "false";
     if (label) {
-      label.textContent = state ? "Copied" : button.dataset.copyLabel;
+      label.textContent = state === true ? "Copied" : state === "error" ? "Copy failed" : button.dataset.copyLabel;
     }
+  }
+
+  // Screen readers hear the result through one polite live region.
+  function announce(message) {
+    if (!copyStatus) return;
+    copyStatus.textContent = "";
+    window.setTimeout(function () { copyStatus.textContent = message; }, 50);
   }
 
   var installCommands = {};
@@ -129,13 +141,18 @@ document.documentElement.classList.add("js");
       var text = commandTextFrom(target);
       var copy = navigator.clipboard && window.isSecureContext
         ? navigator.clipboard.writeText(text)
-        : Promise.resolve(fallbackCopy(text));
+        : new Promise(function (resolve, reject) {
+          if (fallbackCopy(text)) resolve(); else reject(new Error("copy failed"));
+        });
 
       copy.then(function () {
         setCopyState(button, true);
+        announce("Copied to the clipboard.");
         window.setTimeout(function () { setCopyState(button, false); }, 1600);
       }).catch(function () {
-        setCopyState(button, false);
+        setCopyState(button, "error");
+        announce("Copy failed. Select the text and copy it manually.");
+        window.setTimeout(function () { setCopyState(button, false); }, 2400);
       });
     });
   });
