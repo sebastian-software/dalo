@@ -338,7 +338,9 @@ code, pre { font-family: var(--mono); }
   .card-foot { padding: 12px 14px; }
   .v3 .arrow { display: none; }
   .qs li { padding: 16px 16px; gap: 4px 12px; }
-  .qs pre { font-size: 12.5px; }
+  .qs pre { font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .agent-list { gap: 2px 0.55em; }
+  .agent-list li + li::before { display: none; }
   .site-footer nav { margin-left: 0; }
 }
 </style>
