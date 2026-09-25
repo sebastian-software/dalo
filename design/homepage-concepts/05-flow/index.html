@@ -1,0 +1,851 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dalo — Flow concept</title>
+<meta name="description" content="Dalo keeps your team's agent skills in Git and links one reviewed, pinned set into every agent's folder.">
+<link rel="stylesheet" href="../fonts/manrope.css">
+<link rel="stylesheet" href="../fonts/geist-mono.css">
+<style>
+:root {
+  --bg: #f7f9f8;
+  --bg-2: #eef3f1;
+  --ink: #0a1417;
+  --ink-2: #3a484c;
+  --muted: #667579;
+  --faint: #9aa7aa;
+  --line: rgba(14, 38, 44, .09);
+  --line-2: rgba(14, 38, 44, .14);
+  --accent: #0f766e;
+  --accent-ink: #0b5f58;
+  --teal: #14b8a6;
+  --emerald: #10b981;
+  --cyan: #06b6d4;
+  --teal-50: #effcf9;
+  --teal-100: #d3f6ef;
+  --teal-200: #a9ebdf;
+  --amber-ink: #92400e;
+  --amber-50: #fff8eb;
+  --amber-200: #fcdca0;
+  --sans: 'Manrope', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'Geist Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --wrap: 1200px;
+  --gutter: 32px;
+  --shadow-card: inset 0 1px 0 rgba(255,255,255,.95), 0 1px 2px rgba(14,38,44,.05), 0 14px 34px -14px rgba(14,38,44,.16);
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "ss01", "cv11";
+  overflow-x: hidden;
+}
+a { color: inherit; text-decoration: none; }
+code, pre { font-family: var(--mono); }
+.wrap { max-width: calc(var(--wrap) + 2 * var(--gutter)); margin: 0 auto; padding: 0 var(--gutter); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- header ---------- */
+.top {
+  position: sticky; top: 0; z-index: 20;
+  background: rgba(247, 249, 248, .72);
+  backdrop-filter: blur(14px) saturate(1.6);
+  -webkit-backdrop-filter: blur(14px) saturate(1.6);
+  border-bottom: 1px solid var(--line);
+}
+.bar { height: 60px; display: flex; align-items: center; gap: 40px; }
+.brand { display: inline-flex; align-items: center; gap: 9px; font-weight: 800; font-size: 19px; letter-spacing: -.03em; }
+.brand svg { display: block; }
+.nav { display: flex; gap: 28px; font-size: 14px; font-weight: 500; color: var(--ink-2); }
+.nav a:hover, .foot a:hover { color: var(--ink); }
+.bar-end { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 44px; padding: 0 18px; border-radius: 10px;
+  font: 600 15px/1 var(--sans); letter-spacing: -.01em; white-space: nowrap;
+  transition: background-color .15s, box-shadow .15s, color .15s;
+}
+.btn-sm { height: 34px; padding: 0 13px; font-size: 13.5px; border-radius: 8px; }
+.btn-ink { background: var(--ink); color: #fff; box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 1px 2px rgba(10,20,23,.25), 0 6px 16px -6px rgba(10,20,23,.4); }
+.btn-ink:hover { background: #1b282c; }
+.btn-ghost { background: rgba(255,255,255,.7); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-2), 0 1px 2px rgba(14,38,44,.05); }
+.btn-ghost:hover { background: #fff; }
+.btn svg { flex: none; }
+
+/* install pill */
+.install {
+  display: inline-flex; align-items: center; height: 44px; max-width: 100%;
+  border-radius: 10px; background: #fff;
+  box-shadow: inset 0 0 0 1px var(--line-2), 0 1px 2px rgba(14,38,44,.05), 0 8px 22px -12px rgba(14,38,44,.22);
+  font: 450 14px/1 var(--mono);
+}
+.install code { padding: 0 6px 0 16px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; color: var(--ink); }
+.install code::-webkit-scrollbar { display: none; }
+.install code .p { color: var(--teal); margin-right: 10px; user-select: none; }
+.copy {
+  display: none; flex: none; align-items: center; justify-content: center;
+  width: 34px; height: 34px; margin-right: 5px; border: 0; border-radius: 7px;
+  background: transparent; color: var(--muted); cursor: pointer;
+}
+.js .copy { display: inline-flex; }
+.copy:hover { background: var(--bg-2); color: var(--ink); }
+.copy .ok { display: none; color: var(--accent); }
+.copy.done .ok { display: block; }
+.copy.done .cp { display: none; }
+
+/* ---------- hero ---------- */
+.hero { position: relative; padding: 64px 0 40px; isolation: isolate; overflow-x: clip; }
+.hero::before {
+  content: ""; position: absolute; inset: -60px 0 0; z-index: -2;
+  background-image: radial-gradient(rgba(14, 38, 44, .16) 1px, transparent 1.3px);
+  background-size: 22px 22px; background-position: 11px 11px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 62% at 50% 58%, #000 30%, transparent 78%);
+  mask-image: radial-gradient(ellipse 70% 62% at 50% 58%, #000 30%, transparent 78%);
+}
+.hero::after {
+  content: ""; position: absolute; left: 50%; top: 300px; width: 1100px; height: 520px; transform: translateX(-50%); z-index: -1;
+  background:
+    radial-gradient(closest-side, rgba(20, 184, 166, .13), transparent),
+    radial-gradient(closest-side at 30% 60%, rgba(6, 182, 212, .07), transparent),
+    radial-gradient(closest-side at 72% 45%, rgba(16, 185, 129, .08), transparent);
+  pointer-events: none;
+}
+.hero-copy { text-align: center; max-width: 820px; margin: 0 auto; }
+h1 {
+  margin: 0; font-weight: 750; font-size: 64px; line-height: 1.03; letter-spacing: -.042em;
+  text-wrap: balance;
+}
+h1 .grad, .grad {
+  background: linear-gradient(92deg, #0d7a70 5%, #0b8f7a 45%, #0a8a5c 95%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.lede { margin: 20px auto 0; max-width: 600px; font-size: 18.5px; line-height: 1.55; color: var(--ink-2); text-wrap: balance; }
+.ctas { margin-top: 30px; display: flex; justify-content: center; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+/* ---------- stage system ----------
+   Every diagram is a "stage" with its own viewBox (--vw x --vh). Children are
+   positioned in viewBox units (--u), so HTML cards and SVG connectors stay in
+   register at any width. 1em inside a node equals 10 units. */
+.stage {
+  position: relative; width: 100%;
+  aspect-ratio: var(--vw) / var(--vh);
+  container-type: inline-size;
+}
+.stage > .n {
+  --u: calc(100cqw / var(--vw));
+  position: absolute;
+  left: calc(var(--x) * var(--u)); top: calc(var(--y) * var(--u));
+  width: calc(var(--w) * var(--u)); height: calc(var(--h) * var(--u));
+  font-size: calc(10 * var(--u));
+}
+.stage > svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.vlink { display: none; }
+
+.glass {
+  border-radius: 1.2em;
+  background: linear-gradient(180deg, rgba(255,255,255,.9), rgba(255,255,255,.68));
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-card);
+  -webkit-backdrop-filter: blur(12px) saturate(1.5);
+  backdrop-filter: blur(12px) saturate(1.5);
+}
+
+.wire { fill: none; stroke-width: 1.5; stroke-linecap: round; }
+.wire-soft { fill: none; stroke-width: 6; stroke-linecap: round; opacity: .12; }
+.wire-dash { fill: none; stroke: #b8c4c6; stroke-width: 1.5; stroke-dasharray: 3 5; stroke-linecap: round; }
+.port { fill: #fff; stroke: var(--teal); stroke-width: 1.4; }
+.port-dim { fill: #fff; stroke: #b8c4c6; stroke-width: 1.4; }
+.pulse {
+  fill: none; stroke: #5eead4; stroke-width: 3; stroke-linecap: round;
+  stroke-dasharray: 4 96; stroke-dashoffset: var(--s, 50);
+  animation: flow 3.4s cubic-bezier(.45, .05, .55, .95) infinite; animation-delay: var(--d, 0s);
+}
+@keyframes flow {
+  0% { stroke-dashoffset: 100; opacity: 0; }
+  12% { opacity: 1; }
+  88% { opacity: 1; }
+  100% { stroke-dashoffset: 4; opacity: 0; }
+}
+
+/* hero nodes */
+.hero-stage { --vw: 1200; --vh: 410; max-width: 1200px; margin: 44px auto 0; }
+.halo {
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(20,184,166,.32), rgba(6,182,212,.12) 55%, transparent 100%);
+  filter: blur(18px);
+}
+.src { display: flex; flex-direction: column; justify-content: center; gap: .55em; padding: 0 1.4em; }
+.row { display: flex; align-items: center; gap: .9em; }
+.ico {
+  flex: none; display: grid; place-items: center; width: 2.6em; height: 2.6em; border-radius: .75em;
+  background: linear-gradient(180deg, #fff, #f1f5f4); box-shadow: inset 0 0 0 1px var(--line-2), 0 1px 1px rgba(14,38,44,.05);
+  color: var(--ink-2);
+}
+.ico svg { width: 1.5em; height: 1.5em; }
+.src-t { font-size: 1.45em; font-weight: 700; letter-spacing: -.02em; line-height: 1.1; }
+.src-d { display: block; margin-top: .3em; font-size: 1.08em; color: var(--muted); letter-spacing: -.01em; white-space: nowrap; }
+.prio {
+  margin-left: auto; flex: none; font: 500 1.02em/1 var(--mono); color: var(--muted);
+  padding: .45em .6em; border-radius: .5em; background: rgba(14,38,44,.04); box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.core {
+  display: flex; flex-direction: column; padding: 1.8em 1.8em 1.6em;
+  border-radius: 1.6em;
+  background: linear-gradient(180deg, rgba(255,255,255,.94), rgba(250,255,253,.82));
+  border: 1px solid rgba(20, 184, 166, .38);
+  box-shadow: inset 0 1px 0 #fff, 0 0 0 5px rgba(20,184,166,.07), 0 2px 4px rgba(14,38,44,.05), 0 30px 60px -24px rgba(13,120,110,.38);
+  -webkit-backdrop-filter: blur(14px) saturate(1.6);
+  backdrop-filter: blur(14px) saturate(1.6);
+}
+.core-h { display: flex; align-items: center; gap: .8em; }
+.core-h b { font-size: 2em; font-weight: 800; letter-spacing: -.045em; line-height: 1; }
+.core-h code { margin-left: auto; font-size: 1.1em; color: var(--muted); }
+.core-l { margin: 1.7em 0 .6em; font: 500 .98em/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+.set { list-style: none; margin: 0; padding: 0; }
+.set li { display: flex; align-items: center; gap: .8em; height: 3em; border-top: 1px solid var(--line); }
+.set li:last-child { border-bottom: 1px solid var(--line); }
+.set li::before { content: ""; flex: none; width: .6em; height: .6em; border-radius: 50%; background: var(--teal); box-shadow: 0 0 0 .25em rgba(20,184,166,.16); }
+.set code { font-size: 1.22em; color: var(--ink); letter-spacing: -.01em; }
+.set code + code { margin-left: auto; font-size: 1.05em; color: var(--muted); }
+.gates { display: flex; gap: .8em; margin-top: auto; }
+.gate {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: .55em; height: 3.2em; border-radius: .8em;
+  background: var(--teal-50); box-shadow: inset 0 0 0 1px var(--teal-200);
+  font: 500 1.15em/1 var(--mono); color: var(--accent-ink);
+}
+.gate svg { width: 1.2em; height: 1.2em; flex: none; }
+
+.agent { display: flex; align-items: center; gap: 1em; padding: 0 1.3em; }
+.agent .nm { font-size: 1.35em; font-weight: 700; letter-spacing: -.02em; line-height: 1.15; }
+.agent code { display: block; font-size: 1.04em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent > span { min-width: 0; }
+.live { margin-left: auto; flex: none; width: .7em; height: .7em; border-radius: 50%; background: var(--emerald); box-shadow: 0 0 0 .3em rgba(16,185,129,.15); }
+
+.wires-v { display: none; }
+
+/* ---------- sections ---------- */
+.sec { padding: 136px 0; position: relative; }
+.sec + .sec { border-top: 1px solid var(--line); }
+.split { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 72px; align-items: center; }
+.split.rev { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); }
+.split.rev .copy-col { order: 2; }
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 8px; margin: 0 0 20px;
+  font: 500 12.5px/1 var(--mono); letter-spacing: .02em; color: var(--accent);
+  padding: 7px 10px; border-radius: 999px; background: rgba(255,255,255,.7); box-shadow: inset 0 0 0 1px var(--teal-200);
+}
+.eyebrow i { width: 6px; height: 6px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 0 3px rgba(20,184,166,.18); }
+h2 { margin: 0; font-size: 46px; line-height: 1.06; letter-spacing: -.038em; font-weight: 750; text-wrap: balance; }
+.sec p.sub { margin: 20px 0 0; font-size: 18px; line-height: 1.6; color: var(--ink-2); max-width: 30em; text-wrap: pretty; }
+.note { margin: 24px 0 0; padding-top: 20px; border-top: 1px solid var(--line); font-size: 15px; line-height: 1.6; color: var(--muted); max-width: 30em; }
+.note code, .sub code { font-size: .9em; color: var(--ink); background: rgba(14,38,44,.05); padding: 2px 6px; border-radius: 5px; }
+.center { text-align: center; }
+.center .sub { margin-left: auto; margin-right: auto; }
+
+.visual { position: relative; padding: 40px; border-radius: 22px; background: linear-gradient(180deg, rgba(255,255,255,.5), rgba(238,243,241,.6)); box-shadow: inset 0 0 0 1px var(--line); isolation: isolate; overflow: hidden; }
+.visual::before {
+  content: ""; position: absolute; inset: 0; z-index: -1;
+  background-image: radial-gradient(rgba(14, 38, 44, .13) 1px, transparent 1.3px); background-size: 20px 20px; background-position: 10px 10px;
+  -webkit-mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, #000 20%, transparent 90%);
+  mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, #000 20%, transparent 90%);
+}
+
+/* zoom 1 — sources -> set */
+.z1 { --vw: 640; --vh: 352; }
+.card-h { display: flex; align-items: center; gap: .8em; height: 3.8em; padding: 0 1.4em; }
+.card-h .src-t { font-size: 1.35em; }
+.card-h code.q { font-size: 1.05em; color: var(--muted); }
+.lines { list-style: none; margin: 0; padding: 0 .7em; }
+.lines li { display: flex; align-items: center; gap: .7em; height: 2.8em; padding: 0 .7em; border-top: 1px solid var(--line); font-family: var(--mono); line-height: 1; }
+.lines li code { font-size: 1.2em; letter-spacing: -.01em; }
+.lines li .tag { margin-left: auto; font: 500 1.02em/1 var(--mono); color: var(--muted); }
+.lines li.won { color: var(--ink); }
+.lines li.shadow { color: var(--faint); }
+.lines li.shadow code { text-decoration: line-through; text-decoration-color: rgba(14,38,44,.25); }
+.lines li .pill { margin-left: auto; font: 500 .98em/1 var(--mono); padding: .4em .55em; border-radius: .45em; background: rgba(14,38,44,.045); color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
+.setcard { border-color: rgba(20,184,166,.4); box-shadow: inset 0 1px 0 #fff, 0 0 0 4px rgba(20,184,166,.07), 0 24px 48px -22px rgba(13,120,110,.36); }
+.setcard .lines li::before { content: ""; width: .55em; height: .55em; border-radius: 50%; background: var(--teal); flex: none; }
+.setcard .foot-l { display: flex; align-items: center; height: 3.4em; padding: 0 1.4em; border-top: 1px solid var(--line); font: 1.02em/1 var(--mono); color: var(--muted); }
+
+/* zoom 2 — the gates */
+.z2 { --vw: 1060; --vh: 230; }
+.box { display: flex; flex-direction: column; padding: 1.8em 1.9em; }
+.box .k { font: 500 .98em/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+.box .big { margin-top: .9em; font: 500 1.3em/1.2 var(--mono); color: var(--ink); letter-spacing: -.01em; }
+.box .meta { margin-top: .7em; font-size: 1.2em; color: var(--muted); }
+.box .title { margin-top: 1.1em; font-size: 1.6em; font-weight: 700; letter-spacing: -.025em; line-height: 1.15; }
+.box .desc { margin-top: .45em; font-size: 1.22em; line-height: 1.45; color: var(--muted); }
+.box .chip { margin-top: auto; align-self: flex-start; display: inline-flex; align-items: center; gap: .5em; height: 2.6em; padding: 0 .9em; border-radius: .7em; font: 500 1.1em/1 var(--mono); }
+.chip-ok { background: var(--teal-50); color: var(--accent-ink); box-shadow: inset 0 0 0 1px var(--teal-200); }
+.chip-wait { background: var(--amber-50); color: var(--amber-ink); box-shadow: inset 0 0 0 1px var(--amber-200); }
+.chip svg { width: 1.15em; height: 1.15em; }
+.chip-wait i { width: .6em; height: .6em; border-radius: 50%; background: #f59e0b; box-shadow: 0 0 0 .25em rgba(245,158,11,.18); }
+.box .ico { width: 3em; height: 3em; }
+.gatebox { border-color: rgba(20,184,166,.34); }
+.waitbox { background: rgba(255,255,255,.45); border-style: dashed; border-color: var(--line-2); box-shadow: none; }
+.waitbox .big { color: var(--muted); }
+.term-strip {
+  margin: 36px auto 0; max-width: 760px; padding: 16px 20px; border-radius: 12px;
+  background: #fff; box-shadow: inset 0 0 0 1px var(--line-2), 0 10px 26px -16px rgba(14,38,44,.2);
+  font: 13px/1.75 var(--mono); color: var(--ink-2); overflow-x: auto; white-space: pre; text-align: left;
+}
+.term-strip .p { color: var(--teal); }
+.term-strip .w { color: var(--amber-ink); }
+
+/* zoom 3 — the output */
+.z3 { --vw: 600; --vh: 330; }
+.mini { display: flex; align-items: center; justify-content: center; gap: .8em; border-radius: 1.4em; border-color: rgba(20,184,166,.38); box-shadow: inset 0 1px 0 #fff, 0 0 0 4px rgba(20,184,166,.07), 0 20px 40px -20px rgba(13,120,110,.4); }
+.mini b { font-size: 2em; font-weight: 800; letter-spacing: -.045em; }
+.folder .card-h { height: 4.8em; border-bottom: 1px solid var(--line); }
+.folder .card-h code { font-size: 1.2em; color: var(--ink); }
+.ents { list-style: none; margin: 0; padding: .6em .8em; }
+.ents li { display: flex; align-items: center; gap: .9em; height: 6em; padding: 0 .8em; border-radius: .9em; }
+.ents li + li { margin-top: 0; }
+.ents .ico { width: 2.8em; height: 2.8em; }
+.ents .own .ico { color: var(--accent); background: linear-gradient(180deg, #fff, var(--teal-50)); box-shadow: inset 0 0 0 1px var(--teal-200); }
+.ents .nm { display: block; font: 500 1.25em/1.2 var(--mono); color: var(--ink); }
+.ents .to { display: block; margin-top: .35em; font: 1em/1.2 var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ents li > span:not(.badge):not(.ico) { min-width: 0; flex: 1; }
+.badge { flex: none; display: inline-flex; align-items: center; gap: .45em; height: 2.4em; padding: 0 .8em; border-radius: 99em; font-size: 1.08em; font-weight: 600; letter-spacing: -.005em; white-space: nowrap; }
+.badge svg { width: 1.1em; height: 1.1em; }
+.b-own { background: var(--teal-50); color: var(--accent-ink); box-shadow: inset 0 0 0 1px var(--teal-200); }
+.b-mine { background: #f3f5f5; color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line-2); }
+.ents .mine { background: repeating-linear-gradient(135deg, rgba(14,38,44,.028) 0 6px, transparent 6px 12px); }
+
+/* quickstart */
+.qs-head { display: flex; align-items: end; justify-content: space-between; gap: 48px; }
+.qs-head .sub { margin-top: 0; max-width: 26em; }
+.term {
+  margin-top: 48px; border-radius: 16px; background: rgba(255,255,255,.88);
+  box-shadow: inset 0 0 0 1px var(--line-2), inset 0 1px 0 #fff, 0 2px 4px rgba(14,38,44,.04), 0 30px 60px -30px rgba(14,38,44,.28);
+  overflow: hidden;
+}
+.term-bar { display: flex; align-items: center; gap: 7px; height: 44px; padding: 0 18px; border-bottom: 1px solid var(--line); background: linear-gradient(180deg, #fbfcfc, #f4f7f6); }
+.term-bar i { width: 11px; height: 11px; border-radius: 50%; background: #dfe5e4; box-shadow: inset 0 0 0 1px rgba(14,38,44,.08); }
+.term-bar span { margin-left: 12px; font: 12.5px/1 var(--mono); color: var(--muted); }
+.term pre { margin: 0; padding: 22px 26px 26px; font-size: 13.5px; line-height: 1.85; color: var(--ink); overflow-x: auto; }
+.term .c { color: var(--faint); }
+.term .p { color: var(--teal); user-select: none; }
+.term .o { color: var(--muted); }
+.term .ok { color: var(--accent); }
+.step { display: inline-block; min-width: 1.6em; }
+
+/* final cta */
+.final { padding: 150px 0 160px; text-align: center; overflow: hidden; isolation: isolate; }
+.final::before {
+  content: ""; position: absolute; inset: 0; z-index: -1;
+  background-image: radial-gradient(rgba(14, 38, 44, .15) 1px, transparent 1.3px); background-size: 22px 22px; background-position: 11px 11px;
+  -webkit-mask-image: radial-gradient(ellipse 50% 60% at 50% 45%, #000 10%, transparent 80%);
+  mask-image: radial-gradient(ellipse 50% 60% at 50% 45%, #000 10%, transparent 80%);
+}
+.final::after {
+  content: ""; position: absolute; left: 50%; top: 40px; width: 720px; height: 360px; transform: translateX(-50%); z-index: -1;
+  background: radial-gradient(closest-side, rgba(20,184,166,.18), transparent);
+}
+.orb {
+  display: grid; place-items: center; width: 76px; height: 76px; margin: 0 auto 36px; border-radius: 22px;
+  background: linear-gradient(180deg, #fff, #f2fbf8);
+  box-shadow: inset 0 0 0 1px rgba(20,184,166,.4), inset 0 1px 0 #fff, 0 0 0 7px rgba(20,184,166,.07), 0 24px 50px -18px rgba(13,120,110,.5);
+}
+.final h2 { font-size: 56px; }
+.final .sub { margin-left: auto; margin-right: auto; }
+.alt { margin: 28px 0 0; font: 13px/1.8 var(--mono); color: var(--muted); }
+.alt span { color: var(--faint); padding: 0 8px; }
+
+/* footer */
+.foot { border-top: 1px solid var(--line); padding: 28px 0 40px; font-size: 14px; color: var(--muted); }
+.foot .wrap { display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+.foot nav { display: flex; gap: 24px; flex-wrap: wrap; }
+.foot .brand { font-size: 16px; color: var(--ink); }
+.foot .brand small { font-weight: 500; font-size: 13.5px; color: var(--muted); letter-spacing: 0; margin-left: 6px; }
+
+/* ---------- responsive ---------- */
+@media (max-width: 1100px) {
+  .split, .split.rev { grid-template-columns: 1fr; gap: 48px; }
+  .split.rev .copy-col { order: 0; }
+  .sec p.sub, .note { max-width: 36em; }
+}
+@media (max-width: 900px) {
+  :root { --gutter: 16px; }
+  .nav { display: none; }
+  .bar { height: 56px; }
+  .hero { padding: 48px 0 24px; }
+  h1 { font-size: 42px; letter-spacing: -.04em; line-height: 1.06; }
+  .lede { font-size: 17px; margin-top: 16px; }
+  .ctas { margin-top: 26px; flex-direction: column; align-items: stretch; gap: 10px; }
+  .ctas .install { width: 100%; }
+  .ctas .install code { flex: 1; font-size: 13px; -webkit-mask-image: linear-gradient(90deg, #000 84%, transparent); mask-image: linear-gradient(90deg, #000 84%, transparent); }
+  .ctas .row2 { display: flex; gap: 10px; }
+  .ctas .row2 .btn { flex: 1; }
+
+  /* hero graph turns vertical */
+  .hero-stage { --vw: 360; --vh: 612; max-width: 420px; margin-top: 44px; }
+  .hero-stage > .n { left: calc(var(--mx) * var(--u)); top: calc(var(--my) * var(--u)); width: calc(var(--mw) * var(--u)); height: calc(var(--mh) * var(--u)); }
+  .hero-stage .wires-h { display: none; }
+  .hero-stage .wires-v { display: block; }
+  .hero-stage .src { padding: 0 1.1em; gap: .5em; }
+  .hero-stage .src .ico, .hero-stage .src .src-d { display: none; }
+  .hero-stage .src .row { flex-direction: column; align-items: flex-start; gap: .5em; }
+  .hero-stage .src .prio { margin-left: 0; font-size: .98em; padding: .35em .5em; }
+  .hero-stage .agent { padding: 0 1.1em; }
+  .hero-stage .live { display: none; }
+  .hero-stage .agent code { font-size: 1em; }
+
+  .sec { padding: 88px 0; }
+  h2 { font-size: 34px; }
+  .sec p.sub { font-size: 17px; }
+  .final { padding: 100px 0 110px; }
+  .final h2 { font-size: 38px; }
+  .qs-head { flex-direction: column; align-items: flex-start; gap: 16px; }
+  .term pre { font-size: 12.5px; padding: 18px 18px 20px; }
+  .visual { padding: 20px 16px; border-radius: 18px; }
+
+  /* zoom diagrams become a simple vertical flow */
+  .flowable { aspect-ratio: auto; container-type: normal; display: flex; flex-direction: column; align-items: stretch; }
+  .flowable > .n { position: relative; left: auto; top: auto; width: auto; height: auto; --u: 1px; }
+  .flowable > .n.halo { display: none; }
+  .flowable > .n + .n { margin-top: 10px; }
+  .flowable > svg { display: none; }
+  .flowable > .vlink {
+    display: block; position: relative; height: 34px; margin: 0 auto; width: 2px; border-radius: 2px;
+    background: linear-gradient(180deg, rgba(20,184,166,.35), var(--teal));
+  }
+  .flowable > .vlink::after { content: ""; position: absolute; left: 50%; bottom: -4px; width: 8px; height: 8px; transform: translateX(-50%); border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 1.5px var(--teal); }
+  .flowable > .vlink.dim { background: repeating-linear-gradient(180deg, #b8c4c6 0 3px, transparent 3px 7px); }
+  .flowable > .vlink.dim::after { box-shadow: inset 0 0 0 1.5px #b8c4c6; }
+  .flowable > .vlink + .n, .flowable > .n + .vlink { margin-top: 6px; }
+  .z1 .card-h, .z1 .lines li { height: 3.4em; }
+  .flowable .box { padding: 18px; }
+  .flowable .box .chip { margin-top: 16px; }
+  .flowable .mini { height: 60px; }
+  .ents li { height: 5.6em; }
+  .badge { font-size: 1em; padding: 0 .7em; }
+}
+@media (max-width: 420px) {
+  h1 { font-size: 38px; }
+  .ents .to { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .pulse { animation: none; opacity: .95; }
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="mark" viewBox="0 0 24 24">
+      <rect width="24" height="24" rx="7" fill="#0a1417"/>
+      <path d="M7 7.2c4 0 5.2 4.8 9.6 4.8M7 12h9.6M7 16.8c4 0 5.2-4.8 9.6-4.8" fill="none" stroke="#7fd9cb" stroke-opacity=".55" stroke-width="1.3" stroke-linecap="round"/>
+      <circle cx="7" cy="7.2" r="1.7" fill="#fff"/><circle cx="7" cy="12" r="1.7" fill="#fff"/><circle cx="7" cy="16.8" r="1.7" fill="#fff"/>
+      <circle cx="17" cy="12" r="2.8" fill="#2dd4bf"/>
+    </symbol>
+    <symbol id="i-check" viewBox="0 0 16 16"><path d="M3.5 8.4l2.9 2.9 6.1-6.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 16 16"><path d="M2 4.6c0-.6.5-1.1 1.1-1.1h3l1.4 1.5h5.4c.6 0 1.1.5 1.1 1.1v5.8c0 .6-.5 1.1-1.1 1.1H3.1c-.6 0-1.1-.5-1.1-1.1z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></symbol>
+    <symbol id="i-git" viewBox="0 0 16 16"><circle cx="4.5" cy="3.8" r="1.6" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="4.5" cy="12.2" r="1.6" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="11.5" cy="6" r="1.6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M4.5 5.4v5.2M11.5 7.6c0 2.4-2.2 2.9-5.6 3.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="9" y="9" width="4.5" height="4.5" rx="2.25" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 16 16"><path d="M8 1.8l5 1.9v4c0 3.2-2.1 5.4-5 6.5-2.9-1.1-5-3.3-5-6.5v-4z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M5.8 8.1l1.6 1.6 2.9-3.1" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-user" viewBox="0 0 16 16"><circle cx="8" cy="5.6" r="2.6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M3 13.6c.6-2.5 2.6-3.9 5-3.9s4.4 1.4 5 3.9" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
+    <symbol id="i-file" viewBox="0 0 16 16"><path d="M4 2.2h5l3 3v8.6H4z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M9 2.2v3h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></symbol>
+    <symbol id="i-link" viewBox="0 0 16 16"><path d="M6.6 9.4l2.8-2.8M7.2 4.6l1-1a2.5 2.5 0 013.6 3.6l-1 1M8.8 11.4l-1 1a2.5 2.5 0 01-3.6-3.6l1-1" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3.3" y="7" width="9.4" height="6.6" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5.5 7V5.3a2.5 2.5 0 015 0V7" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 16 16"><rect x="5.5" y="5.5" width="8" height="8" rx="1.8" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10.5 3.6V3.3c0-.8-.6-1.3-1.3-1.3H3.8c-.8 0-1.3.6-1.3 1.3v5.4c0 .8.6 1.3 1.3 1.3h.3" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 16 16"><path d="M3 8h9.5M8.8 4.2L12.6 8l-3.8 3.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-gh" viewBox="0 0 16 16"><path fill="currentColor" d="M8 .6a7.4 7.4 0 00-2.3 14.4c.4.1.5-.2.5-.4v-1.3c-2 .4-2.5-.9-2.5-.9-.3-.8-.8-1.1-.8-1.1-.7-.5 0-.5 0-.5.7.1 1.1.8 1.1.8.7 1.1 1.7.8 2.1.6.1-.5.3-.8.5-1-1.6-.2-3.4-.8-3.4-3.6 0-.8.3-1.5.8-2-.1-.2-.3-1 .1-2 0 0 .6-.2 2 .8a7 7 0 013.7 0c1.4-1 2-.8 2-.8.4 1 .2 1.8.1 2 .5.5.8 1.2.8 2 0 2.8-1.7 3.4-3.4 3.6.3.2.5.7.5 1.4v2.1c0 .2.1.5.5.4A7.4 7.4 0 008 .6z"/></symbol>
+  </defs>
+</svg>
+
+<header class="top">
+  <div class="wrap bar">
+    <a class="brand" href="/" aria-label="dalo home"><svg width="26" height="26" aria-hidden="true"><use href="#mark"/></svg>dalo</a>
+    <nav class="nav" aria-label="Primary">
+      <a href="/docs/">Docs</a>
+      <a href="/spec/">Spec</a>
+      <a href="/docs/security.html">Security</a>
+      <a href="/install.md">Install</a>
+    </nav>
+    <div class="bar-end">
+      <a class="btn btn-ghost btn-sm" href="https://github.com/sebastian-software/dalo"><svg width="15" height="15" aria-hidden="true"><use href="#i-gh"/></svg>GitHub</a>
+      <a class="btn btn-ink btn-sm" href="#start">Get started</a>
+    </div>
+  </div>
+</header>
+
+<main>
+<!-- ============ HERO ============ -->
+<section class="hero">
+  <div class="wrap">
+    <div class="hero-copy">
+      <h1>Your team's agent skills, <span class="grad">versioned like&nbsp;code.</span></h1>
+      <p class="lede">Dalo keeps your skills in Git and links one reviewed, pinned set into every agent's folder&nbsp;— the same on every machine.</p>
+      <div class="ctas">
+        <div class="install">
+          <code id="cmd-hero"><span class="p">$</span>curl -fsSL https://dalo.sh/install.sh | sh</code>
+          <button class="copy" type="button" data-copy="cmd-hero" aria-label="Copy install command"><svg class="cp" width="16" height="16" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ok" width="16" height="16" aria-hidden="true"><use href="#i-check"/></svg></button>
+        </div>
+        <div class="row2">
+          <a class="btn btn-ghost" href="/docs/">Read the docs <svg width="15" height="15" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+        </div>
+      </div>
+    </div>
+
+    <figure class="stage hero-stage" style="margin-bottom:0" aria-label="Three sources flow into dalo, pass a security preflight and an approval, and are linked into six agent folders.">
+      <div class="n halo" style="--x:390;--y:30;--w:420;--h:340;--mx:0;--my:110;--mw:360;--mh:280" aria-hidden="true"></div>
+
+      <svg class="wires-h" viewBox="0 0 1200 410" aria-hidden="true">
+        <defs>
+          <linearGradient id="h-gl" gradientUnits="userSpaceOnUse" x1="260" y1="0" x2="450" y2="0"><stop offset="0" stop-color="#a7b6b9"/><stop offset="1" stop-color="#14b8a6"/></linearGradient>
+          <linearGradient id="h-gr" gradientUnits="userSpaceOnUse" x1="750" y1="0" x2="944" y2="0"><stop offset="0" stop-color="#14b8a6"/><stop offset="1" stop-color="#34d399"/></linearGradient>
+          <filter id="h-glow" filterUnits="userSpaceOnUse" x="0" y="0" width="1200" height="410"><feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        </defs>
+        <g stroke="url(#h-gl)">
+          <path class="wire-soft" d="M260 105C355 105 355 170 450 170"/>
+          <path class="wire-soft" d="M260 205C355 205 355 205 450 205"/>
+          <path class="wire-soft" d="M260 305C355 305 355 240 450 240"/>
+          <path class="wire" d="M260 105C355 105 355 170 450 170"/>
+          <path class="wire" d="M260 205C355 205 355 205 450 205"/>
+          <path class="wire" d="M260 305C355 305 355 240 450 240"/>
+        </g>
+        <g stroke="url(#h-gr)">
+          <path class="wire-soft" d="M750 145C847 145 847 50 944 50"/>
+          <path class="wire-soft" d="M750 169C847 169 847 112 944 112"/>
+          <path class="wire-soft" d="M750 193C847 193 847 174 944 174"/>
+          <path class="wire-soft" d="M750 217C847 217 847 236 944 236"/>
+          <path class="wire-soft" d="M750 241C847 241 847 298 944 298"/>
+          <path class="wire-soft" d="M750 265C847 265 847 360 944 360"/>
+          <path class="wire" d="M750 145C847 145 847 50 944 50"/>
+          <path class="wire" d="M750 169C847 169 847 112 944 112"/>
+          <path class="wire" d="M750 193C847 193 847 174 944 174"/>
+          <path class="wire" d="M750 217C847 217 847 236 944 236"/>
+          <path class="wire" d="M750 241C847 241 847 298 944 298"/>
+          <path class="wire" d="M750 265C847 265 847 360 944 360"/>
+        </g>
+        <g filter="url(#h-glow)">
+          <path class="pulse" pathLength="100" style="--d:-.4s;--s:62" d="M260 105C355 105 355 170 450 170"/>
+          <path class="pulse" pathLength="100" style="--d:-1.6s;--s:38" d="M260 205C355 205 355 205 450 205"/>
+          <path class="pulse" pathLength="100" style="--d:-2.7s;--s:74" d="M260 305C355 305 355 240 450 240"/>
+          <path class="pulse" pathLength="100" style="--d:-1.1s;--s:48" d="M750 145C847 145 847 50 944 50"/>
+          <path class="pulse" pathLength="100" style="--d:-2.3s;--s:70" d="M750 169C847 169 847 112 944 112"/>
+          <path class="pulse" pathLength="100" style="--d:-.2s;--s:30" d="M750 193C847 193 847 174 944 174"/>
+          <path class="pulse" pathLength="100" style="--d:-3s;--s:58" d="M750 217C847 217 847 236 944 236"/>
+          <path class="pulse" pathLength="100" style="--d:-1.8s;--s:82" d="M750 241C847 241 847 298 944 298"/>
+          <path class="pulse" pathLength="100" style="--d:-.9s;--s:40" d="M750 265C847 265 847 360 944 360"/>
+        </g>
+        <g>
+          <circle class="port-dim" cx="260" cy="105" r="3.5"/><circle class="port-dim" cx="260" cy="205" r="3.5"/><circle class="port-dim" cx="260" cy="305" r="3.5"/>
+          <circle class="port" cx="450" cy="170" r="3.5"/><circle class="port" cx="450" cy="205" r="3.5"/><circle class="port" cx="450" cy="240" r="3.5"/>
+          <circle class="port" cx="750" cy="145" r="3.5"/><circle class="port" cx="750" cy="169" r="3.5"/><circle class="port" cx="750" cy="193" r="3.5"/><circle class="port" cx="750" cy="217" r="3.5"/><circle class="port" cx="750" cy="241" r="3.5"/><circle class="port" cx="750" cy="265" r="3.5"/>
+          <circle class="port" cx="944" cy="50" r="3.5"/><circle class="port" cx="944" cy="112" r="3.5"/><circle class="port" cx="944" cy="174" r="3.5"/><circle class="port" cx="944" cy="236" r="3.5"/><circle class="port" cx="944" cy="298" r="3.5"/><circle class="port" cx="944" cy="360" r="3.5"/>
+        </g>
+      </svg>
+
+      <svg class="wires-v" viewBox="0 0 360 612" aria-hidden="true">
+        <defs>
+          <linearGradient id="v-gt" gradientUnits="userSpaceOnUse" x1="0" y1="62" x2="0" y2="116"><stop offset="0" stop-color="#a7b6b9"/><stop offset="1" stop-color="#14b8a6"/></linearGradient>
+          <linearGradient id="v-gb" gradientUnits="userSpaceOnUse" x1="0" y1="378" x2="0" y2="590"><stop offset="0" stop-color="#14b8a6"/><stop offset="1" stop-color="#34d399"/></linearGradient>
+          <filter id="v-glow" filterUnits="userSpaceOnUse" x="0" y="0" width="360" height="612"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        </defs>
+        <g stroke="url(#v-gt)">
+          <path class="wire" d="M56 62C56 90 140 88 140 116"/>
+          <path class="wire" d="M180 62C180 90 180 88 180 116"/>
+          <path class="wire" d="M304 62C304 90 220 88 220 116"/>
+        </g>
+        <g stroke="url(#v-gb)">
+          <path class="wire" d="M180 378V456Q180 466 168 466"/>
+          <path class="wire" d="M180 378V456Q180 466 192 466"/>
+          <path class="wire" d="M180 378V514Q180 524 168 524"/>
+          <path class="wire" d="M180 378V514Q180 524 192 524"/>
+          <path class="wire" d="M180 378V572Q180 582 168 582"/>
+          <path class="wire" d="M180 378V572Q180 582 192 582"/>
+        </g>
+        <g filter="url(#v-glow)">
+          <path class="pulse" pathLength="100" style="--d:-.5s;--s:55" d="M56 62C56 90 140 88 140 116"/>
+          <path class="pulse" pathLength="100" style="--d:-1.9s;--s:35" d="M180 62C180 90 180 88 180 116"/>
+          <path class="pulse" pathLength="100" style="--d:-2.8s;--s:70" d="M304 62C304 90 220 88 220 116"/>
+          <path class="pulse" pathLength="100" style="--d:-1.2s;--s:45" d="M180 378V456Q180 466 168 466"/>
+          <path class="pulse" pathLength="100" style="--d:-2.6s;--s:80" d="M180 378V572Q180 582 192 582"/>
+        </g>
+        <g>
+          <circle class="port-dim" cx="56" cy="62" r="3.2"/><circle class="port-dim" cx="180" cy="62" r="3.2"/><circle class="port-dim" cx="304" cy="62" r="3.2"/>
+          <circle class="port" cx="140" cy="116" r="3.2"/><circle class="port" cx="180" cy="116" r="3.2"/><circle class="port" cx="220" cy="116" r="3.2"/>
+          <circle class="port" cx="180" cy="378" r="3.2"/>
+        </g>
+      </svg>
+
+      <!-- sources -->
+      <div class="n glass src" style="--x:20;--y:67;--w:240;--h:76;--mx:0;--my:0;--mw:112;--mh:62">
+        <div class="row"><span class="ico"><svg aria-hidden="true"><use href="#i-folder"/></svg></span><span><span class="src-t">Local</span><code class="src-d">local/skills</code></span><code class="prio">prio 0</code></div>
+      </div>
+      <div class="n glass src" style="--x:20;--y:167;--w:240;--h:76;--mx:124;--my:0;--mw:112;--mh:62">
+        <div class="row"><span class="ico"><svg aria-hidden="true"><use href="#i-git"/></svg></span><span><span class="src-t">Team repo</span><code class="src-d">acme/agent-skills</code></span><code class="prio">prio 10</code></div>
+      </div>
+      <div class="n glass src" style="--x:20;--y:267;--w:240;--h:76;--mx:248;--my:0;--mw:112;--mh:62">
+        <div class="row"><span class="ico"><svg aria-hidden="true"><use href="#i-grid"/></svg></span><span><span class="src-t">Catalog</span><code class="src-d">sebastian</code></span><code class="prio">prio 20</code></div>
+      </div>
+
+      <!-- dalo -->
+      <div class="n core" style="--x:450;--y:80;--w:300;--h:250;--mx:20;--my:116;--mw:320;--mh:262">
+        <div class="core-h"><svg width="26" height="26" style="width:2.6em;height:2.6em" aria-hidden="true"><use href="#mark"/></svg><b>dalo</b><code>~/.dalo</code></div>
+        <div class="core-l">Resolved set</div>
+        <ul class="set">
+          <li><code>incident-review</code><code>company</code></li>
+          <li><code>release-notes</code><code>local</code></li>
+          <li><code>effective-web</code><code>sebastian</code></li>
+        </ul>
+        <div class="gates">
+          <span class="gate"><svg aria-hidden="true"><use href="#i-check"/></svg>preflight</span>
+          <span class="gate"><svg aria-hidden="true"><use href="#i-check"/></svg>approved</span>
+        </div>
+      </div>
+
+      <!-- agents -->
+      <div class="n glass agent" style="--x:944;--y:25;--w:236;--h:50;--mx:0;--my:442;--mw:168;--mh:48"><span><span class="nm">Codex</span><code>~/.agents/skills</code></span><i class="live"></i></div>
+      <div class="n glass agent" style="--x:944;--y:87;--w:236;--h:50;--mx:192;--my:442;--mw:168;--mh:48"><span><span class="nm">Claude Code</span><code>~/.claude/skills</code></span><i class="live"></i></div>
+      <div class="n glass agent" style="--x:944;--y:149;--w:236;--h:50;--mx:0;--my:500;--mw:168;--mh:48"><span><span class="nm">OpenClaw</span><code>~/.agents/skills</code></span><i class="live"></i></div>
+      <div class="n glass agent" style="--x:944;--y:211;--w:236;--h:50;--mx:192;--my:500;--mw:168;--mh:48"><span><span class="nm">Hermes</span><code>~/.hermes/skills</code></span><i class="live"></i></div>
+      <div class="n glass agent" style="--x:944;--y:273;--w:236;--h:50;--mx:0;--my:558;--mw:168;--mh:48"><span><span class="nm">OpenCode</span><code>~/.config/opencode/skills</code></span><i class="live"></i></div>
+      <div class="n glass agent" style="--x:944;--y:335;--w:236;--h:50;--mx:192;--my:558;--mw:168;--mh:48"><span><span class="nm">Any folder</span><code>generic &lt;path&gt;</code></span><i class="live"></i></div>
+    </figure>
+  </div>
+</section>
+
+<!-- ============ 1 · ONE SOURCE OF TRUTH ============ -->
+<section class="sec" id="truth">
+  <div class="wrap split">
+    <div class="copy-col">
+      <p class="eyebrow"><i></i>sources &nbsp;/&nbsp; set</p>
+      <h2>One source of truth.</h2>
+      <p class="sub">Skills live in Git. Dalo resolves one pinned set from every source: same inputs, byte-for-byte the same result on every machine.</p>
+      <p class="note">Same skill in two sources? The lower priority number wins, and the other is reported as <code>shadowed</code>.</p>
+    </div>
+    <div class="visual">
+      <div class="stage z1 flowable" role="img" aria-label="Local, team and catalog skills resolve into one set; the team's release-notes is shadowed by the local one.">
+        <svg viewBox="0 0 640 352" aria-hidden="true">
+          <defs>
+            <linearGradient id="z1-g" gradientUnits="userSpaceOnUse" x1="230" y1="0" x2="390" y2="0"><stop offset="0" stop-color="#a7b6b9"/><stop offset="1" stop-color="#14b8a6"/></linearGradient>
+            <filter id="z1-glow" filterUnits="userSpaceOnUse" x="0" y="0" width="640" height="352"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          </defs>
+          <g stroke="url(#z1-g)">
+            <path class="wire" d="M230 82C310 82 310 162 390 162"/>
+            <path class="wire" d="M230 186C310 186 310 190 390 190"/>
+            <path class="wire" d="M230 290C310 290 310 218 390 218"/>
+          </g>
+          <path class="wire-dash" d="M230 214h22"/>
+          <g filter="url(#z1-glow)">
+            <path class="pulse" pathLength="100" style="--d:-.6s;--s:56" d="M230 82C310 82 310 162 390 162"/>
+            <path class="pulse" pathLength="100" style="--d:-1.9s;--s:34" d="M230 186C310 186 310 190 390 190"/>
+            <path class="pulse" pathLength="100" style="--d:-2.9s;--s:72" d="M230 290C310 290 310 218 390 218"/>
+          </g>
+          <circle class="port-dim" cx="230" cy="82" r="3.5"/><circle class="port-dim" cx="230" cy="186" r="3.5"/><circle class="port-dim" cx="230" cy="290" r="3.5"/><circle class="port-dim" cx="230" cy="214" r="3.5"/>
+          <circle class="port" cx="390" cy="162" r="3.5"/><circle class="port" cx="390" cy="190" r="3.5"/><circle class="port" cx="390" cy="218" r="3.5"/>
+        </svg>
+        <div class="n glass" style="--x:0;--y:30;--w:230;--h:76">
+          <div class="card-h"><span class="src-t">Local</span><code class="prio">prio 0</code></div>
+          <ul class="lines"><li class="won"><code>release-notes</code></li></ul>
+        </div>
+        <div class="n glass" style="--x:0;--y:134;--w:230;--h:104">
+          <div class="card-h"><span class="src-t">Team repo</span><code class="prio">prio 10</code></div>
+          <ul class="lines"><li class="won"><code>incident-review</code></li><li class="shadow"><code>release-notes</code><span class="pill">shadowed</span></li></ul>
+        </div>
+        <div class="n glass" style="--x:0;--y:238;--w:230;--h:76">
+          <div class="card-h"><span class="src-t">Catalog</span><code class="prio">prio 20</code></div>
+          <ul class="lines"><li class="won"><code>effective-web</code></li></ul>
+        </div>
+        <span class="vlink" aria-hidden="true"></span>
+        <div class="n glass setcard" style="--x:390;--y:110;--w:250;--h:156">
+          <div class="card-h"><svg width="20" height="20" style="width:2em;height:2em" aria-hidden="true"><use href="#mark"/></svg><span class="src-t">Resolved set</span></div>
+          <ul class="lines"><li><code>release-notes</code><span class="tag">local</span></li><li><code>incident-review</code><span class="tag">company</span></li><li><code>effective-web</code><span class="tag">sebastian</span></li></ul>
+          <div class="foot-l">lock.toml &middot; pinned</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2 · REVIEWED ============ -->
+<section class="sec" id="reviewed">
+  <div class="wrap">
+    <div class="center">
+      <p class="eyebrow"><i></i>the gates</p>
+      <h2>Reviewed before it reaches an&nbsp;agent.</h2>
+      <p class="sub">A local security preflight and your explicit approval gate every skill. Until both pass, nothing is linked.</p>
+    </div>
+    <div class="visual" style="margin-top:56px">
+      <div class="stage z2 flowable" role="img" aria-label="A catalog skill passes the security preflight, waits for approval, and only then reaches the agent folder.">
+        <svg viewBox="0 0 1060 230" aria-hidden="true">
+          <defs>
+            <linearGradient id="z2-g" gradientUnits="userSpaceOnUse" x1="200" y1="0" x2="580" y2="0"><stop offset="0" stop-color="#a7b6b9"/><stop offset=".45" stop-color="#14b8a6"/><stop offset="1" stop-color="#14b8a6"/></linearGradient>
+            <filter id="z2-glow" filterUnits="userSpaceOnUse" x="0" y="0" width="1060" height="230"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          </defs>
+          <g stroke="url(#z2-g)"><path class="wire" d="M200 115H270"/><path class="wire" d="M510 115H580"/></g>
+          <path class="wire-dash" d="M820 115H890"/>
+          <g filter="url(#z2-glow)">
+            <path class="pulse" pathLength="100" style="--d:-.8s;--s:50" d="M200 115H270"/>
+            <path class="pulse" pathLength="100" style="--d:-2.2s;--s:60" d="M510 115H580"/>
+          </g>
+          <circle class="port-dim" cx="200" cy="115" r="3.5"/><circle class="port" cx="270" cy="115" r="3.5"/>
+          <circle class="port" cx="510" cy="115" r="3.5"/><circle class="port" cx="580" cy="115" r="3.5"/>
+          <circle class="port-dim" cx="820" cy="115" r="3.5"/><circle class="port-dim" cx="890" cy="115" r="3.5"/>
+        </svg>
+        <div class="n glass box" style="--x:0;--y:60;--w:200;--h:110">
+          <span class="k">Catalog skill</span>
+          <code class="big">sebastian:effective-web</code>
+          <span class="meta">selected &middot; pinned</span>
+        </div>
+        <span class="vlink" aria-hidden="true"></span>
+        <div class="n glass box gatebox" style="--x:270;--y:30;--w:240;--h:170">
+          <span class="ico" style="color:var(--accent)"><svg aria-hidden="true"><use href="#i-shield"/></svg></span>
+          <span class="title">Security preflight</span>
+          <span class="desc">15 deterministic rules, run locally.</span>
+          <span class="chip chip-ok"><svg aria-hidden="true"><use href="#i-check"/></svg>passed</span>
+        </div>
+        <span class="vlink" aria-hidden="true"></span>
+        <div class="n glass box gatebox" style="--x:580;--y:30;--w:240;--h:170">
+          <span class="ico" style="color:var(--accent)"><svg aria-hidden="true"><use href="#i-user"/></svg></span>
+          <span class="title">Your approval</span>
+          <span class="desc">Explicit, recorded in your store.</span>
+          <span class="chip chip-wait"><i></i>pending</span>
+        </div>
+        <span class="vlink dim" aria-hidden="true"></span>
+        <div class="n glass box waitbox" style="--x:890;--y:60;--w:170;--h:110">
+          <span class="k">Agent folder</span>
+          <code class="big">~/.claude/skills</code>
+          <span class="meta">not linked yet</span>
+        </div>
+      </div>
+      <pre class="term-strip"><span class="p">$</span> dalo sync
+<span class="w">pending approval: sebastian:effective-web (run: dalo approve skill sebastian:effective-web)</span></pre>
+    </div>
+    <p class="note center" style="max-width:40em;margin-left:auto;margin-right:auto;border-top:0">High and critical findings block until you explicitly accept the risk. A passing preflight is a gate, not a guarantee.</p>
+  </div>
+</section>
+
+<!-- ============ 3 · SAFE BY DEFAULT ============ -->
+<section class="sec" id="safe">
+  <div class="wrap split rev">
+    <div class="copy-col">
+      <p class="eyebrow"><i></i>the output</p>
+      <h2>Safe by default.</h2>
+      <p class="sub">Dalo only touches the links it owns. It never overwrites your files, and <code>--dry-run</code> shows every change first.</p>
+      <p class="note">A team checkout with uncommitted edits blocks the refresh instead of losing your work.</p>
+    </div>
+    <div class="visual">
+      <div class="stage z3 flowable" role="img" aria-label="In ~/.claude/skills, two links are owned by dalo; a real folder you created stays untouched.">
+        <svg viewBox="0 0 600 330" aria-hidden="true">
+          <defs>
+            <linearGradient id="z3-g" gradientUnits="userSpaceOnUse" x1="140" y1="0" x2="232" y2="0"><stop offset="0" stop-color="#14b8a6"/><stop offset="1" stop-color="#34d399"/></linearGradient>
+            <filter id="z3-glow" filterUnits="userSpaceOnUse" x="0" y="0" width="600" height="330"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          </defs>
+          <g stroke="url(#z3-g)">
+            <path class="wire" d="M140 155C186 155 186 125 232 125"/>
+            <path class="wire" d="M140 175C186 175 186 185 232 185"/>
+          </g>
+          <g filter="url(#z3-glow)">
+            <path class="pulse" pathLength="100" style="--d:-.7s;--s:52" d="M140 155C186 155 186 125 232 125"/>
+            <path class="pulse" pathLength="100" style="--d:-2.1s;--s:30" d="M140 175C186 175 186 185 232 185"/>
+          </g>
+          <circle class="port" cx="140" cy="155" r="3.5"/><circle class="port" cx="140" cy="175" r="3.5"/>
+          <circle class="port" cx="232" cy="125" r="3.5"/><circle class="port" cx="232" cy="185" r="3.5"/>
+        </svg>
+        <div class="n glass mini" style="--x:0;--y:125;--w:140;--h:80"><svg width="26" height="26" style="width:2.6em;height:2.6em" aria-hidden="true"><use href="#mark"/></svg><b>dalo</b></div>
+        <span class="vlink" aria-hidden="true"></span>
+        <div class="n glass folder" style="--x:220;--y:24;--w:380;--h:282">
+          <div class="card-h"><span class="ico"><svg aria-hidden="true"><use href="#i-folder"/></svg></span><code>~/.claude/skills</code></div>
+          <ul class="ents">
+            <li class="own"><span class="ico"><svg aria-hidden="true"><use href="#i-link"/></svg></span><span><code class="nm">incident-review</code><code class="to">-&gt; store:/sources/company/checkout/skills/incident-review</code></span><span class="badge b-own"><svg aria-hidden="true"><use href="#i-check"/></svg>owned by dalo</span></li>
+            <li class="own"><span class="ico"><svg aria-hidden="true"><use href="#i-link"/></svg></span><span><code class="nm">release-notes</code><code class="to">-&gt; store:/local/skills/release-notes</code></span><span class="badge b-own"><svg aria-hidden="true"><use href="#i-check"/></svg>owned by dalo</span></li>
+            <li class="mine"><span class="ico"><svg aria-hidden="true"><use href="#i-folder"/></svg></span><span><code class="nm">my-draft/</code><code class="to">real folder</code></span><span class="badge b-mine"><svg aria-hidden="true"><use href="#i-lock"/></svg>your file, untouched</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ QUICKSTART ============ -->
+<section class="sec" id="start">
+  <div class="wrap">
+    <div class="qs-head">
+      <div>
+        <p class="eyebrow"><i></i>quickstart</p>
+        <h2>Running in three steps.</h2>
+      </div>
+      <p class="sub">One Rust binary, no daemon, just <code>git</code> on your PATH. For macOS and Linux.</p>
+    </div>
+    <div class="term">
+      <div class="term-bar"><i></i><i></i><i></i><span>~/work</span></div>
+<pre><code><span class="c"># 1 · set up and link an agent</span>
+<span class="p">$ </span>dalo init
+<span class="p">$ </span>dalo target link codex
+
+<span class="c"># 2 · add your team's skills</span>
+<span class="p">$ </span>dalo source add company git@github.com:acme/agent-skills.git
+
+<span class="c"># 3 · sync</span>
+<span class="p">$ </span>dalo sync
+<span class="ok">applied  create</span><span class="o">     target[codex]:/incident-review -&gt; store:/sources/company/checkout/skills/incident-review</span>
+<span class="ok">applied  create</span><span class="o">     target[codex]:/release-notes -&gt; store:/sources/company/checkout/skills/release-notes</span>
+<span class="o">synced: 2 skills across 1 target (2 created)</span>
+<span class="o">security preflight: deterministic checks only</span></code></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FINAL CTA ============ -->
+<section class="sec final">
+  <div class="wrap">
+    <div class="orb"><svg width="40" height="40" aria-hidden="true"><use href="#mark"/></svg></div>
+    <h2>One reviewed set. <span class="grad">Every&nbsp;agent.</span></h2>
+    <p class="sub">Open source under MIT or Apache-2.0.</p>
+    <div class="ctas">
+      <div class="install">
+        <code id="cmd-final"><span class="p">$</span>curl -fsSL https://dalo.sh/install.sh | sh</code>
+        <button class="copy" type="button" data-copy="cmd-final" aria-label="Copy install command"><svg class="cp" width="16" height="16" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ok" width="16" height="16" aria-hidden="true"><use href="#i-check"/></svg></button>
+      </div>
+      <div class="row2">
+        <a class="btn btn-ghost" href="https://github.com/sebastian-software/dalo"><svg width="16" height="16" aria-hidden="true"><use href="#i-gh"/></svg>Star on GitHub</a>
+      </div>
+    </div>
+    <p class="alt"><code>brew install sebastian-software/tap/dalo</code><span>/</span><code>npx getdalo</code><span>/</span><code>cargo binstall dalo</code></p>
+  </div>
+</section>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <span class="brand"><svg width="20" height="20" aria-hidden="true"><use href="#mark"/></svg>dalo<small>by Sebastian Software</small></span>
+    <nav aria-label="Footer">
+      <a href="https://github.com/sebastian-software/dalo">GitHub</a>
+      <a href="/docs/">Docs</a>
+      <a href="/spec/">Spec</a>
+      <a href="/docs/security.html">Security</a>
+      <a href="/install.md">Install guide</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+document.documentElement.classList.add('js');
+document.querySelectorAll('[data-copy]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    var el = document.getElementById(b.getAttribute('data-copy'));
+    var text = el.textContent.replace(/^\$\s*/, '').trim();
+    var done = function () { b.classList.add('done'); setTimeout(function () { b.classList.remove('done'); }, 1400); };
+    if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, function () {});
+  });
+});
+</script>
+</body>
+</html>
