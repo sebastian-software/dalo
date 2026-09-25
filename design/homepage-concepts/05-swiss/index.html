@@ -1,0 +1,952 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dalo — Swiss concept</title>
+<meta name="description" content="Dalo keeps your team's agent skills in Git: one approved set, resolved the same way on every machine and reviewed before it reaches any agent folder.">
+<link rel="stylesheet" href="../fonts/inter-tight.css">
+<link rel="stylesheet" href="../fonts/space-mono.css">
+<style>
+:root {
+  --paper: #ffffff;
+  --ink: #0b0b0b;
+  --red: #ff4b1f;
+  --mute: #5f5f5f;       /* 6.4:1 on white, small secondary text */
+  --ghost: #8a8a8a;      /* 3.4:1, only for very large numerals */
+  --hair: rgba(0, 0, 0, .085);
+  --n: 12;
+  --m: clamp(16px, 2.8vw, 56px);
+  --g: clamp(12px, 1.39vw, 28px);
+  --sans: 'Inter Tight', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --mono: 'Space Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+}
+@media (max-width: 760px) {
+  :root { --n: 4; }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 17px;
+  line-height: 1.4;
+  font-feature-settings: "tnum" 0, "ss01" 0;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
+}
+a { color: inherit; }
+code, pre, .mono { font-family: var(--mono); }
+p, h1, h2, h3, ul, ol, dl, dd, figure, pre { margin: 0; }
+ul, ol { padding: 0; list-style: none; }
+h1, h2, blockquote, .statement, .flow li { word-spacing: .11em; }
+h3, .with li, .cmp .v, .band li span, .nums span, .rules h3, .cta .links a { word-spacing: .05em; }
+em.x { font-style: normal; color: var(--red); }
+::selection { background: var(--red); color: var(--ink); }
+:focus-visible { outline: 3px solid var(--red); outline-offset: 3px; }
+
+.skip { position: absolute; left: -9999px; top: 0; }
+.skip:focus { left: var(--m); z-index: 10; background: var(--ink); color: var(--paper); padding: 8px 12px; }
+
+/* ---------- The grid, drawn ---------- */
+.page { position: relative; }
+.page::before {
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0;
+  left: calc(var(--m) - var(--g) / 2);
+  right: calc(var(--m) - var(--g) / 2);
+  pointer-events: none;
+  background-image: repeating-linear-gradient(90deg, var(--hair) 0 1px, transparent 1px calc(100% / var(--n)));
+  border-right: 1px solid var(--hair);
+  z-index: 0;
+}
+.page > * { position: relative; z-index: 1; }
+.wrap { padding-inline: var(--m); }
+.grid {
+  display: grid;
+  grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+  column-gap: var(--g);
+}
+
+/* ---------- Type scale ---------- */
+.cap {
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: .01em;
+}
+.cap .mono, .cap.mono { font-weight: 400; letter-spacing: 0; }
+.mute { color: var(--mute); }
+.red { color: var(--red); }
+
+/* ---------- Masthead ---------- */
+.mast {
+  padding-block: 18px 16px;
+  align-items: baseline;
+  border-bottom: 1px solid var(--ink);
+}
+.brand { grid-column: 1 / span 2; display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.brand svg { width: 30px; height: 20px; flex: none; transform: translateY(1px); }
+.brand b { font-size: 24px; font-weight: 900; letter-spacing: -.05em; line-height: 1; }
+.mast .what { grid-column: 3 / span 3; }
+.mast .facts { grid-column: 6 / span 3; }
+.mast nav { grid-column: 9 / -1; display: flex; justify-content: space-between; gap: var(--g); }
+.mast nav a { text-decoration: none; font-size: 14px; font-weight: 600; }
+.mast nav a:hover { color: var(--red); }
+.mast nav a.install { border-bottom: 2px solid var(--ink); }
+
+/* ---------- Hero ---------- */
+.hero { padding-top: clamp(28px, 3.2vw, 56px); padding-bottom: clamp(40px, 4.4vw, 72px); }
+.hero .grid { grid-template-rows: auto auto; row-gap: clamp(28px, 3vw, 48px); }
+.hero h1 {
+  grid-column: 1 / -1; grid-row: 1;
+  font-size: clamp(56px, 11.6vw, 232px);
+  line-height: .84;
+  font-weight: 900;
+  letter-spacing: -.062em;
+  margin-left: -.045em;
+  position: relative; z-index: 2;
+}
+.hero h1 span { display: block; }
+.hero .lede {
+  grid-column: 1 / span 4; grid-row: 2;
+  font-size: clamp(17px, 1.39vw, 22px);
+  line-height: 1.32;
+  font-weight: 500;
+  align-self: end;
+}
+.hero .get { grid-column: 5 / span 4; grid-row: 2; align-self: end; }
+.one {
+  grid-column: 9 / -1; grid-row: 1 / span 2;
+  align-self: end;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--red);
+  position: relative;
+  display: flex; flex-direction: column; justify-content: center;
+  padding-left: 15%;
+}
+.one b {
+  font-size: clamp(120px, 17vw, 330px);
+  line-height: .72;
+  font-weight: 900;
+  letter-spacing: -.06em;
+  display: block;
+  margin-left: -.06em;
+}
+.one span { font-size: clamp(14px, 1.25vw, 20px); font-weight: 700; line-height: 1.2; margin-top: 1.1em; max-width: 12em; }
+
+.get .cap { display: flex; justify-content: space-between; align-items: end; border-bottom: 1px solid var(--ink); padding-bottom: 8px; min-height: 30px; }
+.get .cap code { font-size: 11.5px; font-weight: 400; }
+.cmd {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: var(--ink); color: var(--paper);
+  font-family: var(--mono); font-size: clamp(11.5px, .99vw, 16px);
+  padding: 15px 16px;
+  margin-top: 12px;
+}
+.cmd code { white-space: nowrap; overflow-x: auto; scrollbar-width: none; }
+.cmd code::-webkit-scrollbar { display: none; }
+.cmd code::before { content: "$ "; color: var(--red); }
+.copy {
+  display: none;
+  font: 700 11.5px var(--mono); text-transform: lowercase;
+  background: var(--red); color: var(--ink); border: 0; padding: 4px 9px; margin-bottom: -2px; cursor: pointer; flex: none;
+}
+.js .copy { display: block; }
+.get .alt { margin-top: 12px; font-size: 13px; line-height: 1.5; }
+.get .alt code { font-size: 12.5px; }
+
+/* ---------- Numeral band ---------- */
+.band { border-top: 1px solid var(--ink); margin-bottom: clamp(72px, 8vw, 150px); }
+.band ol { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; }
+.band li { grid-column: span 4; padding-block: 14px 44px; display: grid; grid-template-columns: subgrid; }
+.band li:nth-child(n+2) { border-left: 1px solid var(--ink); margin-left: calc(var(--g) / -2); padding-left: calc(var(--g) / 2); }
+.band b {
+  grid-column: span 2;
+  font-size: clamp(64px, 9vw, 176px); font-weight: 900; letter-spacing: -.06em; line-height: .8;
+}
+.band li span { grid-column: span 2; align-self: end; font-size: 15px; font-weight: 600; line-height: 1.25; }
+
+/* ---------- Sections ---------- */
+.sec { padding-bottom: clamp(88px, 10vw, 180px); }
+.head { border-top: 3px solid var(--ink); padding-top: 14px; row-gap: 10px; align-items: start; }
+.head .no {
+  grid-column: 1 / span 3; grid-row: 1 / span 2;
+  font-size: clamp(72px, 10.4vw, 210px);
+  line-height: .74;
+  font-weight: 900;
+  letter-spacing: -.07em;
+  margin-left: -.05em;
+  color: var(--red);
+}
+.head .label { grid-column: 4 / span 5; }
+.head .meta { grid-column: 9 / -1; text-align: right; }
+.head h2 {
+  grid-column: 4 / -1;
+  font-size: clamp(40px, 5.8vw, 118px);
+  line-height: .9;
+  font-weight: 850;
+  letter-spacing: -.052em;
+  margin-top: clamp(24px, 3vw, 56px);
+  margin-left: -.04em;
+}
+.body { margin-top: clamp(40px, 5vw, 96px); row-gap: clamp(40px, 4vw, 72px); }
+.p { font-size: clamp(17px, 1.3vw, 21px); line-height: 1.38; font-weight: 450; }
+.p code, li code, dd code, td code { font-size: .86em; }
+.statement {
+  font-size: clamp(30px, 3.6vw, 68px);
+  font-weight: 800;
+  line-height: .98;
+  letter-spacing: -.045em;
+}
+
+/* 01 problem */
+.intro01 { grid-column: 4 / span 5; }
+.flow { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; }
+.flow .cap { grid-column: 1 / span 3; padding-top: 12px; border-top: 1px solid var(--ink); }
+.flow ol { grid-column: 4 / -1; border-top: 1px solid var(--ink); }
+.flow li {
+  display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); column-gap: var(--g);
+  border-bottom: 1px solid var(--hair);
+  padding-block: .12em .16em;
+  font-size: clamp(24px, 3.3vw, 64px);
+  line-height: 1.02;
+  letter-spacing: -.04em;
+  font-weight: 500;
+}
+.flow li b { grid-column: span 2; font-weight: 900; }
+.flow li span { grid-column: span 7; }
+.flow li.hope b { color: var(--red); }
+.with { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; row-gap: 28px; }
+.with .cap { grid-column: 1 / span 3; padding-top: 12px; border-top: 1px solid var(--ink); }
+.with ul { grid-column: 4 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: var(--g); row-gap: 24px; }
+.with li { border-top: 3px solid var(--ink); padding-top: 10px; font-size: clamp(18px, 1.5vw, 24px); font-weight: 700; line-height: 1.15; letter-spacing: -.02em; }
+.with li i { font-style: normal; display: block; font: 400 12px var(--mono); margin-bottom: 18px; letter-spacing: 0; }
+
+/* 02 model */
+.model { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; position: relative; }
+.model::before {
+  content: ""; position: absolute; left: 0; right: 0;
+  top: calc(var(--fig) / 2 - 3px); height: 6px; background: var(--ink);
+}
+.model { --fig: clamp(120px, 11vw, 210px); }
+.stage { grid-column: span 2; position: relative; }
+.stage.out { grid-column: span 4; }
+.fig { height: var(--fig); position: relative; display: flex; align-items: center; margin-bottom: 22px; }
+.fig svg { height: 100%; width: 100%; overflow: visible; display: block; }
+.fig .sq { width: 62%; aspect-ratio: 1; max-height: 100%; background: var(--ink); }
+.fig .gate { width: 22%; height: 100%; background: var(--ink); position: relative; }
+.fig .dot { width: 78%; max-height: 100%; aspect-ratio: 1; border-radius: 50%; background: var(--red); }
+.stage.out .fig { background: var(--paper); }
+.stage .step { font: 400 12px var(--mono); display: block; border-top: 1px solid var(--ink); padding-top: 8px; }
+.stage h3 { font-size: clamp(21px, 1.75vw, 30px); font-weight: 800; letter-spacing: -.035em; line-height: 1.02; margin-top: 6px; }
+.stage p { font-size: 15px; line-height: 1.38; margin-top: 10px; max-width: 26em; }
+.stage .path { font: 400 12.5px/1.6 var(--mono); margin-top: 10px; }
+.model-note { grid-column: 4 / span 8; }
+
+/* 03 resolution */
+.prio { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; }
+.prio li { grid-column: span 4; }
+.prio b {
+  display: block;
+  font-size: clamp(140px, 25vw, 520px);
+  line-height: .74;
+  font-weight: 900;
+  letter-spacing: -.075em;
+  margin-left: -.035em;
+  color: var(--ghost);
+}
+.prio li:first-child b { color: var(--red); }
+.prio .who { display: flex; justify-content: space-between; align-items: baseline; border-top: 3px solid var(--ink); margin-top: clamp(18px, 2vw, 32px); padding-top: 10px; }
+.prio .who strong { font-size: clamp(22px, 2vw, 34px); font-weight: 800; letter-spacing: -.035em; }
+.prio .who .mono { font-size: 12.5px; }
+.prio .state { font: 700 13px var(--mono); margin-top: 8px; display: inline-block; padding: 3px 8px; border: 1.5px solid var(--ink); }
+.prio li:first-child .state { background: var(--ink); color: var(--paper); }
+.res-a { grid-column: 1 / span 4; }
+.res-b { grid-column: 5 / span 4; }
+.res-c { grid-column: 9 / span 4; }
+
+/* 04 safety */
+.poster {
+  background: var(--red);
+  position: relative;
+  margin-top: clamp(40px, 5vw, 96px);
+  padding-block: clamp(28px, 3vw, 56px) clamp(44px, 5vw, 96px);
+}
+.poster::before {
+  content: ""; position: absolute; inset: 0 calc(var(--m) - var(--g) / 2);
+  background-image: repeating-linear-gradient(90deg, rgba(0,0,0,.14) 0 1px, transparent 1px calc(100% / var(--n)));
+  border-right: 1px solid rgba(0,0,0,.14);
+  pointer-events: none;
+}
+.poster .grid { position: relative; }
+.poster .cap { grid-column: 1 / span 3; }
+.poster .cap2 { grid-column: 10 / -1; text-align: right; }
+.poster blockquote {
+  grid-column: 1 / -1; margin: clamp(32px, 4vw, 72px) 0 0;
+  font-size: clamp(44px, 8.4vw, 172px);
+  line-height: .86;
+  font-weight: 900;
+  letter-spacing: -.06em;
+  margin-left: -.04em;
+}
+.poster blockquote span { display: block; }
+.poster blockquote .in { padding-left: calc((100% + var(--g)) / 12 * 3); }
+.rules { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; row-gap: clamp(40px, 4vw, 64px); }
+.rules li { grid-column: span 4; border-top: 1px solid var(--ink); padding-top: 12px; display: grid; grid-template-columns: subgrid; }
+.rules li b { grid-column: span 1; font-size: clamp(44px, 4.4vw, 84px); line-height: .78; font-weight: 900; letter-spacing: -.06em; }
+.rules li div { grid-column: span 3; }
+.rules h3 { font-size: clamp(19px, 1.5vw, 25px); font-weight: 800; letter-spacing: -.03em; line-height: 1.08; }
+.rules p { font-size: 15px; line-height: 1.4; margin-top: 8px; }
+.preflight { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; border-top: 3px solid var(--ink); padding-top: 14px; }
+.preflight .big {
+  grid-column: 1 / span 4;
+  font-size: clamp(150px, 22vw, 440px); line-height: .74; font-weight: 900; letter-spacing: -.08em; margin-left: -.035em;
+}
+.preflight .txt { grid-column: 5 / span 5; }
+.preflight .txt h3 { font-size: clamp(28px, 2.9vw, 54px); font-weight: 850; letter-spacing: -.045em; line-height: .95; }
+.preflight .txt .p { margin-top: 20px; }
+.preflight .honest { grid-column: 10 / -1; align-self: end; border-left: 3px solid var(--red); padding-left: 14px; font-size: 14px; line-height: 1.4; font-weight: 600; }
+
+/* 05 quickstart */
+.qs-install { grid-column: 1 / span 4; }
+.qs-install h3, .qs-cmds h3 { font-size: 12px; font-weight: 600; border-bottom: 1px solid var(--ink); padding-bottom: 8px; }
+.chan { margin-top: 4px; }
+.chan li { display: grid; grid-template-columns: 5.2em 1fr; gap: 10px; padding-block: 11px; border-bottom: 1px solid var(--hair); font-size: 13px; }
+.chan li span { font-weight: 700; }
+.chan code { font-size: 12px; overflow-wrap: anywhere; }
+.qs-install .note { font-size: 13.5px; margin-top: 16px; line-height: 1.45; }
+.qs-cmds { grid-column: 5 / -1; }
+.cmds li {
+  display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); column-gap: var(--g);
+  align-items: baseline;
+  border-bottom: 1px solid var(--ink);
+  padding-block: 12px;
+}
+.cmds li i { grid-column: span 1; font: 400 12px var(--mono); font-style: normal; }
+.cmds li code { grid-column: span 5; font-size: clamp(15px, 1.35vw, 22px); font-weight: 700; letter-spacing: -.02em; overflow-wrap: anywhere; }
+.cmds li span { grid-column: span 2; font-size: 13.5px; line-height: 1.3; }
+.out { grid-column: 5 / -1; }
+.term {
+  background: var(--ink); color: #f2f2f2;
+  font: 400 clamp(11px, .86vw, 14px)/1.7 var(--mono);
+  padding: 18px 20px 20px;
+  overflow-x: auto;
+  white-space: pre;
+}
+.term .k { color: var(--red); font-weight: 700; }
+.term .d { color: #9a9a9a; }
+.term-cap { display: flex; justify-content: space-between; border-bottom: 1px solid var(--ink); padding-bottom: 8px; margin-bottom: 0; }
+.recover { grid-column: 1 / span 4; align-self: start; }
+.recover .statement { font-size: clamp(26px, 2.5vw, 46px); }
+.recover .p { margin-top: 16px; font-size: 15.5px; }
+.term + .term { margin-top: 2px; }
+
+/* 06 agents */
+.agents { grid-column: 1 / -1; }
+.agents table { width: 100%; border-collapse: collapse; }
+.agents th { text-align: left; font-size: 12px; font-weight: 600; padding: 0 0 8px; border-bottom: 3px solid var(--ink); }
+.agents tr { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: var(--g); }
+.agents th:nth-child(1), .agents td:nth-child(1) { grid-column: span 4; }
+.agents th:nth-child(2), .agents td:nth-child(2) { grid-column: span 5; }
+.agents th:nth-child(3), .agents td:nth-child(3) { grid-column: span 3; }
+.agents td { padding: 14px 0 14px; border-bottom: 1px solid var(--ink); align-self: stretch; }
+.agents td:nth-child(1) { font-size: clamp(26px, 2.8vw, 52px); font-weight: 850; letter-spacing: -.045em; line-height: .95; }
+.agents td:nth-child(2) { font: 400 clamp(13px, 1.1vw, 17px)/1.3 var(--mono); padding-top: calc(14px + .5em); }
+.agents td:nth-child(3) { font-size: 13.5px; line-height: 1.35; padding-top: calc(14px + .35em); }
+.agents tr.any td:nth-child(1) { color: var(--red); }
+.agents .v { display: inline-block; width: 10px; height: 10px; background: var(--ink); margin-right: 8px; vertical-align: 0; }
+.agents-note { grid-column: 5 / span 5; }
+
+/* 07 compare */
+.cmp { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; row-gap: 40px; }
+.cmp li { grid-column: span 3; border-top: 3px solid var(--ink); padding-top: 12px; }
+.cmp li i { font: 400 12px var(--mono); font-style: normal; display: block; }
+.cmp h3 { font-size: clamp(24px, 2.3vw, 42px); font-weight: 850; letter-spacing: -.045em; line-height: .95; margin-top: 26px; }
+.cmp .v { font-size: 16px; font-weight: 700; margin-top: 18px; line-height: 1.25; }
+.cmp p { font-size: 15px; line-height: 1.42; margin-top: 8px; }
+.cmp-dalo { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; border-top: 3px solid var(--ink); padding-top: 14px; row-gap: 24px; }
+.cmp-dalo .cap { grid-column: 1 / span 3; }
+.cmp-dalo .statement { grid-column: 4 / span 9; }
+.cmp-dalo .statement em { font-style: normal; color: var(--red); }
+.cmp-dalo .pts { grid-column: 4 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: var(--g); }
+.cmp-dalo .pts li { font-size: 15px; font-weight: 600; border-top: 1px solid var(--ink); padding-top: 10px; line-height: 1.3; }
+.cmp-dalo .more { grid-column: 4 / span 6; font-size: 15px; line-height: 1.45; }
+
+/* 08 numbers */
+.nums { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; row-gap: clamp(48px, 5vw, 88px); }
+.nums li { grid-column: span 4; border-top: 1px solid var(--ink); padding-top: 14px; }
+.nums b { display: block; font-size: clamp(88px, 11vw, 230px); font-weight: 900; letter-spacing: -.07em; line-height: .8; margin-left: -.05em; }
+.nums b small { font-size: .42em; letter-spacing: -.04em; }
+.nums span { display: block; font-size: 15px; font-weight: 600; margin-top: 16px; max-width: 22em; line-height: 1.3; }
+.trust { grid-column: 1 / span 6; }
+.trust2 { grid-column: 7 / span 5; }
+
+/* CTA */
+.cta { border-top: 3px solid var(--ink); padding-top: 14px; padding-bottom: clamp(64px, 7vw, 120px); }
+.cta .grid { row-gap: 32px; }
+.cta .cap { grid-column: 1 / span 3; }
+.cta h2 {
+  grid-column: 1 / -1; grid-row: 2;
+  font-size: clamp(52px, 9.2vw, 196px); font-weight: 900; letter-spacing: -.062em; line-height: .86; margin-left: -.045em;
+  margin-top: clamp(20px, 3vw, 56px);
+  position: relative; z-index: 2;
+}
+.cta h2 > span { display: block; }
+.cta h2 .br { display: inline; }
+.cta .ring { grid-column: 9 / -1; grid-row: 1 / span 3; align-self: center; aspect-ratio: 1; border-radius: 50%; background: var(--red); }
+.cta .get { grid-column: 1 / span 5; grid-row: 3; }
+.cta .links { grid-column: 6 / span 3; grid-row: 3; align-self: end; display: flex; flex-direction: column; }
+.cta .links a { font-size: 17px; font-weight: 800; letter-spacing: -.02em; text-decoration: none; border-bottom: 1px solid var(--ink); padding-block: 12px 8px; display: flex; justify-content: space-between; }
+.cta .links a:hover { color: var(--red); }
+
+/* Footer */
+.foot { background: var(--ink); color: var(--paper); padding-block: 18px 28px; position: relative; }
+.foot::before {
+  content: ""; position: absolute; inset: 0 calc(var(--m) - var(--g) / 2);
+  background-image: repeating-linear-gradient(90deg, rgba(255,255,255,.12) 0 1px, transparent 1px calc(100% / var(--n)));
+  border-right: 1px solid rgba(255,255,255,.12);
+  pointer-events: none;
+}
+.foot .grid { position: relative; row-gap: 32px; }
+.foot .mark { grid-column: 1 / span 3; }
+.foot .mark b { font-size: clamp(56px, 7vw, 132px); font-weight: 900; letter-spacing: -.07em; line-height: .8; display: block; margin-left: -.05em; }
+.foot .mark b i { font-style: normal; color: var(--red); }
+.foot .col { grid-column: span 2; }
+.foot .col:first-of-type { grid-column: 5 / span 2; }
+.foot h4 { margin: 0 0 12px; font-size: 12px; font-weight: 600; color: #a8a8a8; border-bottom: 1px solid rgba(255,255,255,.35); padding-bottom: 8px; }
+.foot .col a { display: block; text-decoration: none; font-size: 15px; font-weight: 600; padding-block: 3px; }
+.foot .col a:hover { color: var(--red); }
+.foot .legal { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; border-top: 1px solid rgba(255,255,255,.35); padding-top: 12px; font-size: 12px; color: #bdbdbd; }
+.foot .legal p:nth-child(1) { grid-column: 1 / span 4; }
+.foot .legal p:nth-child(2) { grid-column: 5 / span 4; }
+.foot .legal p:nth-child(3) { grid-column: 9 / -1; text-align: right; }
+
+/* ---------- Tablet ---------- */
+@media (max-width: 1180px) and (min-width: 761px) {
+  .mast .what { display: none; }
+  .mast .facts { grid-column: 3 / span 5; }
+  .mast nav { grid-column: 8 / -1; }
+  .hero .lede { grid-column: 1 / span 7; align-self: start; }
+  .hero .get { grid-column: 1 / span 7; grid-row: 3; }
+  .hero .grid { grid-template-rows: auto auto auto; }
+  .one { grid-column: 9 / -1; grid-row: 2 / span 2; }
+  .one span { font-size: 12.5px; }
+  .rules li { grid-column: span 6; }
+  .cmp li { grid-column: span 6; }
+  .stage p { font-size: 14px; }
+  .preflight .txt { grid-column: 5 / -1; }
+  .preflight .honest { grid-column: 5 / -1; margin-top: 24px; }
+  .qs-install { grid-column: 1 / -1; }
+  .qs-cmds, .out, .recover { grid-column: 1 / -1; }
+  .cmds li { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+  .cmds li code { grid-column: span 7; }
+  .cmds li span { grid-column: span 4; }
+  .cta .get { grid-column: 1 / span 7; }
+  .cta .links { grid-column: 1 / span 7; grid-row: 4; }
+}
+
+/* ---------- Mobile: 4 columns ---------- */
+@media (max-width: 760px) {
+  body { font-size: 16px; }
+  .mast { row-gap: 6px; padding-block: 14px 12px; }
+  .brand { grid-column: 1 / span 2; }
+  .mast .what, .mast .facts { display: none; }
+  .mast nav { grid-column: 3 / -1; justify-content: flex-end; gap: 16px; }
+  .mast nav a.spec, .mast nav a.sec-l { display: none; }
+
+  .hero { padding-top: 26px; }
+  .hero .grid { grid-template-rows: auto; row-gap: 26px; }
+  .hero h1 { font-size: 18.6vw; line-height: .86; letter-spacing: -.06em; }
+  .hero .lede { grid-column: 1 / -1; grid-row: 2; font-size: 17px; }
+  .hero .get { grid-column: 1 / -1; grid-row: 3; }
+  .hero { overflow: clip; }
+  .one { grid-column: 2 / -1; grid-row: 1; align-self: end; width: 92vw; margin-bottom: 0; margin-right: calc(-1 * var(--m)); justify-self: end; transform: translateX(34%); }
+  .one b, .one span { display: none; }
+  .cmd { font-size: clamp(9.8px, 2.95vw, 11.6px); padding: 14px 10px; }
+  .hero .lede, .hero .get { position: relative; z-index: 3; }
+
+  .band ol { display: block; }
+  .band li { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding-block: 14px; border-bottom: 1px solid var(--ink); }
+  .band li:nth-child(n+2) { border-left: 0; margin-left: 0; padding-left: 0; }
+  .band b { grid-column: span 2; font-size: 26vw; }
+  .band li span { grid-column: span 2; font-size: 14px; }
+
+  .head .no { grid-column: 1 / span 2; grid-row: 1; font-size: 25vw; }
+  .head .label { grid-column: 3 / -1; grid-row: 1; }
+  .head .meta { grid-column: 3 / -1; grid-row: 1; align-self: end; text-align: left; }
+  .head h2 { grid-column: 1 / -1; grid-row: 2; font-size: 11.6vw; margin-top: 30px; }
+
+  .intro01, .model-note, .agents-note, .trust, .trust2 { grid-column: 1 / -1; }
+  .flow .cap, .with .cap { grid-column: 1 / -1; }
+  .flow ol, .with ul { grid-column: 1 / -1; }
+  .flow li { display: block; font-size: 24px; line-height: 1.1; padding-block: 8px; }
+  .flow li b { display: inline; }
+  .with ul { grid-template-columns: 1fr 1fr; }
+
+  .model { --fig: 84px; row-gap: 0; }
+  .model::before { top: 0; bottom: 0; left: calc((100% + var(--g)) / 8 - var(--g) / 2 - 3px); right: auto; width: 6px; height: auto; }
+  .stage, .stage.out { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); column-gap: var(--g); padding-bottom: 28px; }
+  .stage .fig { grid-column: 1; grid-row: 1 / span 4; margin: 0; justify-content: center; height: var(--fig); background: var(--paper); }
+  .stage > :not(.fig) { grid-column: 2 / -1; }
+  .fig .sq { width: 60px; }
+  .fig .gate { width: 100%; height: 22px; }
+  .fig .dot { width: 72px; }
+  .fig svg.h { transform: rotate(90deg); }
+  .stage .step { border-top: 0; padding-top: 0; }
+
+  .prio li { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); column-gap: var(--g); align-items: end; border-top: 1px solid var(--ink); padding-top: 12px; margin-bottom: 18px; }
+  .prio b { grid-column: 1 / span 2; font-size: 36vw; }
+  .prio .who, .prio .state-w { grid-column: 3 / -1; }
+  .prio .who { flex-direction: column; border-top: 0; margin-top: 0; padding-top: 0; }
+  .res-a, .res-b, .res-c { grid-column: 1 / -1; }
+
+  .poster .cap { grid-column: 1 / span 2; }
+  .poster .cap2 { grid-column: 3 / -1; }
+  .poster blockquote { font-size: 14.4vw; }
+  .poster blockquote .in { padding-left: 0; }
+  .rules li { grid-column: 1 / -1; grid-template-columns: repeat(4, minmax(0, 1fr)); column-gap: var(--g); }
+  .rules li b { font-size: 48px; }
+  .preflight .big { grid-column: 1 / -1; font-size: 52vw; }
+  .preflight .txt, .preflight .honest { grid-column: 1 / -1; margin-top: 24px; }
+
+  .qs-install, .qs-cmds, .out, .recover { grid-column: 1 / -1; }
+  .cmds li { grid-template-columns: 2em 1fr; column-gap: 10px; row-gap: 2px; }
+  .cmds li i { grid-column: 1; grid-row: 1 / span 2; }
+  .cmds li code { grid-column: 2; font-size: 15px; }
+  .cmds li span { grid-column: 2; }
+  .term { font-size: 11px; padding: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+  .agents thead { display: none; }
+  .agents tr { grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--ink); padding-block: 12px; }
+  .agents td { border: 0; padding: 0 !important; }
+  .agents td:nth-child(1) { grid-column: 1 / -1; font-size: 30px; }
+  .agents td:nth-child(2) { grid-column: 1 / -1; margin-top: 6px; font-size: 13.5px; }
+  .agents td:nth-child(3) { grid-column: 1 / -1; margin-top: 4px; }
+  .agents tbody tr:first-child { border-top: 3px solid var(--ink); }
+
+  .cmp li { grid-column: 1 / -1; }
+  .cmp h3 { margin-top: 14px; font-size: 30px; }
+  .cmp-dalo .cap, .cmp-dalo .statement, .cmp-dalo .pts, .cmp-dalo .more { grid-column: 1 / -1; }
+  .cmp-dalo .pts { grid-template-columns: 1fr; row-gap: 12px; }
+
+  .nums li { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); column-gap: var(--g); align-items: end; }
+  .nums b { grid-column: 1 / span 3; font-size: 25vw; }
+  .nums span { grid-column: 1 / -1; margin-top: 10px; }
+
+  .cta .cap { grid-row: 1; }
+  .cta { overflow: clip; }
+  .cta h2 { grid-column: 1 / -1; font-size: 14vw; }
+  .cta h2 .br { display: block; }
+  .cta .ring { grid-column: 2 / -1; grid-row: 2; align-self: end; justify-self: end; width: 74vw; transform: translateX(38%); margin-bottom: 0; }
+  .cta .get, .cta .links { grid-column: 1 / -1; }
+  .cta .links { grid-row: 4; }
+
+  .foot .mark { grid-column: 1 / -1; }
+  .foot .col, .foot .col:first-of-type { grid-column: span 2; }
+  .foot .legal p:nth-child(n) { grid-column: 1 / -1; text-align: left; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .copy { transition: background-color .15s; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="page">
+
+<header class="wrap">
+  <div class="grid mast">
+    <a class="brand" href="https://dalo.sh/" aria-label="dalo home">
+      <svg viewBox="0 0 30 20" aria-hidden="true"><g stroke="#0b0b0b" stroke-width="1.6" fill="none"><path d="M3 3 L23 10 M3 10 L23 10 M3 17 L23 10"/></g><circle cx="3" cy="3" r="2.6" fill="#0b0b0b"/><circle cx="3" cy="10" r="2.6" fill="#0b0b0b"/><circle cx="3" cy="17" r="2.6" fill="#0b0b0b"/><circle cx="24" cy="10" r="5.6" fill="#ff4b1f"/></svg>
+      <b>dalo</b>
+    </a>
+    <p class="cap what">Git-backed skill management<br>for AI agents</p>
+    <p class="cap facts">Rust CLI · macOS &amp; Linux<br><span class="mono">v0.17.0 · MIT OR Apache-2.0</span></p>
+    <nav aria-label="Primary">
+      <a href="https://dalo.sh/docs/">Docs</a>
+      <a class="spec" href="https://dalo.sh/spec/">Spec</a>
+      <a class="sec-l" href="https://dalo.sh/docs/security.html">Security</a>
+      <a href="https://github.com/sebastian-software/dalo">GitHub</a>
+      <a class="install" href="#start">Install</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<section class="hero wrap" aria-labelledby="t">
+  <div class="grid">
+    <h1 id="t"><span>Your team’s</span> <span>agent skills,</span> <span>versioned</span> <span>like code.</span></h1>
+    <div class="one" aria-hidden="true"><b>1</b><span>approved set, resolved the same way on every machine</span></div>
+    <p class="lede">Dalo keeps your team's agent skills in Git: one approved set, resolved the same way on every machine and reviewed before it reaches any agent folder.</p>
+    <div class="get">
+      <p class="cap"><span>Install — macOS + Linux</span><button class="copy" type="button" data-copy="curl -fsSL https://dalo.sh/install.sh | sh">copy</button></p>
+      <div class="cmd"><code>curl -fsSL https://dalo.sh/install.sh | sh</code></div>
+      <p class="alt mute">Single binary, no daemon, just <code>git</code> on your PATH. Or <code>brew install sebastian-software/tap/dalo</code> · <code>npx getdalo</code></p>
+    </div>
+  </div>
+</section>
+
+<section class="wrap" aria-label="Dalo in numbers">
+  <div class="grid band">
+    <ol>
+      <li><b>0</b><span>unmanaged files or real folders overwritten — by design</span></li>
+      <li><b>15</b><span>deterministic preflight rules, run locally before any link</span></li>
+      <li><b>5<em class="x">+</em></b><span>verified agents, plus any folder-based agent</span></li>
+    </ol>
+  </div>
+</section>
+
+<!-- 01 -->
+<section class="sec wrap" id="problem" aria-labelledby="h01">
+  <div class="grid head">
+    <p class="no" aria-hidden="true">01</p>
+    <p class="cap label">The problem</p>
+    <p class="cap meta mono">operational knowledge, unmanaged</p>
+    <h2 id="h01">Skills drift across machines.</h2>
+  </div>
+  <div class="grid body">
+    <p class="p intro01">Agent skills encode how your team works. But most of them still live in one machine's folder, a pasted snippet, or a chat thread. Over time, versions diverge, ownership blurs, and the same skill behaves differently for everyone.</p>
+    <div class="flow">
+      <p class="cap">The usual flow</p>
+      <ol>
+        <li><b>install</b> <span>this skill here</span></li>
+        <li><b>copy</b> <span>that folder there</span></li>
+        <li><b>pick</b> <span>the target agent again</span></li>
+        <li class="hope"><b>hope</b> <span>nobody changed the public repo</span></li>
+        <li class="hope"><b>hope</b> <span>the local edit doesn’t get lost</span></li>
+        <li class="hope"><b>hope</b> <span>the team runs the same version</span></li>
+      </ol>
+    </div>
+    <div class="with">
+      <p class="cap">With Dalo</p>
+      <ul>
+        <li><i>1.1</i>Every skill versioned in Git</li>
+        <li><i>1.2</i>Resolved deterministically</li>
+        <li><i>1.3</i>Synced across the whole team</li>
+        <li><i>1.4</i>Private work kept separate</li>
+        <li><i>1.5</i>Existing files never touched</li>
+        <li><i>1.6</i>Ready to promote when it proves out</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 02 -->
+<section class="sec wrap" id="model" aria-labelledby="h02">
+  <div class="grid head">
+    <p class="no" aria-hidden="true">02</p>
+    <p class="cap label">The model</p>
+    <p class="cap meta mono">many sources → one reviewed set</p>
+    <h2 id="h02">Many sources in. One reviewed set out.</h2>
+  </div>
+  <div class="grid body">
+    <ol class="model">
+      <li class="stage src">
+        <div class="fig"><svg class="h" viewBox="0 0 200 200" preserveAspectRatio="xMinYMid meet" aria-hidden="true"><g stroke="#0b0b0b" stroke-width="6"><path d="M18 22 L200 100 M18 100 L200 100 M18 178 L200 100"/></g><circle cx="18" cy="22" r="18" fill="#0b0b0b"/><circle cx="18" cy="100" r="18" fill="#0b0b0b"/><circle cx="18" cy="178" r="18" fill="#0b0b0b"/></svg></div>
+        <span class="step">2.1</span>
+        <h3>Sources</h3>
+        <p>Local skills, team Git repositories, and public catalogs you select from.</p>
+      </li>
+      <li class="stage">
+        <div class="fig"><div class="sq"></div></div>
+        <span class="step">2.2</span>
+        <h3>Store</h3>
+        <p>The source of truth: sources, locks, trust, and audits.</p>
+        <p class="path">~/.dalo</p>
+      </li>
+      <li class="stage">
+        <div class="fig"><div class="gate"></div></div>
+        <span class="step">2.3</span>
+        <h3>Preflight + approval</h3>
+        <p>15 deterministic rules, run locally. Catalog skills wait for your explicit approval.</p>
+      </li>
+      <li class="stage">
+        <div class="fig"><div class="dot"></div></div>
+        <span class="step">2.4</span>
+        <h3>Resolver</h3>
+        <p>A pure function. Same inputs, byte-for-byte the same result.</p>
+      </li>
+      <li class="stage out">
+        <div class="fig"><svg class="h" viewBox="0 0 560 200" preserveAspectRatio="xMinYMid meet" aria-hidden="true"><g stroke="#0b0b0b" stroke-width="6" fill="none"><path d="M0 100 H120 M120 100 L528 18 M120 100 L528 73 M120 100 L528 127 M120 100 L528 182"/></g><circle cx="120" cy="100" r="9" fill="#0b0b0b"/><g fill="#0b0b0b"><rect x="518" y="4" width="28" height="28"/><rect x="518" y="59" width="28" height="28"/><rect x="518" y="113" width="28" height="28"/><rect x="518" y="168" width="28" height="28"/></g></svg></div>
+        <span class="step">2.5</span>
+        <h3>Agent folders</h3>
+        <p>Symlinks into the directories your agents already read. Outputs, never the database.</p>
+        <p class="path">~/.agents/skills<br>~/.claude/skills<br>~/.hermes/skills</p>
+      </li>
+    </ol>
+    <p class="statement model-note">The store is the source of truth. Agent folders are output targets.</p>
+  </div>
+</section>
+
+<!-- 03 -->
+<section class="sec wrap" id="resolution" aria-labelledby="h03">
+  <div class="grid head">
+    <p class="no" aria-hidden="true">03</p>
+    <p class="cap label">Resolution by priority</p>
+    <p class="cap meta mono">same name “review” · one slot</p>
+    <h2 id="h03">Lower number wins. Everyone else is shadowed.</h2>
+  </div>
+  <div class="grid body">
+    <ol class="prio">
+      <li>
+        <b>0</b>
+        <div class="who"><strong>local</strong><span class="mono">prio 0</span></div>
+        <div class="state-w"><span class="state">linked</span></div>
+      </li>
+      <li>
+        <b>10</b>
+        <div class="who"><strong>company</strong><span class="mono">prio 10</span></div>
+        <div class="state-w"><span class="state">shadowed</span></div>
+      </li>
+      <li>
+        <b>20</b>
+        <div class="who"><strong>oss</strong><span class="mono">prio 20</span></div>
+        <div class="state-w"><span class="state">shadowed</span></div>
+      </li>
+    </ol>
+    <p class="p res-a">When two sources ship a skill with the same name, source priority decides which one fills the slot. The lower number wins.</p>
+    <p class="p res-b">Losers are reported as <code>shadowed</code> in <code>dalo status</code> — visible, never silently dropped.</p>
+    <p class="p res-c">The resolver is a pure function: the same sources and config give a byte-for-byte identical result on every machine.</p>
+  </div>
+</section>
+
+<!-- 04 -->
+<section class="sec" id="safety" aria-labelledby="h04">
+  <div class="wrap">
+    <div class="grid head">
+      <p class="no" aria-hidden="true">04</p>
+      <p class="cap label">Safety rules</p>
+      <p class="cap meta mono">conservative on purpose</p>
+      <h2 id="h04">The core rule.</h2>
+    </div>
+  </div>
+  <div class="poster wrap">
+    <div class="grid">
+      <p class="cap">Dalo, rule zero</p>
+      <p class="cap cap2 mono">applies to every command</p>
+      <blockquote>
+        <span>Dalo may manage</span>
+        <span>what it owns.</span>
+        <span class="in">It does not take</span>
+        <span class="in">ownership</span>
+        <span class="in">by surprise.</span>
+      </blockquote>
+    </div>
+  </div>
+  <div class="wrap">
+    <div class="grid body">
+      <ol class="rules">
+        <li><b>1</b><div><h3>Never overwrites unmanaged files</h3><p>If a real skill folder already holds a slot, Dalo reports the conflict and leaves it exactly where it is.</p></div></li>
+        <li><b>2</b><div><h3>Removes only links it owns</h3><p>Resolved skills are directory symlinks. Dalo removes only the links it created.</p></div></li>
+        <li><b>3</b><div><h3>Dirty work blocks, not breaks</h3><p>Edited a team skill in place? The checkout is dirty, and refresh stops instead of discarding your change.</p></div></li>
+        <li><b>4</b><div><h3>Catalog skills need approval</h3><p>Each catalog skill stays an offer until you select it and run <code>dalo approve skill</code>.</p></div></li>
+        <li><b>5</b><div><h3><code>--dry-run</code> everywhere</h3><p>The same planning path drives real runs and dry runs. See every link before anything changes.</p></div></li>
+        <li><b>6</b><div><h3>Conflicts stay visible</h3><p><code>dalo status</code> explains every state. Nothing is forced, nothing is hidden.</p></div></li>
+      </ol>
+      <div class="preflight">
+        <p class="big" aria-hidden="true">15</p>
+        <div class="txt">
+          <h3>Deterministic rules run locally before a link is created.</h3>
+          <p class="p">High and critical findings block until someone records an explicit, content-bound risk acceptance. An optional sandboxed agent reviewer — Codex, Claude, or the OpenCode CLI — can add findings, but never clears one.</p>
+        </div>
+        <p class="honest">A passing preflight is not a safety guarantee. It makes the decision to run a third-party skill explicit, reviewable, and reproducible.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 05 -->
+<section class="sec wrap" id="start" aria-labelledby="h05">
+  <div class="grid head">
+    <p class="no" aria-hidden="true">05</p>
+    <p class="cap label">Quickstart</p>
+    <p class="cap meta mono">real commands, real output</p>
+    <h2 id="h05">Seven commands to one synced set.</h2>
+  </div>
+  <div class="grid body">
+    <div class="qs-install">
+      <h3>Install</h3>
+      <ul class="chan">
+        <li><span>Homebrew</span><code>brew install sebastian-software/tap/dalo</code></li>
+        <li><span>Script</span><code>curl -fsSL https://dalo.sh/install.sh | sh</code></li>
+        <li><span>npx</span><code>npx getdalo --version</code></li>
+        <li><span>Cargo</span><code>cargo binstall dalo</code></li>
+        <li><span>mise</span><code>mise use -g github:sebastian-software/dalo</code></li>
+      </ul>
+      <p class="note mute">macOS (Apple Silicon) and Linux (x86_64, ARM64). Agents can install it themselves from <a href="https://dalo.sh/install.md">dalo.sh/install.md</a>.</p>
+    </div>
+    <div class="qs-cmds">
+      <h3>First sync</h3>
+      <ol class="cmds">
+        <li><i>5.1</i><code>dalo init</code><span>Set up the store</span></li>
+        <li><i>5.2</i><code>dalo target detect</code><span>Find the agents on this machine</span></li>
+        <li><i>5.3</i><code>dalo target link codex</code><span>Link Codex's skill folder</span></li>
+        <li><i>5.4</i><code>dalo target link claude</code><span>Link Claude Code's skill folder</span></li>
+        <li><i>5.5</i><code>dalo source add company git@github.com:acme/agent-skills.git</code><span>Add the team repository</span></li>
+        <li><i>5.6</i><code>dalo sync</code><span>Resolve, preflight, link</span></li>
+        <li><i>5.7</i><code>dalo status</code><span>See every state, conflicts included</span></li>
+      </ol>
+    </div>
+    <div class="recover">
+      <p class="statement">Every blocking state names the next command.</p>
+      <p class="p">Typos get a did-you-mean. <code>dalo doctor</code> turns health into findings, each with a fix.</p>
+    </div>
+    <div class="out">
+      <p class="cap term-cap"><span>$ dalo sync</span><span class="mono">stdout</span></p>
+<pre class="term">applied  create     target[codex]:/incident-review -&gt; store:/sources/company/checkout/skills/incident-review
+applied  create     target[codex]:/release-notes -&gt; store:/sources/company/checkout/skills/release-notes
+<span class="k">synced: 2 skills across 1 target (2 created)</span>
+<span class="d">security preflight: deterministic checks only</span></pre>
+<pre class="term"><span class="d">$</span> dalo synk
+error: unrecognized subcommand 'synk'
+  <span class="k">tip: a similar subcommand exists: 'sync'</span></pre>
+    </div>
+  </div>
+</section>
+
+<!-- 06 -->
+<section class="sec wrap" id="agents" aria-labelledby="h06">
+  <div class="grid head">
+    <p class="no" aria-hidden="true">06</p>
+    <p class="cap label">Agent targets</p>
+    <p class="cap meta mono">normal skill directories</p>
+    <h2 id="h06">Five agents. Plus any folder.</h2>
+  </div>
+  <div class="grid body">
+    <div class="agents">
+      <table>
+        <thead><tr><th scope="col">Agent</th><th scope="col">Default skill directory</th><th scope="col">Note</th></tr></thead>
+        <tbody>
+          <tr><td>Codex</td><td>~/.agents/skills</td><td><span class="v" aria-hidden="true"></span>Verified · shared dir, linked once</td></tr>
+          <tr><td>Claude Code</td><td>~/.claude/skills</td><td><span class="v" aria-hidden="true"></span>Verified</td></tr>
+          <tr><td>OpenClaw</td><td>~/.agents/skills</td><td><span class="v" aria-hidden="true"></span>Verified · shared dir, linked once</td></tr>
+          <tr><td>Hermes</td><td>~/.hermes/skills</td><td><span class="v" aria-hidden="true"></span>Verified</td></tr>
+          <tr><td>OpenCode</td><td>~/.config/opencode/skills</td><td><span class="v" aria-hidden="true"></span>Verified</td></tr>
+          <tr class="any"><td>Any folder</td><td>dalo target link generic &lt;path&gt;</td><td>Any folder-based agent</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="p agents-note">Dalo links the resolved set into the paths your agents already read. They never know Dalo is there.</p>
+  </div>
+</section>
+
+<!-- 07 -->
+<section class="sec wrap" id="compare" aria-labelledby="h07">
+  <div class="grid head">
+    <p class="no" aria-hidden="true">07</p>
+    <p class="cap label">Compared</p>
+    <p class="cap meta mono">where the usual tools stop</p>
+    <h2 id="h07">Why not just install skills directly?</h2>
+  </div>
+  <div class="grid body">
+    <ol class="cmp">
+      <li><i>7.1</i><h3>One-off installer</h3><p class="v">Good for one machine.</p><p>Weak once a team needs review, shared versions, and the same result on every laptop.</p></li>
+      <li><i>7.2</i><h3>Dotfile repo</h3><p class="v">Too broad for agent skills.</p><p>Great for personal setup, risky when skill rollout can overwrite unrelated environment files.</p></li>
+      <li><i>7.3</i><h3>Git submodule</h3><p class="v">Pins a repo, not a selection.</p><p>Awkward for catalogs where you only want three skills out of forty.</p></li>
+      <li><i>7.4</i><h3>Copy-paste</h3><p class="v">Fast until nobody knows what changed.</p><p>No drift detection, no provenance, no path from local experiment to team standard.</p></li>
+    </ol>
+    <div class="cmp-dalo">
+      <p class="cap">Dalo covers the team side</p>
+      <p class="statement">Find a skill on skills.sh, then let <em>Dalo</em> pin and deliver it.</p>
+      <ul class="pts">
+        <li>Exact commit pins in lockfiles</li>
+        <li>Explicit approval before delivery</li>
+        <li>Sync that never overwrites unmanaged folders</li>
+      </ul>
+      <p class="more mute">skills.sh is great for discovering public skills and installing them into almost any agent; agentfiles puts agent files into an Obsidian UI. <a href="https://dalo.sh/docs/comparison.html">Read the full comparison</a>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 08 -->
+<section class="sec wrap" id="trust" aria-labelledby="h08">
+  <div class="grid head">
+    <p class="no" aria-hidden="true">08</p>
+    <p class="cap label">Numbers and trust</p>
+    <p class="cap meta mono">checkable, all public</p>
+    <h2 id="h08">Built to rely on.</h2>
+  </div>
+  <div class="grid body">
+    <ol class="nums">
+      <li><b>34</b><span>releases since 0.1, every one of them public</span></li>
+      <li><b>1011</b><span>tests, run in CI on every supported OS</span></li>
+      <li><b>86.9<small>%</small></b><span>line-coverage gate those tests have to clear</span></li>
+      <li><b>5</b><span>signed release targets, each with a SHA-256 checksum and Sigstore provenance</span></li>
+      <li><b>6</b><span>install channels, from Homebrew and the script to npx and Cargo</span></li>
+      <li><b>4<em class="x">/4</em></b><span>findings from the 2026-09 audit round, all closed</span></li>
+    </ol>
+    <p class="p trust">Stores written by 0.6.0 or later open with no migration command and no re-approval. Private vulnerability reporting is enabled on the repository; <a href="https://dalo.sh/docs/security.html">the security overview</a> states every guarantee and its limits.</p>
+    <p class="p trust2 mute">No tracking, no cookies, nothing loaded from a third party. Built and maintained by Sebastian Software.</p>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="wrap" aria-labelledby="hcta">
+  <div class="cta">
+    <div class="grid">
+      <p class="cap">Get started</p>
+      <h2 id="hcta"><span>One approved <span class="br">set.</span></span> <span>Every machine.</span></h2>
+      <div class="ring" aria-hidden="true"></div>
+      <div class="get">
+        <p class="cap"><span>macOS + Linux, then <code>dalo init</code></span><button class="copy" type="button" data-copy="curl -fsSL https://dalo.sh/install.sh | sh">copy</button></p>
+        <div class="cmd"><code>curl -fsSL https://dalo.sh/install.sh | sh</code></div>
+      </div>
+      <nav class="links" aria-label="Next steps">
+        <a href="https://dalo.sh/docs/">Read the docs <span aria-hidden="true">→</span></a>
+        <a href="https://github.com/sebastian-software/dalo">View on GitHub <span aria-hidden="true">→</span></a>
+      </nav>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot wrap">
+  <div class="grid">
+    <div class="mark"><b>dalo<i>.</i></b></div>
+    <div class="col">
+      <h4>Product</h4>
+      <a href="https://github.com/sebastian-software/dalo">GitHub</a>
+      <a href="https://dalo.sh/docs/">Docs</a>
+      <a href="https://dalo.sh/spec/">Spec</a>
+    </div>
+    <div class="col">
+      <h4>Trust</h4>
+      <a href="https://dalo.sh/docs/security.html">Security</a>
+      <a href="https://dalo.sh/docs/comparison.html">Comparison</a>
+    </div>
+    <div class="col">
+      <h4>For agents</h4>
+      <a href="https://dalo.sh/install.md">Install guide</a>
+      <a href="https://dalo.sh/llms.txt">llms.txt</a>
+    </div>
+    <div class="legal">
+      <p>MIT OR Apache-2.0</p>
+      <p>By Sebastian Software</p>
+      <p class="mono">dalo.sh</p>
+    </div>
+  </div>
+</footer>
+
+</div>
+<script>
+document.documentElement.classList.add('js');
+document.addEventListener('click', function (e) {
+  var b = e.target.closest && e.target.closest('.copy');
+  if (!b || !navigator.clipboard) return;
+  navigator.clipboard.writeText(b.getAttribute('data-copy')).then(function () {
+    b.textContent = 'copied';
+    setTimeout(function () { b.textContent = 'copy'; }, 1600);
+  });
+});
+</script>
+</body>
+</html>
