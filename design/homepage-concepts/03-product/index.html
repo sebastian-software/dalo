@@ -41,7 +41,7 @@
   --gutter: 24px;
 
   --shadow-window:
-    0 0 0 1px rgba(16, 24, 40, .06),
+    0 0 0 1px rgba(16, 24, 40, .08),
     0 1px 2px rgba(16, 24, 40, .05),
     0 8px 20px -6px rgba(16, 24, 40, .08),
     0 32px 64px -20px rgba(24, 48, 110, .20);
@@ -72,13 +72,11 @@ code, pre { font-family: var(--mono); }
 /* ---------- Header ---------- */
 .site-header {
   position: sticky; top: 0; z-index: 20;
-  background: rgba(246, 248, 250, .78);
-  -webkit-backdrop-filter: saturate(160%) blur(12px);
-  backdrop-filter: saturate(160%) blur(12px);
+  background: transparent;
   border-bottom: 1px solid transparent;
-  transition: border-color .2s;
+  transition: border-color .2s, background-color .2s;
 }
-.site-header.scrolled { border-bottom-color: var(--line); }
+.site-header.scrolled { background: rgba(246, 248, 250, .8); -webkit-backdrop-filter: saturate(160%) blur(12px); backdrop-filter: saturate(160%) blur(12px); border-bottom-color: var(--line); }
 .nav { display: flex; align-items: center; height: 64px; gap: 32px; }
 .brand { display: inline-flex; align-items: center; gap: 9px; font-weight: 700; font-size: 19px; letter-spacing: -.02em; font-stretch: 105%; }
 .brand svg { display: block; }
@@ -208,7 +206,7 @@ h1 {
 .row .skill { color: var(--ink); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row .from { color: var(--muted); }
 .row .pin { color: var(--accent-ink); }
-.row .pin.na { color: var(--faint); }
+.row .pin.na, .row.head .pin { color: var(--faint); }
 .row.muted .skill { color: var(--faint); font-weight: 400; text-decoration: line-through; text-decoration-color: rgba(140,150,162,.6); }
 .row.muted .from, .row.muted .pin { color: var(--faint); }
 .cell { display: grid; place-items: center; }
@@ -264,7 +262,7 @@ h2 {
   font-weight: 650; font-stretch: 106%; text-wrap: balance;
 }
 .feature p, .section-lede { margin: 18px 0 0; font-size: 17.5px; line-height: 1.6; color: var(--muted); max-width: 440px; text-wrap: pretty; }
-.feature p code, .section-lede code { font-size: .88em; color: var(--ink-2); background: var(--bg-2); border: 1px solid var(--line); padding: 1px 6px; border-radius: 5px; }
+.feature p code, .section-lede code { white-space: nowrap; font-size: .88em; color: var(--ink-2); background: var(--bg-2); border: 1px solid var(--line); padding: 1px 6px; border-radius: 5px; }
 .more { display: inline-flex; align-items: center; gap: 6px; margin-top: 24px; font-size: 15px; font-weight: 600; color: var(--accent); }
 .more svg { transition: transform .15s; }
 .more:hover svg { transform: translateX(2px); }
@@ -309,6 +307,7 @@ h2 {
 }
 .tag.ok { background: var(--ok); box-shadow: 0 2px 6px -2px rgba(26,127,55,.5); }
 .gap { height: 12px; }
+.ell { display: none; }
 
 /* ---------- Agents ---------- */
 .agents { padding: 72px 0 40px; }
@@ -384,7 +383,6 @@ h2 {
   .agent-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .agent:nth-child(4) { border-left: 0; }
   .agent:nth-child(n+4) { border-top: 1px solid var(--line-2); }
-  .quick-grid { padding: 0; }
 }
 @media (max-width: 760px) {
   .nav-links { display: none; }
@@ -435,11 +433,15 @@ h2 {
   .next { padding: 10px 12px; gap: 4px 10px; font-size: 11px; }
   .next .k { font-size: 11px; }
   .cursor-line { padding-bottom: 64px; }
-  .features { padding-top: 72px; }
+  .features { padding-top: 8px; }
   .feature { padding: 36px 0; gap: 28px; }
   h2 { font-size: 30px; font-stretch: 100%; }
   .feature p, .section-lede { font-size: 16px; }
   .crop { font-size: 12.5px; }
+  .crop .body { overflow-x: auto; -webkit-mask-image: none; mask-image: none; }
+  .crop .body > * { width: max-content; min-width: 100%; }
+  .tail { display: none; }
+  .ell { display: inline; }
   .crop .bar .path { display: none; }
   .ln { padding: 0 14px; min-height: 22px; }
   .ln .no { width: 26px; }
@@ -509,7 +511,6 @@ h2 {
         <a class="btn btn-primary" href="/docs/">Get started <svg width="16" height="16" aria-hidden="true"><use href="#i-arrow"/></svg></a>
         <div class="install"><span class="p">$</span><code id="install-cmd">brew install sebastian-software/tap/dalo</code><button class="copy" type="button" data-copy="install-cmd" aria-label="Copy install command"><svg class="idle" width="16" height="16" aria-hidden="true"><use href="#i-copy"/></svg><svg class="done" width="16" height="16" aria-hidden="true"><use href="#i-check"/></svg></button></div>
       </div>
-      <p class="hero-meta reveal">Works with Codex, Claude Code, OpenClaw, Hermes, OpenCode and any folder-based agent.</p>
 
       <div class="stage reveal">
         <div class="window" role="img" aria-label="Terminal showing dalo status: six skills across Codex, Claude Code and Hermes — four managed, one shadowed by a local override, one blocked by an unmanaged folder in Claude’s directory, one pending approval — and the next command to run.">
@@ -602,7 +603,7 @@ h2 {
             <div class="ln"><code class="no">3</code><code class="t-sec">[[sources]]</code></div>
             <div class="ln"><code class="no">4</code><code><span class="t-key">id</span> = <span class="t-str">"company"</span></code></div>
             <div class="ln"><code class="no">5</code><code><span class="t-key">kind</span> = <span class="t-str">"team"</span></code></div>
-            <div class="ln hl"><code class="no">6</code><code><span class="t-key">commit</span> = <span class="t-str">"<span class="t-hash">4e7a1c9</span>d2f8b06e15a3c4"</span></code><code class="tag">pinned</code></div>
+            <div class="ln hl"><code class="no">6</code><code><span class="t-key">commit</span> = <span class="t-str">"<span class="t-hash">4e7a1c9</span><span class="tail">d2f8b06e15a3c4</span><span class="ell">…</span>"</span></code><code class="tag">pinned</code></div>
             <div class="ln"><code class="no">7</code><code></code></div>
             <div class="ln"><code class="no">8</code><code class="t-sec">[[active_skills]]</code></div>
             <div class="ln"><code class="no">9</code><code><span class="t-key">source_ref</span> = <span class="t-str">"company:incident-review"</span></code></div>
