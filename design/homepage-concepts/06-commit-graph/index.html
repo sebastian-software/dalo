@@ -163,7 +163,7 @@ h2 {
 .term figcaption b { font-weight: 500; color: var(--ink-2); }
 .term pre { margin: 0; padding: 16px 18px 18px; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12.75px; line-height: 1.7; color: var(--ink-2); tab-size: 2; }
 .term pre code { font: inherit; }
-.term.table pre { white-space: pre; overflow-wrap: normal; }
+.term.table pre { white-space: pre; overflow-wrap: normal; font-size: 12.25px; }
 .p  { color: var(--ink-4); user-select: none; }
 .c  { color: var(--ink); font-weight: 500; }
 .o  { color: var(--ink-3); }
@@ -171,7 +171,8 @@ h2 {
 .ok { color: var(--teal); font-weight: 500; }
 .wa { color: var(--amber); font-weight: 500; }
 .vi { color: var(--violet); font-weight: 500; }
-.hl { display: block; margin: 0 -18px; padding: 0 18px; background: var(--teal-t); box-shadow: inset 2px 0 0 var(--teal-l); }
+.l { display: block; min-height: 1.7em; padding-left: 2ch; text-indent: -2ch; }
+.hl { margin: 0 -18px; padding: 0 18px 0 calc(18px + 2ch); background: var(--teal-t); box-shadow: inset 2px 0 0 var(--teal-l); }
 .hl.v { background: var(--violet-t); box-shadow: inset 2px 0 0 var(--violet-l); }
 .hl.a { background: var(--amber-t); box-shadow: inset 2px 0 0 var(--amber-l); }
 
@@ -236,7 +237,13 @@ h1 em { font-style: normal; color: var(--teal); }
 .log .r.a { color: var(--amber); background: var(--amber-t); border-color: var(--amber-b); }
 .log .r.tag { color: var(--ink-2); border-color: var(--line); }
 .log li.up a { color: var(--ink-3); }
-.log-foot { padding: 10px 16px; border-top: 1px solid var(--line-2); font-size: 12px; color: var(--ink-4); }
+.log-foot { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 11px 16px 12px; border-top: 1px solid var(--line-2); background: var(--bg-2); font-size: 12.5px; color: var(--ink-3); }
+.log-foot span { display: inline-flex; align-items: center; gap: 7px; }
+.lg { width: 14px; height: 2px; border-radius: 2px; position: relative; }
+.lg::after { content: ""; position: absolute; left: 3px; top: -3px; width: 8px; height: 8px; border-radius: 50%; }
+.lg.t { background: var(--teal-l); } .lg.t::after { background: var(--teal); }
+.lg.v { background: var(--violet-l); } .lg.v::after { background: var(--violet); }
+.lg.a { background: repeating-linear-gradient(to right, var(--amber-l) 0 3px, transparent 3px 5px); } .lg.a::after { background: var(--bg); border: 1.5px solid var(--amber); width: 7px; height: 7px; top: -3.5px; }
 
 /* ---------- specific blocks ---------- */
 .pipe { list-style: none; margin: 40px 0 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
@@ -258,7 +265,7 @@ h1 em { font-style: normal; color: var(--teal); }
 
 .rule {
   margin: 0 0 22px; padding: 0 0 0 18px; border-left: 2px solid var(--teal-l);
-  font-size: 21px; line-height: 1.4; letter-spacing: -0.015em; color: var(--ink); font-weight: 500; max-width: 26ch;
+  font-size: 21px; line-height: 1.4; letter-spacing: -0.015em; color: var(--ink); font-weight: 500; max-width: 30ch; text-wrap: balance;
 }
 
 .deploy { display: grid; grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.28fr); gap: 56px; margin-top: 30px; align-items: start; }
@@ -286,7 +293,7 @@ h1 em { font-style: normal; color: var(--teal); }
 .stats-note { margin-top: 18px; font-size: 14px; color: var(--ink-3); }
 
 .diff pre { font-size: 13.25px; line-height: 1.75; }
-.diff .dl { display: block; margin: 0 -18px; padding: 0 18px; }
+.diff .dl { display: block; margin: 0 -18px; padding: 0 18px 0 calc(18px + 2ch); text-indent: -2ch; }
 .diff .h  { color: var(--ink-3); font-weight: 500; }
 .diff .at { color: var(--violet); }
 .diff .rm { background: var(--red-t); color: var(--red); }
@@ -296,7 +303,7 @@ h1 em { font-style: normal; color: var(--teal); }
 /* ---------- HEAD / CTA ---------- */
 .headc { --pt: 112px; }
 .headc .body { padding-bottom: 96px; }
-.headc h2 { font-size: clamp(32px, 3.6vw, 48px); letter-spacing: -0.035em; max-width: 18ch; line-height: 1.06; }
+.headc h2 { font-size: clamp(32px, 3.6vw, 48px); letter-spacing: -0.035em; max-width: 24ch; line-height: 1.06; }
 .btns { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
 .btn { display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 18px; border-radius: 10px; font-weight: 550; font-size: 15px; text-decoration: none; border: 1px solid var(--line); color: var(--ink); background: var(--bg); }
 .btn:hover { border-color: #c8cfd7; background: var(--bg-2); }
@@ -315,6 +322,9 @@ footer { border-top: 1px solid var(--line); background: var(--bg-2); }
 .foot .fn { flex-basis: 100%; font-size: 12.5px; color: var(--ink-4); font-family: var(--mono); }
 
 /* ---------- responsive ---------- */
+@media (min-width: 981px) {
+  .cols > div:first-child { position: sticky; top: 32px; }
+}
 @media (max-width: 1080px) {
   .hero-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .log { max-width: 580px; }
@@ -357,12 +367,17 @@ footer { border-top: 1px solid var(--line); background: var(--bg-2); }
   .install-row code { grid-area: c; }
   .install-row .copy { grid-area: b; margin-top: 8px; }
   .install-row .k small { display: inline; margin-left: 6px; }
-  .install-row code { padding: 6px 0 12px 16px; font-size: 12.5px; }
+  .install-row code { padding: 6px 12px 12px 16px; font-size: 12px; }
   .install-row.primary code { padding-left: 16px; }
+  .install-row code .p { display: none; }
+  .cc { display: block; margin-bottom: 6px; font-size: 0.72em; }
+  .log li a { padding-left: 54px; }
+  .log .s { display: none; }
+  .hero .body { padding-bottom: 8px; }
   .log { margin-top: 36px; }
   .log li a { padding-right: 12px; font-size: 12px; }
   .term pre { font-size: 12px; padding: 14px 14px 16px; }
-  .hl, .diff .dl { margin: 0 -14px; padding: 0 14px; }
+  .hl, .diff .dl { margin: 0 -14px; padding: 0 14px 0 calc(14px + 2ch); }
   .term figcaption { padding: 9px 14px; }
   .rule { font-size: 19px; }
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -484,6 +499,11 @@ footer { border-top: 1px solid var(--line); background: var(--bg-2); }
               <li><a href="#head"><span class="s">d4a8e62</span><span class="r head">HEAD -&gt; main</span><span class="m"><i>chore:</i> your first sync</span></a></li>
             </ol>
           </div>
+          <div class="log-foot">
+            <span><i class="lg t"></i>main, the team standard</span>
+            <span><i class="lg v"></i>local/experiment, your machine</span>
+            <span><i class="lg a"></i>pinned upstream catalog</span>
+          </div>
         </figure>
       </div>
     </div>
@@ -510,15 +530,9 @@ footer { border-top: 1px solid var(--line); background: var(--bg-2); }
             <p>That boundary keeps team repositories clean, local experiments private, and anything already on disk safe to inspect.</p>
           </div>
         </div>
-        <figure class="term">
+        <figure class="term table">
           <figcaption><b>~/.dalo</b><span>after dalo init</span></figcaption>
-<pre><code><span class="c">~/.dalo/</span>
-├── <span class="vi">local/</span>          <span class="cm">private skills, a git repository</span>
-├── <span class="ok">sources/</span>        <span class="cm">team checkouts and pinned catalogs</span>
-├── audits/         <span class="cm">preflight evidence per content hash</span>
-├── approvals.toml  <span class="cm">explicit, source-qualified decisions</span>
-├── config.toml     <span class="cm">sources, targets, priorities</span>
-└── lock.toml       <span class="cm">the resolved set</span></code></pre>
+<pre><code><span class="l"><span class="c">~/.dalo/</span></span><span class="l">├── <span class="vi">local/</span>          <span class="cm">private skills, a git repository</span></span><span class="l">├── <span class="ok">sources/</span>        <span class="cm">team checkouts and pinned catalogs</span></span><span class="l">├── audits/         <span class="cm">preflight evidence per content hash</span></span><span class="l">├── approvals.toml  <span class="cm">explicit, source-qualified decisions</span></span><span class="l">├── config.toml     <span class="cm">sources, targets, priorities</span></span><span class="l">└── lock.toml       <span class="cm">the resolved set</span></span></code></pre>
         </figure>
       </div>
       <ol class="pipe" aria-label="How a skill travels">
@@ -548,17 +562,7 @@ footer { border-top: 1px solid var(--line); background: var(--bg-2); }
         </div>
         <figure class="term">
           <figcaption><b>~/work</b><span>zsh</span></figcaption>
-<pre><code><span class="p">$ </span><span class="c">dalo status</span>
-<span class="o">unmanaged skills:</span>
-<span class="o">  release-notes -&gt; target[claude]:/release-notes (adopt: run `dalo adopt 'release-notes'` to copy it into the local source; use `dalo adopt 'release-notes' --replace` to replace the original)</span>
-
-<span class="p">$ </span><span class="c">dalo adopt release-notes --replace</span>
-<span class="o">security audit: local:release-notes
-  content hash: ab48e21ea8806d9c6bccfb7dd1e15eae72a359bf4d5e3e24024db4975b308b31
-  coverage: complete
-  result: <span class="ok">clean</span>
-  note: no findings means no known issue was detected; it is not a safety guarantee</span>
-<span class="hl v"><span class="vi">copied</span> ~/.claude/skills/release-notes -&gt; ~/.dalo/local/skills/release-notes</span><span class="o">replacement: replaced</span></code></pre>
+<pre><code><span class="l"><span class="p">$ </span><span class="c">dalo status</span></span><span class="l"><span class="o">unmanaged skills:</span></span><span class="l"><span class="o">  release-notes -&gt; target[claude]:/release-notes (adopt: run `dalo adopt 'release-notes'` to copy it into the local source; use `dalo adopt 'release-notes' --replace` to replace the original)</span></span><span class="l"></span><span class="l"><span class="p">$ </span><span class="c">dalo adopt release-notes --replace</span></span><span class="l"><span class="o">security audit: local:release-notes</span></span><span class="l"><span class="o">  content hash: ab48e21ea8806d9c6bccfb7dd1e15eae72a359bf4d5e3e24024db4975b308b31</span></span><span class="l"><span class="o">  coverage: complete</span></span><span class="l"><span class="o">  result: <span class="ok">clean</span></span></span><span class="l"><span class="o">  note: no findings means no known issue was detected; it is not a safety guarantee</span></span><span class="l hl v"><span class="vi">copied</span> ~/.claude/skills/release-notes -&gt; ~/.dalo/local/skills/release-notes</span><span class="l"><span class="o">replacement: replaced</span></span></code></pre>
         </figure>
       </div>
     </div>
@@ -581,16 +585,7 @@ footer { border-top: 1px solid var(--line); background: var(--bg-2); }
         </div>
         <figure class="term">
           <figcaption><b>~/work</b><span>zsh</span></figcaption>
-<pre><code><span class="p">$ </span><span class="c">dalo source add company git@github.com:acme/agent-skills.git</span>
-<span class="hl"><span class="ok">added source</span> company -&gt; ~/.dalo/sources/company/checkout</span><span class="o">found 2 skills
-security audit: company:incident-review
-  content hash: b496a7cec827744a762e304c2f789bc9fa59333f36326728d925e3367c1a6b9f
-  coverage: complete
-  result: <span class="ok">clean</span>
-security audit: company:release-notes
-  …
-  result: <span class="ok">clean</span>
-next: dalo sync</span></code></pre>
+<pre><code><span class="l"><span class="p">$ </span><span class="c">dalo source add company git@github.com:acme/agent-skills.git</span></span><span class="l hl"><span class="ok">added source</span> company -&gt; ~/.dalo/sources/company/checkout</span><span class="l"><span class="o">found 2 skills</span></span><span class="l"><span class="o">security audit: company:incident-review</span></span><span class="l"><span class="o">  content hash: b496a7cec827744a762e304c2f789bc9fa59333f36326728d925e3367c1a6b9f</span></span><span class="l"><span class="o">  coverage: complete</span></span><span class="l"><span class="o">  result: <span class="ok">clean</span></span></span><span class="l"><span class="o">security audit: company:release-notes</span></span><span class="l"><span class="o">  …</span></span><span class="l"><span class="o">  result: <span class="ok">clean</span></span></span><span class="l"><span class="o">next: dalo sync</span></span></code></pre>
         </figure>
       </div>
     </div>
@@ -620,19 +615,7 @@ next: dalo sync</span></code></pre>
         </div>
         <figure class="term">
           <figcaption><b>~/work</b><span>zsh</span></figcaption>
-<pre><code><span class="p">$ </span><span class="c">dalo status</span>
-<span class="o">sources:
-  local        local priority=0    skills=1   agents=0   plugins=0   enabled
-  company      team priority=10   skills=2   agents=0   plugins=0   enabled
-targets:
-  claude       linked  ~/.claude/skills
-active skills:
-  incident-review -&gt; company:incident-review</span>
-<span class="hl v">  release-notes -&gt; <span class="vi">local:release-notes</span> local_override</span><span class="o">unlinked skills:
-  release-notes -&gt; company:release-notes reason=<span class="wa">shadowed</span> by=local:release-notes
-resolution diagnostics:
-  local_override: local skill `local:release-notes` overrides another source
-  shadowed: skill `company:release-notes` is unlinked because `local:release-notes` wins the same slot</span></code></pre>
+<pre><code><span class="l"><span class="p">$ </span><span class="c">dalo status</span></span><span class="l"><span class="o">sources:</span></span><span class="l"><span class="o">  local        local priority=0    skills=1   agents=0   plugins=0   enabled</span></span><span class="l"><span class="o">  company      team priority=10   skills=2   agents=0   plugins=0   enabled</span></span><span class="l"><span class="o">targets:</span></span><span class="l"><span class="o">  claude       linked  ~/.claude/skills</span></span><span class="l"><span class="o">active skills:</span></span><span class="l"><span class="o">  incident-review -&gt; company:incident-review</span></span><span class="l hl v">  release-notes -&gt; <span class="vi">local:release-notes</span> local_override</span><span class="l"><span class="o">unlinked skills:</span></span><span class="l"><span class="o">  release-notes -&gt; company:release-notes reason=<span class="wa">shadowed</span> by=local:release-notes</span></span><span class="l"><span class="o">resolution diagnostics:</span></span><span class="l"><span class="o">  local_override: local skill `local:release-notes` overrides another source</span></span><span class="l"><span class="o">  shadowed: skill `company:release-notes` is unlinked because `local:release-notes` wins the same slot</span></span></code></pre>
         </figure>
       </div>
     </div>
@@ -657,17 +640,7 @@ resolution diagnostics:
         </div>
         <figure class="term">
           <figcaption><b>~/src/agent-skills</b><span>zsh</span></figcaption>
-<pre><code><span class="p">$ </span><span class="c">cp -R ~/.dalo/local/skills/release-notes skills/</span>
-<span class="p">$ </span><span class="c">git commit -am "feat(release-notes): group by change type"</span>
-<span class="p">$ </span><span class="c">git push</span>                 <span class="cm"># open a pull request, review, merge</span>
-
-<span class="cm"># after the merge</span>
-<span class="p">$ </span><span class="c">rm -r ~/.dalo/local/skills/release-notes</span>
-<span class="p">$ </span><span class="c">dalo sync</span>
-<span class="o">target[claude]: ~/.claude/skills</span>
-<span class="hl"><span class="ok">applied  relink</span>     target[claude]:/release-notes -&gt; store:/sources/company/checkout/skills/release-notes (owned symlink points to `store:/local/skills/release-notes`)</span><span class="o">existing noop       target[claude]:/incident-review -&gt; store:/sources/company/checkout/skills/incident-review
-synced: 2 skills across 1 target (1 relinked, 1 unchanged)
-security preflight: deterministic checks only</span></code></pre>
+<pre><code><span class="l"><span class="p">$ </span><span class="c">cp -R ~/.dalo/local/skills/release-notes skills/</span></span><span class="l"><span class="p">$ </span><span class="c">git commit -am "feat(release-notes): group by change type"</span></span><span class="l"><span class="p">$ </span><span class="c">git push</span>                 <span class="cm"># open a pull request, review, merge</span></span><span class="l"></span><span class="l"><span class="cm"># after the merge</span></span><span class="l"><span class="p">$ </span><span class="c">rm -r ~/.dalo/local/skills/release-notes</span></span><span class="l"><span class="p">$ </span><span class="c">dalo sync</span></span><span class="l"><span class="o">target[claude]: ~/.claude/skills</span></span><span class="l hl"><span class="ok">applied  relink</span>     target[claude]:/release-notes -&gt; store:/sources/company/checkout/skills/release-notes (owned symlink points to `store:/local/skills/release-notes`)</span><span class="l"><span class="o">existing noop       target[claude]:/incident-review -&gt; store:/sources/company/checkout/skills/incident-review</span></span><span class="l"><span class="o">synced: 2 skills across 1 target (1 relinked, 1 unchanged)</span></span><span class="l"><span class="o">security preflight: deterministic checks only</span></span></code></pre>
         </figure>
       </div>
     </div>
@@ -692,14 +665,7 @@ security preflight: deterministic checks only</span></code></pre>
         </div>
         <figure class="term">
           <figcaption><b>~/work</b><span>zsh</span></figcaption>
-<pre><code><span class="p">$ </span><span class="c">dalo sync</span>
-<span class="o">target[claude]: ~/.claude/skills</span>
-<span class="hl a"><span class="wa">blocked  conflict</span>   target[claude]:/standup-notes -&gt; store:/sources/company/checkout/skills/standup-notes (real unmanaged entry exists at target slot) …</span><span class="o">synced: 3 skills across 1 target (2 unchanged, 1 blocked)</span>
-
-<span class="cm"># keep your version and let Dalo manage it</span>
-<span class="p">$ </span><span class="c">dalo adopt standup-notes --replace</span>
-<span class="cm"># or keep it unmanaged and stop reporting it</span>
-<span class="p">$ </span><span class="c">dalo resolve keep standup-notes</span></code></pre>
+<pre><code><span class="l"><span class="p">$ </span><span class="c">dalo sync</span></span><span class="l"><span class="o">target[claude]: ~/.claude/skills</span></span><span class="l hl a"><span class="wa">blocked  conflict</span>   target[claude]:/standup-notes -&gt; store:/sources/company/checkout/skills/standup-notes (real unmanaged entry exists at target slot) …</span><span class="l"><span class="o">synced: 3 skills across 1 target (2 unchanged, 1 blocked)</span></span><span class="l"></span><span class="l"><span class="cm"># keep your version and let Dalo manage it</span></span><span class="l"><span class="p">$ </span><span class="c">dalo adopt standup-notes --replace</span></span><span class="l"><span class="cm"># or keep it unmanaged and stop reporting it</span></span><span class="l"><span class="p">$ </span><span class="c">dalo resolve keep standup-notes</span></span></code></pre>
         </figure>
       </div>
     </div>
@@ -725,20 +691,7 @@ security preflight: deterministic checks only</span></code></pre>
         </div>
         <figure class="term">
           <figcaption><b>~/src/agent-skills</b><span>zsh</span></figcaption>
-<pre><code><span class="p">$ </span><span class="c">dalo team catalog add marketing https://github.com/acme/marketing-skills.git \
-    --version e7f3afe65a28537f4502ee48d0eade0d00d04bc1 \
-    --skill +copywriting --skill +launch</span>
-<span class="o"><span class="ok">catalog_added</span> team manifest …/agent-skills/dalo.toml catalog=marketing
-next: commit and push dalo.toml</span>
-
-<span class="p">$ </span><span class="c">cat dalo.toml</span>
-<span class="o">[[catalog]]
-id = "marketing"
-url = "https://github.com/acme/marketing-skills.git"</span>
-<span class="hl a">version = "<span class="wa">e7f3afe65a28537f4502ee48d0eade0d00d04bc1</span>"</span><span class="o">skills = [
-    "+copywriting",
-    "+launch",
-]</span></code></pre>
+<pre><code><span class="l"><span class="p">$ </span><span class="c">dalo team catalog add marketing https://github.com/acme/marketing-skills.git \</span></span><span class="l"><span class="c">    --version e7f3afe65a28537f4502ee48d0eade0d00d04bc1 \</span></span><span class="l"><span class="c">    --skill +copywriting --skill +launch</span></span><span class="l"><span class="o"><span class="ok">catalog_added</span> team manifest …/agent-skills/dalo.toml catalog=marketing</span></span><span class="l"><span class="o">next: commit and push dalo.toml</span></span><span class="l"></span><span class="l"><span class="p">$ </span><span class="c">cat dalo.toml</span></span><span class="l"><span class="o">[[catalog]]</span></span><span class="l"><span class="o">id = "marketing"</span></span><span class="l"><span class="o">url = "https://github.com/acme/marketing-skills.git"</span></span><span class="l hl a">version = "<span class="wa">e7f3afe65a28537f4502ee48d0eade0d00d04bc1</span>"</span><span class="l"><span class="o">skills = [</span></span><span class="l"><span class="o">    "+copywriting",</span></span><span class="l"><span class="o">    "+launch",</span></span><span class="l"><span class="o">]</span></span></code></pre>
         </figure>
       </div>
     </div>
@@ -764,23 +717,7 @@ url = "https://github.com/acme/marketing-skills.git"</span>
         </div>
         <figure class="term">
           <figcaption><b>~/work</b><span>zsh</span></figcaption>
-<pre><code><span class="p">$ </span><span class="c">dalo sync</span>
-<span class="o">…</span>
-<span class="hl a"><span class="wa">pending approval:</span> company.marketing:copywriting (run: dalo approve skill company.marketing:copywriting)</span>
-<span class="p">$ </span><span class="c">dalo audit company.marketing:copywriting</span>
-<span class="o">security audit: company.marketing:copywriting
-  content hash: 1683fb9c5d11a1ab46c493c7db99aa2ff37fba1ecb75dffc0f179ac4da7a0bd7
-  coverage: complete
-  result: <span class="ok">clean</span>
-  note: no findings means no known issue was detected; it is not a safety guarantee</span>
-
-<span class="p">$ </span><span class="c">dalo approve skill company.marketing:copywriting</span>
-<span class="o">…</span>
-<span class="ok">granted skill</span><span class="o"> company.marketing:copywriting
-next: dalo sync to link it</span>
-
-<span class="p">$ </span><span class="c">dalo sync</span>
-<span class="hl"><span class="ok">applied  create</span>     target[claude]:/copywriting -&gt; store:/sources/company.marketing/checkout/skills/copywriting</span></code></pre>
+<pre><code><span class="l"><span class="p">$ </span><span class="c">dalo sync</span></span><span class="l"><span class="o">…</span></span><span class="l hl a"><span class="wa">pending approval:</span> company.marketing:copywriting (run: dalo approve skill company.marketing:copywriting)</span><span class="l"></span><span class="l"><span class="p">$ </span><span class="c">dalo audit company.marketing:copywriting</span></span><span class="l"><span class="o">security audit: company.marketing:copywriting</span></span><span class="l"><span class="o">  content hash: 1683fb9c5d11a1ab46c493c7db99aa2ff37fba1ecb75dffc0f179ac4da7a0bd7</span></span><span class="l"><span class="o">  coverage: complete</span></span><span class="l"><span class="o">  result: <span class="ok">clean</span></span></span><span class="l"><span class="o">  note: no findings means no known issue was detected; it is not a safety guarantee</span></span><span class="l"></span><span class="l"><span class="p">$ </span><span class="c">dalo approve skill company.marketing:copywriting</span></span><span class="l"><span class="o">…</span></span><span class="l"><span class="ok">granted skill</span><span class="o"> company.marketing:copywriting</span></span><span class="l"><span class="o">next: dalo sync to link it</span></span><span class="l"></span><span class="l"><span class="p">$ </span><span class="c">dalo sync</span></span><span class="l hl"><span class="ok">applied  create</span>     target[claude]:/copywriting -&gt; store:/sources/company.marketing/checkout/skills/copywriting</span><span class="l"></span></code></pre>
         </figure>
       </div>
     </div>
@@ -813,14 +750,7 @@ next: dalo sync to link it</span>
           </div>
           <figure class="term table" style="margin-top: 22px">
             <figcaption><b>~/work</b><span>zsh</span></figcaption>
-<pre><code><span class="p">$ </span><span class="c">dalo target detect</span>
-<span class="o">codex     supported    exists=true  linked=false ~/.agents/skills
-claude    supported    exists=true  linked=false ~/.claude/skills
-openclaw  supported    exists=true  linked=false ~/.agents/skills
-hermes    supported    exists=false linked=false ~/.hermes/skills
-opencode  supported    exists=false linked=false ~/.config/opencode/skills
-generic   supported    exists=false linked=false -</span>
-<span class="hl">next: dalo target link codex</span></code></pre>
+<pre><code><span class="l"><span class="p">$ </span><span class="c">dalo target detect</span></span><span class="l"><span class="o">codex     supported    exists=true  linked=false ~/.agents/skills</span></span><span class="l"><span class="o">claude    supported    exists=true  linked=false ~/.claude/skills</span></span><span class="l"><span class="o">openclaw  supported    exists=true  linked=false ~/.agents/skills</span></span><span class="l"><span class="o">hermes    supported    exists=false linked=false ~/.hermes/skills</span></span><span class="l"><span class="o">opencode  supported    exists=false linked=false ~/.config/opencode/skills</span></span><span class="l"><span class="o">generic   supported    exists=false linked=false -</span></span><span class="l hl">next: dalo target link codex</span><span class="l"></span></code></pre>
           </figure>
         </div>
       </div>
@@ -844,11 +774,7 @@ generic   supported    exists=false linked=false -</span>
         </div>
         <figure class="term">
           <figcaption><b>~/work</b><span>zsh</span></figcaption>
-<pre><code><span class="p">$ </span><span class="c">dalo synk</span>
-<span class="o">error: unrecognized subcommand 'synk'</span>
-<span class="hl">  tip: a similar subcommand exists: 'sync'</span>
-<span class="p">$ </span><span class="c">dalo approve skill company:relese-helper</span>
-<span class="o">error: skill `company:relese-helper` was not found; <span class="ok">did you mean `company:release-helper`?</span>; known skills: company:new-skill, company:release-helper</span></code></pre>
+<pre><code><span class="l"><span class="p">$ </span><span class="c">dalo synk</span></span><span class="l"><span class="o">error: unrecognized subcommand 'synk'</span></span><span class="l hl">  tip: a similar subcommand exists: 'sync'</span><span class="l"></span><span class="l"><span class="p">$ </span><span class="c">dalo approve skill company:relese-helper</span></span><span class="l"><span class="o">error: skill `company:relese-helper` was not found; <span class="ok">did you mean `company:release-helper`?</span>; known skills: company:new-skill, company:release-helper</span></span></code></pre>
         </figure>
       </div>
     </div>
@@ -924,19 +850,7 @@ generic   supported    exists=false linked=false -</span>
         </div>
         <figure class="term">
           <figcaption><b>sandbox</b><button class="copy" type="button" data-copy-from="sandbox-code">Copy</button></figcaption>
-<pre><code id="sandbox-code"><span class="cm"># no real agent folders touched</span>
-<span class="p">$ </span><span class="c">export DALO_STORE="$(mktemp -d)/store"</span>
-<span class="p">$ </span><span class="c">export SKILLS_DIR="$(mktemp -d)/skills"</span>
-<span class="p">$ </span><span class="c">dalo init</span>
-<span class="p">$ </span><span class="c">dalo target link generic "$SKILLS_DIR"</span>
-
-<span class="cm"># a real public catalog</span>
-<span class="p">$ </span><span class="c">dalo source add-catalog sebastian https://github.com/sebastian-software/skills.sebastian-software.com.git</span>
-<span class="p">$ </span><span class="c">dalo source select sebastian effective-web</span>
-<span class="p">$ </span><span class="c">dalo audit sebastian:effective-web</span>
-<span class="p">$ </span><span class="c">dalo approve skill sebastian:effective-web</span>
-<span class="p">$ </span><span class="c">dalo sync</span>
-<span class="o">security preflight: deterministic checks only</span></code></pre>
+<pre><code id="sandbox-code"><span class="l"><span class="cm"># no real agent folders touched</span></span><span class="l"><span class="p">$ </span><span class="c">export DALO_STORE="$(mktemp -d)/store"</span></span><span class="l"><span class="p">$ </span><span class="c">export SKILLS_DIR="$(mktemp -d)/skills"</span></span><span class="l"><span class="p">$ </span><span class="c">dalo init</span></span><span class="l"><span class="p">$ </span><span class="c">dalo target link generic "$SKILLS_DIR"</span></span><span class="l"></span><span class="l"><span class="cm"># a real public catalog</span></span><span class="l"><span class="p">$ </span><span class="c">dalo source add-catalog sebastian https://github.com/sebastian-software/skills.sebastian-software.com.git</span></span><span class="l"><span class="p">$ </span><span class="c">dalo source select sebastian effective-web</span></span><span class="l"><span class="p">$ </span><span class="c">dalo audit sebastian:effective-web</span></span><span class="l"><span class="p">$ </span><span class="c">dalo approve skill sebastian:effective-web</span></span><span class="l"><span class="p">$ </span><span class="c">dalo sync</span></span><span class="l"><span class="o">security preflight: deterministic checks only</span></span></code></pre>
         </figure>
       </div>
     </div>
@@ -979,7 +893,8 @@ generic   supported    exists=false linked=false -</span>
     var from = b.getAttribute('data-copy-from');
     if (from) {
       var el = document.getElementById(from);
-      text = el.textContent.split('\n').filter(function (l) { return l.indexOf('$ ') === 0; })
+      text = Array.prototype.map.call(el.querySelectorAll('.l'), function (l) { return l.textContent; })
+        .filter(function (l) { return l.indexOf('$ ') === 0; })
         .map(function (l) { return l.slice(2); }).join('\n');
     }
     navigator.clipboard.writeText(text).then(function () {
