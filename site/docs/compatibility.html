@@ -250,6 +250,9 @@ version it does not support instead of guessing.</p>
 <td><code>1</code> (tool descriptor <code>1</code>, hook descriptor <code>1</code>)</td>
 </tr>
 </tbody></table></div>
+<p>The optional <code>sources[].subpath</code> in <code>config.toml</code> and <code>sources[].subpath</code> in
+<code>lock.toml</code> are additive 1.x fields. Older files without them continue to use
+the checkout root as the inventory root.</p>
 <p>Two further author-facing files are versioned the same way and follow the same
 rule: <a href="/docs/reference.html#deliverytoml-provider-builds"><code>DELIVERY.toml</code></a> provider
 builds (<code>schema_version = 1</code>) and
