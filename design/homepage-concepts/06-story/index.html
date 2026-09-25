@@ -1,0 +1,631 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dalo — Story concept</title>
+<meta name="description" content="Dalo keeps your team's agent skills in Git: one approved set, resolved the same way on every machine and reviewed before it reaches any agent folder." />
+<link rel="stylesheet" href="../fonts/inter-tight.css" />
+<link rel="stylesheet" href="../fonts/ibm-plex-mono.css" />
+<style>
+:root {
+  --ink: #0b0c0f;
+  --ink-2: #2a2d33;
+  --muted: #62656d;
+  --faint: #9b9ea6;
+  --line: rgba(12, 14, 20, 0.09);
+  --line-2: rgba(12, 14, 20, 0.14);
+  --paper: #ffffff;
+  --stage: #f5f6f8;
+  --accent: #1f5cff;
+  --accent-soft: rgba(31, 92, 255, 0.08);
+  --accent-line: rgba(31, 92, 255, 0.28);
+  --ok: #0f8a4f;
+
+  --sans: "Inter Tight", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --gutter: clamp(16px, 4vw, 48px);
+  --max: 1200px;
+  --ease: cubic-bezier(0.2, 0.7, 0.1, 1);
+
+  --shadow-card:
+    0 0 0 1px rgba(12, 14, 20, 0.06),
+    0 1px 2px rgba(12, 14, 20, 0.04),
+    0 8px 24px -6px rgba(12, 14, 20, 0.08),
+    0 32px 64px -24px rgba(20, 40, 110, 0.16);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 17px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+main { overflow-x: clip; }
+a { color: inherit; text-decoration: none; }
+code, pre { font-family: var(--mono); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.wrap { width: 100%; max-width: calc(var(--max) + 2 * var(--gutter)); margin: 0 auto; padding: 0 var(--gutter); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+
+/* ---------- header ---------- */
+.site-header {
+  position: sticky; top: 0; z-index: 20;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: saturate(1.6) blur(14px);
+  -webkit-backdrop-filter: saturate(1.6) blur(14px);
+  border-bottom: 1px solid transparent;
+}
+.site-header .wrap { display: flex; align-items: center; height: 64px; gap: 32px; }
+.brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 650; font-size: 21px; letter-spacing: -0.03em; }
+.brand svg { color: var(--ink); }
+.nav { display: flex; gap: 28px; margin-left: auto; font-size: 15px; color: var(--muted); }
+.nav a { transition: color .15s; }
+.nav a:hover { color: var(--ink); }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 36px; padding: 0 16px; border-radius: 999px;
+  font-size: 15px; font-weight: 550; letter-spacing: -0.01em;
+  transition: background .15s, box-shadow .15s, color .15s;
+}
+.btn-dark { background: var(--ink); color: #fff; }
+.btn-dark:hover { background: #24262c; }
+
+/* ---------- hero ---------- */
+.hero { position: relative; text-align: center; padding: clamp(88px, 13vh, 140px) 0 0; }
+.hero h1 {
+  margin: 0 auto;
+  font-size: clamp(46px, 7.3vw, 110px);
+  font-weight: 620;
+  line-height: 0.98;
+  letter-spacing: -0.052em;
+}
+.hero h1 span { display: block; text-wrap: balance; }
+.hero h1 .dim { color: #a3a6ad; }
+.hero .lede {
+  margin: 32px auto 0;
+  max-width: 44ch;
+  font-size: clamp(19px, 1.6vw, 23px);
+  line-height: 1.45;
+  color: var(--muted);
+  letter-spacing: -0.012em;
+}
+.cta-row { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 14px 24px; margin-top: 44px; }
+.install {
+  display: inline-flex; align-items: center; gap: 12px;
+  height: 52px; padding: 0 8px 0 20px; max-width: 100%;
+  border-radius: 14px; background: var(--ink); color: #eceef2;
+  font-family: var(--mono); font-size: 14.5px;
+  box-shadow: 0 1px 0 rgba(255,255,255,.08) inset, 0 10px 30px -10px rgba(12,14,20,.45);
+}
+.install code { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.install .pr { color: #7c8190; user-select: none; }
+.copy {
+  display: none; align-items: center; justify-content: center; gap: 6px;
+  height: 36px; min-width: 36px; padding: 0 10px; border: 0; border-radius: 9px;
+  background: rgba(255,255,255,.08); color: #cfd2d9; cursor: pointer;
+  font: 500 12.5px var(--sans); transition: background .15s, color .15s;
+}
+.js .copy { display: inline-flex; }
+.copy:hover { background: rgba(255,255,255,.16); color: #fff; }
+.copy.done { color: #9fb8ff; }
+.link-arrow { display: inline-flex; align-items: center; gap: 6px; font-size: 16px; font-weight: 550; letter-spacing: -0.01em; color: var(--ink); }
+.link-arrow svg { transition: transform .2s var(--ease); }
+.link-arrow:hover svg { transform: translateX(3px); }
+.link-arrow.muted { color: var(--muted); }
+.link-arrow.muted:hover { color: var(--ink); }
+
+.hero-visual { position: relative; margin: clamp(72px, 10vh, 104px) auto 0; max-width: 980px; }
+.hero-visual::before {
+  content: ""; position: absolute; inset: -12% -8% -20%; z-index: -1;
+  background:
+    radial-gradient(50% 55% at 50% 45%, rgba(31, 92, 255, 0.10), transparent 70%),
+    radial-gradient(30% 40% at 78% 70%, rgba(31, 92, 255, 0.06), transparent 70%);
+  filter: blur(8px);
+}
+.term { background: #fff; border-radius: 16px; box-shadow: var(--shadow-card); text-align: left; overflow: hidden; }
+.term-bar { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border-bottom: 1px solid var(--line); }
+.term-bar i { width: 11px; height: 11px; border-radius: 50%; background: #e6e7ea; }
+.term-bar b { flex: 1; text-align: center; font: 500 12.5px var(--mono); color: var(--faint); margin-right: 49px; }
+.term pre {
+  margin: 0; padding: 28px 28px 32px; overflow-x: auto;
+  font-size: 14px; line-height: 1.85; color: var(--ink-2);
+}
+.term .pr { color: var(--faint); }
+.term .cmd { color: var(--ink); font-weight: 500; }
+.term .st { color: var(--faint); }
+.term .ac { color: var(--accent); }
+.term .sum { color: var(--ink); font-weight: 600; }
+
+/* ---------- story ---------- */
+.story { padding: clamp(120px, 18vh, 200px) 0 clamp(80px, 12vh, 140px); }
+.story-grid { position: relative; }
+.steps { display: grid; gap: clamp(120px, 16vh, 180px); }
+.step { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 64px; align-items: center; }
+.step-text { max-width: 440px; }
+.step-num { display: flex; align-items: center; gap: 12px; margin: 0 0 24px; font: 500 13px var(--mono); color: var(--accent); letter-spacing: 0.02em; }
+.step-num::after { content: ""; width: 40px; height: 1px; background: var(--accent-line); }
+.step h2 { margin: 0; font-size: clamp(38px, 4.6vw, 66px); font-weight: 620; line-height: 1.0; letter-spacing: -0.045em; }
+.step p.say { margin: 24px 0 0; font-size: clamp(18px, 1.45vw, 21px); line-height: 1.5; color: var(--muted); letter-spacing: -0.01em; }
+.step p.note { margin: 16px 0 0; font-size: 15px; color: var(--faint); letter-spacing: -0.005em; }
+.band-note { margin: 40px auto 0; font-size: clamp(17px, 1.4vw, 20px); color: var(--muted); letter-spacing: -0.01em; }
+.quick p code { font-size: 0.86em; color: var(--ink-2); background: var(--stage); padding: 2px 6px; border-radius: 6px; border: 1px solid var(--line); }
+.step p.say code { font-size: 0.86em; color: var(--ink-2); background: var(--stage); padding: 2px 6px; border-radius: 6px; border: 1px solid var(--line); }
+
+/* stage (sticky panel, and the inline panel each step carries) */
+.viz, .stage {
+  position: relative;
+  border-radius: 28px;
+  background:
+    radial-gradient(70% 60% at 50% 40%, rgba(255,255,255,0.9), rgba(255,255,255,0) 70%),
+    radial-gradient(60% 50% at 80% 100%, rgba(31, 92, 255, 0.07), transparent 70%),
+    var(--stage);
+  border: 1px solid rgba(12,14,20,.05);
+}
+.viz { margin: 0; padding: clamp(20px, 5vw, 64px) clamp(16px, 4vw, 56px); min-height: 480px; display: grid; place-items: center; }
+.stage { display: none; }
+
+.card {
+  width: 100%; max-width: 500px;
+  background: #fff; border-radius: 16px; box-shadow: var(--shadow-card);
+  font-size: 14px;
+}
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 48px; padding: 0 18px; border-bottom: 1px solid var(--line); }
+.card-head strong { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+.card-head code { font-size: 12px; color: var(--faint); }
+.card-foot { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-top: 1px solid var(--line); background: #fbfbfc; border-radius: 0 0 16px 16px; font-size: 13px; color: var(--muted); }
+.card-foot code { font-size: 12.5px; color: var(--ink); }
+.card-foot .pr { color: var(--faint); }
+.rows { list-style: none; margin: 0; padding: 6px 0; }
+.rows li { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 8px 18px; }
+.rows li + li { border-top: 1px solid rgba(12,14,20,.05); }
+.rows .name { font-size: 13px; color: var(--ink); font-weight: 500; }
+.rows .meta { margin-left: auto; font-size: 12px; color: var(--faint); white-space: nowrap; }
+.rows .hash { font-size: 12px; color: var(--muted); min-width: 56px; text-align: right; }
+
+.tag {
+  display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px;
+  border-radius: 999px; font-size: 12px; font-weight: 550; white-space: nowrap;
+  background: #f3f4f6; color: var(--muted);
+}
+.tag svg { flex: none; }
+.tag.ok { background: rgba(15, 138, 79, 0.08); color: var(--ok); }
+.tag.acc { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent-line); }
+.tag.line { background: transparent; box-shadow: inset 0 0 0 1px var(--line-2); color: var(--muted); }
+
+/* viz 1 — many sources, one set */
+.v1 { width: 100%; max-width: 500px; }
+.sources { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.src { background: #fff; border-radius: 12px; box-shadow: var(--shadow-card); padding: 12px 14px; }
+.src code { display: block; font-size: 13px; font-weight: 500; color: var(--ink); }
+.src small { display: block; margin-top: 2px; font: 12px var(--mono); color: var(--faint); }
+.merge { display: block; width: 100%; height: 64px; }
+.merge path { fill: none; stroke: var(--line-2); stroke-width: 1.25; }
+.merge path.hot { stroke: var(--accent); }
+.set { position: relative; }
+.set::before {
+  content: ""; position: absolute; left: 50%; top: -6px; width: 12px; height: 12px; margin-left: -6px;
+  border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 5px rgba(31, 92, 255, 0.14);
+}
+.set .card-head strong { display: inline-flex; align-items: center; gap: 8px; }
+
+/* viz 2 — preflight + approval */
+.v2 .rows li { flex-wrap: wrap; row-gap: 6px; }
+.v2 .rows .name { flex: 1 1 130px; }
+.v2 .gate { display: flex; gap: 6px; flex-wrap: wrap; }
+.v2 .card-foot { justify-content: space-between; }
+.key { display: inline-grid; place-items: center; min-width: 26px; height: 22px; padding: 0 6px; border-radius: 6px; background: var(--accent); color: #fff; font: 600 11px var(--mono); }
+
+/* viz 3 — links land, your files stay */
+.tabs { display: flex; gap: 4px; padding: 8px 10px 0; border-bottom: 1px solid var(--line); overflow: hidden; }
+.tabs code { font-size: 12px; padding: 8px 10px 10px; color: var(--faint); white-space: nowrap; }
+.tabs code.on { color: var(--ink); box-shadow: inset 0 -2px 0 var(--ink); }
+.v3 .ico { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; }
+.v3 .ico.lk { background: var(--accent-soft); color: var(--accent); }
+.v3 .ico.fd { background: #f3f4f6; color: var(--muted); }
+.v3 .arrow { font-size: 12px; color: var(--faint); white-space: nowrap; }
+.v3 li.yours .name { color: var(--muted); }
+.v3 .rows .tag { margin-left: auto; }
+
+/* ---------- agents band ---------- */
+.agents { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: clamp(96px, 14vh, 150px) 0; text-align: center; }
+.eyebrow { margin: 0 0 32px; font: 500 13px var(--mono); color: var(--faint); letter-spacing: 0.04em; text-transform: uppercase; }
+.agent-list { list-style: none; margin: 0 auto; padding: 0; max-width: 1100px; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 0; font-size: clamp(32px, 5vw, 72px); font-weight: 600; letter-spacing: -0.045em; line-height: 1.12; }
+.agent-list li { display: inline-flex; align-items: center; }
+.agent-list li + li::before { content: ""; display: inline-block; width: 0.16em; height: 0.16em; margin: 0 0.42em; border-radius: 50%; background: #d4d6db; transform: translateY(0.04em); }
+.agent-list li.any { color: var(--accent); }
+
+/* ---------- quickstart ---------- */
+.quick { padding: clamp(120px, 18vh, 200px) 0; }
+.quick-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 64px; align-items: center; }
+.quick h2, .final h2 { margin: 0; font-weight: 620; letter-spacing: -0.045em; line-height: 1.0; }
+.quick h2 { font-size: clamp(38px, 4.6vw, 66px); }
+.quick p { margin: 24px 0 0; max-width: 30ch; font-size: clamp(18px, 1.45vw, 21px); color: var(--muted); letter-spacing: -0.01em; }
+.quick .link-arrow { margin-top: 32px; }
+.qs { list-style: none; margin: 0; padding: 8px 0; }
+.qs li { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 4px 14px; padding: 18px 24px; }
+.qs li + li { border-top: 1px solid rgba(12,14,20,.05); }
+.qs .n { grid-row: span 2; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line-2); font: 500 12px var(--mono); color: var(--muted); }
+.qs .t { font-size: 14px; font-weight: 550; color: var(--ink); letter-spacing: -0.01em; line-height: 28px; }
+.qs pre { margin: 0; overflow-x: auto; font-size: 13.5px; line-height: 1.6; color: var(--ink); }
+.qs pre .pr { color: var(--faint); user-select: none; }
+.qs li.last .n { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* ---------- final ---------- */
+.final { padding: clamp(80px, 12vh, 140px) 0 clamp(120px, 18vh, 200px); text-align: center; }
+.final h2 { font-size: clamp(48px, 8.4vw, 128px); letter-spacing: -0.055em; line-height: 0.96; }
+.final h2 .dim { color: #a3a6ad; }
+.final-lede { margin: 32px auto 0; max-width: 36ch; font-size: clamp(18px, 1.5vw, 22px); color: var(--muted); letter-spacing: -0.012em; }
+.final .fine { margin: 28px 0 0; font-size: 15px; color: var(--faint); letter-spacing: -0.005em; }
+.final .cta-row { margin-top: 40px; }
+
+/* ---------- footer ---------- */
+.site-footer { border-top: 1px solid var(--line); padding: 32px 0 48px; font-size: 14px; color: var(--muted); }
+.site-footer .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 28px; }
+.site-footer .brand { font-size: 17px; }
+.site-footer nav { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-left: auto; }
+.site-footer nav a:hover { color: var(--ink); }
+.site-footer small { width: 100%; font-size: 13px; color: var(--faint); }
+
+/* ---------- scrollytelling (JS, wide, motion allowed) ---------- */
+.story.is-scrolly .story-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 64px; }
+.story.is-scrolly .steps { gap: 0; }
+.story.is-scrolly .step { display: flex; min-height: 92vh; }
+.story.is-scrolly .step:first-child { min-height: 72vh; align-items: flex-start; padding-top: 18vh; }
+.story.is-scrolly .step .viz { display: none; }
+.story.is-scrolly .step-text { opacity: 0.22; transform: translateY(8px); transition: opacity .5s var(--ease), transform .6s var(--ease); }
+.story.is-scrolly .step.active .step-text { opacity: 1; transform: none; }
+.story.is-scrolly .stage {
+  display: block; position: sticky; top: calc(50vh - 290px + 32px);
+  height: 580px; overflow: hidden;
+}
+.stage .frame { position: absolute; inset: 0; display: grid; place-items: center; padding: 56px; opacity: 0; transform: translateY(18px) scale(0.985); transition: opacity .55s var(--ease), transform .7s var(--ease); pointer-events: none; }
+.stage .frame.on { opacity: 1; transform: none; }
+.stage .frame .viz { background: none; border: 0; min-height: 0; padding: 0; width: 100%; }
+.stage-dots { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); display: flex; gap: 8px; z-index: 2; }
+.stage-dots i { width: 6px; height: 6px; border-radius: 50%; background: rgba(12,14,20,.14); transition: background .3s, width .3s var(--ease); }
+.stage-dots i.on { width: 20px; border-radius: 3px; background: var(--accent); }
+
+/* draw the merge lines when a frame becomes active */
+.stage .merge path { stroke-dasharray: 400; stroke-dashoffset: 0; }
+.stage .frame:not(.on) .merge path { stroke-dashoffset: 400; }
+.stage .frame.on .merge path { transition: stroke-dashoffset 1s var(--ease) .15s; }
+
+/* ---------- load motion ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  .hero h1 span, .hero .lede, .hero .cta-row, .hero-visual { animation: rise .9s var(--ease) both; }
+  .hero h1 span:nth-child(2) { animation-delay: .08s; }
+  .hero .lede { animation-delay: .16s; }
+  .hero .cta-row { animation-delay: .24s; }
+  .hero-visual { animation-delay: .36s; animation-duration: 1.2s; }
+  @keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 1023px) {
+  .step, .quick-grid { grid-template-columns: minmax(0, 1fr); gap: 40px; }
+  .step-text { max-width: 560px; }
+  .viz { min-height: 0; }
+}
+@media (max-width: 720px) {
+  body { font-size: 16px; }
+  .nav a:not(.keep) { display: none; }
+  .nav { gap: 20px; }
+  .site-header .wrap { gap: 16px; }
+  .hero { padding-top: 64px; }
+  .hero .lede { margin-top: 24px; }
+  .cta-row { margin-top: 36px; flex-direction: column; gap: 20px; }
+  .install { width: 100%; height: 50px; padding-left: 16px; font-size: 13px; }
+  .install code { flex: 1; text-align: left; }
+  .hero-visual { margin-top: 64px; }
+  .term pre { padding: 20px 18px 24px; font-size: 12.5px; }
+  .term-bar b { margin-right: 0; text-align: right; }
+  .viz { border-radius: 22px; padding: 28px 14px; }
+  .sources { gap: 8px; }
+  .src { padding: 10px; }
+  .src code { font-size: 12px; }
+  .src small { font-size: 11px; }
+  .rows li { padding: 8px 14px; }
+  .card-head { padding: 0 14px; }
+  .card-foot { padding: 12px 14px; }
+  .v3 .arrow { display: none; }
+  .qs li { padding: 16px 16px; gap: 4px 12px; }
+  .qs pre { font-size: 12.5px; }
+  .site-footer nav { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="Dalo home">
+      <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true" focusable="false">
+        <rect x="1.25" y="1.25" width="29.5" height="29.5" rx="8" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <circle cx="9" cy="9.5" r="2" fill="currentColor" />
+        <circle cx="9" cy="16" r="2" fill="currentColor" />
+        <circle cx="9" cy="22.5" r="2" fill="currentColor" />
+        <path d="M11 9.5 H17 Q22 9.5 22 16 Q22 22.5 17 22.5 H11 M11 16 H22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" />
+        <circle cx="22.5" cy="16" r="2.6" fill="var(--accent)" />
+      </svg>
+      <span>dalo</span>
+    </a>
+    <nav class="nav" aria-label="Primary">
+      <a class="keep" href="/docs/">Docs</a>
+      <a href="/spec/">Spec</a>
+      <a href="/docs/security.html">Security</a>
+      <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+    </nav>
+    <a class="btn btn-dark" href="#start">Get started</a>
+  </div>
+</header>
+
+<main>
+  <!-- 1 · hero -->
+  <section class="hero">
+    <div class="wrap">
+      <h1><span>Your team's agent skills,</span> <span class="dim">versioned like code.</span></h1>
+      <p class="lede">Dalo keeps your team's skills in Git and links one reviewed, pinned set into every agent's folder, the same on every machine.</p>
+      <div class="cta-row">
+        <div class="install">
+          <code><span class="pr">$ </span>curl -fsSL https://dalo.sh/install.sh | sh</code>
+          <button class="copy" type="button" data-copy="curl -fsSL https://dalo.sh/install.sh | sh" aria-label="Copy install command">
+            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" d="M5.5 5.5h7v7h-7zM3.5 10.5h-1v-7h7v1"/></svg>
+          </button>
+        </div>
+        <a class="link-arrow" href="/docs/">Read the docs
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 8h9M8.5 4.5 12 8l-3.5 3.5"/></svg>
+        </a>
+      </div>
+
+      <figure class="hero-visual" aria-label="Output of dalo sync">
+        <div class="term">
+          <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><b>~/work</b></div>
+<pre><span class="pr">$ </span><span class="cmd">dalo sync</span>
+<span class="st">applied  create</span>     target[codex]:/incident-review <span class="ac">-&gt;</span> store:/sources/company/checkout/skills/incident-review
+<span class="st">applied  create</span>     target[codex]:/release-notes <span class="ac">-&gt;</span> store:/sources/company/checkout/skills/release-notes
+<span class="sum">synced: 2 skills across 1 target (2 created)</span>
+<span class="st">security preflight: deterministic checks only</span></pre>
+        </div>
+      </figure>
+    </div>
+  </section>
+
+  <!-- 2 · story -->
+  <section class="story" id="how" aria-label="How Dalo works">
+    <div class="wrap">
+      <div class="story-grid">
+        <div class="steps">
+
+          <article class="step" data-step="0">
+            <div class="step-text">
+              <p class="step-num">01</p>
+              <h2>One source of truth.</h2>
+              <p class="say">Skills live in Git. Dalo resolves one pinned set from all your sources, with the same result on every machine. Name conflicts follow source priority, never chance.</p>
+              <p class="note">Lower priority number wins; the rest are reported as shadowed.</p>
+            </div>
+            <figure class="viz" aria-label="Three sources resolve into one pinned set">
+              <div class="v1">
+                <div class="sources">
+                  <div class="src"><code>local</code><small>prio 0</small></div>
+                  <div class="src"><code>company</code><small>prio 10</small></div>
+                  <div class="src"><code>sebastian</code><small>catalog</small></div>
+                </div>
+                <svg class="merge" viewBox="0 0 300 64" preserveAspectRatio="none" aria-hidden="true">
+                  <path d="M50 0 C50 34 150 30 150 64" vector-effect="non-scaling-stroke" />
+                  <path class="hot" d="M150 0 L150 64" vector-effect="non-scaling-stroke" />
+                  <path d="M250 0 C250 34 150 30 150 64" vector-effect="non-scaling-stroke" />
+                </svg>
+                <div class="card set">
+                  <div class="card-head">
+                    <strong>
+                      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" d="M4 7.5h8v6H4zM5.75 7.5V5.5a2.25 2.25 0 0 1 4.5 0v2"/></svg>
+                      Resolved set
+                    </strong>
+                    <code>lock.toml</code>
+                  </div>
+                  <ul class="rows">
+                    <li><code class="name">incident-review</code><code class="meta">company</code><code class="hash">4f2a91c</code></li>
+                    <li><code class="name">release-notes</code><code class="meta">company</code><code class="hash">4f2a91c</code></li>
+                    <li><code class="name">effective-web</code><code class="meta">sebastian</code><code class="hash">9c0e7b2</code></li>
+                  </ul>
+                </div>
+              </div>
+            </figure>
+          </article>
+
+          <article class="step" data-step="1">
+            <div class="step-text">
+              <p class="step-num">02</p>
+              <h2>Reviewed before it lands.</h2>
+              <p class="say">Fifteen deterministic rules run locally before any link is created. High and critical findings block until you accept the risk. Catalog skills wait for your explicit approval.</p>
+              <p class="note">A gate, not a guarantee: you stay the reviewer.</p>
+            </div>
+            <figure class="viz" aria-label="Preflight results and a pending approval">
+              <div class="card v2">
+                <div class="card-head"><strong>Security preflight</strong><code>15 rules · local</code></div>
+                <ul class="rows">
+                  <li><code class="name">incident-review</code>
+                    <span class="gate"><span class="tag ok"><svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="m2.5 6.2 2.2 2.2 4.8-4.9"/></svg>Passed</span><span class="tag line">Trusted source</span></span></li>
+                  <li><code class="name">release-notes</code>
+                    <span class="gate"><span class="tag ok"><svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="m2.5 6.2 2.2 2.2 4.8-4.9"/></svg>Passed</span><span class="tag line">Trusted source</span></span></li>
+                  <li><code class="name">effective-web</code>
+                    <span class="gate"><span class="tag ok"><svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="m2.5 6.2 2.2 2.2 4.8-4.9"/></svg>Passed</span><span class="tag acc">Pending approval</span></span></li>
+                </ul>
+                <div class="card-foot"><code><span class="pr">$ </span>dalo approve skill sebastian:effective-web</code><span class="key" aria-hidden="true">↵</span></div>
+              </div>
+            </figure>
+          </article>
+
+          <article class="step" data-step="2">
+            <div class="step-text">
+              <p class="step-num">03</p>
+              <h2>Safe by default.</h2>
+              <p class="say">Dalo links only what it owns. It never overwrites your files or folders, and <code>--dry-run</code> shows every change before it happens.</p>
+              <p class="note">Dirty team checkouts block a refresh instead of losing your edits.</p>
+            </div>
+            <figure class="viz" aria-label="Managed links next to an untouched folder">
+              <div class="card v3">
+                <div class="tabs" aria-hidden="true"><code class="on">~/.claude/skills</code><code>~/.agents/skills</code></div>
+                <ul class="rows">
+                  <li><span class="ico lk"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M6.8 9.2 9.2 6.8M7.4 4.6l1-1a2.6 2.6 0 0 1 3.7 3.7l-1 1M8.6 11.4l-1 1a2.6 2.6 0 0 1-3.7-3.7l1-1"/></svg></span><code class="name">incident-review</code><code class="arrow">→ store</code><span class="tag acc">Managed</span></li>
+                  <li><span class="ico lk"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M6.8 9.2 9.2 6.8M7.4 4.6l1-1a2.6 2.6 0 0 1 3.7 3.7l-1 1M8.6 11.4l-1 1a2.6 2.6 0 0 1-3.7-3.7l1-1"/></svg></span><code class="name">release-notes</code><code class="arrow">→ store</code><span class="tag acc">Managed</span></li>
+                  <li><span class="ico lk"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M6.8 9.2 9.2 6.8M7.4 4.6l1-1a2.6 2.6 0 0 1 3.7 3.7l-1 1M8.6 11.4l-1 1a2.6 2.6 0 0 1-3.7-3.7l1-1"/></svg></span><code class="name">effective-web</code><code class="arrow">→ store</code><span class="tag acc">Managed</span></li>
+                  <li class="yours"><span class="ico fd"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" d="M2.5 4.5h4l1.5 1.5h5.5v6.5h-11z"/></svg></span><code class="name">my-draft/</code><span class="tag line">Yours, untouched</span></li>
+                </ul>
+                <div class="card-foot"><code><span class="pr">$ </span>dalo --dry-run sync</code></div>
+              </div>
+            </figure>
+          </article>
+
+        </div>
+        <div class="stage" aria-hidden="true"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 · agents -->
+  <section class="agents" aria-labelledby="agents-title">
+    <div class="wrap">
+      <p class="eyebrow" id="agents-title">Works with</p>
+      <ul class="agent-list">
+        <li>Codex</li><li>Claude Code</li><li>OpenClaw</li><li>Hermes</li><li>OpenCode</li><li class="any">any folder</li>
+      </ul>
+      <p class="band-note">One set, linked into each agent's own skill folder. Anything folder-based works too.</p>
+    </div>
+  </section>
+
+  <!-- 4 · quickstart -->
+  <section class="quick" id="start" aria-labelledby="start-title">
+    <div class="wrap quick-grid">
+      <div>
+        <h2 id="start-title">Three steps to a synced set.</h2>
+        <p>One Rust binary for macOS and Linux. No daemon, just <code>git</code> on your path.</p>
+        <a class="link-arrow muted" href="/install.md">Install guide
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 8h9M8.5 4.5 12 8l-3.5 3.5"/></svg>
+        </a>
+      </div>
+      <div class="card" style="max-width:none">
+        <div class="card-head"><strong>Quickstart</strong><code>~/work</code></div>
+        <ol class="qs">
+          <li><span class="n">1</span><span class="t">Link your agent</span><pre><span class="pr">$ </span>dalo init &amp;&amp; dalo target link claude</pre></li>
+          <li><span class="n">2</span><span class="t">Add your team's repository</span><pre><span class="pr">$ </span>dalo source add company git@github.com:acme/agent-skills.git</pre></li>
+          <li class="last"><span class="n">3</span><span class="t">Sync</span><pre><span class="pr">$ </span>dalo sync</pre></li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 · final CTA -->
+  <section class="final" aria-labelledby="final-title">
+    <div class="wrap">
+      <h2 id="final-title">One reviewed set.<br /><span class="dim">Every agent.</span></h2>
+      <p class="final-lede">Install in one line, then sync your team's skills in three steps.</p>
+      <div class="cta-row">
+        <div class="install">
+          <code><span class="pr">$ </span>curl -fsSL https://dalo.sh/install.sh | sh</code>
+          <button class="copy" type="button" data-copy="curl -fsSL https://dalo.sh/install.sh | sh" aria-label="Copy install command">
+            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" d="M5.5 5.5h7v7h-7zM3.5 10.5h-1v-7h7v1"/></svg>
+          </button>
+        </div>
+        <a class="link-arrow" href="https://github.com/sebastian-software/dalo" rel="noopener">View on GitHub
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 8h9M8.5 4.5 12 8l-3.5 3.5"/></svg>
+        </a>
+      </div>
+      <p class="fine">Open source under MIT or Apache-2.0. Built in Rust by Sebastian Software.</p>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="Dalo home">
+      <svg viewBox="0 0 32 32" width="22" height="22" aria-hidden="true" focusable="false">
+        <rect x="1.25" y="1.25" width="29.5" height="29.5" rx="8" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <circle cx="9" cy="9.5" r="2" fill="currentColor" /><circle cx="9" cy="16" r="2" fill="currentColor" /><circle cx="9" cy="22.5" r="2" fill="currentColor" />
+        <path d="M11 9.5 H17 Q22 9.5 22 16 Q22 22.5 17 22.5 H11 M11 16 H22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" />
+        <circle cx="22.5" cy="16" r="2.6" fill="var(--accent)" />
+      </svg>
+      <span>dalo</span>
+    </a>
+    <nav aria-label="Footer">
+      <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+      <a href="/docs/">Docs</a>
+      <a href="/spec/">Spec</a>
+      <a href="/docs/security.html">Security</a>
+      <a href="/install.md">Install guide</a>
+    </nav>
+    <small>© Sebastian Software. Dalo is open source, dual-licensed MIT or Apache-2.0.</small>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  root.classList.add("js");
+
+  // copy buttons
+  document.querySelectorAll("[data-copy]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var text = btn.getAttribute("data-copy");
+      var done = function () {
+        btn.classList.add("done");
+        btn.setAttribute("aria-label", "Copied");
+        setTimeout(function () { btn.classList.remove("done"); btn.setAttribute("aria-label", "Copy install command"); }, 1600);
+      };
+      if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, function () {});
+    });
+  });
+
+  // scrollytelling: only wide screens with motion allowed; otherwise every step keeps its inline visual
+  var story = document.querySelector(".story");
+  var stage = story && story.querySelector(".stage");
+  if (!story || !stage || !("IntersectionObserver" in window)) return;
+  var steps = [].slice.call(story.querySelectorAll(".step"));
+  var mq = window.matchMedia("(min-width: 1024px) and (prefers-reduced-motion: no-preference)");
+  var frames = [], dots = [], io = null;
+
+  steps.forEach(function (step, i) {
+    var frame = document.createElement("div");
+    frame.className = "frame";
+    frame.appendChild(step.querySelector(".viz").cloneNode(true));
+    stage.appendChild(frame);
+    frames.push(frame);
+  });
+  var dotWrap = document.createElement("div");
+  dotWrap.className = "stage-dots";
+  steps.forEach(function () { var d = document.createElement("i"); dotWrap.appendChild(d); dots.push(d); });
+  stage.appendChild(dotWrap);
+
+  function activate(i) {
+    steps.forEach(function (s, j) { s.classList.toggle("active", i === j); });
+    frames.forEach(function (f, j) { f.classList.toggle("on", i === j); });
+    dots.forEach(function (d, j) { d.classList.toggle("on", i === j); });
+  }
+
+  function setup() {
+    if (io) { io.disconnect(); io = null; }
+    if (!mq.matches) { story.classList.remove("is-scrolly"); return; }
+    story.classList.add("is-scrolly");
+    activate(0);
+    io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) activate(steps.indexOf(e.target));
+      });
+    }, { rootMargin: "-45% 0px -45% 0px" });
+    steps.forEach(function (s) { io.observe(s); });
+  }
+  setup();
+  if (mq.addEventListener) mq.addEventListener("change", setup); else if (mq.addListener) mq.addListener(setup);
+})();
+</script>
+</body>
+</html>

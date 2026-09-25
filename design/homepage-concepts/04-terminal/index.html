@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dalo — Terminal concept</title>
+<meta name="description" content="Dalo keeps your team's agent skills in Git: one approved set, resolved the same way on every machine and reviewed before it reaches any agent folder.">
+<link rel="stylesheet" href="../fonts/hanken-grotesk.css">
+<link rel="stylesheet" href="../fonts/jetbrains-mono.css">
+<script>document.documentElement.classList.replace("no-js", "js")</script>
+<style>
+:root {
+  --bg: #ffffff;
+  --ink: #0d0d0f;
+  --ink-2: #3b3b41;
+  --muted: #6c6c74;
+  --faint: #a3a3ab;
+  --line: #ebe9e6;
+  --line-2: #e1dfdb;
+  --wash: #f6f5f3;
+  --coral: #e8623a;
+  --coral-ink: #c4481f;
+
+  --t-bg: #fcfbfa;
+  --t-bar: #f6f5f2;
+  --t-text: #2c2c31;
+  --t-dim: #93939b;
+  --t-green: #1c7f4d;
+  --t-blue: #3165d4;
+  --t-amber: #b25e09;
+  --t-red: #c4481f;
+
+  --sans: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --ease: cubic-bezier(.2, .7, .2, 1);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 16px/1.55 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+a { color: inherit; text-decoration: none; }
+code, kbd { font-family: var(--mono); }
+.sr {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.wrap { width: 100%; max-width: 1120px; margin: 0 auto; padding: 0 32px; }
+
+/* ---------- header ---------- */
+.top {
+  position: sticky; top: 0; z-index: 10;
+  background: rgba(255, 255, 255, .82);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
+  backdrop-filter: saturate(180%) blur(12px);
+  border-bottom: 1px solid transparent;
+}
+.top .wrap { display: flex; align-items: center; height: 64px; gap: 32px; }
+.brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 19px; letter-spacing: -.02em; }
+.brand svg { display: block; }
+.nav { display: flex; gap: 28px; margin-left: auto; font-size: 14.5px; color: var(--muted); }
+.nav a { transition: color .15s; }
+.nav a:hover { color: var(--ink); }
+.gh {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 34px; padding: 0 14px; border-radius: 9px;
+  font-size: 14px; font-weight: 550; color: var(--ink);
+  border: 1px solid var(--line-2);
+  box-shadow: 0 1px 1px rgba(15, 15, 20, .04);
+  transition: border-color .15s, background .15s;
+}
+.gh:hover { background: var(--wash); border-color: #d6d4cf; }
+
+/* ---------- hero ---------- */
+.hero { text-align: center; padding: 64px 0 44px; }
+.pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 28px; padding: 0 12px 0 10px; border-radius: 999px;
+  font: 500 12.5px/1 var(--mono); color: var(--ink-2);
+  background: var(--wash); border: 1px solid var(--line);
+}
+.pill i { width: 6px; height: 6px; border-radius: 50%; background: var(--coral); box-shadow: 0 0 0 3px rgba(232, 98, 58, .16); }
+.pill span { color: var(--faint); }
+h1 {
+  margin: 24px auto 0; max-width: 820px;
+  font-size: 64px; line-height: 1.02; font-weight: 700; letter-spacing: -.042em;
+  text-wrap: balance;
+}
+.lede {
+  margin: 20px auto 0; max-width: 560px;
+  font-size: 19px; line-height: 1.5; color: var(--muted); letter-spacing: -.005em;
+  text-wrap: pretty;
+}
+.ctas { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 36px; }
+.install {
+  display: flex; align-items: center; min-width: 0;
+  height: 48px; padding: 0 6px 0 18px; border-radius: 12px;
+  background: var(--ink); color: #f4f4f5;
+  font: 500 14px/1 var(--mono);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .08) inset, 0 1px 2px rgba(0, 0, 0, .16), 0 8px 20px -8px rgba(0, 0, 0, .35);
+}
+.install .p { color: var(--coral); margin-right: 10px; user-select: none; }
+.install code { white-space: nowrap; overflow: hidden; }
+.install--light {
+  background: #fff; color: var(--ink);
+  border: 1px solid var(--line-2);
+  box-shadow: 0 1px 2px rgba(15, 15, 20, .05);
+}
+.copy {
+  display: none; place-items: center; flex: none;
+  width: 36px; height: 36px; margin-left: 10px; border-radius: 8px;
+  border: 0; background: transparent; color: inherit; opacity: .6; cursor: pointer;
+  transition: opacity .15s, background .15s;
+}
+.js .copy { display: grid; }
+.copy:hover { opacity: 1; background: rgba(255, 255, 255, .1); }
+.install--light .copy:hover { background: var(--wash); }
+.copy svg { width: 16px; height: 16px; }
+.copy .ok { display: none; }
+.copy.done .ok { display: block; color: #4ade80; }
+.install--light .copy.done .ok { color: var(--t-green); }
+.copy.done .cp { display: none; }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  height: 48px; padding: 0 20px; border-radius: 12px;
+  font-size: 15px; font-weight: 600; color: var(--ink);
+  border: 1px solid var(--line-2); background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 15, 20, .05);
+  transition: background .15s, border-color .15s;
+}
+.btn:hover { background: var(--wash); border-color: #d6d4cf; }
+.btn .arr { transition: transform .2s var(--ease); color: var(--faint); }
+.btn:hover .arr { transform: translateX(2px); color: var(--ink); }
+
+/* ---------- stage ---------- */
+.stage { position: relative; padding: 8px 0 0; }
+.stage::before {
+  content: ""; position: absolute; z-index: -1; left: 50%; top: 40px;
+  width: min(1100px, 100%); height: 560px; transform: translateX(-50%);
+  background:
+    radial-gradient(50% 55% at 30% 45%, rgba(232, 98, 58, .10), transparent 70%),
+    radial-gradient(45% 55% at 72% 55%, rgba(120, 140, 220, .09), transparent 70%);
+  filter: blur(8px);
+  pointer-events: none;
+}
+.seg {
+  position: relative; display: grid; grid-template-columns: repeat(3, 1fr);
+  width: 540px; max-width: 100%; margin: 0 auto 24px; padding: 4px;
+  border-radius: 14px; background: var(--wash);
+  border: 1px solid var(--line);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .9) inset;
+}
+.seg .ind {
+  position: absolute; top: 4px; bottom: 4px; left: 4px;
+  width: calc((100% - 8px) / 3); border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(15, 15, 20, .06), 0 1px 2px rgba(15, 15, 20, .06), 0 4px 12px -4px rgba(15, 15, 20, .10);
+  transition: transform .35s var(--ease);
+}
+.seg label {
+  position: relative; z-index: 1; cursor: pointer; user-select: none;
+  display: grid; justify-items: center; gap: 2px;
+  padding: 9px 8px 10px; border-radius: 10px; text-align: center;
+}
+.seg b { font-size: 15px; font-weight: 650; letter-spacing: -.01em; color: var(--muted); transition: color .2s; }
+.seg small { font-size: 12.5px; color: var(--faint); transition: color .2s; white-space: nowrap; }
+.seg label:hover b { color: var(--ink); }
+
+#t-review:checked ~ .seg .ind { transform: translateX(100%); }
+#t-sync:checked ~ .seg .ind { transform: translateX(200%); }
+#t-pin:checked ~ .seg label[for="t-pin"] b,
+#t-review:checked ~ .seg label[for="t-review"] b,
+#t-sync:checked ~ .seg label[for="t-sync"] b { color: var(--ink); }
+#t-pin:checked ~ .seg label[for="t-pin"] small,
+#t-review:checked ~ .seg label[for="t-review"] small,
+#t-sync:checked ~ .seg label[for="t-sync"] small { color: var(--muted); }
+#t-pin:focus-visible ~ .seg label[for="t-pin"],
+#t-review:focus-visible ~ .seg label[for="t-review"],
+#t-sync:focus-visible ~ .seg label[for="t-sync"] { outline: 2px solid var(--coral); outline-offset: 2px; }
+
+.term {
+  max-width: 1000px; margin: 0 auto;
+  background: var(--t-bg);
+  border-radius: 14px;
+  box-shadow:
+    0 0 0 1px rgba(15, 15, 20, .08),
+    0 1px 1px rgba(15, 15, 20, .03),
+    0 4px 8px -2px rgba(15, 15, 20, .04),
+    0 24px 48px -12px rgba(15, 15, 20, .10),
+    0 48px 96px -32px rgba(60, 40, 30, .12);
+  overflow: hidden;
+}
+.bar {
+  position: relative; display: flex; align-items: center; height: 44px; padding: 0 16px;
+  background: linear-gradient(#f9f8f6, var(--t-bar));
+  border-bottom: 1px solid var(--line);
+}
+.dots { display: flex; gap: 8px; }
+.dots i { width: 12px; height: 12px; border-radius: 50%; background: #e7e5e1; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .05); }
+.bar .title {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  font: 500 12.5px/1 var(--mono); color: var(--t-dim); white-space: nowrap;
+}
+.bar .title b { color: var(--ink-2); font-weight: 500; }
+.bar .meta { margin-left: auto; font: 500 11.5px/1 var(--mono); color: var(--faint); letter-spacing: .02em; }
+
+.panes { display: grid; padding: 22px 26px 26px; }
+.pane { grid-area: 1 / 1; visibility: hidden; min-width: 0; }
+#t-pin:checked ~ .term .pane-pin,
+#t-review:checked ~ .term .pane-review,
+#t-sync:checked ~ .term .pane-sync { visibility: visible; }
+
+.screen { display: block; font: 400 13.25px/1.72 var(--mono); color: var(--t-text); font-variant-ligatures: none; }
+.ln { display: block; white-space: pre; min-height: 1.72em; }
+.ln.gap { margin-top: 10px; }
+.p { color: var(--coral); font-weight: 600; }
+.c { color: var(--ink); font-weight: 500; }
+.c .a { color: var(--t-dim); font-weight: 400; }
+.ok { color: var(--t-green); }
+.pl { color: var(--t-blue); }
+.bl { color: var(--t-red); font-weight: 500; }
+.pe { color: var(--t-amber); font-weight: 500; }
+.dim { color: var(--t-dim); }
+.sum { color: var(--ink); font-weight: 600; }
+.cur::after {
+  content: ""; display: inline-block; width: .6em; height: 1.2em; margin-left: .15em;
+  vertical-align: -.22em; background: var(--coral); opacity: .85; border-radius: 1px;
+}
+.pane .ln.h { visibility: hidden; }
+
+.caps { display: grid; max-width: 680px; margin: 28px auto 0; text-align: center; }
+.cap { grid-area: 1 / 1; margin: 0; visibility: hidden; opacity: 0; font-size: 17px; line-height: 1.55; color: var(--muted); text-wrap: pretty; transition: opacity .3s; }
+.cap strong { color: var(--ink); font-weight: 650; }
+.cap a { color: var(--coral-ink); font-weight: 600; white-space: nowrap; }
+.cap a:hover { text-decoration: underline; text-underline-offset: 3px; }
+#t-pin:checked ~ .caps .cap-pin,
+#t-review:checked ~ .caps .cap-review,
+#t-sync:checked ~ .caps .cap-sync { visibility: visible; opacity: 1; }
+
+/* ---------- rule ---------- */
+.rule { text-align: center; padding: 112px 0 0; }
+.eyebrow { font: 600 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--coral-ink); }
+.rule blockquote {
+  margin: 18px auto 0; max-width: 700px;
+  font-size: 34px; line-height: 1.18; font-weight: 600; letter-spacing: -.03em;
+  text-wrap: balance;
+}
+.rule blockquote span { display: block; color: var(--faint); }
+.rule p { margin: 22px auto 0; max-width: 520px; font-size: 16.5px; color: var(--muted); text-wrap: pretty; }
+
+/* ---------- agents ---------- */
+.agents { padding: 112px 0 0; text-align: center; }
+.agents p { margin: 0; font-size: 15px; color: var(--muted); }
+.names {
+  display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline;
+  gap: 14px 44px; margin: 22px auto 0; padding: 0; list-style: none;
+  font-size: 22px; font-weight: 650; letter-spacing: -.025em; color: #4a4a51;
+}
+.names li:last-child { font: 500 17px/1 var(--mono); letter-spacing: 0; color: var(--faint); }
+.facts {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 28px;
+  margin: 48px auto 0; padding: 22px 0 0; max-width: 760px;
+  border-top: 1px solid var(--line);
+  font-size: 14.5px; color: var(--muted);
+}
+.facts span { display: inline-flex; align-items: center; gap: 8px; }
+.facts span::before { content: ""; width: 4px; height: 4px; border-radius: 50%; background: var(--line-2); }
+.facts span:first-child::before { display: none; }
+.facts b { color: var(--ink); font-weight: 600; }
+
+/* ---------- cta ---------- */
+.cta { padding: 128px 0 120px; text-align: center; }
+.cta h2 { margin: 0; text-wrap: balance; font-size: 44px; line-height: 1.05; font-weight: 700; letter-spacing: -.038em; }
+.cta p { margin: 14px auto 0; max-width: 460px; font-size: 17px; color: var(--muted); text-wrap: balance; }
+.cta .ctas { margin-top: 32px; }
+
+/* ---------- footer ---------- */
+.foot { border-top: 1px solid var(--line); }
+.foot .wrap { display: flex; align-items: center; gap: 24px; height: 72px; font-size: 13.5px; color: var(--muted); }
+.foot nav { display: flex; gap: 22px; margin-left: auto; }
+.foot nav a:hover { color: var(--ink); }
+.foot .brand { font-size: 15px; color: var(--ink); }
+
+/* ---------- motion ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  .cur::after { animation: blink 1.1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .hero > * { animation: rise .7s var(--ease) both; }
+  .hero > :nth-child(2) { animation-delay: .05s; }
+  .hero > :nth-child(3) { animation-delay: .1s; }
+  .hero > :nth-child(4) { animation-delay: .15s; }
+  .stage { animation: rise .9s .2s var(--ease) both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+}
+@media (prefers-reduced-motion: reduce) {
+  .seg .ind, .cap { transition: none; }
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 900px) {
+  .nav a.opt { display: none; }
+  h1 { font-size: 52px; }
+}
+@media (max-width: 640px) {
+  .wrap { padding: 0 16px; }
+  .top .wrap { height: 56px; gap: 16px; }
+  .nav { gap: 18px; font-size: 14px; }
+  .nav a.opt2 { display: none; }
+  .gh { height: 32px; padding: 0 12px; }
+  .hero { padding: 48px 0 32px; }
+  h1 { font-size: 40px; line-height: 1.04; letter-spacing: -.04em; }
+  .lede { font-size: 16.5px; margin-top: 16px; }
+  .ctas { flex-direction: column; align-items: stretch; gap: 10px; margin-top: 28px; }
+  .install { height: 46px; padding-left: 14px; font-size: 12.5px; }
+  .install code {
+    flex: 1; min-width: 0;
+    -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent);
+    mask-image: linear-gradient(90deg, #000 88%, transparent);
+  }
+  .btn { justify-content: center; height: 46px; }
+  .seg { margin-bottom: 16px; }
+  .seg label { padding: 10px 4px; }
+  .seg small { display: none; }
+  .term { border-radius: 12px; margin: 0 -4px; }
+  .bar { height: 38px; padding: 0 12px; }
+  .dots { gap: 6px; }
+  .dots i { width: 10px; height: 10px; }
+  .bar .meta { display: none; }
+  .bar .title { font-size: 11.5px; }
+  .panes { padding: 14px 14px 16px; }
+  .screen { font-size: 10.75px; line-height: 1.62; }
+  .ln { white-space: pre-wrap; overflow-wrap: anywhere; padding-left: 2ch; text-indent: -2ch; }
+  .ln.gap { margin-top: 8px; }
+  .tail { display: none; }
+  .caps { margin-top: 20px; }
+  .cap { font-size: 15.5px; }
+  .rule { padding-top: 80px; }
+  .rule blockquote { font-size: 26px; }
+  .agents { padding-top: 80px; }
+  .names { font-size: 18px; gap: 10px 24px; }
+  .names li:last-child { font-size: 14px; }
+  .facts { flex-direction: column; align-items: center; gap: 6px; margin-top: 36px; }
+  .facts span::before { display: none; }
+  .cta { padding: 96px 0 80px; }
+  .cta h2 { font-size: 34px; }
+  .cta p { font-size: 16px; }
+  .foot .wrap { flex-direction: column; align-items: flex-start; justify-content: center; height: auto; padding-top: 24px; padding-bottom: 28px; gap: 14px; }
+  .foot nav { margin-left: 0; flex-wrap: wrap; gap: 10px 18px; }
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#" aria-label="dalo home">
+      <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+        <rect width="24" height="24" rx="6.5" fill="#0d0d0f"/>
+        <g stroke="#fff" stroke-opacity=".45" stroke-width="1.25" fill="none" stroke-linecap="round">
+          <path d="M7 7.2c4 0 5.5 4.8 9.6 4.8M7 12h9.6M7 16.8c4 0 5.5-4.8 9.6-4.8"/>
+        </g>
+        <g fill="#fff"><circle cx="6.6" cy="7.2" r="1.7"/><circle cx="6.6" cy="12" r="1.7"/><circle cx="6.6" cy="16.8" r="1.7"/></g>
+        <circle cx="17.4" cy="12" r="2.8" fill="#e8623a"/>
+      </svg>
+      dalo
+    </a>
+    <nav class="nav" aria-label="Primary">
+      <a href="/docs/">Docs</a>
+      <a class="opt opt2" href="/spec/">Spec</a>
+      <a class="opt opt2" href="/docs/security.html">Security</a>
+    </nav>
+    <a class="gh" href="https://github.com/sebastian-software/dalo">
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap">
+      <a class="pill" href="https://github.com/sebastian-software/dalo"><i></i>v0.17.0 <span>·</span> Open source</a>
+      <h1>Your team's agent skills, versioned like code.</h1>
+      <p class="lede">Dalo keeps your skills in Git, reviews each one, and links a single pinned set into every agent's folder, identical on every machine.</p>
+      <div class="ctas">
+        <div class="install">
+          <span class="p" aria-hidden="true">$</span>
+          <code>curl -fsSL https://dalo.sh/install.sh | sh</code>
+          <button class="copy" type="button" data-copy="curl -fsSL https://dalo.sh/install.sh | sh" aria-label="Copy install command">
+            <svg class="cp" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.8"/><path d="M10.5 3.2A1.8 1.8 0 008.8 2H4.3A1.8 1.8 0 002.5 3.8v4.5a1.8 1.8 0 001.2 1.7"/></svg>
+            <svg class="ok" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>
+          </button>
+        </div>
+        <a class="btn" href="/docs/">Read the docs <span class="arr" aria-hidden="true">→</span></a>
+      </div>
+    </div>
+  </section>
+
+  <section class="stage" aria-label="Dalo in the terminal">
+    <div class="wrap">
+      <input class="sr" type="radio" name="tab" id="t-pin" value="pin" checked>
+      <input class="sr" type="radio" name="tab" id="t-review" value="review">
+      <input class="sr" type="radio" name="tab" id="t-sync" value="sync">
+
+      <div class="seg" role="presentation">
+        <span class="ind" aria-hidden="true"></span>
+        <label for="t-pin"><b>Pin</b><small>One source of truth</small></label>
+        <label for="t-review"><b>Review</b><small>Checked before use</small></label>
+        <label for="t-sync"><b>Sync</b><small>Safe by default</small></label>
+      </div>
+
+      <div class="term">
+        <div class="bar">
+          <div class="dots" aria-hidden="true"><i></i><i></i><i></i></div>
+          <div class="title"><b>~/work</b> — dalo</div>
+          <div class="meta">zsh</div>
+        </div>
+        <div class="panes">
+          <div class="pane pane-pin" data-pane="pin">
+            <code class="screen" aria-label="Adding a team source and syncing">
+              <span class="ln cmd"><span class="p">$ </span><span class="c">dalo source add company <span class="a">git@github.com:acme/agent-skills.git</span></span></span>
+              <span class="ln">added source company -&gt; ~/.dalo/sources/company/checkout</span>
+              <span class="ln">found 2 skills</span>
+              <span class="ln cmd gap"><span class="p">$ </span><span class="c">dalo sync</span></span>
+              <span class="ln dim">target[codex]: ~/.agents/skills</span>
+              <span class="ln dim">target[claude]: ~/.claude/skills</span>
+              <span class="ln"><span class="ok">applied  create </span>    target[codex]:/incident-review<span class="dim tail"> -&gt; store:/sources/company/checkout/skills/incident-review</span></span>
+              <span class="ln"><span class="ok">applied  create </span>    target[codex]:/release-notes<span class="dim tail"> -&gt; store:/sources/company/checkout/skills/release-notes</span></span>
+              <span class="ln"><span class="ok">applied  create </span>    target[claude]:/incident-review<span class="dim tail"> -&gt; store:/sources/company/checkout/skills/incident-review</span></span>
+              <span class="ln"><span class="ok">applied  create </span>    target[claude]:/release-notes<span class="dim tail"> -&gt; store:/sources/company/checkout/skills/release-notes</span></span>
+              <span class="ln sum">synced: 2 skills across 2 targets (4 created)</span>
+              <span class="ln dim">security preflight: deterministic checks only</span>
+              <span class="ln cmd gap last"><span class="p">$ </span><span class="c cur"></span></span>
+            </code>
+          </div>
+
+          <div class="pane pane-review" data-pane="review">
+            <code class="screen" aria-label="A catalog skill waits for approval">
+              <span class="ln cmd"><span class="p">$ </span><span class="c">dalo sync</span></span>
+              <span class="ln sum">synced: 2 skills across 2 targets (4 unchanged)</span>
+              <span class="ln"><span class="pe">pending approval:</span> sebastian:effective-web <span class="dim">(run: dalo approve skill sebastian:effective-web)</span></span>
+              <span class="ln cmd gap"><span class="p">$ </span><span class="c">dalo audit sebastian:effective-web</span></span>
+              <span class="ln">security audit: sebastian:effective-web</span>
+              <span class="ln"><span class="dim">  content hash:</span> a7af1814452b594b921f94807da8d2685813cb22a15c69cbe99943671dfb4f13</span>
+              <span class="ln"><span class="dim">  coverage:</span> complete</span>
+              <span class="ln"><span class="dim">  result:</span> <span class="ok">clean</span></span>
+              <span class="ln dim">  note: no findings means no known issue was detected; it is not a safety guarantee</span>
+              <span class="ln cmd gap"><span class="p">$ </span><span class="c">dalo approve skill sebastian:effective-web</span></span>
+              <span class="ln"><span class="ok">granted</span> skill sebastian:effective-web</span>
+              <span class="ln dim">next: dalo sync to link it</span>
+              <span class="ln cmd gap last"><span class="p">$ </span><span class="c cur"></span></span>
+            </code>
+          </div>
+
+          <div class="pane pane-sync" data-pane="sync">
+            <code class="screen" aria-label="A dry run shows the plan and a blocked conflict">
+              <span class="ln cmd"><span class="p">$ </span><span class="c">dalo sync <span class="a">--dry-run</span></span></span>
+              <span class="ln dim">target[codex]: ~/.agents/skills</span>
+              <span class="ln dim">target[claude]: ~/.claude/skills</span>
+              <span class="ln"><span class="pl">planned  create </span>    target[codex]:/effective-web<span class="dim tail"> -&gt; store:/sources/sebastian/checkout/skills/effective-web</span></span>
+              <span class="ln"><span class="dim">existing noop       target[codex]:/incident-review</span><span class="dim tail"> -&gt; store:/sources/company/checkout/skills/incident-review</span></span>
+              <span class="ln"><span class="bl">blocked  conflict </span>  target[codex]:/release-notes <span class="bl">(real unmanaged entry exists at target slot)</span></span>
+              <span class="ln dim"><span class="tail">                    </span>adopt: run `dalo adopt 'release-notes'` to copy it into the local source</span>
+              <span class="ln"><span class="pl">planned  create </span>    target[claude]:/effective-web<span class="dim tail"> -&gt; store:/sources/sebastian/checkout/skills/effective-web</span></span>
+              <span class="ln"><span class="dim">existing noop       target[claude]:/incident-review</span><span class="dim tail"> -&gt; store:/sources/company/checkout/skills/incident-review</span></span>
+              <span class="ln"><span class="dim">existing noop       target[claude]:/release-notes</span><span class="dim tail"> -&gt; store:/sources/company/checkout/skills/release-notes</span></span>
+              <span class="ln sum">would sync: 3 skills across 2 targets (3 unchanged, 2 planned, 1 blocked)</span>
+              <span class="ln cmd gap last"><span class="p">$ </span><span class="c cur"></span></span>
+            </code>
+          </div>
+        </div>
+      </div>
+
+      <div class="caps" aria-live="polite">
+        <p class="cap cap-pin"><strong>One source of truth.</strong> Your skills live in a Git repo. Dalo pins the exact commit and links the same approved set into Codex, Claude Code and every other agent, on every machine. <a href="/docs/">How sources work&nbsp;→</a></p>
+        <p class="cap cap-review"><strong>Reviewed before it reaches an agent.</strong> New skills wait for an explicit approval, and a local security preflight of 15 deterministic rules runs first. A clean result is not a guarantee, and Dalo says so. <a href="/docs/security.html">Security model&nbsp;→</a></p>
+        <p class="cap cap-sync"><strong>Safe by default.</strong> Dalo only replaces links it owns. Your own folders are never overwritten: a clash is reported as blocked, and <code>--dry-run</code> shows every change first. <a href="/spec/">Read the spec&nbsp;→</a></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="rule">
+    <div class="wrap">
+      <div class="eyebrow">The core rule</div>
+      <blockquote>Dalo may manage what it owns. <span>It does not take ownership by surprise.</span></blockquote>
+      <p>Sync removes only links it owns, leaves your folders alone, and stops at a dirty checkout instead of losing edits.</p>
+    </div>
+  </section>
+
+  <section class="agents" aria-label="Supported agents">
+    <div class="wrap">
+      <p>Links into the folders your agents already read</p>
+      <ul class="names">
+        <li>Codex</li>
+        <li>Claude Code</li>
+        <li>OpenClaw</li>
+        <li>Hermes</li>
+        <li>OpenCode</li>
+        <li>any folder</li>
+      </ul>
+      <div class="facts">
+        <span><b>Open source</b>&nbsp;under MIT or Apache-2.0</span>
+        <span>Single Rust binary, just git on PATH</span>
+        <span>macOS &amp; Linux</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta">
+    <div class="wrap">
+      <h2>Ship skills like you ship code.</h2>
+      <p>Install Dalo, link your agents, and point it at your team's repo. Every blocking state names the next command to run.</p>
+      <div class="ctas">
+        <div class="install install--light">
+          <span class="p" aria-hidden="true">$</span>
+          <code>brew install sebastian-software/tap/dalo</code>
+          <button class="copy" type="button" data-copy="brew install sebastian-software/tap/dalo" aria-label="Copy Homebrew install command">
+            <svg class="cp" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.8"/><path d="M10.5 3.2A1.8 1.8 0 008.8 2H4.3A1.8 1.8 0 002.5 3.8v4.5a1.8 1.8 0 001.2 1.7"/></svg>
+            <svg class="ok" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>
+          </button>
+        </div>
+        <a class="btn" href="/install.md">All install options <span class="arr" aria-hidden="true">→</span></a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <span>© Sebastian Software · MIT OR Apache-2.0</span>
+    <nav aria-label="Footer">
+      <a href="https://github.com/sebastian-software/dalo">GitHub</a>
+      <a href="/docs/">Docs</a>
+      <a href="/spec/">Spec</a>
+      <a href="/docs/security.html">Security</a>
+      <a href="/install.md">Install guide</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+(() => {
+  // Copy buttons
+  document.querySelectorAll(".copy").forEach((b) => {
+    b.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(b.dataset.copy) } catch { return }
+      b.classList.add("done")
+      setTimeout(() => b.classList.remove("done"), 1600)
+    })
+  })
+
+  // Typing replay: only with motion allowed; the static markup is the finished state.
+  if (!matchMedia("(prefers-reduced-motion: no-preference)").matches) return
+  const panes = {}
+  document.querySelectorAll(".pane").forEach((p) => {
+    panes[p.dataset.pane] = p
+    p.querySelectorAll(".ln.cmd .c").forEach((c) => { c.dataset.html = c.innerHTML })
+  })
+  let run = 0
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+  const restore = (p) => p.querySelectorAll(".ln").forEach((l) => {
+    l.classList.remove("h")
+    const c = l.querySelector(".c")
+    if (c && c.dataset.html !== undefined) c.innerHTML = c.dataset.html
+  })
+  async function play(name) {
+    const id = ++run
+    Object.values(panes).forEach(restore)
+    const p = panes[name]
+    const lines = [...p.querySelectorAll(".ln")]
+    lines.forEach((l) => l.classList.add("h"))
+    for (const l of lines) {
+      if (id !== run) return
+      l.classList.remove("h")
+      const c = l.querySelector(".c")
+      if (l.classList.contains("cmd") && c && c.textContent) {
+        const text = c.textContent
+        c.textContent = ""
+        await wait(260)
+        for (let i = 1; i <= text.length; i++) {
+          if (id !== run) return
+          c.textContent = text.slice(0, i)
+          await wait(22 + Math.random() * 30)
+        }
+        if (id !== run) return
+        c.innerHTML = c.dataset.html
+        await wait(320)
+      } else if (!l.classList.contains("cmd")) {
+        await wait(l.classList.contains("sum") ? 180 : 45)
+      }
+    }
+  }
+  document.querySelectorAll('input[name="tab"]').forEach((r) => r.addEventListener("change", () => play(r.value)))
+  const stage = document.querySelector(".stage")
+  const io = new IntersectionObserver((es) => {
+    if (es.some((e) => e.isIntersecting)) { io.disconnect(); play(document.querySelector('input[name="tab"]:checked').value) }
+  }, { threshold: 0.35 })
+  io.observe(stage)
+})()
+</script>
+</body>
+</html>

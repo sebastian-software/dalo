@@ -1,0 +1,763 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dalo — Product concept</title>
+<meta name="description" content="Dalo keeps your team's agent skills in Git: one approved set, resolved the same way on every machine and reviewed before it reaches any agent folder.">
+<link rel="stylesheet" href="../fonts/mona-sans.css">
+<link rel="stylesheet" href="../fonts/geist-mono.css">
+<style>
+:root {
+  --bg: #f6f8fa;
+  --bg-2: #eef1f5;
+  --surface: #ffffff;
+  --surface-2: #fafbfc;
+  --ink: #0e1116;
+  --ink-2: #353d47;
+  --muted: #5f6a76;
+  --faint: #8c96a2;
+  --line: #dfe4ea;
+  --line-2: #eaeef2;
+  --line-strong: #cfd6de;
+
+  --accent: #1f5fe0;
+  --accent-ink: #1747b3;
+  --accent-soft: #eaf1ff;
+  --accent-line: #c7d8fb;
+
+  --ok: #1a7f37;   --ok-bg: #e6f6ea;   --ok-line: #b5e3c1;
+  --warn: #8a5a00; --warn-bg: #fff6d6; --warn-line: #f0d98c;
+  --dim: #5f6a76;  --dim-bg: #f0f2f5;  --dim-line: #d9dfe5;
+  --bad: #c42b35;  --bad-bg: #ffecea;  --bad-line: #ffc9c4;
+
+  --sans: 'Mona Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --r-sm: 6px;
+  --r: 10px;
+  --r-lg: 14px;
+  --wrap: 1180px;
+  --gutter: 24px;
+
+  --shadow-window:
+    0 0 0 1px rgba(16, 24, 40, .06),
+    0 1px 2px rgba(16, 24, 40, .05),
+    0 8px 20px -6px rgba(16, 24, 40, .08),
+    0 32px 64px -20px rgba(24, 48, 110, .20);
+  --shadow-card:
+    0 0 0 1px rgba(16, 24, 40, .05),
+    0 1px 2px rgba(16, 24, 40, .04),
+    0 16px 36px -14px rgba(24, 48, 110, .16);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: clip;
+}
+a { color: inherit; text-decoration: none; }
+code, pre { font-family: var(--mono); }
+.wrap { width: 100%; max-width: calc(var(--wrap) + 2 * var(--gutter)); margin: 0 auto; padding: 0 var(--gutter); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- Header ---------- */
+.site-header {
+  position: sticky; top: 0; z-index: 20;
+  background: rgba(246, 248, 250, .78);
+  -webkit-backdrop-filter: saturate(160%) blur(12px);
+  backdrop-filter: saturate(160%) blur(12px);
+  border-bottom: 1px solid transparent;
+  transition: border-color .2s;
+}
+.site-header.scrolled { border-bottom-color: var(--line); }
+.nav { display: flex; align-items: center; height: 64px; gap: 32px; }
+.brand { display: inline-flex; align-items: center; gap: 9px; font-weight: 700; font-size: 19px; letter-spacing: -.02em; font-stretch: 105%; }
+.brand svg { display: block; }
+.nav-links { display: flex; gap: 26px; font-size: 14.5px; color: var(--ink-2); font-weight: 500; }
+.nav-links a:hover { color: var(--ink); }
+.nav-end { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 40px; padding: 0 18px; border-radius: 9px;
+  font: 600 14.5px/1 var(--sans); letter-spacing: -.005em;
+  border: 1px solid transparent; cursor: pointer; white-space: nowrap;
+  transition: background-color .15s, border-color .15s, box-shadow .15s, transform .15s;
+}
+.btn-primary {
+  background: var(--accent); color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.16), 0 1px 2px rgba(20, 50, 130, .3), 0 4px 12px -4px rgba(31, 95, 224, .5);
+}
+.btn-primary:hover { background: var(--accent-ink); }
+.btn-ghost { background: var(--surface); color: var(--ink); border-color: var(--line-strong); box-shadow: 0 1px 2px rgba(16,24,40,.05); }
+.btn-ghost:hover { border-color: #b9c2cc; }
+.btn-sm { height: 34px; padding: 0 14px; font-size: 13.5px; border-radius: 8px; }
+.btn svg { flex: none; }
+
+/* ---------- Hero ---------- */
+.hero { position: relative; overflow-x: clip; padding: 72px 0 0; text-align: center; isolation: isolate; }
+.hero::before {
+  content: ""; position: absolute; z-index: -1; left: 50%; top: -64px; width: 1400px; height: 760px; transform: translateX(-50%);
+  background:
+    radial-gradient(46% 42% at 50% 0%, rgba(31, 95, 224, .13), rgba(31, 95, 224, 0) 70%),
+    radial-gradient(30% 30% at 28% 8%, rgba(56, 189, 248, .10), rgba(56, 189, 248, 0) 70%),
+    radial-gradient(30% 30% at 72% 8%, rgba(99, 102, 241, .08), rgba(99, 102, 241, 0) 70%);
+  pointer-events: none;
+}
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 10px;
+  height: 30px; padding: 0 14px 0 6px; border-radius: 999px;
+  background: rgba(255,255,255,.7); border: 1px solid var(--line);
+  font-size: 13px; font-weight: 500; color: var(--ink-2);
+  box-shadow: 0 1px 2px rgba(16,24,40,.04);
+}
+.eyebrow b { height: 20px; display: inline-flex; align-items: center; padding: 0 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; font-size: 12px; }
+h1 {
+  margin: 26px auto 0; max-width: 900px;
+  font-size: clamp(40px, 6.4vw, 76px); line-height: 1.02; letter-spacing: -.035em;
+  font-weight: 650; font-stretch: 108%;
+  text-wrap: balance;
+}
+.lede { margin: 24px auto 0; max-width: 620px; font-size: 19px; line-height: 1.55; color: var(--muted); text-wrap: pretty; }
+.ctas { margin-top: 36px; display: flex; justify-content: center; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ctas .btn { height: 46px; padding: 0 22px; font-size: 15px; border-radius: 10px; }
+.install {
+  display: inline-flex; align-items: center; gap: 12px; height: 46px; padding: 0 6px 0 16px; border-radius: 10px;
+  background: var(--surface); border: 1px solid var(--line-strong);
+  box-shadow: 0 1px 2px rgba(16,24,40,.05);
+  font: 450 14px/1 var(--mono); color: var(--ink-2); max-width: 100%;
+}
+.install .p { color: var(--faint); user-select: none; }
+.install code { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.copy {
+  flex: none; display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 7px;
+  border: 0; background: transparent; color: var(--muted); cursor: pointer;
+  transition: background-color .15s, color .15s;
+}
+.copy:hover { background: var(--bg-2); color: var(--ink); }
+.copy .done { display: none; }
+.copy.ok .idle { display: none; }
+.copy.ok .done { display: block; color: var(--ok); }
+.eb-short { display: none; }
+.hero-meta { margin-top: 20px; font-size: 13px; color: var(--faint); }
+
+/* ---------- Product window ---------- */
+.stage { position: relative; margin: 60px auto 0; max-width: 1120px; }
+.window {
+  position: relative; text-align: left;
+  background: var(--surface); border-radius: var(--r-lg);
+  box-shadow: var(--shadow-window);
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(#000 calc(100% - 120px), rgba(0,0,0,.0) 100%);
+  mask-image: linear-gradient(#000 calc(100% - 120px), rgba(0,0,0,.0) 100%);
+}
+.titlebar {
+  position: relative; display: flex; align-items: center; height: 44px; padding: 0 14px;
+  background: linear-gradient(#fbfcfd, #f5f7f9); border-bottom: 1px solid var(--line);
+}
+.lights { display: flex; gap: 8px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: #e3e7ec; box-shadow: inset 0 0 0 1px rgba(16,24,40,.08); }
+.tabs { display: flex; align-items: flex-end; align-self: stretch; margin-left: 22px; gap: 2px; }
+.tab {
+  display: flex; align-items: center; gap: 8px; height: 32px; margin-top: auto; padding: 0 16px;
+  font: 500 12.5px/1 var(--sans); color: var(--muted); border-radius: 8px 8px 0 0;
+}
+.tab.on { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--line); clip-path: inset(-1px -1px 0 -1px); position: relative; top: 1px; }
+.tab .glyph { font: 500 11px/1 var(--mono); color: var(--faint); }
+.titlebar .where { margin-left: auto; font: 450 12px/1 var(--mono); color: var(--faint); }
+
+.term { padding: 22px 28px 0; font: 400 13px/1.6 var(--mono); color: var(--ink-2); font-feature-settings: "zero" 0; }
+.term code { font: inherit; }
+.prompt { display: flex; gap: 10px; align-items: baseline; }
+.prompt .cwd { color: var(--accent); }
+.prompt .sigil { color: var(--faint); }
+.prompt .cmd { color: var(--ink); font-weight: 500; }
+
+.srcs { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 18px; }
+.src {
+  display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 10px;
+  border: 1px solid var(--line); border-radius: 7px; background: var(--surface-2); font-size: 12px;
+}
+.src .n { color: var(--ink); font-weight: 500; }
+.src .k { color: var(--faint); }
+.src .h { color: var(--accent-ink); }
+.src .prio { display: inline-grid; place-items: center; min-width: 20px; height: 18px; padding: 0 5px; border-radius: 5px; background: var(--bg-2); color: var(--muted); font-size: 11px; }
+.srcs .lbl { align-self: center; color: var(--faint); font-size: 12px; margin-right: 4px; }
+
+.grid { border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.row {
+  display: grid; align-items: center;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, .8fr) 90px 76px 76px 76px minmax(0, 1.7fr);
+  column-gap: 12px; padding: 0 16px; min-height: 44px; border-top: 1px solid var(--line-2);
+}
+.row:first-child { border-top: 0; }
+.row.head { min-height: 52px; background: var(--surface-2); border-bottom: 1px solid var(--line); color: var(--faint); font-size: 11.5px; letter-spacing: .02em; }
+.row.head + .row { border-top: 0; }
+.row.head .ag { display: flex; flex-direction: column; align-items: center; gap: 2px; line-height: 1.2; }
+.row.head .ag b { color: var(--ink); font-weight: 500; font-size: 12px; letter-spacing: 0; }
+.row.head .ag small { font-size: 10px; color: var(--faint); letter-spacing: 0; }
+.row .skill { color: var(--ink); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .from { color: var(--muted); }
+.row .pin { color: var(--accent-ink); }
+.row .pin.na { color: var(--faint); }
+.row.muted .skill { color: var(--faint); font-weight: 400; text-decoration: line-through; text-decoration-color: rgba(140,150,162,.6); }
+.row.muted .from, .row.muted .pin { color: var(--faint); }
+.cell { display: grid; place-items: center; }
+
+.dot { width: 18px; height: 18px; border-radius: 50%; position: relative; }
+.dot.on { background: var(--ok-bg); box-shadow: inset 0 0 0 1px var(--ok-line); }
+.dot.on::after { content: ""; position: absolute; left: 5px; top: 4.5px; width: 7px; height: 4px; border-left: 1.75px solid var(--ok); border-bottom: 1.75px solid var(--ok); transform: rotate(-45deg); }
+.dot.wait { box-shadow: inset 0 0 0 1.5px var(--warn-line); background: repeating-linear-gradient(-45deg, transparent 0 3px, rgba(240,217,140,.35) 3px 4px); }
+.dot.off::after { content: ""; position: absolute; left: 5px; right: 5px; top: 8.5px; height: 1.5px; border-radius: 1px; background: var(--line-strong); }
+.dot.no { background: var(--bad-bg); box-shadow: inset 0 0 0 1px var(--bad-line); }
+.dot.no::before, .dot.no::after { content: ""; position: absolute; left: 5px; right: 5px; top: 8.25px; height: 1.6px; border-radius: 1px; background: var(--bad); transform: rotate(45deg); }
+.dot.no::after { transform: rotate(-45deg); }
+
+.state { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pill {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 999px;
+  font: 500 11.5px/1 var(--mono); border: 1px solid;
+}
+.pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pill.ok { color: var(--ok); background: var(--ok-bg); border-color: var(--ok-line); }
+.pill.warn { color: var(--warn); background: var(--warn-bg); border-color: var(--warn-line); }
+.pill.dim { color: var(--dim); background: var(--dim-bg); border-color: var(--dim-line); }
+.pill.bad { color: var(--bad); background: var(--bad-bg); border-color: var(--bad-line); }
+.state .why { color: var(--faint); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.next {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  margin-top: 16px; padding: 12px 16px; border-radius: var(--r);
+  background: linear-gradient(90deg, var(--accent-soft), rgba(234,241,255,.35));
+  border: 1px solid var(--accent-line);
+}
+.next .k { color: var(--accent-ink); font-weight: 600; font-size: 12px; }
+.next .v { color: var(--ink); }
+.next .v .arg { color: var(--accent-ink); }
+.next .sum { margin-left: auto; color: var(--muted); font-size: 12px; }
+.cursor-line { margin-top: 18px; padding-bottom: 96px; }
+.cursor { display: inline-block; width: 8px; height: 15px; vertical-align: -2px; background: var(--accent); border-radius: 1px; margin-left: 2px; animation: blink 1.1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* ---------- Sections ---------- */
+section { position: relative; }
+.features { padding: 48px 0 40px; }
+.feature {
+  display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 72px; align-items: center;
+  padding: 72px 0;
+}
+.feature.flip { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); }
+.feature.flip .copy-col { order: 2; }
+.kicker { display: inline-flex; align-items: center; gap: 10px; font: 500 12.5px/1 var(--mono); color: var(--accent-ink); letter-spacing: .01em; }
+.kicker i { font-style: normal; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; background: var(--accent-soft); border: 1px solid var(--accent-line); font-size: 11px; }
+h2 {
+  margin: 18px 0 0; font-size: clamp(30px, 3.4vw, 42px); line-height: 1.08; letter-spacing: -.03em;
+  font-weight: 650; font-stretch: 106%; text-wrap: balance;
+}
+.feature p, .section-lede { margin: 18px 0 0; font-size: 17.5px; line-height: 1.6; color: var(--muted); max-width: 440px; text-wrap: pretty; }
+.feature p code, .section-lede code { font-size: .88em; color: var(--ink-2); background: var(--bg-2); border: 1px solid var(--line); padding: 1px 6px; border-radius: 5px; }
+.more { display: inline-flex; align-items: center; gap: 6px; margin-top: 24px; font-size: 15px; font-weight: 600; color: var(--accent); }
+.more svg { transition: transform .15s; }
+.more:hover svg { transform: translateX(2px); }
+
+/* crop cards */
+.crop {
+  position: relative; border-radius: var(--r-lg); background: var(--surface);
+  box-shadow: var(--shadow-card); overflow: hidden;
+  font: 400 14.5px/1.75 var(--mono); color: var(--ink-2);
+}
+.crop code { font: inherit; }
+.crop .bar {
+  display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 16px;
+  border-bottom: 1px solid var(--line); background: linear-gradient(#fbfcfd, #f6f8fa);
+  font: 500 12.5px/1 var(--sans); color: var(--muted);
+}
+.crop .bar .file { display: inline-flex; align-items: center; gap: 8px; color: var(--ink); }
+.crop .bar .path { margin-left: auto; font: 450 12px/1 var(--mono); color: var(--faint); }
+.crop .body { padding: 18px 0 26px; white-space: nowrap; overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, #000 82%, transparent 100%);
+  mask-image: linear-gradient(90deg, #000 82%, transparent 100%); }
+.ln { display: flex; padding: 0 22px; min-height: 24.5px; }
+.ln .no { flex: none; width: 34px; color: #b3bbc4; user-select: none; }
+.ln.hl { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+.ln.hl-ok { background: #f0faf2; box-shadow: inset 2px 0 0 var(--ok); }
+.ln.hl-bad { background: #fff4f3; box-shadow: inset 2px 0 0 var(--bad); }
+.t-key { color: #7a3fd0; }
+.t-str { color: #0b7a5a; }
+.t-hash { color: var(--accent-ink); font-weight: 500; }
+.t-com { color: var(--faint); }
+.t-sec { color: var(--ink); font-weight: 500; }
+.t-ok { color: var(--ok); font-weight: 500; }
+.t-warn { color: var(--warn); font-weight: 500; }
+.t-bad { color: var(--bad); font-weight: 500; }
+.t-dim { color: var(--faint); }
+.t-cmd { color: var(--ink); font-weight: 500; }
+.t-sig { color: var(--faint); }
+.tag {
+  display: inline-flex; align-items: center; gap: 6px; height: 22px; margin-left: 14px; padding: 0 9px; border-radius: 999px;
+  font: 600 11px/1 var(--sans); letter-spacing: .01em; background: var(--accent); color: #fff;
+  box-shadow: 0 2px 6px -2px rgba(31,95,224,.6);
+}
+.tag.ok { background: var(--ok); box-shadow: 0 2px 6px -2px rgba(26,127,55,.5); }
+.gap { height: 12px; }
+
+/* ---------- Agents ---------- */
+.agents { padding: 72px 0 40px; }
+.agents h3 { margin: 0; text-align: center; font-size: 15px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+.agent-row {
+  margin: 28px auto 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
+  background: var(--surface); border-radius: var(--r-lg); box-shadow: var(--shadow-card);
+}
+.agent { padding: 26px 20px 24px; text-align: center; border-left: 1px solid var(--line-2); }
+.agent:first-child { border-left: 0; }
+.agent b { display: block; font-size: 18px; font-weight: 650; letter-spacing: -.02em; font-stretch: 104%; color: var(--ink); }
+.agent code { display: block; margin-top: 6px; font-size: 12px; color: var(--faint); }
+.agent.any b { color: var(--accent-ink); }
+
+/* ---------- Quickstart ---------- */
+.quick { padding: 120px 0; }
+.quick-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 72px; align-items: center; }
+.steps .ln { min-height: 26px; }
+.step-h { display: flex; align-items: center; gap: 10px; padding: 0 22px; margin-top: 16px; font: 600 12px/1 var(--sans); color: var(--muted); letter-spacing: .01em; }
+.step-h:first-child { margin-top: 2px; }
+.step-h i { font-style: normal; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--ink); color: #fff; font-size: 11px; }
+.steps .ln { padding-left: 52px; margin-top: 6px; }
+.steps .out { margin-top: 12px; }
+.alt { margin-top: 22px; font-size: 14.5px; color: var(--muted); }
+.alt a { color: var(--accent); font-weight: 600; }
+.crop .body.fit { -webkit-mask-image: none; mask-image: none; overflow-x: auto; }
+
+/* ---------- Final CTA ---------- */
+.final { padding: 40px 0 128px; text-align: center; }
+.final-card {
+  position: relative; overflow: hidden; isolation: isolate;
+  padding: 88px 24px 92px; border-radius: 22px; background: var(--surface); box-shadow: var(--shadow-card);
+}
+.final-card::before {
+  content: ""; position: absolute; inset: 0; z-index: -1;
+  background:
+    radial-gradient(60% 80% at 50% 0%, rgba(31,95,224,.10), transparent 70%),
+    linear-gradient(transparent 0 0);
+}
+.final-card .mark-lg { margin: 0 auto 28px; display: block; }
+.final h2 { margin: 0 auto; max-width: 720px; font-size: clamp(32px, 4.2vw, 52px); }
+.final p { margin: 18px auto 0; max-width: 520px; font-size: 17.5px; color: var(--muted); }
+.final .ctas { margin-top: 32px; }
+
+/* ---------- Footer ---------- */
+.site-footer { border-top: 1px solid var(--line); padding: 32px 0 48px; font-size: 14px; color: var(--muted); }
+.foot { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; }
+.foot .brand { font-size: 16px; color: var(--ink); }
+.foot nav { display: flex; gap: 22px; flex-wrap: wrap; margin-left: auto; }
+.foot nav a:hover { color: var(--ink); }
+.foot small { font-size: 13px; color: var(--faint); }
+
+/* ---------- Motion (progressive) ---------- */
+.js .reveal { opacity: 0; transform: translateY(14px); transition: opacity .7s cubic-bezier(.2,.7,.2,1), transform .7s cubic-bezier(.2,.7,.2,1); }
+.js .reveal.in { opacity: 1; transform: none; }
+.js .window .row:not(.head) { opacity: 0; transform: translateY(4px); transition: opacity .45s ease, transform .45s ease; transition-delay: calc(var(--i, 0) * 70ms + 250ms); }
+.js .window.in .row:not(.head) { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .js .reveal, .js .window .row:not(.head) { opacity: 1 !important; transform: none !important; transition: none !important; }
+  .cursor { animation: none; }
+  .more svg { transition: none; }
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1080px) {
+  .row { grid-template-columns: minmax(0, 1.3fr) minmax(0, .8fr) 80px 64px 64px 64px minmax(0, 1.3fr); }
+  .state .why { display: none; }
+}
+@media (max-width: 960px) {
+  .feature, .feature.flip, .quick-grid { grid-template-columns: minmax(0, 1fr); gap: 36px; padding: 48px 0; }
+  .feature.flip .copy-col { order: 0; }
+  .feature p, .section-lede { max-width: 560px; }
+  .agent-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .agent:nth-child(4) { border-left: 0; }
+  .agent:nth-child(n+4) { border-top: 1px solid var(--line-2); }
+  .quick-grid { padding: 0; }
+}
+@media (max-width: 760px) {
+  .nav-links { display: none; }
+  .row { grid-template-columns: minmax(0, 1fr) 30px 30px 30px minmax(0, auto); column-gap: 8px; padding: 0 12px; }
+  .row .from, .row .pin { display: none; }
+  .row.head .ag small { display: none; }
+  .row.head .ag b { font-size: 11px; }
+  .row.head .c-state { text-align: right; }
+  .state { justify-content: flex-end; }
+  .titlebar .where { display: none; }
+  .next .sum { display: none; }
+}
+@media (max-width: 560px) {
+  :root { --gutter: 16px; }
+  .nav { height: 58px; gap: 16px; }
+  .nav-end .btn-ghost { display: none; }
+  .hero { padding-top: 48px; }
+  h1 { font-size: 40px; letter-spacing: -.035em; font-stretch: 100%; }
+  .lede { font-size: 16.5px; margin-top: 18px; }
+  .ctas { margin-top: 28px; flex-direction: column; align-items: stretch; }
+  .ctas .btn { width: 100%; }
+  .install { width: 100%; font-size: 11.5px; gap: 7px; padding-left: 12px; padding-right: 4px; }
+  .eb-long { display: none; }
+  .eb-short { display: inline; }
+  .install code { flex: 1; text-align: left; }
+  .hero-meta { font-size: 12px; }
+  .stage { margin-top: 44px; }
+  .window { border-radius: 12px; }
+  .titlebar { height: 38px; padding: 0 12px; }
+  .lights i { width: 10px; height: 10px; }
+  .tabs { margin-left: 12px; }
+  .tab { height: 28px; padding: 0 10px; font-size: 11.5px; }
+  .tab:not(.on) { display: none; }
+  .term { padding: 16px 12px 0; font-size: 11px; }
+  .srcs { gap: 6px; margin: 12px 0 14px; }
+  .srcs .lbl { display: none; }
+  .src { height: 24px; padding: 0 7px; font-size: 10.5px; gap: 6px; }
+  .src .k { display: none; }
+  .row { min-height: 40px; grid-template-columns: minmax(0, 1fr) 38px 38px 38px 74px; column-gap: 3px; padding: 0 10px; }
+  .row.head { min-height: 40px; font-size: 10px; }
+  .row.head .ag b { font-size: 9.5px; font-weight: 400; color: var(--muted); }
+  .dot { width: 16px; height: 16px; }
+  .dot.on::after { left: 4.25px; top: 4px; width: 6.5px; height: 3.5px; }
+  .dot.off::after { top: 7.25px; left: 4px; right: 4px; }
+  .dot.no::before, .dot.no::after { top: 7.2px; left: 4px; right: 4px; }
+  .pill { height: 20px; padding: 0 6px; font-size: 9.5px; gap: 4px; }
+  .pill::before { width: 5px; height: 5px; }
+  .next { padding: 10px 12px; gap: 4px 10px; font-size: 11px; }
+  .next .k { font-size: 11px; }
+  .cursor-line { padding-bottom: 64px; }
+  .features { padding-top: 72px; }
+  .feature { padding: 36px 0; gap: 28px; }
+  h2 { font-size: 30px; font-stretch: 100%; }
+  .feature p, .section-lede { font-size: 16px; }
+  .crop { font-size: 12.5px; }
+  .crop .bar .path { display: none; }
+  .ln { padding: 0 14px; min-height: 22px; }
+  .ln .no { width: 26px; }
+  .tag { margin-left: 10px; }
+  .agents { padding: 48px 0 24px; }
+  .agent-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .agent { padding: 20px 12px; }
+  .agent:nth-child(4) { border-left: 1px solid var(--line-2); }
+  .agent:nth-child(odd) { border-left: 0; }
+  .agent:nth-child(n+3) { border-top: 1px solid var(--line-2); }
+  .agent b { font-size: 16px; }
+  .agent code { font-size: 11px; }
+  .quick { padding: 72px 0; }
+  .steps .ln { padding-left: 44px; }
+  .step-h { padding: 0 14px; }
+  .final { padding: 16px 0 72px; }
+  .final-card { padding: 56px 20px 60px; border-radius: 18px; }
+  .final h2 { font-size: 32px; }
+  .final p { font-size: 16px; }
+  .foot nav { margin-left: 0; width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="mark" viewBox="0 0 28 28">
+      <rect x="0.5" y="0.5" width="27" height="27" rx="7.5" fill="#0e1116"/>
+      <path d="M8.5 8.5 C13 8.5 14 14 19.5 14 M8.5 14 H19.5 M8.5 19.5 C13 19.5 14 14 19.5 14" stroke="#ffffff" stroke-opacity=".38" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+      <circle cx="8.5" cy="8.5" r="2" fill="#fff"/>
+      <circle cx="8.5" cy="14" r="2" fill="#fff"/>
+      <circle cx="8.5" cy="19.5" r="2" fill="#fff"/>
+      <circle cx="19.5" cy="14" r="3.1" fill="#5b8cff"/>
+    </symbol>
+    <symbol id="i-copy" viewBox="0 0 16 16"><rect x="5.25" y="5.25" width="8" height="8" rx="1.75" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10.75 3.25v-.5a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h.5" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol>
+    <symbol id="i-check" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 16 16"><path d="M3 8h9.5M8.5 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-gh" viewBox="0 0 16 16"><path fill="currentColor" d="M8 .2a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.93-.89-1.17-.89-1.17-.73-.5.05-.49.05-.49.8.06 1.23.83 1.23.83.72 1.22 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.03 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.66 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 .2Z"/></symbol>
+  </defs>
+</svg>
+
+<header class="site-header" id="top">
+  <div class="wrap nav">
+    <a class="brand" href="#top" aria-label="dalo home"><svg width="26" height="26" aria-hidden="true"><use href="#mark"/></svg>dalo</a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/docs/">Docs</a>
+      <a href="/spec/">Spec</a>
+      <a href="/docs/security.html">Security</a>
+      <a href="https://github.com/sebastian-software/dalo">GitHub</a>
+    </nav>
+    <div class="nav-end">
+      <a class="btn btn-ghost btn-sm" href="https://github.com/sebastian-software/dalo"><svg width="15" height="15" aria-hidden="true"><use href="#i-gh"/></svg>Star</a>
+      <a class="btn btn-primary btn-sm" href="/docs/">Get started</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <!-- Hero -->
+  <section class="hero">
+    <div class="wrap">
+      <a class="eyebrow reveal" href="https://github.com/sebastian-software/dalo"><b>Open source</b><span class="eb-long">A single Rust binary for macOS and Linux</span><span class="eb-short">Single Rust binary</span></a>
+      <h1 class="reveal">Your team’s agent skills, versioned like code.</h1>
+      <p class="lede reveal">Dalo keeps your skills in Git, reviews each one before it reaches an agent, and links one pinned set into every agent’s folder — the same on every machine.</p>
+      <div class="ctas reveal">
+        <a class="btn btn-primary" href="/docs/">Get started <svg width="16" height="16" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+        <div class="install"><span class="p">$</span><code id="install-cmd">brew install sebastian-software/tap/dalo</code><button class="copy" type="button" data-copy="install-cmd" aria-label="Copy install command"><svg class="idle" width="16" height="16" aria-hidden="true"><use href="#i-copy"/></svg><svg class="done" width="16" height="16" aria-hidden="true"><use href="#i-check"/></svg></button></div>
+      </div>
+      <p class="hero-meta reveal">Works with Codex, Claude Code, OpenClaw, Hermes, OpenCode and any folder-based agent.</p>
+
+      <div class="stage reveal">
+        <div class="window" role="img" aria-label="Terminal showing dalo status: six skills across Codex, Claude Code and Hermes — four managed, one shadowed by a local override, one blocked by an unmanaged folder in Claude’s directory, one pending approval — and the next command to run.">
+          <div class="titlebar" aria-hidden="true">
+            <div class="lights"><i></i><i></i><i></i></div>
+            <div class="tabs">
+              <div class="tab on"><code class="glyph">&gt;_</code><code>dalo status</code></div>
+              <div class="tab"><code>zsh</code></div>
+            </div>
+            <code class="where">~/work/acme — 118×32</code>
+          </div>
+          <div class="term" aria-hidden="true">
+            <div class="prompt"><code class="cwd">~/work/acme</code><code class="sigil">$</code><code class="cmd">dalo status</code></div>
+
+            <div class="srcs">
+              <code class="lbl">sources</code>
+              <span class="src"><code class="prio">0</code><code class="n">local</code><code class="k">local</code></span>
+              <span class="src"><code class="prio">10</code><code class="n">company</code><code class="k">team</code><code class="h">@4e7a1c9</code></span>
+              <span class="src"><code class="prio">20</code><code class="n">sebastian</code><code class="k">catalog · pinned</code><code class="h">@9f3c2e1</code></span>
+            </div>
+
+            <div class="grid">
+              <div class="row head">
+                <code>skill</code><code class="from">source</code><code class="pin">pin</code>
+                <div class="ag"><code><b>codex</b></code><code><small>~/.agents</small></code></div>
+                <div class="ag"><code><b>claude</b></code><code><small>~/.claude</small></code></div>
+                <div class="ag"><code><b>hermes</b></code><code><small>~/.hermes</small></code></div>
+                <code class="c-state">state</code>
+              </div>
+              <div class="row" style="--i:0">
+                <code class="skill">incident-review</code><code class="from">company</code><code class="pin">4e7a1c9</code>
+                <div class="cell"><i class="dot on" title="linked"></i></div><div class="cell"><i class="dot on"></i></div><div class="cell"><i class="dot on"></i></div>
+                <div class="state"><code class="pill ok">managed</code></div>
+              </div>
+              <div class="row" style="--i:1">
+                <code class="skill">release-notes</code><code class="from">company</code><code class="pin">4e7a1c9</code>
+                <div class="cell"><i class="dot on"></i></div><div class="cell"><i class="dot on"></i></div><div class="cell"><i class="dot on"></i></div>
+                <div class="state"><code class="pill ok">managed</code></div>
+              </div>
+              <div class="row" style="--i:2">
+                <code class="skill">code-style</code><code class="from">local</code><code class="pin na">local</code>
+                <div class="cell"><i class="dot on"></i></div><div class="cell"><i class="dot on"></i></div><div class="cell"><i class="dot on"></i></div>
+                <div class="state"><code class="pill ok">managed</code><code class="why">local_override</code></div>
+              </div>
+              <div class="row muted" style="--i:3">
+                <code class="skill">code-style</code><code class="from">company</code><code class="pin">4e7a1c9</code>
+                <div class="cell"><i class="dot off"></i></div><div class="cell"><i class="dot off"></i></div><div class="cell"><i class="dot off"></i></div>
+                <div class="state"><code class="pill dim">shadowed</code><code class="why">by=local:code-style</code></div>
+              </div>
+              <div class="row" style="--i:4">
+                <code class="skill">pdf-tools</code><code class="from">company</code><code class="pin">4e7a1c9</code>
+                <div class="cell"><i class="dot on"></i></div><div class="cell"><i class="dot no"></i></div><div class="cell"><i class="dot on"></i></div>
+                <div class="state"><code class="pill bad">blocked</code><code class="why">unmanaged entry in ~/.claude</code></div>
+              </div>
+              <div class="row" style="--i:5">
+                <code class="skill">effective-web</code><code class="from">sebastian</code><code class="pin">9f3c2e1</code>
+                <div class="cell"><i class="dot wait"></i></div><div class="cell"><i class="dot wait"></i></div><div class="cell"><i class="dot wait"></i></div>
+                <div class="state"><code class="pill warn">pending</code><code class="why">approval required</code></div>
+              </div>
+            </div>
+
+            <div class="next">
+              <code class="k">run:</code>
+              <code class="v">dalo approve skill <span class="arg">sebastian:effective-web</span></code>
+              <code class="sum">1 pending approval · 1 blocked</code>
+            </div>
+            <div class="prompt cursor-line"><code class="cwd">~/work/acme</code><code class="sigil">$</code><span class="cursor"></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Three core messages -->
+  <div class="features">
+    <div class="wrap">
+
+      <section class="feature" aria-labelledby="f1">
+        <div class="copy-col reveal">
+          <span class="kicker"><i>1</i>One source of truth</span>
+          <h2 id="f1">One pinned set. Every agent, every machine.</h2>
+          <p>Skills live in your team’s Git repo. Dalo resolves them to exact commits and links the same set into every agent you run. Local overrides win, and whatever they shadow stays visible.</p>
+          <a class="more" href="/docs/">How resolution works <svg width="15" height="15" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+        </div>
+        <div class="crop reveal" role="img" aria-label="Excerpt of ~/.dalo/lock.toml with the company source pinned to commit 4e7a1c9.">
+          <div class="bar" aria-hidden="true"><span class="file"><code>lock.toml</code></span><code class="path">~/.dalo</code></div>
+          <div class="body" aria-hidden="true">
+            <div class="ln"><code class="no">1</code><code><span class="t-key">schema_version</span> = 6</code></div>
+            <div class="ln"><code class="no">2</code><code></code></div>
+            <div class="ln"><code class="no">3</code><code class="t-sec">[[sources]]</code></div>
+            <div class="ln"><code class="no">4</code><code><span class="t-key">id</span> = <span class="t-str">"company"</span></code></div>
+            <div class="ln"><code class="no">5</code><code><span class="t-key">kind</span> = <span class="t-str">"team"</span></code></div>
+            <div class="ln hl"><code class="no">6</code><code><span class="t-key">commit</span> = <span class="t-str">"<span class="t-hash">4e7a1c9</span>d2f8b06e15a3c4"</span></code><code class="tag">pinned</code></div>
+            <div class="ln"><code class="no">7</code><code></code></div>
+            <div class="ln"><code class="no">8</code><code class="t-sec">[[active_skills]]</code></div>
+            <div class="ln"><code class="no">9</code><code><span class="t-key">source_ref</span> = <span class="t-str">"company:incident-review"</span></code></div>
+            <div class="ln"><code class="no">10</code><code><span class="t-key">slot_name</span> = <span class="t-str">"incident-review"</span></code></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="feature flip" aria-labelledby="f2">
+        <div class="copy-col reveal">
+          <span class="kicker"><i>2</i>Reviewed</span>
+          <h2 id="f2">Nothing reaches an agent unreviewed.</h2>
+          <p>A local security preflight checks every skill. Catalog skills wait for an explicit approval, bound to their exact content. A passing check is not a guarantee, so the decision stays yours.</p>
+          <a class="more" href="/docs/security.html">Read the security model <svg width="15" height="15" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+        </div>
+        <div class="crop reveal" role="img" aria-label="Terminal: dalo audit reports a clean result for sebastian:effective-web, then dalo approve skill grants it and suggests dalo sync.">
+          <div class="bar" aria-hidden="true"><span class="file"><code>zsh</code></span><code class="path">~/work/acme</code></div>
+          <div class="body" aria-hidden="true">
+            <div class="ln"><code><span class="t-sig">$ </span><span class="t-cmd">dalo audit sebastian:effective-web</span></code></div>
+            <div class="ln"><code class="t-sec">security audit: sebastian:effective-web</code></div>
+            <div class="ln"><code>  <span class="t-dim">content hash:</span> sha256:3b9e07c4…c41a</code></div>
+            <div class="ln"><code>  <span class="t-dim">coverage:</span> complete</code></div>
+            <div class="ln hl-ok"><code>  <span class="t-dim">result:</span> <span class="t-ok">clean</span></code><code class="tag ok">15 local rules</code></div>
+            <div class="ln"><code class="t-dim">  note: no findings means no known issue was detected; it is not a safety guarantee</code></div>
+            <div class="gap"></div>
+            <div class="ln"><code><span class="t-sig">$ </span><span class="t-cmd">dalo approve skill sebastian:effective-web</span></code></div>
+            <div class="ln hl"><code><span class="t-ok">granted</span> skill sebastian:effective-web</code></div>
+            <div class="ln"><code><span class="t-dim">next:</span> dalo sync to link it</code></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="feature" aria-labelledby="f3">
+        <div class="copy-col reveal">
+          <span class="kicker"><i>3</i>Safe by default</span>
+          <h2 id="f3">Dalo only touches what it owns.</h2>
+          <p>Your own folders are never overwritten, and <code>--dry-run</code> shows every link before anything changes. A dirty checkout blocks the sync instead of losing your edits.</p>
+          <a class="more" href="/docs/">See the safety rules <svg width="15" height="15" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+        </div>
+        <div class="crop reveal" role="img" aria-label="Terminal: dalo sync --dry-run plans three new links and reports one blocked conflict with an unmanaged pdf-tools folder, naming the adopt command.">
+          <div class="bar" aria-hidden="true"><span class="file"><code>zsh</code></span><code class="path">~/work/acme</code></div>
+          <div class="body" aria-hidden="true">
+            <div class="ln"><code><span class="t-sig">$ </span><span class="t-cmd">dalo sync --dry-run</span></code></div>
+            <div class="ln"><code><span class="t-warn">planned </span> create     target[codex]:/effective-web -&gt; store:/sources/sebastian/checkout/skills/effective-web</code></div>
+            <div class="ln"><code><span class="t-warn">planned </span> create     target[claude]:/effective-web -&gt; store:/sources/sebastian/checkout/skills/effective-web</code></div>
+            <div class="ln"><code><span class="t-warn">planned </span> create     target[hermes]:/effective-web -&gt; store:/sources/sebastian/checkout/skills/effective-web</code></div>
+            <div class="ln hl-bad"><code><span class="t-bad">blocked </span> conflict   target[claude]:/pdf-tools (real unmanaged entry exists at target slot)</code></div>
+            <div class="ln"><code class="t-dim">           adopt: run `dalo adopt pdf-tools` to copy it into the local source</code></div>
+            <div class="gap"></div>
+            <div class="ln"><code><span class="t-sec">would sync:</span> 5 skills across 3 targets (11 unchanged, 3 planned, 1 blocked)</code></div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <!-- Agents -->
+  <section class="agents" aria-labelledby="agents-h">
+    <div class="wrap reveal">
+      <h3 id="agents-h">Links into the folders your agents already read</h3>
+      <div class="agent-row">
+        <div class="agent"><b>Codex</b><code>~/.agents/skills</code></div>
+        <div class="agent"><b>Claude Code</b><code>~/.claude/skills</code></div>
+        <div class="agent"><b>OpenClaw</b><code>~/.agents/skills</code></div>
+        <div class="agent"><b>Hermes</b><code>~/.hermes/skills</code></div>
+        <div class="agent"><b>OpenCode</b><code>~/.config/opencode</code></div>
+        <div class="agent any"><b>Any folder</b><code>target link generic</code></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quickstart -->
+  <section class="quick" aria-labelledby="qs">
+    <div class="wrap quick-grid">
+      <div class="reveal">
+        <span class="kicker"><i>&gt;_</i>Quickstart</span>
+        <h2 id="qs">Three steps to a shared set.</h2>
+        <p class="section-lede">Connect your agents, add the team repository, sync. Just <code>git</code> on your PATH, no daemon.</p>
+        <p class="alt">Also via curl, npx, cargo and mise — <a href="/install.md">install guide</a>.</p>
+      </div>
+      <div class="crop reveal">
+        <div class="bar"><span class="file"><code>zsh</code></span><code class="path">~</code></div>
+        <div class="body fit steps">
+          <div class="step-h"><i>1</i>Connect your agents</div>
+          <div class="ln"><code><span class="t-sig">$ </span><span class="t-cmd">dalo init</span></code></div>
+          <div class="ln"><code><span class="t-sig">$ </span><span class="t-cmd">dalo target link claude</span></code></div>
+          <div class="step-h"><i>2</i>Add your team’s skills</div>
+          <div class="ln"><code><span class="t-sig">$ </span><span class="t-cmd">dalo source add company git@github.com:acme/agent-skills.git</span></code></div>
+          <div class="step-h"><i>3</i>Link the approved set</div>
+          <div class="ln"><code><span class="t-sig">$ </span><span class="t-cmd">dalo sync</span></code></div>
+          <div class="ln out"><code><span class="t-ok">synced:</span> 2 skills across 1 target (2 created)</code></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Final CTA -->
+  <section class="final" aria-labelledby="cta">
+    <div class="wrap">
+      <div class="final-card reveal">
+        <svg class="mark-lg" width="52" height="52" aria-hidden="true"><use href="#mark"/></svg>
+        <h2 id="cta">Give every agent the same reviewed skills.</h2>
+        <p>Open source under MIT or Apache-2.0. Install it once, then let every machine resolve the same set.</p>
+        <div class="ctas">
+          <a class="btn btn-primary" href="/docs/">Get started <svg width="16" height="16" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+          <a class="btn btn-ghost" href="https://github.com/sebastian-software/dalo"><svg width="16" height="16" aria-hidden="true"><use href="#i-gh"/></svg>View on GitHub</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap foot">
+    <a class="brand" href="#top"><svg width="22" height="22" aria-hidden="true"><use href="#mark"/></svg>dalo</a>
+    <small>© Sebastian Software</small>
+    <nav aria-label="Footer">
+      <a href="https://github.com/sebastian-software/dalo">GitHub</a>
+      <a href="/docs/">Docs</a>
+      <a href="/spec/">Spec</a>
+      <a href="/docs/security.html">Security</a>
+      <a href="/install.md">Install guide</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var d = document.documentElement;
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var header = document.querySelector('.site-header');
+  var onScroll = function () { header.classList.toggle('scrolled', window.scrollY > 8); };
+  window.addEventListener('scroll', onScroll, { passive: true }); onScroll();
+
+  document.querySelectorAll('[data-copy]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var text = document.getElementById(btn.getAttribute('data-copy')).textContent;
+      var done = function () { btn.classList.add('ok'); setTimeout(function () { btn.classList.remove('ok'); }, 1600); };
+      if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, function () {});
+    });
+  });
+
+  if (reduce || !('IntersectionObserver' in window)) return;
+  d.classList.add('js');
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      e.target.classList.add('in');
+      var w = e.target.querySelector('.window'); if (w) w.classList.add('in');
+      io.unobserve(e.target);
+    });
+  }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+  document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
+})();
+</script>
+</body>
+</html>
