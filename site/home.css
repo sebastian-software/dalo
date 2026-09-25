@@ -94,8 +94,8 @@ svg { display: block; }
 /* ── Header ──────────────────────────────────────────────── */
 .site-header { position: absolute; top: 0; left: 0; right: 0; z-index: 10; }
 .site-header .wrap { display: flex; align-items: center; height: 76px; gap: 40px; }
-.brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 20px; letter-spacing: -.03em; color: var(--ink); }
-.brand-mark { display: block; flex: none; }
+.brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 20px; letter-spacing: -.03em; color: var(--ink); }
+.brand-mark, .brand-word { display: block; flex: none; }
 .nav { display: flex; gap: 30px; font-size: 14.5px; font-weight: 500; color: var(--ink-2); }
 .nav a { transition: color .15s; }
 .nav a:hover, .nav a[aria-current="true"] { color: var(--ink); }
@@ -315,8 +315,8 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
 .res-hub { position: relative; display: grid; place-items: center; height: 180px; margin-top: 31px; }
 .res-mark {
   width: 64px; height: 64px; border-radius: 18px; display: grid; place-items: center;
-  background: linear-gradient(145deg, #17264a, var(--ink));
-  box-shadow: 0 0 0 1px rgba(11, 23, 51, .1), 0 12px 24px -8px rgba(11, 23, 51, .45), 0 0 0 8px rgba(67, 179, 242, .10);
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(11, 23, 51, .08), 0 12px 24px -8px rgba(11, 23, 51, .28), 0 0 0 8px rgba(232, 98, 58, .10);
 }
 .res-hub small { position: absolute; top: calc(50% + 42px); left: 50%; transform: translateX(-50%); font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
 .res-wire { fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
@@ -483,6 +483,7 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
 .cta .mesh .b3 { left: 20%; top: 50%; }
 .cta .veil { position: absolute; inset: 0; background: radial-gradient(48% 55% at 50% 62%, rgba(255, 255, 255, .8), rgba(255, 255, 255, 0) 100%); }
 .cta-inner { position: relative; text-align: center; display: grid; justify-items: center; }
+.cta-logo { display: block; width: clamp(112px, 11vw, 160px); height: auto; margin-bottom: 30px; filter: drop-shadow(0 18px 28px rgba(232, 98, 58, .22)); }
 .cta h2 { font-size: clamp(34px, 4.4vw, 56px); line-height: 1.05; letter-spacing: -.04em; font-weight: 700; max-width: 18ch; }
 .cta p { margin-top: 18px; font-size: 18px; color: var(--ink-2); max-width: 30em; }
 .cta .install { text-align: left; margin-top: 32px; width: 100%; max-width: 460px; background: rgba(255, 255, 255, .9); }
@@ -568,7 +569,7 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
   .res-node b::before { display: none; }
   .res-node small { font-size: 10px; }
   .res-mark { width: 48px; height: 48px; border-radius: 14px; box-shadow: 0 0 0 1px rgba(11, 23, 51, .1), 0 10px 20px -8px rgba(11, 23, 51, .45), 0 0 0 5px rgba(67, 179, 242, .10); }
-  .res-mark svg { width: 26px; height: 26px; }
+  .res-mark img { width: 34px; height: auto; }
   .res-hub small { font-size: 9.5px; top: calc(50% + 32px); }
   .res-foot { flex-direction: column; gap: 6px; }
   .review { padding: 18px; }

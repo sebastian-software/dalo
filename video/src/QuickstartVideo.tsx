@@ -1,17 +1,7 @@
 import type {CSSProperties, ReactNode} from 'react';
 import {AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig} from 'remotion';
 
-const colors = {
-  background: '#f4f1eb',
-  ink: '#ebeef5',
-  dim: '#858b99',
-  panel: '#181a20',
-  panelTop: '#202229',
-  line: '#353842',
-  orange: '#ff7a45',
-  green: '#5fd3a0',
-  yellow: '#e9bd67',
-};
+import {colors, fontFaces, fonts, Logo, Mesh, useFontsReady, Wordmark} from './brand';
 
 type Line = {
   at: number;
@@ -38,26 +28,17 @@ const lines: Line[] = [
   {at: 382, kind: 'comment', content: '# exit 0 · reviewed content linked'},
 ];
 
-const DaloMark = () => (
-  <svg viewBox="0 0 32 32" width="42" height="42" aria-hidden="true">
-    <rect x="1.25" y="1.25" width="29.5" height="29.5" rx="8" fill="none" stroke="currentColor" strokeWidth="1.5" />
-    <circle cx="9" cy="9.5" r="2" fill="currentColor" />
-    <circle cx="9" cy="16" r="2" fill="currentColor" />
-    <circle cx="9" cy="22.5" r="2" fill="currentColor" />
-    <path d="M11 9.5 H17 Q22 9.5 22 16 Q22 22.5 17 22.5 H11 M11 16 H22" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.55" />
-    <circle cx="22.5" cy="16" r="2.6" fill={colors.orange} />
-  </svg>
-);
-
 const lineColor: Record<Line['kind'], string> = {
-  comment: colors.dim,
+  comment: colors.faint,
   command: colors.ink,
-  output: '#b8bdc9',
+  output: colors.ink2,
   success: colors.green,
   blank: colors.ink,
 };
 
+// The light terminal of the homepage hero, typing the audit-then-sync flow.
 export const QuickstartVideo = () => {
+  useFontsReady();
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const enter = spring({frame, fps, config: {damping: 18, stiffness: 90, mass: 0.9}});
@@ -67,44 +48,63 @@ export const QuickstartVideo = () => {
   };
 
   return (
-    <AbsoluteFill
-      style={{
-        backgroundColor: colors.background,
-        backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(24,26,32,0.10) 1px, transparent 0)',
-        backgroundSize: '28px 28px',
-        color: '#181a20',
-        fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
-        padding: '54px 72px',
-      }}
-    >
-      <div style={{position: 'absolute', top: -190, right: -120, width: 520, height: 520, borderRadius: '50%', background: 'rgba(255,122,69,0.13)', filter: 'blur(1px)'}} />
-      <header style={{height: 52, display: 'flex', alignItems: 'center', gap: 13}}>
-        <DaloMark />
-        <span style={{fontSize: 32, fontWeight: 780, letterSpacing: '-0.04em'}}>dalo</span>
-        <span style={{marginLeft: 10, color: '#62656e', fontSize: 19}}>one source of truth for agent skills</span>
-        <span style={{marginLeft: 'auto', border: '1px solid rgba(24,26,32,0.16)', borderRadius: 999, padding: '7px 14px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 15}}>secure sync · 15 sec</span>
+    <AbsoluteFill style={{backgroundColor: colors.background, color: colors.ink, fontFamily: fonts.sans, padding: '50px 72px'}}>
+      <style>{fontFaces}</style>
+
+      {/* The hero's gradient band, washed out behind the terminal. */}
+      <div style={{position: 'absolute', inset: 0, clipPath: 'polygon(0 0, 100% 0, 100% 58%, 0 86%)', opacity: 0.85}}>
+        <Mesh />
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'linear-gradient(90deg, rgba(255,255,255,.92) 0%, rgba(255,255,255,.6) 40%, rgba(255,255,255,.1) 75%, rgba(255,255,255,0) 100%)',
+          }}
+        />
+      </div>
+
+      <header style={{position: 'relative', height: 52, display: 'flex', alignItems: 'center', gap: 14}}>
+        <Logo height={44} />
+        <Wordmark height={26} />
+        <span style={{marginLeft: 12, color: colors.muted, fontSize: 20}}>one source of truth for agent skills</span>
+        <span
+          style={{
+            marginLeft: 'auto',
+            background: 'rgba(255,255,255,.82)',
+            boxShadow: '0 0 0 1px rgba(11,23,51,.09)',
+            borderRadius: 999,
+            padding: '7px 14px',
+            fontFamily: fonts.mono,
+            fontSize: 15,
+            color: colors.ink2,
+          }}
+        >
+          secure sync · 15 sec
+        </span>
       </header>
 
       <div
         style={{
           ...terminalStyle,
           position: 'relative',
-          height: 522,
+          height: 530,
           marginTop: 34,
           overflow: 'hidden',
-          border: `1px solid ${colors.line}`,
-          borderRadius: 18,
-          background: colors.panel,
-          boxShadow: '0 28px 70px rgba(24,26,32,0.24)',
+          borderRadius: 16,
+          background: '#ffffff',
+          boxShadow:
+            '0 0 0 1px rgba(11,23,51,.07), 0 2px 4px rgba(11,23,51,.04), 0 24px 48px -16px rgba(11,23,51,.20), 0 64px 120px -40px rgba(50,50,110,.34)',
         }}
       >
-        <div style={{height: 54, background: colors.panelTop, borderBottom: `1px solid ${colors.line}`, display: 'flex', alignItems: 'center', padding: '0 20px', gap: 10}}>
-          {[colors.orange, colors.yellow, colors.green].map((color) => <span key={color} style={{width: 12, height: 12, borderRadius: '50%', background: color}} />)}
-          <span style={{marginLeft: 12, color: colors.dim, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 16}}>first sync</span>
-          <span style={{marginLeft: 'auto', color: colors.green, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 14}}>● local</span>
+        <div style={{height: 50, background: '#fbfcfd', borderBottom: `1px solid ${colors.line2}`, display: 'flex', alignItems: 'center', padding: '0 20px', gap: 9}}>
+          {[0, 1, 2].map((dot) => (
+            <span key={dot} style={{width: 12, height: 12, borderRadius: '50%', background: '#e4e7ee'}} />
+          ))}
+          <span style={{flex: 1, textAlign: 'center', color: colors.faint, fontSize: 16, marginRight: 60}}>first sync</span>
+          <span style={{color: colors.green, fontFamily: fonts.mono, fontSize: 14}}>● local</span>
         </div>
 
-        <div style={{padding: '20px 28px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: 19, lineHeight: 1.48}}>
+        <div style={{padding: '22px 28px', fontFamily: fonts.mono, fontSize: 18.5, lineHeight: 1.5, fontVariantLigatures: 'none'}}>
           {lines.map((line, index) => {
             const progress = interpolate(frame, [line.at, line.at + 8], [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'});
             return (
@@ -113,17 +113,22 @@ export const QuickstartVideo = () => {
                 style={{
                   height: 28,
                   color: lineColor[line.kind],
+                  fontWeight: line.kind === 'command' ? 500 : 400,
                   opacity: progress,
                   transform: `translateY(${interpolate(progress, [0, 1], [6, 0])}px)`,
                   whiteSpace: 'pre',
                 }}
               >
-                {line.kind === 'command' ? <><span style={{color: colors.orange}}>$</span>{' '}</> : null}
+                {line.kind === 'command' ? (
+                  <>
+                    <span style={{color: colors.coral}}>$</span>{' '}
+                  </>
+                ) : null}
                 {line.content}
               </div>
             );
           })}
-          <span style={{display: 'inline-block', width: 10, height: 22, marginTop: 3, background: colors.orange, opacity: frame % 24 < 13 ? 1 : 0}} />
+          <span style={{display: 'inline-block', width: 10, height: 21, marginTop: 4, borderRadius: 1, background: colors.coral, opacity: frame % 24 < 13 ? 1 : 0}} />
         </div>
       </div>
     </AbsoluteFill>

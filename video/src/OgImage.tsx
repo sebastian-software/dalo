@@ -1,81 +1,9 @@
-import {continueRender, delayRender} from 'remotion';
-import {useEffect, useState} from 'react';
+import {colors, fontFaces, fonts, headlineGradient, Logo, Mesh, useFontsReady, Wordmark} from './brand';
 
-import bricolage800 from '../../site/assets/fonts/bricolage-800.woff2';
-import geistMono400 from '../../site/assets/fonts/geistmono-400.woff2';
-import hanken400 from '../../site/assets/fonts/hanken-400.woff2';
-
-// The tokens below are the dark palette of the previous site design, copied
-// here when site/styles.css still defined them as `[data-scope="dark"]`. The
-// site has since moved to a light design with system fonts; this card keeps
-// the earlier fonts and colours until it is redesigned and re-rendered.
-const colors = {
-  background: 'oklch(0.185 0.012 260)',
-  ink: 'oklch(0.96 0.004 240)',
-  inkSoft: 'oklch(0.76 0.012 250)',
-  inkFaint: 'oklch(0.62 0.012 255)',
-  accent: 'oklch(0.70 0.175 45)',
-  accentText: 'oklch(0.74 0.165 48)',
-  line: 'oklch(0.31 0.014 260)',
-};
-
-const fontFaces = `
-@font-face {
-  font-family: "Bricolage Grotesque";
-  font-style: normal;
-  font-weight: 800;
-  src: url("${bricolage800}") format("woff2");
-}
-@font-face {
-  font-family: "Hanken Grotesk";
-  font-style: normal;
-  font-weight: 400;
-  src: url("${hanken400}") format("woff2");
-}
-@font-face {
-  font-family: "Geist Mono";
-  font-style: normal;
-  font-weight: 400;
-  src: url("${geistMono400}") format("woff2");
-}
-`;
-
-const DaloMark = () => (
-  <svg viewBox="0 0 32 32" width="56" height="56" aria-hidden="true">
-    <rect x="1.25" y="1.25" width="29.5" height="29.5" rx="8" fill="none" stroke={colors.ink} strokeWidth="1.5" />
-    <circle cx="9" cy="9.5" r="2" fill={colors.ink} />
-    <circle cx="9" cy="16" r="2" fill={colors.ink} />
-    <circle cx="9" cy="22.5" r="2" fill={colors.ink} />
-    <path
-      d="M11 9.5 H17 Q22 9.5 22 16 Q22 22.5 17 22.5 H11 M11 16 H22"
-      fill="none"
-      stroke={colors.ink}
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      opacity="0.55"
-    />
-    <circle cx="22.5" cy="16" r="2.6" fill={colors.accent} />
-  </svg>
-);
-
+// The social card for every page of dalo.sh: the homepage hero reduced to its
+// headline, the logo, and the gradient band it sits on.
 export const OgImage = () => {
-  // The still must not be captured before the self-hosted faces are ready, or
-  // the headline falls back to the system sans and the card stops matching the
-  // page it advertises.
-  const [handle] = useState(() => delayRender('Loading the Dalo web fonts'));
-
-  useEffect(() => {
-    let cancelled = false;
-    document.fonts.ready.then(() => {
-      if (!cancelled) {
-        continueRender(handle);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [handle]);
+  useFontsReady();
 
   return (
     <div
@@ -86,78 +14,78 @@ export const OgImage = () => {
         overflow: 'hidden',
         backgroundColor: colors.background,
         color: colors.ink,
-        fontFamily: '"Hanken Grotesk", system-ui, sans-serif',
-        padding: '64px 80px',
-        boxSizing: 'border-box',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'space-between',
+        fontFamily: fonts.sans,
       }}
     >
       <style>{fontFaces}</style>
 
-      {/* The hero's dotted grid and its warm corner glow. */}
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          backgroundImage: 'radial-gradient(circle at 1px 1px, oklch(0.96 0.004 240 / 0.09) 1px, transparent 0)',
-          backgroundSize: '26px 26px',
-        }}
-      />
-      <div
-        style={{
-          position: 'absolute',
-          top: -260,
-          right: -180,
-          width: 700,
-          height: 700,
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, oklch(0.70 0.175 45 / 0.28) 0%, transparent 68%)',
-        }}
-      />
-
-      <header style={{position: 'relative', display: 'flex', alignItems: 'center', gap: 18}}>
-        <DaloMark />
-        <span style={{fontFamily: '"Bricolage Grotesque", system-ui, sans-serif', fontWeight: 800, fontSize: 46, letterSpacing: '-0.04em'}}>
-          dalo
-        </span>
-      </header>
-
-      <div style={{position: 'relative'}}>
-        <h1
+      {/* The hero's gradient band, cut by the same slanted edge. */}
+      <div style={{position: 'absolute', inset: 0, clipPath: 'polygon(0 0, 100% 0, 100% 72%, 0 100%)'}}>
+        <Mesh />
+        <div
           style={{
-            fontFamily: '"Bricolage Grotesque", system-ui, sans-serif',
-            fontWeight: 800,
-            fontSize: 64,
-            lineHeight: 1.06,
-            letterSpacing: '-0.042em',
-            margin: 0,
-            maxWidth: 940,
+            position: 'absolute',
+            inset: 0,
+            background:
+              'linear-gradient(90deg, rgba(255,255,255,.94) 0%, rgba(255,255,255,.82) 34%, rgba(255,255,255,.2) 62%, rgba(255,255,255,0) 78%)',
           }}
-        >
-          Your team&rsquo;s agent skills, versioned like code.
+        />
+      </div>
+
+      {/* The logo, large, on a white tile floating over the gradient. */}
+      <div
+        style={{
+          position: 'absolute',
+          right: 92,
+          top: 118,
+          width: 300,
+          height: 300,
+          borderRadius: 40,
+          background: '#ffffff',
+          display: 'grid',
+          placeItems: 'center',
+          boxShadow:
+            '0 0 0 1px rgba(11,23,51,.06), 0 2px 4px rgba(11,23,51,.04), 0 24px 48px -16px rgba(11,23,51,.22), 0 64px 120px -40px rgba(50,50,110,.40)',
+        }}
+      >
+        <Logo height={196} />
+      </div>
+
+      <div style={{position: 'absolute', left: 80, top: 62, display: 'flex', alignItems: 'center', gap: 14}}>
+        <Logo height={44} />
+        <Wordmark height={27} />
+      </div>
+
+      <div style={{position: 'absolute', left: 80, top: 184, width: 700}}>
+        <h1 style={{margin: 0, fontWeight: 700, fontSize: 68, lineHeight: 1.04, letterSpacing: '-0.045em'}}>
+          Your team&rsquo;s agent skills,
+          <br />
+          <span style={{backgroundImage: headlineGradient, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent'}}>
+            versioned like code.
+          </span>
         </h1>
-
-        <div style={{width: 84, height: 6, borderRadius: 3, background: colors.accent, margin: '34px 0 28px'}} />
-
-        <p style={{fontSize: 28, lineHeight: 1.44, color: colors.inkSoft, margin: 0, maxWidth: 880}}>
-          Keep every skill in Git, resolve one approved set, and link it into the folders your agents already read.
+        <p style={{margin: '28px 0 0', fontSize: 26, lineHeight: 1.45, color: colors.ink2, maxWidth: 600}}>
+          One reviewed, pinned set of skills, linked into every agent&rsquo;s folder.
         </p>
       </div>
 
-      <footer
+      <div
         style={{
-          position: 'relative',
-          paddingTop: 26,
-          borderTop: `1px solid ${colors.line}`,
-          fontFamily: '"Geist Mono", ui-monospace, Menlo, monospace',
-          fontSize: 23,
-          color: colors.inkFaint,
+          position: 'absolute',
+          left: 80,
+          bottom: 56,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 14,
+          fontFamily: fonts.mono,
+          fontSize: 21,
+          color: colors.muted,
         }}
       >
-        <span style={{color: colors.accentText}}>dalo.sh</span> · Rust · MIT OR Apache-2.0 · macOS &amp; Linux
-      </footer>
+        <span style={{color: colors.rust, fontWeight: 500}}>dalo.sh</span>
+        <span>·</span>
+        <span>Rust CLI · MIT OR Apache-2.0 · macOS &amp; Linux</span>
+      </div>
     </div>
   );
 };
