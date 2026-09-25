@@ -235,7 +235,7 @@ h2 { margin: 0; font-size: clamp(32px, 3.6vw, 44px); line-height: 1.08; font-wei
 .qs-copy .more { display: inline-flex; align-items: center; gap: 6px; margin-top: 28px; font-size: 14px; font-weight: 500; color: var(--ink); }
 .qs-copy .more span { transition: transform .15s; }
 .qs-copy .more:hover span { transform: translateX(3px); }
-.qs-code { padding: 64px var(--pad); min-width: 0; background: var(--fill); display: flex; align-items: center; }
+.qs-code { padding: 64px 40px; min-width: 0; background: var(--fill); display: flex; align-items: center; }
 .term { width: 100%; min-width: 0; background: #fff; border: 1px solid var(--line-2); border-radius: 12px; overflow: hidden; box-shadow: 0 1px 1px rgba(0,0,0,.03), 0 12px 32px -12px rgba(0,0,0,.10); }
 .term-h { display: flex; align-items: center; height: 42px; padding: 0 8px 0 16px; border-bottom: 1px solid var(--line); font: 400 12px/1 var(--mono); color: var(--faint); }
 .term-h .dots { display: flex; gap: 6px; margin-right: 14px; }
@@ -248,12 +248,12 @@ h2 { margin: 0; font-size: clamp(32px, 3.6vw, 44px); line-height: 1.08; font-wei
 .term .ok { color: var(--ink); font-weight: 500; }
 
 /* ── Agents ────────────────────────────────────────── */
-.agents { display: grid; grid-template-columns: repeat(6, 1fr); }
-.ag { padding: 28px 24px 26px; min-width: 0; transition: background .2s; }
+.agents { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1.25fr 1fr; }
+.ag { padding: 28px 22px 26px; min-width: 0; transition: background .2s; }
 .ag + .ag { border-left: 1px solid var(--line); }
 .ag:hover { background: var(--fill); }
 .ag b { display: block; font-size: 16px; font-weight: 600; letter-spacing: -.02em; }
-.ag code { display: block; margin-top: 8px; font-size: 11.5px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ag code { display: block; margin-top: 8px; font-size: 11px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .agents-head { display: flex; align-items: baseline; justify-content: space-between; gap: 24px; padding: 56px var(--pad) 28px; }
 .agents-head h2 { font-size: clamp(24px, 2.4vw, 28px); letter-spacing: -.03em; }
 .agents-head p { margin: 0; color: var(--muted); font-size: 15px; }
@@ -303,7 +303,8 @@ h2 { margin: 0; font-size: clamp(32px, 3.6vw, 44px); line-height: 1.08; font-wei
   .frame { width: calc(100% - 24px); }
   .top .frame { width: 100%; border: 0; }
   .top .frame { padding: 0 16px; }
-  .hero { padding: 64px var(--pad) 56px; }
+  .hero { padding: 48px var(--pad) 48px; }
+  .also { font-size: 12.5px; }
   h1 { font-size: 42px; letter-spacing: -.045em; margin-top: 24px; }
   .lede { font-size: 17px; margin-top: 18px; }
   .ctas { margin-top: 32px; flex-direction: column; align-items: stretch; gap: 10px; }
@@ -323,13 +324,15 @@ h2 { margin: 0; font-size: clamp(32px, 3.6vw, 44px); line-height: 1.08; font-wei
   .term pre { font-size: 12px; padding: 16px; }
   .agents { grid-template-columns: repeat(2, 1fr); }
   .ag { padding: 22px 18px; }
+  .ag code { white-space: normal; overflow-wrap: anywhere; line-height: 1.5; }
   .ag:nth-child(n) { border-left: 0; border-top: 1px solid var(--line); }
   .ag:nth-child(even) { border-left: 1px solid var(--line); }
   .ag:nth-child(-n+2) { border-top: 0; }
   .agents-head { padding: 48px var(--pad) 24px; }
   .cta { padding: 80px var(--pad) 72px; }
   .cta .ctas { align-items: stretch; }
-  .facts { flex-direction: column; align-items: center; gap: 12px; }
+  .facts { flex-direction: column; align-items: center; gap: 12px; margin-top: 40px; }
+  .facts li::before { display: none; }
   .foot .frame { flex-direction: column; align-items: flex-start; padding: 28px 24px 36px; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -551,7 +554,7 @@ h2 { margin: 0; font-size: clamp(32px, 3.6vw, 44px); line-height: 1.08; font-wei
     <div class="qs-copy">
       <p class="eyebrow">Quickstart</p>
       <h2 id="qs-h">Three steps to a synced team.</h2>
-      <p class="sub">Link your agents, add the team repository, sync. Prefix any command with <code>--dry-run</code> to preview it.</p>
+      <p class="sub">Link your agents, add the team repository, sync. Add <code>--dry-run</code> to preview any change first.</p>
       <a class="more" href="/docs/">Read the quickstart <span aria-hidden="true">→</span></a>
     </div>
     <div class="qs-code">
@@ -586,7 +589,7 @@ dalo sync</span>
     <span class="plus l"></span><span class="plus r"></span>
     <div class="agents-head">
       <h2 id="ag-h">Works with the agents you already run.</h2>
-      <p>Dalo writes symlinks into the folders they already read.</p>
+      <p>Plain symlinks, in the folders each agent already reads.</p>
     </div>
     <div class="row agents">
       <span class="plus l"></span><span class="plus r"></span>
