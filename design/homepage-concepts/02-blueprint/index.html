@@ -1,0 +1,1141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dalo — Blueprint concept</title>
+<meta name="description" content="Dalo keeps your team's agent skills in Git: one approved set, resolved the same way on every machine and reviewed before it reaches any agent folder.">
+<link rel="stylesheet" href="../fonts/ibm-plex-sans.css">
+<link rel="stylesheet" href="../fonts/ibm-plex-sans-condensed.css">
+<link rel="stylesheet" href="../fonts/ibm-plex-mono.css">
+<style>
+:root {
+  --paper: #f3f7fb;
+  --paper-solid: #f7fafd;
+  --paper-2: #e6eef7;
+  --table: #e9f0f8;
+  --ink: #123a66;
+  --ink-2: #3a5a82;
+  --ink-3: #8ea6c2;
+  --ink-4: #c3d2e3;
+  --grid-minor: rgba(18, 58, 102, .05);
+  --grid-major: rgba(18, 58, 102, .10);
+  --red: #d2461d;
+  --red-ink: #b53a13;
+  --red-btn: #c43f18;
+  --sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --cond: 'IBM Plex Sans Condensed', 'IBM Plex Sans', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --pad: clamp(16px, 3.2vw, 44px);
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0;
+  background: #e7eef6;
+  color: var(--ink);
+  font: 400 16px/1.6 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+a:hover { color: var(--red-ink); }
+:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+code, kbd, pre { font-family: var(--mono); }
+code { font-size: .9em; }
+.skip { position: absolute; left: -9999px; top: 8px; background: var(--ink); color: #fff; padding: 8px 12px; z-index: 10; }
+.skip:focus { left: 8px; }
+.vh { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ───────── Drawing frame ───────── */
+.frame {
+  position: relative;
+  margin: 20px;
+  border: 1px solid var(--ink);
+  padding: 22px;
+  background: var(--paper);
+}
+.zones {
+  position: absolute; left: 22px; right: 22px; height: 22px;
+  display: grid; grid-template-columns: repeat(8, 1fr);
+  font: 500 10px/22px var(--mono); color: var(--ink-2); text-align: center;
+}
+.zones.top { top: 0; }
+.zones.bottom { bottom: 0; }
+.zones span { position: relative; }
+.zones span + span::before {
+  content: ""; position: absolute; left: 0; width: 1px; height: 8px; background: var(--ink);
+}
+.zones.top span + span::before { bottom: 0; }
+.zones.bottom span + span::before { top: 0; }
+.rows {
+  position: absolute; top: 22px; bottom: 22px; width: 22px;
+  display: flex; flex-direction: column; justify-content: space-around; align-items: center;
+  font: 500 10px/1 var(--mono); color: var(--ink-2);
+}
+.rows.left { left: 0; }
+.rows.right { right: 0; }
+.set {
+  border: 2px solid var(--ink);
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(var(--grid-major) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-major) 1px, transparent 1px),
+    linear-gradient(var(--grid-minor) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-minor) 1px, transparent 1px);
+  background-size: 80px 80px, 80px 80px, 16px 16px, 16px 16px;
+  background-position: -1px -1px;
+}
+
+/* ───────── Top strip / nav ───────── */
+.strip {
+  display: flex; align-items: stretch; justify-content: space-between;
+  border-bottom: 1px solid var(--ink);
+  background: var(--paper-solid);
+  min-height: 56px;
+}
+.brand { display: flex; align-items: center; gap: 10px; padding: 0 var(--pad); text-decoration: none; border-right: 1px solid var(--ink); }
+.brand svg { width: 26px; height: 26px; flex: none; }
+.brand b { font: 700 22px/1 var(--cond); letter-spacing: -.01em; }
+.brand small { font: 500 10px/1 var(--mono); letter-spacing: .08em; color: var(--ink-2); text-transform: uppercase; }
+.navlinks { display: flex; margin: 0; padding: 0; list-style: none; flex: 1; }
+.navlinks li { display: flex; }
+.navlinks a {
+  display: flex; align-items: center; padding: 0 16px;
+  font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; text-decoration: none; color: var(--ink);
+  border-right: 1px solid var(--ink-4);
+}
+.navlinks a:hover { background: var(--paper-2); color: var(--ink); }
+.navlinks a span { color: var(--ink-3); margin-right: 6px; }
+.navright { display: flex; }
+.navright a.plain {
+  display: flex; align-items: center; padding: 0 18px; border-left: 1px solid var(--ink);
+  font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; text-decoration: none;
+}
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  min-height: 44px; padding: 0 20px;
+  font: 600 13px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; text-decoration: none;
+  border: 1px solid var(--ink); color: var(--ink); background: var(--paper-solid);
+  cursor: pointer;
+}
+.btn:hover { background: var(--paper-2); color: var(--ink); }
+.btn.primary { background: var(--red-btn); border-color: var(--red-btn); color: #fff; }
+.btn.primary:hover { background: #a93411; border-color: #a93411; color: #fff; }
+.navright .btn.primary { min-height: 0; border: 0; border-left: 1px solid var(--ink); padding: 0 22px; }
+
+/* ───────── Sheets ───────── */
+.sheet { border-top: 2px solid var(--ink); }
+.sheet:first-child { border-top: 0; }
+.sheet-head {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0;
+  border-bottom: 1px solid var(--ink);
+  background: var(--paper-solid);
+}
+.marker {
+  width: 64px; height: 64px; margin: 14px var(--pad);
+  border: 1.5px solid var(--ink); border-radius: 50%;
+  display: grid; grid-template-rows: 1fr 1fr; overflow: hidden;
+  font: 700 17px/1 var(--cond); text-align: center;
+}
+.marker span { display: flex; align-items: center; justify-content: center; }
+.marker span + span { border-top: 1.5px solid var(--ink); font: 500 13px/1 var(--mono); color: var(--ink-2); }
+.sheet-head .kicker { margin: 0 0 6px; }
+.sheet-head h2 { margin: 0; font: 700 clamp(26px, 3.3vw, 40px)/1.05 var(--cond); letter-spacing: -.005em; }
+.sheet-head .dwg {
+  align-self: stretch; margin: 0; display: grid; align-content: center; gap: 4px;
+  padding: 0 var(--pad); border-left: 1px solid var(--ink);
+  font: 500 11px/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); text-align: right;
+}
+.sheet-head .dwg b { font-weight: 600; color: var(--ink); font-size: 13px; }
+.sheet-body { padding: clamp(28px, 4vw, 56px) var(--pad); }
+.kicker, .label {
+  font: 500 11px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2);
+}
+.label { margin: 0 0 10px; }
+.cols { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 0 clamp(24px, 3vw, 48px); }
+
+/* ───────── Hero ───────── */
+.hero-top { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 0; border-bottom: 1px solid var(--ink-4); }
+.hero-top > div:first-child { display: flex; flex-direction: column; }
+.hero-top .cta { margin-top: 28px; }
+.hero-top > div { padding: clamp(28px, 3.4vw, 48px) var(--pad) clamp(24px, 3vw, 40px); }
+.hero-top > div + div { border-left: 1px solid var(--ink-4); display: flex; flex-direction: column; justify-content: flex-end; }
+.hero-top .fine { margin-top: 4px; }
+h1 {
+  margin: 14px 0 0;
+  font: 700 clamp(42px, 4.6vw, 68px)/.98 var(--cond);
+  letter-spacing: -.015em;
+}
+h1 .l { display: block; }
+.rev-mark {
+  display: inline-grid; place-items: center; position: relative;
+  width: 26px; height: 23px; margin-left: 8px; vertical-align: top; top: .1em;
+  font: 600 11px/1 var(--mono); color: var(--red-ink); text-decoration: none;
+}
+.rev-mark svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.rev-mark span { position: relative; top: 4px; }
+.lede { margin: 0 0 22px; font-size: clamp(17px, 1.35vw, 19px); line-height: 1.55; max-width: 38em; }
+.cmd {
+  display: flex; align-items: stretch; border: 1px solid var(--ink); background: var(--paper-solid);
+  font: 500 14px/1 var(--mono); margin-bottom: 14px; max-width: 100%;
+}
+.cmd .p { padding: 14px 0 14px 14px; color: var(--ink-3); user-select: none; }
+.cmd code { flex: 1; min-width: 0; padding: 14px 12px; overflow-x: auto; white-space: nowrap; font-size: 14px; scrollbar-width: thin; }
+.cmd button { font: 500 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; border: 0; border-left: 1px solid var(--ink); background: transparent; color: var(--ink); padding: 0 14px; cursor: pointer; }
+.cmd button:hover { background: var(--paper-2); }
+.cta { display: flex; flex-wrap: wrap; gap: 10px; }
+.fine { margin: 14px 0 0; font: 400 12px/1.5 var(--mono); color: var(--ink-2); }
+
+.drawing { position: relative; padding: clamp(20px, 2.4vw, 32px) var(--pad) 0; }
+.drawing .label { display: flex; justify-content: space-between; gap: 12px; }
+.pipe { display: block; width: 100%; height: auto; overflow: visible; }
+.pipe.v { display: none; max-width: 520px; margin: 0 auto; }
+@media (max-width: 1099px) {
+  .pipe.h { display: none; }
+  .pipe.v { display: block; }
+}
+/* SVG drawing language */
+.pipe text { fill: var(--ink); }
+.o  { fill: none; stroke: var(--ink); stroke-width: 1.5; vector-effect: non-scaling-stroke; stroke-linejoin: miter; }
+.of { fill: var(--paper-solid); stroke: var(--ink); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.t1 { fill: none; stroke: var(--ink-2); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.t0 { fill: none; stroke: var(--ink-3); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.hid { fill: none; stroke: var(--ink-2); stroke-width: 1; stroke-dasharray: 5 3; vector-effect: non-scaling-stroke; }
+.hidf { fill: var(--paper-solid); stroke: var(--ink-2); stroke-width: 1; stroke-dasharray: 5 3; vector-effect: non-scaling-stroke; }
+.ph { fill: none; stroke: var(--ink); stroke-width: 1.25; stroke-dasharray: 14 3 3 3 3 3; vector-effect: non-scaling-stroke; }
+.cl { fill: none; stroke: var(--ink-2); stroke-width: 1; stroke-dasharray: 18 4 3 4; vector-effect: non-scaling-stroke; }
+.cut { fill: none; stroke: var(--ink); stroke-width: 1; stroke-dasharray: 18 4 3 4; vector-effect: non-scaling-stroke; }
+.cutend { fill: none; stroke: var(--ink); stroke-width: 3; vector-effect: non-scaling-stroke; }
+.fi { fill: var(--ink); }
+.hatch-l { stroke: var(--ink-2); stroke-width: 1; }
+.bl circle { fill: var(--paper-solid); stroke: var(--red); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+.bl text { fill: var(--red-ink) !important; font: 600 13px var(--mono); text-anchor: middle; dominant-baseline: central; }
+.bl line { stroke: var(--ink-2); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.bl .dot { fill: var(--ink); stroke: none; }
+.tl { font: 700 13.5px var(--cond); letter-spacing: .06em; }
+.tm { font: 400 11.5px var(--mono); fill: var(--ink-2) !important; }
+.tmi { font: 500 12px var(--mono); }
+.tc { font: 500 11px var(--cond); letter-spacing: .08em; fill: var(--ink-2) !important; }
+.tt { font: 700 22px var(--cond); }
+.td { font: 500 11px var(--mono); letter-spacing: .08em; fill: var(--ink-2) !important; }
+.mid { text-anchor: middle; }
+.end { text-anchor: end; }
+
+.hero-foot { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 460px); align-items: end; gap: 0 clamp(24px, 3vw, 48px); padding: 8px 0 0 var(--pad); }
+.parts { list-style: none; margin: 0 0 var(--pad); padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 28px; counter-reset: p; }
+.parts li { display: grid; grid-template-columns: 30px 1fr; gap: 0 12px; font-size: 14px; line-height: 1.45; }
+.parts b { display: block; font: 700 14px/1.3 var(--cond); letter-spacing: .06em; text-transform: uppercase; margin-bottom: 2px; }
+.parts span { color: var(--ink-2); }
+.balloon {
+  counter-increment: p; display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
+  border: 1.4px solid var(--red); color: var(--red-ink); background: var(--paper-solid);
+  font: 600 13px/1 var(--mono);
+}
+.tb {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px;
+  border-top: 2px solid var(--ink); border-left: 2px solid var(--ink);
+  background: var(--ink); margin: 0;
+}
+.tb > div { background: var(--paper-solid); padding: 7px 10px 8px; min-width: 0; }
+.tb dt { font: 500 9.5px/1.2 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); }
+.tb dd { margin: 3px 0 0; font: 600 14px/1.25 var(--cond); letter-spacing: .02em; }
+.tb .w2 { grid-column: span 2; }
+.tb .w3 { grid-column: span 3; }
+.tb .big dd { font-size: 19px; }
+.tb .proj dd { display: flex; align-items: center; height: 17px; }
+.tb .proj svg { height: 16px; width: auto; }
+
+/* ───────── Sheet 2: resolver ───────── */
+.detail { margin: 0; grid-column: span 7; }
+.spec { grid-column: span 5; }
+.view {
+  border: 1px solid var(--ink); background: var(--paper-solid);
+  padding: clamp(18px, 2.4vw, 32px);
+}
+.view-cap { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 22px; }
+.ruler { position: relative; margin: 0 0 30px; padding: 0 128px 0 132px; }
+.ruler .scale {
+  position: relative; height: 12px;
+  border-bottom: 1px solid var(--ink);
+  background: repeating-linear-gradient(90deg, var(--ink) 0 1px, transparent 1px 5%) bottom / 100% 6px no-repeat;
+  box-shadow: inset -1px 0 0 var(--ink);
+}
+.ruler .major { position: absolute; bottom: -1px; width: 1px; height: 12px; background: var(--ink); }
+.ruler .n { position: absolute; top: 16px; transform: translateX(-50%); font: 500 11px/1 var(--mono); color: var(--ink-2); }
+.ruler .axis { position: absolute; left: 0; top: 0; width: 120px; font: 500 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+.contenders { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.contenders li { display: grid; grid-template-columns: 120px minmax(0, 1fr) 116px; align-items: center; gap: 12px; }
+.contenders .pos { position: absolute; top: -4px; width: 9px; height: 9px; margin-left: -4.5px; border-radius: 50%; background: var(--ink); z-index: 1; }
+.contenders .lose .pos { background: var(--paper-solid); border: 1px solid var(--ink-2); top: -5px; }
+.contenders .src { border: 1.5px solid var(--ink); padding: 8px 10px; background: var(--paper-solid); }
+.contenders .src b { display: block; font: 700 15px/1.2 var(--cond); letter-spacing: .04em; text-transform: uppercase; }
+.contenders .src span { font: 500 11px/1.2 var(--mono); color: var(--ink-2); }
+.contenders .run { position: relative; height: 1px; background: var(--ink); }
+.contenders .run::after { content: ""; position: absolute; right: -1px; top: -4px; border: 4.5px solid transparent; border-left: 12px solid var(--ink); border-right: 0; }
+.contenders .run code { position: absolute; left: 16px; top: -22px; font: 500 12px/1 var(--mono); background: var(--paper-solid); padding: 0 4px; white-space: nowrap; }
+.contenders .verdict { font: 700 13px/1 var(--cond); letter-spacing: .1em; text-transform: uppercase; padding: 8px 6px; border: 1.5px solid var(--ink); text-align: center; }
+.contenders .lose .run code { left: calc(50% + 10px); }
+.contenders li:last-child .run code { left: auto; right: 16px; }
+.contenders .lose .src, .contenders .lose .verdict { border: 1px dashed var(--ink-2); color: var(--ink-2); }
+.contenders .lose .src b { color: var(--ink-2); }
+.contenders .lose .run { background: none; border-top: 1px dashed var(--ink-3); height: 0; }
+.contenders .lose .run::after { display: none; }
+.contenders .lose .run code { color: var(--ink-2); }
+.slot { margin: 22px 0 0; padding: 14px 16px; border: 1.5px solid var(--ink); display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; align-items: baseline; background: var(--paper); }
+.slot dt { font: 500 10.5px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); }
+.slot dd { margin: 0; font: 500 13px/1.4 var(--mono); overflow-wrap: anywhere; }
+.view-note { margin: 18px 0 0; font: 400 12.5px/1.5 var(--mono); color: var(--ink-2); }
+.spec h3 { font: 700 26px/1.1 var(--cond); margin: 0 0 14px; }
+.spec p { margin: 0 0 18px; }
+.specs { margin: 24px 0 0; border-top: 1px solid var(--ink); }
+.specs > div { display: grid; grid-template-columns: 96px 1fr; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--ink-4); }
+.specs dt { font: 500 10.5px/1.6 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); }
+.specs dd { margin: 0; font-size: 15px; }
+
+.notes-wrap { margin-top: clamp(40px, 5vw, 64px); border-top: 1px solid var(--ink); padding-top: 28px; }
+.notes-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+.notes-head h3 { margin: 0; font: 700 22px/1 var(--cond); letter-spacing: .14em; text-transform: uppercase; }
+.rule {
+  margin: 0 0 28px; padding: 18px 22px; border: 2px solid var(--ink); background: var(--paper-solid);
+  display: grid; grid-template-columns: auto 1fr; gap: 6px 20px; align-items: baseline;
+}
+.rule .kicker { margin: 0; }
+.rule p { margin: 0; font: 600 clamp(20px, 2.1vw, 27px)/1.2 var(--cond); letter-spacing: .005em; }
+.notes { margin: 0; padding: 0; list-style: none; counter-reset: n; columns: 2; column-gap: clamp(28px, 4vw, 64px); }
+.notes li { counter-increment: n; break-inside: avoid; display: grid; grid-template-columns: 34px 1fr; padding: 0 0 16px; }
+.notes li::before { content: counter(n) "."; font: 600 14px/1.6 var(--mono); color: var(--ink); }
+.notes b { font-weight: 600; }
+
+/* ───────── Tables ───────── */
+.tw { overflow-x: auto; border: 1px solid var(--ink); background: var(--paper-solid); scrollbar-width: thin; }
+table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+caption { text-align: left; }
+th, td { text-align: left; vertical-align: baseline; padding: 11px 14px; border-bottom: 1px solid var(--ink-4); border-right: 1px solid var(--ink-4); }
+th:last-child, td:last-child { border-right: 0; }
+tbody tr:last-child > * { border-bottom: 0; }
+thead th { background: var(--table); border-bottom: 1px solid var(--ink); font: 500 10.5px/1.3 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink); white-space: nowrap; }
+td.num, th.num { font-family: var(--mono); }
+td.nom { font: 700 17px/1.2 var(--cond); letter-spacing: .02em; white-space: nowrap; }
+td.tol { font: 500 13px/1.4 var(--mono); white-space: nowrap; color: var(--ink-2); }
+td.item { font: 600 13px/1.4 var(--mono); color: var(--ink-2); width: 1%; white-space: nowrap; }
+td.dim { color: var(--ink-2); font-size: 14px; }
+.revs td { vertical-align: middle; }
+td code, th code { white-space: nowrap; }
+.tfoot-note { margin: 12px 0 0; font: 400 12.5px/1.55 var(--mono); color: var(--ink-2); }
+.block + .block { margin-top: clamp(40px, 5vw, 64px); }
+.block-head { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 12px clamp(24px, 3vw, 48px); align-items: end; margin-bottom: 20px; }
+.block-head h3 { margin: 0; font: 700 22px/1 var(--cond); letter-spacing: .14em; text-transform: uppercase; }
+.block-head p { margin: 0; color: var(--ink); max-width: 44em; }
+.mat { display: flex; flex-wrap: wrap; gap: 0; margin: 14px 0 0; padding: 0; list-style: none; border: 1px solid var(--ink); background: var(--paper-solid); }
+.mat li { padding: 9px 14px; font: 500 12px/1.3 var(--mono); border-right: 1px solid var(--ink-4); }
+.mat li:first-child { font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); }
+.mat li:last-child { border-right: 0; }
+
+/* ───────── Sheet 4: assembly ───────── */
+.install { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(24px, 3vw, 48px); align-items: start; }
+.install h3, .asm-head h3 { margin: 0 0 12px; font: 700 22px/1 var(--cond); letter-spacing: .14em; text-transform: uppercase; }
+.install p { margin: 0 0 18px; }
+.install .cmd { font-size: 15px; }
+.chan td:first-child { font: 700 15px/1.3 var(--cond); letter-spacing: .03em; white-space: nowrap; }
+.chan td:nth-child(2) { font: 500 12px/1.5 var(--mono); color: var(--ink-2); white-space: nowrap; }
+.chan td:last-child code { font-size: 13px; }
+.asm-head { margin: clamp(44px, 5vw, 72px) 0 22px; padding-top: 28px; border-top: 1px solid var(--ink); display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+.asm-head h3 { margin: 0; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--ink); border-left: 1px solid var(--ink); background: var(--paper-solid); }
+.steps li { border-right: 1px solid var(--ink); border-bottom: 1px solid var(--ink); padding: 16px 18px 18px; display: grid; grid-template-columns: 28px 1fr; gap: 4px 14px; align-content: start; min-width: 0; }
+.steps .balloon { grid-row: span 2; }
+.steps b { font: 700 15px/1.3 var(--cond); letter-spacing: .06em; text-transform: uppercase; align-self: center; }
+.steps p { margin: 0; font-size: 14px; color: var(--ink-2); grid-column: 2; }
+.steps pre { grid-column: 1 / -1; margin: 10px 0 0; padding: 10px 12px; border: 1px solid var(--ink-4); background: var(--paper); font: 500 13px/1.6 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.out { margin-top: 22px; border: 1px solid var(--ink); background: var(--paper-solid); min-width: 0; }
+.out-cap { display: flex; justify-content: space-between; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--ink); background: var(--table); flex-wrap: wrap; }
+.out-cap .kicker { color: var(--ink); }
+.out pre { margin: 0; padding: 16px 18px; font: 400 13px/1.7 var(--mono); overflow-x: auto; scrollbar-width: thin; }
+.out .c { color: var(--ink-2); }
+.out .ok { font-weight: 600; }
+.out .err { color: var(--red-ink); font-weight: 500; }
+.pair { display: grid; grid-template-columns: minmax(0, 1fr); }
+.pair .out { margin-top: 22px; }
+.flag { display: inline-block; border: 1px solid var(--red); color: var(--red-ink); padding: 0 5px; font-weight: 600; }
+
+/* ───────── Sheet 5: revisions ───────── */
+.revs td.sym { width: 1%; padding-right: 6px; }
+.tri { display: inline-grid; place-items: center; position: relative; width: 30px; height: 26px; font: 600 11px/1 var(--mono); color: var(--red-ink); }
+.tri svg { position: absolute; inset: 0; }
+.tri span { position: relative; top: 4px; }
+.revs td.nom { font-size: 24px; }
+.revs td:last-child { font: 400 13px/1.5 var(--mono); }
+.revs td:last-child a { color: var(--ink); }
+.cmp { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(24px, 3vw, 48px); margin-top: clamp(40px, 5vw, 64px); padding-top: 28px; border-top: 1px solid var(--ink); }
+.cmp h3 { margin: 0 0 12px; font: 700 22px/1 var(--cond); letter-spacing: .14em; text-transform: uppercase; }
+.cmp p { margin: 0 0 14px; }
+.cmp .quote { font: 600 clamp(20px, 2vw, 26px)/1.25 var(--cond); margin: 0 0 14px; }
+.iface { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--ink); background: var(--paper-solid); }
+.iface > div { padding: 14px 16px; border-right: 1px solid var(--ink-4); }
+.iface > div:last-child { border-right: 0; background: var(--paper); box-shadow: inset 0 0 0 1.5px var(--ink); }
+.iface b { display: block; font: 700 16px/1.2 var(--cond); letter-spacing: .04em; margin-bottom: 6px; }
+.iface p { margin: 0; font-size: 14px; color: var(--ink-2); }
+.iface > div:last-child p { color: var(--ink); }
+
+/* ───────── Footer ───────── */
+.foot { border-top: 2px solid var(--ink); display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 5fr) minmax(0, 3fr); background: var(--paper-solid); }
+.foot > * { padding: 22px var(--pad); min-width: 0; }
+.foot > * + * { border-left: 1px solid var(--ink); }
+.foot .brand { border: 0; padding: 0; margin-bottom: 10px; }
+.foot p { margin: 0; font-size: 14px; color: var(--ink-2); }
+.foot ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 16px; }
+.foot ul a { font: 500 12px/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase; text-decoration: none; }
+.foot ul a:hover { text-decoration: underline; }
+.foot dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font: 500 11px/1.5 var(--mono); }
+.foot dt { color: var(--ink-2); letter-spacing: .1em; text-transform: uppercase; }
+.foot dd { margin: 0; }
+
+/* ───────── Responsive ───────── */
+@media (max-width: 1099px) {
+  .hero-foot { grid-template-columns: 1fr; padding: 8px var(--pad) 0; }
+  .parts { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 28px; }
+  .tb { margin: 0 calc(-1 * var(--pad)); border-left: 0; }
+  .detail, .spec { grid-column: 1 / -1; }
+  .spec { margin-top: 36px; }
+  .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .navlinks li:nth-child(n+4) { display: none; }
+}
+@media (max-width: 860px) {
+  .hero-top { grid-template-columns: minmax(0, 1fr); }
+  h1 .l { display: inline; }
+  .hero-top > div + div { border-left: 0; border-top: 1px solid var(--ink-4); }
+  .install, .cmp, .block-head { grid-template-columns: minmax(0, 1fr); }
+  .pair { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .notes { columns: 1; }
+  .foot { grid-template-columns: 1fr; }
+  .foot > * + * { border-left: 0; border-top: 1px solid var(--ink); }
+  .navlinks { display: none; }
+  .iface { grid-template-columns: 1fr; }
+  .iface > div { border-right: 0; border-bottom: 1px solid var(--ink-4); }
+}
+@media (max-width: 640px) {
+  .frame { margin: 0; padding: 0; border: 0; background: none; }
+  .zones, .rows { display: none; }
+  .set { border-width: 0; border-top: 2px solid var(--ink); border-bottom: 2px solid var(--ink); }
+  .strip { min-height: 52px; }
+  .brand small { display: none; }
+  .navright a.plain { padding: 0 14px; }
+  .navright .btn.primary { padding: 0 16px; }
+  .sheet-head { grid-template-columns: auto 1fr; }
+  .sheet-head .dwg { display: none; }
+  .marker { width: 48px; height: 48px; margin: 14px 14px 14px 16px; font-size: 14px; }
+  .marker span + span { font-size: 11px; }
+  .sheet-head > div { padding: 12px 16px 12px 0; }
+  .parts { grid-template-columns: 1fr; gap: 12px; }
+  .tb { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tb .w3 { grid-column: span 2; }
+  .tb > div:first-child { grid-column: span 2; }
+  .tb .w2 { grid-column: span 1; }
+  .drawing .label span + span { display: none; }
+  .steps { grid-template-columns: 1fr; }
+  .ruler { padding: 34px 88px 0 104px; }
+  .slot { grid-template-columns: 1fr; gap: 2px; }
+  .slot dd + dt { margin-top: 8px; }
+  .ruler .axis { width: auto; }
+  .contenders li { grid-template-columns: 96px minmax(0, 1fr) 80px; gap: 8px; }
+  .contenders .verdict { padding: 7px 4px; font-size: 11px; letter-spacing: .04em; }
+  .contenders .run code { display: none; }
+  .contenders .src { padding: 6px 8px; }
+  .rule { grid-template-columns: 1fr; }
+  .specs > div { grid-template-columns: 80px 1fr; }
+  .foot ul { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  h1 { max-width: none; }
+  table.stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  table.stack, table.stack tbody { display: block; }
+  table.stack tr { display: grid; gap: 4px 12px; padding: 14px; border-bottom: 1px solid var(--ink-4); }
+  table.stack tbody tr:last-child { border-bottom: 0; }
+  table.stack td { display: block; padding: 0; border: 0; width: auto; min-width: 0; }
+  .tolt tr { grid-template-columns: 22px minmax(0, 1fr) auto; }
+  .tolt td.item { grid-row: 1 / span 2; }
+  .tolt td:nth-child(2) { grid-column: 2; grid-row: 1; font-weight: 500; }
+  .tolt td.nom { grid-column: 3; grid-row: 1; text-align: right; }
+  .tolt td.tol { grid-column: 3; grid-row: 2; text-align: right; }
+  .tolt td:nth-child(5) { grid-column: 2; grid-row: 2; font-size: 13.5px; color: var(--ink-2); }
+  .bom tr { grid-template-columns: 22px minmax(0, 1fr); }
+  .bom td.item { grid-row: 1 / span 3; }
+  .bom td:nth-child(2) { display: none; }
+  .bom td:nth-child(3) { grid-column: 2; font: 700 16px/1.3 var(--cond); letter-spacing: .03em; }
+  .bom td:nth-child(4), .bom td:nth-child(5) { grid-column: 2; }
+  .bom td:nth-child(5) code { color: var(--ink-2); }
+  .revs tr { grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; }
+  .revs td.sym { grid-row: 1 / span 2; align-self: start; }
+  .revs td:nth-child(2) { grid-column: 2; grid-row: 1; font-size: 14.5px; line-height: 1.45; }
+  .revs td.nom { grid-column: 3; grid-row: 1 / span 2; font-size: 22px; text-align: right; }
+  .revs td:nth-child(4) { grid-column: 2; grid-row: 2; }
+  .chan tr { grid-template-columns: minmax(0, 1fr) auto; }
+  .chan td:nth-child(3) { grid-column: 1 / -1; }
+  .chan td:nth-child(3) code { white-space: normal; overflow-wrap: anywhere; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<div class="frame">
+  <div class="zones top" aria-hidden="true"><span>8</span><span>7</span><span>6</span><span>5</span><span>4</span><span>3</span><span>2</span><span>1</span></div>
+  <div class="rows left" aria-hidden="true"><span>A</span><span>B</span><span>C</span><span>D</span><span>E</span><span>F</span><span>G</span><span>H</span></div>
+  <div class="rows right" aria-hidden="true"><span>A</span><span>B</span><span>C</span><span>D</span><span>E</span><span>F</span><span>G</span><span>H</span></div>
+
+  <div class="set">
+    <header class="strip">
+      <a class="brand" href="#top" aria-label="dalo home">
+        <svg viewBox="0 0 32 32" aria-hidden="true">
+          <rect x="1.5" y="1.5" width="29" height="29" rx="7" fill="none" stroke="#123a66" stroke-width="1.6"/>
+          <path d="M9 10 L22 16 M9 16 H22 M9 22 L22 16" stroke="#123a66" stroke-width="1.3" fill="none"/>
+          <circle cx="9" cy="10" r="2" fill="#123a66"/><circle cx="9" cy="16" r="2" fill="#123a66"/><circle cx="9" cy="22" r="2" fill="#123a66"/>
+          <circle cx="22.5" cy="16" r="3.2" fill="#d2461d"/>
+        </svg>
+        <b>dalo</b><small>DWG set 001–005</small>
+      </a>
+      <nav aria-label="Primary" style="display:flex;flex:1">
+        <ul class="navlinks">
+          <li><a href="#resolver"><span>A</span>Resolver</a></li>
+          <li><a href="#tolerances"><span>B</span>Tolerances</a></li>
+          <li><a href="#assembly"><span>C</span>Assembly</a></li>
+          <li><a href="#revisions"><span>D</span>Revisions</a></li>
+          <li><a href="/docs/">Docs</a></li>
+          <li><a href="/spec/">Spec</a></li>
+        </ul>
+      </nav>
+      <div class="navright">
+        <a class="plain" href="https://github.com/sebastian-software/dalo">GitHub</a>
+        <a class="btn primary" href="#install">Install</a>
+      </div>
+    </header>
+
+    <main id="main">
+      <!-- ═══════════ SHEET 1 ═══════════ -->
+      <section class="sheet" id="top" aria-labelledby="h1">
+        <div class="hero-top">
+          <div>
+            <p class="kicker">DWG DALO-001 · Rust CLI · macOS &amp; Linux · v0.17.0</p>
+            <h1 id="h1"><span class="l">Your team's agent skills,</span> <span class="l">versioned like code.<a class="rev-mark" href="#revisions" aria-label="Revision history"><svg viewBox="0 0 30 26" aria-hidden="true"><path d="M15 1.5 L28.5 24.5 H1.5 Z" fill="none" stroke="#d2461d" stroke-width="1.6"/></svg><span aria-hidden="true">A</span></a></span></h1>
+            <div class="cta">
+              <a class="btn primary" href="#install">Install dalo</a>
+              <a class="btn" href="#assembly">Assembly instructions</a>
+            </div>
+          </div>
+          <div>
+            <p class="lede">Dalo keeps your team's agent skills in Git: one approved set, resolved the same way on every machine and reviewed before it reaches any agent folder.</p>
+            <div class="cmd"><span class="p" aria-hidden="true">$</span><code>curl -fsSL https://dalo.sh/install.sh | sh</code><button type="button" data-copy="curl -fsSL https://dalo.sh/install.sh | sh" hidden>Copy</button></div>
+            <p class="fine">Single binary · no daemon · just <code>git</code> on PATH · MIT OR Apache-2.0</p>
+          </div>
+        </div>
+
+        <div class="drawing">
+          <p class="label"><span>View 1 — Skill delivery pipeline, schematic</span><span>Section A–A → sheet 2</span></p>
+
+          <!-- Horizontal drawing (desktop) -->
+          <svg class="pipe h" viewBox="0 0 1240 512" role="img" aria-labelledby="pipe-t pipe-d">
+            <title id="pipe-t">Dalo skill delivery pipeline</title>
+            <desc id="pipe-d">Three sources — local at priority 0, a team repository at priority 10, and a public catalog at priority 20 — feed the ~/.dalo store, which holds sources, locks, trust and audits. The store feeds a security preflight of 15 local rules with an explicit approval actuator, then the deterministic resolver, which links the resolved set as symlinks into agent folders: ~/.agents/skills, ~/.claude/skills, ~/.hermes/skills, ~/.config/opencode/skills, or any folder.</desc>
+            <defs>
+              <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                <line x1="0" y1="0" x2="0" y2="6" class="hatch-l"/>
+              </pattern>
+              <marker id="ah" viewBox="0 0 12 6" refX="12" refY="3" markerWidth="12" markerHeight="6" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+                <path d="M0 0 L12 3 L0 6 Z" class="fi"/>
+              </marker>
+              <marker id="ad" viewBox="0 0 10 5" refX="10" refY="2.5" markerWidth="10" markerHeight="5" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+                <path d="M0 0 L10 2.5 L0 5 Z" style="fill:var(--ink-2)"/>
+              </marker>
+            </defs>
+
+            <!-- top dimensions -->
+            <g>
+              <line x1="40" y1="30" x2="40" y2="104" class="t0"/>
+              <line x1="560" y1="30" x2="560" y2="90" class="t0"/>
+              <line x1="40" y1="42" x2="196" y2="42" class="t1" marker-start="url(#ad)"/>
+              <line x1="404" y1="42" x2="560" y2="42" class="t1" marker-end="url(#ad)"/>
+              <text x="300" y="46" class="td mid">SOURCE OF TRUTH</text>
+              <line x1="972" y1="30" x2="972" y2="86" class="t0"/>
+              <line x1="1212" y1="30" x2="1212" y2="86" class="t0"/>
+              <line x1="972" y1="42" x2="1030" y2="42" class="t1" marker-start="url(#ad)"/>
+              <line x1="1154" y1="42" x2="1212" y2="42" class="t1" marker-end="url(#ad)"/>
+              <text x="1092" y="46" class="td mid">OUTPUT ONLY</text>
+            </g>
+
+            <!-- ① sources -->
+            <g>
+              <rect x="40" y="112" width="210" height="60" class="of"/>
+              <text x="54" y="137" class="tl">LOCAL</text>
+              <text x="236" y="137" class="tc end">PRIO 0</text>
+              <text x="54" y="158" class="tm">~/.dalo/local</text>
+
+              <rect x="40" y="202" width="210" height="60" class="of"/>
+              <text x="54" y="227" class="tl">TEAM REPO</text>
+              <text x="236" y="227" class="tc end">PRIO 10</text>
+              <text x="54" y="248" class="tm">acme/agent-skills.git</text>
+
+              <rect x="40" y="292" width="210" height="60" class="of"/>
+              <text x="54" y="317" class="tl">PUBLIC CATALOG</text>
+              <text x="236" y="317" class="tc end">PRIO 20</text>
+              <text x="54" y="338" class="tm">selected · commit-pinned</text>
+
+              <line x1="250" y1="142" x2="300" y2="232" class="o"/>
+              <line x1="250" y1="232" x2="300" y2="232" class="o"/>
+              <line x1="250" y1="322" x2="300" y2="232" class="o"/>
+              <circle cx="250" cy="142" r="3" class="fi"/><circle cx="250" cy="232" r="3" class="fi"/><circle cx="250" cy="322" r="3" class="fi"/>
+              <circle cx="300" cy="232" r="4.5" class="fi"/>
+              <line x1="300" y1="232" x2="330" y2="232" class="o" marker-end="url(#ah)"/>
+            </g>
+
+            <!-- ② store, sectioned -->
+            <g>
+              <rect x="330" y="96" width="230" height="272" fill="url(#hatch)" class="o"/>
+              <rect x="339" y="105" width="212" height="254" class="of"/>
+              <text x="353" y="138" class="tt">~/.dalo</text>
+              <text x="353" y="157" class="td">STORE</text>
+              <line x1="339" y1="172" x2="551" y2="172" class="o"/>
+              <line x1="339" y1="219" x2="551" y2="219" class="t1"/>
+              <line x1="339" y1="266" x2="551" y2="266" class="t1"/>
+              <line x1="339" y1="313" x2="551" y2="313" class="t1"/>
+              <text x="353" y="200" class="tmi">sources/</text><text x="537" y="200" class="tm end">checkouts</text>
+              <text x="353" y="247" class="tmi">locks/</text><text x="537" y="247" class="tm end">resolved set</text>
+              <text x="353" y="294" class="tmi">trust/</text><text x="537" y="294" class="tm end">approvals</text>
+              <text x="353" y="341" class="tmi">audits/</text><text x="537" y="341" class="tm end">preflight evidence</text>
+              <line x1="560" y1="232" x2="588" y2="232" class="o" marker-end="url(#ah)"/>
+            </g>
+
+            <!-- ③ preflight gate + approval actuator -->
+            <g>
+              <line x1="660" y1="200" x2="660" y2="176" class="o"/>
+              <line x1="644" y1="176" x2="676" y2="176" class="o"/>
+              <line x1="648" y1="170" x2="648" y2="182" class="t1"/>
+              <line x1="672" y1="170" x2="672" y2="182" class="t1"/>
+              <text x="660" y="146" class="tl mid">APPROVAL</text>
+              <text x="660" y="162" class="tm mid">explicit</text>
+              <rect x="588" y="200" width="144" height="64" class="of"/>
+              <path d="M600 218 L616 232 L600 246 Z M632 218 L616 232 L632 246 Z" class="t1"/>
+              <text x="642" y="230" class="tl">PREFLIGHT</text>
+              <text x="642" y="247" class="tm">15 rules</text>
+              <line x1="732" y1="232" x2="760" y2="232" class="o" marker-end="url(#ah)"/>
+            </g>
+
+            <!-- ④ resolver -->
+            <g>
+              <path d="M760 160 L880 192 L880 272 L760 304 Z" class="of"/>
+              <text x="806" y="228" class="tl mid">RESOLVER</text>
+              <text x="806" y="246" class="tm mid">pure fn</text>
+              <!-- section cut A–A -->
+              <line x1="856" y1="150" x2="856" y2="314" class="cut"/>
+              <line x1="856" y1="136" x2="856" y2="150" class="cutend"/>
+              <line x1="856" y1="314" x2="856" y2="328" class="cutend"/>
+              <line x1="856" y1="137" x2="878" y2="137" class="t1" marker-end="url(#ah)"/>
+              <line x1="856" y1="327" x2="878" y2="327" class="t1" marker-end="url(#ah)"/>
+              <text x="888" y="142" class="tl">A</text>
+              <text x="888" y="332" class="tl">A</text>
+              <line x1="880" y1="232" x2="930" y2="232" class="o"/>
+            </g>
+
+            <!-- ⑤ symlink bus -->
+            <g>
+              <line x1="930" y1="132" x2="930" y2="348" class="o" style="stroke-width:2"/>
+              <circle cx="930" cy="232" r="4" class="fi"/>
+              <line x1="930" y1="132" x2="988" y2="132" class="ph" marker-end="url(#ah)"/>
+              <line x1="930" y1="186" x2="988" y2="186" class="ph" marker-end="url(#ah)"/>
+              <line x1="930" y1="240" x2="988" y2="240" class="ph" marker-end="url(#ah)"/>
+              <line x1="930" y1="294" x2="988" y2="294" class="ph" marker-end="url(#ah)"/>
+              <line x1="930" y1="348" x2="988" y2="348" class="ph" marker-end="url(#ah)"/>
+            </g>
+
+            <!-- ⑥ agent folders -->
+            <g>
+              <rect x="972" y="92" width="240" height="300" class="cl"/>
+              <text x="984" y="384" class="td">AGENT FOLDERS</text>
+              <rect x="990" y="110" width="206" height="44" class="of"/>
+              <text x="1003" y="129" class="tmi">~/.agents/skills</text>
+              <text x="1003" y="146" class="tc">CODEX · OPENCLAW</text>
+              <rect x="990" y="164" width="206" height="44" class="of"/>
+              <text x="1003" y="183" class="tmi">~/.claude/skills</text>
+              <text x="1003" y="200" class="tc">CLAUDE CODE</text>
+              <rect x="990" y="218" width="206" height="44" class="of"/>
+              <text x="1003" y="237" class="tmi">~/.hermes/skills</text>
+              <text x="1003" y="254" class="tc">HERMES</text>
+              <rect x="990" y="272" width="206" height="44" class="of"/>
+              <text x="1003" y="291" class="tmi">~/.config/opencode/skills</text>
+              <text x="1003" y="308" class="tc">OPENCODE</text>
+              <rect x="990" y="326" width="206" height="44" class="hidf"/>
+              <text x="1003" y="345" class="tmi">&lt;any folder&gt;</text>
+              <text x="1003" y="362" class="tc">GENERIC TARGET</text>
+            </g>
+
+            <!-- balloons -->
+            <g class="bl">
+              <line x1="145" y1="439" x2="145" y2="352"/><circle cx="145" cy="352" r="2.5" class="dot"/>
+              <circle cx="145" cy="452" r="13"/><text x="145" y="452">1</text>
+              <line x1="445" y1="439" x2="445" y2="368"/><circle cx="445" cy="368" r="2.5" class="dot"/>
+              <circle cx="445" cy="452" r="13"/><text x="445" y="452">2</text>
+              <line x1="660" y1="439" x2="660" y2="264"/><circle cx="660" cy="264" r="2.5" class="dot"/>
+              <circle cx="660" cy="452" r="13"/><text x="660" y="452">3</text>
+              <line x1="806" y1="439" x2="806" y2="292"/><circle cx="806" cy="292" r="2.5" class="dot"/>
+              <circle cx="806" cy="452" r="13"/><text x="806" y="452">4</text>
+              <line x1="952" y1="439" x2="952" y2="348"/><circle cx="952" cy="348" r="2.5" class="dot"/>
+              <circle cx="952" cy="452" r="13"/><text x="952" y="452">5</text>
+              <line x1="1092" y1="439" x2="1092" y2="392"/><circle cx="1092" cy="392" r="2.5" class="dot"/>
+              <circle cx="1092" cy="452" r="13"/><text x="1092" y="452">6</text>
+            </g>
+
+            <!-- bottom dimension -->
+            <g>
+              <line x1="40" y1="360" x2="40" y2="506" class="t0"/>
+              <line x1="1212" y1="400" x2="1212" y2="506" class="t0"/>
+              <line x1="40" y1="494" x2="470" y2="494" class="t1" marker-start="url(#ad)"/>
+              <line x1="782" y1="494" x2="1212" y2="494" class="t1" marker-end="url(#ad)"/>
+              <text x="626" y="498" class="td mid">SAME INPUTS → BYTE-FOR-BYTE SAME RESULT</text>
+            </g>
+          </svg>
+
+          <!-- Vertical drawing (tablet / phone) -->
+          <svg class="pipe v" viewBox="0 0 360 912" role="img" aria-labelledby="pipev-t">
+            <title id="pipev-t">Dalo skill delivery pipeline: sources, ~/.dalo store, preflight and approval, resolver, symlinks into agent folders</title>
+            <defs>
+              <pattern id="hatchv" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                <line x1="0" y1="0" x2="0" y2="6" class="hatch-l"/>
+              </pattern>
+              <marker id="ahv" viewBox="0 0 12 6" refX="12" refY="3" markerWidth="11" markerHeight="5.5" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+                <path d="M0 0 L12 3 L0 6 Z" class="fi"/>
+              </marker>
+              <marker id="adv" viewBox="0 0 10 5" refX="10" refY="2.5" markerWidth="9" markerHeight="4.5" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+                <path d="M0 0 L10 2.5 L0 5 Z" style="fill:var(--ink-2)"/>
+              </marker>
+            </defs>
+
+            <!-- sources -->
+            <rect x="46" y="20" width="94" height="58" class="of"/>
+            <text x="54" y="41" class="tl" style="font-size:12.5px">LOCAL</text>
+            <text x="54" y="62" class="tm" style="font-size:11px">prio 0</text>
+            <rect x="152" y="20" width="94" height="58" class="of"/>
+            <text x="160" y="41" class="tl" style="font-size:12.5px">TEAM REPO</text>
+            <text x="160" y="62" class="tm" style="font-size:11px">prio 10</text>
+            <rect x="258" y="20" width="94" height="58" class="of"/>
+            <text x="266" y="41" class="tl" style="font-size:12.5px">CATALOG</text>
+            <text x="266" y="62" class="tm" style="font-size:11px">prio 20</text>
+            <line x1="93" y1="78" x2="199" y2="110" class="o"/>
+            <line x1="199" y1="78" x2="199" y2="110" class="o"/>
+            <line x1="305" y1="78" x2="199" y2="110" class="o"/>
+            <circle cx="93" cy="78" r="3" class="fi"/><circle cx="199" cy="78" r="3" class="fi"/><circle cx="305" cy="78" r="3" class="fi"/>
+            <circle cx="199" cy="110" r="4.5" class="fi"/>
+            <line x1="199" y1="110" x2="199" y2="136" class="o" marker-end="url(#ahv)"/>
+
+            <!-- store -->
+            <rect x="46" y="136" width="306" height="168" fill="url(#hatchv)" class="o"/>
+            <rect x="54" y="144" width="290" height="152" class="of"/>
+            <text x="66" y="173" class="tt" style="font-size:20px">~/.dalo</text>
+            <text x="332" y="172" class="td end">STORE</text>
+            <line x1="54" y1="190" x2="344" y2="190" class="o"/>
+            <line x1="54" y1="243" x2="344" y2="243" class="t1"/>
+            <line x1="199" y1="190" x2="199" y2="296" class="t1"/>
+            <text x="66" y="213" class="tmi">sources/</text><text x="66" y="231" class="tm" style="font-size:10.5px">checkouts</text>
+            <text x="211" y="213" class="tmi">locks/</text><text x="211" y="231" class="tm" style="font-size:10.5px">resolved set</text>
+            <text x="66" y="266" class="tmi">trust/</text><text x="66" y="284" class="tm" style="font-size:10.5px">approvals</text>
+            <text x="211" y="266" class="tmi">audits/</text><text x="211" y="284" class="tm" style="font-size:10.5px">preflight evidence</text>
+            <line x1="199" y1="304" x2="199" y2="346" class="o" marker-end="url(#ahv)"/>
+
+            <!-- gate -->
+            <rect x="126" y="346" width="146" height="60" class="of"/>
+            <path d="M136 362 L152 376 L136 390 Z M168 362 L152 376 L168 390 Z" class="t1"/>
+            <text x="178" y="373" class="tl" style="font-size:12.5px">PREFLIGHT</text>
+            <text x="178" y="391" class="tm" style="font-size:10.5px">15 rules</text>
+            <line x1="272" y1="376" x2="300" y2="376" class="o"/>
+            <line x1="300" y1="362" x2="300" y2="390" class="o"/>
+            <text x="352" y="352" class="tl end" style="font-size:12px">APPROVAL</text>
+            <line x1="199" y1="406" x2="199" y2="446" class="o" marker-end="url(#ahv)"/>
+
+            <!-- resolver -->
+            <path d="M120 446 L278 446 L246 526 L152 526 Z" class="of"/>
+            <text x="199" y="476" class="tl mid" style="font-size:12.5px">RESOLVER</text>
+            <text x="199" y="494" class="tm mid" style="font-size:10.5px">pure fn</text>
+            <line x1="112" y1="512" x2="286" y2="512" class="cut"/>
+            <line x1="100" y1="512" x2="112" y2="512" class="cutend"/>
+            <line x1="286" y1="512" x2="298" y2="512" class="cutend"/>
+            <line x1="101" y1="512" x2="101" y2="494" class="t1" marker-end="url(#ahv)"/>
+            <line x1="297" y1="512" x2="297" y2="494" class="t1" marker-end="url(#ahv)"/>
+            <text x="92" y="486" class="tl end">A</text>
+            <text x="306" y="486" class="tl">A</text>
+
+            <!-- bus + targets -->
+            <path d="M199 526 V556 H66 V800" class="o" style="stroke-width:2"/>
+            <circle cx="199" cy="556" r="3.5" class="fi"/>
+            <rect x="82" y="570" width="274" height="262" class="cl"/>
+            <line x1="66" y1="604" x2="98" y2="604" class="ph" marker-end="url(#ahv)"/>
+            <line x1="66" y1="652" x2="98" y2="652" class="ph" marker-end="url(#ahv)"/>
+            <line x1="66" y1="700" x2="98" y2="700" class="ph" marker-end="url(#ahv)"/>
+            <line x1="66" y1="748" x2="98" y2="748" class="ph" marker-end="url(#ahv)"/>
+            <line x1="66" y1="796" x2="98" y2="796" class="ph" marker-end="url(#ahv)"/>
+            <rect x="98" y="584" width="248" height="40" class="of"/>
+            <text x="110" y="601" class="tmi" style="font-size:11.5px">~/.agents/skills</text>
+            <text x="110" y="616" class="tc" style="font-size:10px">CODEX · OPENCLAW</text>
+            <rect x="98" y="632" width="248" height="40" class="of"/>
+            <text x="110" y="649" class="tmi" style="font-size:11.5px">~/.claude/skills</text>
+            <text x="110" y="664" class="tc" style="font-size:10px">CLAUDE CODE</text>
+            <rect x="98" y="680" width="248" height="40" class="of"/>
+            <text x="110" y="697" class="tmi" style="font-size:11.5px">~/.hermes/skills</text>
+            <text x="110" y="712" class="tc" style="font-size:10px">HERMES</text>
+            <rect x="98" y="728" width="248" height="40" class="of"/>
+            <text x="110" y="745" class="tmi" style="font-size:11.5px">~/.config/opencode/skills</text>
+            <text x="110" y="760" class="tc" style="font-size:10px">OPENCODE</text>
+            <rect x="98" y="776" width="248" height="40" class="hidf"/>
+            <text x="110" y="793" class="tmi" style="font-size:11.5px">&lt;any folder&gt;</text>
+            <text x="110" y="808" class="tc" style="font-size:10px">GENERIC TARGET</text>
+
+            <!-- balloons (left column) -->
+            <g class="bl">
+              <circle cx="20" cy="49" r="12"/><text x="20" y="49">1</text>
+              <line x1="32" y1="49" x2="46" y2="49"/>
+              <circle cx="20" cy="220" r="12"/><text x="20" y="220">2</text>
+              <line x1="32" y1="220" x2="46" y2="220"/>
+              <circle cx="20" cy="376" r="12"/><text x="20" y="376">3</text>
+              <line x1="32" y1="376" x2="126" y2="376"/><circle cx="126" cy="376" r="2.5" class="dot"/>
+              <circle cx="20" cy="486" r="12"/><text x="20" y="486">4</text>
+              <line x1="32" y1="486" x2="130" y2="486"/><circle cx="130" cy="486" r="2.5" class="dot"/>
+              <circle cx="20" cy="630" r="12"/><text x="20" y="630">5</text>
+              <line x1="32" y1="630" x2="66" y2="630"/><circle cx="66" cy="630" r="2.5" class="dot"/>
+              <circle cx="20" cy="852" r="12"/><text x="20" y="852">6</text>
+              <line x1="32" y1="852" x2="120" y2="852"/><line x1="120" y1="852" x2="120" y2="832"/><circle cx="120" cy="832" r="2.5" class="dot"/>
+              <text x="134" y="852" style="font:500 10px var(--mono);letter-spacing:.08em;fill:var(--ink-2)!important;text-anchor:start">AGENT FOLDERS · OUTPUT</text>
+            </g>
+
+            <!-- dimension -->
+            <line x1="46" y1="872" x2="46" y2="904" class="t0"/>
+            <line x1="352" y1="836" x2="352" y2="904" class="t0"/>
+            <line x1="46" y1="894" x2="352" y2="894" class="t1" marker-start="url(#adv)" marker-end="url(#adv)"/>
+            <text x="199" y="886" class="td mid" style="font-size:10px">SAME INPUTS → SAME RESULT</text>
+          </svg>
+        </div>
+
+        <div class="hero-foot">
+          <ol class="parts" aria-label="Callouts">
+            <li><span class="balloon" aria-hidden="true">1</span><div><b>Sources</b><span>Local skills, team Git repos, public catalogs — each with a priority.</span></div></li>
+            <li><span class="balloon" aria-hidden="true">2</span><div><b>Store · ~/.dalo</b><span>Sources, locks, trust, audits. The source of truth.</span></div></li>
+            <li><span class="balloon" aria-hidden="true">3</span><div><b>Preflight + approval</b><span>15 local rules; high or critical findings block until you accept the risk.</span></div></li>
+            <li><span class="balloon" aria-hidden="true">4</span><div><b>Resolver</b><span>A pure function. Same inputs, byte-for-byte same result.</span></div></li>
+            <li><span class="balloon" aria-hidden="true">5</span><div><b>Symlinks</b><span>Directory links Dalo owns — and the only thing it ever removes.</span></div></li>
+            <li><span class="balloon" aria-hidden="true">6</span><div><b>Agent folders</b><span>Output targets, never the database. Unmanaged files stay put.</span></div></li>
+          </ol>
+          <dl class="tb" aria-label="Title block">
+            <div class="big"><dt>Drawing</dt><dd>DALO-001</dd></div>
+            <div class="w3 big last"><dt>Title</dt><dd>Skill delivery pipeline</dd></div>
+            <div><dt>Scale</dt><dd>1:1</dd></div>
+            <div><dt>Sheet</dt><dd>1 / 5</dd></div>
+            <div><dt>Rev</dt><dd>0.17.0</dd></div>
+            <div class="proj last"><dt>Projection</dt><dd><svg viewBox="0 0 40 16" aria-label="First-angle projection symbol" role="img"><path d="M1 4 L15 1 L15 15 L1 12 Z" fill="none" stroke="#123a66" stroke-width="1.1"/><line x1="0" y1="8" x2="16" y2="8" stroke="#123a66" stroke-width=".7" stroke-dasharray="3 1.5 1 1.5"/><circle cx="30" cy="8" r="7" fill="none" stroke="#123a66" stroke-width="1.1"/><circle cx="30" cy="8" r="3" fill="none" stroke="#123a66" stroke-width="1.1"/></svg></dd></div>
+            <div class="w2"><dt>Material</dt><dd>Rust, Git</dd></div>
+            <div class="w2 last"><dt>Drawn by</dt><dd>Sebastian Software</dd></div>
+            <div class="w2"><dt>License</dt><dd>MIT OR Apache-2.0</dd></div>
+            <div class="w2 last"><dt>Approved</dt><dd>You, explicitly</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <!-- ═══════════ SHEET 2 ═══════════ -->
+      <section class="sheet" id="resolver" aria-labelledby="h-resolver">
+        <header class="sheet-head">
+          <div class="marker" aria-hidden="true"><span>A</span><span>2</span></div>
+          <div>
+            <p class="kicker">Section A–A · Resolver</p>
+            <h2 id="h-resolver">One name, one slot, one winner.</h2>
+          </div>
+          <p class="dwg"><b>DALO-002</b><span>Sheet 2 / 5</span></p>
+        </header>
+        <div class="sheet-body">
+          <div class="cols">
+            <figure class="detail">
+              <div class="view">
+                <figcaption class="view-cap"><span class="kicker">Section A–A · scale 2:1</span><span class="kicker">Skill <code>review</code> offered by three sources</span></figcaption>
+                <div class="ruler" aria-hidden="true">
+                  <span class="axis">Source priority<br>lower wins</span>
+                  <div class="scale">
+                    <span class="major" style="left:0"></span><span class="major" style="left:50%"></span><span class="major" style="right:0"></span>
+                    <span class="n" style="left:0">0</span><span class="n" style="left:50%">10</span><span class="n" style="left:100%">20</span>
+                  </div>
+                </div>
+                <ol class="contenders">
+                  <li class="win"><div class="src"><b>local</b><span>prio 0</span></div><div class="run"><i class="pos" style="left:0"></i><code>local:review</code></div><div class="verdict">Linked</div></li>
+                  <li class="lose"><div class="src"><b>company</b><span>prio 10</span></div><div class="run"><i class="pos" style="left:50%"></i><code>company:review</code></div><div class="verdict">Shadowed</div></li>
+                  <li class="lose"><div class="src"><b>oss</b><span>prio 20</span></div><div class="run"><i class="pos" style="left:100%"></i><code>oss:review</code></div><div class="verdict">Shadowed</div></li>
+                </ol>
+                <dl class="slot">
+                  <dt>Slot</dt><dd>~/.claude/skills/review</dd>
+                  <dt>Links to</dt><dd>store:/local/skills/review</dd>
+                </dl>
+                <p class="view-note">Solid outline = visible, linked. Hidden line = shadowed: still reported, never silently dropped.</p>
+              </div>
+            </figure>
+            <div class="spec">
+              <p class="label">Resolver · specification</p>
+              <h3>A pure function between Git and your agents.</h3>
+              <p>Given your sources and config, the resolver returns the same result every time. When two sources ship a skill with the same name, source priority decides — the lower number wins. The losers stay visible: <code>dalo status</code> reports them as <code>shadowed</code>.</p>
+              <dl class="specs">
+                <div><dt>Input</dt><dd>Active sources + config</dd></div>
+                <div><dt>Output</dt><dd>One resolved set, linked into every enabled target</dd></div>
+                <div><dt>Rule</dt><dd>Same name → lowest priority number wins</dd></div>
+                <div><dt>Losers</dt><dd>Reported as <code>shadowed</code>, conflicts stay visible</dd></div>
+                <div><dt>Re-run</dt><dd>Byte-for-byte identical on the same inputs</dd></div>
+              </dl>
+            </div>
+          </div>
+
+          <div class="notes-wrap" id="notes">
+            <div class="notes-head"><h3>General notes</h3><span class="kicker">Unless otherwise specified</span></div>
+            <div class="rule">
+              <span class="kicker">Core rule</span>
+              <p>Dalo may manage what it owns. It does not take ownership by surprise.</p>
+            </div>
+            <ol class="notes">
+              <li><span><b>Never overwrites unmanaged files or real folders.</b> A path Dalo didn't create is reported as a conflict, not replaced.</span></li>
+              <li><span><b>Removes only links it owns.</b> Unlinking a target cleans up Dalo's symlinks and nothing else.</span></li>
+              <li><span><b>Dirty team checkouts block refresh</b> instead of losing your edits.</span></li>
+              <li><span><b>Catalog skills need explicit selection and approval</b> before they reach an agent folder.</span></li>
+              <li><span><b><code>--dry-run</code> everywhere.</b> Prints the plan, writes nothing.</span></li>
+              <li><span><b>Conflicts stay visible</b> in <code>dalo status</code> until you resolve them.</span></li>
+              <li><span><b>Every blocking state names the next command.</b> Typos get a did-you-mean; <code>dalo doctor</code> turns health into findings with a fix each.</span></li>
+              <li><span><b>Instruction packs write only managed blocks</b> inside agent instruction files. Everything outside the markers stays yours.</span></li>
+              <li><span><b>Autosync never grants approvals.</b> The launchd or systemd user timer applies existing ones and fails closed.</span></li>
+              <li><span><b>Plugin tools and hooks are approved separately</b>, by the SHA-256 of their exact contract. Change one field and the approval is gone.</span></li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ SHEET 3 ═══════════ -->
+      <section class="sheet" id="tolerances" aria-labelledby="h-tol">
+        <header class="sheet-head">
+          <div class="marker" aria-hidden="true"><span>B</span><span>3</span></div>
+          <div>
+            <p class="kicker">Detail B · Tolerances &amp; materials</p>
+            <h2 id="h-tol">Built to zero tolerance where it matters.</h2>
+          </div>
+          <p class="dwg"><b>DALO-003</b><span>Sheet 3 / 5</span></p>
+        </header>
+        <div class="sheet-body">
+          <div class="block">
+            <div class="block-head">
+              <h3>Tolerances</h3>
+              <p>Dalo mutates files on your machine, so its limits are stated like a machinist's: a nominal value and how far it may deviate.</p>
+            </div>
+            <div class="tw" tabindex="0" role="region" aria-label="Tolerances table">
+              <table class="stack tolt">
+                <thead><tr><th scope="col">No.</th><th scope="col">Characteristic</th><th scope="col">Nominal</th><th scope="col">Tol.</th><th scope="col">Control</th></tr></thead>
+                <tbody>
+                  <tr><td class="item">01</td><td>Unmanaged files or real folders overwritten</td><td class="nom">0</td><td class="tol">±0</td><td>Ownership check before every write; conflicts reported, never forced</td></tr>
+                  <tr><td class="item">02</td><td>Links removed that Dalo didn't create</td><td class="nom">0</td><td class="tol">±0</td><td>Removes only links it owns</td></tr>
+                  <tr><td class="item">03</td><td>Deterministic preflight rules per active skill</td><td class="nom">15</td><td class="tol">local</td><td>Run before a link is created</td></tr>
+                  <tr><td class="item">04</td><td>High / critical findings passed without sign-off</td><td class="nom">0</td><td class="tol">±0</td><td>Blocked until an explicit, content-bound risk acceptance</td></tr>
+                  <tr><td class="item">05</td><td>Findings cleared by the optional agent reviewer</td><td class="nom">0</td><td class="tol">±0</td><td>Sandboxed Codex, Claude or OpenCode CLI can add findings, never clear one</td></tr>
+                  <tr><td class="item">06</td><td>Team catalog version</td><td class="nom">exact commit</td><td class="tol">no drift</td><td>Pinned in <code>dalo.toml</code> via <code>dalo team catalog add</code></td></tr>
+                  <tr><td class="item">07</td><td>Resolver re-run on identical inputs</td><td class="nom">identical</td><td class="tol">byte-for-byte</td><td>Pure function, no hidden state</td></tr>
+                  <tr><td class="item">08</td><td>Approvals granted by autosync</td><td class="nom">0</td><td class="tol">±0</td><td>Scheduled runs apply existing approvals only</td></tr>
+                  <tr><td class="item">09</td><td>Local edits lost to a team refresh</td><td class="nom">0</td><td class="tol">±0</td><td>Dirty checkouts block the refresh</td></tr>
+                  <tr><td class="item">10</td><td>Migration commands for stores from 0.6.0+</td><td class="nom">0</td><td class="tol">±0</td><td>Opens as-is, no re-approval</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="tfoot-note">Note: a passing preflight is not a safety guarantee. It is a deterministic floor; read the evidence with <code>dalo audit</code> before you approve.</p>
+          </div>
+
+          <div class="block" id="targets">
+            <div class="block-head">
+              <h3>Bill of materials</h3>
+              <p>Five verified agents plus any folder-based one. Each target is just a directory Dalo links into — link one with <code>dalo target link &lt;id&gt;</code>.</p>
+            </div>
+            <div class="tw" tabindex="0" role="region" aria-label="Supported agent targets">
+              <table class="stack bom">
+                <thead><tr><th scope="col">Item</th><th scope="col">Part no. (target ID)</th><th scope="col">Description</th><th scope="col">Default skill directory</th><th scope="col">Link with</th></tr></thead>
+                <tbody>
+                  <tr><td class="item">1</td><td><code>codex</code></td><td>Codex</td><td><code>~/.agents/skills</code></td><td><code>dalo target link codex</code></td></tr>
+                  <tr><td class="item">2</td><td><code>claude</code></td><td>Claude Code</td><td><code>~/.claude/skills</code></td><td><code>dalo target link claude</code></td></tr>
+                  <tr><td class="item">3</td><td><code>openclaw</code></td><td>OpenClaw</td><td><code>~/.agents/skills</code></td><td><code>dalo target link openclaw</code></td></tr>
+                  <tr><td class="item">4</td><td><code>hermes</code></td><td>Hermes</td><td><code>~/.hermes/skills</code></td><td><code>dalo target link hermes</code></td></tr>
+                  <tr><td class="item">5</td><td><code>opencode</code></td><td>OpenCode</td><td><code>~/.config/opencode/skills</code></td><td><code>dalo target link opencode</code></td></tr>
+                  <tr><td class="item">6</td><td><code>generic</code></td><td>Any folder-based agent</td><td class="dim">none — path required</td><td><code>dalo target link generic &lt;path&gt;</code></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <ul class="mat" aria-label="Material">
+              <li>Material</li>
+              <li>Rust, single binary</li>
+              <li>No daemon</li>
+              <li><code>git</code> on PATH</li>
+              <li>macOS · Apple Silicon</li>
+              <li>Linux · x86_64, ARM64</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ SHEET 4 ═══════════ -->
+      <section class="sheet" id="assembly" aria-labelledby="h-asm">
+        <header class="sheet-head">
+          <div class="marker" aria-hidden="true"><span>C</span><span>4</span></div>
+          <div>
+            <p class="kicker">View C · Assembly instructions</p>
+            <h2 id="h-asm">From empty machine to linked skills.</h2>
+          </div>
+          <p class="dwg"><b>DALO-004</b><span>Sheet 4 / 5</span></p>
+        </header>
+        <div class="sheet-body">
+          <div class="install" id="install">
+            <div>
+              <h3>0 · Install</h3>
+              <p>One binary, six install channels. Every release target ships with a SHA-256 checksum and Sigstore provenance.</p>
+              <div class="cmd"><span class="p" aria-hidden="true">$</span><code>curl -fsSL https://dalo.sh/install.sh | sh</code><button type="button" data-copy="curl -fsSL https://dalo.sh/install.sh | sh" hidden>Copy</button></div>
+              <p class="fine" style="margin:0">Installing through an agent? Point it to <a href="/install.md">dalo.sh/install.md</a> or <a href="/llms.txt">/llms.txt</a>. On Windows, use WSL.</p>
+            </div>
+            <div class="tw" tabindex="0" role="region" aria-label="Install channels">
+              <table class="stack chan">
+                <thead><tr><th scope="col">Channel</th><th scope="col">Platform</th><th scope="col">Command</th></tr></thead>
+                <tbody>
+                  <tr><td>Homebrew</td><td>macOS</td><td><code>brew install sebastian-software/tap/dalo</code></td></tr>
+                  <tr><td>Script</td><td>macOS + Linux</td><td><code>curl -fsSL https://dalo.sh/install.sh | sh</code></td></tr>
+                  <tr><td>npx</td><td>Node 20+</td><td><code>npx getdalo --version</code></td></tr>
+                  <tr><td>Binstall</td><td>Rust</td><td><code>cargo binstall dalo</code></td></tr>
+                  <tr><td>Cargo</td><td>Rust</td><td><code>cargo install dalo</code></td></tr>
+                  <tr><td>mise</td><td>any</td><td><code>mise use -g github:sebastian-software/dalo</code></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="asm-head"><h3>Assembly sequence</h3><span class="kicker">Main assembly · steps 1–6</span></div>
+          <ol class="steps">
+            <li><span class="balloon" aria-hidden="true">1</span><b>Create the store</b><p>Sets up <code>~/.dalo</code>.</p><pre><code>dalo init</code></pre></li>
+            <li><span class="balloon" aria-hidden="true">2</span><b>Find your agents</b><p>Reports which agent folders exist.</p><pre><code>dalo target detect</code></pre></li>
+            <li><span class="balloon" aria-hidden="true">3</span><b>Link targets</b><p>Record where skills should land.</p><pre><code>dalo target link codex
+dalo target link claude</code></pre></li>
+            <li><span class="balloon" aria-hidden="true">4</span><b>Add the team source</b><p>Any Git repo of skills.</p><pre><code>dalo source add company git@github.com:acme/agent-skills.git</code></pre></li>
+            <li><span class="balloon" aria-hidden="true">5</span><b>Sync</b><p>Resolve, check, link. Safe to re-run.</p><pre><code>dalo sync</code></pre></li>
+            <li><span class="balloon" aria-hidden="true">6</span><b>Inspect</b><p>Conflicts and pending approvals stay visible.</p><pre><code>dalo status</code></pre></li>
+          </ol>
+
+          <div class="out">
+            <div class="out-cap"><span class="kicker">Output · step 5</span><span class="kicker">dalo sync</span></div>
+<pre><code><span class="c">$ dalo sync</span>
+applied  create     target[codex]:/incident-review -&gt; store:/sources/company/checkout/skills/incident-review
+applied  create     target[codex]:/release-notes -&gt; store:/sources/company/checkout/skills/release-notes
+<span class="ok">synced: 2 skills across 1 target (2 created)</span>
+security preflight: deterministic checks only</code></pre>
+          </div>
+
+          <div class="pair">
+            <div class="out">
+              <div class="out-cap"><span class="kicker">Sub-assembly C.1 · catalog + approval</span></div>
+<pre><code><span class="c">$ dalo source add-catalog sebastian https://github.com/sebastian-software/skills.sebastian-software.com.git</span>
+<span class="c">$ dalo source select sebastian effective-web</span>
+<span class="c">$ dalo sync</span>
+synced: 2 skills across 1 target (2 unchanged)
+<span class="flag">pending approval</span>: sebastian:effective-web (run: dalo approve skill sebastian:effective-web)
+<span class="c">$ dalo audit sebastian:effective-web</span>
+<span class="c">$ dalo approve skill sebastian:effective-web</span>
+<span class="c">$ dalo sync</span></code></pre>
+            </div>
+            <div class="out">
+              <div class="out-cap"><span class="kicker">Fault isolation C.2 · recovery</span></div>
+<pre><code><span class="c">$ dalo synk</span>
+<span class="err">error:</span> unrecognized subcommand 'synk'
+  tip: a similar subcommand exists: 'sync'
+
+<span class="c">$ dalo approve skill company:relese-helper</span>
+<span class="err">error:</span> skill `company:relese-helper` was not found; did you mean `company:release-helper`?; known skills: company:new-skill, company:release-helper</code></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ SHEET 5 ═══════════ -->
+      <section class="sheet" id="revisions" aria-labelledby="h-rev">
+        <header class="sheet-head">
+          <div class="marker" aria-hidden="true"><span>D</span><span>5</span></div>
+          <div>
+            <p class="kicker">Revision history · Checkable numbers</p>
+            <h2 id="h-rev">Every figure on this sheet can be checked.</h2>
+          </div>
+          <p class="dwg"><b>DALO-005</b><span>Sheet 5 / 5</span></p>
+        </header>
+        <div class="sheet-body">
+          <div class="tw" tabindex="0" role="region" aria-label="Revision history">
+            <table class="stack revs">
+              <thead><tr><th scope="col"><span class="vh">Revision</span>Rev</th><th scope="col">Description</th><th scope="col">Value</th><th scope="col">Check it</th></tr></thead>
+              <tbody>
+                <tr><td class="sym"><span class="tri"><svg viewBox="0 0 30 26" aria-hidden="true"><path d="M15 1.5 L28.5 24.5 H1.5 Z" fill="none" stroke="#d2461d" stroke-width="1.3"/></svg><span>A</span></span></td><td>Releases since 0.1, all public</td><td class="nom">34</td><td><a href="https://github.com/sebastian-software/dalo/releases">GitHub releases</a></td></tr>
+                <tr><td class="sym"><span class="tri"><svg viewBox="0 0 30 26" aria-hidden="true"><path d="M15 1.5 L28.5 24.5 H1.5 Z" fill="none" stroke="#d2461d" stroke-width="1.3"/></svg><span>B</span></span></td><td>Tests behind an 86.9% line-coverage gate</td><td class="nom">1011</td><td><a href="https://github.com/sebastian-software/dalo/blob/main/coverage-threshold">coverage-threshold</a></td></tr>
+                <tr><td class="sym"><span class="tri"><svg viewBox="0 0 30 26" aria-hidden="true"><path d="M15 1.5 L28.5 24.5 H1.5 Z" fill="none" stroke="#d2461d" stroke-width="1.3"/></svg><span>C</span></span></td><td>Signed release targets, each with a SHA-256 checksum and Sigstore provenance · 6 install channels</td><td class="nom">5</td><td><a href="https://github.com/sebastian-software/dalo/releases">Release assets</a></td></tr>
+                <tr><td class="sym"><span class="tri"><svg viewBox="0 0 30 26" aria-hidden="true"><path d="M15 1.5 L28.5 24.5 H1.5 Z" fill="none" stroke="#d2461d" stroke-width="1.3"/></svg><span>D</span></span></td><td>Findings from the 2026-09 audit round, all closed</td><td class="nom">4</td><td><a href="/docs/security.html">Security</a></td></tr>
+                <tr><td class="sym"><span class="tri"><svg viewBox="0 0 30 26" aria-hidden="true"><path d="M15 1.5 L28.5 24.5 H1.5 Z" fill="none" stroke="#d2461d" stroke-width="1.3"/></svg><span>E</span></span></td><td>Verified agents, plus any folder-based one</td><td class="nom">5</td><td><a href="/docs/agents.html#support-matrix">Support matrix</a></td></tr>
+                <tr><td class="sym"><span class="tri"><svg viewBox="0 0 30 26" aria-hidden="true"><path d="M15 1.5 L28.5 24.5 H1.5 Z" fill="none" stroke="#d2461d" stroke-width="1.3"/></svg><span>F</span></span></td><td>Stores written by 0.6.0 or later open with no migration command and no re-approval</td><td class="nom">0.6.0+</td><td><a href="/docs/compatibility.html">Compatibility</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="cmp" id="compare">
+            <div>
+              <h3>Interfaces</h3>
+              <p class="quote">Find a skill on skills.sh, then let Dalo pin and deliver it.</p>
+              <p>Dalo covers the team side: exact commit pins, explicit approval, and sync that never overwrites unmanaged folders. <a href="/docs/comparison.html">Read the full comparison</a>.</p>
+            </div>
+            <div class="iface">
+              <div><b>skills.sh</b><p>Great for discovering public skills and installing them into almost any agent.</p></div>
+              <div><b>agentfiles</b><p>Puts agent files into an Obsidian UI.</p></div>
+              <div><b>dalo</b><p>Pins, reviews, and delivers one approved set to the whole team.</p></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <div>
+        <a class="brand" href="#top" aria-label="dalo home">
+          <svg viewBox="0 0 32 32" aria-hidden="true">
+            <rect x="1.5" y="1.5" width="29" height="29" rx="7" fill="none" stroke="#123a66" stroke-width="1.6"/>
+            <path d="M9 10 L22 16 M9 16 H22 M9 22 L22 16" stroke="#123a66" stroke-width="1.3" fill="none"/>
+            <circle cx="9" cy="10" r="2" fill="#123a66"/><circle cx="9" cy="16" r="2" fill="#123a66"/><circle cx="9" cy="22" r="2" fill="#123a66"/>
+            <circle cx="22.5" cy="16" r="3.2" fill="#d2461d"/>
+          </svg>
+          <b>dalo</b>
+        </a>
+        <p>Your team's agent skills, versioned like code. MIT OR Apache-2.0.</p>
+      </div>
+      <nav aria-label="Footer">
+        <ul>
+          <li><a href="https://github.com/sebastian-software/dalo">GitHub</a></li>
+          <li><a href="/docs/">Docs</a></li>
+          <li><a href="/spec/">Spec</a></li>
+          <li><a href="/docs/security.html">Security</a></li>
+          <li><a href="/docs/comparison.html">Comparison</a></li>
+          <li><a href="/install.md">Install guide</a></li>
+        </ul>
+      </nav>
+      <dl>
+        <dt>Set</dt><dd>DALO-001 – 005</dd>
+        <dt>Drawn by</dt><dd>Sebastian Software</dd>
+        <dt>Status</dt><dd>End of drawing set</dd>
+      </dl>
+    </footer>
+  </div>
+
+  <div class="zones bottom" aria-hidden="true"><span>8</span><span>7</span><span>6</span><span>5</span><span>4</span><span>3</span><span>2</span><span>1</span></div>
+</div>
+
+<script>
+document.querySelectorAll('button[data-copy]').forEach(function (b) {
+  if (!navigator.clipboard) return;
+  b.hidden = false;
+  b.addEventListener('click', function () {
+    navigator.clipboard.writeText(b.getAttribute('data-copy')).then(function () {
+      b.textContent = 'Copied';
+      setTimeout(function () { b.textContent = 'Copy'; }, 1600);
+    }, function () {});
+  });
+});
+</script>
+</body>
+</html>

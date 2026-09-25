@@ -1,0 +1,612 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dalo — dalo(1) concept</title>
+<meta name="description" content="Dalo keeps your team's agent skills in Git: one approved set, resolved the same way on every machine and reviewed before it reaches any agent folder.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='1' y='1' width='30' height='30' rx='8' fill='%231c1a17'/%3E%3Cg stroke='%23fbf9f4' stroke-width='1.6' fill='none'%3E%3Cpath d='M9 9.5C15 9.5 17 16 22 16M9 16h13M9 22.5C15 22.5 17 16 22 16'/%3E%3C/g%3E%3Cg fill='%23fbf9f4'%3E%3Ccircle cx='8.5' cy='9.5' r='2'/%3E%3Ccircle cx='8.5' cy='16' r='2'/%3E%3Ccircle cx='8.5' cy='22.5' r='2'/%3E%3C/g%3E%3Ccircle cx='23' cy='16' r='3' fill='%23e8623a'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../fonts/jetbrains-mono.css">
+<style>
+/* One character cell of JetBrains Mono is exactly 0.6em wide, so every
+   horizontal measure below is a whole number of cells: the page is set on
+   an 80-column grid, exactly like `man` in a terminal. */
+:root {
+  --paper: #fbf9f4;
+  --ink: #1c1a17;
+  --text: #2a2723;
+  --muted: #69635a;
+  --faint: #a8a296;
+  --rule: #e5e0d5;
+  --accent: #a3391a;
+  --fs: 18px;
+  --lh: 30px;
+  --cell: calc(var(--fs) * .6);
+  --cols: 80;
+  --measure: calc(var(--cell) * var(--cols));
+  --in: 7ch;      /* troff body indent (.IP default) */
+  --rs: 4ch;      /* relative inset (.RS / .EX) */
+  --gap: calc(var(--lh) * 2);
+  color-scheme: light;
+}
+@media (min-width: 1680px) { :root { --fs: 19px; --lh: 32px; } }
+@media (max-width: 720px)  { :root { --fs: 15px; --lh: 25px; --in: 3ch; --rs: 3ch; --gap: calc(var(--lh) * 1.6); } }
+
+* { box-sizing: border-box; }
+html { background: var(--paper); -webkit-text-size-adjust: 100%; scroll-padding-top: calc(var(--lh) * 2); }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--text);
+  font: 400 var(--fs)/var(--lh) 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-ligatures: none;
+  font-feature-settings: "calt" 0, "liga" 0;
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: rgba(163, 57, 26, .16); color: var(--ink); }
+a { color: var(--accent); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: .24em; text-decoration-color: rgba(163, 57, 26, .35); }
+a:hover { text-decoration-color: currentColor; }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 1px; }
+b, strong { font-weight: 700; color: var(--accent); }
+var { font-style: normal; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: .24em; text-decoration-color: rgba(28, 26, 23, .5); }
+code { font: inherit; color: var(--ink); }
+p, h1, h2, h3, dl, ul { margin: 0; }
+.nw { white-space: nowrap; }
+.muted { color: var(--muted); }
+
+.skip { position: absolute; left: -9999px; top: 0; z-index: 10; background: var(--ink); color: var(--paper); padding: 0 1ch; }
+.skip:focus { left: 16px; }
+
+/* ---- page ------------------------------------------------------------ */
+.page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, var(--measure)) minmax(0, 1fr);
+  column-gap: 32px;
+  padding: calc(var(--lh) * 2.5) 32px calc(var(--lh) * 4);
+}
+main { grid-column: 2; min-width: 0; }
+
+.th { display: flex; justify-content: space-between; gap: 2ch; color: var(--ink); font-weight: 600; white-space: nowrap; }
+.th .mid { color: var(--muted); font-weight: 400; }
+header.th { margin-bottom: calc(var(--lh) * 2.5); }
+footer.th { margin-top: calc(var(--lh) * 3); }
+footer.th .src { color: var(--muted); font-weight: 400; white-space: normal; }
+
+section + section { margin-top: var(--gap); }
+h2 { font: inherit; font-weight: 800; color: var(--ink); }
+h2 a { color: inherit; text-decoration: none; }
+h2 a:hover::after { content: "  \00a7"; white-space: pre; color: var(--faint); font-weight: 400; }
+h1 { font: inherit; color: var(--ink); }
+h3 { font: inherit; font-weight: 700; color: var(--ink); margin-left: calc(3ch - var(--in)); }
+.b { margin-left: var(--in); max-width: 73ch; }
+.b > * + * { margin-top: var(--lh); }
+.b > h3 + * { margin-top: 0; }
+
+/* .SY – synopsis lines hang after "dalo " */
+.syn > div { padding-left: 5ch; text-indent: -5ch; }
+.b.syn > * + * { margin-top: 0; }
+
+/* bullets with a hanging indent */
+ul.bl { list-style: none; padding: 0; }
+ul.bl li { padding-left: 2ch; text-indent: -2ch; }
+ul.bl li + li { margin-top: calc(var(--lh) * .5); }
+ul.bl li::before { content: "\2022\00a0"; color: var(--accent); }
+
+/* .TP – tagged paragraphs */
+.tp { display: grid; grid-template-columns: var(--tag, 14ch) minmax(0, 1fr); row-gap: calc(var(--lh) * .5); }
+.tp > dt { grid-column: 1; color: var(--ink); padding-right: 2ch; }
+.tp > dd { grid-column: 2; margin: 0; }
+.tp.tight { row-gap: 0; }
+.tp.stack { display: block; }
+.tp.stack > dd { margin-left: var(--in); }
+.tp.stack > dd + dt { margin-top: calc(var(--lh) * .5); }
+
+/* .EX – examples */
+.ex { position: relative; margin-left: var(--rs); color: var(--ink); }
+.ex .l { display: block; white-space: pre-wrap; overflow-wrap: anywhere; padding-left: 2ch; text-indent: -2ch; }
+.ex .cmd::before { content: "$ "; color: var(--faint); user-select: none; -webkit-user-select: none; }
+.ex .out { color: var(--muted); }
+.ex .hl { color: var(--accent); }
+.ex .sp { height: calc(var(--lh) * .5); }
+
+/* copy buttons, added by the script */
+.copy {
+  position: absolute; right: 0; top: calc(var(--lh) * -1);
+  font: inherit; font-size: .8em; line-height: var(--lh);
+  color: var(--muted); background: none; border: 0; padding: 0; margin: 0; cursor: pointer;
+}
+.copy::before { content: "["; color: var(--faint); }
+.copy::after { content: "]"; color: var(--faint); }
+.copy:hover, .copy.ok { color: var(--accent); }
+
+/* INSTALLATION – a small tbl: channel | command | platform */
+.inst > div { position: relative; }
+.inst > div + div { margin-top: calc(var(--lh) * .25); }
+.inst dt { color: var(--ink); font-weight: 600; }
+.inst dd { margin: 0; }
+.inst .ex { margin: 0; }
+.inst .pf { color: var(--muted); font-style: italic; }
+.inst .copy { top: 0; }
+
+/* the rule */
+.quote { margin-left: var(--rs); padding-left: 2ch; border-left: 2px solid var(--accent); color: var(--ink); font-weight: 700; }
+
+/* ASCII diagram */
+.diag { overflow-x: auto; scrollbar-width: thin; }
+.diag pre { margin: 0; font: inherit; color: var(--faint); }
+.diag b { color: var(--ink); }
+.diag .dk { color: var(--ink); }
+.diag i { color: var(--muted); }
+
+/* tbl */
+.tbl-wrap { overflow-x: auto; }
+table.tbl { border-collapse: collapse; margin-left: var(--rs); }
+.tbl th, .tbl td { text-align: left; padding: 0 3ch 0 0; vertical-align: top; white-space: nowrap; }
+.tbl th { font-weight: 700; color: var(--ink); padding-bottom: calc(var(--lh) * .2); }
+.tbl thead tr { border-bottom: 1px solid var(--rule); }
+.tbl tbody tr:first-child td { padding-top: calc(var(--lh) * .2); }
+.tbl td:first-child { color: var(--ink); }
+.tbl td:nth-child(2) { color: var(--accent); font-weight: 700; }
+.tbl .gen { color: var(--ink); }
+
+.stats .n { color: var(--accent); font-weight: 700; }
+
+/* ---- gutter index -------------------------------------------------- */
+.toc { grid-column: 1; grid-row: 1; justify-self: end; display: none; }
+.toc-in { position: sticky; top: calc(var(--lh) * 2.5); font-size: .78em; line-height: calc(var(--lh) * .85); }
+.toc-h { color: var(--faint); margin: 0 0 calc(var(--lh) * .6) 2ch; }
+.toc ol { list-style: none; margin: 0; padding: 0; }
+.toc a { display: block; color: var(--muted); text-decoration: none; padding-left: 2ch; position: relative; white-space: nowrap; }
+.toc a:hover { color: var(--ink); }
+.toc a[aria-current] { color: var(--accent); font-weight: 700; }
+.toc a[aria-current]::before { content: "\203a"; position: absolute; left: 0; }
+
+/* ---- less(1) prompt ------------------------------------------------- */
+.less {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, var(--measure)) minmax(0, 1fr);
+  column-gap: 32px; padding: calc(var(--lh) * .3) 32px;
+  background: rgba(251, 249, 244, .95); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  border-top: 1px solid var(--rule);
+  font-size: .84em; line-height: calc(var(--lh) * .84);
+}
+.less-in { grid-column: 2; display: flex; align-items: center; min-width: 0; white-space: nowrap; }
+.rv { background: var(--ink); color: var(--paper); padding: 0 .5ch; overflow: hidden; text-overflow: ellipsis; }
+.cur { flex: none; width: 1ch; height: 1.2em; margin-left: .5ch; background: var(--accent); animation: blink 1.1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .cur { animation: none; } }
+
+.help {
+  position: fixed; z-index: 6; left: 50%; bottom: calc(var(--lh) * 2); transform: translateX(-50%);
+  width: min(52ch, calc(100vw - 32px)); padding: var(--lh) 3ch;
+  background: var(--paper); color: var(--ink); border: 1px solid var(--ink); box-shadow: 8px 8px 0 var(--rule);
+  font-size: .9em;
+}
+.help[hidden] { display: none; }
+.help h2 { text-align: center; margin-bottom: var(--lh); }
+.help dl { display: grid; grid-template-columns: 10ch 1fr; }
+.help dt { color: var(--accent); font-weight: 700; }
+.help dd { margin: 0; }
+.help p { margin-top: var(--lh); color: var(--muted); }
+
+/* ---- wide screens -------------------------------------------------- */
+@media (min-width: 1100px) {
+  /* copy sits in the right margin, like a marginal note */
+  .copy, .inst .copy { top: 0; right: auto; left: calc(100% + 2ch); }
+  .inst > div { display: grid; grid-template-columns: 11ch 46ch minmax(0, 1fr); }
+}
+@media (min-width: 1260px) {
+  .toc { display: block; margin-top: calc(var(--lh) * 3.5); }
+}
+@media (max-width: 1099px) {
+  .inst > div { display: flex; flex-wrap: wrap; column-gap: 2ch; }
+  .inst > div + div { margin-top: calc(var(--lh) * .5); }
+  .inst .ex { order: 3; flex: 1 0 100%; margin-left: var(--rs); }
+}
+
+/* ---- phones -------------------------------------------------------- */
+@media (max-width: 720px) {
+  .page { grid-template-columns: 0 minmax(0, 1fr) 0; column-gap: 0; padding: calc(var(--lh) * 1.5) 16px calc(var(--lh) * 4); }
+  .less { grid-template-columns: 0 minmax(0, 1fr) 0; column-gap: 0; padding: calc(var(--lh) * .3) 16px; }
+  .less .hint { display: none; }
+  header.th { margin-bottom: calc(var(--lh) * 1.6); }
+  .th .mid { display: none; }
+  .tp { display: block; }
+  .tp > dd, .tp.stack > dd { margin-left: var(--rs); }
+  .tp > dd + dt { margin-top: calc(var(--lh) * .5); }
+  .tp > dt { padding-right: 0; }
+  .ex { margin-left: 0; }
+  .quote { margin-left: 0; }
+  table.tbl { margin-left: 0; }
+  .tbl thead { display: none; }
+  .tbl, .tbl tbody, .tbl tr, .tbl td { display: block; white-space: normal; padding: 0; }
+  .tbl tbody tr:first-child td { padding-top: 0; }
+  .tbl tr + tr { margin-top: calc(var(--lh) * .5); }
+  .tbl td:nth-child(1), .tbl td:nth-child(2) { display: inline; }
+  .tbl td:nth-child(2)::before { content: "  "; white-space: pre; }
+  .tbl td:nth-child(3) { padding-left: var(--rs); }
+  .help dl { grid-template-columns: 8ch 1fr; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#name">Skip to the manual</a>
+<div class="page">
+
+<nav class="toc" aria-label="Sections">
+  <div class="toc-in">
+    <p class="toc-h">dalo(1)</p>
+    <ol>
+      <li><a href="#name">NAME</a></li>
+      <li><a href="#synopsis">SYNOPSIS</a></li>
+      <li><a href="#description">DESCRIPTION</a></li>
+      <li><a href="#installation">INSTALLATION</a></li>
+      <li><a href="#quick-start">QUICK START</a></li>
+      <li><a href="#commands">COMMANDS</a></li>
+      <li><a href="#options">OPTIONS</a></li>
+      <li><a href="#safety">SAFETY</a></li>
+      <li><a href="#files">FILES</a></li>
+      <li><a href="#environment">ENVIRONMENT</a></li>
+      <li><a href="#exit-status">EXIT STATUS</a></li>
+      <li><a href="#diagnostics">DIAGNOSTICS</a></li>
+      <li><a href="#history">HISTORY</a></li>
+      <li><a href="#see-also">SEE ALSO</a></li>
+      <li><a href="#bugs">BUGS</a></li>
+      <li><a href="#authors">AUTHORS</a></li>
+    </ol>
+  </div>
+</nav>
+
+<main>
+<header class="th"><span>DALO(1)</span><span class="mid">User Commands</span><span>DALO(1)</span></header>
+
+<section id="name">
+<h2><a href="#name">NAME</a></h2>
+<div class="b">
+<h1><b>dalo</b> — your team's agent skills, versioned like code</h1>
+</div>
+</section>
+
+<section id="synopsis">
+<h2><a href="#synopsis">SYNOPSIS</a></h2>
+<div class="b syn">
+<div><b>dalo</b> <span class="nw">[<b>--store</b> <var>path</var>]</span> <span class="nw">[<b>--json</b>]</span> <span class="nw">[<b>--dry-run</b>]</span> <var>command</var> <span class="nw">[<var>argument</var>...]</span></div>
+<div><b>dalo target link</b> <var>target</var> <span class="nw">[<var>path</var>]</span></div>
+<div><b>dalo source add</b> <var>id</var> <var>git-url-or-path</var></div>
+<div><b>dalo sync</b> <span class="nw">[<b>--check</b>]</span></div>
+<div><b>dalo approve skill</b> <span class="nw"><var>source</var>:<var>skill</var></span></div>
+</div>
+</section>
+
+<section id="description">
+<h2><a href="#description">DESCRIPTION</a></h2>
+<div class="b">
+<p><b>dalo</b> keeps your team's agent skills in Git: one approved set, resolved the same way on every machine and reviewed before it reaches any agent folder.</p>
+<p>It is for engineers and team leads who run Claude Code, Codex, or another agent across several people and machines, and want all of them working from the same reviewed skills.</p>
+<p>Skills come from <var>sources</var>: your private local source, team Git repositories, and public catalogs. <b>dalo</b> gathers them in a store at <code>~/.dalo</code>, runs a security preflight, waits for approval where one is required, resolves one set, and links it into the folders your agents already read. The store is the source of truth; agent folders are only output targets.</p>
+<div class="diag" role="img" aria-label="Diagram: local (priority 0), company (priority 10) and oss (priority 20) sources feed the ~/.dalo store, then the preflight and your approval, then the resolver, which links owned symlinks into ~/.claude/skills and ~/.agents/skills."><pre aria-hidden="true">
+<span class="dk">local</span>    prio  0 ----.
+<span class="dk">company</span>  prio 10 ----+---&gt; <b>~/.dalo</b>      <i>sources · locks · trust · audits</i>
+<span class="dk">oss</span>      prio 20 ----'        |
+                              v
+                          <b>preflight</b>     <i>15 rules, then your approval</i>
+                              |
+                              v
+                          <b>resolver</b>      <i>same inputs, same bytes</i>
+                              |
+                              v
+                      <b>~/.claude/skills</b>  <i>owned symlinks only</i>
+                      <b>~/.agents/skills</b>
+</pre></div>
+<p>The resolver is a pure function: the same inputs give a byte-for-byte identical result. When two sources ship a skill with the same name, source priority decides and the lower number wins; the others are reported as <code>shadowed</code>, never silently dropped.</p>
+<p>One Rust binary, no daemon, nothing to host: <b>dalo</b> only needs <b>git</b> on your <code>PATH</code>. It runs on macOS (Apple Silicon) and Linux (x86_64, ARM64).</p>
+</div>
+</section>
+
+<section id="installation">
+<h2><a href="#installation">INSTALLATION</a></h2>
+<div class="b">
+<dl class="inst">
+  <div data-copy="brew install sebastian-software/tap/dalo" data-label="Homebrew command"><dt>Homebrew</dt><dd class="ex"><span class="l cmd">brew install sebastian-software/tap/dalo</span></dd><dd class="pf"># macOS</dd></div>
+  <div data-copy="curl -fsSL https://dalo.sh/install.sh | sh" data-label="install script command"><dt>Script</dt><dd class="ex"><span class="l cmd">curl -fsSL https://dalo.sh/install.sh | sh</span></dd><dd class="pf"># macOS, Linux</dd></div>
+  <div data-copy="npx getdalo --version" data-label="npx command"><dt>npm</dt><dd class="ex"><span class="l cmd">npx getdalo --version</span></dd><dd class="pf"># Node 20+</dd></div>
+  <div data-copy="cargo binstall dalo" data-label="cargo binstall command"><dt>Binstall</dt><dd class="ex"><span class="l cmd">cargo binstall dalo</span></dd></div>
+  <div data-copy="cargo install dalo" data-label="cargo install command"><dt>Cargo</dt><dd class="ex"><span class="l cmd">cargo install dalo</span></dd><dd class="pf"># from source</dd></div>
+  <div data-copy="mise use -g github:sebastian-software/dalo" data-label="mise command"><dt>mise</dt><dd class="ex"><span class="l cmd">mise use -g github:sebastian-software/dalo</span></dd></div>
+</dl>
+<p>Five release targets, each published with a SHA-256 checksum and Sigstore provenance. Agents can install <b>dalo</b> on their own: point yours at <a href="https://dalo.sh/install.md">dalo.sh/install.md</a> or <a href="https://dalo.sh/llms.txt">dalo.sh/llms.txt</a>.</p>
+</div>
+</section>
+
+<section id="quick-start">
+<h2><a href="#quick-start">QUICK START</a></h2>
+<div class="b">
+<p>Create the store, point <b>dalo</b> at an agent, add your team's repository, and sync:</p>
+<div class="ex" data-copy data-label="quick start commands"><span class="l cmd">dalo init</span><span class="l cmd">dalo target detect</span><span class="l cmd">dalo target link codex</span><span class="l cmd">dalo source add company git@github.com:acme/agent-skills.git</span><span class="l cmd">dalo sync</span><span class="l out">applied  create     target[codex]:/incident-review -&gt; store:/sources/company/checkout/skills/incident-review</span><span class="l out">applied  create     target[codex]:/release-notes -&gt; store:/sources/company/checkout/skills/release-notes</span><span class="l out">synced: 2 skills across 1 target (2 created)</span><span class="l out">security preflight: deterministic checks only</span><span class="l cmd">dalo status</span></div>
+<p>Link more agents the same way, <b>dalo target link claude</b>, and the next sync delivers the same set there too.</p>
+<p>Skills from a public catalog wait until you select them, read the audit, and approve:</p>
+<div class="ex" data-copy data-label="catalog commands"><span class="l cmd">dalo source add-catalog sebastian https://github.com/sebastian-software/skills.sebastian-software.com.git</span><span class="l cmd">dalo source select sebastian effective-web</span><span class="l cmd">dalo sync</span><span class="l out">synced: 2 skills across 1 target (2 unchanged)</span><span class="l out">pending approval: sebastian:effective-web (run: <span class="hl">dalo approve skill sebastian:effective-web</span>)</span><span class="l cmd">dalo audit sebastian:effective-web</span><span class="l cmd">dalo approve skill sebastian:effective-web</span><span class="l cmd">dalo sync</span></div>
+</div>
+</section>
+
+<section id="commands">
+<h2><a href="#commands">COMMANDS</a></h2>
+<div class="b">
+<p>The ones you will reach for most. Each accepts <b>--help</b>; the <a href="https://dalo.sh/docs/reference.html">command reference</a> has the rest.</p>
+
+<h3>Setup</h3>
+<dl class="tp stack">
+  <dt><b>init</b></dt><dd>Create the store: config, local Git source, lock, and approvals.</dd>
+  <dt><b>next</b></dt><dd>Summarize the store and print one copyable next action.</dd>
+  <dt><b>target detect</b></dt><dd>List known agents, their skill folders, and what is linked.</dd>
+  <dt><b>target link</b> <var>target</var> [<var>path</var>]</dt><dd>Record an agent folder as a target; <b>generic</b> takes any path.</dd>
+</dl>
+
+<h3>Sources</h3>
+<dl class="tp stack">
+  <dt><b>source add</b> <var>id</var> <var>git-url-or-path</var></dt><dd>Add a team Git repository or a local path as a source.</dd>
+  <dt><b>source add-catalog</b> <var>id</var> <var>git-url-or-path</var></dt><dd>Add a public catalog; nothing in it activates until selected.</dd>
+  <dt><b>source select</b> <var>id</var> <var>skill</var>...</dt><dd>Select catalog skills, pinned to an exact commit.</dd>
+  <dt><b>source priority</b> <var>id</var> <var>priority</var></dt><dd>Decide which source wins a same-name conflict; lower wins.</dd>
+  <dt><b>team catalog add</b> <var>id</var> <var>git-url-or-path</var> <b>--version</b> <var>revision</var></dt><dd>Pin an external catalog in the team's <code>dalo.toml</code>.</dd>
+</dl>
+
+<h3>Delivery</h3>
+<dl class="tp stack">
+  <dt><b>sync</b> [<b>--check</b>]</dt><dd>Audit, resolve, and link the approved set into every target.</dd>
+  <dt><b>status</b> [<b>--check</b>]</dt><dd>Show sources, targets, skills, approvals, drift, and conflicts.</dd>
+  <dt><b>adopt</b> <var>skill</var> [<b>--replace</b>]</dt><dd>Copy a skill an agent wrote into your local source to manage it.</dd>
+  <dt><b>instructions enable</b> <var>pack-ref</var> <var>file</var></dt><dd>Render a managed block; everything outside it stays yours.</dd>
+  <dt><b>autosync install</b></dt><dd>Sync on a schedule via launchd, systemd, or cron. Never approves.</dd>
+</dl>
+
+<h3>Review</h3>
+<dl class="tp stack">
+  <dt><b>audit</b> <var>skill-or-path</var></dt><dd>Run the security preflight and show the evidence.</dd>
+  <dt><b>approve skill</b> <var>source</var>:<var>skill</var></dt><dd>Record an explicit, source-qualified approval.</dd>
+  <dt><b>approve list</b></dt><dd>Show recorded approvals; <b>approve revoke</b> takes one back.</dd>
+</dl>
+
+<h3>Health</h3>
+<dl class="tp stack">
+  <dt><b>doctor</b> [<b>--check</b>]</dt><dd>Read-only diagnostics; every finding names its fix.</dd>
+  <dt><b>completions</b> <var>shell</var></dt><dd>Print completions for <b>bash</b>, <b>zsh</b>, <b>fish</b>, and others.</dd>
+  <dt><b>manpage</b></dt><dd>Print the real <b>dalo</b>(1) page, in roff, to stdout.</dd>
+</dl>
+</div>
+</section>
+
+<section id="options">
+<h2><a href="#options">OPTIONS</a></h2>
+<div class="b">
+<p>Global options go before or after the command.</p>
+<dl class="tp" style="--tag: 16ch">
+  <dt><b>--store</b> <var>path</var></dt><dd>Use another store. Beats <code>DALO_STORE</code>, which beats <code>~/.dalo</code>.</dd>
+  <dt><b>--json</b></dt><dd>Emit machine-readable JSON where a command supports it.</dd>
+  <dt><b>--dry-run</b></dt><dd>Plan supported mutating operations; write nothing.</dd>
+  <dt><b>-h</b>, <b>--help</b></dt><dd>Print command help.</dd>
+  <dt><b>-V</b>, <b>--version</b></dt><dd>Print the installed version.</dd>
+</dl>
+</div>
+</section>
+
+<section id="safety">
+<h2><a href="#safety">SAFETY</a></h2>
+<div class="b">
+<p>One rule governs everything <b>dalo</b> writes:</p>
+<p class="quote">Dalo may manage what it owns.<br>It does not take ownership by surprise.</p>
+<ul class="bl">
+  <li>It never overwrites unmanaged files, real folders, or foreign symlinks, and it removes only the links it created.</li>
+  <li>A dirty team checkout blocks the refresh instead of losing your edits.</li>
+  <li>Catalog skills need an explicit selection and an explicit approval. Autosync applies existing approvals; it never grants new ones.</li>
+  <li>Before a link is created, 15 deterministic rules run locally over every active skill. High or critical findings block until someone records a risk acceptance bound to that exact content.</li>
+  <li>An optional sandboxed agent reviewer (the Codex, Claude, or OpenCode CLI) can add findings. It can never clear one.</li>
+  <li><b>--dry-run</b> prints the plan and writes nothing. Conflicts stay visible in <b>dalo status</b> until you resolve them.</li>
+</ul>
+<p class="muted">A passing preflight is evidence for the person who approves, not a safety guarantee. The <a href="https://dalo.sh/docs/security.html">security overview</a> lists every guarantee and its limits.</p>
+</div>
+</section>
+
+<section id="files">
+<h2><a href="#files">FILES</a></h2>
+<div class="b">
+<p>The store lives in <code>~/.dalo</code> unless <b>--store</b> or <code>DALO_STORE</code> says otherwise.</p>
+<dl class="tp tight" style="--tag: 30ch">
+  <dt><code>~/.dalo/config.toml</code></dt><dd>Your settings and source list.</dd>
+  <dt><code>~/.dalo/lock.toml</code></dt><dd>The resolved set, written by <b>sync</b>.</dd>
+  <dt><code>~/.dalo/approvals.toml</code></dt><dd>Local approval records.</dd>
+  <dt><code>~/.dalo/audits/</code></dt><dd>Security reports, bound to content.</dd>
+  <dt><code>~/.dalo/local/skills/</code></dt><dd>Your private skills, tracked in Git.</dd>
+  <dt><code>~/.dalo/sources/</code><var>id</var><code>/checkout/</code></dt><dd>Team and catalog Git checkouts.</dd>
+</dl>
+<p>A team repository can carry a <code>dalo.toml</code> manifest that pins external catalogs and filters them: <code>+copywriting</code> includes, <code>-seo-audit</code> excludes, and <code>skills = []</code> selects all.</p>
+<p>Agent folders are output targets. <b>dalo</b> links into these by default:</p>
+<div class="tbl-wrap">
+<table class="tbl">
+  <thead><tr><th scope="col">Agent</th><th scope="col">Target</th><th scope="col">Default directory</th></tr></thead>
+  <tbody>
+    <tr><td>Codex</td><td>codex</td><td>~/.agents/skills</td></tr>
+    <tr><td>Claude Code</td><td>claude</td><td>~/.claude/skills</td></tr>
+    <tr><td>OpenClaw</td><td>openclaw</td><td>~/.agents/skills</td></tr>
+    <tr><td>Hermes</td><td>hermes</td><td>~/.hermes/skills</td></tr>
+    <tr><td>OpenCode</td><td>opencode</td><td>~/.config/opencode/skills</td></tr>
+    <tr><td>Any folder</td><td>generic</td><td><span class="gen">dalo target link generic</span> <var>path</var></td></tr>
+  </tbody>
+</table>
+</div>
+</div>
+</section>
+
+<section id="environment">
+<h2><a href="#environment">ENVIRONMENT</a></h2>
+<div class="b">
+<dl class="tp tight" style="--tag: 23ch">
+  <dt><code>DALO_STORE</code></dt><dd>Store path; <b>--store</b> takes precedence.</dd>
+  <dt><code>DALO_GIT_TIMEOUT_SECS</code></dt><dd>Timeout in seconds for every Git subprocess.</dd>
+  <dt><code>DALO_OFFLINE</code></dt><dd>Any truthy value disables passive update checks.</dd>
+  <dt><code>DALO_UPDATE_CHECK</code></dt><dd>Set to <code>never</code> to disable passive update checks.</dd>
+  <dt><code>DALO_INSTALL_CHANNEL</code></dt><dd>Set by launchers; picks the upgrade command shown.</dd>
+  <dt><code>NO_COLOR</code></dt><dd>Disables ANSI color output.</dd>
+</dl>
+<p>Installer variables such as <code>DALO_TARGET</code> and <code>DALO_VERSION</code> are read only by <code>install.sh</code>; see <a href="https://dalo.sh/install.md">install.md</a>.</p>
+</div>
+</section>
+
+<section id="exit-status">
+<h2><a href="#exit-status">EXIT STATUS</a></h2>
+<div class="b">
+<dl class="tp" style="--tag: 5ch">
+  <dt><b>0</b></dt><dd>Success.</dd>
+  <dt><b>1</b></dt><dd>Expected failure: input or state you can act on, a failed <b>--check</b>, or a security block during <b>sync</b> or <b>approve</b>.</dd>
+  <dt><b>2</b></dt><dd>Usage error: invalid arguments or flags.</dd>
+  <dt><b>3</b></dt><dd>Unsafe state: <b>dalo</b> refused to mutate because something needs a human, such as a dirty source, an active store lock, or a malformed instruction block.</dd>
+  <dt><b>4</b></dt><dd>Environment problem: a dependency, path, Git, filesystem, or external command failed.</dd>
+</dl>
+<p>Scripts should treat <b>3</b> differently from <b>1</b>: it means <b>dalo</b> stopped on purpose, before touching anything that may need review.</p>
+</div>
+</section>
+
+<section id="diagnostics">
+<h2><a href="#diagnostics">DIAGNOSTICS</a></h2>
+<div class="b">
+<p>Every blocking state names the next command to run, and a typo gets a suggestion instead of a dead end:</p>
+<div class="ex"><span class="l cmd">dalo synk</span><span class="l out">error: unrecognized subcommand 'synk'</span><span class="l out">  tip: a similar subcommand exists: '<span class="hl">sync</span>'</span><span class="l sp"></span><span class="l cmd">dalo approve skill company:relese-helper</span><span class="l out">error: skill `company:relese-helper` was not found; did you mean `<span class="hl">company:release-helper</span>`?; known skills: company:new-skill, company:release-helper</span></div>
+<p><b>dalo doctor</b> inspects the store, config, locks, approvals, Git, targets, owned links, and dirty sources without changing anything, and reports findings, each with a fix. <b>dalo doctor --check</b> exits 1 on any error finding, for CI.</p>
+</div>
+</section>
+
+<section id="history">
+<h2><a href="#history">HISTORY</a></h2>
+<div class="b stats">
+<ul class="bl">
+  <li><span class="n">34</span> releases since 0.1, all public.</li>
+  <li><span class="n">1011</span> tests behind an <span class="n">86.9%</span> line-coverage gate.</li>
+  <li><span class="n">5</span> signed release targets, each with a SHA-256 checksum and Sigstore provenance, across <span class="n">6</span> install channels.</li>
+  <li><span class="n">4</span> findings from the 2026-09 audit round, all closed.</li>
+  <li><span class="n">5</span> verified agents, plus any folder.</li>
+  <li>Stores written by <span class="n">0.6.0</span> or later open with no migration command and no re-approval.</li>
+</ul>
+</div>
+</section>
+
+<section id="see-also">
+<h2><a href="#see-also">SEE ALSO</a></h2>
+<div class="b">
+<p><b>git</b>(1), <b>ln</b>(1), <b>launchd</b>(8), <b>systemd.timer</b>(5), <b>crontab</b>(5)</p>
+<dl class="tp tight" style="--tag: 16ch">
+  <dt>Documentation</dt><dd><a href="https://dalo.sh/docs/">dalo.sh/docs/</a></dd>
+  <dt>Reference</dt><dd><a href="https://dalo.sh/docs/reference.html">dalo.sh/docs/reference.html</a></dd>
+  <dt>Specification</dt><dd><a href="https://dalo.sh/spec/">dalo.sh/spec/</a></dd>
+  <dt>Security</dt><dd><a href="https://dalo.sh/docs/security.html">dalo.sh/docs/security.html</a></dd>
+  <dt>Comparison</dt><dd><a href="https://dalo.sh/docs/comparison.html">dalo.sh/docs/comparison.html</a></dd>
+  <dt>For agents</dt><dd><a href="https://dalo.sh/install.md">dalo.sh/install.md</a>, <a href="https://dalo.sh/llms.txt">dalo.sh/llms.txt</a></dd>
+  <dt>Source</dt><dd><a href="https://github.com/sebastian-software/dalo">github.com/sebastian-software/dalo</a></dd>
+</dl>
+<p><b>skills.sh</b> is great for discovering public skills and installing them into almost any agent; <b>agentfiles</b> puts agent files into an Obsidian UI. <b>dalo</b> covers the team side: exact commit pins, explicit approval, and a sync that never overwrites unmanaged folders. Find a skill on skills.sh, then let <b>dalo</b> pin and deliver it.</p>
+</div>
+</section>
+
+<section id="bugs">
+<h2><a href="#bugs">BUGS</a></h2>
+<div class="b">
+<p>Report bugs at <a href="https://github.com/sebastian-software/dalo/issues">github.com/sebastian-software/dalo/issues</a>. Report suspected vulnerabilities privately to <a href="mailto:security@sebastian-software.de">security@sebastian-software.de</a>, never in a public issue; see <a href="https://github.com/sebastian-software/dalo/blob/main/SECURITY.md">SECURITY.md</a>.</p>
+</div>
+</section>
+
+<section id="authors">
+<h2><a href="#authors">AUTHORS</a></h2>
+<div class="b">
+<p>Written by <a href="https://oss.sebastian-software.com">Sebastian Software</a>. Dual-licensed under MIT OR Apache-2.0, at your option.</p>
+</div>
+</section>
+
+<footer class="th"><span class="src">dalo · MIT OR Apache-2.0 · macOS &amp; Linux</span><span>DALO(1)</span></footer>
+</main>
+</div>
+
+<div class="less" aria-hidden="true">
+  <div class="less-in"><span class="rv">Manual page dalo(1) <span id="pos">line 1</span><span class="hint"> (press h for help or q to quit)</span></span><span class="cur"></span></div>
+</div>
+
+<div class="help" id="help" role="dialog" aria-label="Keyboard help" hidden>
+  <h2>SUMMARY OF LESS COMMANDS</h2>
+  <dl>
+    <dt>j  k</dt><dd>forward / back one line</dd>
+    <dt>f  b</dt><dd>forward / back one window</dd>
+    <dt>d  u</dt><dd>forward / back half a window</dd>
+    <dt>g  G</dt><dd>first / last line</dd>
+    <dt>h</dt><dd>this help</dd>
+    <dt>q</dt><dd>quit</dd>
+  </dl>
+  <p>Press h, q, or Esc to close.</p>
+</div>
+
+<script>
+(() => {
+  const d = document, root = d.documentElement;
+
+  /* copy buttons */
+  d.querySelectorAll("[data-copy]").forEach((el) => {
+    const b = d.createElement("button");
+    b.type = "button"; b.className = "copy"; b.textContent = "copy";
+    b.setAttribute("aria-label", "Copy " + (el.dataset.label || "command"));
+    b.addEventListener("click", async () => {
+      const text = el.dataset.copy || [...el.querySelectorAll(".cmd")].map((n) => n.textContent).join("\n");
+      try { await navigator.clipboard.writeText(text); b.textContent = "copied"; }
+      catch {
+        const r = d.createRange(); r.selectNodeContents(el.querySelector(".cmd"));
+        getSelection().removeAllRanges(); getSelection().addRange(r); b.textContent = "selected";
+      }
+      b.classList.add("ok");
+      setTimeout(() => { b.textContent = "copy"; b.classList.remove("ok"); }, 1600);
+    });
+    el.append(b);
+  });
+
+  /* less(1) prompt: line N/total and percentage, like the pager */
+  const pos = d.getElementById("pos"), help = d.getElementById("help");
+  const lh = () => parseFloat(getComputedStyle(d.body).lineHeight) || 30;
+  let hold = 0, raf = 0;
+  const update = () => {
+    raf = 0;
+    if (hold) return;
+    const L = lh(), max = root.scrollHeight, y = scrollY;
+    const top = Math.floor(y / L) + 1, total = Math.round(max / L);
+    const end = y + innerHeight >= max - 2;
+    const pct = Math.min(100, Math.round(((y + innerHeight) / max) * 100));
+    pos.textContent = "line " + top + "/" + total + (end ? " (END)" : " " + pct + "%");
+  };
+  addEventListener("scroll", () => { raf ||= requestAnimationFrame(update); }, { passive: true });
+  addEventListener("resize", update);
+  update();
+
+  /* gutter index follows the reader */
+  const links = new Map([...d.querySelectorAll(".toc a")].map((a) => [a.hash.slice(1), a]));
+  const mark = (id) => { links.forEach((a) => a.removeAttribute("aria-current")); links.get(id)?.setAttribute("aria-current", "location"); };
+  const io = new IntersectionObserver((es) => es.forEach((e) => e.isIntersecting && mark(e.target.id)), { rootMargin: "-15% 0px -80% 0px" });
+  d.querySelectorAll("main section[id]").forEach((s) => io.observe(s));
+  mark("name");
+
+  /* a few less(1) keys */
+  const say = (msg) => { clearTimeout(hold); pos.textContent = msg; hold = setTimeout(() => { hold = 0; update(); }, 4500); };
+  const toggleHelp = (show) => { help.hidden = !(show ?? help.hidden); };
+  addEventListener("keydown", (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
+    if (e.target.closest?.("input, textarea, select, [contenteditable]")) return;
+    const L = lh(), W = innerHeight - 2 * L;
+    const step = { j: L, k: -L, f: W, b: -W, d: W / 2, u: -W / 2 }[e.key];
+    if (step) scrollBy({ top: step, behavior: "instant" });
+    else if (e.key === "g") scrollTo({ top: 0, behavior: "instant" });
+    else if (e.key === "G") scrollTo({ top: root.scrollHeight, behavior: "instant" });
+    else if (e.key === "h") toggleHelp();
+    else if (e.key === "Escape") toggleHelp(false);
+    else if (e.key === "q") {
+      if (!help.hidden) toggleHelp(false);
+      else say("q: nothing to quit here. For the real page: dalo manpage > dalo.1 && man ./dalo.1");
+    } else return;
+    e.preventDefault();
+  });
+})();
+</script>
+</body>
+</html>
