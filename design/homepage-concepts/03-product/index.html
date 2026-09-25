@@ -284,7 +284,8 @@ h2 {
 .crop .body { padding: 18px 0 26px; white-space: nowrap; overflow: hidden;
   -webkit-mask-image: linear-gradient(90deg, #000 82%, transparent 100%);
   mask-image: linear-gradient(90deg, #000 82%, transparent 100%); }
-.ln { display: flex; padding: 0 22px; min-height: 24.5px; }
+.ln { display: flex; align-items: center; padding: 0 22px; min-height: 24.5px; }
+.ln > code { white-space: pre; }
 .ln .no { flex: none; width: 34px; color: #b3bbc4; user-select: none; }
 .ln.hl { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
 .ln.hl-ok { background: #f0faf2; box-shadow: inset 2px 0 0 var(--ok); }
@@ -377,7 +378,8 @@ h2 {
   .state .why { display: none; }
 }
 @media (max-width: 960px) {
-  .feature, .feature.flip, .quick-grid { grid-template-columns: minmax(0, 1fr); gap: 36px; padding: 48px 0; }
+  .feature, .feature.flip { grid-template-columns: minmax(0, 1fr); gap: 36px; padding: 48px 0; }
+  .quick-grid { grid-template-columns: minmax(0, 1fr); gap: 36px; }
   .feature.flip .copy-col { order: 0; }
   .feature p, .section-lede { max-width: 560px; }
   .agent-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -394,6 +396,7 @@ h2 {
   .state { justify-content: flex-end; }
   .titlebar .where { display: none; }
   .next .sum { display: none; }
+  .pa { display: none; }
 }
 @media (max-width: 560px) {
   :root { --gutter: 16px; }
@@ -563,12 +566,12 @@ h2 {
               <div class="row" style="--i:4">
                 <code class="skill">pdf-tools</code><code class="from">company</code><code class="pin">4e7a1c9</code>
                 <div class="cell"><i class="dot on"></i></div><div class="cell"><i class="dot no"></i></div><div class="cell"><i class="dot on"></i></div>
-                <div class="state"><code class="pill bad">blocked</code><code class="why">unmanaged entry in ~/.claude</code></div>
+                <div class="state"><code class="pill bad">blocked</code><code class="why">unmanaged entry (claude)</code></div>
               </div>
               <div class="row" style="--i:5">
                 <code class="skill">effective-web</code><code class="from">sebastian</code><code class="pin">9f3c2e1</code>
                 <div class="cell"><i class="dot wait"></i></div><div class="cell"><i class="dot wait"></i></div><div class="cell"><i class="dot wait"></i></div>
-                <div class="state"><code class="pill warn">pending</code><code class="why">approval required</code></div>
+                <div class="state"><code class="pill warn">pending<span class="pa"> approval</span></code><code class="why">untrusted catalog</code></div>
               </div>
             </div>
 
@@ -651,7 +654,7 @@ h2 {
             <div class="ln"><code><span class="t-warn">planned </span> create     target[claude]:/effective-web -&gt; store:/sources/sebastian/checkout/skills/effective-web</code></div>
             <div class="ln"><code><span class="t-warn">planned </span> create     target[hermes]:/effective-web -&gt; store:/sources/sebastian/checkout/skills/effective-web</code></div>
             <div class="ln hl-bad"><code><span class="t-bad">blocked </span> conflict   target[claude]:/pdf-tools (real unmanaged entry exists at target slot)</code></div>
-            <div class="ln"><code class="t-dim">           adopt: run `dalo adopt pdf-tools` to copy it into the local source</code></div>
+            <div class="ln"><code class="t-dim">         (adopt: run `dalo adopt pdf-tools` to copy it into the local source)</code></div>
             <div class="gap"></div>
             <div class="ln"><code><span class="t-sec">would sync:</span> 5 skills across 3 targets (11 unchanged, 3 planned, 1 blocked)</code></div>
           </div>
