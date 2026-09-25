@@ -138,6 +138,7 @@ ul.bl li::before { content: "\2022\00a0"; color: var(--accent); }
 .diag b { color: var(--ink); }
 .diag .dk { color: var(--ink); }
 .diag i { color: var(--muted); }
+.diag .narrow { display: none; }
 
 /* tbl */
 .tbl-wrap { overflow-x: auto; }
@@ -219,6 +220,8 @@ table.tbl { border-collapse: collapse; margin-left: var(--rs); }
   .tp > dt { padding-right: 0; }
   .ex { margin-left: 0; }
   .quote { margin-left: 0; }
+  .diag .wide { display: none; }
+  .diag .narrow { display: block; }
   table.tbl { margin-left: 0; }
   .tbl thead { display: none; }
   .tbl, .tbl tbody, .tbl tr, .tbl td { display: block; white-space: normal; padding: 0; }
@@ -286,7 +289,7 @@ table.tbl { border-collapse: collapse; margin-left: var(--rs); }
 <p><b>dalo</b> keeps your team's agent skills in Git: one approved set, resolved the same way on every machine and reviewed before it reaches any agent folder.</p>
 <p>It is for engineers and team leads who run Claude Code, Codex, or another agent across several people and machines, and want all of them working from the same reviewed skills.</p>
 <p>Skills come from <var>sources</var>: your private local source, team Git repositories, and public catalogs. <b>dalo</b> gathers them in a store at <code>~/.dalo</code>, runs a security preflight, waits for approval where one is required, resolves one set, and links it into the folders your agents already read. The store is the source of truth; agent folders are only output targets.</p>
-<div class="diag" role="img" aria-label="Diagram: local (priority 0), company (priority 10) and oss (priority 20) sources feed the ~/.dalo store, then the preflight and your approval, then the resolver, which links owned symlinks into ~/.claude/skills and ~/.agents/skills."><pre aria-hidden="true">
+<div class="diag" role="img" aria-label="Diagram: local (priority 0), company (priority 10) and oss (priority 20) sources feed the ~/.dalo store, then the preflight and your approval, then the resolver, which links owned symlinks into ~/.claude/skills and ~/.agents/skills."><pre class="wide" aria-hidden="true">
 <span class="dk">local</span>    prio  0 ----.
 <span class="dk">company</span>  prio 10 ----+---&gt; <b>~/.dalo</b>      <i>sources · locks · trust · audits</i>
 <span class="dk">oss</span>      prio 20 ----'        |
@@ -299,6 +302,19 @@ table.tbl { border-collapse: collapse; margin-left: var(--rs); }
                               v
                       <b>~/.claude/skills</b>  <i>owned symlinks only</i>
                       <b>~/.agents/skills</b>
+</pre><pre class="narrow" aria-hidden="true">
+<span class="dk">local</span>    prio  0 --.
+<span class="dk">company</span>  prio 10 --+--&gt; <b>~/.dalo</b>
+<span class="dk">oss</span>      prio 20 --'       |
+                           v
+                       <b>preflight</b>
+                           |
+                           v
+                       <b>resolver</b>
+                           |
+                           v
+                   <b>~/.claude/skills</b>
+                   <b>~/.agents/skills</b>
 </pre></div>
 <p>The resolver is a pure function: the same inputs give a byte-for-byte identical result. When two sources ship a skill with the same name, source priority decides and the lower number wins; the others are reported as <code>shadowed</code>, never silently dropped.</p>
 <p>One Rust binary, no daemon, nothing to host: <b>dalo</b> only needs <b>git</b> on your <code>PATH</code>. It runs on macOS (Apple Silicon) and Linux (x86_64, ARM64).</p>
@@ -421,7 +437,7 @@ table.tbl { border-collapse: collapse; margin-left: var(--rs); }
   <dt><code>~/.dalo/local/skills/</code></dt><dd>Your private skills, tracked in Git.</dd>
   <dt><code>~/.dalo/sources/</code><var>id</var><code>/checkout/</code></dt><dd>Team and catalog Git checkouts.</dd>
 </dl>
-<p>A team repository can carry a <code>dalo.toml</code> manifest that pins external catalogs and filters them: <code>+copywriting</code> includes, <code>-seo-audit</code> excludes, and <code>skills = []</code> selects all.</p>
+<p>A team repository can carry a <code>dalo.toml</code> manifest that pins external catalogs and filters them: <code>+copywriting</code> includes, <code>-seo-audit</code> excludes, and <code class="nw">skills = []</code> selects all.</p>
 <p>Agent folders are output targets. <b>dalo</b> links into these by default:</p>
 <div class="tbl-wrap">
 <table class="tbl">
