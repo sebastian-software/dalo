@@ -9,9 +9,15 @@ Schema, and `news/` holds the occasional hand-written announcement page.
 page; `build.mjs` copies every deployable file in `site/` into `site/build/`,
 so it needs no build-script entry of its own.
 
+`index.html` loads only `home.css`; every other page loads `styles.css` (the
+shared tokens, header, footer, and buttons, mirroring `home.css`) plus
+`docs.css` (the reading layout). Both use system font stacks.
+
 `news/` pages are not generated either: they need no build-script entry, only a
 `sitemap.xml` entry. They reuse the documentation shell (`styles.css` plus
-`docs.css`, `body class="doc-page"`, `.doc-shell` with a small side nav).
+`docs.css`, `body class="doc-page"`, `.doc-shell` with a small side nav and its
+`.doc-menu` counterpart for narrow screens), with the header and footer copied
+from the `shell()` template in `build.mjs`.
 
 ## Build
 
@@ -46,9 +52,10 @@ pnpm --dir video run render:og   # site/assets/img/og.png
 ```
 
 `render:og` renders the `DaloOg` still (`video/src/OgImage.tsx`) at 1200x630
-using the self-hosted fonts in `site/assets/fonts` and the `data-scope="dark"`
-tokens from `styles.css`, so the social card carries the same tagline,
-typography, and colours as the hero. The landing page, every rendered
+using the self-hosted fonts in `site/assets/fonts` and the dark palette of the
+previous site design, whose tokens are copied into `OgImage.tsx`. The pages
+themselves no longer load those fonts or colours, so the card still carries the
+tagline but not the current light look. The landing page, every rendered
 `docs/*.html`, and the `spec/` pages all reference that one image, so a refresh
 covers the whole site. `tests/docs.sh` checks the PNG header against the
 declared `og:image:width` and `og:image:height`.

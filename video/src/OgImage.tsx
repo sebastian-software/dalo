@@ -5,9 +5,10 @@ import bricolage800 from '../../site/assets/fonts/bricolage-800.woff2';
 import geistMono400 from '../../site/assets/fonts/geistmono-400.woff2';
 import hanken400 from '../../site/assets/fonts/hanken-400.woff2';
 
-// The tokens below are the `[data-scope="dark"]` values from site/styles.css.
-// The social card is the first thing a reader sees, so it uses the same fonts,
-// colours, and wording as the hero it links to.
+// The tokens below are the dark palette of the previous site design, copied
+// here when site/styles.css still defined them as `[data-scope="dark"]`. The
+// site has since moved to a light design with system fonts; this card keeps
+// the earlier fonts and colours until it is redesigned and re-rendered.
 const colors = {
   background: 'oklch(0.185 0.012 260)',
   ink: 'oklch(0.96 0.004 240)',

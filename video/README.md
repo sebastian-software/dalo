@@ -13,8 +13,9 @@ pnpm run render:og
 
 `pnpm run render` writes `site/assets/dalo-quickstart.mp4`. `pnpm run render:og`
 writes the 1200x630 social card `site/assets/img/og.png` from the `DaloOg`
-still, which reuses the landing page's self-hosted fonts and dark-scope colour
-tokens; the whole site shares that one image.
+still, which uses the self-hosted fonts in `site/assets/fonts` and the previous
+site design's dark colour tokens (copied into `src/OgImage.tsx`); the whole
+site shares that one image.
 
 The terminal transcript mirrors current human-readable CLI output. When any
 displayed command changes, update the transcript and render the MP4 in the same
