@@ -1,9 +1,19 @@
 // Screenshots every concept: node design/homepage-concepts/shoot.mjs [slug...]
-// Needs Playwright (NODE_PATH="$(npm root -g)" when installed globally).
-import { chromium } from "playwright"
+// Needs Playwright, installed locally or globally (found through `npm root -g`).
+import { execSync } from "node:child_process"
 import { readdirSync, mkdirSync } from "node:fs"
+import { createRequire } from "node:module"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
+
+const require = createRequire(import.meta.url)
+let playwright
+try {
+  playwright = require("playwright")
+} catch {
+  playwright = require(path.join(execSync("npm root -g").toString().trim(), "playwright"))
+}
+const { chromium } = playwright
 
 const dir = path.dirname(fileURLToPath(import.meta.url))
 const out = path.join(dir, "screenshots")
