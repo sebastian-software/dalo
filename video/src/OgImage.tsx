@@ -58,14 +58,14 @@ export const OgImage = () => {
 
       <div style={{position: 'absolute', left: 80, top: 184, width: 700}}>
         <h1 style={{margin: 0, fontWeight: 700, fontSize: 68, lineHeight: 1.04, letterSpacing: '-0.045em'}}>
-          Your team&rsquo;s agent skills,
+          Your team&rsquo;s agent setup,
           <br />
           <span style={{backgroundImage: headlineGradient, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent'}}>
             versioned like code.
           </span>
         </h1>
         <p style={{margin: '28px 0 0', fontSize: 26, lineHeight: 1.45, color: colors.ink2, maxWidth: 600}}>
-          One reviewed, pinned set of skills, linked into every agent&rsquo;s folder.
+          Skills, standing instructions, and hooks managed from Git.
         </p>
       </div>
 

@@ -529,11 +529,10 @@ cmp "$root/logo.svg" "$root/site/assets/img/logo.svg"
 og_image_header="$(od -An -tx1 -j16 -N8 "$root/site/assets/img/og.png" | tr -d ' \n')"
 test "$og_image_header" = "000004b000000276" \
   || { echo 'site/assets/img/og.png is no longer the declared 1200x630' >&2; exit 1; }
-# The OG still sets the tagline's second half in the hero gradient, so the two
-# halves are separate text nodes.
-{ grep -Fq "Your team&rsquo;s agent skills," "$root/video/src/OgImage.tsx" \
+# The OG mirrors the homepage tagline. Its two halves are separate text nodes.
+{ grep -Fq "Your team&rsquo;s agent setup," "$root/video/src/OgImage.tsx" \
     && grep -Fq "versioned like code." "$root/video/src/OgImage.tsx"; } \
-  || { echo 'the OG still no longer carries the 1.0 tagline' >&2; exit 1; }
+  || { echo 'the OG still no longer carries the homepage tagline' >&2; exit 1; }
 refute 'the site requests a CDN-hosted player instead of self-hosted assets' \
   grep -R -q -E --exclude-dir=node_modules --exclude-dir=build 'cdn\.jsdelivr\.net|AsciinemaPlayer|asciinema-player' "$root/site"
 grep -q 'DALO_VERSION' "$root/site/install.md"
