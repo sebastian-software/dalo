@@ -6,17 +6,17 @@
   --ink: #0b1733;
   --ink-2: #2f3c58;
   --muted: #5d6882;
-  --faint: #8a93a8;
+  --faint: #5f6c84;
   --line: #e3e7ef;
   --line-2: #eef1f6;
   --surface: #f6f8fb;
   --white: #fff;
   --coral: #e8623a;
-  --rust: #c24b22;
+  --rust: #a93d1b;
   --peach: #ffb58c;
   --violet: #7b5cf5;
   --sky: #43b3f2;
-  --green: #16925b;
+  --green: #107348;
   --green-bg: #e7f6ee;
   --sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
@@ -201,7 +201,7 @@ svg { display: block; }
   background: rgba(255, 255, 255, .7); box-shadow: 0 0 0 1px rgba(11, 23, 51, .08);
   -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
 }
-.eyebrow b { font-weight: 600; color: #fff; background: var(--coral); border-radius: 999px; padding: 1px 8px; font-size: 12px; }
+.eyebrow b { font-weight: 600; color: #fff; background: var(--rust); border-radius: 999px; padding: 1px 8px; font-size: 12px; }
 .hero h1 {
   margin-top: 26px;
   font-size: clamp(42px, 4.7vw, 66px);
@@ -227,7 +227,7 @@ svg { display: block; }
 .dots { display: flex; gap: 7px; }
 .dots span { width: 11px; height: 11px; border-radius: 50%; background: #e4e7ee; box-shadow: inset 0 0 0 1px rgba(11, 23, 51, .05); }
 .term-title { flex: 1; text-align: center; font-size: 12.5px; font-weight: 500; color: var(--faint); margin-right: 47px; }
-.term-body { margin: 0; padding: 16px 20px 20px; font-size: 11.5px; line-height: 1.8; color: var(--ink-2); white-space: normal; }
+.term-body { margin: 0; padding: 16px 20px 20px; font-size: 12px; line-height: 1.8; color: var(--ink-2); white-space: normal; }
 .term-body .ln { display: block; white-space: pre; overflow: hidden; text-overflow: ellipsis; }
 .p { color: var(--coral); user-select: none; }
 .cmd { color: var(--ink); font-weight: 600; }
@@ -244,7 +244,7 @@ svg { display: block; }
 
 .approve { left: -12px; top: 250px; width: 300px; padding: 18px 18px 16px; z-index: 2; }
 .approve-top { display: flex; align-items: center; justify-content: space-between; }
-.label { font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+.label { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
 .status {
   display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px 0 8px;
   border-radius: 999px; background: var(--green-bg); color: var(--green); font-size: 12.5px; font-weight: 600;
@@ -274,6 +274,18 @@ svg { display: block; }
   .mesh i { animation: none; }
 }
 
+/* ── What Dalo manages ───────────────────────────────────── */
+.capabilities { padding: 84px 0 72px; border-bottom: 1px solid var(--line-2); }
+.capabilities h2 { font-size: clamp(30px, 3.3vw, 42px); line-height: 1.1; letter-spacing: -.035em; }
+.capabilities-intro { margin-top: 14px; max-width: 60ch; font-size: 17.5px; color: var(--ink-2); }
+.capability-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 48px; margin-top: 44px; }
+.capability { border-top: 2px solid var(--c); padding-top: 22px; }
+.capability h3 { font-size: 22px; line-height: 1.2; letter-spacing: -.025em; }
+.capability p { margin-top: 12px; color: var(--ink-2); }
+.capability code { font-size: .88em; }
+.capability a { display: inline-block; margin-top: 18px; font-weight: 600; color: var(--rust); text-decoration: underline; text-underline-offset: 3px; }
+.capability a:hover { color: var(--ink); }
+
 /* ── Feature rows ────────────────────────────────────────── */
 .features { padding: 72px 0 24px; }
 .row { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 88px; align-items: center; padding: 64px 0; }
@@ -285,7 +297,7 @@ svg { display: block; }
 .row p.body { margin-top: 16px; font-size: 17.5px; line-height: 1.6; color: var(--muted); max-width: 27em; }
 .row .link-arrow { margin-top: 24px; font-size: 15px; }
 .rule {
-  margin: 26px 0 0; padding: 2px 0 2px 18px; border-left: 2px solid var(--peach);
+  margin: 26px 0 0; padding: 2px 0 2px 18px; border-left: 1px solid var(--peach);
   font-size: 15.5px; line-height: 1.55; color: var(--ink-2); font-weight: 500; max-width: 26em;
 }
 code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radius: 6px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); }
@@ -303,14 +315,14 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
 /* resolution panel (row 1) */
 .res { padding: 28px 24px; display: grid; grid-template-columns: minmax(0, 1fr) 44px 64px 44px minmax(0, 1fr); align-items: start; }
 .res-col { display: grid; gap: 12px; }
-.res-head { font-size: 11px; line-height: 17px; height: 17px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); margin-bottom: 2px; white-space: nowrap; }
+.res-head { font-size: 12px; line-height: 17px; height: 17px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); margin-bottom: 2px; white-space: nowrap; }
 .res-node {
   height: 52px; padding: 0 12px; border-radius: 10px; display: flex; flex-direction: column; justify-content: center; min-width: 0;
   background: #fff; box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgba(11, 23, 51, .04);
 }
 .res-node b { font-size: 13.5px; font-weight: 600; color: var(--ink); line-height: 1.25; display: flex; align-items: center; gap: 7px; white-space: nowrap; }
 .res-node b::before { content: ""; width: 7px; height: 7px; border-radius: 2px; background: var(--c); flex: none; }
-.res-node small { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.5; }
+.res-node small { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.5; }
 .res-wires { display: block; width: 100%; height: 180px; overflow: visible; margin-top: 31px; }
 .res-hub { position: relative; display: grid; place-items: center; height: 180px; margin-top: 31px; }
 .res-mark {
@@ -318,7 +330,7 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
   background: #fff;
   box-shadow: 0 0 0 1px rgba(11, 23, 51, .08), 0 12px 24px -8px rgba(11, 23, 51, .28), 0 0 0 8px rgba(232, 98, 58, .10);
 }
-.res-hub small { position: absolute; top: calc(50% + 42px); left: 50%; transform: translateX(-50%); font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
+.res-hub small { position: absolute; top: calc(50% + 42px); left: 50%; transform: translateX(-50%); font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
 .res-wire { fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .res-foot { grid-column: 1 / -1; margin-top: 22px; padding-top: 16px; border-top: 1px dashed var(--line); display: flex; justify-content: space-between; gap: 12px; font-size: 12.5px; color: var(--muted); }
 .res-foot span { display: inline-flex; align-items: center; gap: 6px; }
@@ -372,14 +384,14 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
 .flow { display: block; width: 100%; height: auto; overflow: visible; }
 .flow-m { display: none; max-width: 342px; margin: 0 auto; }
 .flow text { font-family: var(--sans); fill: var(--ink); }
-.flow .lab { font: 600 11px var(--sans); letter-spacing: .08em; text-transform: uppercase; fill: var(--faint); }
+.flow .lab { font: 600 12px var(--sans); letter-spacing: .08em; text-transform: uppercase; fill: var(--faint); }
 .flow .wire { fill: none; stroke: #d3d8e3; stroke-width: 1; }
 .flow .fnode rect { fill: #fff; stroke: rgba(11, 23, 51, .09); }
 .flow .fnode { filter: drop-shadow(0 1px 1px rgba(11, 23, 51, .04)) drop-shadow(0 8px 16px rgba(11, 23, 51, .07)); }
 .flow .fnode .ib { fill: color-mix(in srgb, var(--c) 11%, #fff); stroke: color-mix(in srgb, var(--c) 24%, #fff); }
 .flow .ic, .flow .ic rect { fill: none; stroke: var(--c); stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
 .flow .t { font-size: 14px; font-weight: 600; letter-spacing: -.01em; }
-.flow .s { font: 400 11px var(--mono); fill: var(--muted); }
+.flow .s { font: 400 12px var(--mono); fill: var(--muted); }
 .flow .s.c { text-anchor: middle; }
 .flow .agent .dot { fill: var(--ink); }
 .flow .agent.any rect { stroke-dasharray: 3 3; stroke: rgba(11, 23, 51, .22); }
@@ -391,8 +403,8 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
 .flow .wm { font-size: 23px; font-weight: 700; letter-spacing: -.04em; }
 .flow .port { fill: #fff; stroke: rgba(11, 23, 51, .3); stroke-width: 1; }
 .flow-m .t { font-size: 13px; }
-.flow-m .s { font-size: 10.5px; }
-.flow-m .fhub .s { font-size: 9.5px; }
+.flow-m .s { font-size: 12px; }
+.flow-m .fhub .s { font-size: 12px; }
 .flow-m .wm { font-size: 21px; }
 .flow .beam { fill: none; stroke-linecap: round; stroke-dasharray: var(--l) 400; stroke-dashoffset: var(--l); opacity: 0; }
 .flow .beam-a { stroke-width: 1.5; stroke-opacity: .16; }
@@ -507,7 +519,7 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
   .term { width: 480px; }
   .stage { height: 440px; }
   .agents-card { display: none; }
-  .term-body { font-size: 10.5px; }
+  .term-body { font-size: 12px; }
   .row { gap: 56px; }
   .panel { padding: 32px; }
   .flow-panel { padding: 44px 32px 40px; }
@@ -524,7 +536,8 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
   .term { right: 0; width: 548px; }
   .stage { height: 470px; }
   .agents-card { display: block; right: 0; }
-  .term-body { font-size: 11.5px; }
+  .term-body { font-size: 12px; }
+  .capability-grid { gap: 26px; }
   .row, .row.flip { grid-template-columns: minmax(0, 1fr); gap: 36px; padding: 48px 0; }
   .row.flip .copy-col { order: 0; }
   .quick-grid, .recovery-grid, .compare-grid { grid-template-columns: minmax(0, 1fr); gap: 36px; }
@@ -550,15 +563,19 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
   .hero .lede { font-size: 17px; margin-top: 18px; }
   .hero-actions { margin-top: 28px; gap: 12px 24px; }
   .install-picker { margin-top: 24px; }
-  .install { font-size: 11px; padding-left: 14px; gap: 8px; }
+  .install { font-size: 12px; padding-left: 14px; gap: 8px; }
   .install .pr { display: none; }
   .stage { height: auto; display: grid; gap: 0; margin-top: 0; }
   .card { position: relative; left: auto; right: auto; top: auto; }
   .term { width: 100%; }
-  .term-body { padding: 14px 16px 16px; font-size: 11px; }
+  .term-body { padding: 14px 16px 16px; font-size: 12px; }
   .term-body .ln { white-space: pre-wrap; overflow-wrap: anywhere; padding-left: 2ch; text-indent: -2ch; }
   .approve { width: 88%; margin: -18px 0 0 auto; }
   .agents-card { display: none; }
+  .capabilities { padding: 48px 0; }
+  .capabilities-intro { font-size: 16.5px; }
+  .capability-grid { grid-template-columns: minmax(0, 1fr); gap: 28px; margin-top: 32px; }
+  .capability { padding-top: 18px; }
   .features { padding: 40px 0 8px; }
   .row { padding: 40px 0; gap: 28px; }
   .row p.body { font-size: 16.5px; }
@@ -567,10 +584,10 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
   .res-node { padding: 0 9px; }
   .res-node b { font-size: 12.5px; }
   .res-node b::before { display: none; }
-  .res-node small { font-size: 10px; }
+  .res-node small { font-size: 12px; }
   .res-mark { width: 48px; height: 48px; border-radius: 14px; box-shadow: 0 0 0 1px rgba(11, 23, 51, .1), 0 10px 20px -8px rgba(11, 23, 51, .45), 0 0 0 5px rgba(67, 179, 242, .10); }
   .res-mark img { width: 34px; height: auto; }
-  .res-hub small { font-size: 9.5px; top: calc(50% + 32px); }
+  .res-hub small { font-size: 12px; top: calc(50% + 32px); }
   .res-foot { flex-direction: column; gap: 6px; }
   .review { padding: 18px; }
   .review-head { flex-wrap: wrap; row-gap: 6px; }
@@ -578,13 +595,13 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
   .tree-rows li { padding: 10px 14px; gap: 10px; }
   .tree-head, .tree-foot { padding-left: 14px; padding-right: 14px; }
   .tree-rows .name { font-size: 12px; }
-  .tag { font-size: 11px; padding: 0 6px; }
+  .tag { font-size: 12px; padding: 0 6px; }
   .step code { white-space: normal; overflow-wrap: anywhere; line-height: 1.6; display: flex; }
   .sec, .quick { padding: 64px 0; }
   .how { padding-top: 48px; }
   .sec-head p { font-size: 16.5px; }
   .flow-panel { margin-top: 32px; padding: 28px 14px 24px; border-radius: 18px; }
-  .lterm pre { padding: 14px 14px 16px; font-size: 11.5px; }
+  .lterm pre { padding: 14px 14px 16px; font-size: 12px; }
   .details { padding: 64px 0 48px; }
   .detail-grid { grid-template-columns: minmax(0, 1fr); }
   .compare { padding: 48px 0; }

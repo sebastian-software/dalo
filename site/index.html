@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Dalo · Git-backed skill management for AI agents</title>
-  <meta name="description" content="Dalo keeps your team's agent skills in Git: one approved set, resolved the same way on every machine and reviewed before it reaches any agent folder." />
+  <title>Dalo · Git-backed skills, instructions, and hooks for AI agents</title>
+  <meta name="description" content="Dalo manages your team's agent skills, standing instructions, and hooks from Git. Pin sources, preview changes, and sync supported agents." />
   <link rel="canonical" href="https://dalo.sh/" />
   <meta name="theme-color" content="#ffffff" />
 
@@ -12,14 +12,14 @@
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Dalo" />
   <meta property="og:url" content="https://dalo.sh/" />
-  <meta property="og:title" content="Dalo · Your team's agent skills, versioned like code" />
-  <meta property="og:description" content="Dalo keeps your team's agent skills in Git: one approved set, resolved the same way on every machine and reviewed before it reaches any agent folder." />
+  <meta property="og:title" content="Dalo · Your team's agent setup, versioned like code" />
+  <meta property="og:description" content="Dalo manages your team's agent skills, standing instructions, and hooks from Git. Pin sources, preview changes, and sync supported agents." />
   <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Dalo · Your team's agent skills, versioned like code" />
-  <meta name="twitter:description" content="Dalo keeps your team's agent skills in Git: one approved set, resolved the same way on every machine and reviewed before it reaches any agent folder." />
+  <meta name="twitter:title" content="Dalo · Your team's agent setup, versioned like code" />
+  <meta name="twitter:description" content="Dalo manages your team's agent skills, standing instructions, and hooks from Git. Pin sources, preview changes, and sync supported agents." />
   <meta name="twitter:image" content="https://dalo.sh/assets/img/og.png" />
 
   <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
@@ -38,7 +38,7 @@
     "@type": "SoftwareApplication",
     "name": "Dalo",
     "url": "https://dalo.sh/",
-    "description": "Dalo keeps your team's agent skills in Git: one approved set, resolved the same way on every machine and reviewed before it reaches any agent folder.",
+    "description": "Dalo manages your team's agent skills, standing instructions, and hooks from Git. Pin sources, preview changes, and sync supported agents.",
     "sameAs": "https://github.com/sebastian-software/dalo",
     "softwareVersion": "0.17.0",
     "applicationCategory": "DeveloperApplication",
@@ -98,8 +98,8 @@
     <div class="wrap hero-grid">
       <div class="hero-copy">
         <span class="eyebrow"><b>Open source</b><span>Rust CLI · v<span data-dalo-version>0.17.0</span></span></span> <!-- x-release-please-version -->
-        <h1 id="hero-title">Your team's agent skills, <span class="grad-text">versioned like code.</span></h1>
-        <p class="lede">Dalo keeps your skills in Git, reviews them locally, and links one approved set into every agent's folder, the same on every machine.</p>
+        <h1 id="hero-title">Your team's agent setup, <span class="grad-text">versioned like code.</span></h1>
+        <p class="lede">Keep skills, standing instructions, and hooks in Git. Dalo pins sources, previews changes, and delivers each piece to the agents that support it.</p>
         <div class="hero-actions">
           <a class="btn" href="#quickstart">Get started
             <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3 8h9.5M8.5 3.5 13 8l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -176,6 +176,31 @@
     </div>
   </section>
 
+  <!-- ───────────────────────── WHAT DALO MANAGES ───────────────────────── -->
+  <section class="capabilities" aria-labelledby="capabilities-title">
+    <div class="wrap">
+      <h2 id="capabilities-title">More than a skill installer.</h2>
+      <p class="capabilities-intro">Share the skills agents use, the rules they follow, and the hooks that run at the right moment.</p>
+      <div class="capability-grid">
+        <article class="capability" style="--c:#7b5cf5">
+          <h3>Skills</h3>
+          <p>Select and review skills from Git sources, then sync the same pinned set into supported agent folders.</p>
+          <a href="/docs/getting-started.html">Manage skills <span aria-hidden="true">→</span></a>
+        </article>
+        <article class="capability" style="--c:#2b8fd6">
+          <h3>Agent instructions</h3>
+          <p>Enable shared rules in Codex <code>AGENTS.md</code> and Claude <code>CLAUDE.md</code>. Dalo updates only its own managed blocks.</p>
+          <a href="/docs/reference.html#dalo-instructions-enable-pack-ref-file--target-agent">Share instructions <span aria-hidden="true">→</span></a>
+        </article>
+        <article class="capability" style="--c:#c24b22">
+          <h3>Hooks and tools</h3>
+          <p>Package typed hooks with their tools. Review each exact contract before Dalo projects supported hooks into Codex or Claude.</p>
+          <a href="/docs/plugins.html#hooks">Explore plugins <span aria-hidden="true">→</span></a>
+        </article>
+      </div>
+    </div>
+  </section>
+
   <!-- ───────────────────────── CORE MESSAGES ───────────────────────── -->
   <section class="features" aria-label="Why Dalo">
     <div class="wrap">
@@ -184,7 +209,7 @@
         <div class="copy-col">
           <span class="kicker"><span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="3.5" cy="3.5" r="1.8" fill="currentColor"/><circle cx="3.5" cy="12.5" r="1.8" fill="currentColor"/><circle cx="12.5" cy="8" r="2.2" fill="currentColor"/><path d="M3.5 3.5C8 3.5 8 8 12.5 8M3.5 12.5C8 12.5 8 8 12.5 8" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></span>One source of truth</span>
           <h2>One approved set. Every machine.</h2>
-          <p class="body">Your team's skills live in Git. Dalo resolves one pinned set and links it into every agent's folder, byte for byte the same on every laptop.</p>
+          <p class="body">Your team's skills live in Git. Dalo resolves one pinned set and links it into supported agent folders, byte for byte the same on every laptop.</p>
           <a class="link-arrow" href="#how">See how it works
             <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </a>
@@ -228,7 +253,7 @@
       <article class="row flip reveal" style="--accent:#7b5cf5; --accent-2:#e8623a">
         <div class="copy-col">
           <span class="kicker"><span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 1.8 13 3.8v3.7c0 3.1-2.1 5.6-5 6.7-2.9-1.1-5-3.6-5-6.7V3.8z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="m5.6 8 1.7 1.7 3.2-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Reviewed first</span>
-          <h2>Nothing reaches an agent unreviewed.</h2>
+          <h2>Review skills before they reach an agent.</h2>
           <p class="body">Fifteen deterministic security rules run locally on every skill. Catalog skills also wait for your explicit approval before Dalo links them.</p>
           <a class="link-arrow" href="/docs/security.html">Read the security model
             <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -430,8 +455,8 @@
   <!-- ───────────────────────── DETAILS ───────────────────────── -->
   <section class="details" aria-labelledby="details-title">
     <div class="wrap">
-      <h2 id="details-title" class="reveal">Everything else a team needs</h2>
-      <p class="sub reveal">Shipped, documented, and covered by the same tests as the core.</p>
+      <h2 id="details-title" class="reveal">Control how it reaches your agents</h2>
+      <p class="sub reveal">Review, sync, and diagnose the content your team chooses to share.</p>
       <ul class="detail-grid reveal">
         <li class="detail" style="--c:#7b5cf5">
           <h3>Security preflight and review gate</h3>
@@ -443,7 +468,7 @@
         </li>
         <li class="detail" style="--c:#2b8fd6">
           <h3>Instruction packs</h3>
-          <p>Shared conventions as versioned Markdown, rendered into managed blocks. Everything outside the markers stays yours.</p>
+          <p>Source-backed rules stay pinned to an exact commit. Refreshes preserve everything outside Dalo's managed markers. <a href="/docs/reference.html#instruction-packs">Instruction reference</a></p>
         </li>
         <li class="detail" style="--c:#16925b">
           <h3>Scheduled autosync</h3>
@@ -451,7 +476,7 @@
         </li>
         <li class="detail" style="--c:#c24b22">
           <h3>Portable plugins</h3>
-          <p>Tools and hooks ship in <code>PLUGIN.toml</code>, each approved by the SHA-256 of its exact contract. <a href="/spec/">Read the spec</a></p>
+          <p>Group skills, agents, instructions, tools, and hooks in <code>PLUGIN.toml</code>. Executable parts need separate, exact approvals. <a href="/docs/plugins.html">Plugin guide</a></p>
         </li>
         <li class="detail" style="--c:#43b3f2">
           <h3>Diagnostics</h3>
@@ -465,8 +490,8 @@
   <section class="compare" id="compare" aria-labelledby="compare-title">
     <div class="wrap compare-grid">
       <div class="reveal">
-        <h2 id="compare-title">Why not install skills directly?</h2>
-        <p>Installers are great for trying one skill. Dalo is for the team that has to review, pin, and roll it out.</p>
+        <h2 id="compare-title">When your agent setup becomes team infrastructure.</h2>
+        <p>Dalo pins and reviews skills, shares standing instructions, and gates tools and hooks through exact approvals.</p>
       </div>
       <div class="reveal">
         <div class="table-wrap">
@@ -482,9 +507,15 @@
             <tbody>
               <tr>
                 <th scope="row">Built for</th>
-                <td class="col-dalo" data-label="Dalo">Teams delivering one reviewed skill set</td>
+                <td class="col-dalo" data-label="Dalo">Teams managing skills, instructions, and hooks</td>
                 <td data-label="skills.sh">Discovering and installing public skills</td>
                 <td data-label="agentfiles">Browsing and editing agent files in Obsidian</td>
+              </tr>
+              <tr>
+                <th scope="row">Beyond skills</th>
+                <td class="col-dalo" data-label="Dalo">Managed instructions, portable plugins, approved tools and hooks</td>
+                <td data-label="skills.sh">Installs skills</td>
+                <td data-label="agentfiles">Browses rules and agent files; installs skills</td>
               </tr>
               <tr>
                 <th scope="row">Pinning</th>
@@ -556,7 +587,7 @@
     <div class="veil" aria-hidden="true"></div>
     <div class="wrap cta-inner">
       <img class="cta-logo" src="/assets/img/logo.svg" width="160" height="140" alt="" />
-      <h2 id="cta-title">Give every agent the same reviewed skills.</h2>
+      <h2 id="cta-title">Bring your team's agent setup into Git.</h2>
       <p>Open source under MIT or Apache-2.0. One Rust binary, no daemon, just Git.</p>
       <div class="install">
         <span class="pr" aria-hidden="true">$</span>
@@ -588,7 +619,7 @@
           <img class="brand-mark" src="/assets/img/logo.svg" width="34" height="30" alt="" />
           <img class="brand-word" src="/assets/img/wordmark.svg" width="55" height="14" alt="" />
         </a>
-        <p>Git-backed skill management for AI agents. Built in Rust.</p>
+        <p>Git-backed skills, instructions, and hooks for AI agents. Built in Rust.</p>
       </div>
       <nav class="footer-cols" aria-label="Footer">
         <div class="footer-col">

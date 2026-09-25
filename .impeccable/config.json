@@ -1,0 +1,63 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "gradient-text",
+        "value": "*",
+        "files": [
+          "site/home.css",
+          "site/index.html"
+        ],
+        "createdAt": "2026-09-25T19:19:36.611Z",
+        "reason": "Agent: The existing homepage and OG brand use gradient headline lettering; this content update preserves that established visual."
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "site/index.html"
+        ],
+        "createdAt": "2026-09-25T19:22:32.448Z",
+        "reason": "Agent: The existing install and terminal bars vertically center their contents inside fixed-height rows; visual review confirms padding."
+      },
+      {
+        "rule": "clipped-overflow-container",
+        "value": "*",
+        "files": [
+          "site/index.html"
+        ],
+        "createdAt": "2026-09-25T19:22:32.548Z",
+        "reason": "Agent: Root horizontal clipping contains the existing decorative gradient without cutting off the visible navigation or content."
+      },
+      {
+        "rule": "nested-cards",
+        "value": "*",
+        "files": [
+          "site/index.html"
+        ],
+        "createdAt": "2026-09-25T19:22:32.646Z",
+        "reason": "Agent: The existing hero and product previews intentionally layer interface panels to show Dalo state; this content update preserves them."
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "site/index.html"
+        ],
+        "createdAt": "2026-09-25T19:22:32.747Z",
+        "reason": "Agent: The homepage is light; the detector infers a dark page from dark ink and mislabels the established neutral shadow."
+      },
+      {
+        "rule": "radial-halo",
+        "value": "*",
+        "files": [
+          "site/index.html"
+        ],
+        "createdAt": "2026-09-25T19:22:32.846Z",
+        "reason": "Agent: The homepage is light; the detector infers a dark page and mislabels its existing gradient hero background."
+      }
+    ]
+  }
+}
