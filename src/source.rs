@@ -63,6 +63,9 @@ pub struct SourceConfig {
     pub kind: SourceKind,
     /// Local checkout path.
     pub path: PathBuf,
+    /// Optional directory inside a Git checkout that contains this source.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subpath: Option<PathBuf>,
     /// Source priority. Lower numbers win.
     pub priority: i32,
     /// Optional prefix applied to every skill materialized from this source.
@@ -414,7 +417,38 @@ pub fn add_team_source(
     namespace: Option<&str>,
     dry_run: bool,
 ) -> DaloResult<SourceAddReport> {
-    add_team_source_with_config_writer(paths, id, url, namespace, dry_run, store::write_config)
+    add_team_source_scoped(paths, id, url, namespace, None, None, dry_run)
+}
+
+/// Add a Git-backed source rooted at an optional checkout subdirectory.
+pub fn add_team_source_scoped(
+    paths: &StorePaths,
+    id: &str,
+    url: &str,
+    namespace: Option<&str>,
+    revision: Option<&str>,
+    subpath: Option<&Path>,
+    dry_run: bool,
+) -> DaloResult<SourceAddReport> {
+    add_team_source_with_config_writer(
+        paths,
+        id,
+        url,
+        SourceAddOptions {
+            namespace,
+            revision,
+            subpath,
+        },
+        dry_run,
+        store::write_config,
+    )
+}
+
+#[derive(Clone, Copy, Default)]
+struct SourceAddOptions<'a> {
+    namespace: Option<&'a str>,
+    revision: Option<&'a str>,
+    subpath: Option<&'a Path>,
 }
 
 /// Resolve a local source location against the caller's working directory.
@@ -462,7 +496,7 @@ fn add_team_source_with_config_writer<F>(
     paths: &StorePaths,
     id: &str,
     url: &str,
-    namespace: Option<&str>,
+    options: SourceAddOptions<'_>,
     dry_run: bool,
     write_config: F,
 ) -> DaloResult<SourceAddReport>
@@ -473,7 +507,7 @@ where
         paths,
         id,
         url,
-        namespace,
+        options,
         dry_run,
         write_config,
         git::clone_repo,
@@ -484,7 +518,7 @@ fn add_team_source_with_config_writer_and_cloner<F, C>(
     paths: &StorePaths,
     id: &str,
     url: &str,
-    namespace: Option<&str>,
+    options: SourceAddOptions<'_>,
     dry_run: bool,
     write_config: F,
     clone_repo: C,
@@ -502,7 +536,11 @@ where
             reason: SOURCE_ID_REQUIREMENTS.to_owned(),
         });
     }
-    let namespace = validate_source_namespace(namespace)?;
+    let namespace = validate_source_namespace(options.namespace)?;
+    let subpath = options.subpath.map(validate_source_subpath).transpose()?;
+    if let Some(revision) = options.revision {
+        git::validate_manifest_revision(revision)?;
+    }
     git::validate_remote_url(url)?;
 
     let mut config = store::read_config(paths)?;
@@ -524,13 +562,21 @@ where
         id: id.to_owned(),
         kind: SourceKind::Team,
         path: checkout.clone(),
+        subpath: subpath.clone(),
         priority,
         namespace,
         enabled: true,
         trusted: true,
         url: Some(url.to_owned()),
-        branch: None,
-        update_policy: Some("track".to_owned()),
+        branch: options.revision.map(str::to_owned),
+        update_policy: Some(
+            if options.revision.is_some() {
+                "pin"
+            } else {
+                "track"
+            }
+            .to_owned(),
+        ),
         selection: Vec::new(),
         declared_by: None,
         declared_ref: None,
@@ -546,9 +592,20 @@ where
     }
 
     clone_source_checkout_with(url, &checkout, clone_repo)?;
+    let checkout_result = (|| -> DaloResult<PathBuf> {
+        if let Some(revision) = options.revision {
+            let commit = git::resolve_manifest_revision(&checkout, revision)?;
+            git::checkout_detached(&checkout, &commit)?;
+        }
+        scoped_source_root(&checkout, subpath.as_deref())
+    })();
+    let source_root = checkout_result.inspect_err(|_| {
+        let _ = std::fs::remove_dir_all(&checkout);
+        remove_empty_source_dir(&checkout);
+    })?;
 
     let (audits, inventory_warnings) =
-        audit_source_checkout(paths, id, &checkout).inspect_err(|_| {
+        audit_source_checkout(paths, id, &source_root).inspect_err(|_| {
             let _ = std::fs::remove_dir_all(&checkout);
             remove_empty_source_dir(&checkout);
         })?;
@@ -585,12 +642,62 @@ pub fn validate_source_namespace(namespace: Option<&str>) -> DaloResult<Option<S
     }
 }
 
+/// Accept only a non-empty relative path made of ordinary components.
+pub fn validate_source_subpath(subpath: &Path) -> DaloResult<PathBuf> {
+    let mut normalized = PathBuf::new();
+    for component in subpath.components() {
+        match component {
+            Component::Normal(part) => normalized.push(part),
+            _ => {
+                return Err(DaloError::InvalidArgument {
+                    reason: format!(
+                        "source subpath `{}` must be relative and contain no `.` or `..` components",
+                        subpath.display()
+                    ),
+                });
+            }
+        }
+    }
+    if normalized.as_os_str().is_empty() {
+        return Err(DaloError::InvalidArgument {
+            reason: "source subpath must name a directory inside the checkout".to_owned(),
+        });
+    }
+    Ok(normalized)
+}
+
+/// Resolve a source root, refusing missing directories and symlink escapes.
+pub fn scoped_source_root(checkout: &Path, subpath: Option<&Path>) -> DaloResult<PathBuf> {
+    let Some(subpath) = subpath else {
+        return Ok(checkout.to_path_buf());
+    };
+    let subpath = validate_source_subpath(subpath)?;
+    let checkout_canonical = fs::canonicalize(checkout)?;
+    let candidate = checkout.join(&subpath);
+    let candidate_canonical =
+        fs::canonicalize(&candidate).map_err(|error| DaloError::CheckFailed {
+            reason: format!(
+                "source subpath `{}` is unavailable: {error}",
+                subpath.display()
+            ),
+        })?;
+    if !candidate_canonical.starts_with(&checkout_canonical) || !candidate_canonical.is_dir() {
+        return Err(DaloError::CheckFailed {
+            reason: format!(
+                "source subpath `{}` must resolve to a directory inside the checkout",
+                subpath.display()
+            ),
+        });
+    }
+    Ok(candidate_canonical)
+}
+
 fn audit_source_checkout(
     paths: &StorePaths,
     source_id: &str,
-    checkout: &Path,
+    source_root: &Path,
 ) -> DaloResult<(Vec<AuditReport>, Vec<InventoryWarning>)> {
-    let inventory = crate::inventory::scan_source(source_id, checkout)?;
+    let inventory = crate::inventory::scan_source(source_id, source_root)?;
     let audits = inventory
         .skills
         .iter()
@@ -601,7 +708,7 @@ fn audit_source_checkout(
                 &skill.path,
                 &audit::AuditOptions {
                     exclude_root_source_metadata: store::comparable_path(&skill.path)
-                        == store::comparable_path(checkout),
+                        == store::comparable_path(source_root),
                     ..audit::AuditOptions::default()
                 },
             )
@@ -1045,7 +1152,8 @@ fn audit_and_fast_forward_fetched_source(
     }
 
     let audit_result = (|| -> DaloResult<()> {
-        let inventory = crate::inventory::scan_source(&source.id, &staging_path)?;
+        let source_root = scoped_source_root(&staging_path, source.subpath.as_deref())?;
+        let inventory = crate::inventory::scan_source(&source.id, &source_root)?;
         let mut blocked = Vec::new();
         for skill in inventory.skills {
             let report = audit::audit_skill(
@@ -1054,7 +1162,7 @@ fn audit_and_fast_forward_fetched_source(
                 &skill.path,
                 &audit::AuditOptions {
                     exclude_root_source_metadata: store::comparable_path(&skill.path)
-                        == store::comparable_path(&staging_path),
+                        == store::comparable_path(&source_root),
                     ..audit::AuditOptions::default()
                 },
             )?;
@@ -1203,6 +1311,18 @@ mod tests {
     use proptest::prelude::*;
 
     #[test]
+    fn scoped_source_root_should_reject_symlinks_outside_checkout() {
+        let temp = tempfile::tempdir().unwrap();
+        let checkout = temp.path().join("checkout");
+        let outside = temp.path().join("outside");
+        std::fs::create_dir_all(&checkout).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, checkout.join("skills")).unwrap();
+
+        assert!(scoped_source_root(&checkout, Some(Path::new("skills"))).is_err());
+    }
+
+    #[test]
     fn is_valid_source_id_should_reject_traversal_and_slash_ids() {
         assert!(!is_valid_source_id(".."));
         assert!(!is_valid_source_id("a/b"));
@@ -1330,7 +1450,7 @@ mod tests {
             &paths,
             "company",
             &repo.to_string_lossy(),
-            None,
+            SourceAddOptions::default(),
             false,
             |_, _| Err(DaloError::Io(std::io::Error::other("persist failed"))),
         )
@@ -1356,7 +1476,7 @@ mod tests {
             &paths,
             "company",
             "https://example.invalid/repo.git",
-            None,
+            SourceAddOptions::default(),
             false,
             store::write_config,
             |_, checkout| {
@@ -1417,7 +1537,7 @@ mod tests {
             &paths,
             "company",
             "https://example.invalid/company.git",
-            None,
+            SourceAddOptions::default(),
             false,
             store::write_config,
             |_, _| panic!("a preserved checkout must not be replaced"),
@@ -1486,6 +1606,7 @@ mod tests {
             id: id.to_owned(),
             kind: SourceKind::Team,
             path,
+            subpath: None,
             priority: 10,
             namespace: None,
             enabled: true,
@@ -1560,6 +1681,7 @@ mod tests {
                 id: "company".to_owned(),
                 kind: SourceKind::Team,
                 path: source_path.clone(),
+                subpath: None,
                 priority: 10,
                 namespace: None,
                 enabled: true,
@@ -1600,6 +1722,7 @@ mod tests {
                 id: "company".to_owned(),
                 kind: SourceKind::Team,
                 path: PathBuf::from("/store/sources/company/checkout"),
+                subpath: None,
                 priority: 10,
                 namespace: None,
                 enabled: true,
@@ -1627,6 +1750,7 @@ mod tests {
             id: "company.marketing".to_owned(),
             kind: SourceKind::Catalog,
             path: PathBuf::from("/missing/checkout"),
+            subpath: None,
             priority: 11,
             namespace: None,
             enabled: true,

@@ -767,6 +767,20 @@ pub fn read_config(paths: &StorePaths) -> DaloResult<UserConfig> {
     // losslessly upgraded; the next normal config mutation persists version 2.
     config.version = CONFIG_VERSION;
     ensure_unique_source_ids(&paths.config_file, &config)?;
+    for source in &config.sources {
+        if let Some(subpath) = &source.subpath
+            && (source.kind != crate::source::SourceKind::Team
+                || crate::source::validate_source_subpath(subpath).is_err())
+        {
+            return Err(DaloError::FileParse {
+                path: paths.config_file.clone(),
+                reason: format!(
+                    "source `{}` has an invalid subpath; only team sources may use a relative directory inside their checkout",
+                    source.id
+                ),
+            });
+        }
+    }
     validate_plugin_config(&paths.config_file, &config)?;
     Ok(config)
 }

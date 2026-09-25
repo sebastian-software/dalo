@@ -10890,6 +10890,141 @@ fn source_add_should_clone_team_source_into_store() {
 }
 
 #[test]
+fn source_add_scoped_should_pin_ref_and_resolve_only_subpath_skills() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = temp.path().join("store");
+    let target = temp.path().join("target");
+    let repo = temp.path().join("repo");
+    create_git_skill_repo_with_skill(&repo, "outside", "# Outside\n");
+    let scoped_skill = repo.join("tools/skills/inside");
+    std::fs::create_dir_all(&scoped_skill).unwrap();
+    std::fs::write(scoped_skill.join("SKILL.md"), "# Inside\n").unwrap();
+    run_git(&repo, &["add", "."]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "add scoped skill",
+            "-q",
+        ],
+    );
+    setup_store_with_target(&store, &target);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "external"])
+        .arg(&repo)
+        .args(["--ref", "main", "--subpath", "tools"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("found 1 skill"));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    assert!(target.join("inside").is_symlink());
+    assert!(!target.join("outside").exists());
+    let lock = read_user_lock(&store);
+    let pinned = lock
+        .sources
+        .iter()
+        .find(|source| source.id == "external")
+        .unwrap();
+    assert_eq!(
+        pinned.subpath.as_deref(),
+        Some(std::path::Path::new("tools"))
+    );
+    assert_eq!(
+        pinned.commit.as_deref(),
+        Some(git_stdout(&repo, &["rev-parse", "HEAD"]).trim())
+    );
+
+    std::fs::rename(
+        store.join("sources/external/checkout/tools"),
+        store.join("sources/external/checkout/renamed"),
+    )
+    .unwrap();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "source subpath `tools` is unavailable",
+        ));
+    let _ = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .output();
+    assert!(target.join("inside").is_symlink());
+}
+
+#[test]
+fn source_add_scoped_should_reject_traversal_before_cloning() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = temp.path().join("store");
+    let repo = temp.path().join("repo");
+    create_git_skill_repo(&repo);
+    store::init_store(store.clone(), false).unwrap();
+
+    for subpath in ["../escape", "/tmp/escape"] {
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .args(["source", "add", "external"])
+            .arg(&repo)
+            .args(["--subpath", subpath])
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("source subpath"));
+        assert!(!store.join("sources/external/checkout").exists());
+    }
+
+    let outside = temp.path().join("outside");
+    std::fs::create_dir_all(&outside).unwrap();
+    std::os::unix::fs::symlink(&outside, repo.join("escaped")).unwrap();
+    run_git(&repo, &["add", "."]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "add escaping symlink",
+            "-q",
+        ],
+    );
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "external"])
+        .arg(&repo)
+        .args(["--subpath", "escaped"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("inside the checkout"));
+    assert!(!store.join("sources/external/checkout").exists());
+}
+
+#[test]
 fn source_add_should_warn_when_no_skills_are_discovered() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

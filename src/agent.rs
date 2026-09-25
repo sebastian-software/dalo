@@ -1901,6 +1901,7 @@ mod tests {
             id: id.to_owned(),
             kind,
             path: path.to_path_buf(),
+            subpath: None,
             priority,
             namespace: None,
             enabled: true,

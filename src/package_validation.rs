@@ -97,6 +97,7 @@ pub fn validate_with_source_id(
             id: source_id.to_owned(),
             kind: SourceKind::Local,
             path: source_root.to_path_buf(),
+            subpath: None,
             priority: 0,
             namespace: None,
             enabled: true,

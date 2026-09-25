@@ -2970,6 +2970,7 @@ required = true
             id: "company".to_owned(),
             kind: crate::source::SourceKind::Local,
             path: temp_dir.path().to_path_buf(),
+            subpath: None,
             priority: 0,
             namespace: None,
             enabled: true,

@@ -951,6 +951,7 @@ mod generated_tree_tests {
             id: id.to_owned(),
             kind: SourceKind::Team,
             path,
+            subpath: None,
             priority: 10,
             namespace: None,
             enabled: true,

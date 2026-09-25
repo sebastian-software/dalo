@@ -285,6 +285,7 @@ pub fn add_catalog_source(
         id: id.to_owned(),
         kind: SourceKind::Catalog,
         path: checkout.clone(),
+        subpath: None,
         priority,
         namespace,
         // Catalog sources start with an empty selection: their skills are offers,

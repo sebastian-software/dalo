@@ -89,6 +89,9 @@ pub struct LockedSource {
     pub kind: SourceKind,
     /// Local checkout path.
     pub path: PathBuf,
+    /// Optional inventory root inside the checkout.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subpath: Option<PathBuf>,
     /// Optional commit ID.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub commit: Option<String>,
@@ -173,6 +176,8 @@ pub struct LockDrift {
 pub enum LockDriftCode {
     /// A source commit changed since the last lock write.
     SourceCommitChanged,
+    /// A source inventory root changed since the last lock write.
+    SourceSubpathChanged,
     /// A source disappeared from the live config.
     SourceRemoved,
     /// A source appeared in the live config.
@@ -441,6 +446,7 @@ fn locked_sources(
             id: source.id.clone(),
             kind: source.kind,
             path: source.path.clone(),
+            subpath: source.subpath.clone(),
             // Catalog pins and inventory fingerprints are tracked in source-lock.toml.
             // Their checkout HEAD is intentionally not a user-lock drift signal.
             commit: (source.kind != SourceKind::Catalog)
@@ -565,6 +571,15 @@ fn compare_sources(previous: &UserLock, current: &UserLock, drift: &mut Vec<Lock
             current_sources.get(source_id),
         ) {
             (Some(previous_source), Some(current_source))
+                if previous_source.subpath != current_source.subpath =>
+            {
+                drift.push(LockDrift {
+                    code: LockDriftCode::SourceSubpathChanged,
+                    subject: source_id.to_owned(),
+                    message: format!("source `{source_id}` subpath differs from lock"),
+                });
+            }
+            (Some(previous_source), Some(current_source))
                 if previous_source.kind != current_source.kind
                     || (previous_source.kind != SourceKind::Catalog
                         && current_source.kind != SourceKind::Catalog
@@ -663,6 +678,7 @@ fn unlinked_reason_name(reason: UnlinkedReason) -> &'static str {
 fn drift_code_name(code: LockDriftCode) -> &'static str {
     match code {
         LockDriftCode::SourceCommitChanged => "source_commit_changed",
+        LockDriftCode::SourceSubpathChanged => "source_subpath_changed",
         LockDriftCode::SourceRemoved => "source_removed",
         LockDriftCode::SourceAdded => "source_added",
         LockDriftCode::ActiveRemoved => "active_removed",
@@ -807,12 +823,34 @@ mod tests {
     }
 
     #[test]
+    fn compare_sources_should_report_subpath_change() {
+        let mut previous_source = locked_source("company", Some("aaaa"));
+        previous_source.subpath = Some(PathBuf::from("tools/skills"));
+        let mut current_source = previous_source.clone();
+        current_source.subpath = Some(PathBuf::from("agent/skills"));
+        let previous = UserLock {
+            sources: vec![previous_source],
+            ..UserLock::empty()
+        };
+        let current = UserLock {
+            sources: vec![current_source],
+            ..UserLock::empty()
+        };
+
+        let drift = compare_user_lock(&previous, &current);
+        assert!(drift.iter().any(|entry| {
+            entry.code == LockDriftCode::SourceSubpathChanged && entry.subject == "company"
+        }));
+    }
+
+    #[test]
     fn compare_sources_should_ignore_catalog_checkout_commit_drift() {
         let previous = UserLock {
             sources: vec![LockedSource {
                 id: "catalog".to_owned(),
                 kind: SourceKind::Catalog,
                 path: PathBuf::from("/catalog"),
+                subpath: None,
                 commit: Some("aaaa".to_owned()),
             }],
             ..UserLock::empty()
@@ -822,6 +860,7 @@ mod tests {
                 id: "catalog".to_owned(),
                 kind: SourceKind::Catalog,
                 path: PathBuf::from("/catalog"),
+                subpath: None,
                 commit: Some("bbbb".to_owned()),
             }],
             ..UserLock::empty()
@@ -843,6 +882,7 @@ mod tests {
                 id: "source".to_owned(),
                 kind: SourceKind::Catalog,
                 path: PathBuf::from("/source"),
+                subpath: None,
                 commit: None,
             }],
             ..UserLock::empty()
@@ -852,6 +892,7 @@ mod tests {
                 id: "source".to_owned(),
                 kind: SourceKind::Team,
                 path: PathBuf::from("/source"),
+                subpath: None,
                 commit: Some("bbbb".to_owned()),
             }],
             ..UserLock::empty()
@@ -1056,6 +1097,7 @@ mod tests {
             id: id.to_owned(),
             kind: SourceKind::Team,
             path: PathBuf::from(format!("/store/sources/{id}")),
+            subpath: None,
             commit: commit.map(str::to_owned),
         }
     }

@@ -584,16 +584,21 @@ pub(crate) fn resolve_from_config_with_plugin_inventories_with_source_errors(
 fn scan_enabled_source(
     source: &SourceConfig,
 ) -> (PluginInventory, Result<SourceInventory, String>) {
-    let plugin_inventory = plugin::scan_source_plugins(&source.id, &source.path);
     if !source.path.exists() {
         return (
-            plugin_inventory,
+            PluginInventory::default(),
             Err("source path does not exist".to_owned()),
         );
     }
+    let source_root =
+        match crate::source::scoped_source_root(&source.path, source.subpath.as_deref()) {
+            Ok(root) => root,
+            Err(error) => return (PluginInventory::default(), Err(error.to_string())),
+        };
+    let plugin_inventory = plugin::scan_source_plugins(&source.id, &source_root);
     let inventory = inventory::scan_source_with_plugin_inventory(
         &source.id,
-        &source.path,
+        &source_root,
         plugin_inventory.clone(),
     )
     .map_err(|error| error.to_string());
@@ -2130,6 +2135,7 @@ mod tests {
             id: id.to_owned(),
             kind,
             path: PathBuf::from(format!("/tmp/{id}")),
+            subpath: None,
             priority,
             namespace: None,
             enabled: true,

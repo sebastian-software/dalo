@@ -981,7 +981,9 @@ fn resolve_target(paths: &StorePaths, target: &str) -> DaloResult<(String, PathB
         {
             return Ok(staged_skill);
         }
-        let inventory = inventory::scan_source(source_id, &source.path)?;
+        let source_root =
+            crate::source::scoped_source_root(&source.path, source.subpath.as_deref())?;
+        let inventory = inventory::scan_source(source_id, &source_root)?;
         let known_skills = inventory
             .skills
             .iter()
@@ -2850,6 +2852,7 @@ mod tests {
             id: "preview".to_owned(),
             kind: crate::source::SourceKind::Team,
             path: source_root.clone(),
+            subpath: None,
             priority: 1,
             namespace: None,
             enabled: true,

@@ -80,6 +80,10 @@ version it does not support instead of guessing.
 | [`dalo.toml`](reference.md#team-repository-dalotoml) | team repository root | `schema_version` | `1` |
 | [`PLUGIN.toml`](reference.md#plugintoml-portable-plugins-tools-and-hooks) | `plugins/<name>/` in a source | `schema_version` | `1` (tool descriptor `1`, hook descriptor `1`) |
 
+The optional `sources[].subpath` in `config.toml` and `sources[].subpath` in
+`lock.toml` are additive 1.x fields. Older files without them continue to use
+the checkout root as the inventory root.
+
 Two further author-facing files are versioned the same way and follow the same
 rule: [`DELIVERY.toml`](reference.md#deliverytoml-provider-builds) provider
 builds (`schema_version = 1`) and
