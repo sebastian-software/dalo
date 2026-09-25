@@ -6,8 +6,7 @@
   <title>Dalo 1.0 · Dalo news</title>
   <meta name="description" content="Dalo 1.0: what the 1.x line guarantees, the six changes since 0.6, the removed spellings, and how to upgrade." />
   <link rel="canonical" href="https://dalo.sh/news/1-0.html" />
-  <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)" />
-  <meta name="theme-color" content="#15171c" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#ffffff" />
   <meta property="og:type" content="article" />
   <meta property="og:site_name" content="Dalo" />
   <meta property="og:url" content="https://dalo.sh/news/1-0.html" />
@@ -17,63 +16,67 @@
   <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
   <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
   <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
-  <link rel="preload" href="/assets/fonts/hanken-400.woff2" as="font" type="font/woff2" crossorigin />
-  <link rel="preload" href="/assets/fonts/geistmono-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="/docs.css" />
 </head>
 <body class="doc-page">
 <a class="skip-link" href="#main">Skip to content</a>
 
-<header class="site-header" data-scope="dark">
-  <div class="wrap header-inner">
+<header class="site-header">
+  <div class="wrap">
     <a class="brand" href="/" aria-label="Dalo home">
-      <svg class="brand-mark" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true" focusable="false">
-        <rect x="1.25" y="1.25" width="29.5" height="29.5" rx="8" fill="none" stroke="currentColor" stroke-width="1.5" />
-        <circle cx="9" cy="9.5" r="2" fill="currentColor" />
-        <circle cx="9" cy="16" r="2" fill="currentColor" />
-        <circle cx="9" cy="22.5" r="2" fill="currentColor" />
-        <path d="M11 9.5 H17 Q22 9.5 22 16 Q22 22.5 17 22.5 H11 M11 16 H22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" />
-        <circle cx="22.5" cy="16" r="2.6" fill="var(--accent)" />
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true" focusable="false">
+        <rect width="26" height="26" rx="7.5" fill="#0b1733"/>
+        <path d="M7.5 8 C12 8 13 13 18.5 13 M7.5 13 H18.5 M7.5 18 C12 18 13 13 18.5 13" fill="none" stroke="#fff" stroke-opacity=".45" stroke-width="1.3" stroke-linecap="round"/>
+        <circle cx="7.5" cy="8" r="1.9" fill="#fff"/><circle cx="7.5" cy="13" r="1.9" fill="#fff"/><circle cx="7.5" cy="18" r="1.9" fill="#fff"/>
+        <circle cx="18.5" cy="13" r="3" fill="#e8623a"/>
       </svg>
-      <span class="brand-word">dalo</span>
+      dalo
       <span class="brand-section">news</span>
     </a>
-    <nav class="site-nav" aria-label="Primary">
+    <nav class="nav site-nav" aria-label="Primary">
       <a href="/">Product</a>
       <a href="/docs/">Docs</a>
       <a href="/spec/">Spec</a>
       <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
     </nav>
-    <details class="mobile-menu">
-      <summary aria-label="Open navigation">
-        <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>
-        <span class="sr-only">Menu</span>
-      </summary>
-      <nav class="mobile-nav" aria-label="Mobile">
-        <a href="/">Product</a>
-        <a href="/docs/">Docs</a>
-        <a href="/spec/">Spec</a>
-        <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
-      </nav>
-    </details>
-    <div class="header-actions">
-      <a class="ghost-btn" href="https://github.com/sebastian-software/dalo" rel="noopener">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
-        <span>GitHub</span>
+    <div class="header-cta">
+      <a class="pill-btn" href="/docs/getting-started.html">Get started
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </a>
+      <details class="mobile-menu">
+        <summary aria-label="Open navigation">
+          <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>
+          <span class="sr-only">Menu</span>
+        </summary>
+        <nav class="mobile-nav" aria-label="Mobile">
+          <a href="/">Product</a>
+          <a href="/docs/">Docs</a>
+          <a href="/spec/">Spec</a>
+          <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+        </nav>
+      </details>
     </div>
   </div>
 </header>
 
 <main id="main" class="doc-shell wrap">
   <nav class="doc-nav" aria-label="News">
-    <p class="footer-h">News</p>
-        <a href="/news/1-0.html" aria-current="page">Dalo 1.0</a>
-        <a href="/docs/compatibility.html">Compatibility</a>
-        <a href="/docs/upgrading.html">Upgrading to 1.0</a>
-        <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a>
+    <p class="doc-nav-h">News</p>
+    <a href="/news/1-0.html" aria-current="page">Dalo 1.0</a>
+    <a href="/docs/compatibility.html">Compatibility</a>
+    <a href="/docs/upgrading.html">Upgrading to 1.0</a>
+    <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a>
   </nav>
+  <details class="doc-menu">
+    <summary><span class="doc-menu-label">News</span> <span class="doc-menu-current">Dalo 1.0</span></summary>
+    <nav class="doc-menu-nav" aria-label="News">
+      <a href="/news/1-0.html" aria-current="page">Dalo 1.0</a>
+      <a href="/docs/compatibility.html">Compatibility</a>
+      <a href="/docs/upgrading.html">Upgrading to 1.0</a>
+      <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a>
+    </nav>
+  </details>
   <article class="doc-body">
 <h1>Dalo 1.0</h1>
 <p class="doc-lede">September 2026. Dalo keeps your team's agent skills in Git and links one
@@ -229,10 +232,55 @@ tested a pre-release, or said plainly what was confusing.</p>
   </article>
 </main>
 
-<footer class="site-footer doc-footer" data-scope="dark">
-  <div class="wrap footer-base">
-    <span>© 2026 <a href="https://sebastian-software.de" rel="noopener">Sebastian Software</a> · Dalo</span>
-    <span><a href="/">dalo.sh</a> · <a href="/spec/">Spec</a> · <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a> · <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a></span>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <a class="brand" href="/" aria-label="Dalo home">
+          <svg width="22" height="22" viewBox="0 0 26 26" aria-hidden="true" focusable="false">
+            <rect width="26" height="26" rx="7.5" fill="#0b1733"/>
+            <path d="M7.5 8 C12 8 13 13 18.5 13 M7.5 13 H18.5 M7.5 18 C12 18 13 13 18.5 13" fill="none" stroke="#fff" stroke-opacity=".45" stroke-width="1.3" stroke-linecap="round"/>
+            <circle cx="7.5" cy="8" r="1.9" fill="#fff"/><circle cx="7.5" cy="13" r="1.9" fill="#fff"/><circle cx="7.5" cy="18" r="1.9" fill="#fff"/>
+            <circle cx="18.5" cy="13" r="3" fill="#e8623a"/>
+          </svg>
+          dalo
+        </a>
+        <p>Git-backed skill management for AI agents. Built in Rust.</p>
+      </div>
+      <nav class="footer-cols" aria-label="Footer">
+        <div class="footer-col">
+          <p class="footer-h">Product</p>
+          <a href="/#how">How it works</a>
+          <a href="/#quickstart">Quickstart</a>
+          <a href="/#compare">Compare</a>
+          <a href="/#stability">Stability</a>
+        </div>
+        <div class="footer-col">
+          <p class="footer-h">Docs</p>
+          <a href="/docs/">All documentation</a>
+          <a href="/docs/getting-started.html">Getting started</a>
+          <a href="/docs/reference.html">Reference</a>
+          <a href="/docs/troubleshooting.html">Troubleshooting</a>
+          <a href="/spec/">Spec</a>
+          <a href="/docs/security.html">Security</a>
+          <a href="/install.md">Install guide</a>
+          <a href="https://github.com/sebastian-software/dalo/releases" rel="noopener">Releases</a>
+        </div>
+        <div class="footer-col">
+          <p class="footer-h">Project</p>
+          <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+          <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a>
+          <a href="https://github.com/sebastian-software/dalo/security/policy" rel="noopener">Security policy</a>
+          <a href="https://github.com/sebastian-software/dalo/blob/main/LICENSE-MIT" rel="noopener">MIT license</a>
+          <a href="https://github.com/sebastian-software/dalo/blob/main/LICENSE-APACHE" rel="noopener">Apache-2.0 license</a>
+          <a href="https://github.com/sebastian-software/dalo/issues" rel="noopener">Issues</a>
+        </div>
+      </nav>
+    </div>
+    <div class="footer-base">
+      <span>© 2026 <a href="https://sebastian-software.de" rel="noopener">Sebastian Software</a> · No tracking, no cookies</span>
+      <span>From the same workshop: <a href="https://github.com/sebastian-software/harness-relay" rel="noopener">harness-relay</a> · <a href="https://oss.sebastian-software.com" rel="noopener">more open source</a></span>
+    </div>
   </div>
 </footer>
 </body>

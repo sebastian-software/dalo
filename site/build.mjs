@@ -149,6 +149,7 @@ const rewriteLink = (href, sourcePath) => {
 
 const renderMarkdown = (markdown, sourcePath) => {
   const seen = new Map()
+  const toc = []
   const marked = new Marked({ gfm: true })
   marked.use({
     renderer: {
@@ -157,6 +158,8 @@ const renderMarkdown = (markdown, sourcePath) => {
         // The slug comes from the raw heading text, so anchors written against
         // the Markdown sources resolve on the rendered page too.
         const id = uniqueSlug(token.text, seen)
+        // Links inside a heading would nest in the table of contents.
+        if (token.depth === 2) toc.push({ id, html: content.replace(/<\/?a\b[^>]*>/g, "") })
         const inner =
           token.depth === 1 ? content : `<a class="doc-anchor" href="#${id}">${content}</a>`
         return `<h${token.depth} id="${id}">${inner}</h${token.depth}>\n`
@@ -171,19 +174,75 @@ const renderMarkdown = (markdown, sourcePath) => {
     },
   })
   // Wide command tables scroll inside the page instead of stretching it.
-  return marked
+  const html = marked
     .parse(markdown)
     .replaceAll("<table>", '<div class="doc-table"><table>')
     .replaceAll("</table>", "</table></div>")
+  return { html, toc }
 }
 
-const NAV = (current, pages = PAGES, prefix = "/docs/") =>
-  pages
+// The brand mark is the homepage's, byte for byte, so the header reads the same
+// on every page of the site.
+const BRAND_MARK = (size, indent) => `<svg width="${size}" height="${size}" viewBox="0 0 26 26" aria-hidden="true" focusable="false">
+${indent}  <rect width="26" height="26" rx="7.5" fill="#0b1733"/>
+${indent}  <path d="M7.5 8 C12 8 13 13 18.5 13 M7.5 13 H18.5 M7.5 18 C12 18 13 13 18.5 13" fill="none" stroke="#fff" stroke-opacity=".45" stroke-width="1.3" stroke-linecap="round"/>
+${indent}  <circle cx="7.5" cy="8" r="1.9" fill="#fff"/><circle cx="7.5" cy="13" r="1.9" fill="#fff"/><circle cx="7.5" cy="18" r="1.9" fill="#fff"/>
+${indent}  <circle cx="18.5" cy="13" r="3" fill="#e8623a"/>
+${indent}</svg>`
+
+const CHEVRON =
+  '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+
+// The overview entry heads each side navigation: the docs index for the
+// documentation, the static landing page for the specification.
+const OVERVIEW = {
+  docs: { slug: "index", label: "Overview", href: "/docs/" },
+  spec: { slug: "landing", label: "Overview", href: "/spec/" },
+}
+
+const navEntries = (section, pages, prefix) => [
+  OVERVIEW[section],
+  ...pages.map((page) => ({
+    slug: page.slug,
+    label: page.label,
+    href: `${prefix}${page.slug === "index" ? "" : `${page.slug}.html`}`,
+  })),
+]
+
+const NAV = (current, entries, indent) =>
+  entries
     .map(
-      (page) =>
-        `        <a href="${prefix}${page.slug === "index" ? "" : `${page.slug}.html`}"${page.slug === current ? ' aria-current="page"' : ""}>${page.label}</a>`,
+      (entry) =>
+        `${indent}<a href="${entry.href}"${entry.slug === current ? ' aria-current="page"' : ""}>${entry.label}</a>`,
     )
     .join("\n")
+
+const TOP_NAV = (section, indent) =>
+  [
+    ["/", "Product"],
+    ["/docs/", "Docs"],
+    ["/spec/", "Spec"],
+    [REPO, "GitHub"],
+  ]
+    .map(([href, label]) => {
+      const external = href.startsWith("http") ? ' rel="noopener"' : ""
+      const current = href === `/${section}/` ? ' aria-current="true"' : ""
+      return `${indent}<a href="${href}"${external}${current}>${label}</a>`
+    })
+    .join("\n")
+
+// "On this page": the level-2 headings of a long document, shown beside it on
+// wide screens.
+const TOC = (toc) =>
+  toc.length < 2
+    ? ""
+    : `
+  <nav class="doc-toc" aria-label="On this page">
+    <p class="doc-toc-h">On this page</p>
+    <ul>
+${toc.map((entry) => `      <li><a href="#${entry.id}">${entry.html}</a></li>`).join("\n")}
+    </ul>
+  </nav>`
 
 const shell = ({
   slug: current,
@@ -191,109 +250,147 @@ const shell = ({
   description,
   canonical,
   body,
+  toc = [],
   section = "docs",
   navPages = PAGES,
   navPrefix = "/docs/",
-}) => `<!doctype html>
+}) => {
+  const sectionName = section === "spec" ? "Specification" : "Documentation"
+  const entries = navEntries(section, navPages, navPrefix)
+  const currentLabel = entries.find((entry) => entry.slug === current)?.label ?? escapeHtml(title)
+  const tocHtml = TOC(toc)
+  return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escapeHtml(title)} · Dalo ${section === "spec" ? "specification" : "documentation"}</title>
+  <title>${escapeHtml(title)} · Dalo ${sectionName.toLowerCase()}</title>
   <meta name="description" content="${escapeHtml(description)}" />
   <link rel="canonical" href="${canonical}" />
-  <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)" />
-  <meta name="theme-color" content="#15171c" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#ffffff" />
   <meta property="og:type" content="article" />
   <meta property="og:site_name" content="Dalo" />
   <meta property="og:url" content="${canonical}" />
-  <meta property="og:title" content="${escapeHtml(title)} · Dalo ${section === "spec" ? "specification" : "documentation"}" />
+  <meta property="og:title" content="${escapeHtml(title)} · Dalo ${sectionName.toLowerCase()}" />
   <meta property="og:description" content="${escapeHtml(description)}" />
   <meta property="og:image" content="${SITE}/assets/img/og.png" />
   <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
   <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
   <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
-  <link rel="preload" href="/assets/fonts/hanken-400.woff2" as="font" type="font/woff2" crossorigin />
-  <link rel="preload" href="/assets/fonts/geistmono-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="/docs.css" />
 </head>
 <body class="doc-page">
 <a class="skip-link" href="#main">Skip to content</a>
 
-<header class="site-header" data-scope="dark">
-  <div class="wrap header-inner">
+<header class="site-header">
+  <div class="wrap">
     <a class="brand" href="/" aria-label="Dalo home">
-      <svg class="brand-mark" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true" focusable="false">
-        <rect x="1.25" y="1.25" width="29.5" height="29.5" rx="8" fill="none" stroke="currentColor" stroke-width="1.5" />
-        <circle cx="9" cy="9.5" r="2" fill="currentColor" />
-        <circle cx="9" cy="16" r="2" fill="currentColor" />
-        <circle cx="9" cy="22.5" r="2" fill="currentColor" />
-        <path d="M11 9.5 H17 Q22 9.5 22 16 Q22 22.5 17 22.5 H11 M11 16 H22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" />
-        <circle cx="22.5" cy="16" r="2.6" fill="var(--accent)" />
-      </svg>
-      <span class="brand-word">dalo</span>
+      ${BRAND_MARK(26, "      ")}
+      dalo
       <span class="brand-section">${section}</span>
     </a>
-    <nav class="site-nav" aria-label="Primary">
-      <a href="/">Product</a>
-      <a href="/docs/">Docs</a>
-      <a href="/spec/">Spec</a>
-      <a href="${REPO}" rel="noopener">GitHub</a>
+    <nav class="nav site-nav" aria-label="Primary">
+${TOP_NAV(section, "      ")}
     </nav>
-    <details class="mobile-menu">
-      <summary aria-label="Open navigation">
-        <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>
-        <span class="sr-only">Menu</span>
-      </summary>
-      <nav class="mobile-nav" aria-label="Mobile">
-        <a href="/">Product</a>
-        <a href="/docs/">Docs</a>
-        <a href="/spec/">Spec</a>
-        <a href="${REPO}" rel="noopener">GitHub</a>
-      </nav>
-    </details>
-    <div class="header-actions">
-      <a class="ghost-btn" href="${REPO}" rel="noopener">
-        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
-        <span>GitHub</span>
+    <div class="header-cta">
+      <a class="pill-btn" href="/docs/getting-started.html">Get started
+        ${CHEVRON}
       </a>
+      <details class="mobile-menu">
+        <summary aria-label="Open navigation">
+          <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>
+          <span class="sr-only">Menu</span>
+        </summary>
+        <nav class="mobile-nav" aria-label="Mobile">
+${TOP_NAV(section, "          ")}
+        </nav>
+      </details>
     </div>
   </div>
 </header>
 
-<main id="main" class="doc-shell wrap">
-  <nav class="doc-nav" aria-label="${section === "spec" ? "Specification" : "Documentation"}">
-    <p class="footer-h">${section === "spec" ? "Specification" : "Documentation"}</p>
-${NAV(current, navPages, navPrefix)}
+<main id="main" class="doc-shell wrap${tocHtml ? " has-toc" : ""}">
+  <nav class="doc-nav" aria-label="${sectionName}">
+    <p class="doc-nav-h">${sectionName}</p>
+${NAV(current, entries, "    ")}
   </nav>
+  <details class="doc-menu">
+    <summary><span class="doc-menu-label">${sectionName}</span> <span class="doc-menu-current">${currentLabel}</span></summary>
+    <nav class="doc-menu-nav" aria-label="${sectionName}">
+${NAV(current, entries, "      ")}
+    </nav>
+  </details>
   <article class="doc-body">
 ${body}
-  </article>
+  </article>${tocHtml}
 </main>
 
-<footer class="site-footer doc-footer" data-scope="dark">
-  <div class="wrap footer-base">
-    <span>© 2026 <a href="https://sebastian-software.de" rel="noopener">Sebastian Software</a> · Dalo</span>
-    <span><a href="/">dalo.sh</a> · <a href="/spec/">Spec</a> · <a href="${REPO}" rel="noopener">GitHub</a> · <a href="${REPO}/blob/main/CHANGELOG.md" rel="noopener">Changelog</a></span>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <a class="brand" href="/" aria-label="Dalo home">
+          ${BRAND_MARK(22, "          ")}
+          dalo
+        </a>
+        <p>Git-backed skill management for AI agents. Built in Rust.</p>
+      </div>
+      <nav class="footer-cols" aria-label="Footer">
+        <div class="footer-col">
+          <p class="footer-h">Product</p>
+          <a href="/#how">How it works</a>
+          <a href="/#quickstart">Quickstart</a>
+          <a href="/#compare">Compare</a>
+          <a href="/#stability">Stability</a>
+        </div>
+        <div class="footer-col">
+          <p class="footer-h">Docs</p>
+          <a href="/docs/">All documentation</a>
+          <a href="/docs/getting-started.html">Getting started</a>
+          <a href="/docs/reference.html">Reference</a>
+          <a href="/docs/troubleshooting.html">Troubleshooting</a>
+          <a href="/spec/">Spec</a>
+          <a href="/docs/security.html">Security</a>
+          <a href="/install.md">Install guide</a>
+          <a href="${REPO}/releases" rel="noopener">Releases</a>
+        </div>
+        <div class="footer-col">
+          <p class="footer-h">Project</p>
+          <a href="${REPO}" rel="noopener">GitHub</a>
+          <a href="${BLOB}/CHANGELOG.md" rel="noopener">Changelog</a>
+          <a href="${REPO}/security/policy" rel="noopener">Security policy</a>
+          <a href="${BLOB}/LICENSE-MIT" rel="noopener">MIT license</a>
+          <a href="${BLOB}/LICENSE-APACHE" rel="noopener">Apache-2.0 license</a>
+          <a href="${REPO}/issues" rel="noopener">Issues</a>
+        </div>
+      </nav>
+    </div>
+    <div class="footer-base">
+      <span>© 2026 <a href="https://sebastian-software.de" rel="noopener">Sebastian Software</a> · No tracking, no cookies</span>
+      <span>From the same workshop: <a href="https://github.com/sebastian-software/harness-relay" rel="noopener">harness-relay</a> · <a href="https://oss.sebastian-software.com" rel="noopener">more open source</a></span>
+    </div>
   </div>
 </footer>
 </body>
 </html>
 `
+}
 
 const docPage = async (page) => {
   const sourcePath = `docs/${page.slug}.md`
   const markdown = await readFile(path.join(rootDir, sourcePath), "utf8")
   const title = markdown.match(/^#\s+(.+)$/m)?.[1]?.trim()
   if (!title) throw new Error(`docs/${page.slug}.md has no level-1 heading`)
-  const body = renderMarkdown(markdown, sourcePath).trimEnd()
+  const { html, toc } = renderMarkdown(markdown, sourcePath)
+  const body = html.trimEnd()
   const source = `${BLOB}/${sourcePath}`
   return shell({
     slug: page.slug,
     title,
     description: page.summary,
     canonical: `${SITE}/docs/${page.slug}.html`,
+    toc,
     body: `${body}\n<p class="doc-source">Source: <a href="${source}" rel="noopener">${sourcePath}</a></p>`,
   })
 }
@@ -303,7 +400,8 @@ const specPage = async (page) => {
   const markdown = await readFile(path.join(rootDir, sourcePath), "utf8")
   const title = markdown.match(/^#\s+(.+)$/m)?.[1]?.trim()
   if (!title) throw new Error(`${sourcePath} has no level-1 heading`)
-  const body = renderMarkdown(markdown, sourcePath).trimEnd()
+  const { html, toc } = renderMarkdown(markdown, sourcePath)
+  const body = html.trimEnd()
   const outputPath = page.slug === "index" ? `spec/${SPEC_VERSION}/` : `spec/${SPEC_VERSION}/${page.slug}.html`
   const source = `${BLOB}/${sourcePath}`
   return shell({
@@ -311,6 +409,7 @@ const specPage = async (page) => {
     title,
     description: page.summary,
     canonical: `${SITE}/${outputPath}`,
+    toc,
     section: "spec",
     navPages: SPEC_PAGES,
     navPrefix: `/spec/${SPEC_VERSION}/`,
@@ -327,19 +426,29 @@ const specIndexPage = () =>
     section: "spec",
     navPages: SPEC_PAGES,
     navPrefix: `/spec/${SPEC_VERSION}/`,
-    body: `<h1>Portable Agent Packages</h1>
+    body: `<p class="doc-kicker">Experimental · draft ${SPEC_VERSION}</p>
+<h1>Portable Agent Packages</h1>
 <p class="doc-lede">An experimental author-facing profile for grouping skills, standing instructions, local tools, and event handlers into a package that a consumer can validate and review.</p>
-<div class="doc-cards">
+<ul class="doc-cards">
+<li>
   <a class="doc-card" href="/spec/${SPEC_VERSION}/">
     <span class="doc-card-title">Draft ${SPEC_VERSION}</span>
     <span class="doc-card-summary">Read the versioned specification, contract fields, validation stages, and bounded hook mapping.</span>
   </a>
+</li>
+<li>
   <a class="doc-card" href="/spec/${SPEC_VERSION}/compatibility.html">
     <span class="doc-card-title">Compatibility</span>
     <span class="doc-card-summary">See provider evidence and the limits of the current reference fixtures.</span>
   </a>
-</div>
-<p>Download the <a href="/spec/${SPEC_VERSION}/plugin-v1.schema.json">JSON Schema</a> for editor assistance and structural validation.</p>`,
+</li>
+<li>
+  <a class="doc-card" href="/spec/${SPEC_VERSION}/plugin-v1.schema.json">
+    <span class="doc-card-title">JSON Schema</span>
+    <span class="doc-card-summary">Download <code>plugin-v1.schema.json</code> for editor assistance and structural validation.</span>
+  </a>
+</li>
+</ul>`,
   })
 
 const indexPage = () => {
@@ -356,7 +465,8 @@ const indexPage = () => {
     title: "Documentation",
     description: "Dalo documentation: getting started, command reference, agent integration, CI, troubleshooting, and uninstall.",
     canonical: `${SITE}/docs/`,
-    body: `<h1>Dalo documentation</h1>
+    body: `<p class="doc-kicker">Documentation</p>
+<h1>Dalo documentation</h1>
 <p class="doc-lede">Everything the CLI can do today. The installation guide lives at
 <a href="/install.md">install.md</a>, the release history in the
 <a href="${BLOB}/CHANGELOG.md" rel="noopener">changelog</a>.</p>
