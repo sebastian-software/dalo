@@ -186,7 +186,7 @@ const renderMarkdown = (markdown, sourcePath) => {
 const BRAND_MARK = (height) =>
   `<img class="brand-mark" src="/assets/img/logo.svg" width="${Math.round((height * 274) / 240)}" height="${height}" alt="" />`
 const BRAND_WORD = (height) =>
-  `<img class="brand-word" src="/assets/img/wordmark.svg" width="${Math.round((height * 380) / 140)}" height="${height}" alt="" />`
+  `<img class="brand-word" src="/assets/img/wordmark.svg" width="${Math.round((height * 2873) / 735)}" height="${height}" alt="" />`
 
 const CHEVRON =
   '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
@@ -285,7 +285,7 @@ const shell = ({
   <div class="wrap">
     <a class="brand" href="/" aria-label="Dalo home">
       ${BRAND_MARK(34)}
-      ${BRAND_WORD(21)}
+      ${BRAND_WORD(16)}
       <span class="brand-section">${section}</span>
     </a>
     <nav class="nav site-nav" aria-label="Primary">
@@ -330,7 +330,7 @@ ${body}
       <div class="footer-brand">
         <a class="brand" href="/" aria-label="Dalo home">
           ${BRAND_MARK(30)}
-          ${BRAND_WORD(18)}
+          ${BRAND_WORD(14)}
         </a>
         <p>Git-backed skill management for AI agents. Built in Rust.</p>
       </div>

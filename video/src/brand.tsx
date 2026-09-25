@@ -69,9 +69,10 @@ export const Logo = ({height}: {height: number}) => (
   <Img src={logo} alt="" style={{height, width: Math.round((height * 274) / 240), display: 'block'}} />
 );
 
-// The site's drawn wordmark (site/assets/img/wordmark.svg); its viewBox is 380 x 140.
+// The site's wordmark (site/assets/img/wordmark.svg), Outfit ExtraBold set in
+// capitals and converted to outlines; its viewBox is 2873 x 735.
 export const Wordmark = ({height}: {height: number}) => (
-  <Img src={wordmark} alt="" style={{height, width: Math.round((height * 380) / 140), display: 'block'}} />
+  <Img src={wordmark} alt="" style={{height, width: Math.round((height * 2873) / 735), display: 'block'}} />
 );
 
 // Soft blurred colour fields, the same mesh the homepage hero sits on.

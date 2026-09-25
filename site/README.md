@@ -54,7 +54,9 @@ pnpm --dir video run render:og   # site/assets/img/og.png
 `render:og` renders the `DaloOg` still (`video/src/OgImage.tsx`) at 1200x630
 in the light site design: the palette of `home.css`, the repository `logo.svg`,
 and `site/assets/img/wordmark.svg`, shared with the video through
-`video/src/brand.tsx`. The pages use the system font stacks, which a rendered
+`video/src/brand.tsx`. The wordmark is "DALO" set in Outfit ExtraBold (SIL
+Open Font License) and converted to outlines, so no page or render needs the
+font itself. The pages use the system font stacks, which a rendered
 image cannot, so both renders embed the self-hosted Hanken Grotesk and Geist
 Mono from `site/assets/fonts` instead. The landing page, every rendered
 `docs/*.html`, and the `spec/` pages all reference that one image, so a refresh

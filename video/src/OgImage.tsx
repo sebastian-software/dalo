@@ -53,7 +53,7 @@ export const OgImage = () => {
 
       <div style={{position: 'absolute', left: 80, top: 62, display: 'flex', alignItems: 'center', gap: 14}}>
         <Logo height={44} />
-        <Wordmark height={27} />
+        <Wordmark height={21} />
       </div>
 
       <div style={{position: 'absolute', left: 80, top: 184, width: 700}}>

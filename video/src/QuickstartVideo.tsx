@@ -65,7 +65,7 @@ export const QuickstartVideo = () => {
 
       <header style={{position: 'relative', height: 52, display: 'flex', alignItems: 'center', gap: 14}}>
         <Logo height={44} />
-        <Wordmark height={26} />
+        <Wordmark height={20} />
         <span style={{marginLeft: 12, color: colors.muted, fontSize: 20}}>one source of truth for agent skills</span>
         <span
           style={{
