@@ -565,9 +565,18 @@ const main = async () => {
     await cp(path.join(siteDir, entry.name), path.join(buildDir, entry.name), { recursive: true })
   }
   await writeFile(path.join(buildDir, "sitemap.xml"), files.get("sitemap.xml"))
+  // The release count on the landing page follows CHANGELOG.md at deploy time,
+  // so the published number never lags behind a release-please release.
+  const releases = (await readFile(path.join(rootDir, "CHANGELOG.md"), "utf8")).match(/^## \[/gm)?.length ?? 0
+  const landing = path.join(buildDir, "index.html")
+  const stampedReleases = (await readFile(landing, "utf8")).replace(
+    /(<strong data-dalo-releases>)[^<]*(<\/strong>)/,
+    (_match, open, close) => `${open}${releases}${close}`,
+  )
+  await writeFile(landing, stampedReleases)
 
   const changed = drift.length > 0 ? `updated ${drift.join(", ")}; ` : ""
-  console.log(`${changed}built site/build/ for dalo ${version} (lastmod ${lastmod})`)
+  console.log(`${changed}built site/build/ for dalo ${version} (lastmod ${lastmod}, ${releases} releases)`)
 }
 
 await main()

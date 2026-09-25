@@ -116,8 +116,8 @@
             <button class="install-method" type="button" data-install-method="standalone" data-command-value="curl -fsSL https://dalo.sh/install.sh | sh" aria-pressed="false">
               Standalone <span>macOS + Linux</span>
             </button>
-            <button class="install-method" type="button" data-install-method="npx" data-command-value="npx getdalo init" aria-pressed="false">
-              npx <span>Node 20+</span>
+            <button class="install-method" type="button" data-install-method="npm" data-command-value="npm install --global getdalo" aria-pressed="false">
+              npm <span>Node 20+</span>
             </button>
           </div>
           <div class="install">
@@ -142,8 +142,8 @@
 <span class="ln k-dim">dalo store: ~/.dalo</span>
 <span class="ln k-dim">target[codex]: ~/.agents/skills</span>
 <span class="ln k-dim">target[claude]: ~/.claude/skills</span>
-<span class="ln"><span class="k-ok">applied  create</span>     target[codex]:/review -&gt; store:/local/skills/review</span>
-<span class="ln"><span class="k-ok">applied  create</span>     target[claude]:/review -&gt; store:/local/skills/review</span>
+<span class="ln"><span class="k-ok">applied  create</span>     target[codex]:/review <span class="nb">-&gt;</span> store:/local/skills/review</span>
+<span class="ln"><span class="k-ok">applied  create</span>     target[claude]:/review <span class="nb">-&gt;</span> store:/local/skills/review</span>
 <span class="ln cmd">synced: 1 skill across 2 targets (2 created)</span>
 <span class="ln k-dim">security preflight: deterministic checks only</span>
 <span class="ln"><span class="p">$</span> <span class="cursor"></span></span></code></pre>
@@ -208,8 +208,8 @@
       <article class="row reveal" style="--accent:#2b8fd6; --accent-2:#7b5cf5">
         <div class="copy-col">
           <span class="kicker"><span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="3.5" cy="3.5" r="1.8" fill="currentColor"/><circle cx="3.5" cy="12.5" r="1.8" fill="currentColor"/><circle cx="12.5" cy="8" r="2.2" fill="currentColor"/><path d="M3.5 3.5C8 3.5 8 8 12.5 8M3.5 12.5C8 12.5 8 8 12.5 8" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></span>One source of truth</span>
-          <h2>One approved set. Every machine.</h2>
-          <p class="body">Your team's skills live in Git. Dalo resolves one pinned set and links it into supported agent folders, byte for byte the same on every laptop.</p>
+          <h2>One pinned set. Every machine.</h2>
+          <p class="body">Your team's skills live in Git. Dalo resolves one pinned set and links it into supported agent folders, byte for byte the same on every laptop. The repository decides what is in the set; each machine still approves catalog skills itself.</p>
           <a class="link-arrow" href="#how">See how it works
             <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </a>
@@ -396,10 +396,18 @@
           </li>
           <li>
             <span class="step-label">Run the sandbox</span>
-            <p>Copy the commands in the terminal: they create a temporary store, add a public catalog, and approve one skill.</p>
+            <p>Copy the commands in the terminal: they create a temporary store, add a public catalog, and approve one skill. Done? <code class="inl">unset DALO_STORE SKILLS_DIR</code> returns your shell to your real setup.</p>
+          </li>
+          <li>
+            <span class="step-label">Make it your team's</span>
+            <p>Put your team's skills in a Git repository with a <code class="inl">dalo.toml</code> manifest. Teammates add it once and sync; approvals stay on each machine.</p>
+            <pre class="team-snippet"><code><span class="ln k-dim"># in your team's repository</span><span class="ln"><span class="p">$</span> dalo team init company --name "Company Skills"</span><span class="ln k-dim"># commit dalo.toml and skills/&lt;name&gt;/SKILL.md, then push</span><span class="ln"> </span><span class="ln k-dim"># on every teammate's machine</span><span class="ln"><span class="p">$</span> dalo source add company git@github.com:acme/agent-skills.git</span><span class="ln"><span class="p">$</span> dalo sync</span></code></pre>
+            <a class="link-arrow" href="/docs/team.html">Read the team repository guide
+              <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </a>
           </li>
         </ol>
-        <p class="alt">Also installs with <code class="inl">cargo install dalo</code>, <code class="inl">cargo binstall dalo</code>, mise, Nix, or <code class="inl">npx getdalo</code>. Installing through an agent? Point it to <a href="/install.md">install.md</a>.</p>
+        <p class="alt">Also installs with <code class="inl">cargo install dalo</code>, <code class="inl">cargo binstall dalo</code>, mise, or Nix; <code class="inl">npx getdalo</code> runs it once without installing. Installing through an agent? Point it to <a href="/install.md">install.md</a>.</p>
         <a class="link-arrow" href="/docs/getting-started.html">Read the getting started guide
           <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </a>
@@ -432,7 +440,7 @@
 <span class="ln k-dim">security preflight: deterministic checks only</span></code></pre>
         </div>
         <figure class="video-card">
-          <video autoplay loop muted playsinline controls preload="metadata" aria-label="Fifteen-second Dalo secure-sync video">
+          <video data-autoplay loop muted playsinline controls preload="metadata" aria-label="Fifteen-second Dalo secure-sync video">
             <source src="/assets/dalo-quickstart.mp4" type="video/mp4" />
           </video>
           <figcaption class="video-cap">The 15-second secure-sync demo. <a href="/assets/dalo-quickstart.mp4">Download the MP4</a></figcaption>
@@ -556,7 +564,7 @@
             </tbody>
           </table>
         </div>
-        <p class="compare-note">Snapshot from September 2026. Find skills on skills.sh, then let Dalo pin and deliver the ones your team approves. <a href="/docs/comparison.html">Read the full comparison</a></p>
+        <p class="compare-note">Snapshot from September 2026. Find skills on skills.sh, then let Dalo pin and deliver the ones your team selects. <a href="/docs/comparison.html">Read the full comparison</a></p>
       </div>
     </div>
   </section>
@@ -572,8 +580,8 @@
       <ul class="stats reveal" aria-label="Checkable facts about this project">
         <li>
           <a href="https://github.com/sebastian-software/dalo/releases" rel="noopener">
-            <strong>34</strong>
-            <span>releases since 0.1, every one public</span>
+            <strong data-dalo-releases>36</strong>
+            <span>releases, every one public</span>
           </a>
         </li>
         <li>

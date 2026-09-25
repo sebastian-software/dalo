@@ -463,7 +463,7 @@ grep -Fq 'x-release-please-start-version' "$root/site/index.html"
 # The hero transcript is the output the current CLI prints, not the pre-0.14 one.
 # `~/.agents/skills` is the Codex default, and `generic` refuses to be linked
 # without an explicit path, so the hero has to label that directory `codex`.
-grep -Fq 'target[codex]:/review -&gt; store:/local/skills/review' "$root/site/index.html"
+grep -Fq 'target[codex]:/review <span class="nb">-&gt;</span> store:/local/skills/review' "$root/site/index.html"
 refute 'the hero labels the Codex default directory as the generic target' \
   grep -Fq 'target[generic]: ~/.agents/skills' "$root/site/index.html"
 grep -Fq 'synced: 1 skill across 2 targets (2 created)' "$root/site/index.html"
