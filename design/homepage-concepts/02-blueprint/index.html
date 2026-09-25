@@ -161,7 +161,7 @@ code { font-size: .9em; }
 .hero-top { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 0; border-bottom: 1px solid var(--ink-4); }
 .hero-top > div:first-child { display: flex; flex-direction: column; }
 .hero-top .cta { margin-top: 28px; }
-.hero-top > div { padding: clamp(28px, 3.4vw, 48px) var(--pad) clamp(24px, 3vw, 40px); }
+.hero-top > div { padding: clamp(24px, 2.6vw, 36px) var(--pad) clamp(24px, 2.6vw, 36px); }
 .hero-top > div + div { border-left: 1px solid var(--ink-4); display: flex; flex-direction: column; justify-content: flex-end; }
 .hero-top .fine { margin-top: 4px; }
 h1 {
@@ -189,7 +189,7 @@ h1 .l { display: block; }
 .cta { display: flex; flex-wrap: wrap; gap: 10px; }
 .fine { margin: 14px 0 0; font: 400 12px/1.5 var(--mono); color: var(--ink-2); }
 
-.drawing { position: relative; padding: clamp(20px, 2.4vw, 32px) var(--pad) 0; }
+.drawing { position: relative; padding: clamp(18px, 2vw, 26px) var(--pad) 0; }
 .drawing .label { display: flex; justify-content: space-between; gap: 12px; }
 .pipe { display: block; width: 100%; height: auto; overflow: visible; }
 .pipe.v { display: none; max-width: 520px; margin: 0 auto; }
@@ -402,11 +402,13 @@ td code, th code { white-space: nowrap; }
   .spec { margin-top: 36px; }
   .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .navlinks li:nth-child(n+4) { display: none; }
+  .hero-top { grid-template-columns: minmax(0, 1fr); }
+  .hero-top > div + div { border-left: 0; border-top: 1px solid var(--ink-4); }
+  .lede { max-width: 34em; }
+  h1 { font-size: clamp(42px, 7vw, 72px); }
+  .cmd { max-width: 560px; }
 }
 @media (max-width: 860px) {
-  .hero-top { grid-template-columns: minmax(0, 1fr); }
-  h1 .l { display: inline; }
-  .hero-top > div + div { border-left: 0; border-top: 1px solid var(--ink-4); }
   .install, .cmp, .block-head { grid-template-columns: minmax(0, 1fr); }
   .pair { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .notes { columns: 1; }
@@ -447,7 +449,13 @@ td code, th code { white-space: nowrap; }
   .rule { grid-template-columns: 1fr; }
   .specs > div { grid-template-columns: 80px 1fr; }
   .foot ul { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mat { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mat li { border-right: 0; border-bottom: 1px solid var(--ink-4); }
+  .mat li:nth-child(2n) { border-right: 1px solid var(--ink-4); }
+  .mat li:first-child, .mat li:last-child { grid-column: 1 / -1; border-right: 0; }
+  .mat li:last-child { border-bottom: 0; }
   h1 { max-width: none; }
+  h1 .l { display: inline; }
   table.stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   table.stack, table.stack tbody { display: block; }
   table.stack tr { display: grid; gap: 4px 12px; padding: 14px; border-bottom: 1px solid var(--ink-4); }
@@ -520,7 +528,7 @@ td code, th code { white-space: nowrap; }
             <h1 id="h1"><span class="l">Your team's agent skills,</span> <span class="l">versioned like code.<a class="rev-mark" href="#revisions" aria-label="Revision history"><svg viewBox="0 0 30 26" aria-hidden="true"><path d="M15 1.5 L28.5 24.5 H1.5 Z" fill="none" stroke="#d2461d" stroke-width="1.6"/></svg><span aria-hidden="true">A</span></a></span></h1>
             <div class="cta">
               <a class="btn primary" href="#install">Install dalo</a>
-              <a class="btn" href="#assembly">Assembly instructions</a>
+              <a class="btn" href="#assembly">Quickstart</a>
             </div>
           </div>
           <div>
@@ -531,7 +539,7 @@ td code, th code { white-space: nowrap; }
         </div>
 
         <div class="drawing">
-          <p class="label"><span>View 1 — Skill delivery pipeline, schematic</span><span>Section A–A → sheet 2</span></p>
+          <p class="label"><span>View 1 — Skill delivery pipeline, schematic</span><span>Section A–A: see sheet 2</span></p>
 
           <!-- Horizontal drawing (desktop) -->
           <svg class="pipe h" viewBox="0 0 1240 512" role="img" aria-labelledby="pipe-t pipe-d">
@@ -690,7 +698,7 @@ td code, th code { white-space: nowrap; }
               <line x1="1212" y1="400" x2="1212" y2="506" class="t0"/>
               <line x1="40" y1="494" x2="470" y2="494" class="t1" marker-start="url(#ad)"/>
               <line x1="782" y1="494" x2="1212" y2="494" class="t1" marker-end="url(#ad)"/>
-              <text x="626" y="498" class="td mid">SAME INPUTS → BYTE-FOR-BYTE SAME RESULT</text>
+              <text x="626" y="498" class="td mid">SAME INPUTS · BYTE-FOR-BYTE SAME RESULT</text>
             </g>
           </svg>
 
@@ -808,7 +816,7 @@ td code, th code { white-space: nowrap; }
             <line x1="46" y1="872" x2="46" y2="904" class="t0"/>
             <line x1="352" y1="836" x2="352" y2="904" class="t0"/>
             <line x1="46" y1="894" x2="352" y2="894" class="t1" marker-start="url(#adv)" marker-end="url(#adv)"/>
-            <text x="199" y="886" class="td mid" style="font-size:10px">SAME INPUTS → SAME RESULT</text>
+            <text x="199" y="886" class="td mid" style="font-size:10px">SAME INPUTS · SAME RESULT</text>
           </svg>
         </div>
 
@@ -877,7 +885,7 @@ td code, th code { white-space: nowrap; }
               <dl class="specs">
                 <div><dt>Input</dt><dd>Active sources + config</dd></div>
                 <div><dt>Output</dt><dd>One resolved set, linked into every enabled target</dd></div>
-                <div><dt>Rule</dt><dd>Same name → lowest priority number wins</dd></div>
+                <div><dt>Rule</dt><dd>Same name: the lowest priority number wins</dd></div>
                 <div><dt>Losers</dt><dd>Reported as <code>shadowed</code>, conflicts stay visible</dd></div>
                 <div><dt>Re-run</dt><dd>Byte-for-byte identical on the same inputs</dd></div>
               </dl>
