@@ -52,10 +52,11 @@ pnpm --dir video run render:og   # site/assets/img/og.png
 ```
 
 `render:og` renders the `DaloOg` still (`video/src/OgImage.tsx`) at 1200x630
-using the self-hosted fonts in `site/assets/fonts` and the dark palette of the
-previous site design, whose tokens are copied into `OgImage.tsx`. The pages
-themselves no longer load those fonts or colours, so the card still carries the
-tagline but not the current light look. The landing page, every rendered
+in the light site design: the palette of `home.css`, the repository `logo.svg`,
+and `site/assets/img/wordmark.svg`, shared with the video through
+`video/src/brand.tsx`. The pages use the system font stacks, which a rendered
+image cannot, so both renders embed the self-hosted Hanken Grotesk and Geist
+Mono from `site/assets/fonts` instead. The landing page, every rendered
 `docs/*.html`, and the `spec/` pages all reference that one image, so a refresh
 covers the whole site. `tests/docs.sh` checks the PNG header against the
 declared `og:image:width` and `og:image:height`.

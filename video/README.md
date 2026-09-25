@@ -13,9 +13,10 @@ pnpm run render:og
 
 `pnpm run render` writes `site/assets/dalo-quickstart.mp4`. `pnpm run render:og`
 writes the 1200x630 social card `site/assets/img/og.png` from the `DaloOg`
-still, which uses the self-hosted fonts in `site/assets/fonts` and the previous
-site design's dark colour tokens (copied into `src/OgImage.tsx`); the whole
-site shares that one image.
+still; the whole site shares that one image. Both renders take the light
+site palette, the repository logo, and the site wordmark from `src/brand.tsx`,
+and embed the self-hosted Hanken Grotesk and Geist Mono from `site/assets/fonts`
+in place of the site's system font stacks, which a render cannot rely on.
 
 The terminal transcript mirrors current human-readable CLI output. When any
 displayed command changes, update the transcript and render the MP4 in the same
