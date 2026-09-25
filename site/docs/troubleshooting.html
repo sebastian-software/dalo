@@ -319,6 +319,11 @@ dalo --json doctor
 <td>Review source changes, then run <code>dalo sync</code> to write a fresh lock.</td>
 </tr>
 <tr>
+<td><code>source_subpath_changed</code></td>
+<td>A source&#39;s configured inventory directory differs from the lock.</td>
+<td>Review the directory change and its skills, then run <code>dalo sync</code> to write a fresh lock.</td>
+</tr>
+<tr>
 <td><code>source_removed</code></td>
 <td>A source from the lock is no longer configured.</td>
 <td>Run <code>dalo sync</code> to reconcile, or restore the source config.</td>

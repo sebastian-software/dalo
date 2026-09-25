@@ -393,16 +393,23 @@ directories are never touched.</p>
 dalo --json target unlink generic
 </code></pre>
 <p>JSON output shape: <code>TargetUnlinkReport</code>.</p>
-<h3 id="dalo-source-add-id-git-url-or-path---namespace-prefix"><a class="doc-anchor" href="#dalo-source-add-id-git-url-or-path---namespace-prefix"><code>dalo source add &lt;id&gt; &lt;git-url-or-path&gt; [--namespace &lt;prefix&gt;]</code></a></h3>
+<h3 id="dalo-source-add-id-git-url-or-path---namespace-prefix---ref-git-ref---subpath-directory"><a class="doc-anchor" href="#dalo-source-add-id-git-url-or-path---namespace-prefix---ref-git-ref---subpath-directory"><code>dalo source add &lt;id&gt; &lt;git-url-or-path&gt; [--namespace &lt;prefix&gt;] [--ref &lt;git-ref&gt;] [--subpath &lt;directory&gt;]</code></a></h3>
 <p>Add a trusted team source, clone it into <code>sources/&lt;id&gt;/checkout</code>, configure it
 with <code>update_policy = &quot;track&quot;</code>, and run a deterministic security preflight for
 every discovered skill. Source IDs must be a single path component using only
 letters, digits, <code>.</code>, <code>_</code>, and <code>-</code>; <code>.</code> and <code>..</code> are rejected.
 Local paths are supported; relative paths resolve against the current working
-directory.</p>
+directory.
+<code>--subpath</code> scans only a directory inside the checkout. It must be a non-empty
+relative path without <code>..</code> traversal; missing directories and symlinks that
+escape the checkout block scanning. <code>--ref</code> resolves a branch, tag, or commit
+to an exact detached commit and sets <code>update_policy = &quot;pin&quot;</code>; omit it to track
+the repository&#39;s default branch. The selected subpath is recorded in
+<code>config.toml</code> and <code>lock.toml</code>, so changing it reports lock drift.</p>
 <p>Examples:</p>
 <pre><code class="language-sh">dalo source add platform git@github.com:example/platform-skills.git
 dalo source add company git@github.com:example/company-skills.git --namespace company
+dalo source add platform git@github.com:example/monorepo.git --ref v1.2.0 --subpath tools/skills
 dalo --dry-run source add team https://github.com/example/team-skills.git
 </code></pre>
 <p>JSON output shape: <code>SourceAddReport</code>.</p>
@@ -1675,6 +1682,10 @@ selection = [&quot;review-helper&quot;]
 <td>Local filesystem path for the source root or checkout.</td>
 </tr>
 <tr>
+<td><code>sources[].subpath</code></td>
+<td>Optional directory inside a team checkout used as the inventory root. Must remain inside the checkout.</td>
+</tr>
+<tr>
 <td><code>sources[].priority</code></td>
 <td>Lower numbers win.</td>
 </tr>
@@ -1696,7 +1707,7 @@ selection = [&quot;review-helper&quot;]
 </tr>
 <tr>
 <td><code>sources[].branch</code></td>
-<td>Optional branch label.</td>
+<td>Optional requested Git ref for a directly added pinned source.</td>
 </tr>
 <tr>
 <td><code>sources[].update_policy</code></td>
@@ -1872,7 +1883,7 @@ normal approval workflows.</p>
 </thead>
 <tbody><tr>
 <td><code>sources[]</code></td>
-<td>Source ID, kind, path, and optional commit.</td>
+<td>Source ID, kind, path, optional subpath, and optional commit.</td>
 </tr>
 <tr>
 <td><code>active_skills[]</code></td>
@@ -1905,7 +1916,7 @@ normal approval workflows.</p>
 </thead>
 <tbody><tr>
 <td><code>LockedSource</code></td>
-<td><code>id</code>, <code>kind</code>, <code>path</code>, optional <code>commit</code></td>
+<td><code>id</code>, <code>kind</code>, <code>path</code>, optional <code>subpath</code>, optional <code>commit</code></td>
 </tr>
 <tr>
 <td><code>LockedSkill</code></td>
