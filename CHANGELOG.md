@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.1.0](https://github.com/sebastian-software/dalo/compare/dalo-v1.0.0...dalo-v1.1.0) (2026-09-26)
+
+
+### Features
+
+* **assistant:** suggest skills.sh project migration during inventory ([ef64f01](https://github.com/sebastian-software/dalo/commit/ef64f018359150f6b0dc65f38c1fbe790715bfce))
+* discover project scope and add global override ([de85bcd](https://github.com/sebastian-software/dalo/commit/de85bcdb3d656b9e61d43138d104c98aaa266365))
+* **migration:** import verified skills.sh project installations ([5c5536d](https://github.com/sebastian-software/dalo/commit/5c5536d89314427bd0627e6e3ad020dc2c41d405))
+* restore pinned skills in explicit project scope ([bb6b0a5](https://github.com/sebastian-software/dalo/commit/bb6b0a5707986308ac34625d0467707f0c1e310d))
+
 ## [1.0.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.17.0...dalo-v1.0.0) (2026-09-26)
 
 
