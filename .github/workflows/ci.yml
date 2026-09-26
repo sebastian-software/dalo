@@ -88,6 +88,9 @@ jobs:
           DALO_REHEARSAL_BINARY: target/${{ matrix.target }}/release/dalo
         run: sh scripts/release-rehearsal.sh
 
+      - name: Release-build performance guard
+        run: cargo test --release --locked --target "${{ matrix.target }}" --test performance -- --ignored noop_sync_should_not_regress_against_a_minimal_store --nocapture
+
       - name: Documentation
         run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
 

@@ -71,7 +71,10 @@ installer path advertises an archive before GitHub makes that archive available.
 
 The repeatable part of the release rehearsal runs against a clean temporary
 home, store, and generic agent target. It exercises the documented initialize,
-target, local-skill, sync, status, doctor, plan, and recovery-summary paths:
+target, local-skill, sync, status, doctor, plan, and recovery-summary paths, plus
+assistant installation, repeat installation, target delivery, and preservation
+of a user-edited assistant. It prints a transcript for the CI log. This checks
+CLI behavior; it does not prove that a real agent discovers and invokes the skill.
 
 ```sh
 sh scripts/release-rehearsal.sh
@@ -109,9 +112,10 @@ Release-please then opens `chore(main): release dalo 1.0.0` on
 CHANGELOG heading, and stamps `1.0.0` into `Cargo.toml`, `Cargo.lock`,
 `npm/package.json`, both `npm/package-lock.json` version paths, and the three
 annotated slots in `site/index.html` (`softwareVersion` plus the two
-`data-dalo-version` spans). Replace the generated release body with the curated
-launch notes from `.github/release-notes/<version>.md` before the draft is
-published, as described under [Curated release notes](#curated-release-notes).
+`data-dalo-version` spans). Commit the curated launch notes in
+`.github/release-notes/<version>.md` before merging the release PR. The publish
+workflow adds them above the generated notes before making the draft public,
+as described under [Curated release notes](#curated-release-notes).
 
 Merging that release pull request tags `dalo-v1.0.0` and runs `publish.yml`:
 five signed archives with checksums upload to a draft release, the draft is
@@ -147,10 +151,12 @@ time and committed to the repository:
   A later release that needs the same treatment adds
   `.github/release-notes/<version>.md` beside it; releases without such a file
   keep the generated body unchanged.
-- **Before the draft is published**, replace the draft release body with that
-  file's contents, then a `---` divider, then the generated commit list
-  unchanged. `publish.yml` only flips `--draft=false`; it never rewrites the
-  body, so the edit survives publication.
+- **Before the draft is published**, `publish.yml` checks out the release tag
+  and adds that file's contents, then a `---` divider, then the generated body
+  unchanged. `scripts/prepare-release-notes.mjs` owns a marked prefix so a
+  recovered publication replaces that prefix without duplicating it. Malformed
+  markers or an empty curated file stop publication. Releases without a curated
+  file keep their existing body; older tags without the composer still work.
 - **After the release pull request is merged**, add the same text above the
   generated entry in `CHANGELOG.md` in a separate `docs:` commit. Release-please
   owns that file and appends new entries at the top, so the narrative goes in
@@ -158,6 +164,28 @@ time and committed to the repository:
 - The notes repeat the breaking-change inventory that `docs/upgrading.md`
   carries, and `tests/docs.sh` checks both against the same list. A `!:` commit
   that lands before the tag has to be added to all three in one pull request.
+
+### Final 1.0 acceptance
+
+Keep evidence on [#841](https://github.com/sebastian-software/dalo/issues/841)
+for the exact candidate commit and the published tag. Closed implementation
+issues do not stand in for these checks:
+
+- All required CI jobs on the candidate are green, including the separate
+  release-build performance guard and the assistant CLI rehearsal.
+- On a clean macOS or Linux account, an actual Codex or Claude Code session
+  follows the installation guide, discovers the Dalo skill after delivery, and
+  invokes it. Record agent version, platform, commands, and results. Also check
+  the missing/outdated skill offer, refusal, and preservation of custom content.
+- Old draft releases have been removed without deleting published releases or
+  their Git tags. The 1.0 release contains curated notes and all signed assets.
+- After publication, fresh installation and upgrade work through the documented
+  channels, including the Nix flake at `dalo-v1.0.0`. Record the version and
+  `doctor` result per platform and channel; the CLI rehearsal alone cannot
+  establish distribution availability.
+- Announcement choices and subsequent feedback remain tracked under
+  [#840](https://github.com/sebastian-software/dalo/issues/840). Questions can be
+  answered where people ask them; there is no requirement for a single channel.
 
 ## Exit codes
 

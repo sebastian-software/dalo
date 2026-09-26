@@ -41,8 +41,9 @@ survived an hour of scrutiny.
    crates.io, npm, and the Homebrew tap all serve 1.0.0.
 2. Deploy `dalo.sh` so `/news/1-0.html` is live, and add the homepage CTA
    (snippet below).
-3. Post the GitHub Discussion in Announcements, linking the page. Every other
-   post points questions here.
+3. Post the GitHub Discussion in Announcements, linking the page. Answer
+   questions on the channel where they arrive; cross-link useful answers when
+   they help another conversation.
 4. Show HN, early on a weekday, US morning. Post the first comment immediately
    after submitting. Stay available for two hours.
 5. r/rust, then r/ClaudeAI, then r/ChatGPTCoding, one per day, never two on the

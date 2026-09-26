@@ -1,9 +1,9 @@
 //! Performance envelope: the measurement run and the CI regression guard.
 //!
-//! `cargo test --release --test performance -- --ignored --nocapture` prints the
-//! table published in `docs/compatibility.md`. The ordinary suite instead runs
-//! [`noop_sync_should_not_regress_against_a_minimal_store`], which compares the
-//! same command against a one-source baseline measured on the same machine.
+//! `cargo test --release --test performance -- --ignored measure_the_reference_scenario --nocapture` prints the
+//! table published in `docs/compatibility.md`. CI separately runs the ignored
+//! timing guard with a release build. The ordinary suite, including coverage,
+//! checks the Git subprocess budget without a wall-clock assertion.
 
 mod common;
 
@@ -12,6 +12,9 @@ use std::time::{Duration, Instant};
 
 /// How many times each command is timed. The median is reported.
 const RUNS: usize = 3;
+
+/// Alternating baseline/scenario pairs for the release-build timing guard.
+const TIMING_PAIRS: usize = 5;
 
 /// Ratio of no-op `sync` on the smoke scenario to no-op `sync` on a
 /// single-source store, above which the test fails.
@@ -52,10 +55,6 @@ fn run(scenario: &Scenario, arguments: &[&str]) -> Duration {
     elapsed
 }
 
-fn median_of(scenario: &Scenario, arguments: &[&str]) -> Duration {
-    median((0..RUNS).map(|_| run(scenario, arguments)).collect())
-}
-
 /// Runs one command with a `git` wrapper on `PATH` that records every call.
 fn git_invocations(scenario: &Scenario, arguments: &[&str]) -> Vec<String> {
     let directory = scenario.scratch.join("git-log");
@@ -72,53 +71,60 @@ fn git_invocations(scenario: &Scenario, arguments: &[&str]) -> Vec<String> {
     logger.invocations()
 }
 
-/// Guards the no-op `sync` hot path against a 5x regression.
+/// Compare warm no-op syncs in an uninstrumented release build.
 ///
-/// A fixed wall-clock budget cannot do this job: CI runners are several times
-/// slower than a developer machine, and a debug build is several times slower
-/// than the release build the published envelope was measured with, so any
-/// number generous enough never to fire on a slow runner would also be too
-/// generous to catch a regression on a fast one.
-///
-/// The test therefore measures a *ratio* on whatever machine it runs on: no-op
-/// `sync` over the smoke scenario (5 sources, 20 skills, 2 targets) divided by
-/// no-op `sync` over a store with a single source, a single skill, and a single
-/// target. Both numbers scale with the machine, the build profile, and the
-/// filesystem, so the ratio does not. What the ratio does scale with is work
-/// that grows with the store — a per-command rescan, a serial fetch per source,
-/// or a quadratic resolve — which is exactly the regression shape this guards.
-///
-/// The measured ratio is 1.9–2.6 on an Apple M1 Ultra, and it is the same in a
-/// debug and a release build (a no-op `sync` is dominated by Git subprocesses
-/// and store I/O, not by optimized Rust), which is the evidence that it really
-/// does cancel the machine out. [`NOOP_SYNC_RATIO_BOUND`] is 6.0. A 5x
-/// regression in the scenario's no-op `sync` that leaves the single-source
-/// store alone lands near 10, and even a regression that also slows the
-/// baseline by half as much still clears 6, so the bound fires well before 5x.
-/// In the other direction it sits more than 2x above the slowest ratio
-/// observed, which medians over [`RUNS`] runs keep it far from: the test has no
-/// wall-clock budget to blow, so a runner that is uniformly slow cannot fail
-/// it at all.
+/// The 6x bound was chosen against measured ratios of 1.9–2.6 on an M1 Ultra.
+/// It is a regression signal, not a hardware-independent guarantee: coverage
+/// instrumentation, filesystem caches, and changing runner load affect the two
+/// workloads differently. Keep this out of coverage/debug runs, alternate the
+/// order of adjacent pairs, and retain every sample for diagnosis. The ordinary
+/// suite independently enforces the deterministic Git subprocess budget.
 #[test]
+#[ignore = "timing guard; CI runs this explicitly with an uninstrumented release build"]
 fn noop_sync_should_not_regress_against_a_minimal_store() {
+    if cfg!(debug_assertions) {
+        panic!("run the timing guard with --release");
+    }
     let baseline = Scenario::build(ScenarioSpec::baseline());
     let scenario = Scenario::build(ScenarioSpec::smoke());
     run(&baseline, &["sync"]);
     run(&scenario, &["sync"]);
+    // Warm the no-op paths separately from the first materialization.
+    run(&baseline, &["sync"]);
+    run(&scenario, &["sync"]);
 
-    let baseline_noop = median_of(&baseline, &["sync"]);
-    let scenario_noop = median_of(&scenario, &["sync"]);
-    let ratio = scenario_noop.as_secs_f64() / baseline_noop.as_secs_f64();
+    let mut ratios = Vec::new();
+    for pair in 0..TIMING_PAIRS {
+        let (baseline_noop, scenario_noop) = if pair % 2 == 0 {
+            (run(&baseline, &["sync"]), run(&scenario, &["sync"]))
+        } else {
+            let scenario_noop = run(&scenario, &["sync"]);
+            (run(&baseline, &["sync"]), scenario_noop)
+        };
+        let ratio = scenario_noop.as_secs_f64() / baseline_noop.as_secs_f64();
+        println!(
+            "pair {}: baseline={baseline_noop:?} scenario={scenario_noop:?} ratio={ratio:.2}x",
+            pair + 1
+        );
+        ratios.push(ratio);
+    }
+    ratios.sort_by(f64::total_cmp);
+    let ratio = ratios[ratios.len() / 2];
 
     assert!(
         ratio <= NOOP_SYNC_RATIO_BOUND,
-        "no-op sync over {} sources / {} skills took {scenario_noop:?}, \
-         {ratio:.2}x the {baseline_noop:?} of a single-source store; \
+        "no-op sync over {} sources / {} skills had a median ratio of \
+         {ratio:.2}x relative to a single-source store; \
          the bound is {NOOP_SYNC_RATIO_BOUND:.1}x",
         scenario.spec.sources(),
         scenario.spec.skills(),
     );
+}
 
+#[test]
+fn noop_sync_stays_within_git_subprocess_budget() {
+    let scenario = Scenario::build(ScenarioSpec::smoke());
+    run(&scenario, &["sync"]);
     let invocations = git_invocations(&scenario, &["sync"]);
     let allowed =
         NOOP_SYNC_GIT_CALLS_FIXED + NOOP_SYNC_GIT_CALLS_PER_SOURCE * scenario.spec.sources();
@@ -134,7 +140,7 @@ fn noop_sync_should_not_regress_against_a_minimal_store() {
 /// Prints the published envelope. Not part of the ordinary suite.
 ///
 /// ```sh
-/// cargo test --release --locked --test performance -- --ignored --nocapture
+/// cargo test --release --locked --test performance -- --ignored measure_the_reference_scenario --nocapture
 /// ```
 #[test]
 #[ignore = "measurement run; builds the full reference store and prints a table"]
