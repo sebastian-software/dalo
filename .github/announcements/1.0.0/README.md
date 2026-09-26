@@ -5,7 +5,7 @@ maintainer posts each item by hand, after the `dalo-v1.0.0` tag is out and the
 release artifacts are downloadable, in the order below.
 
 Every factual claim in these drafts is traceable to
-[`.github/release-notes/1.0.0.md`](../../release-notes/1.0.0.md),
+[`docs/upgrading.md`](../../../docs/upgrading.md),
 [`docs/compatibility.md`](../../../docs/compatibility.md),
 [`docs/security.md`](../../../docs/security.md), or
 [`docs/comparison.md`](../../../docs/comparison.md). If a draft and a document
@@ -36,8 +36,7 @@ because they generate the questions that improve every later post, and the
 paid-audience channels come last so they link to a page that has already
 survived an hour of scrutiny.
 
-1. Tag `dalo-v1.0.0`, publish the GitHub release with
-   `.github/release-notes/1.0.0.md` above the generated commit list, and confirm
+1. Publish `dalo-v1.0.0` through the Release Please workflow and confirm
    crates.io, npm, and the Homebrew tap all serve 1.0.0.
 2. Deploy `dalo.sh` so `/news/1-0.html` is live, and add the homepage CTA
    (snippet below).

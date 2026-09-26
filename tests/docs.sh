@@ -292,11 +292,7 @@ test -f "$root/docs/adr/0008-compatibility-contract.md"
 # this list and document it in docs/upgrading.md in the same pull request.
 upgrading="$root/docs/upgrading.md"
 test -f "$upgrading"
-# The curated 1.0 release body is prepended automatically during publication;
-# it repeats the same inventory, so both are checked.
-release_notes="$root/.github/release-notes/1.0.0.md"
-test -f "$release_notes"
-for breaking_document in "$upgrading" "$release_notes"; do
+for breaking_document in "$upgrading"; do
   for removed_spelling in '`--yes`' 'audit --agent <reviewer>' 'select <id> --unselect' '`--refresh`' 'target ID `cursor`' '`x86_64-apple-darwin`'; do
     grep -Fq -e "$removed_spelling" "$breaking_document" \
       || { echo "$breaking_document does not name the removed spelling $removed_spelling" >&2; exit 1; }
@@ -326,8 +322,7 @@ docs/compatibility.md
 docs/upgrading.md
 site/docs/compatibility.html
 site/docs/upgrading.html
-site/news/1-0.html
-.github/release-notes/1.0.0.md"
+site/news/1-0.html"
 intel_offenders=""
 for tracked_file in $(cd "$root" && git ls-files); do
   case "$tracked_file" in
@@ -348,8 +343,7 @@ fi
 # absent everywhere.
 for intel_document in \
   "$root/docs/compatibility.md" \
-  "$root/docs/upgrading.md" \
-  "$root/.github/release-notes/1.0.0.md"; do
+  "$root/docs/upgrading.md"; do
   grep -Fq "$intel_target" "$intel_document" \
     || { echo "$intel_document no longer records the discontinued Intel macOS build" >&2; exit 1; }
 done
@@ -370,15 +364,6 @@ grep -Fq 'schema_migration_pending' "$upgrading"
 # format is `dalo-v<version>`, so the link only resolves once 1.0.0 is published.
 grep -Fq 'https://github.com/sebastian-software/dalo/releases/tag/dalo-v1.0.0' \
   "$upgrading"
-# The curated release body has to keep linking the three pages it sends a reader
-# to, and docs/ci.md has to keep documenting how the file reaches the release.
-for release_notes_link in compatibility security upgrading; do
-  grep -Fq "https://github.com/sebastian-software/dalo/blob/main/docs/$release_notes_link.md" \
-    "$release_notes" \
-    || { echo "the 1.0 release notes no longer link docs/$release_notes_link.md" >&2; exit 1; }
-done
-grep -Fq '.github/release-notes/1.0.0.md' "$root/docs/ci.md" \
-  || { echo 'docs/ci.md no longer documents the curated release body' >&2; exit 1; }
 # Reachable from the contract it demonstrates, the README, and the FAQ.
 grep -Fq '(upgrading.md)' "$compatibility"
 grep -Fq '(docs/upgrading.md)' "$root/README.md"

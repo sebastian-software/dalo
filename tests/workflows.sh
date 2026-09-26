@@ -95,13 +95,6 @@ for performance_document in "$root/CONTRIBUTING.md" "$root/.github/pull_request_
   grep -Fq "$performance_command" "$performance_document"
 done
 
-node --test "$root/tests/release-notes.mjs"
-printf '%s\n' "$final_release_job" | grep -Fq 'ref: ${{ needs.release-please.outputs.tag_name }}'
-printf '%s\n' "$final_release_job" | grep -Fq 'node scripts/prepare-release-notes.mjs'
-notes_line="$(printf '%s\n' "$final_release_job" | grep -n -- '--notes-file' | cut -d: -f1)"
-publish_line="$(printf '%s\n' "$final_release_job" | grep -n -- '--draft=false' | cut -d: -f1)"
-test "$notes_line" -lt "$publish_line"
-
 # The host test job covers the two native release targets. The dedicated job
 # covers the three remaining targets, including native ARM execution and the
 # static-musl release-binary smoke path.
