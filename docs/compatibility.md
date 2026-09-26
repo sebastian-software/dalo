@@ -417,3 +417,9 @@ Concretely:
 
 This is recorded as
 [ADR 0008](adr/0008-compatibility-contract.md).
+
+### Project declarations
+
+`dalo-project.toml` uses project schema version 1, separate from team manifests
+and machine-local store schemas. It contains target IDs and exact source pins,
+not absolute target paths or approval decisions. See [Project installations](projects.md).

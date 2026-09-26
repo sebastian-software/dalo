@@ -62,6 +62,7 @@
     <a href="/docs/">Overview</a>
     <a href="/docs/getting-started.html">Getting started</a>
     <a href="/docs/assistant.html">Dalo assistant</a>
+    <a href="/docs/projects.html">Project installations</a>
     <a href="/docs/team.html">Team repository</a>
     <a href="/docs/reference.html" aria-current="page">Command reference</a>
     <a href="/docs/compatibility.html">Compatibility</a>
@@ -80,6 +81,7 @@
       <a href="/docs/">Overview</a>
       <a href="/docs/getting-started.html">Getting started</a>
       <a href="/docs/assistant.html">Dalo assistant</a>
+      <a href="/docs/projects.html">Project installations</a>
       <a href="/docs/team.html">Team repository</a>
       <a href="/docs/reference.html" aria-current="page">Command reference</a>
       <a href="/docs/compatibility.html">Compatibility</a>
@@ -114,6 +116,10 @@ store-internal layout, and the Rust library API are not covered.</p>
 <li><code>~/.dalo</code></li>
 </ol>
 <p>Relative store paths are resolved against the current working directory. <code>~</code> is expanded when used at the start of a path.</p>
+<p>For an independent project installation, use <code>--project &lt;directory&gt;</code> explicitly.
+See <a href="/docs/projects.html">Project installations</a> for <code>init</code>, <code>install</code>, and the versioned
+<code>dalo-project.toml</code> definition. This scope ignores <code>DALO_STORE</code>, conflicts with
+<code>--store</code>, and is never inferred from the current directory.</p>
 <h2 id="environment-variables"><a class="doc-anchor" href="#environment-variables">Environment Variables</a></h2>
 <div class="doc-table"><table>
 <thead>
@@ -179,6 +185,10 @@ another value fails when its release archive cannot be fetched.</p>
 </tr>
 </thead>
 <tbody><tr>
+<td><code>--project &lt;DIR&gt;</code></td>
+<td>Explicit project scope; see <a href="/docs/projects.html">Project installations</a>.</td>
+</tr>
+<tr>
 <td><code>--store &lt;PATH&gt;</code></td>
 <td>Use a store other than the resolved default.</td>
 </tr>

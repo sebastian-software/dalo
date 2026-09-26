@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Project installations · Dalo documentation</title>
+  <meta name="description" content="Restore project skills from exact commits with an explicit, isolated project scope." />
+  <link rel="canonical" href="https://dalo.sh/docs/projects.html" />
+  <meta name="theme-color" content="#ffffff" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Dalo" />
+  <meta property="og:url" content="https://dalo.sh/docs/projects.html" />
+  <meta property="og:title" content="Project installations · Dalo documentation" />
+  <meta property="og:description" content="Restore project skills from exact commits with an explicit, isolated project scope." />
+  <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
+  <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/docs.css" />
+  <link rel="describedby" type="text/plain" href="/llms.txt" title="Dalo agent documentation" />
+</head>
+<body class="doc-page">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="Dalo home">
+      <img class="brand-mark" src="/assets/img/logo.svg" width="39" height="34" alt="" />
+      <img class="brand-word" src="/assets/img/wordmark.svg" width="63" height="16" alt="" />
+      <span class="brand-section">docs</span>
+    </a>
+    <nav class="nav site-nav" aria-label="Primary">
+      <a href="/">Product</a>
+      <a href="/docs/" aria-current="true">Docs</a>
+      <a href="/spec/">Spec</a>
+      <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+    </nav>
+    <div class="header-cta">
+      <a class="pill-btn" href="/docs/getting-started.html">Get started
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+      <details class="mobile-menu">
+        <summary aria-label="Open navigation">
+          <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>
+          <span class="sr-only">Menu</span>
+        </summary>
+        <nav class="mobile-nav" aria-label="Mobile">
+          <a href="/">Product</a>
+          <a href="/docs/" aria-current="true">Docs</a>
+          <a href="/spec/">Spec</a>
+          <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+        </nav>
+      </details>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="doc-shell wrap has-toc">
+  <nav class="doc-nav" aria-label="Documentation">
+    <p class="doc-nav-h">Documentation</p>
+    <a href="/docs/">Overview</a>
+    <a href="/docs/getting-started.html">Getting started</a>
+    <a href="/docs/assistant.html">Dalo assistant</a>
+    <a href="/docs/projects.html" aria-current="page">Project installations</a>
+    <a href="/docs/team.html">Team repository</a>
+    <a href="/docs/reference.html">Command reference</a>
+    <a href="/docs/compatibility.html">Compatibility</a>
+    <a href="/docs/upgrading.html">Upgrading to 1.0</a>
+    <a href="/docs/plugins.html">Plugins</a>
+    <a href="/docs/agents.html">Agent integration</a>
+    <a href="/docs/ci.html">Dalo in CI</a>
+    <a href="/docs/troubleshooting.html">Troubleshooting</a>
+    <a href="/docs/security.html">Security overview</a>
+    <a href="/docs/uninstall.html">Uninstall</a>
+    <a href="/docs/comparison.html">Comparison</a>
+  </nav>
+  <details class="doc-menu">
+    <summary><span class="doc-menu-label">Documentation</span> <span class="doc-menu-current">Project installations</span></summary>
+    <nav class="doc-menu-nav" aria-label="Documentation">
+      <a href="/docs/">Overview</a>
+      <a href="/docs/getting-started.html">Getting started</a>
+      <a href="/docs/assistant.html">Dalo assistant</a>
+      <a href="/docs/projects.html" aria-current="page">Project installations</a>
+      <a href="/docs/team.html">Team repository</a>
+      <a href="/docs/reference.html">Command reference</a>
+      <a href="/docs/compatibility.html">Compatibility</a>
+      <a href="/docs/upgrading.html">Upgrading to 1.0</a>
+      <a href="/docs/plugins.html">Plugins</a>
+      <a href="/docs/agents.html">Agent integration</a>
+      <a href="/docs/ci.html">Dalo in CI</a>
+      <a href="/docs/troubleshooting.html">Troubleshooting</a>
+      <a href="/docs/security.html">Security overview</a>
+      <a href="/docs/uninstall.html">Uninstall</a>
+      <a href="/docs/comparison.html">Comparison</a>
+    </nav>
+  </details>
+  <article class="doc-body">
+<h1 id="project-installations">Project installations</h1>
+<p>Dalo can restore a project&#39;s skills from a checked-in definition into an
+independent store. Select the project explicitly on every command:</p>
+<pre><code class="language-sh">dalo --project . init
+# Edit dalo-project.toml to declare sources and complete commit IDs.
+dalo --project . install
+</code></pre>
+<p>Without <code>--project</code>, commands retain their existing store precedence:
+<code>--store</code>, then <code>DALO_STORE</code>, then <code>~/.dalo</code>. Merely entering a repository does
+not change scope. <code>--project &lt;directory&gt;</code> ignores <code>DALO_STORE</code> and conflicts
+with <code>--store</code>. It names the exact project directory, without searching parents.
+Human project output identifies the scope. Existing JSON status and sync reports
+retain their schemas and identify the project store through their store path.</p>
+<h2 id="definition-and-local-state"><a class="doc-anchor" href="#definition-and-local-state">Definition and local state</a></h2>
+<p>Commit <code>dalo-project.toml</code>. It is a separate, versioned format from the
+existing team-source <code>dalo.toml</code>; both can coexist in a repository.</p>
+<pre><code class="language-toml">schema_version = 1
+targets = [&quot;claude&quot;, &quot;codex&quot;]
+
+[[source]]
+id = &quot;team&quot;
+url = &quot;https://github.com/example/team-skills.git&quot;
+# Replace with the complete lowercase commit ID from this repository.
+commit = &quot;0123456789abcdef0123456789abcdef01234567&quot;
+skills = [&quot;review&quot;, &quot;documentation&quot;]
+</code></pre>
+<p>Sources use explicit catalog skill selectors (name, stable ID, or relative
+skill path). Dependencies use the existing resolver. Sources earlier in the
+list take precedence over later sources. Supported targets are <code>claude</code>,
+<code>codex</code>, <code>opencode</code>, <code>hermes</code>, and <code>openclaw</code>; Codex and OpenClaw share
+<code>.agents/skills</code>, so choose only one of those target IDs.</p>
+<p><code>init</code> creates the definition only and never replaces an existing one. <code>install</code>
+creates <code>.dalo/</code> inside the project, clones the declared sources at their exact
+commits, and links approved skills into the selected agents&#39; project folders.
+Each fresh clone gets its own store and local approval decisions. The global
+store and global agent folders are not part of this installation.</p>
+<p>Add the following entries to your project&#39;s <code>.gitignore</code>, selecting only the
+agent folders managed by this definition:</p>
+<pre><code class="language-gitignore">/.dalo/
+/.claude/skills/
+/.agents/skills/
+</code></pre>
+<p>Dalo does not edit <code>.gitignore</code> or take over existing skill directories. Keep
+project-authored skills that are already versioned; a same-name unmanaged entry
+blocks delivery instead of being replaced. Generated links are absolute paths
+into the local store and must not be committed. The store&#39;s machine-specific
+locks and approvals must not be committed either.</p>
+<h2 id="review-and-installation"><a class="doc-anchor" href="#review-and-installation">Review and installation</a></h2>
+<p>The definition declares desired content, not approval. Initial installation
+prepares the pinned sources but exits nonzero when approval is pending. Review
+and approve skills locally, then rerun installation:</p>
+<pre><code class="language-sh">dalo --project . status
+dalo --project . audit team:review
+dalo --project . approve skill team:review
+dalo --project . install
+dalo --project . doctor --check
+</code></pre>
+<p>Security findings still require the existing explicit, content-bound review
+flow. Installation never auto-approves skills or executes their contents.
+Repeated installation preserves the pins even if upstream has advanced.
+Dirty checkouts, changed pins, redirected output directories, and unmanaged
+same-name entries are not overwritten. After a failed initial preparation,
+registered sources remain available for inspection and a retry; an
+unregistered leftover checkout is reported for manual preservation/recovery.</p>
+<p><code>--dry-run install</code> validates and previews the declaration without fetching,
+creating a store, auditing remote content, or delivering links. It is not a
+promise that the remote sources or approvals are ready.</p>
+<h2 id="first-implementation-boundary"><a class="doc-anchor" href="#first-implementation-boundary">First implementation boundary</a></h2>
+<p>This first increment supports <code>init</code>, <code>install</code>, <code>status</code>, <code>doctor</code>, <code>audit</code>,
+and <code>approve</code> with explicit project scope. Other project-scoped commands fail
+instead of falling back to the global store. Use <code>install</code> to reconcile delivery;
+plain <code>sync</code> keeps its existing global/custom-store meaning.</p>
+<p>Full commit IDs in the definition currently provide the reproducibility
+boundary. Moving refs, a separate portable project lockfile, an update command,
+and removal or replacement of previously installed sources/selections are
+follow-up work. Changes to an existing pin, URL, or selection are reported and
+left untouched. Do not discard local edits or approvals to work around that
+boundary. A future update flow must preserve them while reviewing the change.</p>
+<p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/projects.md" rel="noopener">docs/projects.md</a></p>
+  </article>
+  <nav class="doc-toc" aria-label="On this page">
+    <p class="doc-toc-h">On this page</p>
+    <ul>
+      <li><a href="#definition-and-local-state">Definition and local state</a></li>
+      <li><a href="#review-and-installation">Review and installation</a></li>
+      <li><a href="#first-implementation-boundary">First implementation boundary</a></li>
+    </ul>
+  </nav>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <a class="brand" href="/" aria-label="Dalo home">
+          <img class="brand-mark" src="/assets/img/logo.svg" width="34" height="30" alt="" />
+          <img class="brand-word" src="/assets/img/wordmark.svg" width="55" height="14" alt="" />
+        </a>
+        <p>Git-backed skill management for AI agents. Built in Rust.</p>
+      </div>
+      <nav class="footer-cols" aria-label="Footer">
+        <div class="footer-col">
+          <p class="footer-h">Product</p>
+          <a href="/#how">How it works</a>
+          <a href="/#quickstart">Quickstart</a>
+          <a href="/#compare">Compare</a>
+          <a href="/#stability">Stability</a>
+        </div>
+        <div class="footer-col">
+          <p class="footer-h">Docs</p>
+          <a href="/docs/">All documentation</a>
+          <a href="/docs/getting-started.html">Getting started</a>
+          <a href="/docs/reference.html">Reference</a>
+          <a href="/docs/troubleshooting.html">Troubleshooting</a>
+          <a href="/spec/">Spec</a>
+          <a href="/docs/security.html">Security</a>
+          <a href="/install.md">Install guide</a>
+          <a href="https://github.com/sebastian-software/dalo/releases" rel="noopener">Releases</a>
+        </div>
+        <div class="footer-col">
+          <p class="footer-h">Project</p>
+          <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+          <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a>
+          <a href="https://github.com/sebastian-software/dalo/security/policy" rel="noopener">Security policy</a>
+          <a href="https://github.com/sebastian-software/dalo/blob/main/LICENSE-MIT" rel="noopener">MIT license</a>
+          <a href="https://github.com/sebastian-software/dalo/blob/main/LICENSE-APACHE" rel="noopener">Apache-2.0 license</a>
+          <a href="https://github.com/sebastian-software/dalo/issues" rel="noopener">Issues</a>
+        </div>
+      </nav>
+    </div>
+    <div class="footer-base">
+      <span>© 2026 <a href="https://sebastian-software.de" rel="noopener">Sebastian Software</a> · No tracking, no cookies</span>
+      <span>From the same workshop: <a href="https://github.com/sebastian-software/harness-relay" rel="noopener">harness-relay</a> · <a href="https://oss.sebastian-software.com" rel="noopener">more open source</a></span>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

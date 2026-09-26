@@ -22,7 +22,12 @@ fn main() -> ExitCode {
     }
     let cli = Cli::parse_args();
     let json = cli.json;
-    let store_root = store::resolve_store_path(cli.store.as_deref()).ok();
+    let store_root = match &cli.project {
+        Some(root) => dalo::project::Project::new(root)
+            .ok()
+            .map(|project| project.store),
+        None => store::resolve_store_path(cli.store.as_deref()).ok(),
+    };
     match run_cli(cli) {
         Ok(()) => DaloExitCode::Success.into(),
         Err(error) => {

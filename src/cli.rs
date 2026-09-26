@@ -61,6 +61,10 @@ pub struct Cli {
     #[arg(long, global = true, value_name = "PATH")]
     pub store: Option<PathBuf>,
 
+    /// Use this project's isolated store and dalo-project.toml (never auto-detected).
+    #[arg(long, global = true, value_name = "DIR", conflicts_with = "store")]
+    pub project: Option<PathBuf>,
+
     /// Emit machine-readable JSON where supported.
     #[arg(long, global = true)]
     pub json: bool,
@@ -127,6 +131,8 @@ impl Cli {
 pub enum Command {
     /// Initialize the dalo store.
     Init,
+    /// Restore the explicitly selected project from its pinned declaration.
+    Install,
     /// Install the conversational assistant bundled with this binary.
     Assistant(AssistantCommand),
     /// Detect, link, or unlink agent targets.
@@ -1141,11 +1147,15 @@ pub struct ResolveTargetSlotArgs {
 pub fn run_cli(cli: Cli) -> DaloResult<()> {
     let Cli {
         store,
+        project,
         json,
         dry_run,
         command,
     } = cli;
 
+    if let Some(root) = project {
+        return run_project(&root, json, dry_run, command);
+    }
     let Some(command) = command else {
         if json {
             return Err(DaloError::InvalidArgument {
@@ -1221,6 +1231,9 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
 
     let result = match command {
         Command::Init => run_init(&options),
+        Command::Install => Err(DaloError::InvalidArgument {
+            reason: "install requires an explicit project: dalo --project . install".into(),
+        }),
         Command::Assistant(command) => run_assistant(&options, command),
         Command::Target(command) => run_target(&options, command),
         Command::Source(command) => run_source(&options, command),
@@ -1256,6 +1269,95 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
     }
 
     result
+}
+
+fn run_project(
+    root: &std::path::Path,
+    json: bool,
+    dry_run: bool,
+    command: Option<Command>,
+) -> DaloResult<()> {
+    let project = crate::project::Project::new(root)?;
+    let command = command.ok_or_else(|| DaloError::InvalidArgument {
+        reason: "choose a project command: init, install, status, doctor, audit, or approve".into(),
+    })?;
+    let options = GlobalOptions {
+        store: project.store.clone(),
+        json,
+        dry_run,
+    };
+    if matches!(command, Command::Init) {
+        project.init(dry_run)?;
+        if json {
+            println!(
+                "{}",
+                serde_json::json!({"scope": "project", "project": project.root, "manifest": project.root.join(crate::project::MANIFEST), "dry_run": dry_run})
+            );
+        } else {
+            println!(
+                "project: {}\nmanifest: {}\nAdd pinned sources, then run dalo --project {} install.\nIgnore /.dalo/ and generated agent skill folders in Git; commit only the project definition.",
+                project.root.display(),
+                crate::project::MANIFEST,
+                crate::error::shell_quote_path(&project.root)
+            );
+        }
+        return Ok(());
+    }
+    if !matches!(
+        &command,
+        Command::Install
+            | Command::Status(_)
+            | Command::Doctor(_)
+            | Command::Audit(_)
+            | Command::Approve(_)
+    ) {
+        return Err(DaloError::InvalidArgument {
+            reason: "this command is not supported in project scope; use init, install, status, doctor, audit, or approve".into(),
+        });
+    }
+    let manifest = project.manifest()?;
+    project.validate_store(&manifest)?;
+    if !json {
+        eprintln!("scope: project ({})", project.root.display());
+    }
+    if matches!(command, Command::Install) {
+        if dry_run {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({"scope": "project", "project": project.root, "store": project.store, "dry_run": true, "sources": manifest.sources, "targets": manifest.targets, "note": "declaration preview only; no fetch, audit, approval, or delivery performed"})
+                );
+            } else {
+                println!(
+                    "project install preview: {} pinned sources, {} targets\nNo fetch, audit, approval, or delivery performed.",
+                    manifest.sources.len(),
+                    manifest.targets.len()
+                );
+                for source in &manifest.sources {
+                    println!("  {} @ {}", source.id, source.commit);
+                }
+            }
+            return Ok(());
+        }
+        if !project.store.exists() {
+            // Claim an absent directory before initialization; never adopt a store
+            // created by another process between validation and this write.
+            fs::create_dir(&project.store)?;
+            store::init_store(project.store.clone(), false)?;
+            fs::write(project.store.join("project-owner"), "dalo-project-v1\n")?;
+        }
+        let paths = store::StorePaths::new(project.store.clone());
+        let _lock = store::StoreLock::acquire(&paths)?;
+        project.prepare(&manifest)?;
+        return run_sync_locked(&options, CheckArgs { check: true });
+    }
+    match command {
+        Command::Status(args) => run_status(&options, args),
+        Command::Doctor(args) => run_doctor(&options, args),
+        Command::Audit(args) => run_audit(&options, args),
+        Command::Approve(args) => run_approve(&options, args),
+        _ => unreachable!("project command validated above"),
+    }
 }
 
 fn warn_noop_dry_run(dry_run: bool) {
@@ -5049,6 +5151,7 @@ mod tests {
     fn run_cli_should_succeed_when_no_command_is_provided() {
         let cli = Cli {
             store: None,
+            project: None,
             json: false,
             dry_run: false,
             command: None,
