@@ -204,7 +204,7 @@ another value fails when its release archive cannot be fetched.</p>
 </tr>
 <tr>
 <td><code>--dry-run</code></td>
-<td>Plan supported mutating operations without writing files, cloning, linking, or changing locks. Read-only commands ignore it.</td>
+<td>Plan supported mutating operations without changing persistent state. <code>migrate skills-sh</code> still clones into temporary directories to verify content. Read-only commands ignore it.</td>
 </tr>
 <tr>
 <td><code>-h</code>, <code>--help</code></td>
@@ -2454,6 +2454,18 @@ Use concise review comments.
 &lt;!-- dalo:end team-style --&gt;
 </code></pre>
 <p>Dalo only rewrites bytes inside the pack&#39;s own managed block. Content outside managed blocks is preserved.</p>
+<h2 id="migrate-skills-sh"><a class="doc-anchor" href="#migrate-skills-sh"><code>migrate skills-sh</code></a></h2>
+<p>Preview a project migration from a version 1 <code>skills-lock.json</code>. <code>--apply</code> writes a
+verified <code>dalo-project.toml</code> and backs up the former installation; <code>--dry-run</code>
+suppresses applying. Verification may fetch Git repositories. It never imports
+approvals or guesses a Git commit from a foreign content hash.</p>
+<p>Use <code>--project &lt;directory&gt;</code> for an exact root, or let Dalo discover the nearest
+lock within the Git boundary. Global/store overrides are rejected. <code>--json</code>
+reports <code>project</code>, <code>applied</code>, <code>ready</code>, <code>targets</code>, <code>skills</code> (each with <code>name</code>,
+<code>commit</code>, <code>paths</code>, and <code>blocked</code>), and <code>backup</code>. Blocked entries return a nonzero
+exit code with the report on stdout and the error on stderr.</p>
+<p>See <a href="/docs/projects.html#migrate-a-skillssh-project">Project migration</a> for supported
+sources, scope, backups, recovery, and the required local approval steps.</p>
 <p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/reference.md" rel="noopener">docs/reference.md</a></p>
   </article>
   <nav class="doc-toc" aria-label="On this page">
@@ -2479,6 +2491,7 @@ Use concise review comments.
       <li><a href="#deliverytoml-provider-builds"><code>DELIVERY.toml</code> Provider Builds</a></li>
       <li><a href="#agentmd-canonical-packages"><code>AGENT.md</code> Canonical Packages</a></li>
       <li><a href="#instruction-packs">Instruction Packs</a></li>
+      <li><a href="#migrate-skills-sh"><code>migrate skills-sh</code></a></li>
     </ul>
   </nav>
 </main>

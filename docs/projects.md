@@ -128,3 +128,61 @@ and removal or replacement of previously installed sources/selections are
 follow-up work. Changes to an existing pin, URL, or selection are reported and
 left untouched. Do not discard local edits or approvals to work around that
 boundary. A future update flow must preserve them while reviewing the change.
+
+## Migrate a skills.sh project
+
+For a project with a version 1 `skills-lock.json`, preview a verified migration:
+
+```sh
+dalo migrate skills-sh
+# Review every result and the inferred agent targets, then apply:
+dalo migrate skills-sh --apply
+dalo install
+# Review pending skills and approve each intended selector, for example:
+dalo approve skill imported-1:review
+dalo install
+```
+
+The command searches upward for `skills-lock.json`, stopping at the nearest Git
+boundary. `--project <directory>` selects an exact directory. Global/store
+selection is rejected. `--json` returns the verification report; a blocked entry
+causes a nonzero exit. `--dry-run` suppresses `--apply`.
+
+Verification clones Git sources into temporary directories, even for previews
+and dry-runs. It does not execute skill code. The skills CLI's `computedHash` is a
+content hash, **not a Git commit**. Dalo checks the source's recorded `ref`, or its
+current default branch when none is recorded, and compares every installed copy
+with that candidate. Only identical file contents, paths, and executable bits
+qualify. The generated definition pins the verified commit; this does not claim
+to recover the original historical revision. An upstream change or a local edit
+blocks migration instead of silently upgrading or discarding content.
+
+This initial importer supports Git origins, existing copies in `.agents/skills`,
+`.claude/skills`, `.opencode/skills`, and `.hermes/skills`, and aliases between
+those project folders. `.agents/skills` maps to the Codex target (also shared by
+OpenClaw). All imported skills are selected for all inferred targets. Review this
+union in the preview. Nested symlinks, external links, unknown source types,
+missing copies, ambiguous identities, and unsupported lock versions require
+manual migration. Global skills locks, subagent records, and other agent folders
+are not imported. Unlisted personal skills remain untouched.
+
+If any entry is blocked, **nothing is applied**. Preserve edited or unrecognized
+content separately and resolve its ownership before retrying. An existing Dalo
+project definition, project store, or migration backup also blocks this first
+handover; the command does not merge definitions.
+
+Applying creates `dalo-project.toml` and moves the verified old skill directories,
+aliases, and `skills-lock.json` into `.dalo-migration-backup/`, retaining their
+original relative paths. It does not import trust approvals or install the new
+links. Skills become active again after the normal install/approval steps above.
+Add `/.dalo-migration-backup/` to `.gitignore`, alongside the project store and
+managed agent folders. Review the Git diff: commit the definition and intentional
+removal of previously checked-in skills, not the backup or generated store.
+
+Keep the backup until the new installation works. `migration.json` records the
+pre-apply plan for recovery, not a completion receipt. After an interrupted apply,
+inspect both locations: restore backed-up entries to their original relative
+paths only when those destinations are empty. Never overwrite a newly created
+file or link. Backed-up relative symlinks may be dangling inside the backup; their
+original link text is retained for restoration. A normal apply error attempts to
+restore moved entries, while retaining the backup directory for inspection.

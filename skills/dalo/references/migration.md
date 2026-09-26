@@ -6,6 +6,29 @@ Distinguish two outcomes before acting: preserving today's installed content as
 a local snapshot, or reconnecting selected skills to a verified upstream source
 for future updates. A local snapshot does not receive upstream updates.
 
+## Project skills.sh installations
+
+When the project has `skills-lock.json`, start with the native importer:
+
+```sh
+dalo --project "$project" --json migrate skills-sh
+```
+
+Review all blockers and inferred targets. With migration authorized, apply using
+`dalo --project "$project" migrate skills-sh --apply`, then run `dalo install` in
+that project, review and approve pending skills locally, and install again.
+The importer verifies complete installed content against the recorded Git ref
+(or current default branch); it never treats `computedHash` as a commit. A
+changed source or local edit blocks the entire apply. Preserve such content and
+resolve its intended ownership rather than bypassing verification.
+
+Applying backs up the old directories, aliases, and lock under
+`.dalo-migration-backup/` before writing `dalo-project.toml`. Keep that backup
+until installation succeeds. It does not import approvals; skills are temporarily
+inactive until installation finishes. It supports version 1 project locks with
+Git origins and Dalo-supported project folders, not global locks or all foreign
+agent/subagent formats. See the project migration documentation for recovery.
+
 ## Choose the destination from evidence
 
 | Existing content | Default recommendation |

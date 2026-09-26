@@ -72,7 +72,7 @@ Global flags can be placed before or after the command.
 | `--project <DIR>` | Explicit project scope; see [Project installations](projects.md). |
 | `--store <PATH>` | Use a store other than the resolved default. |
 | `--json` | Emit machine-readable JSON for commands that support structured output. It requires a command; bare `dalo --json` returns the standard JSON error on stderr. `manpage` and `completions` reject this flag with a plain-text usage error because they generate plain text only. |
-| `--dry-run` | Plan supported mutating operations without writing files, cloning, linking, or changing locks. Read-only commands ignore it. |
+| `--dry-run` | Plan supported mutating operations without changing persistent state. `migrate skills-sh` still clones into temporary directories to verify content. Read-only commands ignore it. |
 | `-h`, `--help` | Print command help. |
 | `-V`, `--version` | Print the installed version. |
 
@@ -2065,3 +2065,19 @@ Managed blocks use these markers:
 ```
 
 Dalo only rewrites bytes inside the pack's own managed block. Content outside managed blocks is preserved.
+
+## `migrate skills-sh`
+
+Preview a project migration from a version 1 `skills-lock.json`. `--apply` writes a
+verified `dalo-project.toml` and backs up the former installation; `--dry-run`
+suppresses applying. Verification may fetch Git repositories. It never imports
+approvals or guesses a Git commit from a foreign content hash.
+
+Use `--project <directory>` for an exact root, or let Dalo discover the nearest
+lock within the Git boundary. Global/store overrides are rejected. `--json`
+reports `project`, `applied`, `ready`, `targets`, `skills` (each with `name`,
+`commit`, `paths`, and `blocked`), and `backup`. Blocked entries return a nonzero
+exit code with the report on stdout and the error on stderr.
+
+See [Project migration](projects.md#migrate-a-skillssh-project) for supported
+sources, scope, backups, recovery, and the required local approval steps.

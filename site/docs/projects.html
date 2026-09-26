@@ -220,6 +220,54 @@ and removal or replacement of previously installed sources/selections are
 follow-up work. Changes to an existing pin, URL, or selection are reported and
 left untouched. Do not discard local edits or approvals to work around that
 boundary. A future update flow must preserve them while reviewing the change.</p>
+<h2 id="migrate-a-skillssh-project"><a class="doc-anchor" href="#migrate-a-skillssh-project">Migrate a skills.sh project</a></h2>
+<p>For a project with a version 1 <code>skills-lock.json</code>, preview a verified migration:</p>
+<pre><code class="language-sh">dalo migrate skills-sh
+# Review every result and the inferred agent targets, then apply:
+dalo migrate skills-sh --apply
+dalo install
+# Review pending skills and approve each intended selector, for example:
+dalo approve skill imported-1:review
+dalo install
+</code></pre>
+<p>The command searches upward for <code>skills-lock.json</code>, stopping at the nearest Git
+boundary. <code>--project &lt;directory&gt;</code> selects an exact directory. Global/store
+selection is rejected. <code>--json</code> returns the verification report; a blocked entry
+causes a nonzero exit. <code>--dry-run</code> suppresses <code>--apply</code>.</p>
+<p>Verification clones Git sources into temporary directories, even for previews
+and dry-runs. It does not execute skill code. The skills CLI&#39;s <code>computedHash</code> is a
+content hash, <strong>not a Git commit</strong>. Dalo checks the source&#39;s recorded <code>ref</code>, or its
+current default branch when none is recorded, and compares every installed copy
+with that candidate. Only identical file contents, paths, and executable bits
+qualify. The generated definition pins the verified commit; this does not claim
+to recover the original historical revision. An upstream change or a local edit
+blocks migration instead of silently upgrading or discarding content.</p>
+<p>This initial importer supports Git origins, existing copies in <code>.agents/skills</code>,
+<code>.claude/skills</code>, <code>.opencode/skills</code>, and <code>.hermes/skills</code>, and aliases between
+those project folders. <code>.agents/skills</code> maps to the Codex target (also shared by
+OpenClaw). All imported skills are selected for all inferred targets. Review this
+union in the preview. Nested symlinks, external links, unknown source types,
+missing copies, ambiguous identities, and unsupported lock versions require
+manual migration. Global skills locks, subagent records, and other agent folders
+are not imported. Unlisted personal skills remain untouched.</p>
+<p>If any entry is blocked, <strong>nothing is applied</strong>. Preserve edited or unrecognized
+content separately and resolve its ownership before retrying. An existing Dalo
+project definition, project store, or migration backup also blocks this first
+handover; the command does not merge definitions.</p>
+<p>Applying creates <code>dalo-project.toml</code> and moves the verified old skill directories,
+aliases, and <code>skills-lock.json</code> into <code>.dalo-migration-backup/</code>, retaining their
+original relative paths. It does not import trust approvals or install the new
+links. Skills become active again after the normal install/approval steps above.
+Add <code>/.dalo-migration-backup/</code> to <code>.gitignore</code>, alongside the project store and
+managed agent folders. Review the Git diff: commit the definition and intentional
+removal of previously checked-in skills, not the backup or generated store.</p>
+<p>Keep the backup until the new installation works. <code>migration.json</code> records the
+pre-apply plan for recovery, not a completion receipt. After an interrupted apply,
+inspect both locations: restore backed-up entries to their original relative
+paths only when those destinations are empty. Never overwrite a newly created
+file or link. Backed-up relative symlinks may be dangling inside the backup; their
+original link text is retained for restoration. A normal apply error attempts to
+restore moved entries, while retaining the backup directory for inspection.</p>
 <p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/projects.md" rel="noopener">docs/projects.md</a></p>
   </article>
   <nav class="doc-toc" aria-label="On this page">
@@ -229,6 +277,7 @@ boundary. A future update flow must preserve them while reviewing the change.</p
       <li><a href="#definition-and-local-state">Definition and local state</a></li>
       <li><a href="#review-and-installation">Review and installation</a></li>
       <li><a href="#first-implementation-boundary">First implementation boundary</a></li>
+      <li><a href="#migrate-a-skillssh-project">Migrate a skills.sh project</a></li>
     </ul>
   </nav>
 </main>

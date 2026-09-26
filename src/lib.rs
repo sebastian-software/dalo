@@ -47,6 +47,7 @@ pub mod instructions;
 pub mod inventory;
 pub mod lockfile;
 pub mod materialize;
+pub mod migration;
 pub mod package_validation;
 pub mod plan;
 pub mod plugin;

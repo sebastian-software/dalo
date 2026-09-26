@@ -82,6 +82,17 @@ pub struct Cli {
     pub command: Option<Command>,
 }
 
+/// Project migration arguments.
+#[derive(Debug, Args)]
+pub struct MigrationArgs {
+    /// Installer to migrate (currently skills-sh).
+    #[arg(value_parser = ["skills-sh"])]
+    pub from: String,
+    /// Apply the verified handover; otherwise only preview it.
+    #[arg(long)]
+    pub apply: bool,
+}
+
 /// Global command options after path resolution.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GlobalOptions {
@@ -122,10 +133,14 @@ impl Cli {
             || std::env::var_os(store::STORE_ENV_VAR).is_some()
             || matches!(
                 &self.command,
-                Some(Command::Team(_) | Command::Completions(_) | Command::Manpage)
-                    | Some(Command::Plugin(PluginCommand {
-                        command: PluginSubcommand::Validate(_)
-                    }))
+                Some(
+                    Command::Team(_)
+                        | Command::Completions(_)
+                        | Command::Manpage
+                        | Command::Migrate(_)
+                ) | Some(Command::Plugin(PluginCommand {
+                    command: PluginSubcommand::Validate(_)
+                }))
             )
         {
             return Ok(None);
@@ -169,6 +184,8 @@ pub enum Command {
     Init,
     /// Restore the current project from its pinned declaration.
     Install,
+    /// Verify and migrate an existing project skills.sh installation.
+    Migrate(MigrationArgs),
     /// Install the conversational assistant bundled with this binary.
     Assistant(AssistantCommand),
     /// Detect, link, or unlink agent targets.
@@ -1181,6 +1198,64 @@ pub struct ResolveTargetSlotArgs {
 
 /// Execute a parsed CLI command.
 pub fn run_cli(cli: Cli) -> DaloResult<()> {
+    if let Some(Command::Migrate(args)) = &cli.command {
+        if cli.global || cli.store.is_some() || std::env::var_os(store::STORE_ENV_VAR).is_some() {
+            return Err(DaloError::InvalidArgument {
+                reason: "skills-sh migration is project-only; remove global/store overrides".into(),
+            });
+        }
+        let root = match &cli.project {
+            Some(root) => root.clone(),
+            None => crate::migration::discover(&std::env::current_dir()?)?,
+        };
+        let report = crate::migration::migrate(&root, args.apply && !cli.dry_run)?;
+        if cli.json {
+            print_json(&report)?;
+        } else {
+            println!(
+                "skills.sh migration: {}",
+                if report.applied {
+                    "definition written; originals backed up"
+                } else if report.ready {
+                    "ready (preview)"
+                } else {
+                    "blocked"
+                }
+            );
+            println!("  Targets: {}", report.targets.join(", "));
+            for skill in &report.skills {
+                println!(
+                    "  {}: {}",
+                    term::terminal_safe_text(&skill.name),
+                    term::terminal_safe_text(
+                        skill
+                            .blocked
+                            .as_deref()
+                            .unwrap_or("verified identical content")
+                    )
+                );
+            }
+            let project_arg =
+                term::terminal_safe_text(&crate::error::shell_quote_path(&report.project));
+            if report.applied {
+                println!(
+                    "Run dalo --project {project_arg} install, review pending skills, approve them locally in this project, and rerun install. Originals: {}",
+                    term::terminal_safe_text(&report.backup.display().to_string())
+                );
+            } else if report.ready {
+                println!(
+                    "Apply with dalo --project {project_arg} migrate skills-sh --apply. No project files have changed."
+                );
+            }
+        }
+        return if report.ready {
+            Ok(())
+        } else {
+            Err(DaloError::CheckFailed {
+                reason: "migration requires review; existing skills were left untouched".into(),
+            })
+        };
+    }
     let mut project = cli.project_root()?;
     let explicit_scope = cli.global
         || cli.store.is_some()
@@ -1287,6 +1362,7 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
     }
 
     let result = match command {
+        Command::Migrate(_) => unreachable!("migration handled before store resolution"),
         Command::Init => run_init(&options),
         Command::Install => Err(DaloError::InvalidArgument {
             reason:
