@@ -4,14 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Dalo 1.0 · Dalo news</title>
-  <meta name="description" content="Dalo 1.0: what the 1.x line guarantees, the six changes since 0.6, the removed spellings, and how to upgrade." />
+  <meta name="description" content="Dalo 1.0: the bundled assistant, source subpaths, Nix, the 1.x guarantees, and how to upgrade." />
   <link rel="canonical" href="https://dalo.sh/news/1-0.html" />
   <meta name="theme-color" content="#ffffff" />
   <meta property="og:type" content="article" />
   <meta property="og:site_name" content="Dalo" />
   <meta property="og:url" content="https://dalo.sh/news/1-0.html" />
   <meta property="og:title" content="Dalo 1.0 · Dalo news" />
-  <meta property="og:description" content="Dalo 1.0: what the 1.x line guarantees, the six changes since 0.6, the removed spellings, and how to upgrade." />
+  <meta property="og:description" content="Dalo 1.0: the bundled assistant, source subpaths, Nix, the 1.x guarantees, and how to upgrade." />
   <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
   <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
   <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
@@ -110,6 +110,22 @@ for six months.</p>
 
 <h2 id="what-changed-since-0-6"><a class="doc-anchor" href="#what-changed-since-0-6">What changed since 0.6</a></h2>
 
+<h3 id="manage-skills-through-your-agent"><a class="doc-anchor" href="#manage-skills-through-your-agent">Manage skills through your agent</a></h3>
+<p>The bundled Dalo assistant guides setup, inventories existing skill folders,
+helps move from skills.sh or manual installs, and explains updates and conflicts.
+Interactive Dalo commands offer to install or update it after confirmation;
+scripted and JSON commands do not prompt. <code>dalo assistant status --json</code>
+checks the bundle without writing or using the network;
+<code>dalo assistant install</code> prepares the version shipped in your executable.
+Normal <code>dalo sync</code> delivers it to linked targets. Custom content is
+preserved. See the <a href="/docs/assistant.html">assistant guide</a>.</p>
+
+<h3 id="source-subpaths"><a class="doc-anchor" href="#source-subpaths">Use one directory from a larger repository</a></h3>
+<p><code>dalo source add &lt;id&gt; &lt;url&gt; --ref &lt;revision&gt; --subpath &lt;directory&gt;</code>
+pins the source and scans only the chosen directory. The directory must remain
+inside the checkout, and an explicit revision is required. See the
+<a href="/docs/reference.html">source reference</a>.</p>
+
 <h3 id="one-approved-skill-set-for-a-whole-team"><a class="doc-anchor" href="#one-approved-skill-set-for-a-whole-team">One approved skill set for a whole team</a></h3>
 <p>A team repository carries a committed <code>dalo.toml</code> naming the
 team's own skills and pinning the public catalogs everyone gets;
@@ -175,6 +191,11 @@ installer, npm (<code>getdalo</code>), Homebrew, mise, Cargo, and signed release
 archives — each publish every 1.x release; retiring one would be a
 major-version change.</p>
 
+<p>Nix users can build and run the tagged source with
+<code>nix run github:sebastian-software/dalo/dalo-v1.0.0 -- --version</code>.
+The repository flake is checked in CI on x86_64 Linux, ARM64 Linux, and Apple
+Silicon macOS. It is not a nixpkgs submission.</p>
+
 <h2 id="breaking-changes"><a class="doc-anchor" href="#breaking-changes">Breaking changes</a></h2>
 
 <p>Four CLI spellings, one target ID, and one release platform were removed
@@ -195,9 +216,11 @@ something else.</p>
 </tbody>
 </table></div>
 
-<p>Nothing in your store changes: no persisted schema version changed between
-0.15.1 and 1.0, and Cursor reads the same directory after the
-<code>generic</code> link. 0.16.0 is the last release with a published Intel
+<p>Existing stores upgrade in place, and Cursor reads the same directory after
+the <code>generic</code> link. Source subpaths add optional configuration and
+lock fields; installing the assistant adds its versioned bundle receipt.
+Compatibility is forward: older binaries are not promised to read newly written
+stores. 0.16.0 is the last release with a published Intel
 macOS archive; the installer, Homebrew, and the npm launcher all say so on an
 Intel Mac instead of failing on a missing download.</p>
 

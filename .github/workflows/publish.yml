@@ -270,6 +270,17 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+
       - name: Verify staged artifacts and publish release
         shell: bash
         env:
@@ -295,6 +306,16 @@ jobs:
               printf '%s\n' "$uploaded_assets" | grep -Fx -- "$asset" > /dev/null
             done
           done
+          # Read from the immutable release tag, not a moving main checkout.
+          # The composer preserves generated notes and is safe to run again
+          # when publication fails after the draft body was updated.
+          if [ -f ".github/release-notes/${version}.md" ]; then
+            gh release view "$TAG_NAME" --json body --jq '.body' > "$RUNNER_TEMP/dalo-draft-notes.md"
+            node scripts/prepare-release-notes.mjs \
+              ".github/release-notes/${version}.md" \
+              "$RUNNER_TEMP/dalo-draft-notes.md" "$RUNNER_TEMP/dalo-release-notes.md"
+            gh release edit "$TAG_NAME" --notes-file "$RUNNER_TEMP/dalo-release-notes.md"
+          fi
           gh release edit "$TAG_NAME" --draft=false
 
   update-homebrew:

@@ -255,7 +255,7 @@ grep -Fq 'These numbers are an envelope, not a promise' "$compatibility" \
   || { echo 'docs/compatibility.md no longer frames the numbers as an envelope' >&2; exit 1; }
 grep -Fq 'Apple M1 Ultra' "$compatibility" \
   || { echo 'docs/compatibility.md no longer names the measurement hardware' >&2; exit 1; }
-envelope_command='cargo test --release --locked --test performance -- --ignored --nocapture'
+envelope_command='cargo test --release --locked --test performance -- --ignored measure_the_reference_scenario --nocapture'
 grep -Fq "$envelope_command" "$compatibility" \
   || { echo 'docs/compatibility.md no longer shows how to reproduce the envelope' >&2; exit 1; }
 test -f "$root/tests/performance.rs" \
@@ -292,8 +292,8 @@ test -f "$root/docs/adr/0008-compatibility-contract.md"
 # this list and document it in docs/upgrading.md in the same pull request.
 upgrading="$root/docs/upgrading.md"
 test -f "$upgrading"
-# The curated 1.0 release body is committed so a maintainer can paste it over the
-# generated release notes; it repeats the same inventory, so both are checked.
+# The curated 1.0 release body is prepended automatically during publication;
+# it repeats the same inventory, so both are checked.
 release_notes="$root/.github/release-notes/1.0.0.md"
 test -f "$release_notes"
 for breaking_document in "$upgrading" "$release_notes"; do

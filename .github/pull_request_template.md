@@ -23,6 +23,7 @@ you skipped. `tests/workflows.sh` checks this list against the CI job it mirrors
 - [ ] `(cd npm && npm ci && npm run check-version && npm test)`
 - [ ] `cargo clippy --locked --all-targets --all-features -- -D warnings`
 - [ ] `cargo build --release --locked`
+- [ ] `cargo test --release --locked --test performance -- --ignored noop_sync_should_not_regress_against_a_minimal_store --nocapture`
 - [ ] `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features`
 - [ ] `cargo deny check`
 - [ ] `cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines "$(cat coverage-threshold)"`

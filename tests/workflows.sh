@@ -89,6 +89,18 @@ printf '%s\n' "$ci_test_job" | grep -Fq 'cargo test --locked'
 printf '%s\n' "$ci_test_job" | grep -Fq 'cargo clippy --locked --all-targets --all-features -- -D warnings'
 printf '%s\n' "$ci_test_job" | grep -Fq 'cargo build --release --locked --target "${{ matrix.target }}"'
 printf '%s\n' "$ci_test_job" | grep -Fq 'sh scripts/release-rehearsal.sh'
+printf '%s\n' "$ci_test_job" | grep -Fq 'cargo test --release --locked --target "${{ matrix.target }}" --test performance -- --ignored noop_sync_should_not_regress_against_a_minimal_store --nocapture'
+performance_command='cargo test --release --locked --test performance -- --ignored noop_sync_should_not_regress_against_a_minimal_store --nocapture'
+for performance_document in "$root/CONTRIBUTING.md" "$root/.github/pull_request_template.md"; do
+  grep -Fq "$performance_command" "$performance_document"
+done
+
+node --test "$root/tests/release-notes.mjs"
+printf '%s\n' "$final_release_job" | grep -Fq 'ref: ${{ needs.release-please.outputs.tag_name }}'
+printf '%s\n' "$final_release_job" | grep -Fq 'node scripts/prepare-release-notes.mjs'
+notes_line="$(printf '%s\n' "$final_release_job" | grep -n -- '--notes-file' | cut -d: -f1)"
+publish_line="$(printf '%s\n' "$final_release_job" | grep -n -- '--draft=false' | cut -d: -f1)"
+test "$notes_line" -lt "$publish_line"
 
 # The host test job covers the two native release targets. The dedicated job
 # covers the three remaining targets, including native ARM execution and the
