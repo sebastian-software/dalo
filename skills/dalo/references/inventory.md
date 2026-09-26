@@ -95,3 +95,23 @@ Summarize the useful facts: existing Dalo health, agents and scope, shared versu
 independent copies, candidate origins, and content that must be preserved.
 Offer a recommendation based on those facts instead of asking the user which
 technical state they are in.
+
+## Explicit project scope
+
+For a request about this repository's installed skills, look for
+`dalo-project.toml` in the explicitly named project directory. When the installed
+binary supports `--project`, use `dalo --project <directory> status` and
+`doctor` to inspect that project's independent store. Do not assume that changing
+the working directory changes Dalo scope: commands without `--project` retain
+their usual global/custom-store selection. Do not redirect the global store's
+targets to implement project installation.
+
+The first project implementation supports `init`, `install`, `status`, `doctor`,
+`audit`, and `approve`. `init` writes the portable definition; `install` restores
+its exact commits and requires local approvals. The `.dalo` directory and generated
+agent links are machine-local and must not be committed. The definition is
+`dalo-project.toml`, not the team-source `dalo.toml`. Inspect
+`https://dalo.sh/docs/projects.html` for the full format and current limitations.
+Do not promise automatic updates or a portable project lockfile yet. A global
+assistant bundle check still concerns the global/custom store containing the
+assistant; keep it separate from the user's requested project operation.

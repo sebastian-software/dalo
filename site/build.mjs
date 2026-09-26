@@ -38,6 +38,11 @@ const PAGES = [
     summary: "Set up, migrate, and maintain skills by talking to the agent you already use.",
   },
   {
+    slug: "projects",
+    label: "Project installations",
+    summary: "Restore project skills from exact commits with an explicit, isolated project scope.",
+  },
+  {
     slug: "team",
     label: "Team repository",
     summary: "Publish a team source: pin external catalogs, advance a pin, and onboard a teammate.",

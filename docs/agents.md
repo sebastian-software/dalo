@@ -36,6 +36,10 @@ elsewhere — the exact shape `dalo sync` produces.
 
 ## Project-scoped folders
 
+For a reproducible, explicitly selected project store, see
+[Project installations](projects.md). The following recipe describes redirecting
+a target in an existing store.
+
 Dalo 1.0 links **user-level** folders. Every agent in the matrix also reads a
 project-level folder — `.claude/skills` for Claude Code, `.agents/skills` for
 Codex and OpenClaw, `.opencode/skills` for OpenCode, `.hermes/skills` for

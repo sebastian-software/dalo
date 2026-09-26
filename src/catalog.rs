@@ -353,6 +353,27 @@ pub fn add_catalog_source(
     })
 }
 
+/// Resolve project selectors with the same identity rules as `source select`.
+pub(crate) fn canonical_skill_selection(
+    paths: &StorePaths,
+    id: &str,
+    refs: &[String],
+) -> DaloResult<Vec<String>> {
+    let source = catalog_source(paths, id)?;
+    let scan = scan_catalog(&source.path)?;
+    let candidates = catalog_candidates_from_scan(&source.path, &scan);
+    let mut selected = refs
+        .iter()
+        .map(|reference| {
+            resolve_candidate_reference(id, &candidates, reference)
+                .map(|candidate| canonical_selection(&candidate))
+        })
+        .collect::<DaloResult<Vec<_>>>()?;
+    selected.sort();
+    selected.dedup();
+    Ok(selected)
+}
+
 /// Inspect a catalog source read-only: list its candidate skills and which are
 /// currently selected. Does not change config, the lock, or the resolved set.
 #[must_use = "the inspect report should be rendered"]
