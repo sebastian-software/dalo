@@ -1,4 +1,4 @@
-//! Explicit project scope with portable, commit-pinned skill declarations.
+//! Project discovery and isolated stores with portable, commit-pinned declarations.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -42,7 +42,7 @@ pub struct ProjectSource {
     pub skills: Vec<String>,
 }
 
-/// Resolved explicit project scope.
+/// Resolved project scope.
 #[derive(Debug)]
 pub struct Project {
     /// Canonical project directory.
@@ -86,6 +86,40 @@ fn check_path(root: &Path, relative: &Path) -> DaloResult<()> {
         }
     }
     Ok(())
+}
+
+/// Find the nearest declaration, stopping at a Git checkout/worktree boundary.
+/// A present but invalid declaration is returned so it cannot fall back globally.
+pub fn discover(start: &Path) -> DaloResult<Option<PathBuf>> {
+    let start = fs::canonicalize(start)?;
+    for directory in start.ancestors() {
+        if entry_exists(&directory.join(MANIFEST))? {
+            return Ok(Some(directory.to_path_buf()));
+        }
+        if entry_exists(&directory.join(".git"))? {
+            break;
+        }
+    }
+    Ok(None)
+}
+
+/// Find the enclosing Git boundary for an interactive first-time scope choice.
+pub fn repository_root(start: &Path) -> DaloResult<Option<PathBuf>> {
+    let start = fs::canonicalize(start)?;
+    for directory in start.ancestors() {
+        if entry_exists(&directory.join(".git"))? {
+            return Ok(Some(directory.to_path_buf()));
+        }
+    }
+    Ok(None)
+}
+
+fn entry_exists(path: &Path) -> DaloResult<bool> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error.into()),
+    }
 }
 
 impl Project {

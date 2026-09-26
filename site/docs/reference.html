@@ -116,10 +116,12 @@ store-internal layout, and the Rust library API are not covered.</p>
 <li><code>~/.dalo</code></li>
 </ol>
 <p>Relative store paths are resolved against the current working directory. <code>~</code> is expanded when used at the start of a path.</p>
-<p>For an independent project installation, use <code>--project &lt;directory&gt;</code> explicitly.
-See <a href="/docs/projects.html">Project installations</a> for <code>init</code>, <code>install</code>, and the versioned
-<code>dalo-project.toml</code> definition. This scope ignores <code>DALO_STORE</code>, conflicts with
-<code>--store</code>, and is never inferred from the current directory.</p>
+<p>Without an explicit CLI or <code>DALO_STORE</code> override, the nearest <code>dalo-project.toml</code>
+selects project scope. Discovery walks upward and stops at the Git repository
+boundary. Use <code>--global</code> / <code>-g</code> to select <code>~/.dalo</code> even inside a project, or
+<code>--project &lt;directory&gt;</code> to select a project explicitly. These flags conflict
+with <code>--store</code>. See <a href="/docs/projects.html">Project installations</a> for discovery,
+interactive initialization, and the versioned definition.</p>
 <h2 id="environment-variables"><a class="doc-anchor" href="#environment-variables">Environment Variables</a></h2>
 <div class="doc-table"><table>
 <thead>
@@ -185,6 +187,10 @@ another value fails when its release archive cannot be fetched.</p>
 </tr>
 </thead>
 <tbody><tr>
+<td><code>--global</code>, <code>-g</code></td>
+<td>Select <code>~/.dalo</code>, bypassing project discovery and <code>DALO_STORE</code>.</td>
+</tr>
+<tr>
 <td><code>--project &lt;DIR&gt;</code></td>
 <td>Explicit project scope; see <a href="/docs/projects.html">Project installations</a>.</td>
 </tr>

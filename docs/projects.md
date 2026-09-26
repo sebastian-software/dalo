@@ -1,18 +1,46 @@
 # Project installations
 
-Dalo can restore a project's skills from a checked-in definition into an
-independent store. Select the project explicitly on every command:
+Dalo restores a project's skills from a checked-in definition into an independent
+store. Inside a configured project, including its subdirectories, use:
 
 ```sh
-dalo --project . init
-# Edit dalo-project.toml to declare sources and complete commit IDs.
-dalo --project . install
+dalo install
+dalo status
+dalo doctor --check
 ```
 
-Without `--project`, commands retain their existing store precedence:
-`--store`, then `DALO_STORE`, then `~/.dalo`. Merely entering a repository does
-not change scope. `--project <directory>` ignores `DALO_STORE` and conflicts
-with `--store`. It names the exact project directory, without searching parents.
+Dalo searches upward for the nearest `dalo-project.toml`, stopping at the nearest
+Git repository boundary (including worktrees and submodules). Without a Git
+boundary it searches up to the filesystem root. A malformed or redirected
+definition fails instead of silently selecting the global store.
+
+## Choosing scope
+
+| Selection | Behavior |
+| --- | --- |
+| `--global`, `-g` | Use `~/.dalo`, bypassing project discovery and `DALO_STORE`. |
+| `--project <directory>` | Use that exact project directory, without parent discovery. |
+| `--store <path>` | Use an explicitly chosen store, bypassing project discovery. |
+| `DALO_STORE` | Preserve an explicitly configured environment store, bypassing discovery. |
+| No override, project definition found | Use the nearest project's `.dalo` store. |
+| No override, no project definition | Preserve the global default, `~/.dalo`. |
+
+The three CLI scope flags conflict with one another. Team authoring, completions,
+manpages, and standalone plugin validation do not acquire an automatic project
+scope. Unsupported project commands fail rather than operating globally.
+
+To set up a project, run `dalo init` interactively inside its Git repository.
+If no definition or store override exists, Dalo asks whether to initialize the
+project (at the Git root) or the global store. Enter, EOF, or an unknown answer
+cancels without writing. JSON, dry-run, CI, and non-interactive invocations never
+prompt; without a definition they retain the existing global behavior. Choose
+explicitly in scripts:
+
+```sh
+dalo --project . init  # Create this project's definition.
+dalo init --global    # Initialize the home store.
+```
+
 Human project output identifies the scope. Existing JSON status and sync reports
 retain their schemas and identify the project store through their store path.
 
@@ -67,11 +95,11 @@ prepares the pinned sources but exits nonzero when approval is pending. Review
 and approve skills locally, then rerun installation:
 
 ```sh
-dalo --project . status
-dalo --project . audit team:review
-dalo --project . approve skill team:review
-dalo --project . install
-dalo --project . doctor --check
+dalo status
+dalo audit team:review
+dalo approve skill team:review
+dalo install
+dalo doctor --check
 ```
 
 Security findings still require the existing explicit, content-bound review
@@ -89,9 +117,10 @@ promise that the remote sources or approvals are ready.
 ## First implementation boundary
 
 This first increment supports `init`, `install`, `status`, `doctor`, `audit`,
-and `approve` with explicit project scope. Other project-scoped commands fail
+and `approve` in project scope. Other project-scoped commands fail
 instead of falling back to the global store. Use `install` to reconcile delivery;
-plain `sync` keeps its existing global/custom-store meaning.
+`sync` is not yet supported in project scope. Use `dalo sync --global` when you
+intend to synchronize the global store from inside a project.
 
 Full commit IDs in the definition currently provide the reproducibility
 boundary. Moving refs, a separate portable project lockfile, an update command,

@@ -61,9 +61,13 @@ pub struct Cli {
     #[arg(long, global = true, value_name = "PATH")]
     pub store: Option<PathBuf>,
 
-    /// Use this project's isolated store and dalo-project.toml (never auto-detected).
+    /// Use a specific project instead of discovering dalo-project.toml above the working directory.
     #[arg(long, global = true, value_name = "DIR", conflicts_with = "store")]
     pub project: Option<PathBuf>,
+
+    /// Use ~/.dalo even inside a project or when DALO_STORE is set.
+    #[arg(long, short = 'g', global = true, conflicts_with_all = ["store", "project"])]
+    pub global: bool,
 
     /// Emit machine-readable JSON where supported.
     #[arg(long, global = true)]
@@ -108,6 +112,38 @@ impl Cli {
         cli
     }
 
+    /// Resolve project context without prompting or mutating the environment.
+    pub fn project_root(&self) -> DaloResult<Option<PathBuf>> {
+        if let Some(root) = &self.project {
+            return Ok(Some(root.clone()));
+        }
+        if self.global
+            || self.store.is_some()
+            || std::env::var_os(store::STORE_ENV_VAR).is_some()
+            || matches!(
+                &self.command,
+                Some(Command::Team(_) | Command::Completions(_) | Command::Manpage)
+                    | Some(Command::Plugin(PluginCommand {
+                        command: PluginSubcommand::Validate(_)
+                    }))
+            )
+        {
+            return Ok(None);
+        }
+        crate::project::discover(&std::env::current_dir()?)
+    }
+
+    /// Store used for errors and explicit global selection, without changing env vars.
+    pub fn resolved_store(&self) -> DaloResult<PathBuf> {
+        if let Some(root) = self.project_root()? {
+            return Ok(crate::project::Project::new(&root)?.store);
+        }
+        if self.global {
+            return store::expand_user_path(std::path::Path::new("~/.dalo"));
+        }
+        store::resolve_store_path(self.store.as_deref())
+    }
+
     fn reject_json_for_plain_text_command(&self) {
         let command = match &self.command {
             Some(Command::Completions(_)) => "completions",
@@ -131,7 +167,7 @@ impl Cli {
 pub enum Command {
     /// Initialize the dalo store.
     Init,
-    /// Restore the explicitly selected project from its pinned declaration.
+    /// Restore the current project from its pinned declaration.
     Install,
     /// Install the conversational assistant bundled with this binary.
     Assistant(AssistantCommand),
@@ -1145,14 +1181,35 @@ pub struct ResolveTargetSlotArgs {
 
 /// Execute a parsed CLI command.
 pub fn run_cli(cli: Cli) -> DaloResult<()> {
+    let mut project = cli.project_root()?;
+    let explicit_scope = cli.global
+        || cli.store.is_some()
+        || cli.project.is_some()
+        || std::env::var_os(store::STORE_ENV_VAR).is_some();
+    let global_store = cli.global.then(|| cli.resolved_store()).transpose()?;
     let Cli {
         store,
-        project,
+        project: _,
+        global: _,
         json,
         dry_run,
         command,
     } = cli;
 
+    let store = global_store.or(store);
+    if project.is_none()
+        && !explicit_scope
+        && matches!(&command, Some(Command::Init))
+        && !json
+        && !dry_run
+        && std::env::var_os("CI").is_none()
+        && io::stdin().is_terminal()
+        && io::stdout().is_terminal()
+        && io::stderr().is_terminal()
+        && let Some(root) = crate::project::repository_root(&std::env::current_dir()?)?
+    {
+        project = choose_init_scope(&root)?;
+    }
     if let Some(root) = project {
         return run_project(&root, json, dry_run, command);
     }
@@ -1232,7 +1289,9 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
     let result = match command {
         Command::Init => run_init(&options),
         Command::Install => Err(DaloError::InvalidArgument {
-            reason: "install requires an explicit project: dalo --project . install".into(),
+            reason:
+                "install needs dalo-project.toml; initialize a project with dalo --project . init"
+                    .into(),
         }),
         Command::Assistant(command) => run_assistant(&options, command),
         Command::Target(command) => run_target(&options, command),
@@ -1271,6 +1330,25 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
     result
 }
 
+fn choose_init_scope(root: &std::path::Path) -> DaloResult<Option<PathBuf>> {
+    use std::io::Write;
+    print!(
+        "Initialize skills for project {} or globally? [p/g, Enter cancels] ",
+        term::terminal_safe_text(&root.display().to_string())
+    );
+    io::stdout().flush()?;
+    let mut answer = String::new();
+    io::stdin().read_line(&mut answer)?;
+    match answer.trim().to_ascii_lowercase().as_str() {
+        "p" | "project" => Ok(Some(root.to_path_buf())),
+        "g" | "global" => Ok(None),
+        _ => Err(DaloError::InvalidArgument {
+            reason: "initialization cancelled; choose dalo init --global or dalo --project . init"
+                .into(),
+        }),
+    }
+}
+
 fn run_project(
     root: &std::path::Path,
     json: bool,
@@ -1278,9 +1356,17 @@ fn run_project(
     command: Option<Command>,
 ) -> DaloResult<()> {
     let project = crate::project::Project::new(root)?;
-    let command = command.ok_or_else(|| DaloError::InvalidArgument {
-        reason: "choose a project command: init, install, status, doctor, audit, or approve".into(),
-    })?;
+    let command = match command {
+        Some(command) => command,
+        None if !json => Command::Status(CheckArgs { check: false }),
+        None => {
+            return Err(DaloError::InvalidArgument {
+                reason:
+                    "choose a project command: init, install, status, doctor, audit, or approve"
+                        .into(),
+            });
+        }
+    };
     let options = GlobalOptions {
         store: project.store.clone(),
         json,
@@ -5152,6 +5238,7 @@ mod tests {
         let cli = Cli {
             store: None,
             project: None,
+            global: false,
             json: false,
             dry_run: false,
             command: None,

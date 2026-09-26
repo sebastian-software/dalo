@@ -189,7 +189,7 @@ command that covers it.</p>
 holding a single probe skill whose directory is a symlink to a directory
 elsewhere — the exact shape <code>dalo sync</code> produces.</p>
 <h2 id="project-scoped-folders"><a class="doc-anchor" href="#project-scoped-folders">Project-scoped folders</a></h2>
-<p>For a reproducible, explicitly selected project store, see
+<p>For a reproducible project store with automatic scope discovery, see
 <a href="/docs/projects.html">Project installations</a>. The following recipe describes redirecting
 a target in an existing store.</p>
 <p>Dalo 1.0 links <strong>user-level</strong> folders. Every agent in the matrix also reads a
@@ -215,8 +215,8 @@ must not be committed:</p>
 <p><code>dalo target detect</code> prints one informational line when the working directory
 holds a project-scoped agent folder that no linked target covers. It does not
 link anything.</p>
-<p>A first-class per-repository target — declared in the repository, shared across
-clones — is tracked in
+<p>For a per-repository definition and isolated store, use
+<a href="/docs/projects.html">Project installations</a>. Further work is tracked in
 <a href="https://github.com/sebastian-software/dalo/issues/851" rel="noopener">#851</a>. The
 <a href="/docs/troubleshooting.html#can-dalo-manage-my-repositorys-claudeskills">FAQ entry</a>
 has the full recipe.</p>

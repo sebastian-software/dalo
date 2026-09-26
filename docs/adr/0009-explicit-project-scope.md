@@ -1,4 +1,4 @@
-# ADR 0009: Explicit Project Scope
+# ADR 0009: Project Discovery and Explicit Scope Overrides
 
 Status: Accepted  
 Date: 2026-09-26  
@@ -13,11 +13,18 @@ to one store, and switching them would affect global installations.
 
 ## Decision
 
-Extend ADR 0002 with an explicitly selected, independent project store.
-`--project <directory>` selects `<directory>/.dalo`; absent that flag, store
-resolution is unchanged. There is no implicit directory discovery or global
-profile switching. This adds a scope rather than changing the meaning of 1.x
-commands or existing persisted schemas.
+Extend ADR 0002 with independent project stores. With no explicit CLI or
+environment store override, discover the nearest `dalo-project.toml` from the
+current directory upward, stopping at the nearest `.git` boundary. Invalid
+project declarations fail closed. A new project declaration opts a repository
+into this behavior; repositories without it retain the existing store default.
+
+`--global`/`-g` selects `~/.dalo` even when `DALO_STORE` is set. `--project`
+selects an exact directory; `--store` and `DALO_STORE` bypass discovery. The CLI
+scope flags conflict. Store-independent commands do not use automatic discovery.
+An interactive `init` in an unconfigured Git repository asks for project versus
+global scope, with cancellation as the default. Scripts, JSON, dry-run, and CI
+never prompt. No existing persisted schema changes.
 
 The portable declaration is `dalo-project.toml`, with its own schema version.
 Do not overload the existing team-source `dalo.toml`. Declarations cannot grant
@@ -42,6 +49,5 @@ does not promise an atomic rollback of all fetched sources.
 
 ## Evidence
 
-CLI tests use real local Git repositories and isolated homes to verify explicit
-scope, exact-commit restoration into two projects, local approval, idempotence,
+CLI tests use real local Git repositories and isolated homes to verify scope discovery and overrides, exact-commit restoration into two projects, local approval, idempotence,
 preview behavior, preservation of edits, and rejection of redirected paths.

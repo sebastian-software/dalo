@@ -4,14 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Project installations · Dalo documentation</title>
-  <meta name="description" content="Restore project skills from exact commits with an explicit, isolated project scope." />
+  <meta name="description" content="Restore project skills from exact commits with automatic project discovery and an isolated store." />
   <link rel="canonical" href="https://dalo.sh/docs/projects.html" />
   <meta name="theme-color" content="#ffffff" />
   <meta property="og:type" content="article" />
   <meta property="og:site_name" content="Dalo" />
   <meta property="og:url" content="https://dalo.sh/docs/projects.html" />
   <meta property="og:title" content="Project installations · Dalo documentation" />
-  <meta property="og:description" content="Restore project skills from exact commits with an explicit, isolated project scope." />
+  <meta property="og:description" content="Restore project skills from exact commits with automatic project discovery and an isolated store." />
   <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
   <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
   <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
@@ -97,17 +97,62 @@
   </details>
   <article class="doc-body">
 <h1 id="project-installations">Project installations</h1>
-<p>Dalo can restore a project&#39;s skills from a checked-in definition into an
-independent store. Select the project explicitly on every command:</p>
-<pre><code class="language-sh">dalo --project . init
-# Edit dalo-project.toml to declare sources and complete commit IDs.
-dalo --project . install
+<p>Dalo restores a project&#39;s skills from a checked-in definition into an independent
+store. Inside a configured project, including its subdirectories, use:</p>
+<pre><code class="language-sh">dalo install
+dalo status
+dalo doctor --check
 </code></pre>
-<p>Without <code>--project</code>, commands retain their existing store precedence:
-<code>--store</code>, then <code>DALO_STORE</code>, then <code>~/.dalo</code>. Merely entering a repository does
-not change scope. <code>--project &lt;directory&gt;</code> ignores <code>DALO_STORE</code> and conflicts
-with <code>--store</code>. It names the exact project directory, without searching parents.
-Human project output identifies the scope. Existing JSON status and sync reports
+<p>Dalo searches upward for the nearest <code>dalo-project.toml</code>, stopping at the nearest
+Git repository boundary (including worktrees and submodules). Without a Git
+boundary it searches up to the filesystem root. A malformed or redirected
+definition fails instead of silently selecting the global store.</p>
+<h2 id="choosing-scope"><a class="doc-anchor" href="#choosing-scope">Choosing scope</a></h2>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Selection</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>--global</code>, <code>-g</code></td>
+<td>Use <code>~/.dalo</code>, bypassing project discovery and <code>DALO_STORE</code>.</td>
+</tr>
+<tr>
+<td><code>--project &lt;directory&gt;</code></td>
+<td>Use that exact project directory, without parent discovery.</td>
+</tr>
+<tr>
+<td><code>--store &lt;path&gt;</code></td>
+<td>Use an explicitly chosen store, bypassing project discovery.</td>
+</tr>
+<tr>
+<td><code>DALO_STORE</code></td>
+<td>Preserve an explicitly configured environment store, bypassing discovery.</td>
+</tr>
+<tr>
+<td>No override, project definition found</td>
+<td>Use the nearest project&#39;s <code>.dalo</code> store.</td>
+</tr>
+<tr>
+<td>No override, no project definition</td>
+<td>Preserve the global default, <code>~/.dalo</code>.</td>
+</tr>
+</tbody></table></div>
+<p>The three CLI scope flags conflict with one another. Team authoring, completions,
+manpages, and standalone plugin validation do not acquire an automatic project
+scope. Unsupported project commands fail rather than operating globally.</p>
+<p>To set up a project, run <code>dalo init</code> interactively inside its Git repository.
+If no definition or store override exists, Dalo asks whether to initialize the
+project (at the Git root) or the global store. Enter, EOF, or an unknown answer
+cancels without writing. JSON, dry-run, CI, and non-interactive invocations never
+prompt; without a definition they retain the existing global behavior. Choose
+explicitly in scripts:</p>
+<pre><code class="language-sh">dalo --project . init  # Create this project&#39;s definition.
+dalo init --global    # Initialize the home store.
+</code></pre>
+<p>Human project output identifies the scope. Existing JSON status and sync reports
 retain their schemas and identify the project store through their store path.</p>
 <h2 id="definition-and-local-state"><a class="doc-anchor" href="#definition-and-local-state">Definition and local state</a></h2>
 <p>Commit <code>dalo-project.toml</code>. It is a separate, versioned format from the
@@ -147,11 +192,11 @@ locks and approvals must not be committed either.</p>
 <p>The definition declares desired content, not approval. Initial installation
 prepares the pinned sources but exits nonzero when approval is pending. Review
 and approve skills locally, then rerun installation:</p>
-<pre><code class="language-sh">dalo --project . status
-dalo --project . audit team:review
-dalo --project . approve skill team:review
-dalo --project . install
-dalo --project . doctor --check
+<pre><code class="language-sh">dalo status
+dalo audit team:review
+dalo approve skill team:review
+dalo install
+dalo doctor --check
 </code></pre>
 <p>Security findings still require the existing explicit, content-bound review
 flow. Installation never auto-approves skills or executes their contents.
@@ -165,9 +210,10 @@ creating a store, auditing remote content, or delivering links. It is not a
 promise that the remote sources or approvals are ready.</p>
 <h2 id="first-implementation-boundary"><a class="doc-anchor" href="#first-implementation-boundary">First implementation boundary</a></h2>
 <p>This first increment supports <code>init</code>, <code>install</code>, <code>status</code>, <code>doctor</code>, <code>audit</code>,
-and <code>approve</code> with explicit project scope. Other project-scoped commands fail
+and <code>approve</code> in project scope. Other project-scoped commands fail
 instead of falling back to the global store. Use <code>install</code> to reconcile delivery;
-plain <code>sync</code> keeps its existing global/custom-store meaning.</p>
+<code>sync</code> is not yet supported in project scope. Use <code>dalo sync --global</code> when you
+intend to synchronize the global store from inside a project.</p>
 <p>Full commit IDs in the definition currently provide the reproducibility
 boundary. Moving refs, a separate portable project lockfile, an update command,
 and removal or replacement of previously installed sources/selections are
@@ -179,6 +225,7 @@ boundary. A future update flow must preserve them while reviewing the change.</p
   <nav class="doc-toc" aria-label="On this page">
     <p class="doc-toc-h">On this page</p>
     <ul>
+      <li><a href="#choosing-scope">Choosing scope</a></li>
       <li><a href="#definition-and-local-state">Definition and local state</a></li>
       <li><a href="#review-and-installation">Review and installation</a></li>
       <li><a href="#first-implementation-boundary">First implementation boundary</a></li>
