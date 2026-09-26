@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.0.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.17.0...dalo-v1.0.0) (2026-09-26)
+
+
+### Features
+
+* add Dalo logo SVG ([eee6b3d](https://github.com/sebastian-software/dalo/commit/eee6b3d4d47d1e4ef7f6284d13bdd02c3ba77b3c))
+* **assistant:** add bundled setup and update prompts ([d51e33c](https://github.com/sebastian-software/dalo/commit/d51e33c627e09b84cf14153a631e88c5f9528811))
+* **install:** add Nix flake package ([722cf43](https://github.com/sebastian-software/dalo/commit/722cf43ccc57b50130dd356f4aac7131b2be4792))
+* **site:** adopt the new logo across the site and README ([1c75fc5](https://github.com/sebastian-software/dalo/commit/1c75fc557442ee17f8a17b0a7e35ef5f2332bde9))
+* **site:** bring the docs, spec, and news pages in line with the homepage ([bf75cf7](https://github.com/sebastian-software/dalo/commit/bf75cf749067f1881a662368f4b8b94925f09c9f))
+* **site:** redesign the homepage around three core messages ([ae685b6](https://github.com/sebastian-software/dalo/commit/ae685b675412233d9bc28647e8b423c2e5886241))
+* **site:** redraw the OG card and demo video, add a drawn wordmark ([70f3849](https://github.com/sebastian-software/dalo/commit/70f3849da0b51315b52616bc61351ee4ba5dd443))
+* **site:** set the wordmark in Outfit ExtraBold capitals ([eb21835](https://github.com/sebastian-software/dalo/commit/eb218351a4eabf30935cb87c4658bbe5523213d5))
+* **site:** start the homepage stylesheet for the gradient design ([8c4c92f](https://github.com/sebastian-software/dalo/commit/8c4c92f88781e3ef66e647923b1040a99e26a91f))
+* **source:** scope Git sources to pinned subpaths ([2e3ff40](https://github.com/sebastian-software/dalo/commit/2e3ff40142fe114550997ed1fa394986d801b010))
+
+
+### Bug Fixes
+
+* **install:** keep Nix package build separate from integration tests ([a636b96](https://github.com/sebastian-software/dalo/commit/a636b96b004bbdd5763391d45fecc1652ee518c2))
+* **site:** close the gaps the homepage critique found ([2e37721](https://github.com/sebastian-software/dalo/commit/2e37721422ededf993194026158ff2e5d2f2f87b))
+* **site:** make homepage install and copy paths reliable ([0812ba2](https://github.com/sebastian-software/dalo/commit/0812ba2ef36afa8ba5362a36daf1209631aeb018))
+* **update:** let fast commands still deliver the update notice ([603c6b3](https://github.com/sebastian-software/dalo/commit/603c6b365c2b32e157288b0bb3380b8f2138efb5)), closes [#872](https://github.com/sebastian-software/dalo/issues/872)
+
+
+### Continuous Integration
+
+* **release:** finish 1.0 readiness rehearsal ([8e5ed43](https://github.com/sebastian-software/dalo/commit/8e5ed43a6a6d3c7c922f8c704402ca2ed68cdb30))
+
 ## [0.17.0](https://github.com/sebastian-software/dalo/compare/dalo-v0.16.0...dalo-v0.17.0) (2026-09-17)
 
 
