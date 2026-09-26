@@ -5,6 +5,10 @@ team's skills. It is written for the developer side. If you own the repository
 those skills come from, read the [team repository guide](team.md) instead — or
 afterwards.
 
+Prefer to work through your agent? Ask it to **“Install the Dalo skill manager.”**
+The [conversational setup](assistant.md) includes the assistant, which can then
+help you migrate or maintain your skills.
+
 Before you start:
 
 - install Dalo (see the [README installation instructions](../README.md#installation))

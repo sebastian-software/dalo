@@ -77,6 +77,7 @@ version it does not support instead of guessing.
 | [`lock.toml`](reference.md#locktoml) | store root | `schema_version` | `6` (versions `1`–`5` are read and migrated forward) |
 | [`approvals.toml`](reference.md#approvalstoml) | store root | `schema_version` | `1` |
 | [`source-lock.toml`](reference.md#source-locktoml) | store root | `schema_version` | `3` (versions `1` and `2` are read and migrated forward) |
+| [`.dalo-bundle.toml`](reference.md#bundled-assistant-receipt) | `local/skills/dalo/` | `schema_version` | `1` |
 | [`dalo.toml`](reference.md#team-repository-dalotoml) | team repository root | `schema_version` | `1` |
 | [`PLUGIN.toml`](reference.md#plugintoml-portable-plugins-tools-and-hooks) | `plugins/<name>/` in a source | `schema_version` | `1` (tool descriptor `1`, hook descriptor `1`) |
 
@@ -103,6 +104,7 @@ The internal layout *around* those files is not covered — see
 | `DALO_GIT_TIMEOUT_SECS` | CLI | Positive timeout in seconds for every Git subprocess. |
 | `DALO_OFFLINE` | CLI | Disable passive update checks when truthy. |
 | `DALO_UPDATE_CHECK` | CLI | `never` disables passive update checks. |
+| `DALO_ASSISTANT_CHECK` | CLI | `never` disables automatic interactive assistant setup offers; explicit commands still work. |
 | `DALO_INSTALL_CHANNEL` | CLI | Launcher-provided installation context used for the upgrade hint. |
 | `NO_COLOR` | CLI | Disable ANSI color output when set. |
 | `DALO_TARGET` | `install.sh` | Release target override; see [installer variables](../site/install.md#installer-environment-variables). |

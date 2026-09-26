@@ -28,7 +28,7 @@ const {
 const execFileAsync = promisify(execFile);
 
 test('publishes discovery and supported-platform metadata', () => {
-  assert.equal(packageManifest.description, "Your team's agent skills, versioned like code.");
+  assert.match(packageManifest.description, /AI agent skill manager/);
   assert.equal(packageManifest.homepage, 'https://dalo.sh');
   assert.equal(packageManifest.bugs.url, 'https://github.com/sebastian-software/dalo/issues');
   assert.deepEqual(packageManifest.keywords, ['dalo', 'ai', 'agents', 'skills', 'cli']);

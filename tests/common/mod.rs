@@ -20,6 +20,7 @@ macro_rules! apply_test_environment {
             .env_remove("DALO_STORE")
             .env_remove("DALO_GENERATOR_TIMEOUT_SECS")
             .env("DALO_UPDATE_CHECK", "never")
+            .env("DALO_ASSISTANT_CHECK", "never")
             .env("HOME", &$environment.home)
             .env("CODEX_HOME", &$environment.codex_home)
             .env("CLAUDE_CONFIG_DIR", &$environment.claude_config_dir)

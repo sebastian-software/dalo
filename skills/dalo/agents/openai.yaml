@@ -1,0 +1,4 @@
+interface:
+  display_name: "Dalo"
+  short_description: "Set up, migrate, and maintain your agent skills"
+  default_prompt: "Use $dalo to inspect my skill setup and suggest the next useful step."

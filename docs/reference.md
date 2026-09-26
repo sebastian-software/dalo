@@ -2,6 +2,9 @@
 
 This is the user-facing reference for scripting Dalo and for understanding the files Dalo writes. It documents the current CLI and persisted schemas.
 
+For a conversational interface to these operations, use the
+[Dalo assistant skill](assistant.md) in your existing agent.
+
 ## Compatibility
 
 This page describes current behavior. Whether a given command, flag, exit code,
@@ -30,6 +33,7 @@ Relative store paths are resolved against the current working directory. `~` is 
 | `DALO_GIT_TIMEOUT_SECS` | Positive timeout in seconds for every Git subprocess. Invalid or zero values use the built-in defaults. |
 | `DALO_OFFLINE` | Disable passive update checks when set to a truthy value. |
 | `DALO_UPDATE_CHECK` | Set to `never` to disable passive update checks. |
+| `DALO_ASSISTANT_CHECK` | Set to `never` to disable the automatic interactive assistant installation/update offer. Explicit assistant commands still work. |
 | `DALO_INSTALL_CHANNEL` | Installation context set by a launcher so the update notice recommends the matching upgrade command. |
 | `NO_COLOR` | Disable ANSI color output when set. |
 | `DALO_TARGET` | Installer-only release target override. A non-empty value takes precedence over platform detection; see [installer target variables](../site/install.md#installer-environment-variables). |
@@ -68,7 +72,8 @@ Global flags can be placed before or after the command.
 After a successful interactive command, Dalo checks for a newer GitHub release
 at most once per 24 hours. The check uses a one-second network timeout and
 never changes the command's exit status. Checks are skipped for `--json`, CI,
-`DALO_OFFLINE=1`, and `DALO_UPDATE_CHECK=never`.
+`DALO_OFFLINE=1`, and `DALO_UPDATE_CHECK=never`. Offline commands such as
+`assistant install` and `plugin validate` skip these notices as well.
 
 The check runs beside the command on its own thread. A command that finishes
 first waits up to 150 milliseconds for the answer, so even a command that takes
@@ -109,6 +114,76 @@ dalo --json --dry-run init
 ```
 
 JSON output shape: `InitReport`.
+
+### `dalo assistant status`
+
+Inspect the assistant without writing files or using the network. Works before
+store initialization and compares the installed bundle with the running
+executable, not the latest release on the internet. Unknown, unreadable, or
+modified content is reported as blocked, never as missing.
+
+```sh
+dalo assistant status
+dalo --store /tmp/dalo-demo --json assistant status
+```
+
+JSON output shape: `AssistantStatusReport`. Its `state` is `missing_store`,
+`missing`, `current`, `update_available`, `external`, or `blocked`. It includes
+the binary's `version`, verified `installed_version` when available, the local
+`skill_path`, an optional `reason`, discovered `external_paths`, enabled
+`undelivered_targets`, and an optional `next_command`. `current` describes the
+local bundle, so check delivery separately. External entries are inspected in
+configured/default target folders, agent configuration overrides, the Codex skill folder, and the current
+project's `.agents`, `.claude`, and `.codex` skill folders. Their freshness is
+not inferred from the name. The report is also the additive `assistant` field
+in `status --json`; it does not change `status --check` health rules.
+
+Successful ordinary terminal commands and bare `dalo` use this check to offer
+missing or outdated bundles with a `[y/N]` question. Only `y` or `yes` proceeds.
+The first-run offer explicitly includes initializing a missing store. No answer,
+Enter, or any other response changes nothing; the next invocation checks again.
+A current bundle remains quiet unless delivery still needs setup. A modified
+or external installation receives a diagnostic, never an overwrite offer.
+
+Automatic offers are suppressed for `--json`, `--dry-run`, redirected streams,
+an environment with `CI` set, `DALO_ASSISTANT_CHECK=never`, and failed commands.
+Help/version, completions, man pages, explicit assistant commands, team commands,
+package validation, tool/hook/scheduler commands, target unlinking, and health
+checks (`status`, `doctor`, `sync`, or `agent list` with `--check`) do not offer
+setup. The offer holds no store lock while waiting, rechecks before writing,
+and does not change the original command's exit status on setup failure.
+Agents should use the JSON report and ask in their own UI.
+
+### `dalo assistant install`
+
+Prepare the complete assistant bundled with this executable in the initialized
+store's `local/skills/dalo` directory. It works offline and does not fetch
+sources, commit local work, link targets, or run sync. The standard enabled,
+unnamespaced local source is required. See [the assistant guide](assistant.md)
+for the conversational setup flow.
+
+```sh
+dalo --dry-run --json assistant install
+dalo assistant install
+dalo --dry-run sync
+dalo sync --check
+```
+
+Link the intended target before syncing. Sync applies the entire store to all
+linked targets; inspect its full preview. Repeating installation of an unchanged
+bundle performs no replacement. After upgrading Dalo, run the command again to
+update the assistant to the executable's version. Existing target symlinks read
+bundle updates immediately, before another sync.
+
+Installation refuses an unrecorded local `dalo` directory, modified bundle,
+symlink, or unsupported receipt schema. It does not take over a skill installed
+by another manager. A foreign target entry remains a normal sync conflict.
+See [bundled assistant recovery](#bundled-assistant-receipt) for interrupted
+installations. Older binaries may not provide this command; check its `--help`.
+
+JSON output shape: `AssistantInstallReport`. The `action` is `install`, `update`,
+or `existing`; `dry_run` distinguishes a preview from an applied operation.
+`next_command` previews the whole store's sync.
 
 ### `dalo next`
 
@@ -1211,6 +1286,8 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | Command | Shape | Important fields |
 | --- | --- | --- |
 | `init` | `InitReport` | `store`, `dry_run`, `operations[]` with `action`, `path`, `status` |
+| `assistant status` | `AssistantStatusReport` | `store`, `skill_path`, `version`, nullable `installed_version`, `state`, nullable `reason`, `external_paths[]`, `undelivered_targets[]`, nullable `next_command` |
+| `assistant install` | `AssistantInstallReport` | `store`, `skill_path`, `version`, nullable `previous_version`, `action`, `dry_run`, `next_command` |
 | `target detect` | `TargetDetectReport` | `targets[]` with `id`, `name`, `support`, `path`, `exists`, `linked` |
 | `target link` | `TargetLinkReport` | `target_id`, `path`, `canonical_path`, `status`, `created_dir` |
 | `target unlink` | `TargetUnlinkReport` | `target_id`, `status` |
@@ -1247,7 +1324,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `autosync install` / `uninstall` | `AutosyncMutationReport` | `action`, `dry_run`, resulting `status` |
 | `autosync status` | `AutosyncStatusReport` | `configured`, `installed`, `enabled`, backend, schedule, executable, store, artifacts, optional `scheduler_error`, optional `disabled_reason`, and optional `last_run` |
 | `autosync run` | `SyncReport` or `AutosyncRunState` | `SyncReport` when synchronization starts; `AutosyncRunState` with `outcome: "skipped"` and `reason` when another process holds the store lock. Catalog-drift and blocked failures keep the JSON sync report on stdout and emit the standard JSON error on stderr. |
-| `status` | `StatusReport` | `store`, `sources[]` with `skill_count`, `agent_count`, and `provenance`, `targets[]`, `inventory_warnings[]`, `agent_inventory_warnings[]`, `resolution`, dry-run `materialization[]`, `blocking_audits[]`, `audit_failures[]`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]`, `autosync` |
+| `status` | `StatusReport` | `store`, `assistant`, `sources[]` with `skill_count`, `agent_count`, and `provenance`, `targets[]`, `inventory_warnings[]`, `agent_inventory_warnings[]`, `resolution`, dry-run `materialization[]`, `blocking_audits[]`, `audit_failures[]`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]`, `autosync` |
 | `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, skill `operations[]`, optional `instruction_operations[]` (`source_id`, `pack_id`, `target`, `action`, `previous_commit`, `commit`), `resolution`, `degraded_sources[]` (`id`, `path`, `reason`), optional `inventory_warnings[]` (`code`, `path`, `message`), optional `unrefreshed_tracking_sources[]`, `unselected_catalogs[]` (`source_id`, `available_skills`) |
 | `audit` | `AuditReport` | `schema_version`, `source_ref`, `skill_path`, `content_hash`, `static_engine_version`, `scanned_at_unix`, `coverage`, `status`, optional `max_severity`, `static_findings[]`, optional `agent_review`, optional `risk_acceptance` |
 | `approve list` | `ApprovalListReport` | `schema_version`, `approvals[]` (optional `granted_at_unix`), `accepted_risks[]` (`source_ref`, `content_hash`, `reason`, `accepted_at_unix`, `scope_hash`, `active`, `audit_command`) |
@@ -1346,10 +1423,12 @@ After `dalo init`, the store contains:
 | `sources/<id>/checkout/` | Team and catalog Git checkouts. |
 | `sources/.audit-staging/` | Detached incoming team commits retained only while security review is required. |
 
-Hook and plugin projection paths are created lazily, not by `dalo init`:
+Assistant, hook, and plugin paths are created lazily, not by `dalo init`:
 
 | Path | Created when |
 | --- | --- |
+| `local/skills/dalo/`, including `.dalo-bundle.toml` | `assistant install` prepares the embedded skill and its versioned receipt. |
+| `.assistant-installing/` | An assistant installation stages `new/` and temporarily preserves `previous/`; retained if recovery is needed. |
 | `hooks/`, `hooks/state.json` | The first native hook projection is applied; the state file records dispatcher ownership. |
 | `plugins/`, `plugins/state.json` | The first native plugin projection is applied; the state file records projection ownership. |
 
@@ -1361,6 +1440,27 @@ through `dalo` commands rather than directly. See
 [Compatibility and stability](compatibility.md).
 
 Dalo rejects unsupported schema versions in persisted TOML files.
+
+### Bundled assistant receipt
+
+`local/skills/dalo/.dalo-bundle.toml` has `schema_version = 1`, a `dalo_version`,
+and an `entries` map keyed by relative path. Each entry records its `kind`
+(`file` or `directory`), a file's `executable` flag, and its `sha256` content
+hash. Directory entries have `executable = false` and an empty hash. The receipt
+itself is excluded from the map. Before replacing a recorded bundle, Dalo checks
+the complete tree, including added files, empty directories, and file executable
+bits. Symlinks and special files block replacement. The receipt records update
+ownership; it is not a signature or an approval for third-party content.
+
+An interrupted installation leaves `.assistant-installing/` outside source
+discovery. Further assistant installs stop until it is recovered. Preserve and
+inspect `new/`, `previous/`, and the current `local/skills/dalo` before moving
+anything. If the local slot is absent and `previous/` contains the old bundle,
+restore that whole directory into the empty slot. If a current bundle already
+occupies the slot, do not overwrite it; compare and preserve both copies. After
+recovering the intended bundle, move the remaining transaction directory to a
+backup outside the store, then retry `assistant install --dry-run`. Do not clear
+a transaction merely because a new command reported it.
 
 ### Accepted 0.x Store Shapes
 

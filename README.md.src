@@ -27,6 +27,11 @@ priorities, approvals, conflicts, drift, and safe synchronization.
 
 ## Install
 
+Ask your local coding agent: **“Install the Dalo skill manager.”** The
+[agent setup guide](https://dalo.sh/install.md) covers the binary, the bundled
+Dalo assistant, and verification. No preinstalled Dalo skill is needed.
+[Use Dalo through your agent](docs/assistant.md).
+
 Dalo runs on macOS and Linux:
 
 ```sh
@@ -311,6 +316,7 @@ For manual archives, upgrades, shell completions, and removal, see the
 ## Documentation
 
 - [Getting started](docs/getting-started.md)
+- [Dalo assistant](docs/assistant.md)
 - [Team repository guide](docs/team.md)
 - [Command reference](docs/reference.md)
 - [Compatibility and stability](docs/compatibility.md)

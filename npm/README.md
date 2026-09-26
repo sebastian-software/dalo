@@ -3,7 +3,12 @@
 `getdalo` is a small Node.js launcher for [Dalo](https://dalo.sh), the
 Git-backed skill manager for AI agents. It downloads the matching official Dalo
 release on first use, verifies its SHA-256 checksum, caches it locally, and
-forwards every argument to the binary.
+forwards every argument to the binary. This is the official npm launcher for
+Dalo by Sebastian Software; the CLI and Cargo package are named `dalo`.
+
+You can ask your coding agent to **“Install the Dalo skill manager.”** The
+[agent setup guide](https://dalo.sh/install.md) covers installation of both the
+CLI and its bundled assistant. No Dalo skill needs to be installed first.
 
 ## Use it
 

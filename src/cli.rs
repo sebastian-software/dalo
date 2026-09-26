@@ -12,6 +12,7 @@ use clap_mangen::Man;
 use crate::adopt;
 use crate::agent;
 use crate::approval;
+use crate::assistant;
 use crate::audit;
 use crate::autosync;
 use crate::catalog;
@@ -126,6 +127,8 @@ impl Cli {
 pub enum Command {
     /// Initialize the dalo store.
     Init,
+    /// Install the conversational assistant bundled with this binary.
+    Assistant(AssistantCommand),
     /// Detect, link, or unlink agent targets.
     Target(TargetCommand),
     /// Manage skill sources.
@@ -193,6 +196,26 @@ pub enum Command {
     /// Generate a man page.
     #[command(hide = true)]
     Manpage,
+}
+
+/// `assistant` command group.
+#[derive(Debug, Args)]
+pub struct AssistantCommand {
+    /// Assistant subcommand.
+    #[command(subcommand)]
+    pub command: AssistantSubcommand,
+}
+
+/// Commands for the bundled first-party assistant.
+#[derive(Debug, Subcommand)]
+pub enum AssistantSubcommand {
+    /// Check the bundled skill's freshness and delivery without changing files.
+    Status,
+    /// Prepare or update the bundled skill in the local source without fetching or syncing.
+    #[command(
+        after_help = "Run `dalo init` first. Then link your intended target, preview `dalo --dry-run sync`, and run `dalo sync`. Existing modified skills and foreign installations are never overwritten. Updates become visible immediately through any existing links to the local bundle."
+    )]
+    Install,
 }
 
 /// `completions` command.
@@ -1133,7 +1156,9 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         }
         if !json && io::stdout().is_terminal() {
             let options = GlobalOptions::resolve(store.as_deref(), false, dry_run)?;
-            return run_next(&options);
+            run_next(&options)?;
+            offer_assistant(&options);
+            return Ok(());
         }
         Cli::command().print_help()?;
         println!();
@@ -1158,9 +1183,10 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
             command: PluginSubcommand::Validate(_)
         })
     );
-    let pending_update_notice = (!json && !package_validation)
-        .then(update::start_notice_check)
-        .flatten();
+    let pending_update_notice =
+        (!json && !package_validation && !matches!(&command, Command::Assistant(_)))
+            .then(update::start_notice_check)
+            .flatten();
     let options = if matches!(command, Command::Team(_)) || package_validation {
         GlobalOptions {
             store: PathBuf::new(),
@@ -1171,12 +1197,31 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         GlobalOptions::resolve(store.as_deref(), json, dry_run)?
     };
     let ignores_dry_run = command_ignores_dry_run(&command);
+    let check_assistant = !package_validation
+        && !matches!(
+            &command,
+            Command::Assistant(_)
+                | Command::Team(_)
+                | Command::Tool(_)
+                | Command::Hook(_)
+                | Command::Autosync(_)
+                | Command::Status(CheckArgs { check: true })
+                | Command::Doctor(CheckArgs { check: true })
+                | Command::Sync(CheckArgs { check: true })
+                | Command::Agent(AgentCommand {
+                    command: AgentSubcommand::List(CheckArgs { check: true })
+                })
+                | Command::Target(TargetCommand {
+                    command: TargetSubcommand::Unlink(_)
+                })
+        );
     if ignores_dry_run && !options.json {
         warn_noop_dry_run(options.dry_run);
     }
 
     let result = match command {
         Command::Init => run_init(&options),
+        Command::Assistant(command) => run_assistant(&options, command),
         Command::Target(command) => run_target(&options, command),
         Command::Source(command) => run_source(&options, command),
         Command::Agent(command) => run_agent(&options, command),
@@ -1202,6 +1247,9 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
 
     if result.is_ok() {
         update::print_notice_if_ready(pending_update_notice);
+        if check_assistant {
+            offer_assistant(&options);
+        }
         if options.json && ignores_dry_run {
             warn_noop_dry_run(options.dry_run);
         }
@@ -1219,7 +1267,9 @@ fn warn_noop_dry_run(dry_run: bool) {
 fn command_ignores_dry_run(command: &Command) -> bool {
     matches!(
         command,
-        Command::Target(TargetCommand {
+        Command::Assistant(AssistantCommand {
+            command: AssistantSubcommand::Status
+        }) | Command::Target(TargetCommand {
             command: TargetSubcommand::Detect
         }) | Command::Source(SourceCommand {
             command: SourceSubcommand::List | SourceSubcommand::Inspect(_)
@@ -2514,6 +2564,175 @@ fn print_instruction_pack_batch_report(report: &instructions::InstructionPackBat
             println!("  warning: {}", status::compact_human_text(warning));
         }
     }
+}
+
+fn run_assistant(options: &GlobalOptions, command: AssistantCommand) -> DaloResult<()> {
+    match command.command {
+        AssistantSubcommand::Status => {
+            let report = assistant::status(&store::StorePaths::new(options.store.clone()));
+            if options.json {
+                print_json(&report)?;
+            } else {
+                let state = match report.state {
+                    assistant::AssistantState::MissingStore => "store not initialized",
+                    assistant::AssistantState::Missing => "not installed",
+                    assistant::AssistantState::Current => "current",
+                    assistant::AssistantState::UpdateAvailable => "update available",
+                    assistant::AssistantState::External => "managed elsewhere",
+                    assistant::AssistantState::Blocked => "needs attention",
+                };
+                println!("assistant: {state} (bundled with Dalo {})", report.version);
+                println!("local skill: {}", report.skill_path.display());
+                if let Some(reason) = &report.reason {
+                    println!("{reason}");
+                }
+                for path in &report.external_paths {
+                    println!("external assistant: {}", path.display());
+                }
+                if !report.undelivered_targets.is_empty() {
+                    println!(
+                        "not delivered to: {}",
+                        report.undelivered_targets.join(", ")
+                    );
+                }
+                if let Some(next) = report.next_command {
+                    println!("next: {next}");
+                }
+            }
+            Ok(())
+        }
+        AssistantSubcommand::Install => {
+            let report = assistant::install(
+                &store::StorePaths::new(options.store.clone()),
+                options.dry_run,
+            )?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                let action = match (&report.action, report.dry_run) {
+                    (assistant::AssistantInstallAction::Install, true) => "would install",
+                    (assistant::AssistantInstallAction::Install, false) => "installed",
+                    (assistant::AssistantInstallAction::Update, true) => "would update",
+                    (assistant::AssistantInstallAction::Update, false) => "updated",
+                    (assistant::AssistantInstallAction::Existing, _) => "already current",
+                };
+                println!(
+                    "assistant: {}{} (Dalo {})",
+                    action,
+                    if report.dry_run { " (dry run)" } else { "" },
+                    report.version
+                );
+                println!("local skill: {}", report.skill_path.display());
+                println!("next: {}", report.next_command);
+                println!(
+                    "Sync links the assistant into configured targets. Existing links read bundle updates immediately."
+                );
+            }
+            Ok(())
+        }
+    }
+}
+
+fn offer_assistant(options: &GlobalOptions) {
+    // Never consume a pipe, alter JSON, or interrupt a check/automation with a
+    // question. Agents use `assistant status --json` and ask in their own UI.
+    if options.json
+        || options.dry_run
+        || !io::stdin().is_terminal()
+        || !io::stdout().is_terminal()
+        || !io::stderr().is_terminal()
+        || std::env::var_os("CI").is_some()
+        || std::env::var("DALO_ASSISTANT_CHECK")
+            .is_ok_and(|value| value.eq_ignore_ascii_case("never"))
+    {
+        return;
+    }
+    if let Err(error) = offer_assistant_interactive(options) {
+        eprintln!("assistant setup was not completed: {error}");
+    }
+}
+
+fn offer_assistant_interactive(options: &GlobalOptions) -> DaloResult<()> {
+    use assistant::AssistantState;
+    use std::io::Write;
+
+    let paths = store::StorePaths::new(options.store.clone());
+    let report = assistant::status(&paths);
+    let action = match report.state {
+        AssistantState::MissingStore => "Create this store and install the bundled Dalo assistant",
+        AssistantState::Missing => "Install the bundled Dalo assistant",
+        AssistantState::UpdateAvailable => "Update the bundled Dalo assistant",
+        AssistantState::Current => {
+            if let Some(next) = report.next_command {
+                eprintln!("assistant: current locally; delivery still needs setup. Next: {next}");
+            }
+            return Ok(());
+        }
+        AssistantState::External | AssistantState::Blocked => {
+            eprintln!(
+                "assistant: {}",
+                report
+                    .reason
+                    .as_deref()
+                    .unwrap_or("inspect the existing installation")
+            );
+            eprintln!(
+                "details: {}",
+                store::dalo_command(&paths.root, "assistant status")
+            );
+            return Ok(());
+        }
+    };
+    eprintln!("\nDalo can manage your skills through a conversational assistant.");
+    eprintln!(
+        "Local skill: {} (Dalo {})",
+        report.skill_path.display(),
+        report.version
+    );
+    if report.state == AssistantState::UpdateAvailable {
+        eprintln!(
+            "Installed bundle: {}. Existing links will read the update immediately.",
+            report.installed_version.as_deref().unwrap_or("unknown")
+        );
+    }
+    eprintln!("This prepares the local skill; target delivery uses your normal sync.");
+    eprint!("{action}? [y/N] ");
+    io::stderr().flush()?;
+    let mut answer = String::new();
+    if io::stdin().read_line(&mut answer)? == 0
+        || !matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes")
+    {
+        eprintln!("Assistant unchanged. You can install it later with `dalo assistant install`.");
+        return Ok(());
+    }
+    // The question holds no store lock. Recheck external entries and local
+    // modifications before acting on the answer.
+    let latest = assistant::status(&paths);
+    if latest.state != report.state || latest.installed_version != report.installed_version {
+        return Err(DaloError::StateError {
+            reason: "the assistant changed while awaiting confirmation; inspect it and retry"
+                .to_owned(),
+        });
+    }
+    if report.state == AssistantState::MissingStore {
+        fs::create_dir_all(&paths.root)?;
+        let _lock = store::StoreLock::acquire(&paths)?;
+        for entry in fs::read_dir(&paths.root)? {
+            if entry?.path() != paths.lock_guard_file {
+                return Err(DaloError::StateError {
+                    reason: "the store changed during setup; inspect it before initializing"
+                        .to_owned(),
+                });
+            }
+        }
+        store::init_store(paths.root, false)?;
+    }
+    run_assistant(
+        options,
+        AssistantCommand {
+            command: AssistantSubcommand::Install,
+        },
+    )
 }
 
 fn run_init(options: &GlobalOptions) -> DaloResult<()> {

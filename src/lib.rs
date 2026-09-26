@@ -27,6 +27,7 @@ compile_error!(
 pub mod adopt;
 pub mod agent;
 pub mod approval;
+pub mod assistant;
 pub mod audit;
 pub mod autosync;
 pub mod catalog;
