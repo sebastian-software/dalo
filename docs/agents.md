@@ -36,7 +36,7 @@ elsewhere — the exact shape `dalo sync` produces.
 
 ## Project-scoped folders
 
-For a reproducible, explicitly selected project store, see
+For a reproducible project store with automatic scope discovery, see
 [Project installations](projects.md). The following recipe describes redirecting
 a target in an existing store.
 
@@ -71,8 +71,8 @@ must not be committed:
 holds a project-scoped agent folder that no linked target covers. It does not
 link anything.
 
-A first-class per-repository target — declared in the repository, shared across
-clones — is tracked in
+For a per-repository definition and isolated store, use
+[Project installations](projects.md). Further work is tracked in
 [#851](https://github.com/sebastian-software/dalo/issues/851). The
 [FAQ entry](troubleshooting.md#can-dalo-manage-my-repositorys-claudeskills)
 has the full recipe.

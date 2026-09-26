@@ -96,22 +96,25 @@ independent copies, candidate origins, and content that must be preserved.
 Offer a recommendation based on those facts instead of asking the user which
 technical state they are in.
 
-## Explicit project scope
+## Project and global scope
 
-For a request about this repository's installed skills, look for
-`dalo-project.toml` in the explicitly named project directory. When the installed
-binary supports `--project`, use `dalo --project <directory> status` and
-`doctor` to inspect that project's independent store. Do not assume that changing
-the working directory changes Dalo scope: commands without `--project` retain
-their usual global/custom-store selection. Do not redirect the global store's
-targets to implement project installation.
+Look for `dalo-project.toml` when a request concerns a repository. Dalo discovers
+the nearest definition above the working directory, stopping at the nearest
+Git boundary. In that scope use `dalo status`, `install`, `doctor`, `audit`, and
+`approve`. Use `--global` for an explicitly global request and `--project <dir>`
+when selecting a different project. Explicit `--store` and `DALO_STORE` bypass
+automatic discovery. A malformed project definition must not cause a fallback
+to global operations. Do not redirect global targets to implement a project.
+
+`init` asks for project versus global scope only in an interactive, unconfigured
+Git repository without overrides. Agents should ask in their own UI when the
+intent is unclear, then use `--project <dir> init` or `init --global` explicitly.
+JSON, dry-run, CI, and non-interactive calls never prompt.
 
 The first project implementation supports `init`, `install`, `status`, `doctor`,
-`audit`, and `approve`. `init` writes the portable definition; `install` restores
-its exact commits and requires local approvals. The `.dalo` directory and generated
-agent links are machine-local and must not be committed. The definition is
-`dalo-project.toml`, not the team-source `dalo.toml`. Inspect
-`https://dalo.sh/docs/projects.html` for the full format and current limitations.
-Do not promise automatic updates or a portable project lockfile yet. A global
-assistant bundle check still concerns the global/custom store containing the
-assistant; keep it separate from the user's requested project operation.
+`audit`, and `approve`. `.dalo` and generated links are machine-local; commit only
+`dalo-project.toml`. Do not confuse it with the team-source `dalo.toml`.
+See `https://dalo.sh/docs/projects.html` for the format and limitations. Moving
+refs, portable project locks, and reviewed updates are not implemented yet.
+A global assistant bundle check needs `--global` (or an explicit custom store)
+inside a project; keep that check separate from the requested project operation.

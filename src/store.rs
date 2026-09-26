@@ -477,6 +477,12 @@ pub fn dalo_command(store_root: &Path, arguments: &str) -> String {
     if resolve_store_path(None)
         .ok()
         .is_some_and(|default_store| comparable_path(&default_store) == comparable_path(store_root))
+        && (env::var_os(STORE_ENV_VAR).is_some()
+            || env::current_dir()
+                .ok()
+                .and_then(|cwd| crate::project::discover(&cwd).ok())
+                .flatten()
+                .is_none())
     {
         format!("dalo {arguments}")
     } else {

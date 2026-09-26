@@ -40,7 +40,7 @@ const PAGES = [
   {
     slug: "projects",
     label: "Project installations",
-    summary: "Restore project skills from exact commits with an explicit, isolated project scope.",
+    summary: "Restore project skills from exact commits with automatic project discovery and an isolated store.",
   },
   {
     slug: "team",

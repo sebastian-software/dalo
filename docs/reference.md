@@ -25,10 +25,12 @@ Dalo chooses the store path in this order:
 
 Relative store paths are resolved against the current working directory. `~` is expanded when used at the start of a path.
 
-For an independent project installation, use `--project <directory>` explicitly.
-See [Project installations](projects.md) for `init`, `install`, and the versioned
-`dalo-project.toml` definition. This scope ignores `DALO_STORE`, conflicts with
-`--store`, and is never inferred from the current directory.
+Without an explicit CLI or `DALO_STORE` override, the nearest `dalo-project.toml`
+selects project scope. Discovery walks upward and stops at the Git repository
+boundary. Use `--global` / `-g` to select `~/.dalo` even inside a project, or
+`--project <directory>` to select a project explicitly. These flags conflict
+with `--store`. See [Project installations](projects.md) for discovery,
+interactive initialization, and the versioned definition.
 
 ## Environment Variables
 
@@ -66,6 +68,7 @@ Global flags can be placed before or after the command.
 
 | Flag | Meaning |
 | --- | --- |
+| `--global`, `-g` | Select `~/.dalo`, bypassing project discovery and `DALO_STORE`. |
 | `--project <DIR>` | Explicit project scope; see [Project installations](projects.md). |
 | `--store <PATH>` | Use a store other than the resolved default. |
 | `--json` | Emit machine-readable JSON for commands that support structured output. It requires a command; bare `dalo --json` returns the standard JSON error on stderr. `manpage` and `completions` reject this flag with a plain-text usage error because they generate plain text only. |
