@@ -71,7 +71,10 @@ empty directories, and symlink destinations, rather than only `SKILL.md`.
 skills.sh is a discovery directory; `npx skills` is its installation CLI. Their
 presence does not imply that all files in `.agents/skills` belong to them.
 
-Read existing `skills-lock.json` in the project and the global lock at
+Look for the nearest `skills-lock.json` from the working directory upward,
+stopping at the nearest Git boundary (including worktrees and submodules), or
+inspect the exact project the user selected. Record its project root so a lock
+in an ancestor is not mistaken for a global install. Read that lock and the global lock at
 `$XDG_STATE_HOME/skills/.skill-lock.json` when that override is set, otherwise
 `~/.agents/.skill-lock.json`. If both global locations exist, report the fallback
 as potentially stale rather than merging their authority. Preserve original
@@ -94,7 +97,10 @@ and [installation behavior](https://github.com/vercel-labs/skills#installation-m
 Summarize the useful facts: existing Dalo health, agents and scope, shared versus
 independent copies, candidate origins, and content that must be preserved.
 Offer a recommendation based on those facts instead of asking the user which
-technical state they are in.
+technical state they are in. A project `skills-lock.json` is a trigger to read
+[the migration suggestion guidance](migration.md#suggest-migration-from-the-inventory)
+and propose a verified preview during a general assessment. Do not wait for the
+user to discover or name the migration command.
 
 ## Project and global scope
 
