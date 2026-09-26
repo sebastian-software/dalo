@@ -57,6 +57,33 @@
         ],
         "createdAt": "2026-09-25T19:22:32.846Z",
         "reason": "Agent: The homepage is light; the detector infers a dark page and mislabels its existing gradient hero background."
+      },
+      {
+        "rule": "clipped-overflow-container",
+        "value": "*",
+        "files": [
+          "site/news/1-0.html"
+        ],
+        "createdAt": "2026-09-26T13:45:09.004Z",
+        "reason": "Agent: root html intentionally clips horizontal viewport overflow; the dropdown containers have visible overflow and remain inside the viewport. No positioned popup is clipped by a local container."
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "site/news/1-0.html"
+        ],
+        "createdAt": "2026-09-26T13:45:09.027Z",
+        "reason": "Agent: detector misidentifies the page as dark from the ink token #0b1733; body uses white background and color-scheme light. Existing offset elevation shadows are not dark-background glow."
+      },
+      {
+        "rule": "em-dash-overuse",
+        "value": "*",
+        "files": [
+          "site/news/1-0.html"
+        ],
+        "createdAt": "2026-09-26T13:45:38.921Z",
+        "reason": "Agent: the detector counts documented CLI double-hyphen flags as em dashes. The article contains five actual em dashes; command syntax such as --json and --ref must remain exact."
       }
     ]
   }

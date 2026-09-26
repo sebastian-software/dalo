@@ -31,32 +31,64 @@ case "$binary" in
 esac
 test -x "$binary"
 
-home="$test_root/home"
+rehearsal_home="$test_root/home"
 store="$test_root/store"
 target="$test_root/skills"
-mkdir -p "$home" "$target"
+mkdir -p "$rehearsal_home" "$target"
 
-export HOME="$home"
+export HOME="$rehearsal_home"
 export DALO_STORE="$store"
+export CODEX_HOME="$rehearsal_home/.codex"
+export CLAUDE_CONFIG_DIR="$rehearsal_home/.claude"
+export OPENCODE_CONFIG_DIR="$rehearsal_home/.config/opencode"
+export XDG_CONFIG_HOME="$rehearsal_home/.config"
+export XDG_DATA_HOME="$rehearsal_home/.local/share"
+export XDG_CACHE_HOME="$rehearsal_home/.cache"
+export DALO_UPDATE_CHECK=never
+export DALO_ASSISTANT_CHECK=never
+export GIT_CONFIG_GLOBAL=/dev/null
+export GIT_CONFIG_NOSYSTEM=1
+unset GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS
 
 run() {
-  printf '\n$ dalo'
-  for argument in "$@"; do
-    printf ' %s' "$argument"
-  done
-  printf '\n'
+  {
+    printf '\n$ dalo'
+    for argument in "$@"; do
+      printf ' %s' "$argument"
+    done
+    printf '\n'
+  } >> "$log_file"
   "$binary" "$@" >> "$log_file" 2>&1
 }
 
-version_output="$($binary --version)"
+check_assistant_state() {
+  "$binary" assistant status --json > "$test_root/assistant-status.json"
+  printf '\n$ dalo assistant status --json\n' >> "$log_file"
+  cat "$test_root/assistant-status.json" >> "$log_file"
+  node -e 'const fs = require("node:fs"); const assert = require("node:assert/strict");
+    assert.equal(JSON.parse(fs.readFileSync(process.argv[1], "utf8")).state, process.argv[2]);' \
+    "$test_root/assistant-status.json" "$1"
+}
+
+version_output="$("$binary" --version)"
 printf '$ dalo --version\n%s\n' "$version_output" >> "$log_file"
 if [ -n "${DALO_REHEARSAL_EXPECTED_VERSION:-}" ]; then
   test "$version_output" = "dalo ${DALO_REHEARSAL_EXPECTED_VERSION}"
 fi
 
+check_assistant_state missing_store
 run init
+check_assistant_state missing
 run target detect
 run target link generic "$target"
+run assistant install --json
+check_assistant_state current
+test -f "$store/local/skills/dalo/SKILL.md"
+test -f "$store/local/skills/dalo/agents/openai.yaml"
+test -f "$store/local/skills/dalo/references/migration.md"
+cp "$store/local/skills/dalo/.dalo-bundle.toml" "$test_root/assistant-receipt.toml"
+run assistant install --json
+cmp "$test_root/assistant-receipt.toml" "$store/local/skills/dalo/.dalo-bundle.toml"
 
 mkdir -p "$store/local/skills/release-rehearsal"
 cat > "$store/local/skills/release-rehearsal/SKILL.md" <<'EOF'
@@ -68,9 +100,23 @@ EOF
 run status --json
 run sync
 test -L "$target/release-rehearsal"
+test -L "$target/dalo"
+cmp "$store/local/skills/dalo/SKILL.md" "$target/dalo/SKILL.md"
 run status --check --json
 run doctor --check --json
 run plan --json
 run next
 
+# A user-edited bundle is reported and never replaced by an update/install.
+printf '\nMy custom rehearsal note.\n' >> "$store/local/skills/dalo/SKILL.md"
+cp "$store/local/skills/dalo/SKILL.md" "$test_root/custom-skill.md"
+check_assistant_state blocked
+if run assistant install --json; then
+  echo "assistant install unexpectedly replaced a user-edited bundle" >&2
+  exit 1
+fi
+cmp "$test_root/custom-skill.md" "$store/local/skills/dalo/SKILL.md"
+cmp "$test_root/custom-skill.md" "$target/dalo/SKILL.md"
+
+cat "$log_file"
 echo "release rehearsal passed"

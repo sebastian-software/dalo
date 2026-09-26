@@ -25,7 +25,7 @@ is something you can subscribe to, react to, and comment on.
   per feature: PR-first `promote`, catalog pin pull requests, native Windows,
   more verified agent adapters, more install channels, rename/adapt and the
   interactive resolve assistant, blocked-autosync notifications, drifted-block
-  conversion, project-scoped targets, external sources with subpath scoping, and
+  conversion, project-scoped targets, and
   forge adapters beyond GitHub.
 - Priorities follow demand: reactions and comments on those issues decide what
   is picked up next. There are no dates, and none of the deferred features block
@@ -49,6 +49,7 @@ sh tests/workflows.sh
 (cd npm && npm ci && npm run check-version && npm test)
 cargo clippy --locked --all-targets --all-features -- -D warnings
 cargo build --release --locked --target "$(rustc -vV | sed -n 's/^host: //p')"
+cargo test --release --locked --test performance -- --ignored noop_sync_should_not_regress_against_a_minimal_store --nocapture
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
 ```
 
@@ -118,11 +119,14 @@ If a command can mutate user files, prefer `--dry-run` coverage and tests for th
 
 `tests/performance.rs` holds the reference-scenario generator behind the
 published [performance envelope](docs/compatibility.md#designed-scale-and-performance-envelope).
-Its ordinary test compares a no-op `sync` on a small generated store against a
-no-op `sync` on a single-source store measured in the same run, so it guards the
-hot path without a wall-clock budget that a slow runner would trip over. Re-take
+Its ordinary test enforces a Git subprocess budget on a small generated store,
+including under coverage. CI also explicitly runs the ignored timing guard in
+an uninstrumented release build on Linux and macOS. It compares adjacent pairs
+of no-op syncs on the small store and a single-source store, alternates their
+order, and reports all samples before applying the existing 6x median-ratio
+bound. Instrumented/debug timing is not treated as release performance. Re-take
 the published numbers with `cargo test --release --locked --test performance --
---ignored --nocapture`, and update the table in `docs/compatibility.md` together
+--ignored measure_the_reference_scenario --nocapture`, and update the table in `docs/compatibility.md` together
 with the hardware it names.
 
 For concrete third-party hook contracts, run `cargo test --locked --test

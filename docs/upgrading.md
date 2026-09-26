@@ -213,11 +213,12 @@ otherwise. An older binary that meets a file written by a newer one refuses to
 read it. It never truncates the file, ignores fields it does not know, or
 rewrites it at the version it understands.
 
-How far back you go decides what you see. **No persisted schema version changed
-between 0.15.1 and 1.0**, so going back to 0.15.1 still reads a store this
-binary wrote — `status` and `sync` both work. Go back further and the refusal
-is explicit. This is the released 0.12.0 binary against a store the current
-binary had just synced:
+How far back you go and which features you used decide what you see. The core
+schema version numbers have not changed since 0.15.1, but 1.0 adds optional
+source-subpath fields and the assistant's own bundle receipt. Unchanged version
+numbers do not guarantee that an older binary accepts new fields; do not rely
+on a downgrade to 0.15.1. Earlier schema versions fail explicitly. This is the
+released 0.12.0 binary against a store the current binary had just synced:
 
 ```text
 $ dalo status

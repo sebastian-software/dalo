@@ -328,11 +328,12 @@ cannot mistake the slot for an orphan and unlink it. Nothing on disk moves.</li>
 otherwise. An older binary that meets a file written by a newer one refuses to
 read it. It never truncates the file, ignores fields it does not know, or
 rewrites it at the version it understands.</p>
-<p>How far back you go decides what you see. <strong>No persisted schema version changed
-between 0.15.1 and 1.0</strong>, so going back to 0.15.1 still reads a store this
-binary wrote — <code>status</code> and <code>sync</code> both work. Go back further and the refusal
-is explicit. This is the released 0.12.0 binary against a store the current
-binary had just synced:</p>
+<p>How far back you go and which features you used decide what you see. The core
+schema version numbers have not changed since 0.15.1, but 1.0 adds optional
+source-subpath fields and the assistant&#39;s own bundle receipt. Unchanged version
+numbers do not guarantee that an older binary accepts new fields; do not rely
+on a downgrade to 0.15.1. Earlier schema versions fail explicitly. This is the
+released 0.12.0 binary against a store the current binary had just synced:</p>
 <pre><code class="language-text">$ dalo status
 error: unsupported schema version 6 in `…/lock.toml`; this dalo supports version 4; upgrade dalo
 </code></pre>
