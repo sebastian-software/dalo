@@ -112,10 +112,8 @@ Release-please then opens `chore(main): release dalo 1.0.0` on
 CHANGELOG heading, and stamps `1.0.0` into `Cargo.toml`, `Cargo.lock`,
 `npm/package.json`, both `npm/package-lock.json` version paths, and the three
 annotated slots in `site/index.html` (`softwareVersion` plus the two
-`data-dalo-version` spans). Commit the curated launch notes in
-`.github/release-notes/<version>.md` before merging the release PR. The publish
-workflow adds them above the generated notes before making the draft public,
-as described under [Curated release notes](#curated-release-notes).
+`data-dalo-version` spans). Release Please generates the GitHub release notes
+and CHANGELOG from Conventional Commits.
 
 Merging that release pull request tags `dalo-v1.0.0` and runs `publish.yml`:
 five signed archives with checksums upload to a draft release, the draft is
@@ -140,31 +138,6 @@ TTY with `DALO_UPDATE_CHECK` unset and `CI` unset, and confirm the notice reads
 per version and the upgrade command that matches the channel it was installed
 from.
 
-### Curated release notes
-
-Release-please generates a commit list. For a release that a newcomer will read,
-that list is the appendix, not the story, so the narrative is written ahead of
-time and committed to the repository:
-
-- The body for 1.0.0 is
-  [`.github/release-notes/1.0.0.md`](https://github.com/sebastian-software/dalo/blob/main/.github/release-notes/1.0.0.md).
-  A later release that needs the same treatment adds
-  `.github/release-notes/<version>.md` beside it; releases without such a file
-  keep the generated body unchanged.
-- **Before the draft is published**, `publish.yml` checks out the release tag
-  and adds that file's contents, then a `---` divider, then the generated body
-  unchanged. `scripts/prepare-release-notes.mjs` owns a marked prefix so a
-  recovered publication replaces that prefix without duplicating it. Malformed
-  markers or an empty curated file stop publication. Releases without a curated
-  file keep their existing body; older tags without the composer still work.
-- **After the release pull request is merged**, add the same text above the
-  generated entry in `CHANGELOG.md` in a separate `docs:` commit. Release-please
-  owns that file and appends new entries at the top, so the narrative goes in
-  after its pull request rather than as a hand-written heading it has to parse.
-- The notes repeat the breaking-change inventory that `docs/upgrading.md`
-  carries, and `tests/docs.sh` checks both against the same list. A `!:` commit
-  that lands before the tag has to be added to all three in one pull request.
-
 ### Final 1.0 acceptance
 
 Keep evidence on [#841](https://github.com/sebastian-software/dalo/issues/841)
@@ -178,7 +151,7 @@ issues do not stand in for these checks:
   invokes it. Record agent version, platform, commands, and results. Also check
   the missing/outdated skill offer, refusal, and preservation of custom content.
 - Old draft releases have been removed without deleting published releases or
-  their Git tags. The 1.0 release contains curated notes and all signed assets.
+  their Git tags. The 1.0 release contains the generated notes and all signed assets.
 - After publication, fresh installation and upgrade work through the documented
   channels, including the Nix flake at `dalo-v1.0.0`. Record the version and
   `doctor` result per platform and channel; the CLI rehearsal alone cannot

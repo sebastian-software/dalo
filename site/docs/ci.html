@@ -188,10 +188,8 @@ Other trailers such as <code>Co-Authored-By:</code> may follow it.</p>
 CHANGELOG heading, and stamps <code>1.0.0</code> into <code>Cargo.toml</code>, <code>Cargo.lock</code>,
 <code>npm/package.json</code>, both <code>npm/package-lock.json</code> version paths, and the three
 annotated slots in <code>site/index.html</code> (<code>softwareVersion</code> plus the two
-<code>data-dalo-version</code> spans). Commit the curated launch notes in
-<code>.github/release-notes/&lt;version&gt;.md</code> before merging the release PR. The publish
-workflow adds them above the generated notes before making the draft public,
-as described under <a href="#curated-release-notes">Curated release notes</a>.</p>
+<code>data-dalo-version</code> spans). Release Please generates the GitHub release notes
+and CHANGELOG from Conventional Commits.</p>
 <p>Merging that release pull request tags <code>dalo-v1.0.0</code> and runs <code>publish.yml</code>:
 five signed archives with checksums upload to a draft release, the draft is
 published once every asset is present, and crates.io, npm, and the
@@ -210,30 +208,6 @@ TTY with <code>DALO_UPDATE_CHECK</code> unset and <code>CI</code> unset, and con
 <code>update available: dalo v1.0.0 (installed v0.16.0 via &lt;channel&gt;)</code> with one <code>v</code>
 per version and the upgrade command that matches the channel it was installed
 from.</p>
-<h3 id="curated-release-notes"><a class="doc-anchor" href="#curated-release-notes">Curated release notes</a></h3>
-<p>Release-please generates a commit list. For a release that a newcomer will read,
-that list is the appendix, not the story, so the narrative is written ahead of
-time and committed to the repository:</p>
-<ul>
-<li>The body for 1.0.0 is
-<a href="https://github.com/sebastian-software/dalo/blob/main/.github/release-notes/1.0.0.md" rel="noopener"><code>.github/release-notes/1.0.0.md</code></a>.
-A later release that needs the same treatment adds
-<code>.github/release-notes/&lt;version&gt;.md</code> beside it; releases without such a file
-keep the generated body unchanged.</li>
-<li><strong>Before the draft is published</strong>, <code>publish.yml</code> checks out the release tag
-and adds that file&#39;s contents, then a <code>---</code> divider, then the generated body
-unchanged. <code>scripts/prepare-release-notes.mjs</code> owns a marked prefix so a
-recovered publication replaces that prefix without duplicating it. Malformed
-markers or an empty curated file stop publication. Releases without a curated
-file keep their existing body; older tags without the composer still work.</li>
-<li><strong>After the release pull request is merged</strong>, add the same text above the
-generated entry in <code>CHANGELOG.md</code> in a separate <code>docs:</code> commit. Release-please
-owns that file and appends new entries at the top, so the narrative goes in
-after its pull request rather than as a hand-written heading it has to parse.</li>
-<li>The notes repeat the breaking-change inventory that <code>docs/upgrading.md</code>
-carries, and <code>tests/docs.sh</code> checks both against the same list. A <code>!:</code> commit
-that lands before the tag has to be added to all three in one pull request.</li>
-</ul>
 <h3 id="final-10-acceptance"><a class="doc-anchor" href="#final-10-acceptance">Final 1.0 acceptance</a></h3>
 <p>Keep evidence on <a href="https://github.com/sebastian-software/dalo/issues/841" rel="noopener">#841</a>
 for the exact candidate commit and the published tag. Closed implementation
@@ -246,7 +220,7 @@ follows the installation guide, discovers the Dalo skill after delivery, and
 invokes it. Record agent version, platform, commands, and results. Also check
 the missing/outdated skill offer, refusal, and preservation of custom content.</li>
 <li>Old draft releases have been removed without deleting published releases or
-their Git tags. The 1.0 release contains curated notes and all signed assets.</li>
+their Git tags. The 1.0 release contains the generated notes and all signed assets.</li>
 <li>After publication, fresh installation and upgrade work through the documented
 channels, including the Nix flake at <code>dalo-v1.0.0</code>. Record the version and
 <code>doctor</code> result per platform and channel; the CLI rehearsal alone cannot
