@@ -42,6 +42,13 @@ locations, summarize what exists, and suggest the most useful next action.
 Ask what the user wants only after using that context. For a concrete request,
 continue directly toward that result; do not require a menu or a setup wizard.
 
+When this assessment finds a project `skills-lock.json`, proactively follow
+[Migration](references/migration.md#suggest-migration-from-the-inventory), even
+if the user has not named skills.sh or asked about migration. Offer a verified
+migration preview in the user's language; finding the lock alone does not
+prove compatibility or authorize fetching sources or applying the handover.
+Keep unrelated, narrowly scoped work on task.
+
 Load only the additional guidance needed:
 
 | User intent | Reference |
@@ -55,8 +62,10 @@ Load only the additional guidance needed:
 - Use the installed CLI's `--version` and command `--help` as the capability
   check. Prefer `--json` reports to parsing human output. Do not invent an
   `import`, `migrate`, `upgrade`, or `doctor --fix` command.
-- Keep the chosen store explicit with `--store` on every store operation.
-  Respect `DALO_STORE`, custom target paths, and the current project scope.
+- Keep the chosen scope explicit: use `--store` for store operations and
+  `--project` for project operations, including migration. Respect `DALO_STORE`
+  and custom target paths; resolve conflicting overrides rather than silently
+  switching scope.
 - `sync` acts on the whole store and all its linked targets; it has no target
   filter. Inspect the complete preview, including effects on other agents and
   tracking sources. If those effects exceed a narrow request, resolve the scope

@@ -6,9 +6,36 @@ Distinguish two outcomes before acting: preserving today's installed content as
 a local snapshot, or reconnecting selected skills to a verified upstream source
 for future updates. A local snapshot does not receive upstream updates.
 
+## Suggest migration from the inventory
+
+During a bare invocation, setup, or general assessment, a project
+`skills-lock.json` should prompt a short recommendation without requiring the
+user to ask about migration. For example, in the user's language: "This project
+already has skills.sh installation records. I can check whether its installed
+skills can move to Dalo without changing their content. Would you like me to
+check?" Mention that verification reads Git sources over the network; the
+preview leaves project files unchanged. Do not claim the migration is ready
+before verification.
+
+Check the installed CLI's help for `migrate skills-sh`. If it is unavailable,
+explain that a Dalo update is needed for the native importer; do not run a
+nonexistent command. If `dalo-project.toml`, `.dalo`, or
+`.dalo-migration-backup` already exists, explain the mixed or interrupted setup
+and propose inspecting it instead of offering an importer that will refuse it.
+A global skills lock alone does not qualify for project migration. Unknown or
+malformed project locks need diagnosis, not a promise of automatic conversion.
+
+Offer once per conversation unless the installation changes or the user asks
+again. Respect a decline or deferral. For unrelated narrow maintenance, finish
+the requested work without adding a migration detour. An existing migration
+request already authorizes verification; do not repeat the question. Agreement
+to a preview authorizes verification only: show the actual result, blockers,
+agent targets, backup location, and install/approval steps before offering the
+handover. Existing authorization for that handover remains valid.
+
 ## Project skills.sh installations
 
-When the project has `skills-lock.json`, start with the native importer:
+Once verification is requested and the CLI supports it, use the native importer:
 
 ```sh
 dalo --project "$project" --json migrate skills-sh
@@ -20,7 +47,9 @@ that project, review and approve pending skills locally, and install again.
 The importer verifies complete installed content against the recorded Git ref
 (or current default branch); it never treats `computedHash` as a commit. A
 changed source or local edit blocks the entire apply. Preserve such content and
-resolve its intended ownership rather than bypassing verification.
+resolve its intended ownership rather than bypassing verification. This native
+import is all-or-nothing; the partial manual migration guidance below does not
+allow ignoring a blocked entry in its plan.
 
 Applying backs up the old directories, aliases, and lock under
 `.dalo-migration-backup/` before writing `dalo-project.toml`. Keep that backup
