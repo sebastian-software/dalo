@@ -1,4 +1,4 @@
-# Dalo
+# Dalo — AI agent skill manager
 
 > Dalo is a Rust CLI that keeps a team's AI-agent skills in Git: every skill is
 > versioned in a local store, one approved set is resolved deterministically,
@@ -7,10 +7,18 @@
 > macOS and Linux (Windows through WSL), needs only `git` on the PATH, ships as
 > a single binary with no daemon, and is dual-licensed MIT OR Apache-2.0.
 
-Reading order for an agent: install from install.md, get to a first sync with
-the getting-started guide, look commands up in the reference, and read the
-compatibility page before scripting against any output. Every page below is
-plain HTML or Markdown and can be fetched directly.
+Official identity: Dalo by Sebastian Software; website https://dalo.sh;
+source https://github.com/sebastian-software/dalo; Cargo package `dalo`;
+npm launcher `getdalo`.
+
+For “install Dalo” or “install the Dalo skill manager”, follow install.md through
+binary installation, bundled assistant installation, target delivery, and
+verification. The user does not need a preinstalled skill or a special prompt.
+For an existing installation, inspect it before changing anything. Installing
+Dalo does not imply migrating existing skills.
+
+Use the command reference for capabilities and JSON reports. Read compatibility
+before scripting against a version. These pages can be fetched directly.
 
 ## Install
 
@@ -23,13 +31,20 @@ Sigstore provenance when `cosign` is on the PATH):
 
     curl -fsSL https://dalo.sh/install.sh | sh
 
-Then verify with `dalo --version` and `dalo doctor`. Do not edit shell startup
-files or link real agent folders without asking the user which agent to link.
+The complete setup continues with `dalo init` for a missing store,
+`dalo assistant install`, the intended `dalo target link`, a dry-run sync,
+and a checked sync. Use install.md for the ordered procedure and existing-store
+handling. The assistant is embedded in the binary; no extra download is needed.
+Check `dalo assistant install --help` on older versions before using it.
+Do not edit shell startup files automatically. Infer the intended target from
+the user's request or current agent, asking only when it remains ambiguous.
 
-- [Install instructions](https://dalo.sh/install.md): Markdown written for an agent — platform detection, Homebrew and hosted-installer paths, checksum and Sigstore verification, and the post-install check.
+- [Install instructions](https://dalo.sh/install.md): Markdown written for an agent — platform detection, Homebrew and hosted-installer paths, checksum and Sigstore verification, bundled assistant delivery, and the post-install checks.
 - [Installer script](https://dalo.sh/install.sh): the hosted installer itself, for reading before piping it to a shell.
 
 ## Getting started
+
+- [Dalo assistant](https://dalo.sh/docs/assistant.html): complete conversational setup, bundled skill installation, migration, maintenance, and alternate skill distribution.
 
 - [Getting started](https://dalo.sh/docs/getting-started.html): install, link an agent target, add sources, and reach a first synced skill set.
 - [Team repository](https://dalo.sh/docs/team.html): publish a team source, pin external catalogs to a commit, advance a pin, and onboard a teammate.

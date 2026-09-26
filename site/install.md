@@ -1,6 +1,21 @@
 # Install Dalo With an Agent
 
-You are helping a user install Dalo, a Git-backed skill manager for AI agents.
+You are helping a user who asked to install Dalo, the AI agent skill manager
+from Sebastian Software. The official website is https://dalo.sh and the source
+repository is https://github.com/sebastian-software/dalo. The npm launcher is
+named `getdalo`; it runs the same Dalo binary.
+
+Complete the normal setup with the bundled Dalo assistant available in the
+user's current agent. No preinstalled Dalo skill or second skill manager is
+needed. If the user explicitly wants only the CLI, respect that scope. A request
+to install Dalo does not also request migration of existing skills.
+
+Start by checking the existing binary, store, and relevant skill folders. Reuse
+what is already configured. Keep the selected store explicit with `--store`
+when custom paths or `DALO_STORE` are involved. Do not initialize over a broken
+store, switch installation channels unnecessarily, or replace a foreign skill.
+Use the current agent as the intended target when the conversation identifies
+it; ask only when the agent or installation scope is ambiguous.
 
 ## Constraints
 
@@ -10,13 +25,16 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
   the installer and Homebrew will refuse. Tell the user that `cargo install dalo`
   is the remaining path, because it compiles from source.
 - Do not modify shell startup files automatically.
-- Do not touch real agent skill folders until the user confirms which agent target to link.
+- Link only the intended agent target. Reuse the target established by the request
+  or conversation; ask if that choice is unresolved.
 - On macOS with Homebrew, prefer the official
   `sebastian-software/tap/dalo` formula.
 - Otherwise, prefer the official installer at `https://dalo.sh/install.sh`.
 - The installer always verifies the release checksum and additionally verifies
   Sigstore provenance when `cosign` is available.
-- Verify the installed binary with `dalo --version` and `dalo doctor`.
+- Verify the binary with `dalo --version`; run `dalo doctor` after a store exists.
+- Read `dalo assistant install --help` to check bundle support. Older releases may
+  need a binary upgrade or the [standalone skill route](https://dalo.sh/docs/assistant.html).
 
 ## Steps
 
@@ -101,43 +119,67 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
    export PATH="$HOME/.local/bin:$PATH"
    ```
 
-4. Verify the binary:
+4. Verify the binary and check the bundled assistant capability:
 
    ```sh
    dalo --version
-   dalo doctor
+   dalo assistant install --help
    ```
 
-5. Initialize Dalo:
+   If the capability is missing, upgrade through the existing installation
+   channel or follow the standalone skill route linked above. Do not report the
+   assistant as installed just because the binary works.
+
+5. Initialize only a missing store. For an existing store, read `status --json`
+   and `doctor --json` instead and resolve incompatible or malformed state first.
 
    ```sh
    dalo init
    ```
 
-6. Detect available agent targets:
+6. Detect available agent targets and link the intended one:
 
    ```sh
-   dalo target detect
-   ```
-
-7. Ask the user which target to link. Use one of:
-
-   ```sh
+   dalo target detect --json
    dalo target link codex
-   dalo target link claude
-   dalo target link openclaw
-   dalo target link hermes
    ```
 
-   For a sandbox or unsupported agent, use:
+   `codex` is an example. Use `claude`, `openclaw`, `hermes`, or `opencode` for
+   those agents, or `dalo target link generic /path/to/skills` for an explicit
+   directory. Reuse an existing target's configured path. Do not repoint an
+   existing target or turn project-only skills into global skills by accident.
+
+7. Install the assistant supplied by this Dalo binary and preview delivery:
 
    ```sh
-   dalo target link generic /path/to/skills
+   dalo --dry-run --json assistant install
+   dalo --json assistant install
+   dalo --dry-run --json sync
+   dalo --json sync --check
    ```
 
-8. Optionally try a real public catalog. This selects one skill from
+   Ordinary terminal commands offer a missing or outdated assistant with a
+   `[y/N]` question. Agent calls using `--json` do not wait for terminal input:
+   inspect `dalo assistant status --json` and ask in the conversation if setup
+   or updating has not already been requested. If a terminal offer already
+   installed the bundle, reuse it; a `current` bundle may still need delivery.
+
+   Run the real sync only after checking the preview. On an existing store,
+   sync can affect every linked agent and fetch tracking team sources; its dry
+   run does not fetch. Resolve any effects outside the requested setup before
+   applying them. An unmanaged `dalo` folder or foreign symlink is a conflict,
+   not permission to overwrite it. Keep the working installation and explain
+   the handover needed. Installing the local bundle does not itself touch targets;
+   an update is immediately visible through existing links to that bundle.
+
+   Inspect the resulting `dalo/SKILL.md` and its references in the intended
+   agent's folder. The agent can read that file to continue this conversation
+   immediately. Confirm native skill discovery on the next turn, reloading the
+   skill list or starting a new session only if the host requires it.
+
+8. Only if the user also asks to try a catalog, select one skill from
    [Sebastian's skill catalog](https://github.com/sebastian-software/skills.sebastian-software.com),
-   then asks for the narrowest explicit approval before it can be linked:
+   then review and grant only the approval covered by the user's request:
 
    ```sh
    dalo source add-catalog sebastian https://github.com/sebastian-software/skills.sebastian-software.com.git
@@ -151,11 +193,12 @@ You are helping a user install Dalo, a Git-backed skill manager for AI agents.
    Select a name from that list: a name the catalog does not carry fails with
    exit `1` and prints the known ones.
 
-9. Run a final health check:
+9. Run a final health check and report the binary version, store, assistant
+   location, and any remaining conflicts:
 
    ```sh
-   dalo status
-   dalo doctor
+   dalo status --json
+   dalo doctor --json
    ```
 
 ## Notes

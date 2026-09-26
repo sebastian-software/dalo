@@ -47,6 +47,8 @@ use crate::tool::ToolListReport;
 pub struct StatusReport {
     /// Store root.
     pub store: PathBuf,
+    /// Local assistant freshness and delivery; advisory, never check-blocking.
+    pub assistant: crate::assistant::AssistantStatusReport,
     /// Source scan summaries.
     pub sources: Vec<SourceStatus>,
     /// Configured materialization targets.
@@ -442,6 +444,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
 
     Ok(StatusReport {
         store: store_root.to_path_buf(),
+        assistant: crate::assistant::status(&paths),
         sources,
         targets,
         inventory_warnings,

@@ -400,7 +400,7 @@ grep -q '__DALO_LASTMOD__' "$root/site/sitemap.xml"
 # The documentation published on dalo.sh is rendered from docs/*.md by
 # site/build.mjs and committed, so it must exist, carry the site styles, and be
 # reachable from the sitemap, the documentation index, and the footer.
-for document in getting-started team reference compatibility upgrading plugins agents ci troubleshooting uninstall comparison; do
+for document in getting-started assistant team reference compatibility upgrading plugins agents ci troubleshooting uninstall comparison; do
   page="$root/site/docs/$document.html"
   test -f "$page"
   title="$(sed -n 's/^# //p' "$root/docs/$document.md" | head -n 1)"
@@ -1048,6 +1048,24 @@ git -C "$catalog" -c commit.gpgSign=false -c user.email=test@example.com -c user
 
 cargo build --quiet
 dalo="$root/target/debug/dalo"
+
+# Exercise the install guide's cold start with the embedded assistant and
+# verify that delivery retains every reference and provider metadata file.
+assistant_store="$test_root/assistant-store"
+assistant_target="$test_root/assistant-target"
+"$dalo" --store "$assistant_store" init > /dev/null
+"$dalo" --store "$assistant_store" target link generic "$assistant_target" > /dev/null
+"$dalo" --store "$assistant_store" --dry-run --json assistant install > /dev/null
+test ! -e "$assistant_store/local/skills/dalo"
+"$dalo" --store "$assistant_store" --json assistant install > /dev/null
+"$dalo" --store "$assistant_store" --dry-run sync > /dev/null
+test ! -e "$assistant_target/dalo"
+"$dalo" --store "$assistant_store" sync --check > /dev/null
+test -L "$assistant_target/dalo"
+diff -r -x .dalo-bundle.toml "$root/skills/dalo" "$assistant_target/dalo"
+"$dalo" --store "$assistant_store" --json status --check > /dev/null
+"$dalo" --store "$assistant_store" --json doctor --check > /dev/null
+
 "$dalo" --store "$store" init
 "$dalo" --store "$store" target link generic "$target"
 (

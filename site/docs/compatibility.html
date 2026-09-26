@@ -18,6 +18,7 @@
   <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="/docs.css" />
+  <link rel="describedby" type="text/plain" href="/llms.txt" title="Dalo agent documentation" />
 </head>
 <body class="doc-page">
 <a class="skip-link" href="#main">Skip to content</a>
@@ -60,6 +61,7 @@
     <p class="doc-nav-h">Documentation</p>
     <a href="/docs/">Overview</a>
     <a href="/docs/getting-started.html">Getting started</a>
+    <a href="/docs/assistant.html">Dalo assistant</a>
     <a href="/docs/team.html">Team repository</a>
     <a href="/docs/reference.html">Command reference</a>
     <a href="/docs/compatibility.html" aria-current="page">Compatibility</a>
@@ -77,6 +79,7 @@
     <nav class="doc-menu-nav" aria-label="Documentation">
       <a href="/docs/">Overview</a>
       <a href="/docs/getting-started.html">Getting started</a>
+      <a href="/docs/assistant.html">Dalo assistant</a>
       <a href="/docs/team.html">Team repository</a>
       <a href="/docs/reference.html">Command reference</a>
       <a href="/docs/compatibility.html" aria-current="page">Compatibility</a>
@@ -238,6 +241,12 @@ version it does not support instead of guessing.</p>
 <td><code>3</code> (versions <code>1</code> and <code>2</code> are read and migrated forward)</td>
 </tr>
 <tr>
+<td><a href="/docs/reference.html#bundled-assistant-receipt"><code>.dalo-bundle.toml</code></a></td>
+<td><code>local/skills/dalo/</code></td>
+<td><code>schema_version</code></td>
+<td><code>1</code></td>
+</tr>
+<tr>
 <td><a href="/docs/reference.html#team-repository-dalotoml"><code>dalo.toml</code></a></td>
 <td>team repository root</td>
 <td><code>schema_version</code></td>
@@ -290,6 +299,11 @@ The internal layout <em>around</em> those files is not covered — see
 <td><code>DALO_UPDATE_CHECK</code></td>
 <td>CLI</td>
 <td><code>never</code> disables passive update checks.</td>
+</tr>
+<tr>
+<td><code>DALO_ASSISTANT_CHECK</code></td>
+<td>CLI</td>
+<td><code>never</code> disables automatic interactive assistant setup offers; explicit commands still work.</td>
 </tr>
 <tr>
 <td><code>DALO_INSTALL_CHANNEL</code></td>

@@ -25,6 +25,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://dalo.sh/docs/assistant.html</loc>
+    <lastmod>__DALO_LASTMOD__</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://dalo.sh/docs/team.html</loc>
     <lastmod>__DALO_LASTMOD__</lastmod>
     <changefreq>weekly</changefreq>

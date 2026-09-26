@@ -5,8 +5,9 @@ landing page, `install.md`, `install.sh`, and `llms.txt` are served as-is,
 `docs/` contains the rendered copies of the repository's `docs/*.md`, `spec/`
 contains the versioned Portable Agent Packages pages plus its public JSON
 Schema, and `news/` holds the occasional hand-written announcement page.
-`llms.txt` is the plain-text index agents read instead of scraping the landing
-page; `build.mjs` copies every deployable file in `site/` into `site/build/`,
+`llms.txt` is an optional plain-text index for agents. Normal HTML and README
+links also lead to `install.md`, so setup does not depend on automatic index
+discovery. `build.mjs` copies every deployable file in `site/` into `site/build/`,
 so it needs no build-script entry of its own.
 
 `index.html` loads only `home.css`; every other page loads `styles.css` (the

@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Use Dalo through your agent · Dalo documentation</title>
+  <meta name="description" content="Set up, migrate, and maintain skills by talking to the agent you already use." />
+  <link rel="canonical" href="https://dalo.sh/docs/assistant.html" />
+  <meta name="theme-color" content="#ffffff" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Dalo" />
+  <meta property="og:url" content="https://dalo.sh/docs/assistant.html" />
+  <meta property="og:title" content="Use Dalo through your agent · Dalo documentation" />
+  <meta property="og:description" content="Set up, migrate, and maintain skills by talking to the agent you already use." />
+  <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
+  <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/docs.css" />
+  <link rel="describedby" type="text/plain" href="/llms.txt" title="Dalo agent documentation" />
+</head>
+<body class="doc-page">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="Dalo home">
+      <img class="brand-mark" src="/assets/img/logo.svg" width="39" height="34" alt="" />
+      <img class="brand-word" src="/assets/img/wordmark.svg" width="63" height="16" alt="" />
+      <span class="brand-section">docs</span>
+    </a>
+    <nav class="nav site-nav" aria-label="Primary">
+      <a href="/">Product</a>
+      <a href="/docs/" aria-current="true">Docs</a>
+      <a href="/spec/">Spec</a>
+      <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+    </nav>
+    <div class="header-cta">
+      <a class="pill-btn" href="/docs/getting-started.html">Get started
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+      <details class="mobile-menu">
+        <summary aria-label="Open navigation">
+          <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>
+          <span class="sr-only">Menu</span>
+        </summary>
+        <nav class="mobile-nav" aria-label="Mobile">
+          <a href="/">Product</a>
+          <a href="/docs/" aria-current="true">Docs</a>
+          <a href="/spec/">Spec</a>
+          <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+        </nav>
+      </details>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="doc-shell wrap has-toc">
+  <nav class="doc-nav" aria-label="Documentation">
+    <p class="doc-nav-h">Documentation</p>
+    <a href="/docs/">Overview</a>
+    <a href="/docs/getting-started.html">Getting started</a>
+    <a href="/docs/assistant.html" aria-current="page">Dalo assistant</a>
+    <a href="/docs/team.html">Team repository</a>
+    <a href="/docs/reference.html">Command reference</a>
+    <a href="/docs/compatibility.html">Compatibility</a>
+    <a href="/docs/upgrading.html">Upgrading to 1.0</a>
+    <a href="/docs/plugins.html">Plugins</a>
+    <a href="/docs/agents.html">Agent integration</a>
+    <a href="/docs/ci.html">Dalo in CI</a>
+    <a href="/docs/troubleshooting.html">Troubleshooting</a>
+    <a href="/docs/security.html">Security overview</a>
+    <a href="/docs/uninstall.html">Uninstall</a>
+    <a href="/docs/comparison.html">Comparison</a>
+  </nav>
+  <details class="doc-menu">
+    <summary><span class="doc-menu-label">Documentation</span> <span class="doc-menu-current">Dalo assistant</span></summary>
+    <nav class="doc-menu-nav" aria-label="Documentation">
+      <a href="/docs/">Overview</a>
+      <a href="/docs/getting-started.html">Getting started</a>
+      <a href="/docs/assistant.html" aria-current="page">Dalo assistant</a>
+      <a href="/docs/team.html">Team repository</a>
+      <a href="/docs/reference.html">Command reference</a>
+      <a href="/docs/compatibility.html">Compatibility</a>
+      <a href="/docs/upgrading.html">Upgrading to 1.0</a>
+      <a href="/docs/plugins.html">Plugins</a>
+      <a href="/docs/agents.html">Agent integration</a>
+      <a href="/docs/ci.html">Dalo in CI</a>
+      <a href="/docs/troubleshooting.html">Troubleshooting</a>
+      <a href="/docs/security.html">Security overview</a>
+      <a href="/docs/uninstall.html">Uninstall</a>
+      <a href="/docs/comparison.html">Comparison</a>
+    </nav>
+  </details>
+  <article class="doc-body">
+<h1 id="use-dalo-through-your-agent">Use Dalo through your agent</h1>
+<p>The Dalo skill lets you manage your skills by talking to the agent you already
+use. Ask it to inspect your setup, bring existing skills under Dalo, preserve
+your own changes, or update an existing installation. The agent runs Dalo and
+explains the result; you do not need to remember its commands.</p>
+<p>The skill lives in <a href="https://github.com/sebastian-software/dalo/blob/main/skills/dalo/SKILL.md" rel="noopener"><code>skills/dalo</code></a>. It contains
+instructions and supporting references, with no separate model, API key, server,
+or background service. The agent needs filesystem access and permission to run
+commands for changes. It can inspect existing folders before Dalo is installed.</p>
+<h2 id="start-with-an-ordinary-request"><a class="doc-anchor" href="#start-with-an-ordinary-request">Start with an ordinary request</a></h2>
+<p>Tell your local coding agent: <strong>“Install the Dalo skill manager.”</strong> The official
+website and repository point to the <a href="/install.md">agent installation guide</a>,
+which takes the agent through installing the binary and making the assistant
+available. You do not need a Dalo skill first, a special prompt, or a second
+skill manager. The agent needs web or repository access to find the instructions
+and local command access to perform the installation.</p>
+<p>Discovery depends on the host&#39;s tools; if it cannot identify the project, give
+it <a href="https://dalo.sh" rel="noopener">dalo.sh</a>. The site&#39;s <a href="https://dalo.sh/llms.txt" rel="noopener">llms.txt</a>
+is an additional documentation index. The same installation path is linked from
+normal HTML and the README, so it does not depend on automatic llms.txt support.</p>
+<h2 id="bundled-installation"><a class="doc-anchor" href="#bundled-installation">Bundled installation</a></h2>
+<p>On an ordinary interactive invocation, including bare <code>dalo</code> and after <code>dalo init</code>, Dalo checks the assistant locally. If it is missing or differs from the
+running binary&#39;s bundle, Dalo offers to install or update it with a <code>[y/N]</code>
+question. Only <code>y</code> or <code>yes</code> applies the change; Enter, no, and end of input keep
+it unchanged. With no store yet, the question explicitly includes creating the
+store. Declining leaves the offer available on the next invocation. A current
+bundle needs no question.</p>
+<p>The check uses the installed binary&#39;s contents, not the latest internet release.
+Modified bundles and discovered external installations receive a diagnostic
+instead of an overwrite offer. The check also distinguishes local installation
+from delivery: a current local skill can still need a target link or sync.
+Accepting an offer prepares the local skill; it never silently syncs the whole
+store or selects an agent for you. Existing links to an updated bundle see it
+immediately.</p>
+<p>JSON, redirected input/output, dry runs, CI, automation checks, and background
+hook/tool/scheduler commands never ask questions. Set <code>DALO_ASSISTANT_CHECK=never</code>
+to disable the automatic terminal offer. Agents can read
+<code>dalo assistant status --json</code> (also included as <code>assistant</code> in <code>status --json</code>)
+and ask in their own conversation. The skill checks this on each new invocation
+and does not repeat a declined offer for every command in the same task.</p>
+<p>Every binary built with assistant support includes the complete skill. After
+installing Dalo, a fresh setup follows these steps (Codex is an example):</p>
+<pre><code class="language-sh">dalo init
+dalo target detect
+dalo target link codex
+dalo assistant install
+dalo --dry-run sync
+dalo sync --check
+</code></pre>
+<p>For an existing setup, keep its store and target paths and inspect it first.
+<code>assistant install</code> installs the bundled skill into <code>local/skills/dalo</code> without
+network access, a Git commit, target changes, or a full sync. The subsequent
+sync uses ordinary Dalo audits and ownership checks. Review its whole-store
+preview: existing team sources may refresh, and all configured targets receive
+active skills. Other skills are not adopted as part of installation.</p>
+<p>Run <code>dalo assistant install</code> again after upgrading the binary to update an
+unmodified bundle. Its versioned receipt protects local changes, additional
+files, and foreign symlinks from replacement. Existing target links expose an
+updated bundle immediately. A different or customized local <code>dalo</code> skill must
+be preserved and deliberately moved before that slot can hold a bundle.</p>
+<p>A foreign assistant in an agent folder also remains untouched. The assistant
+can help plan a handover, but the installer does not take ownership of it. Once
+the files are delivered, the agent can read <code>dalo/SKILL.md</code> to continue the same
+conversation. If native discovery is delayed, reload skills or start a new
+session as required by that host.</p>
+<h2 id="other-installation-routes"><a class="doc-anchor" href="#other-installation-routes">Other installation routes</a></h2>
+<p>On a release without <code>dalo assistant install</code>, upgrade through your existing
+installation channel or install the complete <a href="https://github.com/sebastian-software/dalo/blob/main/skills/dalo/SKILL.md" rel="noopener"><code>skills/dalo</code></a>
+folder through your agent&#39;s skill installer. Keep <code>references</code> and <code>agents</code>
+alongside <code>SKILL.md</code>. For example, with the
+<a href="https://github.com/vercel-labs/skills" rel="noopener">skills CLI</a>:</p>
+<pre><code class="language-sh">npx skills add sebastian-software/dalo --skill dalo --agent codex --global
+</code></pre>
+<p>To try unpublished work from this repository checkout:</p>
+<pre><code class="language-sh">npx skills add ./skills/dalo --skill dalo --agent codex --global
+</code></pre>
+<p>For Claude Code, use <code>--agent claude-code</code>. This route installs the skill first;
+ask it to set up Dalo and it can install the missing binary. Installing the skill
+alone does not migrate existing folders. Keep its installer ownership explicit
+if you later switch to the bundled route.</p>
+<h2 id="talk-to-dalo"><a class="doc-anchor" href="#talk-to-dalo">Talk to Dalo</a></h2>
+<p>Select the Dalo skill in your agent, or use its skill invocation syntax, such as
+<code>$dalo</code> in Codex. You can then ask in your own language:</p>
+<ul>
+<li>“Dalo, what is installed and what needs attention?”</li>
+<li>“I used skills.sh before. Move these skills to Dalo and keep my changes.”</li>
+<li>“Bring my own skills under version control without sharing them publicly.”</li>
+<li>“I installed Dalo months ago. Get this setup working again.”</li>
+<li>“Update my skills and explain anything that needs a decision.”</li>
+<li>“Make the same skills available in Claude Code.”</li>
+</ul>
+<p>A bare invocation starts with a local assessment and a suggested next step. It
+does not install software or change your setup. A concrete request continues
+through the relevant work, asking about choices that cannot be inferred, such
+as two different versions of a skill with the same name.</p>
+<h2 id="what-the-assistant-accounts-for"><a class="doc-anchor" href="#what-the-assistant-accounts-for">What the assistant accounts for</a></h2>
+<p>It combines Dalo&#39;s reports with inspection of relevant existing skill folders.
+This includes folders not linked to Dalo, shared symlinks, project-only skills,
+and available installer metadata. Missing permissions and uncertain provenance
+remain visible instead of being treated as an empty installation.</p>
+<p>For migration, the assistant distinguishes a preserved local snapshot from a
+skill reconnected to an upstream repository. A snapshot keeps your content but
+does not receive upstream updates. Installer metadata helps identify a source;
+it does not prove that your local copy is unchanged or grant Dalo approval.</p>
+<p>Real skill directories can use Dalo&#39;s audited adoption flow. Foreign symlinks
+need an explicit handover with preserved content and recovery paths. The
+assistant reports anything that remains managed by another installer, including
+old lock records that might still cause that installer to update migrated paths.
+Project-only skills stay a separate scope; moving them to a user-level target
+would make them available in other projects too.</p>
+<p>The assistant uses the capabilities of the installed Dalo version. It does not
+add a native import command, first-class project profiles, or automatic foreign
+lockfile conversion. It cannot guarantee that every unknown installer layout
+can be migrated automatically. Dalo&#39;s own protections still enforce approvals,
+dirty-source handling, and ownership during CLI operations; any necessary manual
+handover is prepared and verified separately.</p>
+<p>See <a href="/docs/getting-started.html">Getting started</a> for the command-line path and
+<a href="/docs/troubleshooting.html">Troubleshooting</a> for diagnostic details.</p>
+<p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/assistant.md" rel="noopener">docs/assistant.md</a></p>
+  </article>
+  <nav class="doc-toc" aria-label="On this page">
+    <p class="doc-toc-h">On this page</p>
+    <ul>
+      <li><a href="#start-with-an-ordinary-request">Start with an ordinary request</a></li>
+      <li><a href="#bundled-installation">Bundled installation</a></li>
+      <li><a href="#other-installation-routes">Other installation routes</a></li>
+      <li><a href="#talk-to-dalo">Talk to Dalo</a></li>
+      <li><a href="#what-the-assistant-accounts-for">What the assistant accounts for</a></li>
+    </ul>
+  </nav>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <a class="brand" href="/" aria-label="Dalo home">
+          <img class="brand-mark" src="/assets/img/logo.svg" width="34" height="30" alt="" />
+          <img class="brand-word" src="/assets/img/wordmark.svg" width="55" height="14" alt="" />
+        </a>
+        <p>Git-backed skill management for AI agents. Built in Rust.</p>
+      </div>
+      <nav class="footer-cols" aria-label="Footer">
+        <div class="footer-col">
+          <p class="footer-h">Product</p>
+          <a href="/#how">How it works</a>
+          <a href="/#quickstart">Quickstart</a>
+          <a href="/#compare">Compare</a>
+          <a href="/#stability">Stability</a>
+        </div>
+        <div class="footer-col">
+          <p class="footer-h">Docs</p>
+          <a href="/docs/">All documentation</a>
+          <a href="/docs/getting-started.html">Getting started</a>
+          <a href="/docs/reference.html">Reference</a>
+          <a href="/docs/troubleshooting.html">Troubleshooting</a>
+          <a href="/spec/">Spec</a>
+          <a href="/docs/security.html">Security</a>
+          <a href="/install.md">Install guide</a>
+          <a href="https://github.com/sebastian-software/dalo/releases" rel="noopener">Releases</a>
+        </div>
+        <div class="footer-col">
+          <p class="footer-h">Project</p>
+          <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+          <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a>
+          <a href="https://github.com/sebastian-software/dalo/security/policy" rel="noopener">Security policy</a>
+          <a href="https://github.com/sebastian-software/dalo/blob/main/LICENSE-MIT" rel="noopener">MIT license</a>
+          <a href="https://github.com/sebastian-software/dalo/blob/main/LICENSE-APACHE" rel="noopener">Apache-2.0 license</a>
+          <a href="https://github.com/sebastian-software/dalo/issues" rel="noopener">Issues</a>
+        </div>
+      </nav>
+    </div>
+    <div class="footer-base">
+      <span>© 2026 <a href="https://sebastian-software.de" rel="noopener">Sebastian Software</a> · No tracking, no cookies</span>
+      <span>From the same workshop: <a href="https://github.com/sebastian-software/harness-relay" rel="noopener">harness-relay</a> · <a href="https://oss.sebastian-software.com" rel="noopener">more open source</a></span>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

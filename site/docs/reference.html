@@ -18,6 +18,7 @@
   <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="/docs.css" />
+  <link rel="describedby" type="text/plain" href="/llms.txt" title="Dalo agent documentation" />
 </head>
 <body class="doc-page">
 <a class="skip-link" href="#main">Skip to content</a>
@@ -60,6 +61,7 @@
     <p class="doc-nav-h">Documentation</p>
     <a href="/docs/">Overview</a>
     <a href="/docs/getting-started.html">Getting started</a>
+    <a href="/docs/assistant.html">Dalo assistant</a>
     <a href="/docs/team.html">Team repository</a>
     <a href="/docs/reference.html" aria-current="page">Command reference</a>
     <a href="/docs/compatibility.html">Compatibility</a>
@@ -77,6 +79,7 @@
     <nav class="doc-menu-nav" aria-label="Documentation">
       <a href="/docs/">Overview</a>
       <a href="/docs/getting-started.html">Getting started</a>
+      <a href="/docs/assistant.html">Dalo assistant</a>
       <a href="/docs/team.html">Team repository</a>
       <a href="/docs/reference.html" aria-current="page">Command reference</a>
       <a href="/docs/compatibility.html">Compatibility</a>
@@ -93,6 +96,8 @@
   <article class="doc-body">
 <h1 id="dalo-user-reference">Dalo User Reference</h1>
 <p>This is the user-facing reference for scripting Dalo and for understanding the files Dalo writes. It documents the current CLI and persisted schemas.</p>
+<p>For a conversational interface to these operations, use the
+<a href="/docs/assistant.html">Dalo assistant skill</a> in your existing agent.</p>
 <h2 id="compatibility"><a class="doc-anchor" href="#compatibility">Compatibility</a></h2>
 <p>This page describes current behavior. Whether a given command, flag, exit code,
 JSON field, persisted file, or environment variable is a stability promise is
@@ -132,6 +137,10 @@ store-internal layout, and the Rust library API are not covered.</p>
 <tr>
 <td><code>DALO_UPDATE_CHECK</code></td>
 <td>Set to <code>never</code> to disable passive update checks.</td>
+</tr>
+<tr>
+<td><code>DALO_ASSISTANT_CHECK</code></td>
+<td>Set to <code>never</code> to disable the automatic interactive assistant installation/update offer. Explicit assistant commands still work.</td>
 </tr>
 <tr>
 <td><code>DALO_INSTALL_CHANNEL</code></td>
@@ -194,7 +203,8 @@ another value fails when its release archive cannot be fetched.</p>
 <p>After a successful interactive command, Dalo checks for a newer GitHub release
 at most once per 24 hours. The check uses a one-second network timeout and
 never changes the command&#39;s exit status. Checks are skipped for <code>--json</code>, CI,
-<code>DALO_OFFLINE=1</code>, and <code>DALO_UPDATE_CHECK=never</code>.</p>
+<code>DALO_OFFLINE=1</code>, and <code>DALO_UPDATE_CHECK=never</code>. Offline commands such as
+<code>assistant install</code> and <code>plugin validate</code> skip these notices as well.</p>
 <p>The check runs beside the command on its own thread. A command that finishes
 first waits up to 150 milliseconds for the answer, so even a command that takes
 ten milliseconds prints the notice in the same run. When the release API is
@@ -225,6 +235,62 @@ dalo --store /tmp/dalo-demo init
 dalo --json --dry-run init
 </code></pre>
 <p>JSON output shape: <code>InitReport</code>.</p>
+<h3 id="dalo-assistant-status"><a class="doc-anchor" href="#dalo-assistant-status"><code>dalo assistant status</code></a></h3>
+<p>Inspect the assistant without writing files or using the network. Works before
+store initialization and compares the installed bundle with the running
+executable, not the latest release on the internet. Unknown, unreadable, or
+modified content is reported as blocked, never as missing.</p>
+<pre><code class="language-sh">dalo assistant status
+dalo --store /tmp/dalo-demo --json assistant status
+</code></pre>
+<p>JSON output shape: <code>AssistantStatusReport</code>. Its <code>state</code> is <code>missing_store</code>,
+<code>missing</code>, <code>current</code>, <code>update_available</code>, <code>external</code>, or <code>blocked</code>. It includes
+the binary&#39;s <code>version</code>, verified <code>installed_version</code> when available, the local
+<code>skill_path</code>, an optional <code>reason</code>, discovered <code>external_paths</code>, enabled
+<code>undelivered_targets</code>, and an optional <code>next_command</code>. <code>current</code> describes the
+local bundle, so check delivery separately. External entries are inspected in
+configured/default target folders, agent configuration overrides, the Codex skill folder, and the current
+project&#39;s <code>.agents</code>, <code>.claude</code>, and <code>.codex</code> skill folders. Their freshness is
+not inferred from the name. The report is also the additive <code>assistant</code> field
+in <code>status --json</code>; it does not change <code>status --check</code> health rules.</p>
+<p>Successful ordinary terminal commands and bare <code>dalo</code> use this check to offer
+missing or outdated bundles with a <code>[y/N]</code> question. Only <code>y</code> or <code>yes</code> proceeds.
+The first-run offer explicitly includes initializing a missing store. No answer,
+Enter, or any other response changes nothing; the next invocation checks again.
+A current bundle remains quiet unless delivery still needs setup. A modified
+or external installation receives a diagnostic, never an overwrite offer.</p>
+<p>Automatic offers are suppressed for <code>--json</code>, <code>--dry-run</code>, redirected streams,
+an environment with <code>CI</code> set, <code>DALO_ASSISTANT_CHECK=never</code>, and failed commands.
+Help/version, completions, man pages, explicit assistant commands, team commands,
+package validation, tool/hook/scheduler commands, target unlinking, and health
+checks (<code>status</code>, <code>doctor</code>, <code>sync</code>, or <code>agent list</code> with <code>--check</code>) do not offer
+setup. The offer holds no store lock while waiting, rechecks before writing,
+and does not change the original command&#39;s exit status on setup failure.
+Agents should use the JSON report and ask in their own UI.</p>
+<h3 id="dalo-assistant-install"><a class="doc-anchor" href="#dalo-assistant-install"><code>dalo assistant install</code></a></h3>
+<p>Prepare the complete assistant bundled with this executable in the initialized
+store&#39;s <code>local/skills/dalo</code> directory. It works offline and does not fetch
+sources, commit local work, link targets, or run sync. The standard enabled,
+unnamespaced local source is required. See <a href="/docs/assistant.html">the assistant guide</a>
+for the conversational setup flow.</p>
+<pre><code class="language-sh">dalo --dry-run --json assistant install
+dalo assistant install
+dalo --dry-run sync
+dalo sync --check
+</code></pre>
+<p>Link the intended target before syncing. Sync applies the entire store to all
+linked targets; inspect its full preview. Repeating installation of an unchanged
+bundle performs no replacement. After upgrading Dalo, run the command again to
+update the assistant to the executable&#39;s version. Existing target symlinks read
+bundle updates immediately, before another sync.</p>
+<p>Installation refuses an unrecorded local <code>dalo</code> directory, modified bundle,
+symlink, or unsupported receipt schema. It does not take over a skill installed
+by another manager. A foreign target entry remains a normal sync conflict.
+See <a href="#bundled-assistant-receipt">bundled assistant recovery</a> for interrupted
+installations. Older binaries may not provide this command; check its <code>--help</code>.</p>
+<p>JSON output shape: <code>AssistantInstallReport</code>. The <code>action</code> is <code>install</code>, <code>update</code>,
+or <code>existing</code>; <code>dry_run</code> distinguishes a preview from an applied operation.
+<code>next_command</code> previews the whole store&#39;s sync.</p>
 <h3 id="dalo-next"><a class="doc-anchor" href="#dalo-next"><code>dalo next</code></a></h3>
 <p>Show a compact summary of the selected store and one copyable next action. It
 chooses initialization, target discovery, source addition, an exact pending
@@ -1096,6 +1162,16 @@ dalo completions fish &gt; dalo.fish
 <td><code>store</code>, <code>dry_run</code>, <code>operations[]</code> with <code>action</code>, <code>path</code>, <code>status</code></td>
 </tr>
 <tr>
+<td><code>assistant status</code></td>
+<td><code>AssistantStatusReport</code></td>
+<td><code>store</code>, <code>skill_path</code>, <code>version</code>, nullable <code>installed_version</code>, <code>state</code>, nullable <code>reason</code>, <code>external_paths[]</code>, <code>undelivered_targets[]</code>, nullable <code>next_command</code></td>
+</tr>
+<tr>
+<td><code>assistant install</code></td>
+<td><code>AssistantInstallReport</code></td>
+<td><code>store</code>, <code>skill_path</code>, <code>version</code>, nullable <code>previous_version</code>, <code>action</code>, <code>dry_run</code>, <code>next_command</code></td>
+</tr>
+<tr>
 <td><code>target detect</code></td>
 <td><code>TargetDetectReport</code></td>
 <td><code>targets[]</code> with <code>id</code>, <code>name</code>, <code>support</code>, <code>path</code>, <code>exists</code>, <code>linked</code></td>
@@ -1278,7 +1354,7 @@ dalo completions fish &gt; dalo.fish
 <tr>
 <td><code>status</code></td>
 <td><code>StatusReport</code></td>
-<td><code>store</code>, <code>sources[]</code> with <code>skill_count</code>, <code>agent_count</code>, and <code>provenance</code>, <code>targets[]</code>, <code>inventory_warnings[]</code>, <code>agent_inventory_warnings[]</code>, <code>resolution</code>, dry-run <code>materialization[]</code>, <code>blocking_audits[]</code>, <code>audit_failures[]</code>, <code>lock</code>, <code>unmanaged_skills[]</code>, <code>target_warnings[]</code>, <code>instruction_packs[]</code>, <code>instruction_pack_overlaps[]</code>, <code>instruction_block_drifts[]</code>, <code>autosync</code></td>
+<td><code>store</code>, <code>assistant</code>, <code>sources[]</code> with <code>skill_count</code>, <code>agent_count</code>, and <code>provenance</code>, <code>targets[]</code>, <code>inventory_warnings[]</code>, <code>agent_inventory_warnings[]</code>, <code>resolution</code>, dry-run <code>materialization[]</code>, <code>blocking_audits[]</code>, <code>audit_failures[]</code>, <code>lock</code>, <code>unmanaged_skills[]</code>, <code>target_warnings[]</code>, <code>instruction_packs[]</code>, <code>instruction_pack_overlaps[]</code>, <code>instruction_block_drifts[]</code>, <code>autosync</code></td>
 </tr>
 <tr>
 <td><code>sync</code></td>
@@ -1542,7 +1618,7 @@ is preserved in output so drift remains visible.</p>
 <td>Detached incoming team commits retained only while security review is required.</td>
 </tr>
 </tbody></table></div>
-<p>Hook and plugin projection paths are created lazily, not by <code>dalo init</code>:</p>
+<p>Assistant, hook, and plugin paths are created lazily, not by <code>dalo init</code>:</p>
 <div class="doc-table"><table>
 <thead>
 <tr>
@@ -1551,6 +1627,14 @@ is preserved in output so drift remains visible.</p>
 </tr>
 </thead>
 <tbody><tr>
+<td><code>local/skills/dalo/</code>, including <code>.dalo-bundle.toml</code></td>
+<td><code>assistant install</code> prepares the embedded skill and its versioned receipt.</td>
+</tr>
+<tr>
+<td><code>.assistant-installing/</code></td>
+<td>An assistant installation stages <code>new/</code> and temporarily preserves <code>previous/</code>; retained if recovery is needed.</td>
+</tr>
+<tr>
 <td><code>hooks/</code>, <code>hooks/state.json</code></td>
 <td>The first native hook projection is applied; the state file records dispatcher ownership.</td>
 </tr>
@@ -1566,6 +1650,24 @@ layout itself is internal and is not covered by the stability promise; read it
 through <code>dalo</code> commands rather than directly. See
 <a href="/docs/compatibility.html">Compatibility and stability</a>.</p>
 <p>Dalo rejects unsupported schema versions in persisted TOML files.</p>
+<h3 id="bundled-assistant-receipt"><a class="doc-anchor" href="#bundled-assistant-receipt">Bundled assistant receipt</a></h3>
+<p><code>local/skills/dalo/.dalo-bundle.toml</code> has <code>schema_version = 1</code>, a <code>dalo_version</code>,
+and an <code>entries</code> map keyed by relative path. Each entry records its <code>kind</code>
+(<code>file</code> or <code>directory</code>), a file&#39;s <code>executable</code> flag, and its <code>sha256</code> content
+hash. Directory entries have <code>executable = false</code> and an empty hash. The receipt
+itself is excluded from the map. Before replacing a recorded bundle, Dalo checks
+the complete tree, including added files, empty directories, and file executable
+bits. Symlinks and special files block replacement. The receipt records update
+ownership; it is not a signature or an approval for third-party content.</p>
+<p>An interrupted installation leaves <code>.assistant-installing/</code> outside source
+discovery. Further assistant installs stop until it is recovered. Preserve and
+inspect <code>new/</code>, <code>previous/</code>, and the current <code>local/skills/dalo</code> before moving
+anything. If the local slot is absent and <code>previous/</code> contains the old bundle,
+restore that whole directory into the empty slot. If a current bundle already
+occupies the slot, do not overwrite it; compare and preserve both copies. After
+recovering the intended bundle, move the remaining transaction directory to a
+backup outside the store, then retry <code>assistant install --dry-run</code>. Do not clear
+a transaction merely because a new command reported it.</p>
 <h3 id="accepted-0x-store-shapes"><a class="doc-anchor" href="#accepted-0x-store-shapes">Accepted 0.x Store Shapes</a></h3>
 <p>A store written by an older release keeps working. These are the shapes Dalo
 still accepts on read, what it does with each, and where you can observe it.

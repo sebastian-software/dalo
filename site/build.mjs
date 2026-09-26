@@ -33,6 +33,11 @@ const PAGES = [
     summary: "Install Dalo, link an agent, add sources, and reach a first synced skill set.",
   },
   {
+    slug: "assistant",
+    label: "Dalo assistant",
+    summary: "Set up, migrate, and maintain skills by talking to the agent you already use.",
+  },
+  {
     slug: "team",
     label: "Team repository",
     summary: "Publish a team source: pin external catalogs, advance a pin, and onboard a teammate.",
@@ -277,6 +282,7 @@ const shell = ({
   <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="/docs.css" />
+  <link rel="describedby" type="text/plain" href="/llms.txt" title="Dalo agent documentation" />
 </head>
 <body class="doc-page">
 <a class="skip-link" href="#main">Skip to content</a>
