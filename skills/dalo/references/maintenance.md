@@ -32,6 +32,37 @@ inventory or when offline. Do not implement a guessed update loop over every
 source kind. A request to update all existing skills does not authorize new
 source-wide approvals, new hook execution, or accepting audit exceptions.
 
+## Share a local skill
+
+When the user wants to contribute a local skill to a team or community
+repository, use Dalo's review-first promotion flow. First check `dalo promote
+--help` and the configured target with the installed binary; promote currently
+supports directly configured GitHub.com team repositories.
+
+```sh
+dalo --dry-run promote <skill> --target <team>
+dalo promote <skill> --target <team>
+```
+
+The preview is local and does not fetch or write. Read its selected skill,
+destination, and static audit result. Promotion itself creates a branch, commit,
+pushes it, and opens a PR, so run it only when the user has requested that
+contribution. For a destination without direct push access, explain that `--fork`
+creates or reuses a fork under the authenticated GitHub account; use it when that
+is within the requested destination. Never push to the default branch. If the
+user specifically asks to contribute edits from the selected team checkout, use
+`--from-dirty`; it updates that skill in the PR when the checkout matches the
+current base, and blocks unrelated checkout edits. A blocking audit needs a
+separately reviewed, content-bound
+acceptance before retrying. Do not guess an acceptance reason.
+
+Dalo copies only the selected skill into a temporary repository clone; with
+`--from-dirty`, it replaces only that slot in the temporary PR branch. It does
+not change the source skill or the existing team checkout. Read the returned PR
+URL and mention the source commit and deterministic audit summary. If pushing
+succeeds but PR creation fails, preserve the remote branch and report it for
+recovery rather than retrying into a new branch automatically.
+
 ## Repair and resume
 
 | Finding | Response |

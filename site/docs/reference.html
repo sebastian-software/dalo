@@ -2466,6 +2466,41 @@ reports <code>project</code>, <code>applied</code>, <code>ready</code>, <code>ta
 exit code with the report on stdout and the error on stderr.</p>
 <p>See <a href="/docs/projects.html#migrate-a-skillssh-project">Project migration</a> for supported
 sources, scope, backups, recovery, and the required local approval steps.</p>
+<h2 id="dalo-promote"><a class="doc-anchor" href="#dalo-promote"><code>dalo promote</code></a></h2>
+<p>Create a review-first contribution from one local skill to an explicitly selected
+GitHub.com team repository:</p>
+<pre><code class="language-sh">dalo --dry-run promote review-helper --target company
+dalo promote review-helper --target company
+# If you cannot push to the team repository:
+dalo promote review-helper --target community --fork
+# Explicitly promote changes to this skill from the team&#39;s working tree:
+dalo promote review-helper --target company --from-dirty
+</code></pre>
+<p><code>&lt;skill&gt;</code> is a unique slot name or stable skill ID in the built-in local source.
+<code>--target</code> names a directly configured Dalo team repository. The destination is
+<code>skills/&lt;slot-name&gt;</code> at the repository root. Existing destinations block local
+source additions. <code>--from-dirty</code> can update the selected existing team skill (or
+add it if the directory is new), but only when the checkout&#39;s base commit matches
+the current PR base and no unrelated files are changed. Target changes outside
+the selected skill, non-GitHub forges, manifest-managed
+sources, pinned targets, target subpaths, and skills with nested Git metadata,
+symlinks, or special files are blocked.</p>
+<p>The dry-run scans and statically audits local content without network access or
+persistent writes. An unaccepted blocking finding prevents promotion. Review and
+accept a specific audited snapshot with <code>dalo audit &lt;source:skill&gt; --accept-risk &lt;reason&gt;</code> before retrying if that is your decision. A real <code>promote</code> requires an
+authenticated GitHub CLI (<code>gh</code>), a Git commit identity, and network access. Dalo
+uses a temporary clone, adds only the selected skill, commits it on a fresh
+<code>dalo/promote-*</code> branch, pushes that branch, and opens a PR against the target&#39;s
+configured/default branch. It never commits or pushes to the default branch.
+With <code>--fork</code>, Dalo explicitly creates or uses a fork owned by the authenticated
+GitHub user and uses it as the PR head. It does not create a fork implicitly.</p>
+<p>The PR body includes the source commit, content fingerprint, and deterministic
+audit status. Dalo leaves the existing managed checkout and local skill intact;
+<code>--from-dirty</code> replaces only the selected skill in the temporary PR branch.
+If the branch push succeeds but PR creation fails, the branch remains on the
+selected repository for recovery; the error reports its name. JSON returns a
+<code>PromoteReport</code> with the selected source, destination, audit summary, branch, and
+PR URL when created.</p>
 <p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/reference.md" rel="noopener">docs/reference.md</a></p>
   </article>
   <nav class="doc-toc" aria-label="On this page">
@@ -2492,6 +2527,7 @@ sources, scope, backups, recovery, and the required local approval steps.</p>
       <li><a href="#agentmd-canonical-packages"><code>AGENT.md</code> Canonical Packages</a></li>
       <li><a href="#instruction-packs">Instruction Packs</a></li>
       <li><a href="#migrate-skills-sh"><code>migrate skills-sh</code></a></li>
+      <li><a href="#dalo-promote"><code>dalo promote</code></a></li>
     </ul>
   </nav>
 </main>

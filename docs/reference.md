@@ -2081,3 +2081,47 @@ exit code with the report on stdout and the error on stderr.
 
 See [Project migration](projects.md#migrate-a-skillssh-project) for supported
 sources, scope, backups, recovery, and the required local approval steps.
+
+
+## `dalo promote`
+
+Create a review-first contribution from one local skill to an explicitly selected
+GitHub.com team repository:
+
+```sh
+dalo --dry-run promote review-helper --target company
+dalo promote review-helper --target company
+# If you cannot push to the team repository:
+dalo promote review-helper --target community --fork
+# Explicitly promote changes to this skill from the team's working tree:
+dalo promote review-helper --target company --from-dirty
+```
+
+`<skill>` is a unique slot name or stable skill ID in the built-in local source.
+`--target` names a directly configured Dalo team repository. The destination is
+`skills/<slot-name>` at the repository root. Existing destinations block local
+source additions. `--from-dirty` can update the selected existing team skill (or
+add it if the directory is new), but only when the checkout's base commit matches
+the current PR base and no unrelated files are changed. Target changes outside
+the selected skill, non-GitHub forges, manifest-managed
+sources, pinned targets, target subpaths, and skills with nested Git metadata,
+symlinks, or special files are blocked.
+
+The dry-run scans and statically audits local content without network access or
+persistent writes. An unaccepted blocking finding prevents promotion. Review and
+accept a specific audited snapshot with `dalo audit <source:skill> --accept-risk
+<reason>` before retrying if that is your decision. A real `promote` requires an
+authenticated GitHub CLI (`gh`), a Git commit identity, and network access. Dalo
+uses a temporary clone, adds only the selected skill, commits it on a fresh
+`dalo/promote-*` branch, pushes that branch, and opens a PR against the target's
+configured/default branch. It never commits or pushes to the default branch.
+With `--fork`, Dalo explicitly creates or uses a fork owned by the authenticated
+GitHub user and uses it as the PR head. It does not create a fork implicitly.
+
+The PR body includes the source commit, content fingerprint, and deterministic
+audit status. Dalo leaves the existing managed checkout and local skill intact;
+`--from-dirty` replaces only the selected skill in the temporary PR branch.
+If the branch push succeeds but PR creation fails, the branch remains on the
+selected repository for recovery; the error reports its name. JSON returns a
+`PromoteReport` with the selected source, destination, audit summary, branch, and
+PR URL when created.
