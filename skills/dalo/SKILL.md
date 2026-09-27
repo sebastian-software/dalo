@@ -1,6 +1,6 @@
 ---
 name: dalo
-description: Manage agent skills through Dalo in conversation. Use for setting up Dalo, inspecting existing skill folders, migrating from skills.sh or manual installs, preserving custom skills, updating sources, and resolving skill conflicts or broken links.
+description: Manage agent skills through Dalo in conversation. Use for setting up Dalo, inspecting existing skill folders, migrating from skills.sh or manual installs, preserving custom skills, updating sources, sharing local skills through reviewable PRs, and resolving skill conflicts or broken links.
 ---
 
 # Dalo
@@ -55,7 +55,7 @@ Load only the additional guidance needed:
 | --- | --- |
 | Set up Dalo or connect another agent | [Setup](references/setup.md) |
 | Bring existing skills under Dalo, including skills.sh installs | [Migration](references/migration.md) |
-| Update, repair, add or remove skills, or resume an old setup | [Maintenance](references/maintenance.md) |
+| Update, repair, add or remove skills, share a local skill, or resume an old setup | [Maintenance](references/maintenance.md) |
 
 ## Act on evidence and intent
 

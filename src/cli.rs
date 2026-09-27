@@ -93,6 +93,22 @@ pub struct MigrationArgs {
     pub apply: bool,
 }
 
+/// Arguments for a review-first skill promotion.
+#[derive(Debug, Args)]
+pub struct PromoteArgs {
+    /// Local skill slot name or unique stable ID.
+    pub skill: String,
+    /// Configured team repository source ID.
+    #[arg(long, required = true)]
+    pub target: String,
+    /// Promote the named skill's current working-tree changes from the target checkout.
+    #[arg(long, conflicts_with = "fork")]
+    pub from_dirty: bool,
+    /// Create or reuse a fork under the authenticated GitHub account for the PR head.
+    #[arg(long)]
+    pub fork: bool,
+}
+
 /// Global command options after path resolution.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GlobalOptions {
@@ -138,6 +154,7 @@ impl Cli {
                         | Command::Completions(_)
                         | Command::Manpage
                         | Command::Migrate(_)
+                        | Command::Promote(_)
                 ) | Some(Command::Plugin(PluginCommand {
                     command: PluginSubcommand::Validate(_)
                 }))
@@ -186,6 +203,11 @@ pub enum Command {
     Install,
     /// Verify and migrate an existing project skills.sh installation.
     Migrate(MigrationArgs),
+    /// Submit one local skill to a team repository as a GitHub pull request.
+    #[command(
+        after_help = "Preview with `dalo --dry-run promote <skill> --target <team>`. Apply with `dalo promote <skill> --target <team>`. Add `--fork` when you cannot push to the team repository. `--from-dirty` explicitly promotes the selected skill's working-tree changes from the destination checkout."
+    )]
+    Promote(PromoteArgs),
     /// Install the conversational assistant bundled with this binary.
     Assistant(AssistantCommand),
     /// Detect, link, or unlink agent targets.
@@ -1363,6 +1385,7 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
 
     let result = match command {
         Command::Migrate(_) => unreachable!("migration handled before store resolution"),
+        Command::Promote(command) => run_promote(&options, command),
         Command::Init => run_init(&options),
         Command::Install => Err(DaloError::InvalidArgument {
             reason:
@@ -4098,6 +4121,41 @@ fn unselected_catalogs(live: &resolver::LiveResolution) -> Vec<materialize::Unse
         .collect::<Vec<_>>();
     catalogs.sort_by(|left, right| left.source_id.cmp(&right.source_id));
     catalogs
+}
+
+fn run_promote(options: &GlobalOptions, command: PromoteArgs) -> DaloResult<()> {
+    let report = crate::promote::promote(
+        &store::StorePaths::new(options.store.clone()),
+        &crate::promote::PromoteRequest {
+            skill: command.skill,
+            target: command.target,
+            from_dirty: command.from_dirty,
+            fork: command.fork,
+            dry_run: options.dry_run,
+        },
+    )?;
+    if options.json {
+        return print_json(&report);
+    }
+    if report.dry_run {
+        println!(
+            "would promote {} to {}:{} with audit {} ({} findings); no GitHub changes made",
+            term::terminal_safe_text(&report.skill),
+            term::terminal_safe_text(&report.repository),
+            term::terminal_safe_text(&report.destination.display().to_string()),
+            term::terminal_safe_text(&report.audit_status),
+            report.audit_findings,
+        );
+    } else {
+        println!(
+            "promoted {} to {} in branch {}; pull request: {}",
+            term::terminal_safe_text(&report.skill),
+            term::terminal_safe_text(&report.repository),
+            term::terminal_safe_text(report.branch.as_deref().unwrap_or("<unknown>")),
+            term::terminal_safe_text(report.pull_request_url.as_deref().unwrap_or("<unknown>")),
+        );
+    }
+    Ok(())
 }
 
 fn run_team(options: &GlobalOptions, command: TeamCommand) -> DaloResult<()> {

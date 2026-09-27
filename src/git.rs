@@ -92,6 +92,87 @@ pub fn pull_ff_only(path: &Path) -> DaloResult<()> {
     run_git_network(path, &["pull", "--ff-only", "--quiet"]).map(|_| ())
 }
 
+/// Read the configured URL for one Git remote.
+pub fn remote_url(path: &Path, remote: &str) -> DaloResult<String> {
+    run_git(path, &["remote", "get-url", remote]).map(|output| output.trim().to_owned())
+}
+
+/// List changed paths, including untracked files, from porcelain's NUL-safe output.
+/// Renames report both paths so callers can enforce a narrow changed subtree.
+pub fn status_paths(path: &Path) -> DaloResult<Vec<PathBuf>> {
+    let output = run_git(
+        path,
+        &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+    )?;
+    let mut records = output.split('\0').filter(|record| !record.is_empty());
+    let mut paths = Vec::new();
+    while let Some(record) = records.next() {
+        if record.len() < 4 || record.as_bytes()[2] != b' ' {
+            return Err(DaloError::StateError {
+                reason: "Git returned an invalid working-tree status record".to_owned(),
+            });
+        }
+        let status = &record[..2];
+        paths.push(PathBuf::from(&record[3..]));
+        if status.contains('R') || status.contains('C') {
+            let previous = records.next().ok_or_else(|| DaloError::StateError {
+                reason: "Git returned an incomplete rename status record".to_owned(),
+            })?;
+            paths.push(PathBuf::from(previous));
+        }
+    }
+    Ok(paths)
+}
+
+/// Create a new local branch from an already fetched commit or remote ref.
+pub fn create_branch(path: &Path, branch: &str, base: &str) -> DaloResult<()> {
+    validate_manifest_revision(branch)?;
+    validate_manifest_revision(base)?;
+    run_git(path, &["switch", "--create", branch, base]).map(|_| ())
+}
+
+/// Stage one repository-relative path and create its explicit Conventional Commit.
+pub fn add_and_commit(path: &Path, relative: &Path, message: &str) -> DaloResult<()> {
+    if relative.as_os_str().is_empty()
+        || relative
+            .components()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+        || message.is_empty()
+        || message.chars().any(char::is_control)
+    {
+        return Err(DaloError::InvalidArgument {
+            reason: "invalid promotion path or commit message".to_owned(),
+        });
+    }
+    let relative = relative
+        .to_str()
+        .ok_or_else(|| DaloError::InvalidArgument {
+            reason: "promotion path is not UTF-8".to_owned(),
+        })?;
+    run_git(path, &["add", "--", relative])?;
+    run_git(path, &["commit", "--message", message]).map(|_| ())
+}
+
+/// Push one branch using the logged-in GitHub CLI without changing global Git config.
+pub fn push_branch_with_gh_auth(path: &Path, remote_url: &str, branch: &str) -> DaloResult<()> {
+    validate_remote_url(remote_url)?;
+    validate_manifest_revision(branch)?;
+    run_git_network(
+        path,
+        &[
+            "-c",
+            "credential.helper=",
+            "-c",
+            "credential.helper=!gh auth git-credential",
+            "push",
+            "--",
+            remote_url,
+            branch,
+        ],
+    )
+    .map(|_| ())
+}
+
 /// Return whether a checkout has local changes to tracked files.
 ///
 /// Untracked files are ignored: a fast-forward or reset never destroys them, so
