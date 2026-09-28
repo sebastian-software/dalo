@@ -236,18 +236,44 @@ prepare the pinned checkout. It uses the ordinary project review and approval
 flow, and does not activate unapproved skills. A teammate can commit the
 declaration and restore the same commit and selection with <code>dalo install</code> in a
 fresh checkout; their approvals remain local.</p>
-<h2 id="first-implementation-boundary"><a class="doc-anchor" href="#first-implementation-boundary">First implementation boundary</a></h2>
-<p>This increment supports <code>project add</code>, <code>init</code>, <code>install</code>, <code>status</code>, <code>doctor</code>,
-<code>audit</code>, and <code>approve</code> in project scope. Other project-scoped commands fail
-instead of falling back to the global store. Use <code>install</code> to reconcile delivery;
-<code>sync</code> is not yet supported in project scope. Use <code>dalo sync --global</code> when you
-intend to synchronize the global store from inside a project.</p>
-<p>Full commit IDs in the definition currently provide the reproducibility
-boundary. Moving refs, a separate portable project lockfile, an update command,
-and removal or replacement of previously installed sources/selections are
-follow-up work. Changes to an existing pin, URL, or selection are reported and
-left untouched. Do not discard local edits or approvals to work around that
-boundary. A future update flow must preserve them while reviewing the change.</p>
+<h2 id="update-a-project-source"><a class="doc-anchor" href="#update-a-project-source">Update a project source</a></h2>
+<p>Use <code>dalo project update</code> to review a new revision for an existing source. The
+default is read-only and compares the selected skills, dependency declarations,
+and candidate audits with the current pin:</p>
+<pre><code class="language-sh">dalo project update company --ref main
+dalo project update company --ref main --expect-commit &lt;previewed-commit&gt; --apply
+dalo install
+</code></pre>
+<p>Applying a branch or tag requires the exact <code>--expect-commit</code> from the preview.
+An immutable full commit can be applied directly. If no <code>--skill</code> options are
+given, Dalo preserves the current selection by stable ID (or path when a skill
+has no stable ID). Repeat <code>--skill</code> to replace that selection explicitly.
+Removed selected skills block an implicit update; provide a replacement
+selection to proceed. Dalo edits only the source&#39;s <code>commit</code> and <code>skills</code> values
+in <code>dalo-project.toml</code>, preserving surrounding comments and formatting.</p>
+<p>The declaration change and local installation are separate steps. <code>dalo install</code> stages a new commit-specific checkout without overwriting the old one,
+then reconciles delivery through the normal transactional sync. Dirty source
+checkouts and unmanaged target content block the operation. Existing approvals
+for selected skills whose content hash changes are revoked in the local project
+store; unchanged content keeps its decision. Changed skills stay inactive until
+their new content is reviewed and approved locally. Accepted audit risks remain
+bound to the exact audit content hash. Candidate audit findings are shown during
+preview and remain blocking until resolved; a blocking finding also prevents
+applying the declaration update.
+If config and source-lock updates are interrupted, the next <code>dalo install</code>
+restores their recovery snapshot and retries. Old checkouts remain available
+after a successful update so a failed delivery can be retried without losing
+the prior links.</p>
+<h2 id="project-command-boundary"><a class="doc-anchor" href="#project-command-boundary">Project command boundary</a></h2>
+<p>Project scope supports <code>project add</code>, <code>project update</code>, <code>init</code>, <code>install</code>,
+<code>status</code>, <code>doctor</code>, <code>audit</code>, and <code>approve</code>. Other project-scoped commands fail
+instead of falling back to the global store. Use <code>install</code> to reconcile
+delivery; <code>sync</code> is not yet supported in project scope. Use <code>dalo sync --global</code>
+when you intend to synchronize the global store from inside a project.</p>
+<p>Project declarations keep immutable full commit IDs as the reproducibility
+boundary, so no separate portable lockfile is needed. Source replacement and
+removal remain explicit migration work; install does not infer either from a
+declaration edit.</p>
 <h2 id="migrate-a-skillssh-project"><a class="doc-anchor" href="#migrate-a-skillssh-project">Migrate a skills.sh project</a></h2>
 <p>For a project with a version 1 <code>skills-lock.json</code>, preview a verified migration:</p>
 <pre><code class="language-sh">dalo migrate skills-sh
@@ -305,7 +331,8 @@ restore moved entries, while retaining the backup directory for inspection.</p>
       <li><a href="#definition-and-local-state">Definition and local state</a></li>
       <li><a href="#review-and-installation">Review and installation</a></li>
       <li><a href="#add-a-source-from-the-project">Add a source from the project</a></li>
-      <li><a href="#first-implementation-boundary">First implementation boundary</a></li>
+      <li><a href="#update-a-project-source">Update a project source</a></li>
+      <li><a href="#project-command-boundary">Project command boundary</a></li>
       <li><a href="#migrate-a-skillssh-project">Migrate a skills.sh project</a></li>
     </ul>
   </nav>

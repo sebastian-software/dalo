@@ -197,8 +197,12 @@ for project_add_detail in 'dalo project add' '--expect-commit' 'fresh checkout';
     || { echo "docs/projects.md no longer documents $project_add_detail" >&2; exit 1; }
 done
 grep -Fq '## `dalo project add`' "$root/docs/reference.md"
+grep -Fq '## `dalo project update`' "$root/docs/reference.md"
+grep -Fq 'dalo project update' "$root/docs/projects.md"
 grep -Fq 'dalo project add' "$root/skills/dalo/references/setup.md"
+grep -Fq 'dalo project update' "$root/skills/dalo/references/setup.md"
 grep -Fq 'dalo project add' "$root/skills/dalo/references/inventory.md"
+grep -Fq 'dalo project update' "$root/skills/dalo/references/inventory.md"
 grep -Fq '[Team repository guide](docs/team.md)' "$root/README.md"
 grep -q 'dalo target link generic "\$RUNNER_TEMP/dalo-skills"' "$root/docs/ci.md"
 

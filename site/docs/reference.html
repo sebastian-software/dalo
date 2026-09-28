@@ -2474,6 +2474,27 @@ the project to keep their relative paths portable. JSON reports include
 <code>declaration_change</code>, <code>applied</code>, <code>dry_run</code>, and <code>next_command</code>.</p>
 <p>See <a href="/docs/projects.html#add-a-source-from-the-project">Project installations</a> for the
 review and restore workflow.</p>
+<h2 id="dalo-project-update"><a class="doc-anchor" href="#dalo-project-update"><code>dalo project update</code></a></h2>
+<p>Review a new pin for an existing project source. The default previews the old
+and candidate commit, selected inventory changes, dependencies, audits, and
+project targets without writing files:</p>
+<pre><code class="language-sh">dalo project update company --ref main
+dalo project update company --ref main --expect-commit &lt;previewed-commit&gt; --apply
+dalo install
+</code></pre>
+<p>Applying a branch or tag requires <code>--expect-commit</code> to match the preview. A
+full commit ID can be applied directly. Without <code>--skill</code>, Dalo preserves the
+current explicit selection by stable ID or path. Repeat <code>--skill</code> to replace
+the selection. An implicitly selected skill removed upstream blocks apply; an
+explicit replacement selection is required. A candidate with a blocking audit
+finding is reported and cannot be applied. <code>--apply</code> changes only the
+declaration&#39;s <code>commit</code> and <code>skills</code> values; install stages the new checkout and
+uses the ordinary local approval and transactional delivery flow.</p>
+<p>The JSON <code>ProjectUpdateReport</code> contains <code>project</code>, <code>source_id</code>, <code>url</code>,
+<code>requested_ref</code>, <code>previous_commit</code>, <code>commit</code>, <code>selection_before</code>,
+<code>selection_after</code>, <code>outcomes</code>, <code>dependency_changes</code>, <code>skills</code>, <code>audits</code>,
+<code>targets</code>, <code>blocking_reasons</code>, <code>declaration_change</code>, <code>applied</code>, <code>dry_run</code>, and
+<code>next_command</code>.</p>
 <h2 id="migrate-skills-sh"><a class="doc-anchor" href="#migrate-skills-sh"><code>migrate skills-sh</code></a></h2>
 <p>Preview a project migration from a version 1 <code>skills-lock.json</code>. <code>--apply</code> writes a
 verified <code>dalo-project.toml</code> and backs up the former installation; <code>--dry-run</code>
@@ -2547,6 +2568,7 @@ PR URL when created.</p>
       <li><a href="#agentmd-canonical-packages"><code>AGENT.md</code> Canonical Packages</a></li>
       <li><a href="#instruction-packs">Instruction Packs</a></li>
       <li><a href="#dalo-project-add"><code>dalo project add</code></a></li>
+      <li><a href="#dalo-project-update"><code>dalo project update</code></a></li>
       <li><a href="#migrate-skills-sh"><code>migrate skills-sh</code></a></li>
       <li><a href="#dalo-promote"><code>dalo promote</code></a></li>
     </ul>

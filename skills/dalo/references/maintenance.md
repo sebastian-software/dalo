@@ -100,9 +100,12 @@ selectors, and select/review/approve only the named item. When the user wants a
 repository skill shared through Git, use the project's `dalo-project.toml` and
 `dalo project add` workflow in [setup](setup.md): preview the exact source,
 selection, and commit; apply a moving ref only with the previewed
-`--expect-commit`; then run `dalo install` and handle local approvals. Do not add
-a project dependency to the global store. Connect another agent through setup
-and preview the resulting active set before syncing.
+`--expect-commit`; then run `dalo install` and handle local approvals. To move an
+existing project source forward, use `dalo project update` to review the new
+pin, inventory, dependency changes, and audits before applying it. Changed
+content remains subject to local approval. Do not add a project dependency to
+the global store. Connect another agent through setup and preview the resulting
+active set before syncing.
 
 For removal, distinguish a catalog selection (`source unselect`), an entire
 source (`source remove`, preview first), and a target (`target unlink`, followed

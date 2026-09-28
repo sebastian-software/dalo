@@ -152,20 +152,53 @@ flow, and does not activate unapproved skills. A teammate can commit the
 declaration and restore the same commit and selection with `dalo install` in a
 fresh checkout; their approvals remain local.
 
-## First implementation boundary
+## Update a project source
 
-This increment supports `project add`, `init`, `install`, `status`, `doctor`,
-`audit`, and `approve` in project scope. Other project-scoped commands fail
-instead of falling back to the global store. Use `install` to reconcile delivery;
-`sync` is not yet supported in project scope. Use `dalo sync --global` when you
-intend to synchronize the global store from inside a project.
+Use `dalo project update` to review a new revision for an existing source. The
+default is read-only and compares the selected skills, dependency declarations,
+and candidate audits with the current pin:
 
-Full commit IDs in the definition currently provide the reproducibility
-boundary. Moving refs, a separate portable project lockfile, an update command,
-and removal or replacement of previously installed sources/selections are
-follow-up work. Changes to an existing pin, URL, or selection are reported and
-left untouched. Do not discard local edits or approvals to work around that
-boundary. A future update flow must preserve them while reviewing the change.
+```sh
+dalo project update company --ref main
+dalo project update company --ref main --expect-commit <previewed-commit> --apply
+dalo install
+```
+
+Applying a branch or tag requires the exact `--expect-commit` from the preview.
+An immutable full commit can be applied directly. If no `--skill` options are
+given, Dalo preserves the current selection by stable ID (or path when a skill
+has no stable ID). Repeat `--skill` to replace that selection explicitly.
+Removed selected skills block an implicit update; provide a replacement
+selection to proceed. Dalo edits only the source's `commit` and `skills` values
+in `dalo-project.toml`, preserving surrounding comments and formatting.
+
+The declaration change and local installation are separate steps. `dalo
+install` stages a new commit-specific checkout without overwriting the old one,
+then reconciles delivery through the normal transactional sync. Dirty source
+checkouts and unmanaged target content block the operation. Existing approvals
+for selected skills whose content hash changes are revoked in the local project
+store; unchanged content keeps its decision. Changed skills stay inactive until
+their new content is reviewed and approved locally. Accepted audit risks remain
+bound to the exact audit content hash. Candidate audit findings are shown during
+preview and remain blocking until resolved; a blocking finding also prevents
+applying the declaration update.
+If config and source-lock updates are interrupted, the next `dalo install`
+restores their recovery snapshot and retries. Old checkouts remain available
+after a successful update so a failed delivery can be retried without losing
+the prior links.
+
+## Project command boundary
+
+Project scope supports `project add`, `project update`, `init`, `install`,
+`status`, `doctor`, `audit`, and `approve`. Other project-scoped commands fail
+instead of falling back to the global store. Use `install` to reconcile
+delivery; `sync` is not yet supported in project scope. Use `dalo sync --global`
+when you intend to synchronize the global store from inside a project.
+
+Project declarations keep immutable full commit IDs as the reproducibility
+boundary, so no separate portable lockfile is needed. Source replacement and
+removal remain explicit migration work; install does not infer either from a
+declaration edit.
 
 ## Migrate a skills.sh project
 

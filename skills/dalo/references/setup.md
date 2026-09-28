@@ -41,7 +41,10 @@ its existing assignment. For skills that belong to a repository, use Dalo's
 project definition instead of redirecting the global store into the repository.
 If `dalo-project.toml` exists, preview a pinned selection with `dalo project add`,
 review its source, commit, skills, and targets, then apply the exact commit and
-run `dalo install`. If the project has no definition, initialize it explicitly
+run `dalo install`. For an existing project source, use `dalo project update` to
+review the new pin and inventory before applying it, then run `dalo install`;
+changed content remains subject to local approval and blocking audits. If the
+project has no definition, initialize it explicitly
 with `dalo --project . init` first. The declaration is committed; the `.dalo`
 store, approvals, and generated links remain local. Do not edit a repository's
 ignore rules unless that is part of the task. Explicit store overrides bypass
