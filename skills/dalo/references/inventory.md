@@ -106,9 +106,11 @@ user to discover or name the migration command.
 
 Look for `dalo-project.toml` when a request concerns a repository. Dalo discovers
 the nearest definition above the working directory, stopping at the nearest
-Git boundary. In that scope use `dalo status`, `install`, `doctor`, `audit`, and
-`approve`. Use `--global` for an explicitly global request and `--project <dir>`
-when selecting a different project. Explicit `--store` and `DALO_STORE` bypass
+Git boundary. In that scope use `dalo project add` to preview an explicitly
+selected source and skill set, then apply the reviewed commit and run
+`dalo install`. Also use `status`, `doctor`, `audit`, and `approve` as needed.
+Use `--global` for an explicitly global request and `--project <dir>` when
+selecting a different project. Explicit `--store` and `DALO_STORE` bypass
 automatic discovery. A malformed project definition must not cause a fallback
 to global operations. Do not redirect global targets to implement a project.
 
@@ -117,10 +119,12 @@ Git repository without overrides. Agents should ask in their own UI when the
 intent is unclear, then use `--project <dir> init` or `init --global` explicitly.
 JSON, dry-run, CI, and non-interactive calls never prompt.
 
-The first project implementation supports `init`, `install`, `status`, `doctor`,
-`audit`, and `approve`. `.dalo` and generated links are machine-local; commit only
-`dalo-project.toml`. Do not confuse it with the team-source `dalo.toml`.
-See `https://dalo.sh/docs/projects.html` for the format and limitations. Moving
-refs, portable project locks, and reviewed updates are not implemented yet.
+The project workflow supports `project add`, `init`, `install`, `status`,
+`doctor`, `audit`, and `approve`. `project add` previews by default; applying a
+branch or tag requires the exact `--expect-commit` from that preview. `.dalo`
+and generated links are machine-local; commit only `dalo-project.toml`. Do not
+confuse it with the team-source `dalo.toml`. See
+`https://dalo.sh/docs/projects.html` for the format and limitations. Updating or
+removing an existing source and reviewed selection changes remain separate work.
 A global assistant bundle check needs `--global` (or an explicit custom store)
 inside a project; keep that check separate from the requested project operation.

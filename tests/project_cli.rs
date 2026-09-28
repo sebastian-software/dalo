@@ -317,6 +317,195 @@ fn unmanaged_skill_and_changed_pin_are_preserved() {
 }
 
 #[test]
+fn project_add_previews_resolved_pin_and_fresh_projects_install_that_pin() {
+    let temp = tempfile::tempdir().unwrap();
+    let project = temp.path().join("project");
+    let source = project.join("skills");
+    fs::create_dir_all(&project).unwrap();
+    let commit = upstream(&source);
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .arg("init")
+        .assert()
+        .success();
+    let manifest_path = project.join("dalo-project.toml");
+    let original_manifest = fs::read(&manifest_path).unwrap();
+
+    let preview = dalo_command()
+        .current_dir(&project)
+        .args([
+            "project",
+            "add",
+            "community",
+            "skills",
+            "--ref",
+            "HEAD",
+            "--skill",
+            "review",
+            "--json",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let preview: serde_json::Value = serde_json::from_slice(&preview).unwrap();
+    assert_eq!(preview["commit"], commit);
+    assert_eq!(preview["skills"][0]["slot_name"], "review");
+    assert!(
+        preview["next_command"]
+            .as_str()
+            .unwrap()
+            .contains(project.to_str().unwrap())
+    );
+    assert!(
+        preview["targets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|target| target["directory"] == ".agents/skills")
+    );
+    assert!(!preview["applied"].as_bool().unwrap());
+    assert_eq!(fs::read(&manifest_path).unwrap(), original_manifest);
+    assert!(!project.join(".dalo").exists());
+
+    let applied = dalo_command()
+        .current_dir(&project)
+        .args([
+            "project",
+            "add",
+            "community",
+            "skills",
+            "--ref",
+            "HEAD",
+            "--skill",
+            "review",
+            "--expect-commit",
+        ])
+        .arg(&commit)
+        .args(["--apply", "--json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let applied: serde_json::Value = serde_json::from_slice(&applied).unwrap();
+    assert!(applied["applied"].as_bool().unwrap());
+    assert_eq!(applied["commit"], commit);
+    let updated_manifest = fs::read_to_string(&manifest_path).unwrap();
+    assert!(updated_manifest.starts_with(std::str::from_utf8(&original_manifest).unwrap()));
+    assert!(updated_manifest.contains("url = \"skills\""));
+    assert!(updated_manifest.contains(&format!("commit = \"{commit}\"")));
+    assert!(!project.join(".dalo").exists());
+
+    // A teammate's fresh checkout gets the same selection and exact revision;
+    // local approvals remain independent and must be made on that machine.
+    let fresh = temp.path().join("fresh");
+    fs::create_dir(&fresh).unwrap();
+    git(&fresh, &["clone", source.to_str().unwrap(), "skills"]);
+    fs::write(fresh.join("dalo-project.toml"), updated_manifest).unwrap();
+    dalo_command()
+        .arg("--project")
+        .arg(&fresh)
+        .arg("install")
+        .assert()
+        .failure();
+    assert_eq!(
+        git(
+            &fresh.join(".dalo/sources/community/checkout"),
+            &["rev-parse", "HEAD"]
+        ),
+        commit
+    );
+    dalo_command()
+        .arg("--project")
+        .arg(&fresh)
+        .args(["approve", "skill", "community:review"])
+        .assert()
+        .success();
+    dalo_command()
+        .arg("--project")
+        .arg(&fresh)
+        .arg("install")
+        .assert()
+        .success();
+    assert!(fresh.join(".claude/skills/review").is_symlink());
+}
+
+#[test]
+fn project_add_blocks_changed_refs_and_nonportable_local_sources_without_writes() {
+    let temp = tempfile::tempdir().unwrap();
+    let project = temp.path().join("project");
+    let source = project.join("skills");
+    fs::create_dir_all(&project).unwrap();
+    let previewed_commit = upstream(&source);
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .arg("init")
+        .assert()
+        .success();
+    let manifest_path = project.join("dalo-project.toml");
+    let original_manifest = fs::read(&manifest_path).unwrap();
+
+    fs::write(source.join("other.txt"), "new upstream state").unwrap();
+    git(&source, &["add", "."]);
+    git(
+        &source,
+        &[
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-m",
+            "move ref",
+        ],
+    );
+    dalo_command()
+        .current_dir(&project)
+        .args([
+            "project",
+            "add",
+            "community",
+            "skills",
+            "--ref",
+            "HEAD",
+            "--skill",
+            "review",
+            "--expect-commit",
+            &previewed_commit,
+            "--apply",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("not previewed commit"));
+    assert_eq!(fs::read(&manifest_path).unwrap(), original_manifest);
+    assert!(!project.join(".dalo").exists());
+
+    let outside = temp.path().join("outside");
+    let outside_commit = upstream(&outside);
+    dalo_command()
+        .current_dir(&project)
+        .args([
+            "project",
+            "add",
+            "external",
+            outside.to_str().unwrap(),
+            "--ref",
+            &outside_commit,
+            "--skill",
+            "review",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("outside this project"));
+    assert_eq!(fs::read(&manifest_path).unwrap(), original_manifest);
+    assert!(!project.join(".dalo").exists());
+}
+
+#[test]
 fn nearest_project_is_discovered_from_subdirectories_and_global_bypasses_it() {
     let temp = tempfile::tempdir().unwrap();
     let project = temp.path().join("project");

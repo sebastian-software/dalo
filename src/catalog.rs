@@ -360,17 +360,43 @@ pub(crate) fn canonical_skill_selection(
     refs: &[String],
 ) -> DaloResult<Vec<String>> {
     let source = catalog_source(paths, id)?;
-    let scan = scan_catalog(&source.path)?;
-    let candidates = catalog_candidates_from_scan(&source.path, &scan);
-    let mut selected = refs
+    let mut selected = resolve_catalog_skill_references(id, &source.path, refs)?
         .iter()
-        .map(|reference| {
-            resolve_candidate_reference(id, &candidates, reference)
-                .map(|candidate| canonical_selection(&candidate))
-        })
-        .collect::<DaloResult<Vec<_>>>()?;
+        .map(canonical_selection)
+        .collect::<Vec<_>>();
     selected.sort();
     selected.dedup();
+    Ok(selected)
+}
+
+/// Resolve explicit skill selectors against a checked-out catalog without
+/// requiring it to be registered in a store. Project declarations use this
+/// during their read-only add preview before writing any files.
+pub(crate) fn resolve_catalog_skill_references(
+    source_id: &str,
+    checkout: &Path,
+    refs: &[String],
+) -> DaloResult<Vec<CatalogCandidate>> {
+    let scan = scan_catalog(checkout)?;
+    let candidates = catalog_candidates_from_scan(checkout, &scan);
+    let mut selected = Vec::with_capacity(refs.len());
+    for reference in refs {
+        let candidate = resolve_candidate_reference(source_id, &candidates, reference)?;
+        if !selected
+            .iter()
+            .any(|existing| canonical_selection(existing) == canonical_selection(&candidate))
+        {
+            selected.push(candidate);
+        }
+    }
+    selected.sort_by(|left, right| {
+        left.slot_name
+            .cmp(&right.slot_name)
+            .then(left.path.cmp(&right.path))
+    });
+    for candidate in &mut selected {
+        candidate.selected = true;
+    }
     Ok(selected)
 }
 

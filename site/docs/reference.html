@@ -2462,6 +2462,26 @@ Use concise review comments.
 &lt;!-- dalo:end team-style --&gt;
 </code></pre>
 <p>Dalo only rewrites bytes inside the pack&#39;s own managed block. Content outside managed blocks is preserved.</p>
+<h2 id="dalo-project-add"><a class="doc-anchor" href="#dalo-project-add"><code>dalo project add</code></a></h2>
+<p>Resolve one repository and explicit skill selection into the discovered or
+explicit project&#39;s <code>dalo-project.toml</code>:</p>
+<pre><code class="language-sh">dalo project add company https://github.com/acme/skills.git --ref main --skill review
+dalo project add company https://github.com/acme/skills.git --ref main \
+  --skill review --expect-commit &lt;previewed-commit&gt; --apply
+dalo install
+</code></pre>
+<p>The default is a read-only preview. It fetches to a temporary directory, resolves
+the requested ref to an exact commit, lists the selected skills and target
+folders, and prints the TOML entry and apply command. <code>--apply</code> writes only the
+declaration; installation and local approvals remain separate. Applying a
+branch or tag requires <code>--expect-commit</code> to match the commit shown in the
+preview. A full commit ID can be applied directly. Repeat required <code>--skill</code>
+options to select multiple catalog entries. Local repositories must be inside
+the project to keep their relative paths portable. JSON reports include
+<code>project</code>, <code>source_id</code>, <code>url</code>, <code>requested_ref</code>, <code>commit</code>, <code>skills</code>, <code>targets</code>,
+<code>declaration_change</code>, <code>applied</code>, <code>dry_run</code>, and <code>next_command</code>.</p>
+<p>See <a href="/docs/projects.html#add-a-source-from-the-project">Project installations</a> for the
+review and restore workflow.</p>
 <h2 id="migrate-skills-sh"><a class="doc-anchor" href="#migrate-skills-sh"><code>migrate skills-sh</code></a></h2>
 <p>Preview a project migration from a version 1 <code>skills-lock.json</code>. <code>--apply</code> writes a
 verified <code>dalo-project.toml</code> and backs up the former installation; <code>--dry-run</code>
@@ -2534,6 +2554,7 @@ PR URL when created.</p>
       <li><a href="#deliverytoml-provider-builds"><code>DELIVERY.toml</code> Provider Builds</a></li>
       <li><a href="#agentmd-canonical-packages"><code>AGENT.md</code> Canonical Packages</a></li>
       <li><a href="#instruction-packs">Instruction Packs</a></li>
+      <li><a href="#dalo-project-add"><code>dalo project add</code></a></li>
       <li><a href="#migrate-skills-sh"><code>migrate skills-sh</code></a></li>
       <li><a href="#dalo-promote"><code>dalo promote</code></a></li>
     </ul>

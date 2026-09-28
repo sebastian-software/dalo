@@ -37,12 +37,18 @@ the target; it does not adopt existing content. Continue with migration if that
 directory is populated.
 
 One target ID currently holds one path. Reusing it with another path changes
-its existing assignment. A project folder override is not a first-class project
-profile: it receives the store's active set, and its links use absolute paths
-that must not be committed. Do not convert project skills to global skills, move
-an existing target, or edit a repository's ignore rules without that scope being
-part of the task. Explain a scope choice only when the discovered setup requires
-one. See [agent integration](https://dalo.sh/docs/agents.html).
+its existing assignment. For skills that belong to a repository, use Dalo's
+project definition instead of redirecting the global store into the repository.
+If `dalo-project.toml` exists, preview a pinned selection with `dalo project add`,
+review its source, commit, skills, and targets, then apply the exact commit and
+run `dalo install`. If the project has no definition, initialize it explicitly
+with `dalo --project . init` first. The declaration is committed; the `.dalo`
+store, approvals, and generated links remain local. Do not edit a repository's
+ignore rules unless that is part of the task. Explicit store overrides bypass
+project discovery; if the task is still project-scoped, pass `--project <root>`
+to keep that scope explicit. See
+[project installations](https://dalo.sh/docs/projects.html) and
+[agent integration](https://dalo.sh/docs/agents.html).
 
 ## Sources and first sync
 

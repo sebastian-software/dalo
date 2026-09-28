@@ -114,10 +114,48 @@ unregistered leftover checkout is reported for manual preservation/recovery.
 creating a store, auditing remote content, or delivering links. It is not a
 promise that the remote sources or approvals are ready.
 
+## Add a source from the project
+
+Use `dalo project add` from inside the project (or pass `--project <directory>`)
+to resolve a repository and explicitly selected skills into the portable
+definition. It uses the project scope discovered from `dalo-project.toml`; it
+does not add a global source. The first call is a read-only preview:
+
+```sh
+dalo project add company https://github.com/acme/skills.git --ref main --skill review
+```
+
+The preview fetches the repository into a temporary directory and shows the
+resolved full commit, selected skills, project target folders, exact TOML entry,
+and the command to apply it. It does not create `.dalo`, approve skills, or link
+content. Review the source and selection before writing the declaration.
+
+For a branch or tag, apply only if the ref still resolves to the commit you
+reviewed. Copy the full commit ID from the preview into `--expect-commit`:
+
+```sh
+dalo project add company https://github.com/acme/skills.git --ref main \
+  --skill review --expect-commit <previewed-commit> --apply
+dalo install
+```
+
+An immutable full commit can be added directly with `--ref <full-commit> --apply`.
+Each `--skill` is required; selectors may be a catalog name, stable ID, or skill
+path. Dalo stores stable IDs where available and paths otherwise. Local Git
+repositories are allowed only when their path is inside the project, so the
+committed URL stays portable. Duplicate source IDs are blocked; reviewed changes
+to an existing source or selection belong to the separate update workflow.
+
+Adding a source edits only `dalo-project.toml`. Run `dalo install` afterwards to
+prepare the pinned checkout. It uses the ordinary project review and approval
+flow, and does not activate unapproved skills. A teammate can commit the
+declaration and restore the same commit and selection with `dalo install` in a
+fresh checkout; their approvals remain local.
+
 ## First implementation boundary
 
-This first increment supports `init`, `install`, `status`, `doctor`, `audit`,
-and `approve` in project scope. Other project-scoped commands fail
+This increment supports `project add`, `init`, `install`, `status`, `doctor`,
+`audit`, and `approve` in project scope. Other project-scoped commands fail
 instead of falling back to the global store. Use `install` to reconcile delivery;
 `sync` is not yet supported in project scope. Use `dalo sync --global` when you
 intend to synchronize the global store from inside a project.
