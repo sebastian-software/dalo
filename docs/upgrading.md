@@ -128,10 +128,11 @@ The full list of older shapes Dalo accepts on read is
 
 ## Removed flags, spellings, and platforms
 
-Four CLI spellings, one target ID, and one release platform were removed before
-1.0 froze the surface, so that nothing deprecated enters the 1.x line. Each one
-now fails loudly instead of quietly doing something else. The error lines below
-are what the current binary and installer actually print.
+Four CLI spellings and one release platform were removed before 1.0 froze the
+surface, so that nothing deprecated enters the 1.x line. Cursor's former target
+ID was absent from Dalo 1.0 and 1.1, then returned after its symlink behavior
+was verified. The Cursor row below applies only to those older binaries; the
+other error lines are what the current binary and installer print.
 
 | Removed | Replacement | What you see now | Exit |
 | --- | --- | --- | --- |
@@ -139,7 +140,7 @@ are what the current binary and installer actually print.
 | `audit --agent <reviewer>` | `audit --reviewer <reviewer>` | `error: unexpected argument '--agent' found` | `2` |
 | `source select <id> --unselect <skill>...` | `source unselect <id> <skill>...` | `error: unexpected argument '--unselect' found` | `2` |
 | `--refresh` (`audit`, `adopt`, `approve skill`, `resolve adopt`) | `--refresh-audit` | `error: unexpected argument '--refresh' found` | `2` |
-| target ID `cursor` | `dalo target link generic ~/.cursor/skills` | ``error: unknown target `cursor`; known targets: claude, codex, generic, hermes, openclaw, opencode`` | `1` |
+| target ID `cursor` in Dalo 1.0/1.1 | `dalo target link generic ~/.cursor/skills` | older binary: ``error: unknown target `cursor`; known targets: claude, codex, generic, hermes, openclaw, opencode`` | `1` |
 | Intel macOS release archives (`x86_64-apple-darwin`) | the Apple Silicon build on an Apple Silicon Mac; `cargo install dalo` on an Intel Mac, which compiles from source | `dalo installer: Intel Macs are no longer supported` | `1` |
 
 Two of them come with clap's own hint, which is usually enough to fix a script
@@ -173,17 +174,22 @@ behavior beyond the new error, so a script that passed it can simply stop.
 
 ### About Cursor
 
-The `cursor` target ID is gone because symlink discovery could not be verified
-against a current Cursor release, and Dalo does not ship an unverified promise.
-Nothing about your setup has to change:
+Cursor is now a supported built-in target. Cursor 3.13.25 discovered and invoked
+Dalo-managed symlinked skills from both user-level and project-level skill
+directories. The built-in `codex` target continues to reach Cursor through its
+`~/.agents/skills` compatibility path.
+
+Use `cursor` for the default user-level directory, or pass a project path:
 
 ```sh
-dalo target link generic ~/.cursor/skills
+dalo target link cursor
+dalo sync
+dalo target link cursor /path/to/repo/.cursor/skills
+dalo sync
 ```
 
-That materializes into exactly the same directory. Cursor also reads
-`~/.agents/skills`, so a linked `codex` or `openclaw` target already reaches it
-without a second link.
+See the [Cursor support notes](agents.md#cursor) for verified versions and the
+instruction-file mapping.
 
 ## Other changes a 0.x user notices
 

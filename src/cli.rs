@@ -44,7 +44,7 @@ use crate::update;
 ///
 /// It is a named constant so `target::link_hint_should_name_every_builtin`
 /// can assert that its quickstart names every built-in target.
-pub const AFTER_LONG_HELP: &str = "Mental model:\n  store   local database under ~/.dalo, or --store PATH\n  source  Git-backed skill collection, including the built-in local source\n  sync    refreshes clean tracking sources, resolves approved skills, and links them into targets\n\nQuickstart:\n  1. dalo init\n  2. dalo target link <codex|claude|openclaw|hermes|opencode|generic> [path]\n  3. Choose a skill path:\n     team:     dalo source add <id> <git-url-or-path>\n     local:    create <store>/local/skills/<name>/SKILL.md\n     existing: dalo adopt <skill>\n  4. dalo sync\n\nSafe sandbox:\n  export DALO_STORE=\"$(mktemp -d)/store\"\n  dalo init\n  dalo target link generic \"$(mktemp -d)/skills\"";
+pub const AFTER_LONG_HELP: &str = "Mental model:\n  store   local database under ~/.dalo, or --store PATH\n  source  Git-backed skill collection, including the built-in local source\n  sync    refreshes clean tracking sources, resolves approved skills, and links them into targets\n\nQuickstart:\n  1. dalo init\n  2. dalo target link <codex|claude|cursor|openclaw|hermes|opencode|generic> [path]\n  3. Choose a skill path:\n     team:     dalo source add <id> <git-url-or-path>\n     local:    create <store>/local/skills/<name>/SKILL.md\n     existing: dalo adopt <skill>\n  4. dalo sync\n\nSafe sandbox:\n  export DALO_STORE=\"$(mktemp -d)/store\"\n  dalo init\n  dalo target link generic \"$(mktemp -d)/skills\"";
 
 /// Parsed command-line arguments.
 #[derive(Debug, Parser)]

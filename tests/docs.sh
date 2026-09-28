@@ -74,12 +74,18 @@ grep -q 'fallback' "$root/.github/ISSUE_TEMPLATE/question.yml"
 grep -q 'brew uninstall dalo' "$root/docs/uninstall.md"
 # Removing Dalo has to name every built-in target, or a linked one is left
 # behind with its owned symlinks. `opencode` was missing from this list.
-for builtin_target in codex claude openclaw hermes opencode generic; do
+for builtin_target in codex claude cursor openclaw hermes opencode generic; do
   grep -Fq "dalo target unlink $builtin_target" "$root/docs/uninstall.md" \
     || { echo "docs/uninstall.md does not unlink the built-in target $builtin_target" >&2; exit 1; }
 done
 grep -Fq 'ls -la ~/.config/opencode/skills' "$root/docs/uninstall.md" \
   || { echo 'docs/uninstall.md final check skips the OpenCode skill directory' >&2; exit 1; }
+grep -Fq 'ls -la ~/.cursor/skills' "$root/docs/uninstall.md" \
+  || { echo 'docs/uninstall.md final check skips the Cursor skill directory' >&2; exit 1; }
+grep -Fq '| `cursor` | `~/.cursor/skills` | supported |' "$root/docs/reference.md" \
+  || { echo 'docs/reference.md does not list the verified Cursor target' >&2; exit 1; }
+grep -Fq '| `cursor` | Cursor Agent | supported |' "$root/docs/agents.md" \
+  || { echo 'docs/agents.md does not list Cursor in its support matrix' >&2; exit 1; }
 grep -q 'dalo resolve remove-owned <target>:<slot>' "$root/docs/uninstall.md"
 grep -q 'resolve list.*exact owned IDs' "$root/docs/uninstall.md"
 grep -q '^## 4. Disable Autosync$' "$root/docs/uninstall.md"
@@ -124,7 +130,12 @@ grep -q 'source_provenance_mismatch' "$root/docs/troubleshooting.md"
 grep -q 'SourceProvenance' "$root/docs/reference.md"
 grep -Fq 'Git availability' "$root/docs/reference.md"
 refute 'reference.md still promises a GitHub CLI doctor check' \
-  grep -Fq 'GitHub CLI' "$root/docs/reference.md"
+  awk '
+    /^### `dalo doctor`$/ { in_doctor = 1; next }
+    /^### / { in_doctor = 0 }
+    in_doctor && /GitHub CLI/ { found = 1 }
+    END { exit !found }
+  ' "$root/docs/reference.md"
 grep -Fq 'Git availability' "$root/site/index.html"
 refute 'site/index.html still promises a Git auth doctor check' \
   grep -Fq 'Git auth' "$root/site/index.html"

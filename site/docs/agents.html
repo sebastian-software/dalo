@@ -143,6 +143,16 @@ dalo target detect
 <td>yes, observed</td>
 </tr>
 <tr>
+<td><code>cursor</code></td>
+<td>Cursor Agent</td>
+<td>supported</td>
+<td><code>3.13.25</code></td>
+<td>2026-09-28</td>
+<td><code>~/.cursor/skills</code></td>
+<td><code>.cursor/skills</code></td>
+<td>yes, invoked</td>
+</tr>
+<tr>
 <td><code>openclaw</code></td>
 <td>OpenClaw</td>
 <td>supported</td>
@@ -183,11 +193,12 @@ dalo target detect
 <td>depends on the agent</td>
 </tr>
 </tbody></table></div>
-<p>Cursor has no built-in target ID; see <a href="#cursor">Cursor</a> for the reason and the
-command that covers it.</p>
-<p>Every observation below was made on 2026-09-17 on macOS, in a throwaway <code>HOME</code>
-holding a single probe skill whose directory is a symlink to a directory
-elsewhere — the exact shape <code>dalo sync</code> produces.</p>
+<p>Cursor has a built-in target; see <a href="#cursor">Cursor</a> for verification details
+and project-level setup.</p>
+<p>Codex through OpenCode were verified on 2026-09-17 on macOS, in a throwaway
+<code>HOME</code> holding a single probe skill whose directory is a symlink to a directory
+elsewhere — the exact shape <code>dalo sync</code> produces. Cursor was verified separately
+on 2026-09-28; see its section below.</p>
 <h2 id="project-scoped-folders"><a class="doc-anchor" href="#project-scoped-folders">Project-scoped folders</a></h2>
 <p>For a reproducible project store with automatic scope discovery, see
 <a href="/docs/projects.html">Project installations</a>. The following recipe describes redirecting
@@ -313,22 +324,37 @@ locations, <code>&lt;HOME&gt;/.config/opencode/skills/dalo-probe/SKILL.md</code>
 <a href="https://opencode.ai/docs/skills/" rel="noopener">OpenCode skills documentation</a> documents
 <code>~/.config/opencode/skills/&lt;name&gt;/SKILL.md</code> as the global location.</p>
 <h2 id="cursor"><a class="doc-anchor" href="#cursor">Cursor</a></h2>
-<p>Cursor has no built-in target ID. Point a generic target at the folder Cursor
-reads:</p>
-<pre><code class="language-sh">dalo target link generic ~/.cursor/skills
+<p>Default skill path:</p>
+<pre><code class="language-text">~/.cursor/skills
+</code></pre>
+<p>Link user-level or project-level skills:</p>
+<pre><code class="language-sh"># User-level
+dalo target link cursor
 dalo sync
 ls -la ~/.cursor/skills
+
+# Project-level, from a project-scoped store or when redirecting an existing store
+dalo target link cursor /path/to/repo/.cursor/skills
+dalo sync
 </code></pre>
-<p>Cursor also loads <code>~/.agents/skills</code>, so a linked <code>codex</code> or <code>openclaw</code> target
-already reaches it.</p>
-<p>Why there is no <code>cursor</code> target: discovery could not be verified on this date.
-The installed Cursor CLI (<code>cursor-agent 2025.09.18-7ae6800</code>) reports
-<code>Not logged in</code> and offers no offline command that lists skills, so a symlinked
-skill directory could not be observed without signing in. The
-<a href="https://cursor.com/docs/context/skills" rel="noopener">Cursor skills documentation</a> documents
-<code>~/.cursor/skills/</code> and <code>~/.agents/skills/</code> as the user-level roots and
-<code>.cursor/skills/</code>, <code>.agents/skills/</code>, <code>.claude/skills/</code> and <code>.codex/skills/</code> as
-project roots. Dalo 1.0 does not ship a target for an unverified promise.</p>
+<p>Each target ID records one directory. Cursor also discovers <code>~/.agents/skills</code>
+and <code>.agents/skills</code>; a <code>codex</code> target already materializes the user-level
+shared directory for Cursor.</p>
+<p>The <a href="https://cursor.com/docs/skills" rel="noopener">Cursor skills documentation</a> lists
+<code>~/.cursor/skills/</code> and <code>~/.agents/skills/</code> as user-level roots, and
+<code>.cursor/skills/</code>, <code>.agents/skills/</code>, <code>.claude/skills/</code>, and <code>.codex/skills/</code> as
+project roots. On 2026-09-28, Cursor 3.13.25 on macOS arm64 discovered and
+invoked Dalo-managed symlinked skills from both <code>~/.cursor/skills/</code> and a
+project&#39;s <code>.cursor/skills/</code>; each invocation returned the marker in its test
+skill.</p>
+<p>Dalo blocks a sync when a real unmanaged directory already occupies the skill&#39;s
+target slot and leaves that directory unchanged. Cursor reads project
+<code>AGENTS.md</code> files as instructions; Dalo can add instruction packs to an explicit
+file with <code>dalo instructions enable &lt;pack-ref&gt; ./AGENTS.md</code>. There is no native
+Cursor instruction-file target mapping, so use an explicit file. Dalo preserves
+user-authored content outside its managed block. See the
+<a href="https://cursor.com/docs/rules" rel="noopener">Cursor rules documentation</a> and the
+<a href="/docs/reference.html">instruction reference</a>.</p>
 <h2 id="any-other-folder-based-agent"><a class="doc-anchor" href="#any-other-folder-based-agent">Any other folder-based agent</a></h2>
 <pre><code class="language-sh">dalo target link generic /path/to/agent/skills
 dalo sync

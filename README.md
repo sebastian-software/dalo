@@ -70,6 +70,7 @@ explicit path for anything folder-based.
 ```sh
 dalo target link codex
 dalo target link claude
+dalo target link cursor
 ```
 
 **4. Add your team's skill repository.** Dalo clones it into the store and runs
@@ -214,14 +215,16 @@ list of things Dalo deliberately does not protect against — read the
 | --- | --- |
 | Codex | `~/.agents/skills` |
 | Claude Code | `~/.claude/skills` |
+| Cursor | `~/.cursor/skills` |
 | OpenClaw | `~/.agents/skills` |
 | Hermes | `~/.hermes/skills` |
 | OpenCode | `~/.config/opencode/skills` |
 | Any folder-based agent | user-provided path |
 
 Every built-in target names the agent release it was verified against in the
-[agent support matrix](docs/agents.md#support-matrix). Cursor has no built-in
-target ID; `dalo target link generic ~/.cursor/skills` covers it.
+[agent support matrix](docs/agents.md#support-matrix). `dalo target link cursor`
+uses Cursor's default skill directory; pass a project path to target a
+repository's `.cursor/skills` folder.
 
 ## How Dalo compares
 

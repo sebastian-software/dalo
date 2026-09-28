@@ -340,6 +340,7 @@ Built-in target IDs:
 | --- | --- | --- |
 | `codex` | `~/.agents/skills` | supported |
 | `claude` | `~/.claude/skills` | supported |
+| `cursor` | `~/.cursor/skills` | supported |
 | `openclaw` | `~/.agents/skills` | supported |
 | `hermes` | `~/.hermes/skills` | supported |
 | `opencode` | `~/.config/opencode/skills` | supported |
@@ -347,8 +348,11 @@ Built-in target IDs:
 
 Each built-in target names the agent release its skill directory and symlink
 behavior were verified against in the
-[agent support matrix](agents.md#support-matrix). Cursor has no built-in target
-ID; use `dalo target link generic ~/.cursor/skills`.
+[agent support matrix](agents.md#support-matrix). Use `dalo target link cursor`
+for Cursor's user-level skills, or pass a project's `.cursor/skills` directory
+as the target path. Cursor also reads `~/.agents/skills`, which the built-in
+`codex` target already covers. See the [Cursor verification](agents.md#cursor)
+for invocation and safety results.
 
 Targets reported as `experimental` are not covered by the stability promise for
 a major version: their IDs, default paths, and behavior may change in any
