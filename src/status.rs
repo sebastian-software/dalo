@@ -2166,6 +2166,57 @@ pub fn print_source_add_report(report: &SourceAddReport) {
     print_source_add_report_inner(report, None);
 }
 
+/// Print a review-first project source declaration preview or result.
+pub fn print_project_add_report(report: &crate::project::ProjectAddReport) {
+    let verb = if report.applied { "added" } else { "would add" };
+    println!(
+        "{verb} project source {} from {}",
+        terminal_safe_text(&report.source_id),
+        terminal_safe_text(&report.url)
+    );
+    println!(
+        "  project: {}",
+        terminal_safe_text(&report.project.display().to_string())
+    );
+    println!(
+        "  ref: {} -> {}",
+        terminal_safe_text(&report.requested_ref),
+        terminal_safe_text(&report.commit)
+    );
+    println!("  skills:");
+    for skill in &report.skills {
+        let identity = skill.id.as_deref().unwrap_or(&skill.path);
+        println!(
+            "    {} ({}){}",
+            terminal_safe_text(identity),
+            terminal_safe_text(&skill.path),
+            skill
+                .description
+                .as_deref()
+                .map(|description| format!(": {}", terminal_safe_text(description)))
+                .unwrap_or_default()
+        );
+    }
+    println!("  targets:");
+    for target in &report.targets {
+        println!(
+            "    {} -> {}",
+            terminal_safe_text(&target.id),
+            terminal_safe_text(&target.directory)
+        );
+    }
+    if !report.applied {
+        println!("  declaration change:");
+        for line in report.declaration_change.lines() {
+            println!("    {}", terminal_safe_text(line));
+        }
+    }
+    println!("next: {}", terminal_safe_text(&report.next_command));
+    if report.dry_run {
+        println!("note: --dry-run; no project files were changed");
+    }
+}
+
 pub(crate) fn print_source_add_report_with_store(report: &SourceAddReport, store_root: &Path) {
     print_source_add_report_inner(report, Some(store_root));
 }

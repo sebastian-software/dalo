@@ -6,6 +6,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use tempfile::NamedTempFile;
 
 use crate::catalog::{self, CatalogLock};
 use crate::error::{DaloError, DaloResult};
@@ -42,6 +43,60 @@ pub struct ProjectSource {
     pub skills: Vec<String>,
 }
 
+/// Review-first preview or result for adding one source to a project.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ProjectAddReport {
+    /// Canonical project directory.
+    pub project: PathBuf,
+    /// Stable source ID being added.
+    pub source_id: String,
+    /// Portable Git URL or project-relative local repository path.
+    pub url: String,
+    /// Requested branch, tag, or commit.
+    pub requested_ref: String,
+    /// Exact commit resolved from the requested revision.
+    pub commit: String,
+    /// Explicit skills resolved from this exact commit.
+    pub skills: Vec<catalog::CatalogCandidate>,
+    /// Existing project targets and their bounded folders.
+    pub targets: Vec<ProjectAddTarget>,
+    /// Exact TOML entry planned for the project declaration.
+    pub declaration_change: String,
+    /// Whether the declaration was written.
+    pub applied: bool,
+    /// Whether the caller requested a dry run.
+    pub dry_run: bool,
+    /// Suggested next CLI action.
+    pub next_command: String,
+}
+
+/// Inputs for resolving and optionally declaring one project source.
+pub struct ProjectAddRequest<'a> {
+    /// Stable source ID within the project.
+    pub id: &'a str,
+    /// Git URL or project-relative local repository path.
+    pub location: &'a str,
+    /// Branch, tag, or commit to resolve.
+    pub revision: &'a str,
+    /// Explicit skill selectors.
+    pub skill_refs: &'a [String],
+    /// Reviewed exact commit required to apply a moving ref.
+    pub expected_commit: Option<&'a str>,
+    /// Whether to write the reviewed declaration entry.
+    pub apply: bool,
+    /// Whether the invocation is a dry run.
+    pub dry_run: bool,
+}
+
+/// One project target affected by a newly declared source.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ProjectAddTarget {
+    /// Logical agent target ID.
+    pub id: String,
+    /// Project-relative skill output directory.
+    pub directory: String,
+}
+
 /// Resolved project scope.
 #[derive(Debug)]
 pub struct Project {
@@ -55,6 +110,132 @@ fn invalid(reason: impl Into<String>) -> DaloError {
     DaloError::InvalidArgument {
         reason: reason.into(),
     }
+}
+
+fn is_full_commit_id(value: &str) -> bool {
+    matches!(value.len(), 40 | 64)
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+}
+
+fn portable_source_location(location: &str, root: &Path) -> DaloResult<String> {
+    let resolved = source::resolve_source_location(location, root);
+    let resolved_path = Path::new(&resolved);
+    if git::looks_like_remote_location(location) && !resolved_path.exists() {
+        git::validate_remote_url(location)?;
+        return Ok(location.to_owned());
+    }
+
+    let canonical = fs::canonicalize(resolved_path).map_err(|error| {
+        invalid(format!(
+            "local source `{location}` must exist before it can be added to a project: {error}"
+        ))
+    })?;
+    if !canonical.is_dir() {
+        return Err(invalid(format!(
+            "local project source `{location}` must be a Git repository directory"
+        )));
+    }
+    let relative = canonical.strip_prefix(root).map_err(|_| {
+        invalid(format!(
+            "local source `{location}` is outside this project; project declarations may only contain project-relative local paths"
+        ))
+    })?;
+    if relative.as_os_str().is_empty() {
+        Ok(".".to_owned())
+    } else {
+        Ok(relative.to_string_lossy().into_owned())
+    }
+}
+
+fn project_source_entry(source: &ProjectSource) -> DaloResult<String> {
+    let fields = toml::to_string(source)?;
+    Ok(format!("[[source]]\n{fields}"))
+}
+
+fn project_add_command(
+    root: &Path,
+    id: &str,
+    location: &str,
+    revision: &str,
+    skills: &[String],
+    expected_commit: Option<&str>,
+) -> String {
+    let mut command = format!(
+        "dalo --project {} project add {} {} --ref {}",
+        crate::error::shell_quote_path(root),
+        crate::error::shell_quote_argument(id),
+        crate::error::shell_quote_argument(location),
+        crate::error::shell_quote_argument(revision),
+    );
+    if let Some(expected) = expected_commit {
+        command.push_str(" --expect-commit ");
+        command.push_str(expected);
+    }
+    for skill in skills {
+        command.push_str(" --skill ");
+        command.push_str(&crate::error::shell_quote_argument(skill));
+    }
+    command.push_str(" --apply");
+    command
+}
+
+fn append_manifest_source(
+    root: &Path,
+    original_bytes: &[u8],
+    source: &ProjectSource,
+    addition: &str,
+) -> DaloResult<()> {
+    let manifest_path = root.join(MANIFEST);
+    check_path(root, Path::new(MANIFEST))?;
+    let original = std::str::from_utf8(original_bytes)
+        .map_err(|_| invalid(format!("{MANIFEST} must contain valid UTF-8")))?;
+    let current_manifest: Manifest = toml::from_str(original)
+        .map_err(|error| invalid(format!("invalid {MANIFEST}: {error}")))?;
+    if current_manifest
+        .sources
+        .iter()
+        .any(|existing| existing.id == source.id)
+    {
+        return Err(invalid(format!(
+            "project source `{}` was added while the preview was being prepared; no files were changed",
+            source.id
+        )));
+    }
+
+    let separator = if original.is_empty() || original.ends_with("\n\n") {
+        ""
+    } else if original.ends_with('\n') {
+        "\n"
+    } else {
+        "\n\n"
+    };
+    let mut updated = String::with_capacity(original.len() + separator.len() + addition.len());
+    updated.push_str(original);
+    updated.push_str(separator);
+    updated.push_str(addition);
+    let _: Manifest = toml::from_str(&updated)
+        .map_err(|error| invalid(format!("project declaration update is invalid: {error}")))?;
+
+    let permissions = fs::metadata(&manifest_path)?.permissions();
+    let mut temporary = NamedTempFile::new_in(root)?;
+    temporary.as_file().set_permissions(permissions)?;
+    temporary.write_all(updated.as_bytes())?;
+    temporary.flush()?;
+    temporary.as_file().sync_all()?;
+
+    check_path(root, Path::new(MANIFEST))?;
+    if fs::read(&manifest_path)? != original_bytes {
+        return Err(invalid(format!(
+            "{MANIFEST} changed while the source was being prepared; no files were changed"
+        )));
+    }
+    temporary
+        .persist(&manifest_path)
+        .map_err(|error| error.error)?;
+    fs::File::open(root)?.sync_all()?;
+    Ok(())
 }
 
 fn target_folder(id: &str) -> DaloResult<&'static str> {
@@ -198,6 +379,145 @@ impl Project {
             }
         }
         Ok(manifest)
+    }
+
+    /// Resolve and optionally add one explicitly selected catalog to the
+    /// portable project declaration. A moving ref can only be applied when the
+    /// caller confirms the exact commit shown by a prior preview.
+    pub fn add_source(&self, request: ProjectAddRequest<'_>) -> DaloResult<ProjectAddReport> {
+        let ProjectAddRequest {
+            id,
+            location,
+            revision,
+            skill_refs,
+            expected_commit,
+            apply,
+            dry_run,
+        } = request;
+        let manifest_path = self.root.join(MANIFEST);
+        check_path(&self.root, Path::new(MANIFEST))?;
+        if !manifest_path.is_file() {
+            return Err(invalid(format!(
+                "project definition is missing; initialize it with `dalo --project {} init` first",
+                crate::error::shell_quote_path(&self.root)
+            )));
+        }
+
+        let original_bytes = fs::read(&manifest_path)?;
+        let manifest = self.manifest()?;
+        self.validate_store(&manifest)?;
+        if id == "local" || !source::is_valid_source_id(id) {
+            return Err(invalid(format!(
+                "invalid project source ID `{id}`; {}",
+                source::SOURCE_ID_REQUIREMENTS
+            )));
+        }
+        if manifest.sources.iter().any(|source| source.id == id) {
+            return Err(invalid(format!(
+                "project source `{id}` already exists; project update is a separate reviewed operation"
+            )));
+        }
+        if skill_refs.is_empty()
+            || skill_refs
+                .iter()
+                .any(|reference| reference.trim().is_empty())
+        {
+            return Err(invalid(
+                "select at least one skill with `--skill`; project sources never select everything by default",
+            ));
+        }
+        git::validate_manifest_revision(revision)?;
+        if let Some(expected) = expected_commit
+            && !is_full_commit_id(expected)
+        {
+            return Err(invalid(
+                "--expect-commit requires a full lowercase Git commit ID",
+            ));
+        }
+        if apply && !is_full_commit_id(revision) && expected_commit.is_none() {
+            return Err(invalid(
+                "applying a branch or tag requires `--expect-commit` from the preview so a moved ref cannot change the reviewed source",
+            ));
+        }
+
+        let declaration_url = portable_source_location(location, &self.root)?;
+        let clone_url = source::resolve_source_location(location, &self.root);
+        git::validate_remote_url(&clone_url)?;
+        let staging = tempfile::tempdir()?;
+        let checkout = staging.path().join("checkout");
+        source::clone_source_checkout(&clone_url, &checkout)?;
+        let commit = git::resolve_manifest_revision(&checkout, revision)?;
+        if let Some(expected) = expected_commit
+            && commit != expected
+        {
+            return Err(invalid(format!(
+                "ref `{revision}` now resolves to {commit}, not previewed commit {expected}; no project files were changed"
+            )));
+        }
+        git::checkout_detached(&checkout, &commit)?;
+        let selected = catalog::resolve_catalog_skill_references(id, &checkout, skill_refs)?;
+        let canonical_skills = selected
+            .iter()
+            .map(|candidate| {
+                candidate
+                    .id
+                    .clone()
+                    .unwrap_or_else(|| candidate.path.clone())
+            })
+            .collect::<Vec<_>>();
+        let new_source = ProjectSource {
+            id: id.to_owned(),
+            url: declaration_url.clone(),
+            commit: commit.clone(),
+            skills: canonical_skills,
+        };
+        let declaration_change = project_source_entry(&new_source)?;
+        let targets = manifest
+            .targets
+            .iter()
+            .map(|target_id| {
+                Ok(ProjectAddTarget {
+                    id: target_id.clone(),
+                    directory: target_folder(target_id)?.to_owned(),
+                })
+            })
+            .collect::<DaloResult<Vec<_>>>()?;
+        let apply_command = project_add_command(
+            &self.root,
+            id,
+            &declaration_url,
+            revision,
+            skill_refs,
+            (!is_full_commit_id(revision)).then_some(commit.as_str()),
+        );
+        let mut report = ProjectAddReport {
+            project: self.root.clone(),
+            source_id: id.to_owned(),
+            url: git::display_remote_url(&declaration_url),
+            requested_ref: revision.to_owned(),
+            commit,
+            skills: selected,
+            targets,
+            declaration_change,
+            applied: false,
+            dry_run,
+            next_command: if apply && !dry_run {
+                "dalo install".to_owned()
+            } else {
+                apply_command
+            },
+        };
+
+        if apply && !dry_run {
+            append_manifest_source(
+                &self.root,
+                &original_bytes,
+                &new_source,
+                &report.declaration_change,
+            )?;
+            report.applied = true;
+        }
+        Ok(report)
     }
 
     /// Create only the portable definition; existing files are never replaced.
