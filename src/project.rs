@@ -1535,6 +1535,65 @@ mod tests {
     use super::*;
 
     #[test]
+    fn manifest_rejects_unsupported_and_unsafe_declarations() {
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let root = temp.path().join("project");
+        fs::create_dir(&root).expect("project directory");
+        let project = Project::new(&root).expect("project");
+
+        let cases = [
+            (
+                "schema_version = 2\ntargets = [\"claude\"]\n",
+                "unsupported project schema_version",
+            ),
+            (
+                "schema_version = 1\ntargets = []\n",
+                "targets must not be empty",
+            ),
+            (
+                "schema_version = 1\ntargets = [\"codex\", \"openclaw\"]\n",
+                "targets must have distinct folders",
+            ),
+            (
+                "schema_version = 1\ntargets = [\"unknown\"]\n",
+                "unsupported project target",
+            ),
+            (
+                "schema_version = 1\ntargets = [\"claude\"]\n\n[[source]]\nid = \"local\"\nurl = \"https://example.com/skills.git\"\ncommit = \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\nskills = [\"review\"]\n",
+                "invalid or duplicate project source",
+            ),
+            (
+                "schema_version = 1\ntargets = [\"claude\"]\n\n[[source]]\nid = \"shared\"\nurl = \"https://example.com/skills.git\"\ncommit = \"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"\nskills = [\"review\"]\n",
+                "requires a full lowercase commit ID",
+            ),
+            (
+                "schema_version = 1\ntargets = [\"claude\"]\n\n[[source]]\nid = \"shared\"\nurl = \"https://example.com/skills.git\"\ncommit = \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\nskills = []\n",
+                "needs explicit skill selectors",
+            ),
+        ];
+
+        for (manifest, expected) in cases {
+            fs::write(root.join(MANIFEST), manifest).expect("write invalid manifest");
+            let error = project
+                .manifest()
+                .expect_err("invalid manifest should be rejected")
+                .to_string();
+            assert!(
+                error.contains(expected),
+                "{error:?} should contain {expected:?}"
+            );
+        }
+
+        fs::write(root.join(MANIFEST), vec![b' '; 1024 * 1024 + 1])
+            .expect("write oversized manifest");
+        let error = project
+            .manifest()
+            .expect_err("oversized manifest should be rejected")
+            .to_string();
+        assert!(error.contains("exceeds 1 MiB"));
+    }
+
+    #[test]
     fn interrupted_update_recovery_restores_config_source_lock_and_approvals() {
         let temp = tempfile::tempdir().expect("temporary directory");
         let root = temp.path().join("project");
