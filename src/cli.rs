@@ -93,6 +93,42 @@ pub struct MigrationArgs {
     pub apply: bool,
 }
 
+/// Project declaration commands.
+#[derive(Debug, Args)]
+pub struct ProjectCommand {
+    /// Project-scoped declaration operation.
+    #[command(subcommand)]
+    pub command: ProjectSubcommand,
+}
+
+/// Operations that edit a portable project declaration.
+#[derive(Debug, Subcommand)]
+pub enum ProjectSubcommand {
+    /// Preview or add one pinned catalog source and explicit skill selection.
+    Add(ProjectAddArgs),
+}
+
+/// Arguments for `project add`.
+#[derive(Debug, Args)]
+pub struct ProjectAddArgs {
+    /// Stable source ID within the project.
+    pub id: String,
+    /// Git URL or project-relative local repository path.
+    pub location: String,
+    /// Branch, tag, or commit to resolve (default: the source's checked-out HEAD).
+    #[arg(long = "ref", default_value = "HEAD")]
+    pub revision: String,
+    /// Explicit skill selector. Repeat to add several skills.
+    #[arg(long = "skill", value_name = "SKILL", required = true)]
+    pub skills: Vec<String>,
+    /// Write the declaration entry shown by a previous preview.
+    #[arg(long)]
+    pub apply: bool,
+    /// Require a moving ref to still resolve to the full commit shown by preview.
+    #[arg(long)]
+    pub expect_commit: Option<String>,
+}
+
 /// Arguments for a review-first skill promotion.
 #[derive(Debug, Args)]
 pub struct PromoteArgs {
@@ -203,6 +239,11 @@ pub enum Command {
     Install,
     /// Verify and migrate an existing project skills.sh installation.
     Migrate(MigrationArgs),
+    /// Add or review sources in the current project's portable declaration.
+    #[command(
+        after_help = "Project commands require a `dalo-project.toml` in the discovered project. Preview first; a moving ref requires the exact commit from that preview when applying.\n\nExamples:\n  dalo project add team https://github.com/example/skills.git --ref main --skill review\n  dalo project add team https://github.com/example/skills.git --ref main --skill review --expect-commit <previewed-sha> --apply\n  dalo --project /path/to/project --json project add team ./skills --skill review"
+    )]
+    Project(ProjectCommand),
     /// Submit one local skill to a team repository as a GitHub pull request.
     #[command(
         after_help = "Preview with `dalo --dry-run promote <skill> --target <team>`. Apply with `dalo promote <skill> --target <team>`. Add `--fork` when you cannot push to the team repository. `--from-dirty` explicitly promotes the selected skill's working-tree changes from the destination checkout."
@@ -1385,6 +1426,9 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
 
     let result = match command {
         Command::Migrate(_) => unreachable!("migration handled before store resolution"),
+        Command::Project(_) => Err(DaloError::InvalidArgument {
+            reason: "`dalo project` requires a discovered or explicit project; initialize it with `dalo --project . init` first".into(),
+        }),
         Command::Promote(command) => run_promote(&options, command),
         Command::Init => run_init(&options),
         Command::Install => Err(DaloError::InvalidArgument {
@@ -1455,6 +1499,12 @@ fn run_project(
     command: Option<Command>,
 ) -> DaloResult<()> {
     let project = crate::project::Project::new(root)?;
+    let command = match command {
+        Some(Command::Project(ProjectCommand {
+            command: ProjectSubcommand::Add(args),
+        })) => return run_project_add(&project, json, dry_run, args),
+        command => command,
+    };
     let command = match command {
         Some(command) => command,
         None if !json => Command::Status(CheckArgs { check: false }),
@@ -1542,6 +1592,29 @@ fn run_project(
         Command::Audit(args) => run_audit(&options, args),
         Command::Approve(args) => run_approve(&options, args),
         _ => unreachable!("project command validated above"),
+    }
+}
+
+fn run_project_add(
+    project: &crate::project::Project,
+    json: bool,
+    dry_run: bool,
+    args: ProjectAddArgs,
+) -> DaloResult<()> {
+    let report = project.add_source(crate::project::ProjectAddRequest {
+        id: &args.id,
+        location: &args.location,
+        revision: &args.revision,
+        skill_refs: &args.skills,
+        expected_commit: args.expect_commit.as_deref(),
+        apply: args.apply,
+        dry_run,
+    })?;
+    if json {
+        print_json(&report)
+    } else {
+        status::print_project_add_report(&report);
+        Ok(())
     }
 }
 

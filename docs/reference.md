@@ -2066,6 +2066,32 @@ Managed blocks use these markers:
 
 Dalo only rewrites bytes inside the pack's own managed block. Content outside managed blocks is preserved.
 
+## `dalo project add`
+
+Resolve one repository and explicit skill selection into the discovered or
+explicit project's `dalo-project.toml`:
+
+```sh
+dalo project add company https://github.com/acme/skills.git --ref main --skill review
+dalo project add company https://github.com/acme/skills.git --ref main \
+  --skill review --expect-commit <previewed-commit> --apply
+dalo install
+```
+
+The default is a read-only preview. It fetches to a temporary directory, resolves
+the requested ref to an exact commit, lists the selected skills and target
+folders, and prints the TOML entry and apply command. `--apply` writes only the
+declaration; installation and local approvals remain separate. Applying a
+branch or tag requires `--expect-commit` to match the commit shown in the
+preview. A full commit ID can be applied directly. Repeat required `--skill`
+options to select multiple catalog entries. Local repositories must be inside
+the project to keep their relative paths portable. JSON reports include
+`project`, `source_id`, `url`, `requested_ref`, `commit`, `skills`, `targets`,
+`declaration_change`, `applied`, `dry_run`, and `next_command`.
+
+See [Project installations](projects.md#add-a-source-from-the-project) for the
+review and restore workflow.
+
 ## `migrate skills-sh`
 
 Preview a project migration from a version 1 `skills-lock.json`. `--apply` writes a

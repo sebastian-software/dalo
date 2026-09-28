@@ -123,8 +123,15 @@ grep -q 'dalo approve skill' "$root/docs/troubleshooting.md"
 grep -q 'source_provenance_mismatch' "$root/docs/troubleshooting.md"
 grep -q 'SourceProvenance' "$root/docs/reference.md"
 grep -Fq 'Git availability' "$root/docs/reference.md"
-refute 'reference.md still promises a GitHub CLI doctor check' \
-  grep -Fq 'GitHub CLI' "$root/docs/reference.md"
+doctor_section="$(awk '
+  /^### `dalo doctor`$/ { in_doctor = 1; next }
+  /^### / { in_doctor = 0 }
+  in_doctor { print }
+' "$root/docs/reference.md")"
+if printf '%s\n' "$doctor_section" | grep -Fq 'GitHub CLI'; then
+  echo 'reference.md still promises a GitHub CLI doctor check' >&2
+  exit 1
+fi
 grep -Fq 'Git availability' "$root/site/index.html"
 refute 'site/index.html still promises a Git auth doctor check' \
   grep -Fq 'Git auth' "$root/site/index.html"
@@ -185,6 +192,13 @@ grep -Fq '(team.md)' "$root/docs/getting-started.md"
 grep -q 'dalo team init' "$root/docs/team.md"
 grep -q 'dalo team catalog update' "$root/docs/team.md"
 grep -Fq '(getting-started.md)' "$root/docs/team.md"
+for project_add_detail in 'dalo project add' '--expect-commit' 'fresh checkout'; do
+  grep -Fq -e "$project_add_detail" "$root/docs/projects.md" \
+    || { echo "docs/projects.md no longer documents $project_add_detail" >&2; exit 1; }
+done
+grep -Fq '## `dalo project add`' "$root/docs/reference.md"
+grep -Fq 'dalo project add' "$root/skills/dalo/references/setup.md"
+grep -Fq 'dalo project add' "$root/skills/dalo/references/inventory.md"
 grep -Fq '[Team repository guide](docs/team.md)' "$root/README.md"
 grep -q 'dalo target link generic "\$RUNNER_TEMP/dalo-skills"' "$root/docs/ci.md"
 
