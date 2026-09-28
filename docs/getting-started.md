@@ -50,6 +50,7 @@ dalo target link claude
 # or: dalo target link openclaw
 # or: dalo target link hermes
 # or: dalo target link opencode
+# or: dalo target link cursor
 ```
 
 A known target uses its default directory; pass a path to override it. The

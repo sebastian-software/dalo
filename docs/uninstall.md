@@ -30,6 +30,7 @@ Unlink each target Dalo knows about:
 ```sh
 dalo target unlink codex
 dalo target unlink claude
+dalo target unlink cursor
 dalo target unlink openclaw
 dalo target unlink hermes
 dalo target unlink opencode
@@ -157,6 +158,7 @@ Inspect the agent folders you had linked, such as:
 ```sh
 ls -la ~/.agents/skills
 ls -la ~/.claude/skills
+ls -la ~/.cursor/skills
 ls -la ~/.hermes/skills
 ls -la ~/.config/opencode/skills
 ```

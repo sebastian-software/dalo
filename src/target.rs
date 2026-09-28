@@ -159,7 +159,7 @@ pub struct TargetUnlinkReport {
 /// [`registry`] is the source of truth; `link_hint_should_name_every_builtin`
 /// keeps this list and the CLI long help in step with it, so a newly supported
 /// target cannot be left out of the command Dalo tells people to run.
-pub const LINK_HINT_TARGETS: &str = "codex|claude|openclaw|hermes|opencode|generic";
+pub const LINK_HINT_TARGETS: &str = "codex|claude|cursor|openclaw|hermes|opencode|generic";
 
 /// Return the built-in target registry.
 #[must_use]
@@ -175,6 +175,12 @@ pub fn registry() -> &'static [TargetRegistryEntry] {
             id: "claude",
             name: "Claude Code",
             default_path: Some("~/.claude/skills"),
+            support: TargetSupport::Supported,
+        },
+        TargetRegistryEntry {
+            id: "cursor",
+            name: "Cursor",
+            default_path: Some("~/.cursor/skills"),
             support: TargetSupport::Supported,
         },
         TargetRegistryEntry {
@@ -547,16 +553,24 @@ mod tests {
         assert_eq!(
             ids,
             [
-                "codex", "claude", "openclaw", "hermes", "opencode", "generic",
+                "codex", "claude", "cursor", "openclaw", "hermes", "opencode", "generic",
             ]
         );
     }
 
     #[test]
+    fn cursor_target_should_use_the_verified_user_skill_directory() {
+        let entry = registry_entry("cursor").expect("Cursor should be a built-in target");
+
+        assert_eq!(entry.name, "Cursor");
+        assert_eq!(entry.default_path, Some("~/.cursor/skills"));
+        assert_eq!(entry.support, TargetSupport::Supported);
+    }
+
+    #[test]
     fn link_hint_should_name_every_builtin() {
         // The hints told people to run
-        // `dalo target link <codex|claude|openclaw|hermes|generic>` long after
-        // `opencode` became a supported built-in, so the command Dalo prints
+        // The target link hint once lagged behind the built-in registry, so the command Dalo prints
         // has to be derived from the registry, not maintained beside it.
         let ids = registry().iter().map(|entry| entry.id).collect::<Vec<_>>();
 

@@ -22,17 +22,19 @@ dalo target detect
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `codex` | Codex CLI | supported | `codex-cli 0.154.0` | 2026-09-17 | `~/.agents/skills` | `.agents/skills`, from the working directory up to the repository root | yes, observed |
 | `claude` | Claude Code | supported | `2.1.235` | 2026-09-17 | `~/.claude/skills` | `.claude/skills` | yes, observed |
+| `cursor` | Cursor Agent | supported | `3.13.25` | 2026-09-28 | `~/.cursor/skills` | `.cursor/skills` | yes, invoked |
 | `openclaw` | OpenClaw | supported | `2026.9.4` | 2026-09-17 | `~/.agents/skills` | `<workspace>/skills`, `<workspace>/.agents/skills` | yes, observed |
 | `hermes` | Hermes | supported | `v2026.9.14` (latest release) | 2026-09-17 | `~/.hermes/skills` | `.hermes/skills`, `.agents/skills`, after `hermes skills trust` | not verified on this date |
 | `opencode` | OpenCode | supported | `1.18.31` | 2026-09-17 | `~/.config/opencode/skills` | `.opencode/skills` | yes, observed |
 | `generic` | any folder-based agent | supported | — | — | the path you pass | the path you pass | depends on the agent |
 
-Cursor has no built-in target ID; see [Cursor](#cursor) for the reason and the
-command that covers it.
+Cursor has a built-in target; see [Cursor](#cursor) for verification details
+and project-level setup.
 
-Every observation below was made on 2026-09-17 on macOS, in a throwaway `HOME`
-holding a single probe skill whose directory is a symlink to a directory
-elsewhere — the exact shape `dalo sync` produces.
+Codex through OpenCode were verified on 2026-09-17 on macOS, in a throwaway
+`HOME` holding a single probe skill whose directory is a symlink to a directory
+elsewhere — the exact shape `dalo sync` produces. Cursor was verified separately
+on 2026-09-28; see its section below.
 
 ## Project-scoped folders
 
@@ -214,26 +216,45 @@ locations, `<HOME>/.config/opencode/skills/dalo-probe/SKILL.md` and
 
 ## Cursor
 
-Cursor has no built-in target ID. Point a generic target at the folder Cursor
-reads:
+Default skill path:
 
-```sh
-dalo target link generic ~/.cursor/skills
-dalo sync
-ls -la ~/.cursor/skills
+```text
+~/.cursor/skills
 ```
 
-Cursor also loads `~/.agents/skills`, so a linked `codex` or `openclaw` target
-already reaches it.
+Link user-level or project-level skills:
 
-Why there is no `cursor` target: discovery could not be verified on this date.
-The installed Cursor CLI (`cursor-agent 2025.09.18-7ae6800`) reports
-`Not logged in` and offers no offline command that lists skills, so a symlinked
-skill directory could not be observed without signing in. The
-[Cursor skills documentation](https://cursor.com/docs/context/skills) documents
-`~/.cursor/skills/` and `~/.agents/skills/` as the user-level roots and
-`.cursor/skills/`, `.agents/skills/`, `.claude/skills/` and `.codex/skills/` as
-project roots. Dalo 1.0 does not ship a target for an unverified promise.
+```sh
+# User-level
+dalo target link cursor
+dalo sync
+ls -la ~/.cursor/skills
+
+# Project-level, from a project-scoped store or when redirecting an existing store
+dalo target link cursor /path/to/repo/.cursor/skills
+dalo sync
+```
+
+Each target ID records one directory. Cursor also discovers `~/.agents/skills`
+and `.agents/skills`; a `codex` target already materializes the user-level
+shared directory for Cursor.
+
+The [Cursor skills documentation](https://cursor.com/docs/skills) lists
+`~/.cursor/skills/` and `~/.agents/skills/` as user-level roots, and
+`.cursor/skills/`, `.agents/skills/`, `.claude/skills/`, and `.codex/skills/` as
+project roots. On 2026-09-28, Cursor 3.13.25 on macOS arm64 discovered and
+invoked Dalo-managed symlinked skills from both `~/.cursor/skills/` and a
+project's `.cursor/skills/`; each invocation returned the marker in its test
+skill.
+
+Dalo blocks a sync when a real unmanaged directory already occupies the skill's
+target slot and leaves that directory unchanged. Cursor reads project
+`AGENTS.md` files as instructions; Dalo can add instruction packs to an explicit
+file with `dalo instructions enable <pack-ref> ./AGENTS.md`. There is no native
+Cursor instruction-file target mapping, so use an explicit file. Dalo preserves
+user-authored content outside its managed block. See the
+[Cursor rules documentation](https://cursor.com/docs/rules) and the
+[instruction reference](reference.md).
 
 ## Any other folder-based agent
 

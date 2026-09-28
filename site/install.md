@@ -144,10 +144,11 @@ it; ask only when the agent or installation scope is ambiguous.
    dalo target link codex
    ```
 
-   `codex` is an example. Use `claude`, `openclaw`, `hermes`, or `opencode` for
-   those agents, or `dalo target link generic /path/to/skills` for an explicit
-   directory. Reuse an existing target's configured path. Do not repoint an
-   existing target or turn project-only skills into global skills by accident.
+   `codex` is an example. Use `claude`, `cursor`, `openclaw`, `hermes`, or
+   `opencode` for those agents, or `dalo target link generic /path/to/skills`
+   for an explicit directory. Reuse an existing target's configured path. Do
+   not repoint an existing target or turn project-only skills into global skills
+   by accident.
 
 7. Install the assistant supplied by this Dalo binary and preview delivery:
 

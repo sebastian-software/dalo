@@ -223,10 +223,11 @@ itself.</p>
 <p>The full list of older shapes Dalo accepts on read is
 <a href="/docs/reference.html#accepted-0x-store-shapes">Accepted 0.x Store Shapes</a>.</p>
 <h2 id="removed-flags-spellings-and-platforms"><a class="doc-anchor" href="#removed-flags-spellings-and-platforms">Removed flags, spellings, and platforms</a></h2>
-<p>Four CLI spellings, one target ID, and one release platform were removed before
-1.0 froze the surface, so that nothing deprecated enters the 1.x line. Each one
-now fails loudly instead of quietly doing something else. The error lines below
-are what the current binary and installer actually print.</p>
+<p>Four CLI spellings and one release platform were removed before 1.0 froze the
+surface, so that nothing deprecated enters the 1.x line. Cursor&#39;s former target
+ID was absent from Dalo 1.0 and 1.1, then returned after its symlink behavior
+was verified. The Cursor row below applies only to those older binaries; the
+other error lines are what the current binary and installer print.</p>
 <div class="doc-table"><table>
 <thead>
 <tr>
@@ -261,9 +262,9 @@ are what the current binary and installer actually print.</p>
 <td><code>2</code></td>
 </tr>
 <tr>
-<td>target ID <code>cursor</code></td>
+<td>target ID <code>cursor</code> in Dalo 1.0/1.1</td>
 <td><code>dalo target link generic ~/.cursor/skills</code></td>
-<td><code>error: unknown target `cursor`; known targets: claude, codex, generic, hermes, openclaw, opencode</code></td>
+<td>older binary: <code>error: unknown target `cursor`; known targets: claude, codex, generic, hermes, openclaw, opencode</code></td>
 <td><code>1</code></td>
 </tr>
 <tr>
@@ -297,14 +298,18 @@ For more information, try &#39;--help&#39;.
 granted an approval — it was documented as a no-op. Removing it changes no
 behavior beyond the new error, so a script that passed it can simply stop.</p>
 <h3 id="about-cursor"><a class="doc-anchor" href="#about-cursor">About Cursor</a></h3>
-<p>The <code>cursor</code> target ID is gone because symlink discovery could not be verified
-against a current Cursor release, and Dalo does not ship an unverified promise.
-Nothing about your setup has to change:</p>
-<pre><code class="language-sh">dalo target link generic ~/.cursor/skills
+<p>Cursor is now a supported built-in target. Cursor 3.13.25 discovered and invoked
+Dalo-managed symlinked skills from both user-level and project-level skill
+directories. The built-in <code>codex</code> target continues to reach Cursor through its
+<code>~/.agents/skills</code> compatibility path.</p>
+<p>Use <code>cursor</code> for the default user-level directory, or pass a project path:</p>
+<pre><code class="language-sh">dalo target link cursor
+dalo sync
+dalo target link cursor /path/to/repo/.cursor/skills
+dalo sync
 </code></pre>
-<p>That materializes into exactly the same directory. Cursor also reads
-<code>~/.agents/skills</code>, so a linked <code>codex</code> or <code>openclaw</code> target already reaches it
-without a second link.</p>
+<p>See the <a href="/docs/agents.html#cursor">Cursor support notes</a> for verified versions and the
+instruction-file mapping.</p>
 <h2 id="other-changes-a-0x-user-notices"><a class="doc-anchor" href="#other-changes-a-0x-user-notices">Other changes a 0.x user notices</a></h2>
 <p>Only behavior confirmed against this tree is listed here.</p>
 <ul>
