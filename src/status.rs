@@ -2217,6 +2217,96 @@ pub fn print_project_add_report(report: &crate::project::ProjectAddReport) {
     }
 }
 
+/// Print a review-first project source update preview or result.
+pub fn print_project_update_report(report: &crate::project::ProjectUpdateReport) {
+    let verb = if report.applied {
+        "updated"
+    } else {
+        "would update"
+    };
+    println!(
+        "{verb} project source {}",
+        terminal_safe_text(&report.source_id)
+    );
+    println!(
+        "  project: {}",
+        terminal_safe_text(&report.project.display().to_string())
+    );
+    println!(
+        "  pin: {} -> {} ({})",
+        terminal_safe_text(&report.previous_commit),
+        terminal_safe_text(&report.commit),
+        terminal_safe_text(&report.requested_ref)
+    );
+    println!(
+        "  selection: {} -> {}",
+        report.selection_before.len(),
+        report.selection_after.len()
+    );
+    println!("  inventory changes:");
+    if report.outcomes.is_empty() {
+        println!("    none");
+    } else {
+        for outcome in &report.outcomes {
+            println!(
+                "    {}: {}",
+                terminal_safe_text(outcome.code.as_str()),
+                terminal_safe_text(&outcome.message)
+            );
+        }
+    }
+    if !report.dependency_changes.is_empty() {
+        println!("  dependency changes:");
+        for change in &report.dependency_changes {
+            println!(
+                "    {}: [{}] -> [{}]",
+                terminal_safe_text(&change.skill),
+                terminal_safe_text(&change.previous.join(", ")),
+                terminal_safe_text(&change.current.join(", "))
+            );
+        }
+    }
+    println!("  candidate skills:");
+    for skill in &report.skills {
+        println!(
+            "    {} ({}){}",
+            terminal_safe_text(skill.id.as_deref().unwrap_or(&skill.path)),
+            terminal_safe_text(&skill.path),
+            skill
+                .description
+                .as_deref()
+                .map(|description| format!(": {}", terminal_safe_text(description)))
+                .unwrap_or_default()
+        );
+    }
+    if !report.audits.is_empty() {
+        println!("  audits:");
+        for audit in &report.audits {
+            println!(
+                "    {}: {}",
+                terminal_safe_text(&audit.source_ref),
+                terminal_safe_text(&format!("{:?}", audit.status))
+            );
+        }
+    }
+    if !report.blocking_reasons.is_empty() {
+        println!("  blocked:");
+        for reason in &report.blocking_reasons {
+            println!("    {}", terminal_safe_text(reason));
+        }
+    }
+    if !report.applied {
+        println!("  declaration change:");
+        for line in report.declaration_change.lines() {
+            println!("    {}", terminal_safe_text(line));
+        }
+    }
+    println!("next: {}", terminal_safe_text(&report.next_command));
+    if report.dry_run {
+        println!("note: --dry-run; no project files were changed");
+    }
+}
+
 pub(crate) fn print_source_add_report_with_store(report: &SourceAddReport, store_root: &Path) {
     print_source_add_report_inner(report, Some(store_root));
 }

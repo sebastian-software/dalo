@@ -106,6 +106,8 @@ pub struct ProjectCommand {
 pub enum ProjectSubcommand {
     /// Preview or add one pinned catalog source and explicit skill selection.
     Add(ProjectAddArgs),
+    /// Preview or update an existing pinned project source.
+    Update(ProjectUpdateArgs),
 }
 
 /// Arguments for `project add`.
@@ -122,6 +124,25 @@ pub struct ProjectAddArgs {
     #[arg(long = "skill", value_name = "SKILL", required = true)]
     pub skills: Vec<String>,
     /// Write the declaration entry shown by a previous preview.
+    #[arg(long)]
+    pub apply: bool,
+    /// Require a moving ref to still resolve to the full commit shown by preview.
+    #[arg(long)]
+    pub expect_commit: Option<String>,
+}
+
+/// Arguments for `project update`.
+#[derive(Debug, Args)]
+pub struct ProjectUpdateArgs {
+    /// Stable source ID already declared in the project.
+    pub id: String,
+    /// Branch, tag, or commit to resolve (default: the source's checked-out HEAD).
+    #[arg(long = "ref", default_value = "HEAD")]
+    pub revision: String,
+    /// Replace the current explicit selection. Omit to preserve it by stable ID.
+    #[arg(long = "skill", value_name = "SKILL")]
+    pub skills: Vec<String>,
+    /// Write the reviewed commit and selection into the project declaration.
     #[arg(long)]
     pub apply: bool,
     /// Require a moving ref to still resolve to the full commit shown by preview.
@@ -1503,6 +1524,9 @@ fn run_project(
         Some(Command::Project(ProjectCommand {
             command: ProjectSubcommand::Add(args),
         })) => return run_project_add(&project, json, dry_run, args),
+        Some(Command::Project(ProjectCommand {
+            command: ProjectSubcommand::Update(args),
+        })) => return run_project_update(&project, json, dry_run, args),
         command => command,
     };
     let command = match command {
@@ -1551,7 +1575,13 @@ fn run_project(
         });
     }
     let manifest = project.manifest()?;
-    project.validate_store(&manifest)?;
+    if matches!(command, Command::Install) {
+        if dry_run {
+            project.validate_store_for_install(&manifest)?;
+        }
+    } else {
+        project.validate_store(&manifest)?;
+    }
     if !json {
         eprintln!("scope: project ({})", project.root.display());
     }
@@ -1583,6 +1613,8 @@ fn run_project(
         }
         let paths = store::StorePaths::new(project.store.clone());
         let _lock = store::StoreLock::acquire(&paths)?;
+        project.recover_interrupted_update()?;
+        project.validate_store_for_install(&manifest)?;
         project.prepare(&manifest)?;
         return run_sync_locked(&options, CheckArgs { check: true });
     }
@@ -1614,6 +1646,28 @@ fn run_project_add(
         print_json(&report)
     } else {
         status::print_project_add_report(&report);
+        Ok(())
+    }
+}
+
+fn run_project_update(
+    project: &crate::project::Project,
+    json: bool,
+    dry_run: bool,
+    args: ProjectUpdateArgs,
+) -> DaloResult<()> {
+    let report = project.update_source(crate::project::ProjectUpdateRequest {
+        id: &args.id,
+        revision: &args.revision,
+        skill_refs: &args.skills,
+        expected_commit: args.expect_commit.as_deref(),
+        apply: args.apply,
+        dry_run,
+    })?;
+    if json {
+        print_json(&report)
+    } else {
+        status::print_project_update_report(&report);
         Ok(())
     }
 }

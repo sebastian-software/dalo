@@ -2096,6 +2096,33 @@ the project to keep their relative paths portable. JSON reports include
 See [Project installations](projects.md#add-a-source-from-the-project) for the
 review and restore workflow.
 
+## `dalo project update`
+
+Review a new pin for an existing project source. The default previews the old
+and candidate commit, selected inventory changes, dependencies, audits, and
+project targets without writing files:
+
+```sh
+dalo project update company --ref main
+dalo project update company --ref main --expect-commit <previewed-commit> --apply
+dalo install
+```
+
+Applying a branch or tag requires `--expect-commit` to match the preview. A
+full commit ID can be applied directly. Without `--skill`, Dalo preserves the
+current explicit selection by stable ID or path. Repeat `--skill` to replace
+the selection. An implicitly selected skill removed upstream blocks apply; an
+explicit replacement selection is required. A candidate with a blocking audit
+finding is reported and cannot be applied. `--apply` changes only the
+declaration's `commit` and `skills` values; install stages the new checkout and
+uses the ordinary local approval and transactional delivery flow.
+
+The JSON `ProjectUpdateReport` contains `project`, `source_id`, `url`,
+`requested_ref`, `previous_commit`, `commit`, `selection_before`,
+`selection_after`, `outcomes`, `dependency_changes`, `skills`, `audits`,
+`targets`, `blocking_reasons`, `declaration_change`, `applied`, `dry_run`, and
+`next_command`.
+
 ## `migrate skills-sh`
 
 Preview a project migration from a version 1 `skills-lock.json`. `--apply` writes a
