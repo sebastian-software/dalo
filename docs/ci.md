@@ -156,9 +156,9 @@ issues do not stand in for these checks:
   channels, including the Nix flake at `dalo-v1.0.0`. Record the version and
   `doctor` result per platform and channel; the CLI rehearsal alone cannot
   establish distribution availability.
-- Announcement choices and subsequent feedback remain tracked under
-  [#840](https://github.com/sebastian-software/dalo/issues/840). Questions can be
-  answered where people ask them; there is no requirement for a single channel.
+- The public 1.0 page and its primary links are checked under
+  [#840](https://github.com/sebastian-software/dalo/issues/840). Announcement
+  drafts are optional; specific problems become ordinary issues.
 
 ## Exit codes
 
