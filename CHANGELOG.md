@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/sebastian-software/dalo/compare/dalo-v1.2.0...dalo-v1.2.1) (2026-09-29)
+
+
+### Bug Fixes
+
+* **project:** recheck all skill approvals on pin updates ([0da1269](https://github.com/sebastian-software/dalo/commit/0da126959d1d1d5d073e5342fab80b82cbee0fd2))
+
 ## [1.2.0](https://github.com/sebastian-software/dalo/compare/dalo-v1.1.0...dalo-v1.2.0) (2026-09-29)
 
 
