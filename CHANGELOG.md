@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.2.0](https://github.com/sebastian-software/dalo/compare/dalo-v1.1.0...dalo-v1.2.0) (2026-09-29)
+
+
+### Features
+
+* **project:** add review-first source declarations ([97388bc](https://github.com/sebastian-software/dalo/commit/97388bcf928c73d60e08bbc392a5f321d0bf951a))
+* **project:** add review-first source updates ([e58ec1e](https://github.com/sebastian-software/dalo/commit/e58ec1e960436eebdd174004de7590e749f24340))
+* **promote:** submit skills through review-first PRs ([a82bd2e](https://github.com/sebastian-software/dalo/commit/a82bd2e94e2eee831dad85e3144ecb60aac1e231))
+* **site:** include Cursor in homepage targets ([c7e0ef4](https://github.com/sebastian-software/dalo/commit/c7e0ef4db68b6af81c857052a67671e27e94f8d4))
+* **target:** add verified Cursor support ([ddae089](https://github.com/sebastian-software/dalo/commit/ddae089a176263e89da92e9eb1d61c8424e34244))
+
 ## [1.1.0](https://github.com/sebastian-software/dalo/compare/dalo-v1.0.0...dalo-v1.1.0) (2026-09-26)
 
 
