@@ -175,9 +175,10 @@ in `dalo-project.toml`, preserving surrounding comments and formatting.
 The declaration change and local installation are separate steps. `dalo
 install` stages a new commit-specific checkout without overwriting the old one,
 then reconciles delivery through the normal transactional sync. Dirty source
-checkouts and unmanaged target content block the operation. Existing approvals
-for selected skills whose content hash changes are revoked in the local project
-store; unchanged content keeps its decision. Changed skills stay inactive until
+checkouts and unmanaged target content block the operation. Per-skill approvals
+for changed or removed content are revoked in the local project store, including
+required dependencies and previously deselected skills. Unchanged content keeps
+its decision. Changed skills stay inactive until
 their new content is reviewed and approved locally. Accepted audit risks remain
 bound to the exact audit content hash. Candidate audit findings are shown during
 preview and remain blocking until resolved; a blocking finding also prevents

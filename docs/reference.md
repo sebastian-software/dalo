@@ -2117,6 +2117,11 @@ finding is reported and cannot be applied. `--apply` changes only the
 declaration's `commit` and `skills` values; install stages the new checkout and
 uses the ordinary local approval and transactional delivery flow.
 
+Installing a changed pin checks every existing per-skill approval for that
+source, including dependencies and deselected skills. Changed or removed
+content loses its approval; unchanged content keeps it. Selecting a skill again
+does not revive approval for content changed by an earlier pin update.
+
 The JSON `ProjectUpdateReport` contains `project`, `source_id`, `url`,
 `requested_ref`, `previous_commit`, `commit`, `selection_before`,
 `selection_after`, `outcomes`, `dependency_changes`, `skills`, `audits`,

@@ -2498,6 +2498,10 @@ explicit replacement selection is required. A candidate with a blocking audit
 finding is reported and cannot be applied. <code>--apply</code> changes only the
 declaration&#39;s <code>commit</code> and <code>skills</code> values; install stages the new checkout and
 uses the ordinary local approval and transactional delivery flow.</p>
+<p>Installing a changed pin checks every existing per-skill approval for that
+source, including dependencies and deselected skills. Changed or removed
+content loses its approval; unchanged content keeps it. Selecting a skill again
+does not revive approval for content changed by an earlier pin update.</p>
 <p>The JSON <code>ProjectUpdateReport</code> contains <code>project</code>, <code>source_id</code>, <code>url</code>,
 <code>requested_ref</code>, <code>previous_commit</code>, <code>commit</code>, <code>selection_before</code>,
 <code>selection_after</code>, <code>outcomes</code>, <code>dependency_changes</code>, <code>skills</code>, <code>audits</code>,
