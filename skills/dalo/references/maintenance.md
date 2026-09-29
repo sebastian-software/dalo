@@ -102,8 +102,10 @@ repository skill shared through Git, use the project's `dalo-project.toml` and
 selection, and commit; apply a moving ref only with the previewed
 `--expect-commit`; then run `dalo install` and handle local approvals. To move an
 existing project source forward, use `dalo project update` to review the new
-pin, inventory, dependency changes, and audits before applying it. Changed
-content remains subject to local approval. Do not add a project dependency to
+pin, inventory, dependency changes, and audits before applying it. Installation
+revokes per-skill approvals for changed or removed content, including required
+dependencies and previously deselected skills. Review and approve the changed
+content locally before retrying installation. Do not add a project dependency to
 the global store. Connect another agent through setup and preview the resulting
 active set before syncing.
 

@@ -682,6 +682,174 @@ fn project_update_reviews_applies_and_installs_new_pin_without_reusing_old_appro
 }
 
 #[test]
+fn project_update_rechecks_dependency_and_deselected_skill_approvals() {
+    let temp = tempfile::tempdir().unwrap();
+    let project = temp.path().join("project");
+    let source = temp.path().join("upstream");
+    fs::create_dir(&project).unwrap();
+    upstream(&source);
+    fs::write(
+        source.join("skills/review/SKILL.md"),
+        "---\nname: review\ndescription: Review documentation.\nrequires: [helper]\n---\n\nReview the documentation.\n",
+    )
+    .unwrap();
+    for name in ["helper", "dormant", "unchanged"] {
+        fs::create_dir_all(source.join("skills").join(name)).unwrap();
+        fs::write(
+            source.join("skills").join(name).join("SKILL.md"),
+            format!("---\nname: {name}\ndescription: Summarize documentation.\n---\n\nSummarize the documentation.\n"),
+        )
+        .unwrap();
+    }
+    let old_commit = commit_all(&source, "add dependency and additional skills");
+    manifest(&project, &source, &old_commit);
+    let manifest_path = project.join("dalo-project.toml");
+    let declaration = fs::read_to_string(&manifest_path).unwrap();
+    fs::write(
+        &manifest_path,
+        declaration.replace(
+            "skills = [\"review\"]",
+            "skills = [\"review\", \"dormant\", \"unchanged\"]",
+        ),
+    )
+    .unwrap();
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .arg("install")
+        .assert()
+        .failure();
+    for skill in ["review", "helper", "dormant", "unchanged"] {
+        dalo_command()
+            .arg("--project")
+            .arg(&project)
+            .args(["approve", "skill", &format!("shared:{skill}")])
+            .assert()
+            .success();
+    }
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .arg("install")
+        .assert()
+        .success();
+    assert!(project.join(".claude/skills/helper").is_symlink());
+
+    // Retain the dormant skill's decision when changing only the selection.
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .args([
+            "project",
+            "update",
+            "shared",
+            "--ref",
+            &old_commit,
+            "--skill",
+            "review",
+            "--skill",
+            "unchanged",
+            "--apply",
+        ])
+        .assert()
+        .success();
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .arg("install")
+        .assert()
+        .success();
+    assert!(!project.join(".claude/skills/dormant").exists());
+    let previous_approvals = fs::read_to_string(project.join(".dalo/approvals.toml")).unwrap();
+    assert!(previous_approvals.contains("shared:dormant"));
+
+    for skill in ["helper", "dormant"] {
+        fs::write(
+            source.join("skills").join(skill).join("SKILL.md"),
+            format!("---\nname: {skill}\ndescription: Summarize documentation.\n---\n\nSummarize the updated project documentation.\n"),
+        ).unwrap();
+    }
+    let new_commit = commit_all(&source, "change dependency and dormant content");
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .args([
+            "project",
+            "update",
+            "shared",
+            "--ref",
+            &new_commit,
+            "--apply",
+        ])
+        .assert()
+        .success();
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .arg("install")
+        .assert()
+        .failure();
+    let approvals = fs::read_to_string(project.join(".dalo/approvals.toml")).unwrap();
+    assert!(
+        !approvals.contains("shared:helper"),
+        "changed dependency must need approval"
+    );
+    assert!(
+        !approvals.contains("shared:dormant"),
+        "changed dormant skill must need approval"
+    );
+    assert!(approvals.contains("shared:review"));
+    assert!(approvals.contains("shared:unchanged"));
+    assert!(!project.join(".claude/skills/helper").exists());
+    assert!(project.join(".claude/skills/unchanged").is_symlink());
+
+    // Selecting the dormant skill again must not revive its obsolete approval.
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .args([
+            "project",
+            "update",
+            "shared",
+            "--ref",
+            &new_commit,
+            "--skill",
+            "review",
+            "--skill",
+            "unchanged",
+            "--skill",
+            "dormant",
+            "--apply",
+        ])
+        .assert()
+        .success();
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .arg("install")
+        .assert()
+        .failure();
+    assert!(!project.join(".claude/skills/dormant").exists());
+    for skill in ["helper", "dormant"] {
+        dalo_command()
+            .arg("--project")
+            .arg(&project)
+            .args(["approve", "skill", &format!("shared:{skill}")])
+            .assert()
+            .success();
+    }
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .arg("install")
+        .assert()
+        .success();
+    for skill in ["review", "helper", "dormant", "unchanged"] {
+        assert!(project.join(".claude/skills").join(skill).is_symlink());
+    }
+}
+
+#[test]
 fn project_update_previews_audits_for_same_source_dependencies() {
     let temp = tempfile::tempdir().unwrap();
     let project = temp.path().join("project");
@@ -878,6 +1046,24 @@ fn project_update_requires_explicit_selection_when_a_selected_skill_was_removed(
     fs::create_dir(&project).unwrap();
     let old_commit = upstream(&source);
     manifest(&project, &source, &old_commit);
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .arg("install")
+        .assert()
+        .failure();
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .args(["approve", "skill", "shared:review"])
+        .assert()
+        .success();
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .arg("install")
+        .assert()
+        .success();
     fs::remove_file(source.join("skills/review/SKILL.md")).unwrap();
     fs::remove_dir(source.join("skills/review")).unwrap();
     fs::create_dir_all(source.join("skills/new-skill")).unwrap();
@@ -962,6 +1148,16 @@ fn project_update_requires_explicit_selection_when_a_selected_skill_was_removed(
     let updated_manifest = fs::read_to_string(project.join("dalo-project.toml")).unwrap();
     assert!(updated_manifest.contains("skills = [\"skills/new-skill\"]"));
     assert!(updated_manifest.contains(&format!("commit = \"{new_commit}\"")));
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .arg("install")
+        .assert()
+        .failure();
+    let approvals = fs::read_to_string(project.join(".dalo/approvals.toml")).unwrap();
+    assert!(!approvals.contains("shared:review"));
+    assert!(!project.join(".claude/skills/review").exists());
+    assert!(!project.join(".claude/skills/new-skill").exists());
 }
 
 #[test]

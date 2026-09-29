@@ -1258,14 +1258,6 @@ impl Project {
                 if current_lock.commit == declared.commit && current_head == declared.commit {
                     configured.path
                 } else {
-                    let mut previous_snapshot = current_lock.clone();
-                    let old_selection = if configured.selection.is_empty() {
-                        &current_lock.selected
-                    } else {
-                        &configured.selection
-                    };
-                    previous_snapshot.inventory =
-                        catalog::catalog_inventory(&configured.path, old_selection)?;
                     let checkout = paths
                         .sources_dir
                         .join(&declared.id)
@@ -1278,9 +1270,9 @@ impl Project {
                     Self::revoke_changed_skill_approvals(
                         &mut next_approvals,
                         &declared.id,
-                        &previous_snapshot,
-                        &catalog::catalog_inventory(&checkout, &declared.skills)?,
-                    );
+                        &configured.path,
+                        &checkout,
+                    )?;
                     let mut next_config = config.clone();
                     let next_source = &mut next_config.sources[source_index];
                     next_source.path = checkout.clone();
@@ -1444,17 +1436,42 @@ impl Project {
     fn revoke_changed_skill_approvals(
         approvals: &mut store::ApprovalsFile,
         source_id: &str,
-        previous: &CatalogLock,
-        candidate: &[catalog::CatalogEntry],
-    ) {
-        let changed =
-            catalog::compare_catalog_inventory(&previous.inventory, &previous.selected, candidate)
-                .into_iter()
-                .filter(|outcome| outcome.code == catalog::DriftCode::SelectedChanged)
-                .map(|outcome| outcome.skill)
-                .collect::<BTreeSet<_>>();
+        previous_checkout: &Path,
+        candidate_checkout: &Path,
+    ) -> DaloResult<()> {
+        // Decisions survive selection changes, so check every approved skill,
+        // including dependencies and currently deselected content, at both pins.
+        let approved_refs = approvals
+            .approvals
+            .iter()
+            .filter_map(|approval| {
+                let (approved_source, skill) = approval.value.split_once(':')?;
+                (approval.scope == "skill" && approved_source == source_id)
+                    .then(|| skill.to_owned())
+            })
+            .collect::<Vec<_>>();
+        if approved_refs.is_empty() {
+            return Ok(());
+        }
+        let previous = catalog::catalog_inventory(previous_checkout, &approved_refs)?;
+        let candidate_refs = previous
+            .iter()
+            .filter(|entry| !entry.content_hash.is_empty())
+            .map(|entry| entry.id.clone().unwrap_or_else(|| entry.path.clone()))
+            .collect::<Vec<_>>();
+        let candidate = catalog::catalog_inventory(candidate_checkout, &candidate_refs)?;
+        let changed = catalog::compare_catalog_inventory(&previous, &approved_refs, &candidate)
+            .into_iter()
+            .filter(|outcome| {
+                matches!(
+                    outcome.code,
+                    catalog::DriftCode::SelectedChanged | catalog::DriftCode::SelectedRemoved
+                )
+            })
+            .map(|outcome| outcome.skill)
+            .collect::<BTreeSet<_>>();
         if changed.is_empty() {
-            return;
+            return Ok(());
         }
         approvals.approvals.retain(|approval| {
             if approval.scope != "skill" {
@@ -1466,7 +1483,7 @@ impl Project {
             if approved_source != source_id {
                 return true;
             }
-            !previous.inventory.iter().any(|entry| {
+            !previous.iter().any(|entry| {
                 let identity = entry.id.as_deref().unwrap_or(&entry.slot_name);
                 changed.contains(identity)
                     && (approved_skill == identity
@@ -1474,6 +1491,7 @@ impl Project {
                         || approved_skill == entry.path)
             })
         });
+        Ok(())
     }
 
     fn persist_source_update(
