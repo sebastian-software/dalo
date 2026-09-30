@@ -375,8 +375,7 @@ published Intel macOS archive.
 **Windows is supported through WSL only.** Run Dalo inside a WSL Linux
 distribution and point targets at paths inside that distribution. There is no
 native Windows build, and native Windows is not planned for 1.x; it is tracked
-as [issue #830](https://github.com/sebastian-software/dalo/issues/830) under the
-post-1.0 epic [#836](https://github.com/sebastian-software/dalo/issues/836),
+as [issue #830](https://github.com/sebastian-software/dalo/issues/830),
 where you can subscribe or add your case.
 
 The minimum supported Rust version for building from source is the

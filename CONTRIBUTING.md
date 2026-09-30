@@ -16,17 +16,14 @@ Useful project references:
 The roadmap lives in issues, not in prose, so that anything Dalo does not do yet
 is something you can subscribe to, react to, and comment on.
 
-- The 1.0 plan is epic
-  [#841](https://github.com/sebastian-software/dalo/issues/841). It is about the
-  promise a 1.0 makes — compatibility, a green pipeline, honest docs — rather
-  than new features.
-- Deferred features live under epic
-  [#836](https://github.com/sebastian-software/dalo/issues/836), one open issue
-  per feature: PR-first `promote`, catalog pin pull requests, native Windows,
-  more verified agent adapters, more install channels, rename/adapt and the
-  interactive resolve assistant, blocked-autosync notifications, drifted-block
-  conversion, project-scoped targets, and
-  forge adapters beyond GitHub.
+- Completed implementation work is recorded in the historical epics
+  [#841](https://github.com/sebastian-software/dalo/issues/841) and
+  [#836](https://github.com/sebastian-software/dalo/issues/836).
+- Remaining proposals live in [open feature issues](https://github.com/sebastian-software/dalo/issues?q=is%3Aissue+is%3Aopen+label%3Atype%3Afeature):
+  native Windows, more verified agent adapters, more install channels,
+  rename/adapt and interactive conflict resolution, blocked-autosync
+  notifications, and forge adapters beyond GitHub. Issues marked
+  `help wanted` welcome community contributions.
 - Priorities follow demand: reactions and comments on those issues decide what
   is picked up next. There are no dates, and none of the deferred features block
   a release.
