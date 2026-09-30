@@ -375,15 +375,13 @@ and `dalo doctor` never fetch, so use them in a shell prompt or a watch loop.
 
 Use the uninstall guide: [Uninstall Dalo](uninstall.md).
 
-### Is `promote`, native Windows, or my agent coming?
+### Is native Windows or my agent coming?
 
-Everything Dalo does not do yet is an open issue, not prose. The post-1.0 work
-is collected under epic
-[#836](https://github.com/sebastian-software/dalo/issues/836), one issue per
-feature, including PR-first
-[`promote`](https://github.com/sebastian-software/dalo/issues/828), native
-[Windows](https://github.com/sebastian-software/dalo/issues/830), and
-[more verified agent adapters](https://github.com/sebastian-software/dalo/issues/831).
+Remaining proposals are tracked in
+[open feature issues](https://github.com/sebastian-software/dalo/issues?q=is%3Aissue+is%3Aopen+label%3Atype%3Afeature),
+including native [Windows](https://github.com/sebastian-software/dalo/issues/830)
+and [more verified agent adapters](https://github.com/sebastian-software/dalo/issues/831).
 Priority follows demand, so react to the issue you care about or describe your
-case in a comment. For a usage question instead, use
+case in a comment. Issues marked `help wanted` welcome community contributions.
+For a usage question instead, use
 [Discussions Q&A](https://github.com/sebastian-software/dalo/discussions/categories/q-a).
