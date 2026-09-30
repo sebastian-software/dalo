@@ -29,7 +29,7 @@ in trust, not in mechanics:
 
 | Command | Meaning | Update policy |
 | --- | --- | --- |
-| [`dalo source add`](reference.md#dalo-source-add-id-git-url-or-path---namespace-prefix) | A team source you vouch for | `track` |
+| [`dalo source add`](reference.md#dalo-source-add-id-git-url-or-path---namespace-prefix---ref-git-ref---subpath-directory) | A team source you vouch for | `track` |
 | [`dalo source add-catalog`](reference.md#dalo-source-add-catalog-id-git-url-or-path---namespace-prefix) | An untrusted catalog of offers | `pin` |
 
 Both clone into the store and run the deterministic preflight for every

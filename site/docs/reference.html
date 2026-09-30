@@ -65,15 +65,15 @@
     <a href="/docs/projects.html">Project installations</a>
     <a href="/docs/team.html">Team repository</a>
     <a href="/docs/reference.html" aria-current="page">Command reference</a>
-    <a href="/docs/compatibility.html">Compatibility</a>
-    <a href="/docs/upgrading.html">Upgrading to 1.0</a>
-    <a href="/docs/plugins.html">Plugins</a>
     <a href="/docs/agents.html">Agent integration</a>
-    <a href="/docs/ci.html">Dalo in CI</a>
+    <a href="/docs/plugins.html">Plugins</a>
     <a href="/docs/troubleshooting.html">Troubleshooting</a>
+    <a href="/docs/ci.html">Dalo in CI</a>
     <a href="/docs/security.html">Security overview</a>
-    <a href="/docs/uninstall.html">Uninstall</a>
+    <a href="/docs/compatibility.html">Compatibility</a>
     <a href="/docs/comparison.html">Comparison</a>
+    <a href="/docs/upgrading.html">Upgrading to 1.0</a>
+    <a href="/docs/uninstall.html">Uninstall</a>
   </nav>
   <details class="doc-menu">
     <summary><span class="doc-menu-label">Documentation</span> <span class="doc-menu-current">Command reference</span></summary>
@@ -84,15 +84,15 @@
       <a href="/docs/projects.html">Project installations</a>
       <a href="/docs/team.html">Team repository</a>
       <a href="/docs/reference.html" aria-current="page">Command reference</a>
-      <a href="/docs/compatibility.html">Compatibility</a>
-      <a href="/docs/upgrading.html">Upgrading to 1.0</a>
-      <a href="/docs/plugins.html">Plugins</a>
       <a href="/docs/agents.html">Agent integration</a>
-      <a href="/docs/ci.html">Dalo in CI</a>
+      <a href="/docs/plugins.html">Plugins</a>
       <a href="/docs/troubleshooting.html">Troubleshooting</a>
+      <a href="/docs/ci.html">Dalo in CI</a>
       <a href="/docs/security.html">Security overview</a>
-      <a href="/docs/uninstall.html">Uninstall</a>
+      <a href="/docs/compatibility.html">Compatibility</a>
       <a href="/docs/comparison.html">Comparison</a>
+      <a href="/docs/upgrading.html">Upgrading to 1.0</a>
+      <a href="/docs/uninstall.html">Uninstall</a>
     </nav>
   </details>
   <article class="doc-body">
@@ -243,6 +243,12 @@ can preserve their installation context. Unknown installation methods receive a
 link to the installation guide instead of a guessed command. Each newer version
 is announced only once per user cache.</p>
 <h2 id="command-reference"><a class="doc-anchor" href="#command-reference">Command Reference</a></h2>
+<p>Commands that act on a project declaration have their own sections further
+down: <a href="#dalo-install"><code>dalo install</code></a>, <a href="#dalo-project-add"><code>dalo project add</code></a>,
+<a href="#dalo-project-update"><code>dalo project update</code></a>,
+<a href="#dalo-project-remove"><code>dalo project remove</code></a>, and
+<a href="#dalo-migrate-skills-sh"><code>dalo migrate skills-sh</code></a>. So does
+<a href="#dalo-promote"><code>dalo promote</code></a>.</p>
 <h3 id="dalo-init"><a class="doc-anchor" href="#dalo-init"><code>dalo init</code></a></h3>
 <p>Initialize the store layout, default config, local Git source, lock/state files, and approvals file.</p>
 <p>Examples:</p>
@@ -2518,6 +2524,28 @@ Use concise review comments.
 &lt;!-- dalo:end team-style --&gt;
 </code></pre>
 <p>Dalo only rewrites bytes inside the pack&#39;s own managed block. Content outside managed blocks is preserved.</p>
+<h2 id="dalo-install"><a class="doc-anchor" href="#dalo-install"><code>dalo install</code></a></h2>
+<p>Restore the current project from its <code>dalo-project.toml</code>:</p>
+<pre><code class="language-sh">dalo install
+dalo --project ../service install
+dalo --dry-run --json install
+</code></pre>
+<p><code>install</code> works only in project scope. It creates the project&#39;s <code>.dalo/</code> store
+when it is missing, clones the declared sources at their exact commits, and
+links approved skills into the project folders of the declared targets. It then
+reports like <code>dalo sync --check</code>: pending approvals, unaccepted blocking audit
+findings, dirty checkouts, and unmanaged same-name entries make it exit
+non-zero instead of being overridden. Rerun it after approving skills or after
+pulling a changed declaration; repeated runs keep the declared pins even when
+upstream has advanced. JSON output is the <code>SyncReport</code> shape.</p>
+<p><code>--dry-run</code> validates and previews the declaration without fetching, creating
+a store, auditing, or linking. Its JSON object contains <code>scope</code>, <code>project</code>,
+<code>store</code>, <code>dry_run</code>, <code>sources</code>, <code>targets</code>, <code>removals</code>, and <code>note</code>.</p>
+<p>Outside a project, <code>install</code> fails with exit <code>1</code> and names
+<code>dalo --project . init</code>, which writes the declaration. <code>--global</code> and <code>--store</code>
+select a non-project store and therefore fail the same way. See
+<a href="/docs/projects.html">Project installations</a> for scope discovery, the definition
+format, and the review flow.</p>
 <h2 id="dalo-project-add"><a class="doc-anchor" href="#dalo-project-add"><code>dalo project add</code></a></h2>
 <p>Resolve one repository and explicit skill selection into the discovered or
 explicit project&#39;s <code>dalo-project.toml</code>:</p>
@@ -2593,7 +2621,7 @@ missing or changed declared pins make the preview incomplete. Project install
 dry-run JSON exposes the same effects as <code>removals</code>.</p>
 <p>See <a href="/docs/projects.html#remove-project-sources-or-skills">Project removal</a> for dependency,
 cache, and recovery behavior.</p>
-<h2 id="migrate-skills-sh"><a class="doc-anchor" href="#migrate-skills-sh"><code>migrate skills-sh</code></a></h2>
+<h2 id="dalo-migrate-skills-sh"><a class="doc-anchor" href="#dalo-migrate-skills-sh"><code>dalo migrate skills-sh</code></a></h2>
 <p>Preview a project migration from a version 1 <code>skills-lock.json</code>. <code>--apply</code> writes a
 verified <code>dalo-project.toml</code> and backs up the former installation; <code>--dry-run</code>
 suppresses applying. Verification may fetch Git repositories. It never imports
@@ -2665,10 +2693,11 @@ PR URL when created.</p>
       <li><a href="#deliverytoml-provider-builds"><code>DELIVERY.toml</code> Provider Builds</a></li>
       <li><a href="#agentmd-canonical-packages"><code>AGENT.md</code> Canonical Packages</a></li>
       <li><a href="#instruction-packs">Instruction Packs</a></li>
+      <li><a href="#dalo-install"><code>dalo install</code></a></li>
       <li><a href="#dalo-project-add"><code>dalo project add</code></a></li>
       <li><a href="#dalo-project-update"><code>dalo project update</code></a></li>
       <li><a href="#dalo-project-remove"><code>dalo project remove</code></a></li>
-      <li><a href="#migrate-skills-sh"><code>migrate skills-sh</code></a></li>
+      <li><a href="#dalo-migrate-skills-sh"><code>dalo migrate skills-sh</code></a></li>
       <li><a href="#dalo-promote"><code>dalo promote</code></a></li>
     </ul>
   </nav>
@@ -2682,7 +2711,7 @@ PR URL when created.</p>
           <img class="brand-mark" src="/assets/img/logo.svg" width="34" height="30" alt="" />
           <img class="brand-word" src="/assets/img/wordmark.svg" width="55" height="14" alt="" />
         </a>
-        <p>Git-backed skill management for AI agents. Built in Rust.</p>
+        <p>Git-backed skills, instructions, and hooks for AI agents. Built in Rust.</p>
       </div>
       <nav class="footer-cols" aria-label="Footer">
         <div class="footer-col">

@@ -110,6 +110,13 @@ is announced only once per user cache.
 
 ## Command Reference
 
+Commands that act on a project declaration have their own sections further
+down: [`dalo install`](#dalo-install), [`dalo project add`](#dalo-project-add),
+[`dalo project update`](#dalo-project-update),
+[`dalo project remove`](#dalo-project-remove), and
+[`dalo migrate skills-sh`](#dalo-migrate-skills-sh). So does
+[`dalo promote`](#dalo-promote).
+
 ### `dalo init`
 
 Initialize the store layout, default config, local Git source, lock/state files, and approvals file.
@@ -2133,6 +2140,35 @@ Managed blocks use these markers:
 
 Dalo only rewrites bytes inside the pack's own managed block. Content outside managed blocks is preserved.
 
+## `dalo install`
+
+Restore the current project from its `dalo-project.toml`:
+
+```sh
+dalo install
+dalo --project ../service install
+dalo --dry-run --json install
+```
+
+`install` works only in project scope. It creates the project's `.dalo/` store
+when it is missing, clones the declared sources at their exact commits, and
+links approved skills into the project folders of the declared targets. It then
+reports like `dalo sync --check`: pending approvals, unaccepted blocking audit
+findings, dirty checkouts, and unmanaged same-name entries make it exit
+non-zero instead of being overridden. Rerun it after approving skills or after
+pulling a changed declaration; repeated runs keep the declared pins even when
+upstream has advanced. JSON output is the `SyncReport` shape.
+
+`--dry-run` validates and previews the declaration without fetching, creating
+a store, auditing, or linking. Its JSON object contains `scope`, `project`,
+`store`, `dry_run`, `sources`, `targets`, `removals`, and `note`.
+
+Outside a project, `install` fails with exit `1` and names
+`dalo --project . init`, which writes the declaration. `--global` and `--store`
+select a non-project store and therefore fail the same way. See
+[Project installations](projects.md) for scope discovery, the definition
+format, and the review flow.
+
 ## `dalo project add`
 
 Resolve one repository and explicit skill selection into the discovered or
@@ -2229,7 +2265,7 @@ dry-run JSON exposes the same effects as `removals`.
 See [Project removal](projects.md#remove-project-sources-or-skills) for dependency,
 cache, and recovery behavior.
 
-## `migrate skills-sh`
+## `dalo migrate skills-sh`
 
 Preview a project migration from a version 1 `skills-lock.json`. `--apply` writes a
 verified `dalo-project.toml` and backs up the former installation; `--dry-run`

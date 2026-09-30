@@ -4,14 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Documentation · Dalo documentation</title>
-  <meta name="description" content="Dalo documentation: getting started, command reference, agent integration, CI, troubleshooting, and uninstall." />
+  <meta name="description" content="Dalo documentation: starting points for a first sync, the command reference, troubleshooting, security, and compatibility." />
   <link rel="canonical" href="https://dalo.sh/docs/" />
   <meta name="theme-color" content="#ffffff" />
   <meta property="og:type" content="article" />
   <meta property="og:site_name" content="Dalo" />
   <meta property="og:url" content="https://dalo.sh/docs/" />
   <meta property="og:title" content="Documentation · Dalo documentation" />
-  <meta property="og:description" content="Dalo documentation: getting started, command reference, agent integration, CI, troubleshooting, and uninstall." />
+  <meta property="og:description" content="Dalo documentation: starting points for a first sync, the command reference, troubleshooting, security, and compatibility." />
   <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
   <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
   <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
@@ -65,15 +65,15 @@
     <a href="/docs/projects.html">Project installations</a>
     <a href="/docs/team.html">Team repository</a>
     <a href="/docs/reference.html">Command reference</a>
-    <a href="/docs/compatibility.html">Compatibility</a>
-    <a href="/docs/upgrading.html">Upgrading to 1.0</a>
-    <a href="/docs/plugins.html">Plugins</a>
     <a href="/docs/agents.html">Agent integration</a>
-    <a href="/docs/ci.html">Dalo in CI</a>
+    <a href="/docs/plugins.html">Plugins</a>
     <a href="/docs/troubleshooting.html">Troubleshooting</a>
+    <a href="/docs/ci.html">Dalo in CI</a>
     <a href="/docs/security.html">Security overview</a>
-    <a href="/docs/uninstall.html">Uninstall</a>
+    <a href="/docs/compatibility.html">Compatibility</a>
     <a href="/docs/comparison.html">Comparison</a>
+    <a href="/docs/upgrading.html">Upgrading to 1.0</a>
+    <a href="/docs/uninstall.html">Uninstall</a>
   </nav>
   <details class="doc-menu">
     <summary><span class="doc-menu-label">Documentation</span> <span class="doc-menu-current">Overview</span></summary>
@@ -84,28 +84,31 @@
       <a href="/docs/projects.html">Project installations</a>
       <a href="/docs/team.html">Team repository</a>
       <a href="/docs/reference.html">Command reference</a>
-      <a href="/docs/compatibility.html">Compatibility</a>
-      <a href="/docs/upgrading.html">Upgrading to 1.0</a>
-      <a href="/docs/plugins.html">Plugins</a>
       <a href="/docs/agents.html">Agent integration</a>
-      <a href="/docs/ci.html">Dalo in CI</a>
+      <a href="/docs/plugins.html">Plugins</a>
       <a href="/docs/troubleshooting.html">Troubleshooting</a>
+      <a href="/docs/ci.html">Dalo in CI</a>
       <a href="/docs/security.html">Security overview</a>
-      <a href="/docs/uninstall.html">Uninstall</a>
+      <a href="/docs/compatibility.html">Compatibility</a>
       <a href="/docs/comparison.html">Comparison</a>
+      <a href="/docs/upgrading.html">Upgrading to 1.0</a>
+      <a href="/docs/uninstall.html">Uninstall</a>
     </nav>
   </details>
   <article class="doc-body">
 <p class="doc-kicker">Documentation</p>
 <h1>Dalo documentation</h1>
-<p class="doc-lede">Everything the CLI can do today. The installation guide lives at
+<p class="doc-lede">New here? <a href="/docs/getting-started.html">Getting started</a> opens with
+a table that routes you by what you already have. The installation guide lives at
 <a href="/install.md">install.md</a>, the release history in the
 <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">changelog</a>.</p>
+<h2 id="start">Start here</h2>
+<p class="doc-group-intro">From a fresh install to a synced skill set, on the path that fits what you already have.</p>
 <ul class="doc-cards">
 <li>
   <a class="doc-card" href="/docs/getting-started.html">
     <span class="doc-card-title">Getting started</span>
-    <span class="doc-card-summary">Install Dalo, link an agent, add sources, and reach a first synced skill set.</span>
+    <span class="doc-card-summary">Pick your starting point, link an agent, add sources, and reach a first synced skill set.</span>
   </a>
 </li>
 <li>
@@ -117,7 +120,7 @@
 <li>
   <a class="doc-card" href="/docs/projects.html">
     <span class="doc-card-title">Project installations</span>
-    <span class="doc-card-summary">Restore project skills from exact commits with automatic project discovery and an isolated store.</span>
+    <span class="doc-card-summary">Pin skills per repository so every clone restores the same set, and migrate a skills.sh project.</span>
   </a>
 </li>
 <li>
@@ -126,28 +129,14 @@
     <span class="doc-card-summary">Publish a team source: pin external catalogs, advance a pin, and onboard a teammate.</span>
   </a>
 </li>
+</ul>
+<h2 id="look-up">Look things up</h2>
+<p class="doc-group-intro">Commands, agents, packages, and the fix for every diagnostic.</p>
+<ul class="doc-cards">
 <li>
   <a class="doc-card" href="/docs/reference.html">
     <span class="doc-card-title">Command reference</span>
     <span class="doc-card-summary">Every command, flag, config file, JSON report, and diagnostic code.</span>
-  </a>
-</li>
-<li>
-  <a class="doc-card" href="/docs/compatibility.html">
-    <span class="doc-card-title">Compatibility</span>
-    <span class="doc-card-summary">What is stable in 1.x, what is experimental, and how breaking changes are announced.</span>
-  </a>
-</li>
-<li>
-  <a class="doc-card" href="/docs/upgrading.html">
-    <span class="doc-card-title">Upgrading to 1.0</span>
-    <span class="doc-card-summary">Move a 0.x store to 1.0: what the first sync migrates, which spellings were removed, and how to recover.</span>
-  </a>
-</li>
-<li>
-  <a class="doc-card" href="/docs/plugins.html">
-    <span class="doc-card-title">Plugins</span>
-    <span class="doc-card-summary">Portable plugin packages, their typed tools and hooks, and the separate approvals each one needs.</span>
   </a>
 </li>
 <li>
@@ -157,17 +146,27 @@
   </a>
 </li>
 <li>
-  <a class="doc-card" href="/docs/ci.html">
-    <span class="doc-card-title">Dalo in CI</span>
-    <span class="doc-card-summary">Run a reproducible, non-interactive sync in a pipeline.</span>
+  <a class="doc-card" href="/docs/plugins.html">
+    <span class="doc-card-title">Plugins</span>
+    <span class="doc-card-summary">Portable plugin packages, their typed tools and hooks, and the separate approvals each one needs.</span>
   </a>
 </li>
 <li>
   <a class="doc-card" href="/docs/troubleshooting.html">
     <span class="doc-card-title">Troubleshooting</span>
-    <span class="doc-card-summary">Resolver, doctor, and security findings with the command that clears each one.</span>
+    <span class="doc-card-summary">Resolver, doctor, and security findings with the command that clears each one, plus the FAQ.</span>
   </a>
 </li>
+<li>
+  <a class="doc-card" href="/docs/ci.html">
+    <span class="doc-card-title">Dalo in CI</span>
+    <span class="doc-card-summary">Run a reproducible, non-interactive sync in a pipeline.</span>
+  </a>
+</li>
+</ul>
+<h2 id="evaluate">Evaluate and maintain</h2>
+<p class="doc-group-intro">What Dalo promises, how it compares, and how to upgrade or remove it.</p>
+<ul class="doc-cards">
 <li>
   <a class="doc-card" href="/docs/security.html">
     <span class="doc-card-title">Security overview</span>
@@ -175,15 +174,27 @@
   </a>
 </li>
 <li>
-  <a class="doc-card" href="/docs/uninstall.html">
-    <span class="doc-card-title">Uninstall</span>
-    <span class="doc-card-summary">Remove targets, autosync, the store, and the binary.</span>
+  <a class="doc-card" href="/docs/compatibility.html">
+    <span class="doc-card-title">Compatibility</span>
+    <span class="doc-card-summary">What is stable in 1.x, what is experimental, and how breaking changes are announced.</span>
   </a>
 </li>
 <li>
   <a class="doc-card" href="/docs/comparison.html">
     <span class="doc-card-title">Comparison</span>
     <span class="doc-card-summary">How Dalo compares with agentfiles and Vercel's skills CLI, and when each one is the better fit.</span>
+  </a>
+</li>
+<li>
+  <a class="doc-card" href="/docs/upgrading.html">
+    <span class="doc-card-title">Upgrading to 1.0</span>
+    <span class="doc-card-summary">Move a 0.x store to 1.0: what the first sync migrates, which spellings were removed, and how to recover.</span>
+  </a>
+</li>
+<li>
+  <a class="doc-card" href="/docs/uninstall.html">
+    <span class="doc-card-title">Uninstall</span>
+    <span class="doc-card-summary">Remove targets, autosync, the store, and the binary.</span>
   </a>
 </li>
 </ul>
@@ -198,7 +209,7 @@
           <img class="brand-mark" src="/assets/img/logo.svg" width="34" height="30" alt="" />
           <img class="brand-word" src="/assets/img/wordmark.svg" width="55" height="14" alt="" />
         </a>
-        <p>Git-backed skill management for AI agents. Built in Rust.</p>
+        <p>Git-backed skills, instructions, and hooks for AI agents. Built in Rust.</p>
       </div>
       <nav class="footer-cols" aria-label="Footer">
         <div class="footer-col">

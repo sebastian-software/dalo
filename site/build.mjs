@@ -23,72 +23,114 @@ const BLOB = `${REPO}/blob/main`
 const SITE = "https://dalo.sh"
 const SPEC_VERSION = "0.1"
 
+// The documentation index groups pages by what a reader came to do, so a
+// first-time visitor sees three short groups instead of every page at once.
+const GROUPS = [
+  {
+    id: "start",
+    title: "Start here",
+    intro: "From a fresh install to a synced skill set, on the path that fits what you already have.",
+  },
+  {
+    id: "look-up",
+    title: "Look things up",
+    intro: "Commands, agents, packages, and the fix for every diagnostic.",
+  },
+  {
+    id: "evaluate",
+    title: "Evaluate and maintain",
+    intro: "What Dalo promises, how it compares, and how to upgrade or remove it.",
+  },
+]
+
 // Documentation pages published on dalo.sh, in reading order. The title comes
-// from each document's own first heading; only navigation label and summary
-// live here.
+// from each document's own first heading; only navigation label, index group,
+// and summary live here.
 const PAGES = [
   {
     slug: "getting-started",
+    group: "start",
     label: "Getting started",
-    summary: "Install Dalo, link an agent, add sources, and reach a first synced skill set.",
+    summary: "Pick your starting point, link an agent, add sources, and reach a first synced skill set.",
   },
   {
     slug: "assistant",
+    group: "start",
     label: "Dalo assistant",
     summary: "Set up, migrate, and maintain skills by talking to the agent you already use.",
   },
   {
     slug: "projects",
+    group: "start",
     label: "Project installations",
-    summary: "Restore project skills from exact commits with automatic project discovery and an isolated store.",
+    summary: "Pin skills per repository so every clone restores the same set, and migrate a skills.sh project.",
   },
   {
     slug: "team",
+    group: "start",
     label: "Team repository",
     summary: "Publish a team source: pin external catalogs, advance a pin, and onboard a teammate.",
   },
   {
     slug: "reference",
+    group: "look-up",
     label: "Command reference",
     summary: "Every command, flag, config file, JSON report, and diagnostic code.",
   },
   {
-    slug: "compatibility",
-    label: "Compatibility",
-    summary: "What is stable in 1.x, what is experimental, and how breaking changes are announced.",
-  },
-  {
-    slug: "upgrading",
-    label: "Upgrading to 1.0",
-    summary: "Move a 0.x store to 1.0: what the first sync migrates, which spellings were removed, and how to recover.",
+    slug: "agents",
+    group: "look-up",
+    label: "Agent integration",
+    summary: "Supported agents, their skill directories, and how instruction packs are written.",
   },
   {
     slug: "plugins",
+    group: "look-up",
     label: "Plugins",
     summary:
       "Portable plugin packages, their typed tools and hooks, and the separate approvals each one needs.",
   },
   {
-    slug: "agents",
-    label: "Agent integration",
-    summary: "Supported agents, their skill directories, and how instruction packs are written.",
-  },
-  { slug: "ci", label: "Dalo in CI", summary: "Run a reproducible, non-interactive sync in a pipeline." },
-  {
     slug: "troubleshooting",
+    group: "look-up",
     label: "Troubleshooting",
-    summary: "Resolver, doctor, and security findings with the command that clears each one.",
+    summary: "Resolver, doctor, and security findings with the command that clears each one, plus the FAQ.",
+  },
+  {
+    slug: "ci",
+    group: "look-up",
+    label: "Dalo in CI",
+    summary: "Run a reproducible, non-interactive sync in a pipeline.",
   },
   {
     slug: "security",
+    group: "evaluate",
     label: "Security overview",
     summary: "Trust boundaries, what the preflight blocks, the approval model, and the stated limits.",
   },
-  { slug: "uninstall", label: "Uninstall", summary: "Remove targets, autosync, the store, and the binary." },
+  {
+    slug: "compatibility",
+    group: "evaluate",
+    label: "Compatibility",
+    summary: "What is stable in 1.x, what is experimental, and how breaking changes are announced.",
+  },
   {
     slug: "comparison",
+    group: "evaluate",
     label: "Comparison",
     summary: "How Dalo compares with agentfiles and Vercel's skills CLI, and when each one is the better fit.",
+  },
+  {
+    slug: "upgrading",
+    group: "evaluate",
+    label: "Upgrading to 1.0",
+    summary: "Move a 0.x store to 1.0: what the first sync migrates, which spellings were removed, and how to recover.",
+  },
+  {
+    slug: "uninstall",
+    group: "evaluate",
+    label: "Uninstall",
+    summary: "Remove targets, autosync, the store, and the binary.",
   },
 ]
 
@@ -343,7 +385,7 @@ ${body}
           ${BRAND_MARK(30)}
           ${BRAND_WORD(14)}
         </a>
-        <p>Git-backed skill management for AI agents. Built in Rust.</p>
+        <p>Git-backed skills, instructions, and hooks for AI agents. Built in Rust.</p>
       </div>
       <nav class="footer-cols" aria-label="Footer">
         <div class="footer-col">
@@ -461,27 +503,38 @@ const specIndexPage = () =>
   })
 
 const indexPage = () => {
-  const items = PAGES.map(
-    (page) => `<li>
+  const card = (page) => `<li>
   <a class="doc-card" href="/docs/${page.slug}.html">
     <span class="doc-card-title">${page.label}</span>
     <span class="doc-card-summary">${escapeHtml(page.summary)}</span>
   </a>
-</li>`,
+</li>`
+  const ungrouped = PAGES.filter((page) => !GROUPS.some((group) => group.id === page.group))
+  if (ungrouped.length > 0) {
+    throw new Error(`documentation pages without an index group: ${ungrouped.map((page) => page.slug).join(", ")}`)
+  }
+  const sections = GROUPS.map(
+    (group) => `<h2 id="${group.id}">${group.title}</h2>
+<p class="doc-group-intro">${escapeHtml(group.intro)}</p>
+<ul class="doc-cards">
+${PAGES.filter((page) => page.group === group.id)
+  .map(card)
+  .join("\n")}
+</ul>`,
   ).join("\n")
   return shell({
     slug: "index",
     title: "Documentation",
-    description: "Dalo documentation: getting started, command reference, agent integration, CI, troubleshooting, and uninstall.",
+    description:
+      "Dalo documentation: starting points for a first sync, the command reference, troubleshooting, security, and compatibility.",
     canonical: `${SITE}/docs/`,
     body: `<p class="doc-kicker">Documentation</p>
 <h1>Dalo documentation</h1>
-<p class="doc-lede">Everything the CLI can do today. The installation guide lives at
+<p class="doc-lede">New here? <a href="/docs/getting-started.html">Getting started</a> opens with
+a table that routes you by what you already have. The installation guide lives at
 <a href="/install.md">install.md</a>, the release history in the
 <a href="${BLOB}/CHANGELOG.md" rel="noopener">changelog</a>.</p>
-<ul class="doc-cards">
-${items}
-</ul>`,
+${sections}`,
   })
 }
 

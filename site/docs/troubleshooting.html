@@ -4,14 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Troubleshooting and FAQ · Dalo documentation</title>
-  <meta name="description" content="Resolver, doctor, and security findings with the command that clears each one." />
+  <meta name="description" content="Resolver, doctor, and security findings with the command that clears each one, plus the FAQ." />
   <link rel="canonical" href="https://dalo.sh/docs/troubleshooting.html" />
   <meta name="theme-color" content="#ffffff" />
   <meta property="og:type" content="article" />
   <meta property="og:site_name" content="Dalo" />
   <meta property="og:url" content="https://dalo.sh/docs/troubleshooting.html" />
   <meta property="og:title" content="Troubleshooting and FAQ · Dalo documentation" />
-  <meta property="og:description" content="Resolver, doctor, and security findings with the command that clears each one." />
+  <meta property="og:description" content="Resolver, doctor, and security findings with the command that clears each one, plus the FAQ." />
   <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
   <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
   <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
@@ -65,15 +65,15 @@
     <a href="/docs/projects.html">Project installations</a>
     <a href="/docs/team.html">Team repository</a>
     <a href="/docs/reference.html">Command reference</a>
-    <a href="/docs/compatibility.html">Compatibility</a>
-    <a href="/docs/upgrading.html">Upgrading to 1.0</a>
-    <a href="/docs/plugins.html">Plugins</a>
     <a href="/docs/agents.html">Agent integration</a>
-    <a href="/docs/ci.html">Dalo in CI</a>
+    <a href="/docs/plugins.html">Plugins</a>
     <a href="/docs/troubleshooting.html" aria-current="page">Troubleshooting</a>
+    <a href="/docs/ci.html">Dalo in CI</a>
     <a href="/docs/security.html">Security overview</a>
-    <a href="/docs/uninstall.html">Uninstall</a>
+    <a href="/docs/compatibility.html">Compatibility</a>
     <a href="/docs/comparison.html">Comparison</a>
+    <a href="/docs/upgrading.html">Upgrading to 1.0</a>
+    <a href="/docs/uninstall.html">Uninstall</a>
   </nav>
   <details class="doc-menu">
     <summary><span class="doc-menu-label">Documentation</span> <span class="doc-menu-current">Troubleshooting</span></summary>
@@ -84,15 +84,15 @@
       <a href="/docs/projects.html">Project installations</a>
       <a href="/docs/team.html">Team repository</a>
       <a href="/docs/reference.html">Command reference</a>
-      <a href="/docs/compatibility.html">Compatibility</a>
-      <a href="/docs/upgrading.html">Upgrading to 1.0</a>
-      <a href="/docs/plugins.html">Plugins</a>
       <a href="/docs/agents.html">Agent integration</a>
-      <a href="/docs/ci.html">Dalo in CI</a>
+      <a href="/docs/plugins.html">Plugins</a>
       <a href="/docs/troubleshooting.html" aria-current="page">Troubleshooting</a>
+      <a href="/docs/ci.html">Dalo in CI</a>
       <a href="/docs/security.html">Security overview</a>
-      <a href="/docs/uninstall.html">Uninstall</a>
+      <a href="/docs/compatibility.html">Compatibility</a>
       <a href="/docs/comparison.html">Comparison</a>
+      <a href="/docs/upgrading.html">Upgrading to 1.0</a>
+      <a href="/docs/uninstall.html">Uninstall</a>
     </nav>
   </details>
   <article class="doc-body">
@@ -902,6 +902,27 @@ repository, push the change, then run <code>dalo sync</code>.</p>
 </tr>
 </tbody></table></div>
 <h2 id="faq"><a class="doc-anchor" href="#faq">FAQ</a></h2>
+<h3 id="do-i-need-a-team-repository-to-use-dalo"><a class="doc-anchor" href="#do-i-need-a-team-repository-to-use-dalo">Do I need a team repository to use Dalo?</a></h3>
+<p>No. Every store has a private local source under <code>local/skills/</code>, and a public
+catalog works without any repository of your own: add it, select the skills you
+want, approve them, and sync. The
+<a href="/docs/getting-started.html#pick-your-starting-point">getting started guide</a> lists the
+starting points, including one for skills that already sit in an agent folder.
+A team repository becomes useful once a second person or machine should resolve
+the same set.</p>
+<h3 id="can-i-move-skills-i-installed-with-skillssh-to-dalo"><a class="doc-anchor" href="#can-i-move-skills-i-installed-with-skillssh-to-dalo">Can I move skills I installed with skills.sh to Dalo?</a></h3>
+<p>For a project with a version 1 <code>skills-lock.json</code>, yes:</p>
+<pre><code class="language-sh">dalo migrate skills-sh
+</code></pre>
+<p>The default is a preview. Dalo compares every installed copy with its recorded
+source, and <code>--apply</code> writes nothing unless every entry verifies: a local edit
+or an upstream change blocks the migration instead of being overwritten. See
+<a href="/docs/projects.html#migrate-a-skillssh-project">Migrate a skills.sh project</a> for what
+is imported, what is backed up, and the approval steps that follow.</p>
+<p>Globally installed skills are not imported by that command, and Dalo never
+overwrites them. A real skill directory can be adopted with
+<code>dalo adopt &lt;skill&gt;</code>; a symlinked install needs a deliberate handover, which
+the <a href="/docs/assistant.html">Dalo assistant</a> can plan with you.</p>
 <h3 id="why-did-sync-not-overwrite-my-folder"><a class="doc-anchor" href="#why-did-sync-not-overwrite-my-folder">Why did <code>sync</code> not overwrite my folder?</a></h3>
 <p>Dalo treats real folders in target directories as user/project content. Use <code>dalo adopt &lt;id&gt;</code> to copy the folder into the local source, <code>dalo adopt &lt;id&gt; --replace</code> to replace it with an owned symlink, or <code>dalo resolve keep &lt;id&gt;</code> to leave it intentionally unmanaged without failing checks. Undo that decision with <code>dalo resolve unkeep &lt;target&gt;:&lt;slot&gt;</code>.</p>
 <h3 id="how-do-i-approve-a-pending-skill"><a class="doc-anchor" href="#how-do-i-approve-a-pending-skill">How do I approve a pending skill?</a></h3>
@@ -932,13 +953,21 @@ requires a fresh review.</p>
 <p>The <a href="/docs/security.html">security overview</a> explains which findings block, what the
 optional reviewer adds, and what an accepted risk does and does not mean.</p>
 <h3 id="can-dalo-manage-my-repositorys-claudeskills"><a class="doc-anchor" href="#can-dalo-manage-my-repositorys-claudeskills">Can Dalo manage my repository&#39;s <code>.claude/skills</code>?</a></h3>
-<p>Yes, as a per-machine recipe. Dalo 1.0 links user-level folders by default, and
-a first-class per-repository target is deferred past 1.0 — it changes the
-persisted target identity in <code>state.toml</code> and <code>lock.toml</code>, which
-<a href="/docs/compatibility.html">the compatibility policy</a> freezes for 1.x. It is tracked in
-<a href="https://github.com/sebastian-software/dalo/issues/851" rel="noopener">#851</a>.</p>
-<p>Point targets at the repository&#39;s own agent folders. This is the exact sequence
-that was verified against the 1.0 binary:</p>
+<p>Yes. Use a <a href="/docs/projects.html">project installation</a>: commit a <code>dalo-project.toml</code>
+that pins sources to exact commits, and <code>dalo install</code> restores those skills
+into the repository&#39;s own agent folders from an isolated <code>.dalo/</code> store. A
+teammate who clones the repository runs the same command. Project scope shipped
+in Dalo 1.1 (<a href="https://github.com/sebastian-software/dalo/issues/851" rel="noopener">#851</a>).</p>
+<pre><code class="language-sh">dalo --project . init   # writes dalo-project.toml
+dalo install            # restores the pinned skills, in this and every clone
+</code></pre>
+<p>Sources are added with <code>dalo project add</code>; the guide walks through its preview,
+the apply step, and the local approvals.</p>
+<p>The older alternative is a per-machine recipe: redirect a target of your
+existing store at a folder inside the repository. It needs no definition file,
+but nothing in the repository records it.</p>
+<p>Point targets at the repository&#39;s own agent folders. This sequence was verified
+against the 1.0 binary:</p>
 <pre><code class="language-sh">dalo init
 dalo target link claude /path/to/repo/.claude/skills
 dalo target link generic /path/to/repo/.agents/skills
@@ -1059,7 +1088,7 @@ For a usage question instead, use
           <img class="brand-mark" src="/assets/img/logo.svg" width="34" height="30" alt="" />
           <img class="brand-word" src="/assets/img/wordmark.svg" width="55" height="14" alt="" />
         </a>
-        <p>Git-backed skill management for AI agents. Built in Rust.</p>
+        <p>Git-backed skills, instructions, and hooks for AI agents. Built in Rust.</p>
       </div>
       <nav class="footer-cols" aria-label="Footer">
         <div class="footer-col">

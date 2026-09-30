@@ -228,6 +228,35 @@ Doctor includes `ok` and `info` codes as well as warnings/errors. Codes not list
 
 ## FAQ
 
+### Do I need a team repository to use Dalo?
+
+No. Every store has a private local source under `local/skills/`, and a public
+catalog works without any repository of your own: add it, select the skills you
+want, approve them, and sync. The
+[getting started guide](getting-started.md#pick-your-starting-point) lists the
+starting points, including one for skills that already sit in an agent folder.
+A team repository becomes useful once a second person or machine should resolve
+the same set.
+
+### Can I move skills I installed with skills.sh to Dalo?
+
+For a project with a version 1 `skills-lock.json`, yes:
+
+```sh
+dalo migrate skills-sh
+```
+
+The default is a preview. Dalo compares every installed copy with its recorded
+source, and `--apply` writes nothing unless every entry verifies: a local edit
+or an upstream change blocks the migration instead of being overwritten. See
+[Migrate a skills.sh project](projects.md#migrate-a-skillssh-project) for what
+is imported, what is backed up, and the approval steps that follow.
+
+Globally installed skills are not imported by that command, and Dalo never
+overwrites them. A real skill directory can be adopted with
+`dalo adopt <skill>`; a symlinked install needs a deliberate handover, which
+the [Dalo assistant](assistant.md) can plan with you.
+
 ### Why did `sync` not overwrite my folder?
 
 Dalo treats real folders in target directories as user/project content. Use `dalo adopt <id>` to copy the folder into the local source, `dalo adopt <id> --replace` to replace it with an owned symlink, or `dalo resolve keep <id>` to leave it intentionally unmanaged without failing checks. Undo that decision with `dalo resolve unkeep <target>:<slot>`.
@@ -279,14 +308,26 @@ optional reviewer adds, and what an accepted risk does and does not mean.
 
 ### Can Dalo manage my repository's `.claude/skills`?
 
-Yes, as a per-machine recipe. Dalo 1.0 links user-level folders by default, and
-a first-class per-repository target is deferred past 1.0 — it changes the
-persisted target identity in `state.toml` and `lock.toml`, which
-[the compatibility policy](compatibility.md) freezes for 1.x. It is tracked in
-[#851](https://github.com/sebastian-software/dalo/issues/851).
+Yes. Use a [project installation](projects.md): commit a `dalo-project.toml`
+that pins sources to exact commits, and `dalo install` restores those skills
+into the repository's own agent folders from an isolated `.dalo/` store. A
+teammate who clones the repository runs the same command. Project scope shipped
+in Dalo 1.1 ([#851](https://github.com/sebastian-software/dalo/issues/851)).
 
-Point targets at the repository's own agent folders. This is the exact sequence
-that was verified against the 1.0 binary:
+```sh
+dalo --project . init   # writes dalo-project.toml
+dalo install            # restores the pinned skills, in this and every clone
+```
+
+Sources are added with `dalo project add`; the guide walks through its preview,
+the apply step, and the local approvals.
+
+The older alternative is a per-machine recipe: redirect a target of your
+existing store at a folder inside the repository. It needs no definition file,
+but nothing in the repository records it.
+
+Point targets at the repository's own agent folders. This sequence was verified
+against the 1.0 binary:
 
 ```sh
 dalo init

@@ -5,19 +5,26 @@ team's skills. It is written for the developer side. If you own the repository
 those skills come from, read the [team repository guide](team.md) instead — or
 afterwards.
 
-Prefer to work through your agent? Ask it to **“Install the Dalo skill manager.”**
-The [conversational setup](assistant.md) includes the assistant, which can then
-help you migrate or maintain your skills.
-
 Before you start:
 
 - install Dalo (see the [README installation instructions](../README.md#installation))
 - have `git` on `PATH`
 - use Linux or macOS
 
-If you would rather try everything without touching your agent folders, jump to
-[Explore without touching your agent folders](#explore-without-touching-your-agent-folders)
-and come back.
+## Pick your starting point
+
+You do not need a team repository or a clean machine to begin. Find the row
+that matches your situation:
+
+| Your situation | Start here |
+| --- | --- |
+| You want to look around without risk | [Explore without touching your agent folders](#explore-without-touching-your-agent-folders), then come back |
+| Your team already has a skill repository | Continue with step 1 below |
+| It is just you, with no team repository yet | Steps 1 and 2, then the catalog path in [step 3](#3-add-your-teams-skill-repository) |
+| Skills already live in your agent folder | Steps 1 and 2, then [adopt them](#adopt-a-skill-an-agent-wrote) — Dalo leaves them untouched until you do |
+| Your project installed skills with skills.sh | [Migrate a skills.sh project](projects.md#migrate-a-skillssh-project) |
+| The skills belong to one repository, not your whole machine | [Project installations](projects.md) |
+| You would rather delegate the setup | Ask your agent to **“Install the Dalo skill manager.”** — see the [conversational setup](assistant.md) |
 
 ## 1. Initialize the store
 
@@ -78,6 +85,19 @@ If your team repository also pins public catalogs in a `dalo.toml` manifest,
 those arrive automatically as `company.<catalog-id>` sources. They are
 untrusted, so their skills wait for your approval — see
 [pending approval](#pending-approval) below.
+
+No team repository yet? Skip `source add`. A public catalog gives you real
+skills to start from, and you pick only the ones you want:
+
+```sh
+dalo source add-catalog sebastian https://github.com/sebastian-software/skills.sebastian-software.com.git
+dalo source inspect sebastian
+dalo source select sebastian effective-web
+```
+
+A selected catalog skill is untrusted until you approve it, which is the
+[pending approval](#pending-approval) state below. To publish a repository for
+your team later, follow the [team repository guide](team.md).
 
 ## 4. Sync
 
@@ -380,13 +400,28 @@ dalo adopt --replace release-notes
 ```
 
 Dalo does not commit adopted work automatically. You decide when an experiment
-is ready to move into the reviewed team repository.
+is ready to move into the reviewed team repository. When it is, `promote` opens
+a pull request against that repository instead of pushing to it:
+
+```sh
+dalo --dry-run promote release-notes --target company
+dalo promote release-notes --target company
+```
+
+`company` is the ID of the team source. The real run needs an authenticated
+GitHub CLI (`gh`); see [`dalo promote`](reference.md#dalo-promote) for forks and
+the cases it blocks.
 
 ## Where to go next
 
 - [Team repository guide](team.md) — publish the source your teammates add
+- [Project installations](projects.md) — pin skills per repository and restore
+  them with `dalo install`
+- [Dalo assistant](assistant.md) — do all of this by talking to your agent
 - [Command reference](reference.md) — every command, flag, and file format
 - [Agent integration](agents.md) — supported agents and their directories
 - [Troubleshooting](troubleshooting.md) — each diagnostic and the command that
   clears it
 - [Dalo in CI](ci.md) — reproducible, non-interactive sync in a pipeline
+- [Security overview](security.md) — what the preflight and approvals do and
+  do not protect against

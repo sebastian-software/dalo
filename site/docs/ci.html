@@ -65,15 +65,15 @@
     <a href="/docs/projects.html">Project installations</a>
     <a href="/docs/team.html">Team repository</a>
     <a href="/docs/reference.html">Command reference</a>
-    <a href="/docs/compatibility.html">Compatibility</a>
-    <a href="/docs/upgrading.html">Upgrading to 1.0</a>
-    <a href="/docs/plugins.html">Plugins</a>
     <a href="/docs/agents.html">Agent integration</a>
-    <a href="/docs/ci.html" aria-current="page">Dalo in CI</a>
+    <a href="/docs/plugins.html">Plugins</a>
     <a href="/docs/troubleshooting.html">Troubleshooting</a>
+    <a href="/docs/ci.html" aria-current="page">Dalo in CI</a>
     <a href="/docs/security.html">Security overview</a>
-    <a href="/docs/uninstall.html">Uninstall</a>
+    <a href="/docs/compatibility.html">Compatibility</a>
     <a href="/docs/comparison.html">Comparison</a>
+    <a href="/docs/upgrading.html">Upgrading to 1.0</a>
+    <a href="/docs/uninstall.html">Uninstall</a>
   </nav>
   <details class="doc-menu">
     <summary><span class="doc-menu-label">Documentation</span> <span class="doc-menu-current">Dalo in CI</span></summary>
@@ -84,23 +84,22 @@
       <a href="/docs/projects.html">Project installations</a>
       <a href="/docs/team.html">Team repository</a>
       <a href="/docs/reference.html">Command reference</a>
-      <a href="/docs/compatibility.html">Compatibility</a>
-      <a href="/docs/upgrading.html">Upgrading to 1.0</a>
-      <a href="/docs/plugins.html">Plugins</a>
       <a href="/docs/agents.html">Agent integration</a>
-      <a href="/docs/ci.html" aria-current="page">Dalo in CI</a>
+      <a href="/docs/plugins.html">Plugins</a>
       <a href="/docs/troubleshooting.html">Troubleshooting</a>
+      <a href="/docs/ci.html" aria-current="page">Dalo in CI</a>
       <a href="/docs/security.html">Security overview</a>
-      <a href="/docs/uninstall.html">Uninstall</a>
+      <a href="/docs/compatibility.html">Compatibility</a>
       <a href="/docs/comparison.html">Comparison</a>
+      <a href="/docs/upgrading.html">Upgrading to 1.0</a>
+      <a href="/docs/uninstall.html">Uninstall</a>
     </nav>
   </details>
   <article class="doc-body">
 <h1 id="using-dalo-in-ci">Using Dalo in CI</h1>
-<p>Passive release checks are disabled automatically when the conventional <code>CI</code>
-environment variable is set. <code>DALO_OFFLINE=1</code> or <code>DALO_UPDATE_CHECK=never</code> can
-also disable them explicitly in other managed environments.</p>
-<p>Dalo&#39;s JSON output and exit codes are intended for automation.</p>
+<p>Dalo&#39;s JSON output and exit codes are intended for automation. A pipeline can
+check that a skill repository still resolves, audits, and links cleanly before
+a change reaches anyone&#39;s agent.</p>
 <p>Useful checks:</p>
 <ul>
 <li><code>dalo status --check --json</code> reports resolution and fails when the state needs review, including malformed or unsafe portable agent packages.</li>
@@ -108,6 +107,9 @@ also disable them explicitly in other managed environments.</p>
 <li><code>dalo sync --check --json</code> renders the sync result and fails when materialization is blocked or incomplete.</li>
 <li><code>dalo source refresh &lt;catalog&gt; --check</code> checks catalog drift read-only and fails for changed, moved, or removed selected skills.</li>
 </ul>
+<p>Passive release checks are disabled automatically when the conventional <code>CI</code>
+environment variable is set. <code>DALO_OFFLINE=1</code> or <code>DALO_UPDATE_CHECK=never</code> can
+also disable them explicitly in other managed environments.</p>
 <h2 id="example-github-actions-job"><a class="doc-anchor" href="#example-github-actions-job">Example GitHub Actions job</a></h2>
 <pre><code class="language-yaml">name: dalo
 
@@ -144,7 +146,54 @@ jobs:
 <p>The checkout in this example is a local Git source. Replace <code>.</code> with the path
 or URL of the skill repository that the workflow should validate. The temporary
 store and generic target keep the check isolated from any runner state.</p>
-<h2 id="release-publication"><a class="doc-anchor" href="#release-publication">Release publication</a></h2>
+<h2 id="exit-codes"><a class="doc-anchor" href="#exit-codes">Exit codes</a></h2>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0</td>
+<td>Success</td>
+</tr>
+<tr>
+<td>1</td>
+<td>Expected actionable failure, including semantic value validation, failed checks, and security-audit blocks</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Usage error from invalid arguments or flags; emitted as plain text even with <code>--json</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td>Unsafe state blocked the operation</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Dependency or environment problem</td>
+</tr>
+</tbody></table></div>
+<p>Treat <code>1</code> as a user-actionable configuration or drift problem, <code>3</code> as a safety stop that should not be auto-fixed, and <code>4</code> as a runner/tooling problem.</p>
+<h2 id="catalog-drift"><a class="doc-anchor" href="#catalog-drift">Catalog drift</a></h2>
+<p>For catalog sources, use the read-only refresh check. <code>--check</code> changes only
+the exit status; neither form advances the catalog pin:</p>
+<pre><code class="language-sh">dalo source refresh company-catalog --check
+</code></pre>
+<p>The command reports new available skills, selected skill changes, moved or removed selections, and changed requirements without changing the source lock. New unselected skills remain informational; any selected-skill drift exits with code 1 for review.</p>
+<p>Pin advancement is deliberately separate from CI checking. Preview the exact
+transaction without writes, then apply it only in a reviewed maintenance flow:</p>
+<pre><code class="language-sh">dalo --dry-run --json source refresh company-catalog --advance
+dalo source refresh company-catalog --advance
+</code></pre>
+<p>The advance report contains both lock entries, every drift classification,
+the affected materialization plan, and blocking reasons. Never add <code>--advance</code>
+to an unattended drift-check job.</p>
+<h2 id="how-dalo-itself-is-released"><a class="doc-anchor" href="#how-dalo-itself-is-released">How Dalo itself is released</a></h2>
+<p>The rest of this page is for maintainers. It documents how a Dalo release is
+built and published, and you do not need it to run Dalo in your own pipeline.</p>
+<h3 id="release-publication"><a class="doc-anchor" href="#release-publication">Release publication</a></h3>
 <p>The publish workflow keeps a new GitHub release as a draft while its five target
 archives, checksums, and Sigstore bundles build and upload. The workflow creates
 the release tag at draft time so each matrix job can check out the exact release
@@ -228,59 +277,15 @@ channels, including the Nix flake at <code>dalo-v1.0.0</code>. Record the versio
 <code>doctor</code> result per platform and channel; the CLI rehearsal alone cannot
 establish distribution availability.</li>
 </ul>
-<h2 id="exit-codes"><a class="doc-anchor" href="#exit-codes">Exit codes</a></h2>
-<div class="doc-table"><table>
-<thead>
-<tr>
-<th>Code</th>
-<th>Meaning</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>0</td>
-<td>Success</td>
-</tr>
-<tr>
-<td>1</td>
-<td>Expected actionable failure, including semantic value validation, failed checks, and security-audit blocks</td>
-</tr>
-<tr>
-<td>2</td>
-<td>Usage error from invalid arguments or flags; emitted as plain text even with <code>--json</code></td>
-</tr>
-<tr>
-<td>3</td>
-<td>Unsafe state blocked the operation</td>
-</tr>
-<tr>
-<td>4</td>
-<td>Dependency or environment problem</td>
-</tr>
-</tbody></table></div>
-<p>Treat <code>1</code> as a user-actionable configuration or drift problem, <code>3</code> as a safety stop that should not be auto-fixed, and <code>4</code> as a runner/tooling problem.</p>
-<h2 id="catalog-drift"><a class="doc-anchor" href="#catalog-drift">Catalog drift</a></h2>
-<p>For catalog sources, use the read-only refresh check. <code>--check</code> changes only
-the exit status; neither form advances the catalog pin:</p>
-<pre><code class="language-sh">dalo source refresh company-catalog --check
-</code></pre>
-<p>The command reports new available skills, selected skill changes, moved or removed selections, and changed requirements without changing the source lock. New unselected skills remain informational; any selected-skill drift exits with code 1 for review.</p>
-<p>Pin advancement is deliberately separate from CI checking. Preview the exact
-transaction without writes, then apply it only in a reviewed maintenance flow:</p>
-<pre><code class="language-sh">dalo --dry-run --json source refresh company-catalog --advance
-dalo source refresh company-catalog --advance
-</code></pre>
-<p>The advance report contains both lock entries, every drift classification,
-the affected materialization plan, and blocking reasons. Never add <code>--advance</code>
-to an unattended drift-check job.</p>
 <p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/ci.md" rel="noopener">docs/ci.md</a></p>
   </article>
   <nav class="doc-toc" aria-label="On this page">
     <p class="doc-toc-h">On this page</p>
     <ul>
       <li><a href="#example-github-actions-job">Example GitHub Actions job</a></li>
-      <li><a href="#release-publication">Release publication</a></li>
       <li><a href="#exit-codes">Exit codes</a></li>
       <li><a href="#catalog-drift">Catalog drift</a></li>
+      <li><a href="#how-dalo-itself-is-released">How Dalo itself is released</a></li>
     </ul>
   </nav>
 </main>
@@ -293,7 +298,7 @@ to an unattended drift-check job.</p>
           <img class="brand-mark" src="/assets/img/logo.svg" width="34" height="30" alt="" />
           <img class="brand-word" src="/assets/img/wordmark.svg" width="55" height="14" alt="" />
         </a>
-        <p>Git-backed skill management for AI agents. Built in Rust.</p>
+        <p>Git-backed skills, instructions, and hooks for AI agents. Built in Rust.</p>
       </div>
       <nav class="footer-cols" aria-label="Footer">
         <div class="footer-col">

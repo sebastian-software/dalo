@@ -9,7 +9,7 @@
 
 # Dalo
 
-**Your team's agent skills, versioned like code.**
+**Your team's agent setup, versioned like code.**
 
 [![Powered by Sebastian Software](https://img.shields.io/badge/Powered_by-Sebastian_Software-005164?style=flat)](https://oss.sebastian-software.com) [![Crates.io](https://img.shields.io/crates/v/dalo.svg)](https://crates.io/crates/dalo)
 [![npm](https://img.shields.io/npm/v/getdalo.svg)](https://www.npmjs.com/package/getdalo)
@@ -17,10 +17,10 @@
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
 [![MSRV](https://img.shields.io/badge/rust-1.94%2B-orange.svg)](Cargo.toml)
 
-For engineers and team leads who run Claude Code, Codex, or another agent across
-several people and machines: keep every skill in Git, resolve one approved set,
-and link it into the folders your agents already read. Your agents keep reading
-the folders they understand. Dalo handles what is behind them — sources,
+For engineers and team leads who run Claude Code, Codex, Cursor, or another
+agent across several people and machines: keep skills, standing instructions,
+and hooks in Git, resolve one approved set, and link it into the folders your
+agents already read. Dalo handles what is behind those folders — sources,
 priorities, approvals, conflicts, drift, and safe synchronization.
 
 **[Visit dalo.sh](https://dalo.sh)** · **[Watch the 15-second demo](https://dalo.sh/#quickstart)** · **[Get started](docs/getting-started.md)**
@@ -79,6 +79,9 @@ a deterministic security preflight on every skill it finds.
 ```sh
 dalo source add company git@github.com:acme/agent-skills.git
 ```
+
+No team repository yet? Skip this step and start from a public catalog, as
+shown under [When something is off](#when-something-is-off).
 
 **5. Sync.** One command resolves the approved set and links it into every
 configured target.
@@ -193,6 +196,10 @@ list of things Dalo deliberately does not protect against — read the
 - **Team manifests.** A team repository can pin external catalogs to exact
   commits and define the subset every member resolves, while approval stays
   personal. [Team repository guide](docs/team.md)
+- **Project installations.** Commit a `dalo-project.toml` and every clone
+  restores the same pinned skills with `dalo install`, in its own store. A
+  project that used skills.sh moves over with `dalo migrate skills-sh`.
+  [Project installations](docs/projects.md)
 - **Instruction packs.** Share conventions that are not skills as managed blocks
   inside agent instruction files; everything else in the file stays yours.
   [Agent integration](docs/agents.md)
@@ -202,9 +209,9 @@ list of things Dalo deliberately does not protect against — read the
 - **Portable plugins.** Group skills, agents, and instructions in an inert
   package, with narrowly typed tools and hooks behind separate exact approvals.
   [Plugins, tools, and hooks](docs/plugins.md)
-- **Adopt.** Copy a skill an agent wrote in its own folder into your private
-  local source, and replace the original with a managed link only if you ask.
-  [Command reference](docs/reference.md)
+- **Adopt and promote.** Copy a skill an agent wrote in its own folder into
+  your private local source, then send it to the team repository as a pull
+  request with `dalo promote`. [Getting started](docs/getting-started.md#adopt-a-skill-an-agent-wrote)
 - **Doctor.** `dalo doctor` turns store, target, lock, and approval health into
   findings with a recovery command each.
   [Troubleshooting and FAQ](docs/troubleshooting.md)
@@ -320,6 +327,7 @@ For manual archives, upgrades, shell completions, and removal, see the
 
 - [Getting started](docs/getting-started.md)
 - [Dalo assistant](docs/assistant.md)
+- [Project installations](docs/projects.md)
 - [Team repository guide](docs/team.md)
 - [Command reference](docs/reference.md)
 - [Compatibility and stability](docs/compatibility.md)
@@ -330,6 +338,7 @@ For manual archives, upgrades, shell completions, and removal, see the
 - [Dalo in CI](docs/ci.md)
 - [Comparison with skills.sh and agentfiles](docs/comparison.md)
 - [Troubleshooting and FAQ](docs/troubleshooting.md)
+- [Uninstall](docs/uninstall.md)
 - [Security overview](docs/security.md)
 - [Security policy](SECURITY.md)
 - [Support](SUPPORT.md)

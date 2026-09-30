@@ -1,10 +1,8 @@
 # Using Dalo in CI
 
-Passive release checks are disabled automatically when the conventional `CI`
-environment variable is set. `DALO_OFFLINE=1` or `DALO_UPDATE_CHECK=never` can
-also disable them explicitly in other managed environments.
-
-Dalo's JSON output and exit codes are intended for automation.
+Dalo's JSON output and exit codes are intended for automation. A pipeline can
+check that a skill repository still resolves, audits, and links cleanly before
+a change reaches anyone's agent.
 
 Useful checks:
 
@@ -12,6 +10,10 @@ Useful checks:
 - `dalo doctor --check --json` reports health and fails on error findings.
 - `dalo sync --check --json` renders the sync result and fails when materialization is blocked or incomplete.
 - `dalo source refresh <catalog> --check` checks catalog drift read-only and fails for changed, moved, or removed selected skills.
+
+Passive release checks are disabled automatically when the conventional `CI`
+environment variable is set. `DALO_OFFLINE=1` or `DALO_UPDATE_CHECK=never` can
+also disable them explicitly in other managed environments.
 
 ## Example GitHub Actions job
 
@@ -53,7 +55,47 @@ The checkout in this example is a local Git source. Replace `.` with the path
 or URL of the skill repository that the workflow should validate. The temporary
 store and generic target keep the check isolated from any runner state.
 
-## Release publication
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Success |
+| 1 | Expected actionable failure, including semantic value validation, failed checks, and security-audit blocks |
+| 2 | Usage error from invalid arguments or flags; emitted as plain text even with `--json` |
+| 3 | Unsafe state blocked the operation |
+| 4 | Dependency or environment problem |
+
+Treat `1` as a user-actionable configuration or drift problem, `3` as a safety stop that should not be auto-fixed, and `4` as a runner/tooling problem.
+
+## Catalog drift
+
+For catalog sources, use the read-only refresh check. `--check` changes only
+the exit status; neither form advances the catalog pin:
+
+```sh
+dalo source refresh company-catalog --check
+```
+
+The command reports new available skills, selected skill changes, moved or removed selections, and changed requirements without changing the source lock. New unselected skills remain informational; any selected-skill drift exits with code 1 for review.
+
+Pin advancement is deliberately separate from CI checking. Preview the exact
+transaction without writes, then apply it only in a reviewed maintenance flow:
+
+```sh
+dalo --dry-run --json source refresh company-catalog --advance
+dalo source refresh company-catalog --advance
+```
+
+The advance report contains both lock entries, every drift classification,
+the affected materialization plan, and blocking reasons. Never add `--advance`
+to an unattended drift-check job.
+
+## How Dalo itself is released
+
+The rest of this page is for maintainers. It documents how a Dalo release is
+built and published, and you do not need it to run Dalo in your own pipeline.
+
+### Release publication
 
 The publish workflow keeps a new GitHub release as a draft while its five target
 archives, checksums, and Sigstore bundles build and upload. The workflow creates
@@ -156,38 +198,3 @@ issues do not stand in for these checks:
   channels, including the Nix flake at `dalo-v1.0.0`. Record the version and
   `doctor` result per platform and channel; the CLI rehearsal alone cannot
   establish distribution availability.
-
-## Exit codes
-
-| Code | Meaning |
-| --- | --- |
-| 0 | Success |
-| 1 | Expected actionable failure, including semantic value validation, failed checks, and security-audit blocks |
-| 2 | Usage error from invalid arguments or flags; emitted as plain text even with `--json` |
-| 3 | Unsafe state blocked the operation |
-| 4 | Dependency or environment problem |
-
-Treat `1` as a user-actionable configuration or drift problem, `3` as a safety stop that should not be auto-fixed, and `4` as a runner/tooling problem.
-
-## Catalog drift
-
-For catalog sources, use the read-only refresh check. `--check` changes only
-the exit status; neither form advances the catalog pin:
-
-```sh
-dalo source refresh company-catalog --check
-```
-
-The command reports new available skills, selected skill changes, moved or removed selections, and changed requirements without changing the source lock. New unselected skills remain informational; any selected-skill drift exits with code 1 for review.
-
-Pin advancement is deliberately separate from CI checking. Preview the exact
-transaction without writes, then apply it only in a reviewed maintenance flow:
-
-```sh
-dalo --dry-run --json source refresh company-catalog --advance
-dalo source refresh company-catalog --advance
-```
-
-The advance report contains both lock entries, every drift classification,
-the affected materialization plan, and blocking reasons. Never add `--advance`
-to an unattended drift-check job.

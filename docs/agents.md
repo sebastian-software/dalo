@@ -2,9 +2,9 @@
 
 This page is the single support matrix for Dalo's agent targets. Portable
 canonical agent packages are documented in the
-[command reference](reference.md#dalo-agent-listshow-sourcename).
+[command reference](reference.md#dalo-agent-list---check-dalo-agent-show-sourcename).
 
-Dalo's V1 targets are directory-based. Each target links the resolved skill set
+Dalo's built-in targets are directory-based. Each target links the resolved skill set
 into the folder that agent already reads: Dalo writes one symlink per skill into
 the target directory and never touches the directory's unmanaged entries. An
 agent therefore only works with Dalo if it follows a symlinked skill directory.
@@ -38,14 +38,20 @@ on 2026-09-28; see its section below.
 
 ## Project-scoped folders
 
-For a reproducible project store with automatic scope discovery, see
-[Project installations](projects.md). The following recipe describes redirecting
-a target in an existing store.
+There are two ways to deliver skills into a repository's own agent folders.
 
-Dalo 1.0 links **user-level** folders. Every agent in the matrix also reads a
-project-level folder — `.claude/skills` for Claude Code, `.agents/skills` for
-Codex and OpenClaw, `.opencode/skills` for OpenCode, `.hermes/skills` for
-Hermes — and a target can be pointed at one of those paths inside a repository:
+**A project installation** is the reproducible one. The repository commits a
+`dalo-project.toml` that pins its sources, and `dalo install` restores them into
+an isolated `.dalo/` store and the project folders of the declared agents, in
+every clone. See [Project installations](projects.md). Project scope supports
+the `claude`, `codex`, `opencode`, `hermes`, and `openclaw` targets.
+
+**Redirecting a target** reuses your existing store and is a per-machine
+recipe. A target in that store links a **user-level** folder by default. Every
+agent in the matrix also reads a project-level folder — `.claude/skills` for
+Claude Code, `.agents/skills` for Codex and OpenClaw, `.opencode/skills` for
+OpenCode, `.hermes/skills` for Hermes — and a target can be pointed at one of
+those paths inside a repository:
 
 ```sh
 dalo target link claude /path/to/repo/.claude/skills
@@ -73,11 +79,10 @@ must not be committed:
 holds a project-scoped agent folder that no linked target covers. It does not
 link anything.
 
-For a per-repository definition and isolated store, use
-[Project installations](projects.md). Further work is tracked in
+Project installations shipped in Dalo 1.1 through
 [#851](https://github.com/sebastian-software/dalo/issues/851). The
 [FAQ entry](troubleshooting.md#can-dalo-manage-my-repositorys-claudeskills)
-has the full recipe.
+compares both routes and has the full redirect recipe.
 
 ## Codex
 
@@ -230,10 +235,15 @@ dalo target link cursor
 dalo sync
 ls -la ~/.cursor/skills
 
-# Project-level, from a project-scoped store or when redirecting an existing store
+# Project-level, by redirecting the target of your existing store
 dalo target link cursor /path/to/repo/.cursor/skills
 dalo sync
 ```
+
+A [project installation](projects.md) has no `cursor` target yet. Cursor's
+documentation also lists a project's `.agents/skills` and `.claude/skills` as
+skill roots, so a project that declares the `codex` or `claude` target should
+reach it; that route was not part of the verification below.
 
 Each target ID records one directory. Cursor also discovers `~/.agents/skills`
 and `.agents/skills`; a `codex` target already materializes the user-level

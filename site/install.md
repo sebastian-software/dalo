@@ -279,5 +279,5 @@ fresh hosted-installer run, `npm update --global getdalo`,
 archive. Dalo never updates its own executable.
 
 Before removing the store or binary, follow the
-[uninstall guide](https://github.com/sebastian-software/dalo/blob/main/docs/uninstall.md)
+[uninstall guide](https://dalo.sh/docs/uninstall.html)
 so owned target links and instruction blocks are cleaned up safely.

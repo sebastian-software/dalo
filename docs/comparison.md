@@ -8,7 +8,7 @@ of many agents. Dalo manages the approved, reproducible skill set that a team
 delivers to its agents.
 
 This page is a snapshot from September 2026 (skills CLI v1.6.0, agentfiles
-0.9.1, Dalo 0.15). All three projects move quickly; if something here is out
+0.9.1, Dalo 1.3). All three projects move quickly; if something here is out
 of date, please [open an issue](https://github.com/sebastian-software/dalo/issues).
 
 ## At a glance
@@ -21,10 +21,11 @@ of date, please [open an issue](https://github.com/sebastian-software/dalo/issue
 | Delivery into agents | Symlinks from a Git-backed store | Canonical copy plus symlinks (or `--copy`) | Copies into each agent folder |
 | Version pinning | Lockfiles with exact commits | Branch or tag plus content hash | Records the commit, updates to latest `HEAD` |
 | Updates | Preview drift, then advance explicitly | `skills update` pulls latest content | "Update all" pulls latest `HEAD` |
+| Scope | User-level store, or a pinned definition per repository | Project or global | One person's vault and machine |
 | Existing folders | Unmanaged files are never overwritten | Target folder is replaced | Target folder is replaced after install |
 | Review and trust | Security preflight, audits, per-skill approval | Audit pages on skills.sh | None built in |
 | Beyond skills | Instruction packs, portable plugins, approved tools and hooks | Skills only | Views commands, agents, and rules; installs skills only |
-| Agent coverage | 5 verified targets plus any folder | About 80 agents | 17 tools |
+| Agent coverage | 6 verified targets plus any folder | About 80 agents | 17 tools |
 | Platforms | macOS, Linux | macOS, Linux, Windows | Obsidian desktop |
 | Telemetry | None | Anonymous, on by default, opt-out | None, according to its README |
 | License | MIT or Apache-2.0 | MIT | MIT |
@@ -108,6 +109,18 @@ dalo source add-catalog public https://github.com/vercel-labs/agent-skills.git
 dalo source inspect public
 ```
 
+A project that already uses the `skills` CLI does not have to start over
+either. In a repository with a version 1 `skills-lock.json`, Dalo previews a
+verified handover and writes a pinned project definition only when every
+installed copy matches its source:
+
+```sh
+dalo migrate skills-sh
+```
+
+[Migrate a skills.sh project](projects.md#migrate-a-skillssh-project) covers
+what is imported, what is backed up, and the approvals that follow.
+
 ## Sources
 
 - skills CLI: [README](https://github.com/vercel-labs/skills#readme) and the
@@ -116,5 +129,5 @@ dalo source inspect public
 - skills.sh: [directory and leaderboard](https://skills.sh)
 - agentfiles: [README](https://github.com/Railly/agentfiles#readme), `manifest.json`,
   and `src/marketplace.ts` in [Railly/agentfiles](https://github.com/Railly/agentfiles), 0.9.1
-- Dalo: [README](../README.md), [command reference](reference.md), and
-  [agent integration](agents.md)
+- Dalo: [README](../README.md), [command reference](reference.md),
+  [project installations](projects.md), and [agent integration](agents.md)
