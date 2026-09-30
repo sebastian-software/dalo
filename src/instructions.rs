@@ -57,6 +57,25 @@ pub struct InstructionPackReport {
     pub warning: Option<String>,
 }
 
+/// Preview or result of keeping an edited source-backed block as a local pack.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct InstructionAdoptReport {
+    /// Source-qualified pack being replaced in this target.
+    pub source_ref: String,
+    /// Local pack ID.
+    pub pack_id: String,
+    /// Physical instruction target affected.
+    pub target: PathBuf,
+    /// New pack in the local Git source, left uncommitted for review.
+    pub local_path: PathBuf,
+    /// Exact source commit from which the active block originated.
+    pub source_commit: String,
+    /// Adopted Markdown body, without markers or generated metadata.
+    pub body: String,
+    /// Whether this is a preview without filesystem mutations.
+    pub dry_run: bool,
+}
+
 /// Report from enabling or disabling one pack across logical agent targets.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct InstructionPackBatchReport {
@@ -1634,6 +1653,241 @@ fn sort_instruction_lock_entries(entries: &mut [LockedInstructionPack]) {
     });
 }
 
+/// Adopt an edited active source-backed block into a new local pack.
+///
+/// Replaces only this target's managed markers and lock entry. The local Git
+/// source is left uncommitted; other targets and the upstream source stay intact.
+/// Refuses existing local packs, ambiguous targets, dirty sources and blocks
+/// whose content cannot be represented by the existing pack renderer.
+/// The caller must hold the store lock for a real mutation.
+pub fn adopt_pack(
+    paths: &StorePaths,
+    selector: &str,
+    target: Option<&Path>,
+    dry_run: bool,
+) -> DaloResult<InstructionAdoptReport> {
+    adopt_pack_with_lock_writer(paths, selector, target, dry_run, store::write_user_lock)
+}
+
+fn adopt_pack_with_lock_writer<F>(
+    paths: &StorePaths,
+    selector: &str,
+    target: Option<&Path>,
+    dry_run: bool,
+    write_lock: F,
+) -> DaloResult<InstructionAdoptReport>
+where
+    F: FnOnce(&StorePaths, &crate::lockfile::UserLock) -> DaloResult<()>,
+{
+    let (source_id, pack_id) = parse_pack_selector(selector)?;
+    if source_id == "local" {
+        return Err(adopt_blocked(
+            "adopt requires a source-qualified team or catalog pack; edit an existing local pack directly",
+        ));
+    }
+    let requested_target = target.map(normalize_target_path).transpose()?;
+    let mut lock = store::read_user_lock(paths)?;
+    let mut matches = Vec::new();
+    for (index, entry) in lock.active_instruction_packs.iter().enumerate() {
+        let target = lock_entry_target_path(paths, &entry.target);
+        if entry.source_id == source_id
+            && entry.pack_id == pack_id
+            && requested_target.as_ref().is_none_or(|requested| {
+                target == *requested
+                    || fs::canonicalize(&target)
+                        .ok()
+                        .zip(fs::canonicalize(requested).ok())
+                        .is_some_and(|(left, right)| left == right)
+            })
+        {
+            matches.push((index, target));
+        }
+    }
+    if matches.len() != 1 {
+        return Err(adopt_blocked(if matches.is_empty() {
+            "no matching active instruction pack; specify an active source-qualified pack and target file"
+        } else {
+            "pack is active in several files; specify one target FILE to adopt"
+        }));
+    }
+    let (entry_index, target) = matches
+        .pop()
+        .expect("exactly one active target was checked");
+    let entry = &lock.active_instruction_packs[entry_index];
+    let resolved = resolve_pack(paths, selector)?;
+    let source_commit = entry
+        .commit
+        .as_ref()
+        .ok_or_else(|| adopt_blocked("active source pack has no commit provenance"))?;
+    if resolved.commit.as_ref() != Some(source_commit) {
+        return Err(adopt_blocked(
+            "source revision changed since activation; review and re-enable the source pack before adoption",
+        ));
+    }
+    let _target_lock = if dry_run {
+        None
+    } else {
+        Some(acquire_target_lock(paths, &target)?)
+    };
+    let snapshot = target_snapshot(&target)?;
+    let content = snapshot
+        .content
+        .as_deref()
+        .ok_or_else(|| adopt_blocked("instruction target is missing"))?;
+    let marker = lock_marker_id(entry);
+    let (start, end) = find_block(content, &marker)?
+        .ok_or_else(|| adopt_blocked("active managed block is missing"))?;
+    if (start != 0 && !content[..start].ends_with('\n'))
+        || (end != content.len()
+            && !content[end..].starts_with('\n')
+            && !content[end..].starts_with("\r\n"))
+    {
+        return Err(adopt_blocked("managed markers must occupy their own lines"));
+    }
+    let line_ending = line_ending_for(content);
+    let expected =
+        render_pack_managed_block_with_line_ending(&marker, &resolved.pack.body, line_ending)?;
+    let legacy = render_legacy_pack_managed_block_with_line_ending(
+        &marker,
+        &resolved.pack.body,
+        line_ending,
+    )?;
+    if content[start..end] == expected || content[start..end] == legacy {
+        return Err(adopt_blocked("managed block has no edits to adopt"));
+    }
+    let body = content[start + start_marker(&marker).len()..end - end_marker(&marker).len()]
+        .strip_prefix(line_ending)
+        .and_then(|body| body.strip_suffix(line_ending))
+        .ok_or_else(|| adopt_blocked("managed markers must occupy their own lines"))?;
+    validate_body_markers(&marker, body)?;
+    if body.trim().is_empty() {
+        return Err(adopt_blocked("edited instruction body is empty"));
+    }
+    let local_marker = marker_id("local", &pack_id);
+    if find_block(content, &local_marker)?.is_some()
+        || lock.active_instruction_packs.iter().any(|candidate| {
+            candidate.source_id == "local"
+                && candidate.pack_id == pack_id
+                && targets_match(candidate, &target)
+        })
+    {
+        return Err(adopt_blocked(
+            "target already has an active local block for this pack",
+        ));
+    }
+    let local_content = format!("version: 1\n\n{body}\n");
+    let local_block =
+        render_pack_managed_block_with_line_ending(&local_marker, &local_content, line_ending)?;
+    let renamed_block = format!(
+        "{}{line_ending}{body}{line_ending}{}",
+        start_marker(&local_marker),
+        end_marker(&local_marker)
+    );
+    if local_block != renamed_block {
+        return Err(adopt_blocked(
+            "edited body cannot be rendered without changing content; check leading metadata and blank lines before adoption",
+        ));
+    }
+    for directory in [&paths.local_dir, &paths.local_instructions_dir] {
+        let metadata = fs::symlink_metadata(directory)?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err(adopt_blocked(
+                "local instruction directories must be real, non-symlink directories",
+            ));
+        }
+    }
+    let local_path = paths.local_instructions_dir.join(format!("{pack_id}.md"));
+    match fs::symlink_metadata(&local_path) {
+        Ok(_) => {
+            return Err(adopt_blocked(format!(
+                "local pack `{}` already exists; adoption never overwrites it",
+                local_path.display()
+            )));
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+    let report = InstructionAdoptReport {
+        source_ref: pack_ref(&source_id, &pack_id),
+        pack_id: pack_id.clone(),
+        target: target.clone(),
+        local_path: local_path.clone(),
+        source_commit: source_commit.clone(),
+        body: body.to_owned(),
+        dry_run,
+    };
+    if dry_run {
+        return Ok(report);
+    }
+    let mut rendered = String::with_capacity(content.len());
+    rendered.push_str(&content[..start]);
+    rendered.push_str(&local_block);
+    rendered.push_str(&content[end..]);
+    // Stage in the destination directory, then publish without replacing any
+    // concurrently created file. Retain identity for conservative rollback.
+    let mut temp = NamedTempFile::new_in(&paths.local_instructions_dir)?;
+    temp.write_all(local_content.as_bytes())?;
+    temp.as_file().sync_all()?;
+    let file = temp
+        .persist_noclobber(&local_path)
+        .map_err(|error| DaloError::Io(error.error))?;
+    let identity = target_identity(&file.metadata()?);
+    lock.active_instruction_packs[entry_index] = LockedInstructionPack {
+        source_id: "local".to_owned(),
+        pack_id,
+        target,
+        logical_targets: lock.active_instruction_packs[entry_index]
+            .logical_targets
+            .clone(),
+        commit: None,
+        version: Some("1".to_owned()),
+    };
+    sort_instruction_lock_entries(&mut lock.active_instruction_packs);
+    let result = match sync_target_parent(&paths.local_instructions_dir)
+        .and_then(|()| write_target_if_unchanged(&snapshot, &rendered))
+    {
+        Ok(written_identity) => match write_lock(paths, &lock) {
+            Ok(()) => Ok(()),
+            Err(error) => match restore_target(snapshot, &rendered, written_identity) {
+                Ok(()) => Err(error),
+                Err(restore_error) => {
+                    return Err(adopt_blocked(format!(
+                        "{error}; target restoration failed: {restore_error}; adopted pack was retained at `{}` for recovery",
+                        local_path.display()
+                    )));
+                }
+            },
+        },
+        Err(error) => Err(error),
+    };
+    if let Err(error) = result {
+        if let Err(cleanup_error) = remove_adopted_pack(&local_path, identity, &local_content) {
+            return Err(adopt_blocked(format!(
+                "{error}; could not roll back local pack: {cleanup_error}"
+            )));
+        }
+        return Err(error);
+    }
+    Ok(report)
+}
+
+fn adopt_blocked(reason: impl Into<String>) -> DaloError {
+    DaloError::StateError {
+        reason: reason.into(),
+    }
+}
+
+fn remove_adopted_pack(path: &Path, identity: TargetIdentity, content: &str) -> DaloResult<()> {
+    if fs::symlink_metadata(path)?.file_type().is_symlink()
+        || !target_has_identity_and_content(path, identity, content)?
+    {
+        return Err(adopt_blocked(
+            "local pack changed during rollback; newer content was preserved",
+        ));
+    }
+    remove_target_if_unchanged(path, identity, content)
+}
+
 /// Disable a pack: remove its managed block from `target` and drop its lock entry.
 pub fn disable_pack(
     paths: &StorePaths,
@@ -2866,6 +3120,99 @@ mod tests {
         );
         let lock = store::read_user_lock(&paths).expect("lock should be readable");
         assert!(lock.active_instruction_packs.is_empty());
+    }
+
+    #[test]
+    fn adoption_failure_should_restore_target_and_preserve_concurrent_edits() {
+        for concurrent_edit in ["none", "pack", "target"] {
+            let temp = tempfile::tempdir().unwrap();
+            let paths = StorePaths::new(temp.path().join("store"));
+            store::init_store(paths.root.clone(), false).unwrap();
+            let repo = temp.path().join("team");
+            fs::create_dir_all(repo.join("instructions")).unwrap();
+            fs::write(repo.join("instructions/style.md"), "Team body\n").unwrap();
+            git::init_repo(&repo).unwrap();
+            let output = std::process::Command::new("git")
+                .current_dir(&repo)
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env_remove("GIT_CONFIG_COUNT")
+                .env_remove("GIT_CONFIG_PARAMETERS")
+                .args(["add", "."])
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let output = std::process::Command::new("git")
+                .current_dir(&repo)
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env_remove("GIT_CONFIG_COUNT")
+                .env_remove("GIT_CONFIG_PARAMETERS")
+                .args([
+                    "-c",
+                    "user.name=Test",
+                    "-c",
+                    "user.email=test@example.com",
+                    "commit",
+                    "-qm",
+                    "test: source fixture",
+                ])
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            crate::source::add_team_source(&paths, "team", repo.to_str().unwrap(), None, false)
+                .unwrap();
+            let target = temp.path().join("AGENTS.md");
+            enable_pack(&paths, "team:style", &target, false).unwrap();
+            let edited = fs::read_to_string(&target)
+                .unwrap()
+                .replace("Team body", "Local body");
+            fs::write(&target, &edited).unwrap();
+            let before_lock = fs::read(&paths.lock_file).unwrap();
+            let local_path = paths.local_instructions_dir.join("style.md");
+            let error = adopt_pack_with_lock_writer(&paths, "team:style", None, false, |_, _| {
+                match concurrent_edit {
+                    "pack" => fs::write(&local_path, "Newer local content").unwrap(),
+                    "target" => fs::write(&target, "Newer target content").unwrap(),
+                    _ => {}
+                }
+                Err(DaloError::Io(std::io::Error::other("lock write failed")))
+            })
+            .unwrap_err();
+            assert!(error.to_string().contains("lock write failed"));
+            assert_eq!(fs::read(&paths.lock_file).unwrap(), before_lock);
+            match concurrent_edit {
+                "none" => {
+                    assert_eq!(fs::read_to_string(&target).unwrap(), edited);
+                    assert!(!local_path.exists());
+                }
+                "pack" => {
+                    assert_eq!(fs::read_to_string(&target).unwrap(), edited);
+                    assert_eq!(
+                        fs::read_to_string(&local_path).unwrap(),
+                        "Newer local content"
+                    );
+                }
+                "target" => {
+                    assert_eq!(fs::read_to_string(&target).unwrap(), "Newer target content");
+                    assert!(
+                        fs::read_to_string(&local_path)
+                            .unwrap()
+                            .contains("Local body")
+                    );
+                    assert!(error.to_string().contains("retained"));
+                }
+                _ => unreachable!(),
+            }
+        }
     }
 
     #[test]

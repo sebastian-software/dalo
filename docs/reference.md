@@ -1261,6 +1261,45 @@ after it was read. Target updates lock the opened inode and verify both its
 content and identity before and after writing, so a file replaced by another
 process is left untouched and the command fails safely.
 
+### `dalo instructions adopt <source:pack> [file]`
+
+Keep a manually edited, active team or catalog instruction block as a new local
+pack. Preview first:
+
+```sh
+dalo --dry-run instructions adopt company:engineering-defaults ~/.claude/CLAUDE.md
+dalo instructions adopt company:engineering-defaults ~/.claude/CLAUDE.md
+```
+
+The file is optional when exactly one target is active for this pack. With
+several targets, specify the file to choose which block to keep. Adoption writes
+`local/instructions/<pack>.md` with local version `1`, replaces the source-qualified
+markers with local markers, and switches that target's lock entry to `local`.
+The edited Markdown and all content outside the block stay unchanged. Other
+targets continue following the source pack. Later team updates do not overwrite
+the adopted block. Use the local pack ID with `instructions enable` or `disable`
+after adoption; disabling leaves the local pack file intact.
+
+The source must still be enabled, approved, clean and at the recorded activation
+commit. Missing, malformed, nested, empty or unedited blocks, existing local
+packs or local blocks, and redirected local directories block adoption.
+Content that the pack renderer would alter, such as leading metadata or extra
+boundary blank lines, also blocks adoption. No existing local file or symlink is
+overwritten. Concurrent target changes abort the operation. A failed lock write
+restores the original target and removes the newly created pack when safe;
+concurrent edits are preserved with recovery details in the error.
+
+Dry-run shows the adopted body and destination without changing files or locks.
+The new local pack remains uncommitted in the local Git source: review and
+commit it yourself. This command does not commit, push, or change the team
+checkout. JSON output is `InstructionAdoptReport` with `source_ref`, `pack_id`,
+`target`, `local_path`, `source_commit`, `body`, and `dry_run`.
+
+Instruction blocks are rendered copies. Linked skills use symlinks: editing a
+linked skill edits the underlying source, and agents can read those changes
+immediately. Use the existing local skill/adopt workflow for skill variants;
+dirty-source checks on a later sync do not isolate edits from agents.
+
 ### `dalo instructions list`
 
 List active instruction packs recorded in `lock.toml`.
@@ -1378,6 +1417,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `doctor` | `DoctorReport` | `store`, `findings[]`, `summary` |
 | `instructions enable` / `disable` with explicit file | `InstructionPackReport` | `source_id`, `pack_id`, `target`, `action`, `dry_run`, optional `warning` |
 | `instructions enable` / `disable` with logical targets | `InstructionPackBatchReport` | `source_id`, `pack_id`, `dry_run`, de-duplicated `operations[]` with `logical_targets[]`, effective `target`, `action`, optional `warning` |
+| `instructions adopt` | `InstructionAdoptReport` | `source_ref`, `pack_id`, `target`, `local_path`, `source_commit`, adopted `body`, `dry_run` |
 | `instructions list` | `InstructionPackListReport` | `active_instruction_packs[]` with `pack_id`, `target`, optional `logical_targets[]`, `source_id`, optional `commit`, optional `version` |
 
 Each `AuditReport.static_findings[]` entry contains `id`, `severity`,

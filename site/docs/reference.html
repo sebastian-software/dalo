@@ -1131,6 +1131,37 @@ explains the remaining drift. Mutations abort if the target changed on disk
 after it was read. Target updates lock the opened inode and verify both its
 content and identity before and after writing, so a file replaced by another
 process is left untouched and the command fails safely.</p>
+<h3 id="dalo-instructions-adopt-sourcepack-file"><a class="doc-anchor" href="#dalo-instructions-adopt-sourcepack-file"><code>dalo instructions adopt &lt;source:pack&gt; [file]</code></a></h3>
+<p>Keep a manually edited, active team or catalog instruction block as a new local
+pack. Preview first:</p>
+<pre><code class="language-sh">dalo --dry-run instructions adopt company:engineering-defaults ~/.claude/CLAUDE.md
+dalo instructions adopt company:engineering-defaults ~/.claude/CLAUDE.md
+</code></pre>
+<p>The file is optional when exactly one target is active for this pack. With
+several targets, specify the file to choose which block to keep. Adoption writes
+<code>local/instructions/&lt;pack&gt;.md</code> with local version <code>1</code>, replaces the source-qualified
+markers with local markers, and switches that target&#39;s lock entry to <code>local</code>.
+The edited Markdown and all content outside the block stay unchanged. Other
+targets continue following the source pack. Later team updates do not overwrite
+the adopted block. Use the local pack ID with <code>instructions enable</code> or <code>disable</code>
+after adoption; disabling leaves the local pack file intact.</p>
+<p>The source must still be enabled, approved, clean and at the recorded activation
+commit. Missing, malformed, nested, empty or unedited blocks, existing local
+packs or local blocks, and redirected local directories block adoption.
+Content that the pack renderer would alter, such as leading metadata or extra
+boundary blank lines, also blocks adoption. No existing local file or symlink is
+overwritten. Concurrent target changes abort the operation. A failed lock write
+restores the original target and removes the newly created pack when safe;
+concurrent edits are preserved with recovery details in the error.</p>
+<p>Dry-run shows the adopted body and destination without changing files or locks.
+The new local pack remains uncommitted in the local Git source: review and
+commit it yourself. This command does not commit, push, or change the team
+checkout. JSON output is <code>InstructionAdoptReport</code> with <code>source_ref</code>, <code>pack_id</code>,
+<code>target</code>, <code>local_path</code>, <code>source_commit</code>, <code>body</code>, and <code>dry_run</code>.</p>
+<p>Instruction blocks are rendered copies. Linked skills use symlinks: editing a
+linked skill edits the underlying source, and agents can read those changes
+immediately. Use the existing local skill/adopt workflow for skill variants;
+dirty-source checks on a later sync do not isolate edits from agents.</p>
 <h3 id="dalo-instructions-list"><a class="doc-anchor" href="#dalo-instructions-list"><code>dalo instructions list</code></a></h3>
 <p>List active instruction packs recorded in <code>lock.toml</code>.</p>
 <p>Examples:</p>
@@ -1484,6 +1515,11 @@ dalo completions fish &gt; dalo.fish
 <td><code>instructions enable</code> / <code>disable</code> with logical targets</td>
 <td><code>InstructionPackBatchReport</code></td>
 <td><code>source_id</code>, <code>pack_id</code>, <code>dry_run</code>, de-duplicated <code>operations[]</code> with <code>logical_targets[]</code>, effective <code>target</code>, <code>action</code>, optional <code>warning</code></td>
+</tr>
+<tr>
+<td><code>instructions adopt</code></td>
+<td><code>InstructionAdoptReport</code></td>
+<td><code>source_ref</code>, <code>pack_id</code>, <code>target</code>, <code>local_path</code>, <code>source_commit</code>, adopted <code>body</code>, <code>dry_run</code></td>
 </tr>
 <tr>
 <td><code>instructions list</code></td>
