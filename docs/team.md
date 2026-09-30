@@ -150,12 +150,13 @@ dalo --dry-run team catalog update marketing --from main
 
 ```text
 team catalog marketing: de993fb5ea15 -> 28a2eec94f0e (from main)
+  pin: de993fb5ea15… -> 28a2eec94f0e18ba5582792bbeb82a25bffedf02
   inventory:
     selected_changed `copywriting` changed upstream
   audits:
-    company.marketing:copywriting clean
-    company.marketing:launch clean
-  result: would update (…/company-skills/dalo.toml)
+    company.marketing:copywriting clean (0 findings, …)
+    company.marketing:launch clean (0 findings, …)
+  result: would update (dalo.toml)
 ```
 
 Dalo resolves the ref in a temporary clone, compares the declared version with
@@ -170,7 +171,7 @@ dalo team catalog update marketing --from main
 ```
 
 ```text
-  result: updated (…/company-skills/dalo.toml)
+  result: updated (dalo.toml)
 next: commit and push dalo.toml
 ```
 
@@ -188,9 +189,25 @@ catalog's generated source state, approvals, owned links, and checkout.
 Changing a catalog's URL is a deliberate two-step replacement: remove the
 declaration and sync, then add the reviewed replacement URL and sync again.
 
+For review in GitHub, start from a clean team checkout at the current default
+branch and use the explicit PR mode instead:
+
+```sh
+dalo --dry-run team catalog update marketing --from main --pr
+dalo team catalog update marketing --from main --pr
+```
+
+Dalo uses the authenticated GitHub CLI and repository write access to commit
+only the pin change in a temporary checkout, push a proposal branch, and open a
+PR. Your checkout remains unchanged. The PR body is the same text as the human
+dry-run output, with full pins, drift and audit findings. Retry the same command
+after a PR creation failure to resume the pushed branch; an existing open PR is
+reused. Changed proposal branches and closed PRs require manual review. This
+mode supports GitHub.com origins.
+
 ## 5. Commit and push
 
-Dalo never commits for you. The manifest is a reviewable file like any other:
+In the default manual flow, commit and push the reviewable manifest yourself:
 
 ```sh
 git add dalo.toml
@@ -198,9 +215,10 @@ git commit -m "chore: advance the marketing catalog pin"
 git push
 ```
 
-Catalog mutations rewrite `dalo.toml` in canonical TOML form. Formatting may be
+Manual catalog mutations rewrite `dalo.toml` in canonical TOML form. Formatting may be
 normalized and comments are not preserved, so keep the rationale in the commit
-message or the pull request.
+message or the pull request. PR mode preserves existing comments and formatting
+and changes only the reviewed version value.
 
 ## 6. What a teammate runs
 

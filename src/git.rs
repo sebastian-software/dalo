@@ -69,6 +69,23 @@ pub fn is_worktree(path: &Path) -> DaloResult<bool> {
     }
 }
 
+/// Return the canonical root of the current Git worktree.
+pub(crate) fn worktree_root(path: &Path) -> DaloResult<PathBuf> {
+    let root = run_git(path, &["rev-parse", "--show-toplevel"])?;
+    Ok(fs::canonicalize(root.trim())?)
+}
+
+/// Read a fetched remote branch, distinguishing absence from Git failures.
+pub(crate) fn remote_branch_commit(path: &Path, branch: &str) -> DaloResult<Option<String>> {
+    validate_manifest_revision(branch)?;
+    let reference = format!("refs/remotes/origin/{branch}");
+    match run_git(path, &["show-ref", "--verify", "--quiet", &reference]) {
+        Ok(_) => rev_parse(path, &reference).map(Some),
+        Err(DaloError::CommandFailed { status, .. }) if status == "1" => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
 /// Reject unsafe Git transports and URLs that embed credentials.
 ///
 /// Local paths remain valid clone sources. Remote sources must use one of the

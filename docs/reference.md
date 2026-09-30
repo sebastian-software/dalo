@@ -283,11 +283,14 @@ Resolve an upstream branch, tag, or ref in a temporary clone, compare the
 currently declared version with the candidate inventory, and run deterministic
 audits for the selected candidate skills. A successful real update writes the
 exact candidate commit to `dalo.toml`; it never leaves the shared version as a
-floating ref and never commits or pushes the repository.
+floating ref. By default it only edits the local manifest; commits and pushes
+require the explicit `--pr` flag.
 
 ```sh
 dalo --dry-run team catalog update marketing --from main
 dalo --json --dry-run team catalog update marketing --from v2
+dalo --dry-run team catalog update marketing --from main --pr
+dalo team catalog update marketing --from main --pr
 dalo team catalog update marketing --from main
 dalo team catalog update marketing --from main \
   --accept-risk "reviewed pinned automation"
@@ -301,10 +304,30 @@ accepts only blocking security-audit findings from this exact candidate. It
 does not bypass non-fast-forward updates, removed skills, invalid selections,
 or other structural blockers. Each accepted audit report retains its
 content-bound `risk_acceptance` scope hash; no personal store state is written.
+
+With `--pr`, Dalo reuses the GitHub CLI adapter used by `promote`. It requires
+an authenticated `gh`, write access to the GitHub.com `origin`, and a clean
+team repository root matching the current default branch. The update is
+committed and pushed from a temporary checkout; the original checkout and
+personal store remain unchanged. Only the reviewed version value in `dalo.toml`
+changes in the proposal; existing comments and formatting are preserved.
+The PR body is exactly the human dry-run summary, including both full commit
+IDs, inventory drift, deterministic audit findings and any accepted-risk reason.
+`--dry-run --pr` does not authenticate, commit, push or create a PR; it still
+performs catalog reads and audits. GitHub base freshness is checked on submission.
+
+Repeating the same command for the same base, candidate and review reuses the
+proposal branch and an existing open PR. If PR creation fails after pushing,
+the error names the retained branch and tells you to retry. Dalo verifies
+existing branch contents and never force-pushes; changed branches and closed
+PRs require review on GitHub. Already current pins create no PR. Other forges,
+fork-based submissions and scheduling are not supported by this mode.
+
 JSON output shape: `TeamCatalogUpdateReport`, including
 `old_version`, exact `old_commit` and `candidate_commit`, `outcomes[]`,
 `audits[]`, `accepted_risk_reason`, `blocking_reasons[]`, `dry_run`, and
-`updated`.
+`updated`, plus optional `branch` and `pull_request_url`. In PR mode `updated`
+remains false because the original manifest was not edited.
 
 ### `dalo team catalog remove <id>`
 
@@ -1308,7 +1331,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `team catalog add` | `TeamManifestMutationReport` | `path`, `action`, `catalog_id`, `dry_run`, optional `warnings[]`, resulting `manifest` |
 | `team catalog skills` | `TeamManifestMutationReport` | `path`, `action`, `catalog_id`, `dry_run`, optional `warnings[]`, resulting `manifest` |
 | `team catalog version` | `TeamManifestMutationReport` | `path`, `action`, `catalog_id`, `dry_run`, optional `warnings[]`, resulting `manifest` |
-| `team catalog update` | `TeamCatalogUpdateReport` | `catalog_id`, `old_version`, `old_commit`, `from_ref`, `candidate_commit`, `outcomes[]`, `audits[]`, optional `accepted_risk_reason`, `blocking_reasons[]`, `dry_run`, `updated`, resulting `manifest` |
+| `team catalog update` | `TeamCatalogUpdateReport` | `catalog_id`, `old_version`, `old_commit`, `from_ref`, `candidate_commit`, `outcomes[]`, `audits[]`, optional `accepted_risk_reason`, `blocking_reasons[]`, `dry_run`, `updated`, optional `branch`, optional `pull_request_url`, resulting `manifest` |
 | `team catalog remove` | `TeamManifestMutationReport` | `path`, `action`, `catalog_id`, `dry_run`, optional `warnings[]`, resulting `manifest` |
 | `team show` | `TeamManifestView` | `path`, `manifest` |
 | `source add` | `SourceAddReport` | `source`, `dry_run`, `audits[]` with one `AuditReport` per discovered skill, optional `inventory_warnings[]` (`code`, `path`, `message`) |

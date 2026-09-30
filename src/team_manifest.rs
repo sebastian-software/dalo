@@ -240,6 +240,12 @@ pub struct TeamCatalogUpdateReport {
     pub dry_run: bool,
     /// Whether `dalo.toml` was changed.
     pub updated: bool,
+    /// Branch submitted for review, when PR mode creates or resumes a proposal.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    /// GitHub pull request containing this proposal.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pull_request_url: Option<String>,
     /// Resulting or currently persisted manifest.
     pub manifest: TeamManifest,
 }
@@ -662,6 +668,8 @@ pub fn update_team_catalog_pin(
         blocking_reasons,
         dry_run,
         updated,
+        branch: None,
+        pull_request_url: None,
         manifest: resulting_manifest,
     })
 }
