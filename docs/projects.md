@@ -188,18 +188,64 @@ restores their recovery snapshot and retries. Old checkouts remain available
 after a successful update so a failed delivery can be retried without losing
 the prior links.
 
+## Remove project sources or skills
+
+Preview removing an entire source or exact selectors from its declaration:
+
+```sh
+dalo project remove company --skill review
+dalo project remove company --skill review --apply
+dalo --dry-run --json install
+dalo install
+# To stop delivery from the whole source:
+dalo project remove company --apply
+dalo install
+```
+
+Without `--apply`, removal only previews the declaration and local delivery
+effects. `--dry-run` suppresses applying even when `--apply` is present. Repeat
+`--skill` to remove several exact selectors from the declaration's `skills`
+array. Removing its final selector removes the source entry. A required skill
+stays selected through any remaining consumer; remove those consumers to stop
+its delivery. An implicit dependency is not an independently removable selector.
+
+`--apply` edits only `dalo-project.toml`, preserving unrelated entries and
+comments. Commit that change for teammates. `install` reconciles the declaration
+on an existing clone, including changes pulled from Git; a fresh clone installs
+the same remaining selection. Verified Dalo-owned links are removed, and foreign
+symlinks or real directories at former link paths are preserved. Unrelated
+sources, targets, and the global store remain independent.
+
+Removing a whole source unregisters its local pin and revokes its source-scoped
+approvals. Deselection alone retains approvals for unchanged content. Cached
+checkouts are **always retained**, including dirty checkouts and older pins;
+removal stops delivery and does not delete local work. Dirty sources that remain
+declared still block installation. Redirected paths or inconsistent pins also
+block removal. Preserve local work before cleaning up retained caches manually;
+there is no automatic project cache cleanup. A retained checkout with local edits
+cannot be overwritten by re-adding the same source ID.
+
+The preview shows deactivated skills (including unused dependencies), planned
+link actions, approvals to revoke, and retained checkouts with their dirty state.
+It uses installed pins without fetching; unavailable or changed declared pins
+set `delivery_preview_complete` to false. `--dry-run --json install` includes
+these local effects in `removals`. Ordinary install reports the actual sync
+actions. Interrupted metadata updates use the existing project recovery journal;
+rerun `dalo install` to recover and retry. A failed delivery can also be retried
+without resetting `.dalo` or deleting approvals.
+
 ## Project command boundary
 
-Project scope supports `project add`, `project update`, `init`, `install`,
+Project scope supports `project add`, `project update`, `project remove`, `init`, `install`,
 `status`, `doctor`, `audit`, and `approve`. Other project-scoped commands fail
 instead of falling back to the global store. Use `install` to reconcile
 delivery; `sync` is not yet supported in project scope. Use `dalo sync --global`
 when you intend to synchronize the global store from inside a project.
 
 Project declarations keep immutable full commit IDs as the reproducibility
-boundary, so no separate portable lockfile is needed. Source replacement and
-removal remain explicit migration work; install does not infer either from a
-declaration edit.
+boundary, so no separate portable lockfile is needed. Changing a source's URL
+under the same ID remains explicit migration work. Declaration removals are
+reconciled by install; they never authorize deleting cached content.
 
 ## Migrate a skills.sh project
 

@@ -13,7 +13,7 @@ use crate::catalog::{self, CatalogLock, DriftEntry, SourceLock};
 use crate::config::UserConfig;
 use crate::error::{DaloError, DaloResult};
 use crate::source::{self, SourceConfig, SourceKind};
-use crate::{git, store, target};
+use crate::{git, materialize, resolver, store, target};
 use toml_edit::{Array as TomlArray, DocumentMut, Item as TomlItem, Value as TomlValue};
 
 /// Separate from the existing team-source `dalo.toml` format.
@@ -123,6 +123,55 @@ pub struct ProjectDependencyChange {
     pub previous: Vec<String>,
     /// Candidate same-source requirement references.
     pub current: Vec<String>,
+}
+
+/// Local delivery effects of removing project declarations.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
+pub struct ProjectRemovalEffects {
+    /// Sources that will no longer be registered. Their caches are retained.
+    pub retained_checkouts: Vec<ProjectRetainedCheckout>,
+    /// Active skills, including dependencies, that will stop delivery.
+    pub deactivated_skills: Vec<String>,
+    /// Source-scoped decisions revoked when a source is unregistered.
+    pub approvals_to_revoke: usize,
+    /// Planned target actions, including protected foreign replacements.
+    pub link_operations: Vec<materialize::MaterializeOperation>,
+    /// Whether every declared pin was available for the local delivery preview.
+    pub delivery_preview_complete: bool,
+}
+
+/// Cache preserved when a source stops participating in a project.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ProjectRetainedCheckout {
+    /// Removed source ID.
+    pub source_id: String,
+    /// Checkout retained at its current path.
+    pub path: PathBuf,
+    /// Whether that checkout contains local changes.
+    pub dirty: bool,
+}
+
+/// Review-first declaration removal. Installation is a separate step.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ProjectRemoveReport {
+    /// Canonical project directory.
+    pub project: PathBuf,
+    /// Source whose declaration is changed or removed.
+    pub source_id: String,
+    /// Explicit selection before removal.
+    pub selection_before: Vec<String>,
+    /// Remaining explicit selection; empty means the whole source was removed.
+    pub selection_after: Vec<String>,
+    /// Full proposed declaration, preserving unrelated comments and entries.
+    pub declaration_change: String,
+    /// Effects on this machine's existing installation.
+    pub effects: ProjectRemovalEffects,
+    /// Whether the declaration was written.
+    pub applied: bool,
+    /// Whether the invocation is a dry run.
+    pub dry_run: bool,
+    /// Next action to reconcile local delivery.
+    pub next_command: String,
 }
 
 /// Inputs for resolving and optionally declaring one project source.
@@ -538,6 +587,191 @@ fn ensure_project_directory(root: &Path, relative: &Path) -> DaloResult<()> {
 }
 
 impl Project {
+    /// Preview or remove a whole source, or exact selectors from its explicit
+    /// selection. Removing the final selector removes the source declaration.
+    pub fn remove_source(
+        &self,
+        id: &str,
+        skill_refs: &[String],
+        apply: bool,
+        dry_run: bool,
+    ) -> DaloResult<ProjectRemoveReport> {
+        let original = fs::read(self.root.join(MANIFEST))?;
+        let mut manifest = self.manifest()?;
+        let index = manifest
+            .sources
+            .iter()
+            .position(|source| source.id == id)
+            .ok_or_else(|| invalid(format!("project source `{id}` is not declared")))?;
+        let selection_before = manifest.sources[index].skills.clone();
+        let mut selection_after = selection_before.clone();
+        if skill_refs.is_empty() {
+            selection_after.clear();
+        } else {
+            for reference in skill_refs {
+                let selector = if selection_before.contains(reference) {
+                    reference.as_str()
+                } else {
+                    reference
+                        .strip_prefix(&format!("{id}:"))
+                        .unwrap_or(reference)
+                };
+                if !selection_before.iter().any(|selected| selected == selector) {
+                    return Err(invalid(format!(
+                        "`{reference}` is not an explicit selector in project source `{id}`; remove its selecting consumer if it is a dependency"
+                    )));
+                }
+                selection_after.retain(|selected| selected != selector);
+            }
+        }
+        if selection_after.is_empty() {
+            manifest.sources.remove(index);
+        } else {
+            manifest.sources[index].skills = selection_after.clone();
+        }
+        self.validate_store_for_install(&manifest)?;
+        let text = std::str::from_utf8(&original)
+            .map_err(|_| invalid("project declaration must be UTF-8"))?;
+        let mut document = text
+            .parse::<DocumentMut>()
+            .map_err(|error| invalid(error.to_string()))?;
+        let tables = document
+            .get_mut("source")
+            .and_then(TomlItem::as_array_of_tables_mut)
+            .ok_or_else(|| invalid("project declaration has no sources"))?;
+        if selection_after.is_empty() {
+            tables.remove(index);
+        } else {
+            let skills = tables
+                .get_mut(index)
+                .expect("declared source table")
+                .get_mut("skills")
+                .and_then(TomlItem::as_value_mut)
+                .and_then(TomlValue::as_array_mut)
+                .ok_or_else(|| invalid("project source has no skill array"))?;
+            skills.retain(|value| {
+                value
+                    .as_str()
+                    .is_some_and(|value| selection_after.iter().any(|selected| selected == value))
+            });
+        }
+        let declaration_change = document.to_string();
+        let _: Manifest = toml::from_str(&declaration_change)
+            .map_err(|error| invalid(format!("invalid removal declaration: {error}")))?;
+        let effects = self.removal_effects(&manifest)?;
+        let applied = apply && !dry_run;
+        if applied {
+            write_manifest_if_unchanged(&self.root, &original, declaration_change.as_bytes())?;
+        }
+        Ok(ProjectRemoveReport {
+            project: self.root.clone(),
+            source_id: id.to_owned(),
+            selection_before,
+            selection_after,
+            declaration_change,
+            effects,
+            applied,
+            dry_run,
+            next_command: if applied {
+                format!(
+                    "dalo --project {} install",
+                    crate::error::shell_quote_path(&self.root)
+                )
+            } else {
+                "Review the declaration and local effects, then repeat with --apply; run dalo install afterwards.".into()
+            },
+        })
+    }
+
+    /// Preview local removal effects without fetching or persisting any files.
+    /// Pins not yet installed make the delivery preview incomplete.
+    pub fn removal_effects(&self, manifest: &Manifest) -> DaloResult<ProjectRemovalEffects> {
+        self.validate_store_for_install(manifest)?;
+        if !self.store.exists() {
+            return Ok(ProjectRemovalEffects::default());
+        }
+        let paths = store::StorePaths::new(self.store.clone());
+        let original_config = store::read_config(&paths)?;
+        let mut config = original_config.clone();
+        let approvals = store::read_approvals(&paths)?;
+        let mut next_approvals = approvals.clone();
+        let mut effects = ProjectRemovalEffects {
+            delivery_preview_complete: true,
+            ..Default::default()
+        };
+        let removed_ids = original_config
+            .sources
+            .iter()
+            .filter(|source| {
+                source.id != "local"
+                    && !manifest
+                        .sources
+                        .iter()
+                        .any(|declared| declared.id == source.id)
+            })
+            .map(|source| source.id.clone())
+            .collect::<BTreeSet<_>>();
+        for source in &original_config.sources {
+            if removed_ids.contains(&source.id) {
+                effects.retained_checkouts.push(ProjectRetainedCheckout {
+                    source_id: source.id.clone(),
+                    path: source.path.clone(),
+                    dirty: git::is_dirty(&source.path)?,
+                });
+            }
+        }
+        config
+            .sources
+            .retain(|source| !removed_ids.contains(&source.id));
+        next_approvals.approvals.retain(|approval| {
+            !removed_ids.iter().any(|id| {
+                approval.value.starts_with(&format!("{id}:"))
+                    || approval.scope == "source" && approval.value == *id
+            })
+        });
+        effects.approvals_to_revoke = approvals.approvals.len() - next_approvals.approvals.len();
+        for (index, declared) in manifest.sources.iter().enumerate() {
+            if let Some(configured) = config
+                .sources
+                .iter_mut()
+                .find(|source| source.id == declared.id)
+            {
+                configured.priority =
+                    i32::try_from(index + 1).map_err(|_| invalid("too many project sources"))?;
+                if git::rev_parse_head(&configured.path)? == declared.commit {
+                    configured.selection =
+                        catalog::canonical_skill_selection(&paths, &declared.id, &declared.skills)?;
+                } else {
+                    effects.delivery_preview_complete = false;
+                }
+            } else {
+                effects.delivery_preview_complete = false;
+            }
+        }
+        let before = store::read_user_lock(&paths)?;
+        let after = resolver::resolve_from_config(&config, next_approvals.approvals);
+        effects.deactivated_skills = before
+            .active_skills
+            .iter()
+            .filter(|skill| {
+                !after
+                    .resolution
+                    .active_skills
+                    .iter()
+                    .any(|active| active.source_ref == skill.source_ref)
+            })
+            .map(|skill| skill.source_ref.clone())
+            .collect();
+        // Use the normal materializer so the preview shares ownership and
+        // dependency rules with install; dry-run never persists generated output.
+        effects.link_operations = materialize::materialize(&paths, &after.resolution, true)?
+            .operations
+            .into_iter()
+            .filter(|operation| operation.kind != materialize::MaterializeOperationKind::NoOp)
+            .collect();
+        Ok(effects)
+    }
+
     /// Resolve only the explicitly selected directory; never search parent folders.
     pub fn new(root: &Path) -> DaloResult<Self> {
         let root = fs::canonicalize(root)?;
@@ -1089,29 +1323,40 @@ impl Project {
                 }
                 continue;
             }
-            let declared = manifest.sources.iter().find(|s| s.id == configured.id)
-                .ok_or_else(|| invalid("project source removal requires an explicit migration; install leaves existing sources untouched"))?;
-            let expected_priority = manifest
-                .sources
-                .iter()
-                .position(|s| s.id == configured.id)
-                .expect("declared source")
-                + 1;
-            let url = source::resolve_source_location(&declared.url, &self.root);
-            let expected_path = paths.sources_dir.join(&declared.id).join("checkout");
-            if configured.kind != SourceKind::Catalog
-                || configured.url.as_deref() != Some(&url)
+            let declared = manifest.sources.iter().find(|s| s.id == configured.id);
+            let expected_path = paths.sources_dir.join(&configured.id).join("checkout");
+            let versioned_root = paths.sources_dir.join(&configured.id).join("checkouts");
+            if !source::is_valid_source_id(&configured.id)
+                || configured.kind != SourceKind::Catalog
                 || !configured.enabled
                 || configured.subpath.is_some()
                 || configured.namespace.is_some()
-                || usize::try_from(configured.priority).ok() != Some(expected_priority)
+                || configured.declared_by.is_some()
+                || configured.update_policy.as_deref() != Some("pin")
             {
                 return Err(invalid(format!(
-                    "project source `{}` differs from its declaration",
-                    declared.id
+                    "project source `{}` has an unmanaged configuration",
+                    configured.id
                 )));
             }
-            let versioned_root = paths.sources_dir.join(&declared.id).join("checkouts");
+            if let Some(declared) = declared {
+                let expected_priority = manifest
+                    .sources
+                    .iter()
+                    .position(|s| s.id == configured.id)
+                    .expect("declared source")
+                    + 1;
+                let url = source::resolve_source_location(&declared.url, &self.root);
+                if configured.url.as_deref() != Some(&url)
+                    || (!allow_pin_updates
+                        && usize::try_from(configured.priority).ok() != Some(expected_priority))
+                {
+                    return Err(invalid(format!(
+                        "project source `{}` differs from its declaration",
+                        declared.id
+                    )));
+                }
+            }
             let is_known_checkout = configured.path == expected_path
                 || configured.path.parent() == Some(versioned_root.as_path())
                     && configured
@@ -1121,45 +1366,52 @@ impl Project {
                         .is_some_and(is_full_commit_id);
             if !is_known_checkout
                 || (!allow_pin_updates
-                    && configured.path != expected_path
-                    && configured.path != versioned_root.join(&declared.commit))
+                    && declared.is_some_and(|declared| {
+                        configured.path != expected_path
+                            && configured.path != versioned_root.join(&declared.commit)
+                    }))
             {
                 return Err(invalid(format!(
                     "project source `{}` has an unmanaged checkout path",
-                    declared.id
+                    configured.id
                 )));
             }
-            let configured_relative = configured.path.strip_prefix(&self.root).map_err(|_| {
-                invalid(format!(
-                    "project source `{}` checkout is outside the project store",
-                    declared.id
-                ))
-            })?;
+            let configured_relative = configured
+                .path
+                .strip_prefix(&self.root)
+                .map_err(|_| invalid("project source checkout is outside the project store"))?;
             check_path(&self.root, configured_relative)?;
             let lock = catalog::read_source_lock(&paths)?;
             let locked = lock
                 .catalogs
                 .iter()
-                .find(|catalog| catalog.source_id == declared.id);
+                .find(|catalog| catalog.source_id == configured.id);
             let checkout_commit = git::rev_parse_head(&configured.path)?;
             let versioned_name_matches_head = configured.path == expected_path
                 || configured.path.file_name().and_then(|name| name.to_str())
                     == Some(checkout_commit.as_str());
+            // An absent source only stops delivery: its checkout is never written
+            // or deleted, even when it contains local edits.
             if locked.map(|catalog| catalog.commit.as_str()) != Some(checkout_commit.as_str())
                 || locked.is_some_and(|catalog| catalog.selected != configured.selection)
                 || !versioned_name_matches_head
-                || git::is_dirty(&configured.path)?
+                || (declared.is_some() && git::is_dirty(&configured.path)?)
             {
                 return Err(invalid(format!(
                     "project source `{}` has an inconsistent pin or local edits; install will not overwrite it",
-                    declared.id
+                    configured.id
                 )));
             }
-            if !allow_pin_updates && checkout_commit != declared.commit {
-                return Err(invalid(format!(
-                    "project source `{}` has a changed pin; run `dalo install` to reconcile the reviewed declaration",
-                    declared.id
-                )));
+            if !allow_pin_updates {
+                let declared = declared.ok_or_else(|| invalid(
+                    "project source was removed from its declaration; run `dalo install` to stop delivery and retain its checkout"
+                ))?;
+                if checkout_commit != declared.commit {
+                    return Err(invalid(format!(
+                        "project source `{}` has a changed pin; run `dalo install` to reconcile the reviewed declaration",
+                        declared.id
+                    )));
+                }
             }
         }
         for declared in &manifest.sources {
@@ -1233,6 +1485,61 @@ impl Project {
         self.validate_store_for_install(manifest)?;
         let paths = store::StorePaths::new(self.store.clone());
         let mut config = store::read_config(&paths)?;
+        let original_config = config.clone();
+        let original_source_lock = catalog::read_source_lock(&paths)?;
+        let original_approvals = store::read_approvals(&paths)?;
+        let removed_ids = config
+            .sources
+            .iter()
+            .filter(|source| {
+                source.id != "local"
+                    && !manifest
+                        .sources
+                        .iter()
+                        .any(|declared| declared.id == source.id)
+            })
+            .map(|source| source.id.clone())
+            .collect::<BTreeSet<_>>();
+        config
+            .sources
+            .retain(|source| !removed_ids.contains(&source.id));
+        // Removing an earlier source shifts priorities of the retained sources.
+        for source in &mut config.sources {
+            if let Some(index) = manifest
+                .sources
+                .iter()
+                .position(|declared| declared.id == source.id)
+            {
+                source.priority =
+                    i32::try_from(index + 1).map_err(|_| invalid("too many project sources"))?;
+            }
+        }
+        if config != original_config {
+            let mut source_lock = original_source_lock.clone();
+            source_lock
+                .catalogs
+                .retain(|entry| !removed_ids.contains(&entry.source_id));
+            let mut approvals = original_approvals.clone();
+            approvals.approvals.retain(|approval| {
+                !removed_ids.iter().any(|id| {
+                    approval.value.starts_with(&format!("{id}:"))
+                        || approval.scope == "source" && approval.value == *id
+                })
+            });
+            self.persist_source_update(
+                &paths,
+                ProjectPersistedSnapshot {
+                    config: &original_config,
+                    source_lock: &original_source_lock,
+                    approvals: &original_approvals,
+                },
+                ProjectPersistedSnapshot {
+                    config: &config,
+                    source_lock: &source_lock,
+                    approvals: &approvals,
+                },
+            )?;
+        }
         for (index, declared) in manifest.sources.iter().enumerate() {
             let url = source::resolve_source_location(&declared.url, &self.root);
             let mut source_lock = catalog::read_source_lock(&paths)?;

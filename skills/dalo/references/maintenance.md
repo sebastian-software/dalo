@@ -109,7 +109,17 @@ content locally before retrying installation. Do not add a project dependency to
 the global store. Connect another agent through setup and preview the resulting
 active set before syncing.
 
-For removal, distinguish a catalog selection (`source unselect`), an entire
+For project removal, preview `dalo project remove <source-id>` or repeat
+`--skill <exact-declaration-selector>` for individual selections. Show dependency,
+approval, and link effects before applying. Apply changes only to the declaration,
+then run `dalo install`; teammates use the same command after pulling it. Remaining
+consumers keep required skills active. Removing the final selector removes the
+source. Cached checkouts, including dirty content, remain intact; do not delete
+`.dalo`, reset approvals, or remove caches to make the declaration converge.
+Foreign target entries are preserved. Dirty sources that remain declared still
+block install; help preserve those edits instead of overwriting them.
+
+For global removal, distinguish a catalog selection (`source unselect`), an entire
 source (`source remove`, preview first), and a target (`target unlink`, followed
 by sync to remove its owned links). Unlinking a target alone removes no files.
 `resolve remove-owned` repairs a recorded link; an active skill can reappear on

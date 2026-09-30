@@ -265,16 +265,54 @@ If config and source-lock updates are interrupted, the next <code>dalo install</
 restores their recovery snapshot and retries. Old checkouts remain available
 after a successful update so a failed delivery can be retried without losing
 the prior links.</p>
+<h2 id="remove-project-sources-or-skills"><a class="doc-anchor" href="#remove-project-sources-or-skills">Remove project sources or skills</a></h2>
+<p>Preview removing an entire source or exact selectors from its declaration:</p>
+<pre><code class="language-sh">dalo project remove company --skill review
+dalo project remove company --skill review --apply
+dalo --dry-run --json install
+dalo install
+# To stop delivery from the whole source:
+dalo project remove company --apply
+dalo install
+</code></pre>
+<p>Without <code>--apply</code>, removal only previews the declaration and local delivery
+effects. <code>--dry-run</code> suppresses applying even when <code>--apply</code> is present. Repeat
+<code>--skill</code> to remove several exact selectors from the declaration&#39;s <code>skills</code>
+array. Removing its final selector removes the source entry. A required skill
+stays selected through any remaining consumer; remove those consumers to stop
+its delivery. An implicit dependency is not an independently removable selector.</p>
+<p><code>--apply</code> edits only <code>dalo-project.toml</code>, preserving unrelated entries and
+comments. Commit that change for teammates. <code>install</code> reconciles the declaration
+on an existing clone, including changes pulled from Git; a fresh clone installs
+the same remaining selection. Verified Dalo-owned links are removed, and foreign
+symlinks or real directories at former link paths are preserved. Unrelated
+sources, targets, and the global store remain independent.</p>
+<p>Removing a whole source unregisters its local pin and revokes its source-scoped
+approvals. Deselection alone retains approvals for unchanged content. Cached
+checkouts are <strong>always retained</strong>, including dirty checkouts and older pins;
+removal stops delivery and does not delete local work. Dirty sources that remain
+declared still block installation. Redirected paths or inconsistent pins also
+block removal. Preserve local work before cleaning up retained caches manually;
+there is no automatic project cache cleanup. A retained checkout with local edits
+cannot be overwritten by re-adding the same source ID.</p>
+<p>The preview shows deactivated skills (including unused dependencies), planned
+link actions, approvals to revoke, and retained checkouts with their dirty state.
+It uses installed pins without fetching; unavailable or changed declared pins
+set <code>delivery_preview_complete</code> to false. <code>--dry-run --json install</code> includes
+these local effects in <code>removals</code>. Ordinary install reports the actual sync
+actions. Interrupted metadata updates use the existing project recovery journal;
+rerun <code>dalo install</code> to recover and retry. A failed delivery can also be retried
+without resetting <code>.dalo</code> or deleting approvals.</p>
 <h2 id="project-command-boundary"><a class="doc-anchor" href="#project-command-boundary">Project command boundary</a></h2>
-<p>Project scope supports <code>project add</code>, <code>project update</code>, <code>init</code>, <code>install</code>,
+<p>Project scope supports <code>project add</code>, <code>project update</code>, <code>project remove</code>, <code>init</code>, <code>install</code>,
 <code>status</code>, <code>doctor</code>, <code>audit</code>, and <code>approve</code>. Other project-scoped commands fail
 instead of falling back to the global store. Use <code>install</code> to reconcile
 delivery; <code>sync</code> is not yet supported in project scope. Use <code>dalo sync --global</code>
 when you intend to synchronize the global store from inside a project.</p>
 <p>Project declarations keep immutable full commit IDs as the reproducibility
-boundary, so no separate portable lockfile is needed. Source replacement and
-removal remain explicit migration work; install does not infer either from a
-declaration edit.</p>
+boundary, so no separate portable lockfile is needed. Changing a source&#39;s URL
+under the same ID remains explicit migration work. Declaration removals are
+reconciled by install; they never authorize deleting cached content.</p>
 <h2 id="migrate-a-skillssh-project"><a class="doc-anchor" href="#migrate-a-skillssh-project">Migrate a skills.sh project</a></h2>
 <p>For a project with a version 1 <code>skills-lock.json</code>, preview a verified migration:</p>
 <pre><code class="language-sh">dalo migrate skills-sh
@@ -333,6 +371,7 @@ restore moved entries, while retaining the backup directory for inspection.</p>
       <li><a href="#review-and-installation">Review and installation</a></li>
       <li><a href="#add-a-source-from-the-project">Add a source from the project</a></li>
       <li><a href="#update-a-project-source">Update a project source</a></li>
+      <li><a href="#remove-project-sources-or-skills">Remove project sources or skills</a></li>
       <li><a href="#project-command-boundary">Project command boundary</a></li>
       <li><a href="#migrate-a-skillssh-project">Migrate a skills.sh project</a></li>
     </ul>

@@ -121,13 +121,16 @@ Git repository without overrides. Agents should ask in their own UI when the
 intent is unclear, then use `--project <dir> init` or `init --global` explicitly.
 JSON, dry-run, CI, and non-interactive calls never prompt.
 
-The project workflow supports `project add`, `project update`, `init`,
+The project workflow supports `project add`, `project update`, `project remove`, `init`,
 `install`, `status`, `doctor`, `audit`, and `approve`. Add and update preview by
 default; applying a branch or tag requires the exact `--expect-commit` from that
 preview. Update preserves selection by stable ID unless `--skill` explicitly
 replaces it. `.dalo` and generated links are machine-local; commit only
 `dalo-project.toml`. Do not confuse it with the team-source `dalo.toml`. See
-`https://dalo.sh/docs/projects.html` for the format and limitations. Source
-removal and replacement remain separate migration work.
+`https://dalo.sh/docs/projects.html` for the format and limitations. Preview
+`dalo project remove` for explicit selector or source removal; apply the
+declaration and run install to reconcile it. Required skills stay active through
+remaining consumers, and removed sources' cached checkouts are retained even
+when dirty. Source URL replacement remains separate migration work.
 A global assistant bundle check needs `--global` (or an explicit custom store)
 inside a project; keep that check separate from the requested project operation.

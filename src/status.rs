@@ -2217,6 +2217,71 @@ pub fn print_project_add_report(report: &crate::project::ProjectAddReport) {
     }
 }
 
+/// Print the declaration change and local effects of a project removal.
+pub fn print_project_remove_report(report: &crate::project::ProjectRemoveReport) {
+    let verb = if report.applied {
+        "updated"
+    } else {
+        "would update"
+    };
+    println!(
+        "{verb} project declaration for {}",
+        terminal_safe_text(&report.source_id)
+    );
+    println!(
+        "  selection: {:?} -> {:?}",
+        report
+            .selection_before
+            .iter()
+            .map(|value| terminal_safe_text(value))
+            .collect::<Vec<_>>(),
+        report
+            .selection_after
+            .iter()
+            .map(|value| terminal_safe_text(value))
+            .collect::<Vec<_>>()
+    );
+    print_project_removal_effects(&report.effects);
+    println!("\n{}", terminal_safe_text(&report.declaration_change));
+    println!("{}", terminal_safe_text(&report.next_command));
+}
+
+/// Print local effects without claiming that unavailable pins were resolved.
+pub fn print_project_removal_effects(effects: &crate::project::ProjectRemovalEffects) {
+    for checkout in &effects.retained_checkouts {
+        println!(
+            "  retain checkout: {}{}",
+            terminal_safe_text(&checkout.path.display().to_string()),
+            if checkout.dirty { " (local edits)" } else { "" }
+        );
+    }
+    for skill in &effects.deactivated_skills {
+        println!("  stop delivery: {}", terminal_safe_text(skill));
+    }
+    println!(
+        "  source-scoped approvals to revoke: {}",
+        effects.approvals_to_revoke
+    );
+    for operation in &effects.link_operations {
+        println!(
+            "  {} {} [{}]{}",
+            operation.kind.as_str(),
+            terminal_safe_text(&operation.link_path.display().to_string()),
+            operation.status.as_str(),
+            operation
+                .reason
+                .as_ref()
+                .map(|reason| format!(" — {}", terminal_safe_text(reason)))
+                .unwrap_or_default()
+        );
+    }
+    if !effects.delivery_preview_complete {
+        println!(
+            "  Delivery preview is incomplete: install is needed to resolve unavailable declared pins."
+        );
+    }
+}
+
 /// Print a review-first project source update preview or result.
 pub fn print_project_update_report(report: &crate::project::ProjectUpdateReport) {
     let verb = if report.applied {

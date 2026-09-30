@@ -67,6 +67,129 @@ fn manifest(project: &Path, url: &Path, commit: &str) {
 }
 
 #[test]
+fn install_reconciles_removed_sources_without_deleting_dirty_checkouts() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo = temp.path().join("upstream");
+    let commit = upstream(&repo);
+    let project = temp.path().join("project");
+    fs::create_dir(&project).unwrap();
+    manifest(&project, &repo, &commit);
+    dalo_command()
+        .current_dir(&project)
+        .arg("install")
+        .assert()
+        .failure();
+    dalo_command()
+        .current_dir(&project)
+        .args(["approve", "skill", "shared:review"])
+        .assert()
+        .success();
+    dalo_command()
+        .current_dir(&project)
+        .arg("install")
+        .assert()
+        .success();
+    let checkout = project.join(".dalo/sources/shared/checkout");
+    fs::write(checkout.join("skills/review/SKILL.md"), "My local edits\n").unwrap();
+    let original = fs::read(project.join("dalo-project.toml")).unwrap();
+    let paths = dalo::store::StorePaths::new(project.join(".dalo"));
+    let original_config = dalo::store::read_config(&paths).unwrap();
+    let original_source_lock = dalo::catalog::read_source_lock(&paths).unwrap();
+    let original_approvals = dalo::store::read_approvals(&paths).unwrap();
+    let preview = dalo_command()
+        .current_dir(&project)
+        .args([
+            "--dry-run",
+            "--json",
+            "project",
+            "remove",
+            "shared",
+            "--apply",
+        ])
+        .assert()
+        .success();
+    let report: serde_json::Value = serde_json::from_slice(&preview.get_output().stdout).unwrap();
+    assert_eq!(report["effects"]["retained_checkouts"][0]["dirty"], true);
+    assert_eq!(report["effects"]["approvals_to_revoke"], 1);
+    assert_eq!(
+        fs::read(project.join("dalo-project.toml")).unwrap(),
+        original
+    );
+    assert_eq!(dalo::store::read_config(&paths).unwrap(), original_config);
+    assert_eq!(
+        dalo::store::read_approvals(&paths).unwrap(),
+        original_approvals
+    );
+    fs::write(
+        project.join("dalo-project.toml"),
+        "schema_version = 1\ntargets = [\"claude\"]\n",
+    )
+    .unwrap();
+    // Model a crash after removal metadata started committing. Installation
+    // restores the journal, then retries the pulled declaration change.
+    let journal = toml::toml! {
+        schema_version = 1
+    };
+    let mut journal = journal;
+    journal.insert(
+        "original_config".into(),
+        toml::Value::try_from(&original_config).unwrap(),
+    );
+    journal.insert(
+        "original_source_lock".into(),
+        toml::Value::try_from(&original_source_lock).unwrap(),
+    );
+    journal.insert(
+        "original_approvals".into(),
+        toml::Value::try_from(&original_approvals).unwrap(),
+    );
+    fs::write(
+        project.join(".dalo/project-update.toml"),
+        toml::to_string(&journal).unwrap(),
+    )
+    .unwrap();
+    let mut partial_config = original_config;
+    partial_config.sources.retain(|source| source.id == "local");
+    dalo::store::write_config(&paths, &partial_config).unwrap();
+    dalo::catalog::write_source_lock(&paths, &dalo::catalog::SourceLock::default()).unwrap();
+    dalo_command()
+        .current_dir(&project)
+        .args(["--json", "install"])
+        .assert()
+        .success();
+    assert!(!project.join(".claude/skills/review").is_symlink());
+    assert_eq!(
+        fs::read_to_string(checkout.join("skills/review/SKILL.md")).unwrap(),
+        "My local edits\n"
+    );
+    assert!(!project.join(".dalo/project-update.toml").exists());
+    assert!(
+        dalo::store::read_config(&paths)
+            .unwrap()
+            .sources
+            .iter()
+            .all(|source| source.id != "shared")
+    );
+    assert!(
+        dalo::catalog::read_source_lock(&paths)
+            .unwrap()
+            .catalogs
+            .is_empty()
+    );
+    assert!(
+        dalo::store::read_approvals(&paths)
+            .unwrap()
+            .approvals
+            .is_empty()
+    );
+    dalo_command()
+        .current_dir(&project)
+        .arg("install")
+        .assert()
+        .success();
+}
+
+#[test]
 fn project_scope_is_explicit_and_does_not_replace_environment_store() {
     let temp = tempfile::tempdir().unwrap();
     let global = temp.path().join("global");
@@ -1447,4 +1570,372 @@ fn interactive_ci_and_dry_run_do_not_ask_for_scope() {
     assert!(created);
     assert!(!String::from_utf8_lossy(&output.stdout).contains("[p/g, Enter cancels]"));
     assert!(!root.path().join("dalo-project.toml").exists());
+}
+
+fn write_project_skill(repo: &Path, name: &str, requires: &str) {
+    fs::create_dir_all(repo.join("skills").join(name)).unwrap();
+    fs::write(repo.join("skills").join(name).join("SKILL.md"), format!(
+        "---\nname: {name}\ndescription: Read project documentation.\n{requires}---\n\nRead the documentation.\n"
+    )).unwrap();
+}
+
+#[test]
+fn project_remove_previews_dependency_effects_and_preserves_shared_consumers() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo = temp.path().join("upstream");
+    upstream(&repo);
+    write_project_skill(&repo, "review", "requires: [helper]\n");
+    write_project_skill(&repo, "other", "requires: [helper]\n");
+    write_project_skill(&repo, "helper", "");
+    let commit = commit_all(&repo, "shared dependency");
+    let project = temp.path().join("project");
+    fs::create_dir(&project).unwrap();
+    fs::write(project.join("dalo-project.toml"), format!(
+        "# Keep my project comment\nschema_version = 1\ntargets = [\"claude\"] # Keep targets\n[[source]]\nid = \"shared\"\nurl = {:?}\ncommit = {:?}\nskills = [\"review\", \"other\", \"helper\"] # Keep selection comment\n", repo.to_str().unwrap(), commit
+    )).unwrap();
+    dalo_command()
+        .current_dir(&project)
+        .arg("install")
+        .assert()
+        .failure();
+    for skill in ["review", "other", "helper"] {
+        dalo_command()
+            .current_dir(&project)
+            .args(["approve", "skill", &format!("shared:{skill}")])
+            .assert()
+            .success();
+    }
+    dalo_command()
+        .current_dir(&project)
+        .arg("install")
+        .assert()
+        .success();
+    let original = fs::read(project.join("dalo-project.toml")).unwrap();
+    let state = fs::read(project.join(".dalo/state.toml")).unwrap();
+    let approvals = fs::read(project.join(".dalo/approvals.toml")).unwrap();
+    // Removing an explicit dependency selector does not remove its consumers.
+    let preview = dalo_command()
+        .current_dir(&project)
+        .args([
+            "--dry-run",
+            "--json",
+            "project",
+            "remove",
+            "shared",
+            "--skill",
+            "helper",
+            "--apply",
+        ])
+        .assert()
+        .success();
+    let report: serde_json::Value = serde_json::from_slice(&preview.get_output().stdout).unwrap();
+    assert_eq!(report["applied"], false);
+    assert_eq!(
+        report["effects"]["deactivated_skills"],
+        serde_json::json!([])
+    );
+    assert_eq!(
+        fs::read(project.join("dalo-project.toml")).unwrap(),
+        original
+    );
+    assert_eq!(fs::read(project.join(".dalo/state.toml")).unwrap(), state);
+    assert_eq!(
+        fs::read(project.join(".dalo/approvals.toml")).unwrap(),
+        approvals
+    );
+    dalo_command()
+        .current_dir(&project)
+        .args([
+            "project", "remove", "shared", "--skill", "helper", "--apply",
+        ])
+        .assert()
+        .success();
+    dalo_command()
+        .current_dir(&project)
+        .arg("install")
+        .assert()
+        .success();
+    assert!(project.join(".claude/skills/helper").is_symlink());
+    // An implicit requirement cannot be removed independently of its consumers.
+    dalo_command()
+        .current_dir(&project)
+        .args([
+            "project", "remove", "shared", "--skill", "helper", "--apply",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not an explicit selector"));
+    let preview = dalo_command()
+        .current_dir(&project)
+        .args(["--json", "project", "remove", "shared", "--skill", "review"])
+        .assert()
+        .success();
+    let report: serde_json::Value = serde_json::from_slice(&preview.get_output().stdout).unwrap();
+    assert_eq!(
+        report["effects"]["deactivated_skills"],
+        serde_json::json!(["shared:review"])
+    );
+    assert_eq!(report["effects"]["approvals_to_revoke"], 0);
+    dalo_command()
+        .current_dir(&project)
+        .args([
+            "project", "remove", "shared", "--skill", "review", "--apply",
+        ])
+        .assert()
+        .success();
+    assert!(project.join(".claude/skills/review").is_symlink()); // Declaration only.
+    dalo_command()
+        .current_dir(&project)
+        .arg("install")
+        .assert()
+        .success();
+    assert!(!project.join(".claude/skills/review").is_symlink());
+    assert!(project.join(".claude/skills/other").is_symlink());
+    assert!(project.join(".claude/skills/helper").is_symlink());
+    let declaration = fs::read_to_string(project.join("dalo-project.toml")).unwrap();
+    for comment in [
+        "# Keep my project comment",
+        "# Keep targets",
+        "# Keep selection comment",
+    ] {
+        assert!(declaration.contains(comment));
+    }
+    // A fresh clone converges on the same explicit selection and closure.
+    let fresh = temp.path().join("fresh");
+    fs::create_dir(&fresh).unwrap();
+    fs::write(fresh.join("dalo-project.toml"), &declaration).unwrap();
+    dalo_command()
+        .current_dir(&fresh)
+        .arg("install")
+        .assert()
+        .failure();
+    for skill in ["other", "helper"] {
+        dalo_command()
+            .current_dir(&fresh)
+            .args(["approve", "skill", &format!("shared:{skill}")])
+            .assert()
+            .success();
+    }
+    dalo_command()
+        .current_dir(&fresh)
+        .arg("install")
+        .assert()
+        .success();
+    assert!(!fresh.join(".claude/skills/review").is_symlink());
+    assert!(fresh.join(".claude/skills/other").is_symlink());
+    assert!(fresh.join(".claude/skills/helper").is_symlink());
+    // Removing the last consumer removes the source and its dependency links.
+    dalo_command()
+        .current_dir(&project)
+        .args(["project", "remove", "shared", "--skill", "other", "--apply"])
+        .assert()
+        .success();
+    dalo_command()
+        .current_dir(&project)
+        .arg("install")
+        .assert()
+        .success();
+    assert!(!project.join(".claude/skills/other").is_symlink());
+    assert!(!project.join(".claude/skills/helper").is_symlink());
+    assert!(
+        project
+            .join(".dalo/sources/shared/checkout/skills/helper/SKILL.md")
+            .exists()
+    );
+    assert!(
+        fs::read_to_string(project.join("dalo-project.toml"))
+            .unwrap()
+            .contains("# Keep my project comment")
+    );
+}
+
+#[test]
+fn pulled_source_removal_preserves_foreign_entries_and_unrelated_sources() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo = temp.path().join("upstream");
+    upstream(&repo);
+    write_project_skill(&repo, "foreign", "");
+    write_project_skill(&repo, "directory", "");
+    let commit = commit_all(&repo, "more skills");
+    let second = temp.path().join("second");
+    upstream(&second);
+    write_project_skill(&second, "keep", "");
+    let second_commit = commit_all(&second, "unrelated skill");
+    let project = temp.path().join("project");
+    fs::create_dir(&project).unwrap();
+    let retained = format!(
+        "[[source]]\nid = \"retained\"\nurl = {:?}\ncommit = {:?}\nskills = [\"keep\"]\n",
+        second.to_str().unwrap(),
+        second_commit
+    );
+    fs::write(project.join("dalo-project.toml"), format!(
+        "schema_version = 1\ntargets = [\"claude\"]\n[[source]]\nid = \"shared\"\nurl = {:?}\ncommit = {:?}\nskills = [\"review\", \"foreign\", \"directory\"]\n{retained}", repo.to_str().unwrap(), commit
+    )).unwrap();
+    dalo_command()
+        .current_dir(&project)
+        .arg("install")
+        .assert()
+        .failure();
+    for skill in [
+        "shared:review",
+        "shared:foreign",
+        "shared:directory",
+        "retained:keep",
+    ] {
+        dalo_command()
+            .current_dir(&project)
+            .args(["approve", "skill", skill])
+            .assert()
+            .success();
+    }
+    dalo_command()
+        .current_dir(&project)
+        .arg("install")
+        .assert()
+        .success();
+    let foreign = temp.path().join("foreign");
+    fs::create_dir(&foreign).unwrap();
+    fs::write(foreign.join("personal.txt"), "personal").unwrap();
+    let foreign_link = project.join(".claude/skills/foreign");
+    fs::remove_file(&foreign_link).unwrap();
+    symlink(&foreign, &foreign_link).unwrap();
+    let directory = project.join(".claude/skills/directory");
+    fs::remove_file(&directory).unwrap();
+    fs::create_dir(&directory).unwrap();
+    fs::write(directory.join("personal.txt"), "personal").unwrap();
+    fs::write(
+        project.join("dalo-project.toml"),
+        format!("schema_version = 1\ntargets = [\"claude\"]\n{retained}"),
+    )
+    .unwrap();
+    let preview = dalo_command()
+        .current_dir(&project)
+        .args(["--json", "--dry-run", "install"])
+        .assert()
+        .success();
+    let report: serde_json::Value = serde_json::from_slice(&preview.get_output().stdout).unwrap();
+    assert_eq!(report["removals"]["approvals_to_revoke"], 3);
+    assert!(project.join(".claude/skills/review").is_symlink());
+    dalo_command()
+        .current_dir(&project)
+        .arg("install")
+        .assert()
+        .success();
+    assert!(!project.join(".claude/skills/review").is_symlink());
+    assert_eq!(fs::read_link(&foreign_link).unwrap(), foreign);
+    assert_eq!(
+        fs::read_to_string(directory.join("personal.txt")).unwrap(),
+        "personal"
+    );
+    assert!(project.join(".claude/skills/keep").is_symlink());
+    let paths = dalo::store::StorePaths::new(project.join(".dalo"));
+    let config = dalo::store::read_config(&paths).unwrap();
+    assert_eq!(
+        config
+            .sources
+            .iter()
+            .find(|source| source.id == "retained")
+            .unwrap()
+            .priority,
+        1
+    );
+    let approvals = dalo::store::read_approvals(&paths).unwrap();
+    assert_eq!(approvals.approvals.len(), 1);
+    assert_eq!(approvals.approvals[0].value, "retained:keep");
+    dalo_command()
+        .current_dir(&project)
+        .arg("install")
+        .assert()
+        .success();
+}
+
+#[test]
+fn project_remove_without_installation_only_changes_the_reviewed_declaration() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo = temp.path().join("upstream");
+    let commit = upstream(&repo);
+    let project = temp.path().join("project");
+    fs::create_dir(&project).unwrap();
+    manifest(&project, &repo, &commit);
+    let original = fs::read(project.join("dalo-project.toml")).unwrap();
+    dalo_command()
+        .current_dir(&project)
+        .args(["project", "remove", "missing", "--apply"])
+        .assert()
+        .failure();
+    dalo_command()
+        .current_dir(&project)
+        .args([
+            "project", "remove", "shared", "--skill", "missing", "--apply",
+        ])
+        .assert()
+        .failure();
+    assert_eq!(
+        fs::read(project.join("dalo-project.toml")).unwrap(),
+        original
+    );
+    dalo_command()
+        .current_dir(&project)
+        .args(["project", "remove", "shared"])
+        .assert()
+        .success();
+    assert_eq!(
+        fs::read(project.join("dalo-project.toml")).unwrap(),
+        original
+    );
+    dalo_command()
+        .current_dir(&project)
+        .args(["project", "remove", "shared", "--apply"])
+        .assert()
+        .success();
+    assert!(!project.join(".dalo").exists());
+    dalo_command()
+        .current_dir(&project)
+        .arg("install")
+        .assert()
+        .success();
+}
+
+#[test]
+fn removed_source_with_redirected_checkout_blocks_without_changing_state() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo = temp.path().join("upstream");
+    let commit = upstream(&repo);
+    let project = temp.path().join("project");
+    fs::create_dir(&project).unwrap();
+    manifest(&project, &repo, &commit);
+    dalo_command()
+        .current_dir(&project)
+        .arg("install")
+        .assert()
+        .failure();
+    let checkout = project.join(".dalo/sources/shared/checkout");
+    let saved = temp.path().join("saved-checkout");
+    fs::rename(&checkout, &saved).unwrap();
+    symlink(&saved, &checkout).unwrap();
+    let original = fs::read(project.join("dalo-project.toml")).unwrap();
+    let config = fs::read(project.join(".dalo/config.toml")).unwrap();
+    dalo_command()
+        .current_dir(&project)
+        .args(["project", "remove", "shared", "--apply"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("must not be a symlink"));
+    assert_eq!(
+        fs::read(project.join("dalo-project.toml")).unwrap(),
+        original
+    );
+    fs::write(
+        project.join("dalo-project.toml"),
+        "schema_version = 1\ntargets = [\"claude\"]\n",
+    )
+    .unwrap();
+    dalo_command()
+        .current_dir(&project)
+        .arg("install")
+        .assert()
+        .failure();
+    assert_eq!(fs::read(project.join(".dalo/config.toml")).unwrap(), config);
+    assert_eq!(fs::read_link(&checkout).unwrap(), saved);
+    assert!(saved.join("skills/review/SKILL.md").exists());
 }
