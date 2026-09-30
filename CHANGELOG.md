@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.3.0](https://github.com/sebastian-software/dalo/compare/dalo-v1.2.1...dalo-v1.3.0) (2026-09-30)
+
+
+### Features
+
+* **instructions:** adopt edited source blocks as local packs ([b068746](https://github.com/sebastian-software/dalo/commit/b068746274bad4e8afe8a65451653a13372f6e0c))
+* **project:** reconcile declared source and skill removals ([fa1d577](https://github.com/sebastian-software/dalo/commit/fa1d577185669066fe8f16a93aa70c4840bb6dd4))
+* **team:** open reviewed catalog pin update pull requests ([e564b12](https://github.com/sebastian-software/dalo/commit/e564b127a96da7eb54f728bb7c4e702c32206381))
+
+
+### Bug Fixes
+
+* **deps:** refresh video renderer dependencies ([14456fa](https://github.com/sebastian-software/dalo/commit/14456fa9ad4e8140e34070ae9d6bd04e1f480007))
+* **deps:** update installer undici to 6.29.0 ([19a3864](https://github.com/sebastian-software/dalo/commit/19a38643f0b2e6d0a06f630f4cbbe72a95db6fce))
+
 ## [1.2.1](https://github.com/sebastian-software/dalo/compare/dalo-v1.2.0...dalo-v1.2.1) (2026-09-29)
 
 
