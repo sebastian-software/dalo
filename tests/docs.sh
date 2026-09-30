@@ -346,8 +346,7 @@ tests/workflows.sh
 docs/compatibility.md
 docs/upgrading.md
 site/docs/compatibility.html
-site/docs/upgrading.html
-site/news/1-0.html"
+site/docs/upgrading.html"
 intel_offenders=""
 for tracked_file in $(cd "$root" && git ls-files); do
   case "$tracked_file" in
