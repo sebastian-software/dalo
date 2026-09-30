@@ -7,7 +7,7 @@
 
 # Dalo
 
-**Your team's agent setup, versioned like code.**
+**Manage your skills through conversation, backed by Dalo's safety checks.**
 
 <!-- mdtheme:badges:start -->
 [![Crates.io](https://img.shields.io/crates/v/dalo.svg)](https://crates.io/crates/dalo)
@@ -18,21 +18,52 @@
 <!-- mdtheme:badges:end -->
 
 For engineers and team leads who run Claude Code, Codex, Cursor, or another
-agent across several people and machines: keep skills, standing instructions,
-and hooks in Git, resolve one approved set, and link it into the folders your
-agents already read. Dalo handles what is behind those folders — sources,
-priorities, approvals, conflicts, drift, and safe synchronization.
+agent: tell your agent which skills you want, what to update, or what needs
+fixing. It handles the commands and explains the result. Dalo enforces approval
+and ownership checks during sync, so you can manage skills through conversation
+while keeping control of what you trust.
 
-**[Visit dalo.sh](https://dalo.sh)** · **[Watch the 15-second demo](https://dalo.sh/#quickstart)** · **[Get started](docs/getting-started.md)**
+Dalo keeps skills, standing instructions, and hooks in Git, resolves one
+approved set, and delivers it to the folders your agents already read. Your
+team's setup stays versioned like code across people and machines.
 
-## Install
+**[Visit dalo.sh](https://dalo.sh)** · **[Watch the 15-second demo](https://dalo.sh/#quickstart)** · **[Use Dalo through your agent](docs/assistant.md)**
 
-Ask your local coding agent: **“Install the Dalo skill manager.”** The
-[agent setup guide](https://dalo.sh/install.md) covers the binary, the bundled
-Dalo assistant, and verification. No preinstalled Dalo skill is needed.
-[Use Dalo through your agent](docs/assistant.md).
+## Install through your agent (recommended)
 
-Dalo runs on macOS and Linux:
+Paste this into your local coding agent:
+
+> Install Dalo from https://dalo.sh/install.md and set it up for this agent.
+
+The agent installs Dalo, connects its skill folder, and makes the bundled Dalo
+assistant available. No preinstalled Dalo skill is needed. Use an agent with
+local file and command access on macOS or Linux.
+
+## Keep using it through conversation
+
+Once set up, select the Dalo skill in your agent (for example, `$dalo` in Codex)
+and ask in your own language:
+
+- “What skills do I have, and what needs attention?”
+- “Add my team's skill repository and make it available in this agent.”
+- “Update my skills and show me what changed.”
+- “Make the same skills available in Claude Code.”
+- “I used skills.sh before. Move these skills to Dalo and keep my changes.”
+
+The agent works from your actual installation, previews changes, and explains
+conflicts or approvals that need your decision. Dalo keeps unapproved catalog
+skills out of the sync, preserves unmanaged files, and blocks source refresh
+when a checkout has local changes. These checks apply when your agent runs Dalo,
+just as they do in the terminal. The assistant uses the agent you already have,
+with no separate model, API key, or server.
+
+[Use Dalo through your agent](docs/assistant.md) covers installation, everyday
+requests, and working with existing skills. If your host caches its skill list,
+reload skills or start a new session after setup.
+
+## Prefer the terminal?
+
+Install the binary with Homebrew, the hosted installer, or the npm launcher:
 
 ```sh
 # macOS with Homebrew
@@ -45,50 +76,25 @@ curl -fsSL https://dalo.sh/install.sh | sh
 npx getdalo --version
 ```
 
-Cargo, Cargo Binstall, mise, Nix, manual archives, and checksum and provenance
-verification are covered in [Installation](#installation) further down.
-
-## Five minutes to a synced skill set
-
-**1. Create the store.** It holds sources, locks, approvals, and audits. Agent
-folders stay output targets.
+Then create a store, link the agents you use, and add your team's repository:
 
 ```sh
 dalo init
-```
-
-**2. See which agents are installed.** Detection is read-only and names the
-default skill directory of every supported agent.
-
-```sh
 dalo target detect
-```
-
-**3. Link the agents you use.** Repeat for every agent; `generic` takes an
-explicit path for anything folder-based.
-
-```sh
 dalo target link codex
 dalo target link claude
 dalo target link cursor
-```
-
-**4. Add your team's skill repository.** Dalo clones it into the store and runs
-a deterministic security preflight on every skill it finds.
-
-```sh
 dalo source add company git@github.com:acme/agent-skills.git
-```
-
-No team repository yet? Skip this step and start from a public catalog, as
-shown under [When something is off](#when-something-is-off).
-
-**5. Sync.** One command resolves the approved set and links it into every
-configured target.
-
-```sh
 dalo sync
+dalo status
 ```
+
+Use your real repository URL in place of the example. No team repository yet?
+Start from a public catalog under [When something is off](#when-something-is-off).
+The [command-line guide](docs/getting-started.md) explains each step; additional
+install methods and verification are in [Installation](#installation).
+
+One sync resolves the approved set and links it into every configured target:
 
 ```text
 applied  create     target[codex]:/incident-review -> store:/sources/company/checkout/skills/incident-review
@@ -97,13 +103,9 @@ synced: 2 skills across 1 target (2 created)
 security preflight: deterministic checks only
 ```
 
-**6. Check what an agent is actually using.** `status` lists managed,
-unmanaged, shadowed, blocked, and pending skills; `dalo doctor` adds a focused
-health check.
-
-```sh
-dalo status
-```
+`status` lists managed, unmanaged, shadowed, blocked, and pending skills;
+`dalo doctor` adds a focused health check. You can also ask your agent to check
+these reports and explain what needs attention.
 
 The quickstart is also available as a
 [short MP4 video](https://dalo.sh/assets/dalo-quickstart.mp4).

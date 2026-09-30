@@ -58,14 +58,14 @@ export const OgImage = () => {
 
       <div style={{position: 'absolute', left: 80, top: 184, width: 700}}>
         <h1 style={{margin: 0, fontWeight: 700, fontSize: 68, lineHeight: 1.04, letterSpacing: '-0.045em'}}>
-          Your team&rsquo;s agent setup,
+          Manage your skills.
           <br />
           <span style={{backgroundImage: headlineGradient, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent'}}>
-            versioned like code.
+            Just ask your agent.
           </span>
         </h1>
         <p style={{margin: '28px 0 0', fontSize: 26, lineHeight: 1.45, color: colors.ink2, maxWidth: 600}}>
-          Skills, standing instructions, and hooks managed from Git.
+          Your agent handles the commands while Dalo checks approvals and protects your own files during sync.
         </p>
       </div>
 

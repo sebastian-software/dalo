@@ -4,14 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Getting Started · Dalo documentation</title>
-  <meta name="description" content="Pick your starting point, link an agent, add sources, and reach a first synced skill set." />
+  <meta name="description" content="The command-line walkthrough: pick your starting point, connect an agent, and sync skills." />
   <link rel="canonical" href="https://dalo.sh/docs/getting-started.html" />
   <meta name="theme-color" content="#ffffff" />
   <meta property="og:type" content="article" />
   <meta property="og:site_name" content="Dalo" />
   <meta property="og:url" content="https://dalo.sh/docs/getting-started.html" />
   <meta property="og:title" content="Getting Started · Dalo documentation" />
-  <meta property="og:description" content="Pick your starting point, link an agent, add sources, and reach a first synced skill set." />
+  <meta property="og:description" content="The command-line walkthrough: pick your starting point, connect an agent, and sync skills." />
   <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
   <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
   <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
@@ -37,7 +37,7 @@
       <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
     </nav>
     <div class="header-cta">
-      <a class="pill-btn" href="/docs/getting-started.html">Get started
+      <a class="pill-btn" href="/docs/assistant.html">Use your agent
         <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </a>
       <details class="mobile-menu">
@@ -60,8 +60,8 @@
   <nav class="doc-nav" aria-label="Documentation">
     <p class="doc-nav-h">Documentation</p>
     <a href="/docs/">Overview</a>
-    <a href="/docs/getting-started.html" aria-current="page">Getting started</a>
     <a href="/docs/assistant.html">Dalo assistant</a>
+    <a href="/docs/getting-started.html" aria-current="page">Getting started</a>
     <a href="/docs/projects.html">Project installations</a>
     <a href="/docs/team.html">Team repository</a>
     <a href="/docs/reference.html">Command reference</a>
@@ -79,8 +79,8 @@
     <summary><span class="doc-menu-label">Documentation</span> <span class="doc-menu-current">Getting started</span></summary>
     <nav class="doc-menu-nav" aria-label="Documentation">
       <a href="/docs/">Overview</a>
-      <a href="/docs/getting-started.html" aria-current="page">Getting started</a>
       <a href="/docs/assistant.html">Dalo assistant</a>
+      <a href="/docs/getting-started.html" aria-current="page">Getting started</a>
       <a href="/docs/projects.html">Project installations</a>
       <a href="/docs/team.html">Team repository</a>
       <a href="/docs/reference.html">Command reference</a>
@@ -97,10 +97,21 @@
   </details>
   <article class="doc-body">
 <h1 id="getting-started">Getting Started</h1>
-<p>This guide takes one machine from a fresh install to agents that read the
-team&#39;s skills. It is written for the developer side. If you own the repository
-those skills come from, read the <a href="/docs/team.html">team repository guide</a> instead — or
-afterwards.</p>
+<p>The recommended way to install and use Dalo is through your local coding
+agent. Paste this into the agent you want to set up:</p>
+<blockquote>
+<p>Install Dalo from <a href="https://dalo.sh/install.md" rel="noopener">https://dalo.sh/install.md</a> and set it up for this agent.</p>
+</blockquote>
+<p>The agent installs the binary and bundled assistant, connects its skill folder,
+and checks the result. Then keep talking to it: “Add my team&#39;s skill repository,”
+“Update my skills and show me what changed,” or “Check what needs attention.”
+You do not need to learn Dalo&#39;s commands. Its approval, audit, and ownership
+checks apply when your agent uses Dalo, keeping catalog approvals and conflicts
+visible while sync preserves your own files. See <a href="/docs/assistant.html">Use Dalo through your agent</a>
+for everyday requests, existing setups, and how those protections work.</p>
+<p>The rest of this guide is the command-line walkthrough from a fresh install to
+agents that read your team&#39;s skills. If you own the repository those skills
+come from, read the <a href="/docs/team.html">team repository guide</a> as well.</p>
 <p>Before you start:</p>
 <ul>
 <li>install Dalo (see the <a href="https://github.com/sebastian-software/dalo/blob/main/README.md#installation" rel="noopener">README installation instructions</a>)</li>
@@ -140,10 +151,6 @@ that matches your situation:</p>
 <tr>
 <td>The skills belong to one repository, not your whole machine</td>
 <td><a href="/docs/projects.html">Project installations</a></td>
-</tr>
-<tr>
-<td>You would rather delegate the setup</td>
-<td>Ask your agent to <strong>“Install the Dalo skill manager.”</strong> — see the <a href="/docs/assistant.html">conversational setup</a></td>
 </tr>
 </tbody></table></div>
 <h2 id="1-initialize-the-store"><a class="doc-anchor" href="#1-initialize-the-store">1. Initialize the store</a></h2>
@@ -460,6 +467,7 @@ do not protect against</li>
         <div class="footer-col">
           <p class="footer-h">Docs</p>
           <a href="/docs/">All documentation</a>
+          <a href="/docs/assistant.html">Use Dalo through your agent</a>
           <a href="/docs/getting-started.html">Getting started</a>
           <a href="/docs/reference.html">Reference</a>
           <a href="/docs/troubleshooting.html">Troubleshooting</a>

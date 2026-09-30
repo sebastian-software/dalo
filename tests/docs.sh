@@ -182,9 +182,9 @@ grep -q 'audits\[\]' "$root/docs/reference.md"
 grep -q 'security-audit block' "$root/docs/ci.md"
 grep -q 'dalo approve skill' "$root/docs/getting-started.md"
 grep -q 'dalo approve skill' "$root/site/index.html"
-# The homepage shows the team flow with `team init`; the catalog filter syntax
-# is reference material and lives in the team guide, not on the landing page.
-grep -q 'dalo team init' "$root/site/index.html"
+# The homepage routes team setup to the full guide, where the commands live.
+grep -Fq 'href="/docs/team.html"' "$root/site/index.html"
+grep -q 'dalo team init' "$root/docs/team.md"
 grep -q 'dalo team catalog add' "$root/docs/team.md"
 # The worked pin-advance example lives in the team guide; the README only
 # points at it, so the exact command is asserted where it is now documented.
@@ -236,9 +236,8 @@ grep -Fq '## `dalo install`' "$root/docs/reference.md"
 grep -Fq '## `dalo migrate skills-sh`' "$root/docs/reference.md"
 grep -q 'dalo target link generic "\$RUNNER_TEMP/dalo-skills"' "$root/docs/ci.md"
 
-# The README leads with the five-minute path: a first-time reader must reach a
-# working `dalo sync` in the first screen, and every step of that path stays
-# copy-pasteable.
+# The README leads with conversational setup and ongoing use; the optional CLI
+# walkthrough still provides every command needed for a first team sync.
 for quickstart_command in \
   'dalo init' \
   'dalo target detect' \
@@ -247,11 +246,13 @@ for quickstart_command in \
   'dalo sync' \
   'dalo status'; do
   grep -Fq "$quickstart_command" "$root/README.md" \
-    || { echo "the README five-minute path no longer runs: $quickstart_command" >&2; exit 1; }
+    || { echo "the README CLI path no longer runs: $quickstart_command" >&2; exit 1; }
 done
 readme_first_screen="$(head -n 100 "$root/README.md")"
-printf '%s\n' "$readme_first_screen" | grep -Fxq 'dalo sync' \
-  || { echo 'the README no longer reaches `dalo sync` within its first screen' >&2; exit 1; }
+printf '%s\n' "$readme_first_screen" | grep -Fq 'Install Dalo from https://dalo.sh/install.md and set it up for this agent.' \
+  || { echo 'the README no longer leads with the agent setup prompt' >&2; exit 1; }
+printf '%s\n' "$readme_first_screen" | grep -Fq 'Update my skills and show me what changed.' \
+  || { echo 'the README no longer introduces ongoing conversational use' >&2; exit 1; }
 # Recovery guidance stays in the README: one worked example whose output names
 # the next command, plus the pointer to the full finding list.
 grep -Fq "pending approval: sebastian:$catalog_skill (run: dalo approve skill sebastian:$catalog_skill)" "$root/README.md"
@@ -492,18 +493,21 @@ grep -Eq '"softwareVersion": "[0-9]+\.[0-9]+\.[0-9]+"' "$root/site/index.html"
 grep -Fq 'x-release-please-version' "$root/site/index.html"
 grep -Fq 'x-release-please-start-version' "$root/site/index.html"
 
-# The hero transcript is the output the current CLI prints for a team source
-# plus one selected, unapproved catalog skill: the same run the README shows.
-# `~/.agents/skills` is the Codex default, and `generic` refuses to be linked
-# without an explicit path, so the hero has to label that directory `codex`.
-grep -Fq 'target[codex]:/incident-review <span class="nb">-&gt;</span> store:/sources/company/checkout/skills/incident-review' "$root/site/index.html"
+# The hero shows an illustrative conversation and a copyable setup prompt.
+# CLI transcripts remain in the sandbox, recovery examples, and video.
+grep -Fq 'Dalo through your agent · example workflow' "$root/site/index.html"
+grep -Fq 'data-copy-target="hero-install-prompt"' "$root/site/index.html"
+grep -Fq 'data-copy-target="quick-install-prompt"' "$root/site/index.html"
+grep -Fq 'data-copy-target="cta-install-prompt"' "$root/site/index.html"
+for document in "$root/README.md" "$root/site/index.html" "$root/docs/assistant.md" "$root/docs/getting-started.md"; do
+  grep -Fq 'Install Dalo from https://dalo.sh/install.md and set it up for this agent.' "$document"
+done
 refute 'the hero labels the Codex default directory as the generic target' \
   grep -Fq 'target[generic]: ~/.agents/skills' "$root/site/index.html"
-grep -Fq 'synced: 2 skills across 1 target (2 created)' "$root/site/index.html"
-# The approval card is the skill that transcript reports as pending, and the
-# install boxes say where the binary lands and how it is verified.
-grep -Fq '<span class="status pending">pending</span>' "$root/site/index.html"
-test "$(grep -c 'data-install-note' "$root/site/index.html")" -ge 2
+# The approval card keeps the user's decision visible, and the optional CLI
+# installer says where the binary lands and how it is verified.
+grep -Fq '<span class="status pending">review first</span>' "$root/site/index.html"
+grep -Fq 'data-install-note' "$root/site/index.html"
 grep -Fq 'data-note-value=' "$root/site/index.html"
 grep -Fq 'installNotes' "$root/site/main.js"
 grep -Fq 'target[generic]:/review -> store:/local/skills/review' "$root/video/src/QuickstartVideo.tsx"
@@ -568,10 +572,12 @@ cmp "$root/logo.svg" "$root/site/assets/img/logo.svg"
 og_image_header="$(od -An -tx1 -j16 -N8 "$root/site/assets/img/og.png" | tr -d ' \n')"
 test "$og_image_header" = "000004b000000276" \
   || { echo 'site/assets/img/og.png is no longer the declared 1200x630' >&2; exit 1; }
-# The OG mirrors the homepage tagline. Its two halves are separate text nodes.
-{ grep -Fq "Your team&rsquo;s agent setup," "$root/video/src/OgImage.tsx" \
-    && grep -Fq "versioned like code." "$root/video/src/OgImage.tsx"; } \
-  || { echo 'the OG still no longer carries the homepage tagline' >&2; exit 1; }
+# The OG uses a compact version of the homepage's conversational headline.
+grep -Fq 'Manage your skills.' "$root/video/src/OgImage.tsx"
+for document in "$root/site/index.html" "$root/video/src/OgImage.tsx"; do
+  grep -Fq 'Just ask your agent.' "$document" \
+    || { echo "$document no longer carries the conversational tagline" >&2; exit 1; }
+done
 refute 'the site requests a CDN-hosted player instead of self-hosted assets' \
   grep -R -q -E --exclude-dir=node_modules --exclude-dir=build 'cdn\.jsdelivr\.net|AsciinemaPlayer|asciinema-player' "$root/site"
 grep -q 'DALO_VERSION' "$root/site/install.md"

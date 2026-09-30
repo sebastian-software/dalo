@@ -1,9 +1,21 @@
 # Getting Started
 
-This guide takes one machine from a fresh install to agents that read the
-team's skills. It is written for the developer side. If you own the repository
-those skills come from, read the [team repository guide](team.md) instead — or
-afterwards.
+The recommended way to install and use Dalo is through your local coding
+agent. Paste this into the agent you want to set up:
+
+> Install Dalo from https://dalo.sh/install.md and set it up for this agent.
+
+The agent installs the binary and bundled assistant, connects its skill folder,
+and checks the result. Then keep talking to it: “Add my team's skill repository,”
+“Update my skills and show me what changed,” or “Check what needs attention.”
+You do not need to learn Dalo's commands. Its approval, audit, and ownership
+checks apply when your agent uses Dalo, keeping catalog approvals and conflicts
+visible while sync preserves your own files. See [Use Dalo through your agent](assistant.md)
+for everyday requests, existing setups, and how those protections work.
+
+The rest of this guide is the command-line walkthrough from a fresh install to
+agents that read your team's skills. If you own the repository those skills
+come from, read the [team repository guide](team.md) as well.
 
 Before you start:
 
@@ -24,7 +36,6 @@ that matches your situation:
 | Skills already live in your agent folder | Steps 1 and 2, then [adopt them](#adopt-a-skill-an-agent-wrote) — Dalo leaves them untouched until you do |
 | Your project installed skills with skills.sh | [Migrate a skills.sh project](projects.md#migrate-a-skillssh-project) |
 | The skills belong to one repository, not your whole machine | [Project installations](projects.md) |
-| You would rather delegate the setup | Ask your agent to **“Install the Dalo skill manager.”** — see the [conversational setup](assistant.md) |
 
 ## 1. Initialize the store
 

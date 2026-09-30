@@ -29,7 +29,7 @@ const GROUPS = [
   {
     id: "start",
     title: "Start here",
-    intro: "From a fresh install to a synced skill set, on the path that fits what you already have.",
+    intro: "Install and manage Dalo through your agent, or follow the command-line walkthrough.",
   },
   {
     id: "look-up",
@@ -48,16 +48,16 @@ const GROUPS = [
 // and summary live here.
 const PAGES = [
   {
-    slug: "getting-started",
-    group: "start",
-    label: "Getting started",
-    summary: "Pick your starting point, link an agent, add sources, and reach a first synced skill set.",
-  },
-  {
     slug: "assistant",
     group: "start",
     label: "Dalo assistant",
-    summary: "Set up, migrate, and maintain skills by talking to the agent you already use.",
+    summary: "Recommended: manage skills through your agent, backed by Dalo's approval, audit, and ownership checks.",
+  },
+  {
+    slug: "getting-started",
+    group: "start",
+    label: "Getting started",
+    summary: "The command-line walkthrough: pick your starting point, connect an agent, and sync skills.",
   },
   {
     slug: "projects",
@@ -345,7 +345,7 @@ const shell = ({
 ${TOP_NAV(section, "      ")}
     </nav>
     <div class="header-cta">
-      <a class="pill-btn" href="/docs/getting-started.html">Get started
+      <a class="pill-btn" href="/docs/assistant.html">Use your agent
         ${CHEVRON}
       </a>
       <details class="mobile-menu">
@@ -398,6 +398,7 @@ ${body}
         <div class="footer-col">
           <p class="footer-h">Docs</p>
           <a href="/docs/">All documentation</a>
+          <a href="/docs/assistant.html">Use Dalo through your agent</a>
           <a href="/docs/getting-started.html">Getting started</a>
           <a href="/docs/reference.html">Reference</a>
           <a href="/docs/troubleshooting.html">Troubleshooting</a>
@@ -530,9 +531,12 @@ ${PAGES.filter((page) => page.group === group.id)
     canonical: `${SITE}/docs/`,
     body: `<p class="doc-kicker">Documentation</p>
 <h1>Dalo documentation</h1>
-<p class="doc-lede">New here? <a href="/docs/getting-started.html">Getting started</a> opens with
-a table that routes you by what you already have. The installation guide lives at
-<a href="/install.md">install.md</a>, the release history in the
+<p class="doc-lede">Start with <a href="/docs/assistant.html">Dalo through your agent</a>,
+the recommended way to install Dalo and manage your skills. Your agent handles
+commands and reports while Dalo enforces its approval, audit, and ownership checks.
+For commands, use the
+<a href="/docs/getting-started.html">getting started walkthrough</a>.
+The agent installation guide lives at <a href="/install.md">install.md</a>, the release history in the
 <a href="${BLOB}/CHANGELOG.md" rel="noopener">changelog</a>.</p>
 ${sections}`,
   })
