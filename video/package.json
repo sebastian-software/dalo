@@ -9,14 +9,14 @@
     "render:og": "remotion still src/index.ts DaloOg ../site/assets/img/og.png --image-format=png"
   },
   "dependencies": {
-    "@remotion/cli": "4.0.521",
-    "react": "19.2.8",
-    "react-dom": "19.2.8",
-    "remotion": "4.0.521"
+    "@remotion/cli": "4.0.530",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "remotion": "4.0.530"
   },
   "devDependencies": {
-    "@types/react": "19.2.18",
-    "@types/react-dom": "19.2.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
     "typescript": "5.9.3"
   }
 }
