@@ -553,8 +553,20 @@ pub enum InstructionsSubcommand {
     Enable(InstructionsFileArgs),
     /// Remove a pack's managed block from a target file.
     Disable(InstructionsFileArgs),
+    /// Keep an edited source-backed block as a local instruction pack.
+    Adopt(InstructionsAdoptArgs),
     /// List active instruction packs recorded in the user lock.
     List,
+}
+
+/// Arguments for adopting an edited instruction block.
+#[derive(Debug, Args)]
+pub struct InstructionsAdoptArgs {
+    /// Source-qualified reference of an active instruction pack.
+    pub pack: String,
+    /// Target file; required when the pack is active in several files.
+    #[arg(value_name = "FILE")]
+    pub file: Option<PathBuf>,
 }
 
 /// Arguments for `instructions enable`/`disable`.
@@ -2962,6 +2974,50 @@ fn run_instructions(options: &GlobalOptions, command: InstructionsCommand) -> Da
                     print_json(&report)?;
                 } else {
                     print_instruction_pack_batch_report(&report);
+                }
+            }
+            Ok(())
+        }
+        InstructionsSubcommand::Adopt(args) => {
+            ensure_initialized(&paths)?;
+            let _lock = if options.dry_run {
+                None
+            } else {
+                Some(store::StoreLock::acquire(&paths)?)
+            };
+            let report = instructions::adopt_pack(
+                &paths,
+                &args.pack,
+                args.file.as_deref(),
+                options.dry_run,
+            )?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                println!(
+                    "{} {} -> local:{} ({})",
+                    if report.dry_run {
+                        "would adopt"
+                    } else {
+                        "adopted"
+                    },
+                    report.source_ref,
+                    report.pack_id,
+                    status::compact_human_path(&report.target)
+                );
+                println!(
+                    "local pack: {}",
+                    status::compact_human_path(&report.local_path)
+                );
+                if report.dry_run {
+                    for line in report.body.lines() {
+                        println!("{}", crate::term::terminal_safe_text(line));
+                    }
+                } else {
+                    println!(
+                        "next: review and commit the new pack in {}",
+                        status::compact_human_path(&paths.local_dir)
+                    );
                 }
             }
             Ok(())

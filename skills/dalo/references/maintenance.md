@@ -63,6 +63,30 @@ URL and mention the source commit and deterministic audit summary. If pushing
 succeeds but PR creation fails, preserve the remote branch and report it for
 recovery rather than retrying into a new branch automatically.
 
+## Keep edited instruction blocks
+
+When the user wants to keep edits inside an active team instruction block, check
+`instructions adopt --help` with the installed binary and preview the specific
+pack and file:
+
+```sh
+dalo --dry-run instructions adopt <source:pack> <file>
+dalo instructions adopt <source:pack> <file>
+```
+
+Inspect the body and local destination in the preview. Adoption replaces only
+that file's active source block with a local pack; other targets remain on the
+team pack. Existing local packs, malformed markers and dirty or changed source
+commits block adoption. Preserve the user's content and diagnose the blocker.
+The local pack is left uncommitted for review. Use its local pack ID for later
+enable/disable operations; do not re-enable the team pack on top of the override
+unless the user wants both.
+
+This applies to rendered instruction copies. Editing a symlinked skill changes
+its underlying source immediately, and agents can see the edits before any
+sync. Use the existing skill migration/local variant workflow for those edits;
+a future dirty-source check does not isolate agent access.
+
 ## Repair and resume
 
 | Finding | Response |
