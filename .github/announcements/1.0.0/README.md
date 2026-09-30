@@ -28,3 +28,11 @@ support links accurate. There is no requirement to add a temporary homepage
 banner, post to a particular number of channels, or run a timed feedback
 campaign. Answer questions where they arise. Turn specific, reproducible
 problems into ordinary issues or documentation fixes.
+
+## Publication decision — 2026-09-30
+
+I am keeping these drafts as optional reference material. I am not scheduling
+or publishing a 1.0 announcement as part of the launch-information cleanup.
+The release information and working support links are the deliverables here.
+If I reuse a draft later, I will check its claims against the release being
+announced and the current documentation before publishing.
