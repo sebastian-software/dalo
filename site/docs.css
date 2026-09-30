@@ -191,6 +191,8 @@
   list-style: none; margin-top: 36px; padding: 0;
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px;
 }
+.doc-body .doc-group-intro { color: var(--muted); }
+.doc-body .doc-group-intro + .doc-cards { margin-top: 20px; }
 .doc-cards li { padding: 0; }
 .doc-card {
   position: relative; display: grid; align-content: start; gap: 6px; height: 100%;

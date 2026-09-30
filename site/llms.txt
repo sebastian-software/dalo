@@ -46,7 +46,8 @@ the user's request or current agent, asking only when it remains ambiguous.
 
 - [Dalo assistant](https://dalo.sh/docs/assistant.html): complete conversational setup, bundled skill installation, migration, maintenance, and alternate skill distribution.
 
-- [Getting started](https://dalo.sh/docs/getting-started.html): install, link an agent target, add sources, and reach a first synced skill set.
+- [Getting started](https://dalo.sh/docs/getting-started.html): pick a starting point (team repository, public catalog, existing skills, or a sandbox), link an agent target, add sources, and reach a first synced skill set.
+- [Project installations](https://dalo.sh/docs/projects.html): a committed `dalo-project.toml` that pins skills per repository, `dalo install` to restore it in any clone, and `dalo migrate skills-sh` for an existing skills.sh project.
 - [Team repository](https://dalo.sh/docs/team.html): publish a team source, pin external catalogs to a commit, advance a pin, and onboard a teammate.
 - [Command reference](https://dalo.sh/docs/reference.html): every command, flag, config file, `--json` report shape, and diagnostic code.
 - [Troubleshooting](https://dalo.sh/docs/troubleshooting.html): resolver, doctor, and security findings with the command that clears each one.

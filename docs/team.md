@@ -310,8 +310,28 @@ usually the first pending approval. Approve, sync again, and the two machines
 resolve the same skill set from the same manifest.
 
 Approvals do not transfer, and that is deliberate. Personal local skills under
-`local/skills/` do not transfer either; move anything worth keeping into the
-team repository with `dalo adopt` and a commit.
+`local/skills/` do not transfer either; send anything worth keeping to the team
+repository with `dalo promote`, described next.
+
+## 10. Take contributions from teammates
+
+A skill that started as one person's experiment reaches the team through a pull
+request, not a push. From their own machine, a teammate previews and then
+submits one local skill:
+
+```sh
+dalo --dry-run promote review-helper --target company
+dalo promote review-helper --target company
+```
+
+Dalo audits the skill, commits only that skill on a fresh `dalo/promote-*`
+branch in a temporary clone, and opens the pull request against the
+repository's configured or default branch. It never pushes to that branch, and
+an unaccepted blocking audit finding stops the promotion. The real run needs an
+authenticated GitHub CLI (`gh`) and works with GitHub.com repositories; a
+teammate without push access adds `--fork`. You review and merge it like any
+other change. Details and the blocked cases are in the
+[`dalo promote` reference](reference.md#dalo-promote).
 
 ## Checklist
 
@@ -322,3 +342,5 @@ team repository with `dalo adopt` and a commit.
 - [ ] `dalo.toml` committed and pushed
 - [ ] teammates told the one `dalo source add <id> <git-url>` line
 - [ ] teammates know approvals are theirs to grant
+- [ ] teammates know `dalo promote <skill> --target <id>` proposes a local skill
+      as a pull request

@@ -28,12 +28,10 @@ keep a feature request focused on the problem it solves.
 
 ## Roadmap
 
-What is planned is tracked as issues, not prose. The 1.0 plan is epic
-[#841](https://github.com/sebastian-software/dalo/issues/841), and the features
-deferred past 1.0 live under epic
-[#836](https://github.com/sebastian-software/dalo/issues/836), one issue each.
-Priorities follow reactions and comments on those issues, so subscribe to the
-one you care about instead of asking for a date.
+What is planned is tracked as issues, not prose. Remaining proposals are the
+[open feature issues](https://github.com/sebastian-software/dalo/issues?q=is%3Aissue+is%3Aopen+label%3Atype%3Afeature),
+one issue each. Priorities follow reactions and comments on those issues, so
+subscribe to the one you care about instead of asking for a date.
 
 ## Security
 

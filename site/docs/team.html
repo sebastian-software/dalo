@@ -65,15 +65,15 @@
     <a href="/docs/projects.html">Project installations</a>
     <a href="/docs/team.html" aria-current="page">Team repository</a>
     <a href="/docs/reference.html">Command reference</a>
-    <a href="/docs/compatibility.html">Compatibility</a>
-    <a href="/docs/upgrading.html">Upgrading to 1.0</a>
-    <a href="/docs/plugins.html">Plugins</a>
     <a href="/docs/agents.html">Agent integration</a>
-    <a href="/docs/ci.html">Dalo in CI</a>
+    <a href="/docs/plugins.html">Plugins</a>
     <a href="/docs/troubleshooting.html">Troubleshooting</a>
+    <a href="/docs/ci.html">Dalo in CI</a>
     <a href="/docs/security.html">Security overview</a>
-    <a href="/docs/uninstall.html">Uninstall</a>
+    <a href="/docs/compatibility.html">Compatibility</a>
     <a href="/docs/comparison.html">Comparison</a>
+    <a href="/docs/upgrading.html">Upgrading to 1.0</a>
+    <a href="/docs/uninstall.html">Uninstall</a>
   </nav>
   <details class="doc-menu">
     <summary><span class="doc-menu-label">Documentation</span> <span class="doc-menu-current">Team repository</span></summary>
@@ -84,15 +84,15 @@
       <a href="/docs/projects.html">Project installations</a>
       <a href="/docs/team.html" aria-current="page">Team repository</a>
       <a href="/docs/reference.html">Command reference</a>
-      <a href="/docs/compatibility.html">Compatibility</a>
-      <a href="/docs/upgrading.html">Upgrading to 1.0</a>
-      <a href="/docs/plugins.html">Plugins</a>
       <a href="/docs/agents.html">Agent integration</a>
-      <a href="/docs/ci.html">Dalo in CI</a>
+      <a href="/docs/plugins.html">Plugins</a>
       <a href="/docs/troubleshooting.html">Troubleshooting</a>
+      <a href="/docs/ci.html">Dalo in CI</a>
       <a href="/docs/security.html">Security overview</a>
-      <a href="/docs/uninstall.html">Uninstall</a>
+      <a href="/docs/compatibility.html">Compatibility</a>
       <a href="/docs/comparison.html">Comparison</a>
+      <a href="/docs/upgrading.html">Upgrading to 1.0</a>
+      <a href="/docs/uninstall.html">Uninstall</a>
     </nav>
   </details>
   <article class="doc-body">
@@ -317,8 +317,23 @@ dalo next
 usually the first pending approval. Approve, sync again, and the two machines
 resolve the same skill set from the same manifest.</p>
 <p>Approvals do not transfer, and that is deliberate. Personal local skills under
-<code>local/skills/</code> do not transfer either; move anything worth keeping into the
-team repository with <code>dalo adopt</code> and a commit.</p>
+<code>local/skills/</code> do not transfer either; send anything worth keeping to the team
+repository with <code>dalo promote</code>, described next.</p>
+<h2 id="10-take-contributions-from-teammates"><a class="doc-anchor" href="#10-take-contributions-from-teammates">10. Take contributions from teammates</a></h2>
+<p>A skill that started as one person&#39;s experiment reaches the team through a pull
+request, not a push. From their own machine, a teammate previews and then
+submits one local skill:</p>
+<pre><code class="language-sh">dalo --dry-run promote review-helper --target company
+dalo promote review-helper --target company
+</code></pre>
+<p>Dalo audits the skill, commits only that skill on a fresh <code>dalo/promote-*</code>
+branch in a temporary clone, and opens the pull request against the
+repository&#39;s configured or default branch. It never pushes to that branch, and
+an unaccepted blocking audit finding stops the promotion. The real run needs an
+authenticated GitHub CLI (<code>gh</code>) and works with GitHub.com repositories; a
+teammate without push access adds <code>--fork</code>. You review and merge it like any
+other change. Details and the blocked cases are in the
+<a href="/docs/reference.html#dalo-promote"><code>dalo promote</code> reference</a>.</p>
 <h2 id="checklist"><a class="doc-anchor" href="#checklist">Checklist</a></h2>
 <ul>
 <li><input disabled="" type="checkbox"> <code>dalo team init &lt;id&gt; --name &quot;&lt;name&gt;&quot;</code> in the repository</li>
@@ -328,6 +343,8 @@ team repository with <code>dalo adopt</code> and a commit.</p>
 <li><input disabled="" type="checkbox"> <code>dalo.toml</code> committed and pushed</li>
 <li><input disabled="" type="checkbox"> teammates told the one <code>dalo source add &lt;id&gt; &lt;git-url&gt;</code> line</li>
 <li><input disabled="" type="checkbox"> teammates know approvals are theirs to grant</li>
+<li><input disabled="" type="checkbox"> teammates know <code>dalo promote &lt;skill&gt; --target &lt;id&gt;</code> proposes a local skill
+as a pull request</li>
 </ul>
 <p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/team.md" rel="noopener">docs/team.md</a></p>
   </article>
@@ -344,6 +361,7 @@ team repository with <code>dalo adopt</code> and a commit.</p>
       <li><a href="#7-approvals-stay-personal">7. Approvals stay personal</a></li>
       <li><a href="#8-keeping-machines-current">8. Keeping machines current</a></li>
       <li><a href="#9-a-second-machine">9. A second machine</a></li>
+      <li><a href="#10-take-contributions-from-teammates">10. Take contributions from teammates</a></li>
       <li><a href="#checklist">Checklist</a></li>
     </ul>
   </nav>
@@ -357,7 +375,7 @@ team repository with <code>dalo adopt</code> and a commit.</p>
           <img class="brand-mark" src="/assets/img/logo.svg" width="34" height="30" alt="" />
           <img class="brand-word" src="/assets/img/wordmark.svg" width="55" height="14" alt="" />
         </a>
-        <p>Git-backed skill management for AI agents. Built in Rust.</p>
+        <p>Git-backed skills, instructions, and hooks for AI agents. Built in Rust.</p>
       </div>
       <nav class="footer-cols" aria-label="Footer">
         <div class="footer-col">

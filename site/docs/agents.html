@@ -65,15 +65,15 @@
     <a href="/docs/projects.html">Project installations</a>
     <a href="/docs/team.html">Team repository</a>
     <a href="/docs/reference.html">Command reference</a>
-    <a href="/docs/compatibility.html">Compatibility</a>
-    <a href="/docs/upgrading.html">Upgrading to 1.0</a>
-    <a href="/docs/plugins.html">Plugins</a>
     <a href="/docs/agents.html" aria-current="page">Agent integration</a>
-    <a href="/docs/ci.html">Dalo in CI</a>
+    <a href="/docs/plugins.html">Plugins</a>
     <a href="/docs/troubleshooting.html">Troubleshooting</a>
+    <a href="/docs/ci.html">Dalo in CI</a>
     <a href="/docs/security.html">Security overview</a>
-    <a href="/docs/uninstall.html">Uninstall</a>
+    <a href="/docs/compatibility.html">Compatibility</a>
     <a href="/docs/comparison.html">Comparison</a>
+    <a href="/docs/upgrading.html">Upgrading to 1.0</a>
+    <a href="/docs/uninstall.html">Uninstall</a>
   </nav>
   <details class="doc-menu">
     <summary><span class="doc-menu-label">Documentation</span> <span class="doc-menu-current">Agent integration</span></summary>
@@ -84,23 +84,23 @@
       <a href="/docs/projects.html">Project installations</a>
       <a href="/docs/team.html">Team repository</a>
       <a href="/docs/reference.html">Command reference</a>
-      <a href="/docs/compatibility.html">Compatibility</a>
-      <a href="/docs/upgrading.html">Upgrading to 1.0</a>
-      <a href="/docs/plugins.html">Plugins</a>
       <a href="/docs/agents.html" aria-current="page">Agent integration</a>
-      <a href="/docs/ci.html">Dalo in CI</a>
+      <a href="/docs/plugins.html">Plugins</a>
       <a href="/docs/troubleshooting.html">Troubleshooting</a>
+      <a href="/docs/ci.html">Dalo in CI</a>
       <a href="/docs/security.html">Security overview</a>
-      <a href="/docs/uninstall.html">Uninstall</a>
+      <a href="/docs/compatibility.html">Compatibility</a>
       <a href="/docs/comparison.html">Comparison</a>
+      <a href="/docs/upgrading.html">Upgrading to 1.0</a>
+      <a href="/docs/uninstall.html">Uninstall</a>
     </nav>
   </details>
   <article class="doc-body">
 <h1 id="agent-target-integration">Agent Target Integration</h1>
 <p>This page is the single support matrix for Dalo&#39;s agent targets. Portable
 canonical agent packages are documented in the
-<a href="/docs/reference.html#dalo-agent-listshow-sourcename">command reference</a>.</p>
-<p>Dalo&#39;s V1 targets are directory-based. Each target links the resolved skill set
+<a href="/docs/reference.html#dalo-agent-list---check-dalo-agent-show-sourcename">command reference</a>.</p>
+<p>Dalo&#39;s built-in targets are directory-based. Each target links the resolved skill set
 into the folder that agent already reads: Dalo writes one symlink per skill into
 the target directory and never touches the directory&#39;s unmanaged entries. An
 agent therefore only works with Dalo if it follows a symlinked skill directory.</p>
@@ -200,13 +200,18 @@ and project-level setup.</p>
 elsewhere — the exact shape <code>dalo sync</code> produces. Cursor was verified separately
 on 2026-09-28; see its section below.</p>
 <h2 id="project-scoped-folders"><a class="doc-anchor" href="#project-scoped-folders">Project-scoped folders</a></h2>
-<p>For a reproducible project store with automatic scope discovery, see
-<a href="/docs/projects.html">Project installations</a>. The following recipe describes redirecting
-a target in an existing store.</p>
-<p>Dalo 1.0 links <strong>user-level</strong> folders. Every agent in the matrix also reads a
-project-level folder — <code>.claude/skills</code> for Claude Code, <code>.agents/skills</code> for
-Codex and OpenClaw, <code>.opencode/skills</code> for OpenCode, <code>.hermes/skills</code> for
-Hermes — and a target can be pointed at one of those paths inside a repository:</p>
+<p>There are two ways to deliver skills into a repository&#39;s own agent folders.</p>
+<p><strong>A project installation</strong> is the reproducible one. The repository commits a
+<code>dalo-project.toml</code> that pins its sources, and <code>dalo install</code> restores them into
+an isolated <code>.dalo/</code> store and the project folders of the declared agents, in
+every clone. See <a href="/docs/projects.html">Project installations</a>. Project scope supports
+the <code>claude</code>, <code>codex</code>, <code>opencode</code>, <code>hermes</code>, and <code>openclaw</code> targets.</p>
+<p><strong>Redirecting a target</strong> reuses your existing store and is a per-machine
+recipe. A target in that store links a <strong>user-level</strong> folder by default. Every
+agent in the matrix also reads a project-level folder — <code>.claude/skills</code> for
+Claude Code, <code>.agents/skills</code> for Codex and OpenClaw, <code>.opencode/skills</code> for
+OpenCode, <code>.hermes/skills</code> for Hermes — and a target can be pointed at one of
+those paths inside a repository:</p>
 <pre><code class="language-sh">dalo target link claude /path/to/repo/.claude/skills
 dalo target link generic /path/to/repo/.agents/skills
 dalo sync
@@ -226,11 +231,10 @@ must not be committed:</p>
 <p><code>dalo target detect</code> prints one informational line when the working directory
 holds a project-scoped agent folder that no linked target covers. It does not
 link anything.</p>
-<p>For a per-repository definition and isolated store, use
-<a href="/docs/projects.html">Project installations</a>. Further work is tracked in
+<p>Project installations shipped in Dalo 1.1 through
 <a href="https://github.com/sebastian-software/dalo/issues/851" rel="noopener">#851</a>. The
 <a href="/docs/troubleshooting.html#can-dalo-manage-my-repositorys-claudeskills">FAQ entry</a>
-has the full recipe.</p>
+compares both routes and has the full redirect recipe.</p>
 <h2 id="codex"><a class="doc-anchor" href="#codex">Codex</a></h2>
 <p>Default skill path:</p>
 <pre><code class="language-text">~/.agents/skills
@@ -333,10 +337,14 @@ dalo target link cursor
 dalo sync
 ls -la ~/.cursor/skills
 
-# Project-level, from a project-scoped store or when redirecting an existing store
+# Project-level, by redirecting the target of your existing store
 dalo target link cursor /path/to/repo/.cursor/skills
 dalo sync
 </code></pre>
+<p>A <a href="/docs/projects.html">project installation</a> has no <code>cursor</code> target yet. Cursor&#39;s
+documentation also lists a project&#39;s <code>.agents/skills</code> and <code>.claude/skills</code> as
+skill roots, so a project that declares the <code>codex</code> or <code>claude</code> target should
+reach it; that route was not part of the verification below.</p>
 <p>Each target ID records one directory. Cursor also discovers <code>~/.agents/skills</code>
 and <code>.agents/skills</code>; a <code>codex</code> target already materializes the user-level
 shared directory for Cursor.</p>
@@ -387,7 +395,7 @@ confirm a built-in target for another agent.</p>
           <img class="brand-mark" src="/assets/img/logo.svg" width="34" height="30" alt="" />
           <img class="brand-word" src="/assets/img/wordmark.svg" width="55" height="14" alt="" />
         </a>
-        <p>Git-backed skill management for AI agents. Built in Rust.</p>
+        <p>Git-backed skills, instructions, and hooks for AI agents. Built in Rust.</p>
       </div>
       <nav class="footer-cols" aria-label="Footer">
         <div class="footer-col">

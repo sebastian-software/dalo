@@ -153,9 +153,10 @@ grep -q 'security audit blocked' "$root/docs/troubleshooting.md"
 test -x "$root/scripts/release-rehearsal.sh"
 grep -Fq 'sh scripts/release-rehearsal.sh' "$root/docs/ci.md"
 grep -Fq 'Release candidate rehearsal' "$root/site/docs/ci.html"
-# Project-scoped agent folders ship as a documented recipe in 1.0; the FAQ entry
-# and the matrix section must both stay reachable and keep pointing at the
-# roadmap issue that tracks the first-class target.
+# Project-scoped agent folders have two documented routes: the project
+# installation that shipped through #851, and the older per-machine redirect
+# recipe. The FAQ entry and the matrix section must both stay reachable, lead
+# to the project guide, and keep naming the issue that delivered it.
 grep -Fq "### Can Dalo manage my repository's \`.claude/skills\`?" \
   "$root/docs/troubleshooting.md"
 for document in "$root/docs/troubleshooting.md" "$root/docs/agents.md"; do
@@ -165,6 +166,15 @@ for document in "$root/docs/troubleshooting.md" "$root/docs/agents.md"; do
       exit 1
     }
 done
+for document in "$root/docs/troubleshooting.md" "$root/docs/agents.md"; do
+  grep -Fq '(projects.md)' "$document" ||
+    {
+      echo "$document no longer links the project installation guide" >&2
+      exit 1
+    }
+done
+refute 'the project-scope FAQ still calls the first-class target deferred' \
+  grep -Fq 'deferred past 1.0' "$root/docs/troubleshooting.md"
 grep -q '^## Project-scoped folders$' "$root/docs/agents.md"
 grep -Fq '(troubleshooting.md#can-dalo-manage-my-repositorys-claudeskills)' \
   "$root/docs/agents.md"
@@ -211,6 +221,17 @@ grep -Fq 'dalo project update' "$root/skills/dalo/references/setup.md"
 grep -Fq 'dalo project add' "$root/skills/dalo/references/inventory.md"
 grep -Fq 'dalo project update' "$root/skills/dalo/references/inventory.md"
 grep -Fq '[Team repository guide](docs/team.md)' "$root/README.md"
+# A reader who does not start from a team repository still needs a way in: the
+# getting-started guide routes by situation, and the README, the landing page,
+# and llms.txt all reach the project guide that also covers the skills.sh
+# migration.
+grep -q '^## Pick your starting point$' "$root/docs/getting-started.md"
+grep -Fq '(projects.md#migrate-a-skillssh-project)' "$root/docs/getting-started.md"
+grep -Fq '[Project installations](docs/projects.md)' "$root/README.md"
+grep -Fq 'href="/docs/projects.html"' "$root/site/index.html"
+grep -Fq 'https://dalo.sh/docs/projects.html' "$root/site/llms.txt"
+grep -Fq '## `dalo install`' "$root/docs/reference.md"
+grep -Fq '## `dalo migrate skills-sh`' "$root/docs/reference.md"
 grep -q 'dalo target link generic "\$RUNNER_TEMP/dalo-skills"' "$root/docs/ci.md"
 
 # The README leads with the five-minute path: a first-time reader must reach a
@@ -409,7 +430,7 @@ grep -q '__DALO_LASTMOD__' "$root/site/sitemap.xml"
 # The documentation published on dalo.sh is rendered from docs/*.md by
 # site/build.mjs and committed, so it must exist, carry the site styles, and be
 # reachable from the sitemap, the documentation index, and the footer.
-for document in getting-started assistant team reference compatibility upgrading plugins agents ci troubleshooting uninstall comparison; do
+for document in getting-started assistant projects team reference compatibility upgrading plugins agents ci troubleshooting security uninstall comparison; do
   page="$root/site/docs/$document.html"
   test -f "$page"
   title="$(sed -n 's/^# //p' "$root/docs/$document.md" | head -n 1)"
