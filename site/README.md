@@ -4,7 +4,7 @@
 landing page, `install.md`, `install.sh`, and `llms.txt` are served as-is,
 `docs/` contains the rendered copies of the repository's `docs/*.md`, `spec/`
 contains the versioned Portable Agent Packages pages plus its public JSON
-Schema, and `news/` holds the occasional hand-written announcement page.
+Schema.
 `llms.txt` is an optional plain-text index for agents. Normal HTML and README
 links also lead to `install.md`, so setup does not depend on automatic index
 discovery. `build.mjs` copies every deployable file in `site/` into `site/build/`,
@@ -13,12 +13,6 @@ so it needs no build-script entry of its own.
 `index.html` loads only `home.css`; every other page loads `styles.css` (the
 shared tokens, header, footer, and buttons, mirroring `home.css`) plus
 `docs.css` (the reading layout). Both use system font stacks.
-
-`news/` pages are not generated either: they need no build-script entry, only a
-`sitemap.xml` entry. They reuse the documentation shell (`styles.css` plus
-`docs.css`, `body class="doc-page"`, `.doc-shell` with a small side nav and its
-`.doc-menu` counterpart for narrow screens), with the header and footer copied
-from the `shell()` template in `build.mjs`.
 
 ## Build
 
