@@ -108,6 +108,22 @@ pub enum ProjectSubcommand {
     Add(ProjectAddArgs),
     /// Preview or update an existing pinned project source.
     Update(ProjectUpdateArgs),
+    /// Preview or remove declared sources or explicit skill selections.
+    Remove(ProjectRemoveArgs),
+}
+
+/// Arguments for `project remove`.
+#[derive(Debug, Args)]
+pub struct ProjectRemoveArgs {
+    /// Source ID declared in this project.
+    pub id: String,
+    /// Exact declaration selector to remove. Omit to remove the whole source.
+    /// Removing the last selector also removes the source declaration.
+    #[arg(long = "skill", value_name = "SKILL")]
+    pub skills: Vec<String>,
+    /// Write the reviewed declaration; run install to reconcile delivery.
+    #[arg(long)]
+    pub apply: bool,
 }
 
 /// Arguments for `project add`.
@@ -260,9 +276,9 @@ pub enum Command {
     Install,
     /// Verify and migrate an existing project skills.sh installation.
     Migrate(MigrationArgs),
-    /// Add or review sources in the current project's portable declaration.
+    /// Add, update, or remove sources in the current project's declaration.
     #[command(
-        after_help = "Project commands require a `dalo-project.toml` in the discovered project. Preview first; a moving ref requires the exact commit from that preview when applying.\n\nExamples:\n  dalo project add team https://github.com/example/skills.git --ref main --skill review\n  dalo project add team https://github.com/example/skills.git --ref main --skill review --expect-commit <previewed-sha> --apply\n  dalo --project /path/to/project --json project add team ./skills --skill review"
+        after_help = "Project commands require a `dalo-project.toml` in the discovered project. Preview first; a moving ref requires the exact commit from that preview when applying.\n\nExamples:\n  dalo project add team https://github.com/example/skills.git --ref main --skill review\n  dalo project add team https://github.com/example/skills.git --ref main --skill review --expect-commit <previewed-sha> --apply\n  dalo --project /path/to/project --json project add team ./skills --skill review\n  dalo project remove team --skill skills/review\n  dalo project remove team --apply\n  dalo install"
     )]
     Project(ProjectCommand),
     /// Submit one local skill to a team repository as a GitHub pull request.
@@ -1527,6 +1543,16 @@ fn run_project(
         Some(Command::Project(ProjectCommand {
             command: ProjectSubcommand::Update(args),
         })) => return run_project_update(&project, json, dry_run, args),
+        Some(Command::Project(ProjectCommand {
+            command: ProjectSubcommand::Remove(args),
+        })) => {
+            let report = project.remove_source(&args.id, &args.skills, args.apply, dry_run)?;
+            if json {
+                return print_json(&report);
+            }
+            status::print_project_remove_report(&report);
+            return Ok(());
+        }
         command => command,
     };
     let command = match command {
@@ -1587,10 +1613,11 @@ fn run_project(
     }
     if matches!(command, Command::Install) {
         if dry_run {
+            let removals = project.removal_effects(&manifest)?;
             if json {
                 println!(
                     "{}",
-                    serde_json::json!({"scope": "project", "project": project.root, "store": project.store, "dry_run": true, "sources": manifest.sources, "targets": manifest.targets, "note": "declaration preview only; no fetch, audit, approval, or delivery performed"})
+                    serde_json::json!({"scope": "project", "project": project.root, "store": project.store, "dry_run": true, "sources": manifest.sources, "targets": manifest.targets, "removals": removals, "note": "declaration and local removal preview only; no fetch, audit, approval, or delivery performed"})
                 );
             } else {
                 println!(
@@ -1601,6 +1628,7 @@ fn run_project(
                 for source in &manifest.sources {
                     println!("  {} @ {}", source.id, source.commit);
                 }
+                status::print_project_removal_effects(&removals);
             }
             return Ok(());
         }

@@ -2128,6 +2128,44 @@ The JSON `ProjectUpdateReport` contains `project`, `source_id`, `url`,
 `targets`, `blocking_reasons`, `declaration_change`, `applied`, `dry_run`, and
 `next_command`.
 
+## `dalo project remove`
+
+Preview removing a source or exact selectors from `dalo-project.toml`:
+
+```sh
+dalo project remove company --skill review
+dalo project remove company --skill review --apply
+dalo project remove company --apply
+dalo install
+```
+
+Repeat `--skill` to remove multiple explicit selectors. Omit it to remove the
+whole source; removing the last selector has the same effect. Required skills
+remain active while another selected skill needs them. `--apply` writes only
+the declaration; `--dry-run` suppresses that write. Neither preview nor apply
+fetches sources or modifies delivery. Run install to reconcile the change,
+including declaration removals pulled from Git.
+
+Installation unregisters absent sources and their pins, revokes their
+source-scoped approvals, and removes only verified owned target links. Cached
+checkouts, local edits, foreign symlinks, and unmanaged directories are retained.
+Deselection alone keeps unchanged approvals. Dirty sources still declared in the
+project and unsafe store paths remain blocking. Removal never deletes caches;
+preserve local work before any manual cleanup. Retry interrupted or failed
+installation with `dalo install`.
+
+The JSON `ProjectRemoveReport` contains `project`, `source_id`,
+`selection_before`, `selection_after`, `declaration_change`, `effects`,
+`applied`, `dry_run`, and `next_command`. `effects` contains
+`retained_checkouts[]` (`source_id`, `path`, `dirty`), `deactivated_skills[]`,
+`approvals_to_revoke`, `link_operations[]` (the ordinary materialization operation
+shape), and `delivery_preview_complete`. Effects use local installed pins;
+missing or changed declared pins make the preview incomplete. Project install
+dry-run JSON exposes the same effects as `removals`.
+
+See [Project removal](projects.md#remove-project-sources-or-skills) for dependency,
+cache, and recovery behavior.
+
 ## `migrate skills-sh`
 
 Preview a project migration from a version 1 `skills-lock.json`. `--apply` writes a

@@ -202,6 +202,9 @@ for project_add_detail in 'dalo project add' '--expect-commit' 'fresh checkout';
 done
 grep -Fq '## `dalo project add`' "$root/docs/reference.md"
 grep -Fq '## `dalo project update`' "$root/docs/reference.md"
+grep -Fq '## `dalo project remove`' "$root/docs/reference.md"
+grep -Fq 'dalo project remove' "$root/docs/projects.md"
+grep -Fq 'dalo project remove' "$root/skills/dalo/references/maintenance.md"
 grep -Fq 'dalo project update' "$root/docs/projects.md"
 grep -Fq 'dalo project add' "$root/skills/dalo/references/setup.md"
 grep -Fq 'dalo project update' "$root/skills/dalo/references/setup.md"

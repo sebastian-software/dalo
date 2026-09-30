@@ -2507,6 +2507,36 @@ does not revive approval for content changed by an earlier pin update.</p>
 <code>selection_after</code>, <code>outcomes</code>, <code>dependency_changes</code>, <code>skills</code>, <code>audits</code>,
 <code>targets</code>, <code>blocking_reasons</code>, <code>declaration_change</code>, <code>applied</code>, <code>dry_run</code>, and
 <code>next_command</code>.</p>
+<h2 id="dalo-project-remove"><a class="doc-anchor" href="#dalo-project-remove"><code>dalo project remove</code></a></h2>
+<p>Preview removing a source or exact selectors from <code>dalo-project.toml</code>:</p>
+<pre><code class="language-sh">dalo project remove company --skill review
+dalo project remove company --skill review --apply
+dalo project remove company --apply
+dalo install
+</code></pre>
+<p>Repeat <code>--skill</code> to remove multiple explicit selectors. Omit it to remove the
+whole source; removing the last selector has the same effect. Required skills
+remain active while another selected skill needs them. <code>--apply</code> writes only
+the declaration; <code>--dry-run</code> suppresses that write. Neither preview nor apply
+fetches sources or modifies delivery. Run install to reconcile the change,
+including declaration removals pulled from Git.</p>
+<p>Installation unregisters absent sources and their pins, revokes their
+source-scoped approvals, and removes only verified owned target links. Cached
+checkouts, local edits, foreign symlinks, and unmanaged directories are retained.
+Deselection alone keeps unchanged approvals. Dirty sources still declared in the
+project and unsafe store paths remain blocking. Removal never deletes caches;
+preserve local work before any manual cleanup. Retry interrupted or failed
+installation with <code>dalo install</code>.</p>
+<p>The JSON <code>ProjectRemoveReport</code> contains <code>project</code>, <code>source_id</code>,
+<code>selection_before</code>, <code>selection_after</code>, <code>declaration_change</code>, <code>effects</code>,
+<code>applied</code>, <code>dry_run</code>, and <code>next_command</code>. <code>effects</code> contains
+<code>retained_checkouts[]</code> (<code>source_id</code>, <code>path</code>, <code>dirty</code>), <code>deactivated_skills[]</code>,
+<code>approvals_to_revoke</code>, <code>link_operations[]</code> (the ordinary materialization operation
+shape), and <code>delivery_preview_complete</code>. Effects use local installed pins;
+missing or changed declared pins make the preview incomplete. Project install
+dry-run JSON exposes the same effects as <code>removals</code>.</p>
+<p>See <a href="/docs/projects.html#remove-project-sources-or-skills">Project removal</a> for dependency,
+cache, and recovery behavior.</p>
 <h2 id="migrate-skills-sh"><a class="doc-anchor" href="#migrate-skills-sh"><code>migrate skills-sh</code></a></h2>
 <p>Preview a project migration from a version 1 <code>skills-lock.json</code>. <code>--apply</code> writes a
 verified <code>dalo-project.toml</code> and backs up the former installation; <code>--dry-run</code>
@@ -2581,6 +2611,7 @@ PR URL when created.</p>
       <li><a href="#instruction-packs">Instruction Packs</a></li>
       <li><a href="#dalo-project-add"><code>dalo project add</code></a></li>
       <li><a href="#dalo-project-update"><code>dalo project update</code></a></li>
+      <li><a href="#dalo-project-remove"><code>dalo project remove</code></a></li>
       <li><a href="#migrate-skills-sh"><code>migrate skills-sh</code></a></li>
       <li><a href="#dalo-promote"><code>dalo promote</code></a></li>
     </ul>
