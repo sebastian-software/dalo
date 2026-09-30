@@ -394,25 +394,13 @@
               <span class="sr-only">Copy</span>
             </button>
             </div>
+            <p class="step-note"><code class="inl">npx getdalo</code> runs it once without installing. <a href="https://github.com/sebastian-software/dalo#installation" rel="noopener">All install methods</a></p>
           </li>
           <li>
             <span class="step-label">Run the sandbox</span>
-            <p>Copy the commands in the terminal: they create a temporary store, add a public catalog, and approve one skill. Done? <code class="inl">unset DALO_STORE SKILLS_DIR</code> returns your shell to your real setup.</p>
-          </li>
-          <li>
-            <span class="step-label">Make it your team's</span>
-            <p>Put your team's skills in a Git repository with a <code class="inl">dalo.toml</code> manifest. Teammates add it once and sync; approvals stay on each machine.</p>
-            <pre class="team-snippet"><code><span class="ln k-dim"># in your team's repository</span><span class="ln"><span class="p">$</span> dalo team init company --name "Company Skills"</span><span class="ln k-dim"># commit dalo.toml and skills/&lt;name&gt;/SKILL.md, then push</span><span class="ln"> </span><span class="ln k-dim"># on every teammate's machine</span><span class="ln"><span class="p">$</span> dalo source add company git@github.com:acme/agent-skills.git</span><span class="ln"><span class="p">$</span> dalo sync</span></code></pre>
-            <a class="link-arrow" href="/docs/team.html">Read the team repository guide
-              <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            </a>
+            <p>Copy the commands from the <span class="nowrap">“first sync”</span> terminal: they create a temporary store, add a public catalog, and approve one skill. Done? <code class="inl">unset DALO_STORE SKILLS_DIR</code> returns your shell to your real setup.</p>
           </li>
         </ol>
-        <p>Ask your coding agent: <strong>“Install the Dalo skill manager.”</strong> The <a href="/install.md">agent setup guide</a> covers Dalo and its built-in assistant. <a href="/docs/assistant.html">See the conversational setup</a>.</p>
-        <p class="alt">Also installs with <code class="inl">cargo install dalo</code>, <code class="inl">cargo binstall dalo</code>, mise, or Nix; <code class="inl">npx getdalo</code> runs it once without installing.</p>
-        <a class="link-arrow" href="/docs/getting-started.html">Read the getting started guide
-          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </a>
       </div>
 
       <div class="quick-demo reveal">
@@ -448,26 +436,43 @@
           <figcaption class="video-cap">The 15-second secure-sync demo. <a href="/assets/dalo-quickstart.mp4">Download the MP4</a></figcaption>
         </figure>
       </div>
-    </div>
-  </section>
 
-  <!-- ───────────────────────── STARTING POINTS ───────────────────────── -->
-  <section class="details" id="start" aria-labelledby="start-title">
-    <div class="wrap">
-      <h2 id="start-title" class="reveal">Already have skills? Start from there.</h2>
-      <p class="sub reveal">No clean slate and no team repository required. Dalo leaves existing folders alone until you decide.</p>
-      <ul class="detail-grid reveal">
-        <li class="detail" style="--c:#e8623a">
-          <h3>Skills in your agent folder</h3>
+      <div class="quick-next reveal">
+        <ol class="quick-steps" start="3">
+          <li>
+            <span class="step-label">Make it your team's</span>
+            <p>Put your team's skills in a Git repository with a <code class="inl">dalo.toml</code> manifest. Teammates add it once and sync; approvals stay on each machine.</p>
+            <pre class="team-snippet"><code><span class="ln k-dim"># in your team's repository</span><span class="ln"><span class="p">$</span> dalo team init company --name "Company Skills"</span><span class="ln k-dim"># commit dalo.toml and skills/&lt;name&gt;/SKILL.md, then push</span><span class="ln"> </span><span class="ln k-dim"># on every teammate's machine</span><span class="ln"><span class="p">$</span> dalo source add company git@github.com:acme/agent-skills.git</span><span class="ln"><span class="p">$</span> dalo sync</span></code></pre>
+            <a class="link-arrow" href="/docs/team.html">Read the team repository guide
+              <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </a>
+          </li>
+        </ol>
+        <a class="link-arrow" href="/docs/getting-started.html">Read the getting started guide
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+      </div>
+    </div>
+
+    <div class="wrap starts reveal" id="start">
+      <h3 id="start-title">Not starting from zero?</h3>
+      <p class="starts-sub">Pick the situation that matches yours. Dalo leaves existing folders alone until you decide.</p>
+      <ul class="starts-grid" aria-labelledby="start-title">
+        <li class="start" style="--c:#e8623a">
+          <h4>Skills already in an agent folder</h4>
           <p><code>dalo status</code> lists them as unmanaged, and sync never overwrites them. <code>dalo adopt</code> copies one into your private source when you are ready. <a href="/docs/getting-started.html#adopt-a-skill-an-agent-wrote">Adopt a skill</a></p>
         </li>
-        <li class="detail" style="--c:#7b5cf5">
-          <h3>A project that uses skills.sh</h3>
+        <li class="start" style="--c:#7b5cf5">
+          <h4>A project that uses skills.sh</h4>
           <p><code>dalo migrate skills-sh</code> checks every installed copy against its source and writes a pinned definition only when all of them match. <a href="/docs/projects.html#migrate-a-skillssh-project">Migration guide</a></p>
         </li>
-        <li class="detail" style="--c:#2b8fd6">
-          <h3>Skills for one repository</h3>
+        <li class="start" style="--c:#2b8fd6">
+          <h4>Skills for one repository</h4>
           <p>Commit <code>dalo-project.toml</code>, and every clone restores the same pinned set with <code>dalo install</code>, in its own store. <a href="/docs/projects.html">Project installations</a></p>
+        </li>
+        <li class="start" style="--c:#16925b">
+          <h4>An agent that does the setup</h4>
+          <p>Tell your coding agent: “Install the Dalo skill manager.” The <a href="/install.md">agent setup guide</a> covers the binary and the built-in assistant. <a href="/docs/assistant.html">Conversational setup</a></p>
         </li>
       </ul>
     </div>
