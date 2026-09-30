@@ -136,7 +136,6 @@ refute 'reference.md still promises a GitHub CLI doctor check' \
     in_doctor && /GitHub CLI/ { found = 1 }
     END { exit !found }
   ' "$root/docs/reference.md"
-grep -Fq 'Git availability' "$root/site/index.html"
 refute 'site/index.html still promises a Git auth doctor check' \
   grep -Fq 'Git auth' "$root/site/index.html"
 grep -q 'blocking or failed security audits' "$root/docs/reference.md"
@@ -183,7 +182,10 @@ grep -q 'audits\[\]' "$root/docs/reference.md"
 grep -q 'security-audit block' "$root/docs/ci.md"
 grep -q 'dalo approve skill' "$root/docs/getting-started.md"
 grep -q 'dalo approve skill' "$root/site/index.html"
-grep -q 'dalo team catalog add' "$root/site/index.html"
+# The homepage shows the team flow with `team init`; the catalog filter syntax
+# is reference material and lives in the team guide, not on the landing page.
+grep -q 'dalo team init' "$root/site/index.html"
+grep -q 'dalo team catalog add' "$root/docs/team.md"
 # The worked pin-advance example lives in the team guide; the README only
 # points at it, so the exact command is asserted where it is now documented.
 grep -q 'dalo team catalog update marketing --from main' "$root/docs/team.md"
@@ -191,8 +193,8 @@ grep -q 'TeamCatalogUpdateReport' "$root/docs/reference.md"
 grep -q '"adoption": AdoptReport' "$root/docs/reference.md"
 grep -q '"approval": ApprovalReport' "$root/docs/reference.md"
 grep -q 'prints only the blocking `AuditReport`' "$root/docs/reference.md"
-grep -q '+copywriting' "$root/site/index.html"
-grep -q 'skills = \[\]' "$root/site/index.html"
+grep -q '+copywriting' "$root/docs/team.md"
+grep -q 'skills = \[\]' "$root/docs/team.md"
 grep -q 'dalo source add-catalog public' "$root/docs/getting-started.md"
 grep -q 'git -C "\$TEAM_REPO" -c commit.gpgSign=false' "$root/docs/getting-started.md"
 grep -q 'git -C "\$CATALOG_REPO" -c commit.gpgSign=false' "$root/docs/getting-started.md"
@@ -490,13 +492,20 @@ grep -Eq '"softwareVersion": "[0-9]+\.[0-9]+\.[0-9]+"' "$root/site/index.html"
 grep -Fq 'x-release-please-version' "$root/site/index.html"
 grep -Fq 'x-release-please-start-version' "$root/site/index.html"
 
-# The hero transcript is the output the current CLI prints, not the pre-0.14 one.
+# The hero transcript is the output the current CLI prints for a team source
+# plus one selected, unapproved catalog skill: the same run the README shows.
 # `~/.agents/skills` is the Codex default, and `generic` refuses to be linked
 # without an explicit path, so the hero has to label that directory `codex`.
-grep -Fq 'target[codex]:/review <span class="nb">-&gt;</span> store:/local/skills/review' "$root/site/index.html"
+grep -Fq 'target[codex]:/incident-review <span class="nb">-&gt;</span> store:/sources/company/checkout/skills/incident-review' "$root/site/index.html"
 refute 'the hero labels the Codex default directory as the generic target' \
   grep -Fq 'target[generic]: ~/.agents/skills' "$root/site/index.html"
-grep -Fq 'synced: 1 skill across 2 targets (2 created)' "$root/site/index.html"
+grep -Fq 'synced: 2 skills across 1 target (2 created)' "$root/site/index.html"
+# The approval card is the skill that transcript reports as pending, and the
+# install boxes say where the binary lands and how it is verified.
+grep -Fq '<span class="status pending">pending</span>' "$root/site/index.html"
+test "$(grep -c 'data-install-note' "$root/site/index.html")" -ge 2
+grep -Fq 'data-note-value=' "$root/site/index.html"
+grep -Fq 'installNotes' "$root/site/main.js"
 grep -Fq 'target[generic]:/review -> store:/local/skills/review' "$root/video/src/QuickstartVideo.tsx"
 refute 'the quickstart video source still uses the pre-0.14 absolute sync path' \
   grep -Fq 'applied  create     /tmp/dalo/skills/review -> /tmp/dalo/store/local/skills/review' "$root/video/src/QuickstartVideo.tsx"
@@ -518,7 +527,7 @@ grep -Fq 'error: skill `company:relese-helper` was not found; did you mean `comp
 grep -Fq 'nothing materialized: resolution is incomplete' "$root/site/index.html"
 grep -Fq 'pending approval: sebastian:effective-web (run: dalo approve skill sebastian:effective-web)' "$root/site/index.html"
 grep -q 'Recover without googling.' "$root/README.md"
-grep -q 'Security preflight and review gate' "$root/site/index.html"
+grep -q 'Review skills before they reach an agent.' "$root/site/index.html"
 grep -q 'dalo audit sebastian:effective-web' "$root/site/index.html"
 grep -q 'security audits and review gates' "$root/site/index.html"
 # The security-preflight sentence is a shared contract: `sync` prints exactly one

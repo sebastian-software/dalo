@@ -1,5 +1,6 @@
 /* Dalo site: progressive enhancement only.
-   Without JS the page is fully visible; this just adds reveal + active nav. */
+   Without JS the page is fully visible; this adds reveal, active nav, the
+   install picker, copy buttons, and the solid header state. */
 document.documentElement.classList.add("js");
 
 (function () {
@@ -92,10 +93,12 @@ document.documentElement.classList.add("js");
   }
 
   var installCommands = {};
+  var installNotes = {};
   var installPickers = document.querySelectorAll("[data-install-picker]");
 
   document.querySelectorAll("[data-install-method][data-command-value]").forEach(function (button) {
     installCommands[button.dataset.installMethod] = button.dataset.commandValue;
+    installNotes[button.dataset.installMethod] = button.dataset.noteValue || "";
   });
 
   function preferredInstallMethod() {
@@ -113,6 +116,13 @@ document.documentElement.classList.add("js");
     document.querySelectorAll("[data-install-command]").forEach(function (command) {
       command.textContent = installCommands[method];
     });
+    // The note under each install box describes the selected method: where
+    // the binary lands and how the download is verified.
+    if (installNotes[method]) {
+      document.querySelectorAll("[data-install-note]").forEach(function (note) {
+        note.textContent = installNotes[method];
+      });
+    }
     document.querySelectorAll("[data-install-method]").forEach(function (button) {
       button.setAttribute("aria-pressed", button.dataset.installMethod === method ? "true" : "false");
     });
@@ -163,6 +173,16 @@ document.documentElement.classList.add("js");
       var playing = video.play();
       if (playing && playing.catch) playing.catch(function () {});
     });
+  }
+
+  // The header is sticky; it turns solid once the hero has scrolled under it.
+  var header = document.querySelector(".site-header");
+  if (header) {
+    var updateHeader = function () {
+      header.classList.toggle("is-stuck", window.scrollY > 8);
+    };
+    window.addEventListener("scroll", updateHeader, { passive: true });
+    updateHeader();
   }
 
   document.querySelectorAll(".mobile-nav a").forEach(function (link) {

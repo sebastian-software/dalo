@@ -72,7 +72,7 @@
         <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </a>
       <details class="mobile-menu">
-        <summary aria-label="Open navigation">
+        <summary aria-label="Menu">
           <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>
           <span class="sr-only">Menu</span>
         </summary>
@@ -99,7 +99,7 @@
       <div class="hero-copy">
         <span class="eyebrow"><b>Open source</b><span>Rust CLI · v<span data-dalo-version>1.3.0</span></span></span> <!-- x-release-please-version -->
         <h1 id="hero-title">Your team's agent setup, <span class="grad-text">versioned like code.</span></h1>
-        <p class="lede">Keep skills, standing instructions, and hooks in Git. Dalo pins sources, previews changes, and delivers each piece to the agents that support it.</p>
+        <p class="lede">Keep skills, instructions, and hooks in Git. Dalo pins sources, previews changes, and delivers each piece to the agents that support it.</p>
         <div class="hero-actions">
           <a class="btn" href="#quickstart">Get started
             <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3 8h9.5M8.5 3.5 13 8l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -110,13 +110,13 @@
         </div>
         <div class="install-picker" data-install-picker>
           <div class="install-methods" role="group" aria-label="Choose an installation method" hidden>
-            <button class="install-method" type="button" data-install-method="homebrew" data-command-value="brew install sebastian-software/tap/dalo" aria-pressed="false">
+            <button class="install-method" type="button" data-install-method="homebrew" data-command-value="brew install sebastian-software/tap/dalo" data-note-value="Installs the release through Homebrew. One binary, no daemon, no sudo." aria-pressed="false">
               Homebrew <span>macOS</span>
             </button>
-            <button class="install-method" type="button" data-install-method="standalone" data-command-value="curl -fsSL https://dalo.sh/install.sh | sh" aria-pressed="false">
+            <button class="install-method" type="button" data-install-method="standalone" data-command-value="curl -fsSL https://dalo.sh/install.sh | sh" data-note-value="One binary into ~/.local/bin, no sudo. The SHA-256 checksum is always verified, Sigstore provenance when cosign is installed." aria-pressed="false">
               Standalone <span>macOS + Linux</span>
             </button>
-            <button class="install-method" type="button" data-install-method="npm" data-command-value="npm install --global getdalo" aria-pressed="false">
+            <button class="install-method" type="button" data-install-method="npm" data-command-value="npm install --global getdalo" data-note-value="A small launcher that downloads the release into ~/.cache/dalo on first use and verifies its SHA-256 checksum." aria-pressed="false">
               npm <span>Node 20+</span>
             </button>
           </div>
@@ -129,6 +129,7 @@
               <span class="sr-only">Copy</span>
             </button>
           </div>
+          <p class="install-note"><span data-install-note>One binary into ~/.local/bin, no sudo. The SHA-256 checksum is always verified, Sigstore provenance when cosign is installed.</span> <a href="/install.sh">Installer source</a> · <a href="/docs/uninstall.html">Uninstall guide</a> · Windows via WSL.</p>
         </div>
       </div>
 
@@ -141,10 +142,10 @@
           <pre class="term-body"><code><span class="ln"><span class="p">$</span> <span class="cmd">dalo sync</span></span>
 <span class="ln k-dim">dalo store: ~/.dalo</span>
 <span class="ln k-dim">target[codex]: ~/.agents/skills</span>
-<span class="ln k-dim">target[claude]: ~/.claude/skills</span>
-<span class="ln"><span class="k-ok">applied  create</span>     target[codex]:/review <span class="nb">-&gt;</span> store:/local/skills/review</span>
-<span class="ln"><span class="k-ok">applied  create</span>     target[claude]:/review <span class="nb">-&gt;</span> store:/local/skills/review</span>
-<span class="ln cmd">synced: 1 skill across 2 targets (2 created)</span>
+<span class="ln"><span class="k-ok">applied  create</span>     target[codex]:/incident-review <span class="nb">-&gt;</span> store:/sources/company/checkout/skills/incident-review</span>
+<span class="ln"><span class="k-ok">applied  create</span>     target[codex]:/release-notes <span class="nb">-&gt;</span> store:/sources/company/checkout/skills/release-notes</span>
+<span class="ln cmd">synced: 2 skills across 1 target (2 created)</span>
+<span class="ln k-warn">pending approval: sebastian:effective-web (run: dalo approve skill sebastian:effective-web)</span>
 <span class="ln k-dim">security preflight: deterministic checks only</span>
 <span class="ln"><span class="p">$</span> <span class="cursor"></span></span></code></pre>
         </div>
@@ -152,18 +153,19 @@
         <div class="card approve">
           <div class="approve-top">
             <span class="label">Approval</span>
-            <span class="status">approved</span>
+            <span class="status pending">pending</span>
           </div>
           <div class="skill-id">sebastian:effective-web</div>
           <div class="approve-rows">
-            <div><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Security preflight<span>15 rules</span></div>
+            <div><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Security preflight<span>clean · 15 rules</span></div>
             <div><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Selected from catalog<span>sebastian</span></div>
           </div>
+          <code class="approve-cmd"><span class="p">$</span> dalo approve skill sebastian:effective-web</code>
         </div>
 
         <div class="card agents-card">
-          <span class="label">Targets</span>
-          <div class="count"><strong>6</strong><span>verified agents + any folder</span></div>
+          <span class="label">Verified agents</span>
+          <div class="count"><strong>6</strong><span>plus any skill folder</span></div>
           <div class="chips">
             <span class="chip" style="--c:#e8623a">Codex</span>
             <span class="chip" style="--c:#7b5cf5">Claude Code</span>
@@ -180,8 +182,8 @@
   <!-- ───────────────────────── WHAT DALO MANAGES ───────────────────────── -->
   <section class="capabilities" aria-labelledby="capabilities-title">
     <div class="wrap">
-      <h2 id="capabilities-title">More than a skill installer.</h2>
-      <p class="capabilities-intro">Share the skills agents use, the rules they follow, and the hooks that run at the right moment.</p>
+      <h2 id="capabilities-title">One agent setup per laptop, and nobody knows which skills were reviewed.</h2>
+      <p class="capabilities-intro">A skill is a folder with a <code class="inl">SKILL.md</code> that teaches an agent one job. Teams collect dozens of them, copied from the internet and edited by hand, until every machine runs a different set. Dalo keeps one reviewed set in Git and delivers it to every agent: the skills, the instructions that go with them, and the hooks that run at the right moment.</p>
       <div class="capability-grid">
         <article class="capability" style="--c:#7b5cf5">
           <h3>Skills</h3>
@@ -189,13 +191,13 @@
           <a href="/docs/getting-started.html">Manage skills <span aria-hidden="true">→</span></a>
         </article>
         <article class="capability" style="--c:#2b8fd6">
-          <h3>Agent instructions</h3>
-          <p>Enable shared rules in Codex <code>AGENTS.md</code> and Claude <code>CLAUDE.md</code>. Dalo updates only its own managed blocks.</p>
+          <h3>Instruction packs</h3>
+          <p>Share the rules that are not skills as managed blocks in Codex <code>AGENTS.md</code> and Claude <code>CLAUDE.md</code>. Dalo updates only its own block; the rest of the file stays yours.</p>
           <a href="/docs/reference.html#dalo-instructions-enable-pack-ref-file--target-agent">Share instructions <span aria-hidden="true">→</span></a>
         </article>
         <article class="capability" style="--c:#c24b22">
           <h3>Hooks and tools</h3>
-          <p>Package typed hooks with their tools. Review each exact contract before Dalo projects supported hooks into Codex or Claude.</p>
+          <p>Package hooks together with the tools they run. Each one waits for its own approval before Dalo projects it into Codex or Claude.</p>
           <a href="/docs/plugins.html#hooks">Explore plugins <span aria-hidden="true">→</span></a>
         </article>
       </div>
@@ -216,34 +218,18 @@
           </a>
         </div>
         <div class="panel">
-          <div class="ui res" role="img" aria-label="Three sources with priorities 0, 10 and 20 resolve through the Dalo store into three agent folders">
-            <div class="res-col">
-              <div class="res-head">Sources</div>
-              <div class="res-node" style="--c:#e8623a"><b>local</b><small>priority 0</small></div>
-              <div class="res-node" style="--c:#7b5cf5"><b>company</b><small>priority 10</small></div>
-              <div class="res-node" style="--c:#43b3f2"><b>catalog</b><small>priority 20</small></div>
-            </div>
-            <svg class="res-wires" viewBox="0 0 44 180" preserveAspectRatio="none" aria-hidden="true" focusable="false">
-              <path class="res-wire" d="M0 26 C 26 26, 18 90, 44 90" stroke="#e8623a" stroke-opacity=".7"/>
-              <path class="res-wire" d="M0 90 H 44" stroke="#7b5cf5" stroke-opacity=".7"/>
-              <path class="res-wire" d="M0 154 C 26 154, 18 90, 44 90" stroke="#43b3f2" stroke-opacity=".8"/>
-            </svg>
-            <div class="res-hub">
-              <div class="res-mark"><img src="/assets/img/logo.svg" width="46" height="40" alt="" /></div>
-              <small>~/.dalo</small>
-            </div>
-            <svg class="res-wires" viewBox="0 0 44 180" preserveAspectRatio="none" aria-hidden="true" focusable="false">
-              <path class="res-wire" d="M0 90 C 26 90, 18 26, 44 26" stroke="#0b1733" stroke-opacity=".35"/>
-              <path class="res-wire" d="M0 90 H 44" stroke="#0b1733" stroke-opacity=".35"/>
-              <path class="res-wire" d="M0 90 C 26 90, 18 154, 44 154" stroke="#0b1733" stroke-opacity=".35"/>
-            </svg>
-            <div class="res-col">
-              <div class="res-head">Agents</div>
-              <div class="res-node" style="--c:#0b1733"><b>Claude Code</b><small>~/.claude/skills</small></div>
-              <div class="res-node" style="--c:#0b1733"><b>Codex</b><small>~/.agents/skills</small></div>
-              <div class="res-node" style="--c:#0b1733"><b>Hermes</b><small>~/.hermes/skills</small></div>
-            </div>
-            <div class="res-foot">
+          <div class="ui src" role="group" aria-label="Three sources in one store: local, the company team repository and the sebastian catalog, each with its priority and pinned commit">
+            <table class="src-table">
+              <thead>
+                <tr><th scope="col">Source</th><th scope="col">Priority</th><th scope="col">Pinned</th><th scope="col">Delivers</th></tr>
+              </thead>
+              <tbody>
+                <tr style="--c:#e8623a"><th scope="row"><b>local</b><small>your machine</small></th><td class="src-prio">0</td><td class="src-pin"><span class="src-none">not pinned</span></td><td class="src-del">your experiments</td></tr>
+                <tr style="--c:#7b5cf5"><th scope="row"><b>company</b><small>team repository</small></th><td class="src-prio">10</td><td class="src-pin"><code>9fd01b1745d3</code></td><td class="src-del">2 skills</td></tr>
+                <tr style="--c:#43b3f2"><th scope="row"><b>sebastian</b><small>public catalog</small></th><td class="src-prio">20</td><td class="src-pin"><code>0de93f7bf544</code></td><td class="src-del">1 selected · pending</td></tr>
+              </tbody>
+            </table>
+            <div class="src-foot">
               <span><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Pinned to exact commits</span>
               <span><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Lower priority wins name conflicts</span>
             </div>
@@ -330,7 +316,6 @@
   <section class="sec how" id="how" aria-labelledby="how-title">
     <div class="wrap">
       <div class="sec-head center reveal" style="--accent:#e8623a">
-        <span class="kicker">How it works</span>
         <h2 id="how-title">Many sources in. <span class="nowrap">One reviewed set out.</span></h2>
         <p>The store is the source of truth; agent folders are output targets.</p>
       </div>
@@ -375,11 +360,105 @@
     </div>
   </section>
 
+  <!-- ───────────────────────── COMPARE ───────────────────────── -->
+  <section class="compare" id="compare" aria-labelledby="compare-title">
+    <div class="wrap compare-grid">
+      <div class="reveal">
+        <h2 id="compare-title">When your agent setup becomes team infrastructure.</h2>
+        <p>Dalo pins and reviews skills, shares standing instructions, and gates tools and hooks through exact approvals.</p>
+      </div>
+      <div class="reveal">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col"><span class="sr-only">Aspect</span></th>
+                <th scope="col" class="col-dalo">Dalo</th>
+                <th scope="col">skills.sh</th>
+                <th scope="col">agentfiles</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Built for</th>
+                <td class="col-dalo" data-label="Dalo">Teams managing skills, instructions, and hooks</td>
+                <td data-label="skills.sh">Discovering and installing public skills</td>
+                <td data-label="agentfiles">Browsing and editing agent files in Obsidian</td>
+              </tr>
+              <tr>
+                <th scope="row">Beyond skills</th>
+                <td class="col-dalo" data-label="Dalo">Managed instructions, portable plugins, approved tools and hooks</td>
+                <td data-label="skills.sh">Installs skills</td>
+                <td data-label="agentfiles">Browses rules and agent files; installs skills</td>
+              </tr>
+              <tr>
+                <th scope="row">Pinning</th>
+                <td class="col-dalo" data-label="Dalo">Exact commits in lockfiles</td>
+                <td data-label="skills.sh">Branch or tag plus content hash</td>
+                <td data-label="agentfiles"><span>Updates to latest <code>HEAD</code></span></td>
+              </tr>
+              <tr>
+                <th scope="row">Existing folders</th>
+                <td class="col-dalo" data-label="Dalo">Never overwritten</td>
+                <td data-label="skills.sh">Replaced on install</td>
+                <td data-label="agentfiles">Replaced on install</td>
+              </tr>
+              <tr>
+                <th scope="row">Review</th>
+                <td class="col-dalo" data-label="Dalo">Preflight, audits, explicit approval</td>
+                <td data-label="skills.sh">Audit pages on skills.sh</td>
+                <td data-label="agentfiles">None built in</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="compare-note">Snapshot from September 2026. Find skills on skills.sh, then let Dalo pin and deliver the ones your team selects. <a href="/docs/comparison.html">Read the full comparison</a></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── STABILITY ───────────────────────── -->
+  <section class="stability" id="stability" aria-labelledby="stability-title">
+    <div class="wrap">
+      <h2 id="stability-title" class="reveal">Built to rely on.</h2>
+      <p class="sub reveal">
+        Dalo is v<span data-dalo-version>1.3.0</span>. <!-- x-release-please-version -->
+        Sources, deterministic resolution, security audits and review gates, safe sync, and diagnostics have all shipped, under the 1.x compatibility contract.
+      </p>
+      <ul class="stats reveal" aria-label="Checkable facts about this project">
+        <li>
+          <a href="https://github.com/sebastian-software/dalo/releases" rel="noopener">
+            <strong data-dalo-releases>36</strong>
+            <span>releases, every one public</span>
+          </a>
+        </li>
+        <li>
+          <a href="https://github.com/sebastian-software/dalo/blob/main/coverage-threshold" rel="noopener">
+            <strong>86.9%</strong>
+            <span>minimum line coverage, enforced in CI</span>
+          </a>
+        </li>
+        <li>
+          <a href="/docs/compatibility.html#supported-platforms">
+            <strong>5</strong>
+            <span>signed release targets with Sigstore provenance</span>
+          </a>
+        </li>
+        <li>
+          <a href="https://github.com/sebastian-software/dalo/issues?q=is%3Aissue+label%3Asecurity+is%3Aclosed" rel="noopener">
+            <strong>4</strong>
+            <span>findings from the 2026-09 audit, all closed</span>
+          </a>
+        </li>
+      </ul>
+      <p class="stab-foot reveal">Remaining proposals are tracked in <a href="https://github.com/sebastian-software/dalo/issues?q=is%3Aissue+is%3Aopen+label%3Atype%3Afeature" rel="noopener">open feature issues</a>.</p>
+    </div>
+  </section>
+
   <!-- ───────────────────────── QUICKSTART ───────────────────────── -->
   <section class="quick" id="quickstart" aria-labelledby="quickstart-title">
     <div class="wrap quick-grid">
       <div class="quick-copy reveal">
-        <span class="kicker">Quickstart</span>
         <h2 id="quickstart-title">Up and running in minutes.</h2>
         <p>Install Dalo, then try it against a real public catalog in a throwaway sandbox. Nothing touches your agent folders, and every command takes <code class="inl">--dry-run</code>.</p>
         <ol class="quick-steps">
@@ -482,7 +561,6 @@
   <section class="sec recovery" id="recovery" aria-labelledby="recovery-title">
     <div class="wrap recovery-grid">
       <div class="sec-head reveal">
-        <span class="kicker">Helpful by default</span>
         <h2 id="recovery-title">Get it wrong. Dalo gets you back.</h2>
         <p>Typos get a suggestion, unknown skills get the list of known ones, and a blocked sync prints the exact command that unblocks it.</p>
       </div>
@@ -507,135 +585,6 @@
     </div>
   </section>
 
-  <!-- ───────────────────────── DETAILS ───────────────────────── -->
-  <section class="details" aria-labelledby="details-title">
-    <div class="wrap">
-      <h2 id="details-title" class="reveal">Control how it reaches your agents</h2>
-      <p class="sub reveal">Review, sync, and diagnose the content your team chooses to share.</p>
-      <ul class="detail-grid reveal">
-        <li class="detail" style="--c:#7b5cf5">
-          <h3>Security preflight and review gate</h3>
-          <p>15 deterministic rules run before any link is made; high findings block until an explicit, content-bound exception. <a href="/docs/security.html">Security model</a></p>
-        </li>
-        <li class="detail" style="--c:#e8623a">
-          <h3>Team catalogs</h3>
-          <p><code>dalo team catalog add</code> pins a commit; <code>+copywriting</code> includes, <code>-seo-audit</code> excludes, <code>skills = []</code> selects all. <a href="/docs/team.html">Team guide</a></p>
-        </li>
-        <li class="detail" style="--c:#2b8fd6">
-          <h3>Instruction packs</h3>
-          <p>Source-backed rules stay pinned to an exact commit. Refreshes preserve everything outside Dalo's managed markers. <a href="/docs/reference.html#instruction-packs">Instruction reference</a></p>
-        </li>
-        <li class="detail" style="--c:#16925b">
-          <h3>Scheduled autosync</h3>
-          <p><code>dalo autosync install</code> keeps folders current via launchd, systemd, or cron. Scheduled runs never grant new approvals.</p>
-        </li>
-        <li class="detail" style="--c:#c24b22">
-          <h3>Portable plugins</h3>
-          <p>Group skills, agents, instructions, tools, and hooks in <code>PLUGIN.toml</code>. Executable parts need separate, exact approvals. <a href="/docs/plugins.html">Plugin guide</a></p>
-        </li>
-        <li class="detail" style="--c:#43b3f2">
-          <h3>Diagnostics</h3>
-          <p><code>dalo doctor</code> checks store structure, lockfiles, Git availability, target paths, and broken symlinks.</p>
-        </li>
-      </ul>
-    </div>
-  </section>
-
-  <!-- ───────────────────────── COMPARE ───────────────────────── -->
-  <section class="compare" id="compare" aria-labelledby="compare-title">
-    <div class="wrap compare-grid">
-      <div class="reveal">
-        <h2 id="compare-title">When your agent setup becomes team infrastructure.</h2>
-        <p>Dalo pins and reviews skills, shares standing instructions, and gates tools and hooks through exact approvals.</p>
-      </div>
-      <div class="reveal">
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col"><span class="sr-only">Aspect</span></th>
-                <th scope="col" class="col-dalo">Dalo</th>
-                <th scope="col">skills.sh</th>
-                <th scope="col">agentfiles</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <th scope="row">Built for</th>
-                <td class="col-dalo" data-label="Dalo">Teams managing skills, instructions, and hooks</td>
-                <td data-label="skills.sh">Discovering and installing public skills</td>
-                <td data-label="agentfiles">Browsing and editing agent files in Obsidian</td>
-              </tr>
-              <tr>
-                <th scope="row">Beyond skills</th>
-                <td class="col-dalo" data-label="Dalo">Managed instructions, portable plugins, approved tools and hooks</td>
-                <td data-label="skills.sh">Installs skills</td>
-                <td data-label="agentfiles">Browses rules and agent files; installs skills</td>
-              </tr>
-              <tr>
-                <th scope="row">Pinning</th>
-                <td class="col-dalo" data-label="Dalo">Exact commits in lockfiles</td>
-                <td data-label="skills.sh">Branch or tag plus content hash</td>
-                <td data-label="agentfiles"><span>Updates to latest <code>HEAD</code></span></td>
-              </tr>
-              <tr>
-                <th scope="row">Existing folders</th>
-                <td class="col-dalo" data-label="Dalo">Never overwritten</td>
-                <td data-label="skills.sh">Replaced on install</td>
-                <td data-label="agentfiles">Replaced on install</td>
-              </tr>
-              <tr>
-                <th scope="row">Review</th>
-                <td class="col-dalo" data-label="Dalo">Preflight, audits, explicit approval</td>
-                <td data-label="skills.sh">Audit pages on skills.sh</td>
-                <td data-label="agentfiles">None built in</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <p class="compare-note">Snapshot from September 2026. Find skills on skills.sh, then let Dalo pin and deliver the ones your team selects. <a href="/docs/comparison.html">Read the full comparison</a></p>
-      </div>
-    </div>
-  </section>
-
-  <!-- ───────────────────────── STABILITY ───────────────────────── -->
-  <section class="stability" id="stability" aria-labelledby="stability-title">
-    <div class="wrap">
-      <h2 id="stability-title" class="reveal">Built to rely on.</h2>
-      <p class="sub reveal">
-        Dalo is v<span data-dalo-version>1.3.0</span>. <!-- x-release-please-version -->
-        Sources, deterministic resolution, security audits and review gates, safe sync, and diagnostics have all shipped, under the 1.x compatibility contract.
-      </p>
-      <ul class="stats reveal" aria-label="Checkable facts about this project">
-        <li>
-          <a href="https://github.com/sebastian-software/dalo/releases" rel="noopener">
-            <strong data-dalo-releases>36</strong>
-            <span>releases, every one public</span>
-          </a>
-        </li>
-        <li>
-          <a href="https://github.com/sebastian-software/dalo/blob/main/coverage-threshold" rel="noopener">
-            <strong>86.9%</strong>
-            <span>minimum line coverage, enforced in CI</span>
-          </a>
-        </li>
-        <li>
-          <a href="/docs/compatibility.html#supported-platforms">
-            <strong>5</strong>
-            <span>signed release targets with Sigstore provenance</span>
-          </a>
-        </li>
-        <li>
-          <a href="https://github.com/sebastian-software/dalo/issues?q=is%3Aissue+label%3Asecurity+is%3Aclosed" rel="noopener">
-            <strong>4</strong>
-            <span>findings from the 2026-09 audit, all closed</span>
-          </a>
-        </li>
-      </ul>
-      <p class="stab-foot reveal">Remaining proposals are tracked in <a href="https://github.com/sebastian-software/dalo/issues?q=is%3Aissue+is%3Aopen+label%3Atype%3Afeature" rel="noopener">open feature issues</a>.</p>
-    </div>
-  </section>
-
   <!-- ───────────────────────── FINAL CTA ───────────────────────── -->
   <section class="cta" aria-labelledby="cta-title">
     <div class="mesh" aria-hidden="true"><i class="b4"></i><i class="b1"></i><i class="b3"></i><i class="b2"></i><i class="b5"></i></div>
@@ -653,8 +602,9 @@
           <span class="sr-only">Copy</span>
         </button>
       </div>
+      <p class="install-note"><span data-install-note>One binary into ~/.local/bin, no sudo. The SHA-256 checksum is always verified, Sigstore provenance when cosign is installed.</span> <a href="/install.sh">Installer source</a> · <a href="/docs/uninstall.html">Uninstall guide</a> · Windows via WSL.</p>
       <div class="hero-actions">
-        <a class="btn" href="#quickstart">Get started
+        <a class="btn" href="/docs/getting-started.html">Read the getting started guide
           <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3 8h9.5M8.5 3.5 13 8l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </a>
         <a class="link-arrow" href="https://github.com/sebastian-software/dalo" rel="noopener">View on GitHub
