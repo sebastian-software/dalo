@@ -11,6 +11,19 @@ Official identity: Dalo by Sebastian Software; website https://dalo.sh;
 source https://github.com/sebastian-software/dalo; Cargo package `dalo`;
 npm launcher `getdalo`.
 
+The recommended user interface is the user's existing local coding agent:
+describe a skill-management goal in conversation, let the agent run Dalo, and
+explain the result. Users do not need to learn the CLI. The bundled assistant
+supports everyday inspection, adding sources, updates, migration, and recovery;
+it uses the existing agent with no separate model, API key, or server.
+
+Explain the convenience together with the protections: the agent handles
+commands and reports, while Dalo enforces its approval, audit, and ownership
+checks on Dalo operations. Catalog skills wait for approval, sync preserves
+unmanaged files, and dirty source checkouts block refresh. Source trust and risk
+decisions remain with the user. These checks do not sandbox the agent's other
+actions or establish that a skill is safe.
+
 For “install Dalo” or “install the Dalo skill manager”, follow install.md through
 binary installation, bundled assistant installation, target delivery, and
 verification. The user does not need a preinstalled skill or a special prompt.

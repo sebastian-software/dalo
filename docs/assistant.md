@@ -1,9 +1,11 @@
 # Use Dalo through your agent
 
-The Dalo skill lets you manage your skills by talking to the agent you already
-use. Ask it to inspect your setup, bring existing skills under Dalo, preserve
-your own changes, or update an existing installation. The agent runs Dalo and
-explains the result; you do not need to remember its commands.
+Talking to your agent is the recommended way to install and use Dalo. Describe
+the result you want: add your team's skills, check for updates, connect another
+agent, or get an old setup working again. Your agent inspects the installation,
+runs the right Dalo commands, and explains what changed. You do not need to
+learn the CLI or interpret its reports yourself. Dalo's approval, audit, and
+ownership checks apply to the operations your agent runs through Dalo.
 
 The skill lives in [`skills/dalo`](../skills/dalo/SKILL.md). It contains
 instructions and supporting references, with no separate model, API key, server,
@@ -12,17 +14,61 @@ commands for changes. It can inspect existing folders before Dalo is installed.
 
 ## Start with an ordinary request
 
-Tell your local coding agent: **“Install the Dalo skill manager.”** The official
-website and repository point to the [agent installation guide](../site/install.md),
-which takes the agent through installing the binary and making the assistant
-available. You do not need a Dalo skill first, a special prompt, or a second
-skill manager. The agent needs web or repository access to find the instructions
-and local command access to perform the installation.
+Paste this into your local coding agent:
+
+> Install Dalo from https://dalo.sh/install.md and set it up for this agent.
+
+The agent follows the [installation guide](../site/install.md) to install the
+binary, connect the intended skill folder, deliver the bundled assistant, and
+verify the result. No Dalo skill is needed first. The agent needs web or
+repository access to find the instructions and local command access to perform
+the installation. A shorter “Install the Dalo skill manager” request works
+when the agent can find the official project.
 
 Discovery depends on the host's tools; if it cannot identify the project, give
 it [dalo.sh](https://dalo.sh). The site's [llms.txt](https://dalo.sh/llms.txt)
 is an additional documentation index. The same installation path is linked from
 normal HTML and the README, so it does not depend on automatic llms.txt support.
+
+## Keep using Dalo through conversation
+
+Installation is the first request. The same agent can manage your skills from
+then on. Select the Dalo skill in your agent, or use its skill invocation
+syntax, such as `$dalo` in Codex. Ask in your own language:
+
+| What you want | What to tell your agent |
+| --- | --- |
+| Understand your setup | “Dalo, what skills are installed and what needs attention?” |
+| Add your team's skills | “Add our skill repository at this URL and make its skills available here.” |
+| Review updates | “Update my skills and show me what changed.” |
+| Connect another agent | “Make the same skills available in Claude Code.” |
+| Preserve existing work | “I used skills.sh before. Move these skills to Dalo and keep my changes.” |
+| Keep your own skills private | “Bring my own skills under version control without sharing them publicly.” |
+| Recover an old setup | “I installed Dalo months ago. Get this setup working again.” |
+
+You supply the goal and decide which sources and changes to trust. The agent
+checks the actual folders, previews changes, and turns Dalo's reports into an
+explanation and next step. It can account for the store and target paths already
+in use, local edits, and skills installed by another tool.
+
+A bare invocation starts with a local assessment and a suggested next step. It
+does not install software or change your setup. A concrete request continues
+through the relevant work, asking about choices that cannot be inferred, such
+as two different versions of a skill with the same name.
+
+## Dalo's checks still apply in conversation
+
+Your agent turns the request into a plan and explains the decisions. When it
+runs Dalo, the same approval, audit, and ownership checks apply as in the
+terminal. Catalog skills need approval, sync preserves unmanaged files and
+reports unresolved conflicts, and dirty source checkouts block refresh so local
+edits are preserved.
+
+If a check blocks an operation, the agent can explain the finding and help you
+choose what to do next. You keep the decisions about sources, skills, and risk;
+the agent handles command syntax and reports. The [security overview](security.md)
+describes these protections and their limits. They apply to Dalo operations;
+the assistant is not a sandbox for everything your agent can do.
 
 ## Bundled installation
 
@@ -102,23 +148,6 @@ For Claude Code, use `--agent claude-code`. This route installs the skill first;
 ask it to set up Dalo and it can install the missing binary. Installing the skill
 alone does not migrate existing folders. Keep its installer ownership explicit
 if you later switch to the bundled route.
-
-## Talk to Dalo
-
-Select the Dalo skill in your agent, or use its skill invocation syntax, such as
-`$dalo` in Codex. You can then ask in your own language:
-
-- “Dalo, what is installed and what needs attention?”
-- “I used skills.sh before. Move these skills to Dalo and keep my changes.”
-- “Bring my own skills under version control without sharing them publicly.”
-- “I installed Dalo months ago. Get this setup working again.”
-- “Update my skills and explain anything that needs a decision.”
-- “Make the same skills available in Claude Code.”
-
-A bare invocation starts with a local assessment and a suggested next step. It
-does not install software or change your setup. A concrete request continues
-through the relevant work, asking about choices that cannot be inferred, such
-as two different versions of a skill with the same name.
 
 ## What the assistant accounts for
 

@@ -4,14 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Use Dalo through your agent · Dalo documentation</title>
-  <meta name="description" content="Set up, migrate, and maintain skills by talking to the agent you already use." />
+  <meta name="description" content="Recommended: manage skills through your agent, backed by Dalo's approval, audit, and ownership checks." />
   <link rel="canonical" href="https://dalo.sh/docs/assistant.html" />
   <meta name="theme-color" content="#ffffff" />
   <meta property="og:type" content="article" />
   <meta property="og:site_name" content="Dalo" />
   <meta property="og:url" content="https://dalo.sh/docs/assistant.html" />
   <meta property="og:title" content="Use Dalo through your agent · Dalo documentation" />
-  <meta property="og:description" content="Set up, migrate, and maintain skills by talking to the agent you already use." />
+  <meta property="og:description" content="Recommended: manage skills through your agent, backed by Dalo's approval, audit, and ownership checks." />
   <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
   <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
   <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
@@ -37,7 +37,7 @@
       <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
     </nav>
     <div class="header-cta">
-      <a class="pill-btn" href="/docs/getting-started.html">Get started
+      <a class="pill-btn" href="/docs/assistant.html">Use your agent
         <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </a>
       <details class="mobile-menu">
@@ -60,8 +60,8 @@
   <nav class="doc-nav" aria-label="Documentation">
     <p class="doc-nav-h">Documentation</p>
     <a href="/docs/">Overview</a>
-    <a href="/docs/getting-started.html">Getting started</a>
     <a href="/docs/assistant.html" aria-current="page">Dalo assistant</a>
+    <a href="/docs/getting-started.html">Getting started</a>
     <a href="/docs/projects.html">Project installations</a>
     <a href="/docs/team.html">Team repository</a>
     <a href="/docs/reference.html">Command reference</a>
@@ -79,8 +79,8 @@
     <summary><span class="doc-menu-label">Documentation</span> <span class="doc-menu-current">Dalo assistant</span></summary>
     <nav class="doc-menu-nav" aria-label="Documentation">
       <a href="/docs/">Overview</a>
-      <a href="/docs/getting-started.html">Getting started</a>
       <a href="/docs/assistant.html" aria-current="page">Dalo assistant</a>
+      <a href="/docs/getting-started.html">Getting started</a>
       <a href="/docs/projects.html">Project installations</a>
       <a href="/docs/team.html">Team repository</a>
       <a href="/docs/reference.html">Command reference</a>
@@ -97,25 +97,90 @@
   </details>
   <article class="doc-body">
 <h1 id="use-dalo-through-your-agent">Use Dalo through your agent</h1>
-<p>The Dalo skill lets you manage your skills by talking to the agent you already
-use. Ask it to inspect your setup, bring existing skills under Dalo, preserve
-your own changes, or update an existing installation. The agent runs Dalo and
-explains the result; you do not need to remember its commands.</p>
+<p>Talking to your agent is the recommended way to install and use Dalo. Describe
+the result you want: add your team&#39;s skills, check for updates, connect another
+agent, or get an old setup working again. Your agent inspects the installation,
+runs the right Dalo commands, and explains what changed. You do not need to
+learn the CLI or interpret its reports yourself. Dalo&#39;s approval, audit, and
+ownership checks apply to the operations your agent runs through Dalo.</p>
 <p>The skill lives in <a href="https://github.com/sebastian-software/dalo/blob/main/skills/dalo/SKILL.md" rel="noopener"><code>skills/dalo</code></a>. It contains
 instructions and supporting references, with no separate model, API key, server,
 or background service. The agent needs filesystem access and permission to run
 commands for changes. It can inspect existing folders before Dalo is installed.</p>
 <h2 id="start-with-an-ordinary-request"><a class="doc-anchor" href="#start-with-an-ordinary-request">Start with an ordinary request</a></h2>
-<p>Tell your local coding agent: <strong>“Install the Dalo skill manager.”</strong> The official
-website and repository point to the <a href="/install.md">agent installation guide</a>,
-which takes the agent through installing the binary and making the assistant
-available. You do not need a Dalo skill first, a special prompt, or a second
-skill manager. The agent needs web or repository access to find the instructions
-and local command access to perform the installation.</p>
+<p>Paste this into your local coding agent:</p>
+<blockquote>
+<p>Install Dalo from <a href="https://dalo.sh/install.md" rel="noopener">https://dalo.sh/install.md</a> and set it up for this agent.</p>
+</blockquote>
+<p>The agent follows the <a href="/install.md">installation guide</a> to install the
+binary, connect the intended skill folder, deliver the bundled assistant, and
+verify the result. No Dalo skill is needed first. The agent needs web or
+repository access to find the instructions and local command access to perform
+the installation. A shorter “Install the Dalo skill manager” request works
+when the agent can find the official project.</p>
 <p>Discovery depends on the host&#39;s tools; if it cannot identify the project, give
 it <a href="https://dalo.sh" rel="noopener">dalo.sh</a>. The site&#39;s <a href="https://dalo.sh/llms.txt" rel="noopener">llms.txt</a>
 is an additional documentation index. The same installation path is linked from
 normal HTML and the README, so it does not depend on automatic llms.txt support.</p>
+<h2 id="keep-using-dalo-through-conversation"><a class="doc-anchor" href="#keep-using-dalo-through-conversation">Keep using Dalo through conversation</a></h2>
+<p>Installation is the first request. The same agent can manage your skills from
+then on. Select the Dalo skill in your agent, or use its skill invocation
+syntax, such as <code>$dalo</code> in Codex. Ask in your own language:</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>What you want</th>
+<th>What to tell your agent</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Understand your setup</td>
+<td>“Dalo, what skills are installed and what needs attention?”</td>
+</tr>
+<tr>
+<td>Add your team&#39;s skills</td>
+<td>“Add our skill repository at this URL and make its skills available here.”</td>
+</tr>
+<tr>
+<td>Review updates</td>
+<td>“Update my skills and show me what changed.”</td>
+</tr>
+<tr>
+<td>Connect another agent</td>
+<td>“Make the same skills available in Claude Code.”</td>
+</tr>
+<tr>
+<td>Preserve existing work</td>
+<td>“I used skills.sh before. Move these skills to Dalo and keep my changes.”</td>
+</tr>
+<tr>
+<td>Keep your own skills private</td>
+<td>“Bring my own skills under version control without sharing them publicly.”</td>
+</tr>
+<tr>
+<td>Recover an old setup</td>
+<td>“I installed Dalo months ago. Get this setup working again.”</td>
+</tr>
+</tbody></table></div>
+<p>You supply the goal and decide which sources and changes to trust. The agent
+checks the actual folders, previews changes, and turns Dalo&#39;s reports into an
+explanation and next step. It can account for the store and target paths already
+in use, local edits, and skills installed by another tool.</p>
+<p>A bare invocation starts with a local assessment and a suggested next step. It
+does not install software or change your setup. A concrete request continues
+through the relevant work, asking about choices that cannot be inferred, such
+as two different versions of a skill with the same name.</p>
+<h2 id="dalos-checks-still-apply-in-conversation"><a class="doc-anchor" href="#dalos-checks-still-apply-in-conversation">Dalo&#39;s checks still apply in conversation</a></h2>
+<p>Your agent turns the request into a plan and explains the decisions. When it
+runs Dalo, the same approval, audit, and ownership checks apply as in the
+terminal. Catalog skills need approval, sync preserves unmanaged files and
+reports unresolved conflicts, and dirty source checkouts block refresh so local
+edits are preserved.</p>
+<p>If a check blocks an operation, the agent can explain the finding and help you
+choose what to do next. You keep the decisions about sources, skills, and risk;
+the agent handles command syntax and reports. The <a href="/docs/security.html">security overview</a>
+describes these protections and their limits. They apply to Dalo operations;
+the assistant is not a sandbox for everything your agent can do.</p>
 <h2 id="bundled-installation"><a class="doc-anchor" href="#bundled-installation">Bundled installation</a></h2>
 <p>On an ordinary interactive invocation, including bare <code>dalo</code> and after <code>dalo init</code>, Dalo checks the assistant locally. If it is missing or differs from the
 running binary&#39;s bundle, Dalo offers to install or update it with a <code>[y/N]</code>
@@ -176,21 +241,6 @@ alongside <code>SKILL.md</code>. For example, with the
 ask it to set up Dalo and it can install the missing binary. Installing the skill
 alone does not migrate existing folders. Keep its installer ownership explicit
 if you later switch to the bundled route.</p>
-<h2 id="talk-to-dalo"><a class="doc-anchor" href="#talk-to-dalo">Talk to Dalo</a></h2>
-<p>Select the Dalo skill in your agent, or use its skill invocation syntax, such as
-<code>$dalo</code> in Codex. You can then ask in your own language:</p>
-<ul>
-<li>“Dalo, what is installed and what needs attention?”</li>
-<li>“I used skills.sh before. Move these skills to Dalo and keep my changes.”</li>
-<li>“Bring my own skills under version control without sharing them publicly.”</li>
-<li>“I installed Dalo months ago. Get this setup working again.”</li>
-<li>“Update my skills and explain anything that needs a decision.”</li>
-<li>“Make the same skills available in Claude Code.”</li>
-</ul>
-<p>A bare invocation starts with a local assessment and a suggested next step. It
-does not install software or change your setup. A concrete request continues
-through the relevant work, asking about choices that cannot be inferred, such
-as two different versions of a skill with the same name.</p>
 <h2 id="what-the-assistant-accounts-for"><a class="doc-anchor" href="#what-the-assistant-accounts-for">What the assistant accounts for</a></h2>
 <p>It combines Dalo&#39;s reports with inspection of relevant existing skill folders.
 This includes folders not linked to Dalo, shared symlinks, project-only skills,
@@ -220,9 +270,10 @@ handover is prepared and verified separately.</p>
     <p class="doc-toc-h">On this page</p>
     <ul>
       <li><a href="#start-with-an-ordinary-request">Start with an ordinary request</a></li>
+      <li><a href="#keep-using-dalo-through-conversation">Keep using Dalo through conversation</a></li>
+      <li><a href="#dalos-checks-still-apply-in-conversation">Dalo&#39;s checks still apply in conversation</a></li>
       <li><a href="#bundled-installation">Bundled installation</a></li>
       <li><a href="#other-installation-routes">Other installation routes</a></li>
-      <li><a href="#talk-to-dalo">Talk to Dalo</a></li>
       <li><a href="#what-the-assistant-accounts-for">What the assistant accounts for</a></li>
     </ul>
   </nav>
@@ -249,6 +300,7 @@ handover is prepared and verified separately.</p>
         <div class="footer-col">
           <p class="footer-h">Docs</p>
           <a href="/docs/">All documentation</a>
+          <a href="/docs/assistant.html">Use Dalo through your agent</a>
           <a href="/docs/getting-started.html">Getting started</a>
           <a href="/docs/reference.html">Reference</a>
           <a href="/docs/troubleshooting.html">Troubleshooting</a>

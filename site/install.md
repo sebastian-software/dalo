@@ -202,6 +202,21 @@ it; ask only when the agent or installation scope is ambiguous.
    dalo doctor --json
    ```
 
+   Explain that the user can keep managing Dalo through this agent. Give useful
+   next requests: “What skills do I have?”, “Add my team's skill repository,”
+   and “Update my skills and show me what changed.” Explain how to select or
+   invoke the Dalo skill in the current host, noting any required skill reload.
+   Keep command syntax in the background unless the user asks for it. Offer
+   the next step without adding sources, granting approvals, or migrating skills
+   beyond the installation request.
+
+   Explain why conversation and control go together: the agent handles Dalo's
+   commands and reports; Dalo enforces approval, audit, and ownership checks on
+   its operations. Decisions about source trust, approvals, and risk remain with
+   the user. Link the [security overview](https://dalo.sh/docs/security.html)
+   for the checks and their limits, without claiming that Dalo sandboxes the
+   agent's other actions or guarantees that skills are safe.
+
 ## Notes
 
 - Dalo shells out to `git` for source operations, so `git` must be on `PATH`.

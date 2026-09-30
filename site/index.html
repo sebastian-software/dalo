@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Dalo · AI agent skill manager</title>
-  <meta name="description" content="Dalo is an AI agent skill manager for skills, standing instructions, and hooks from Git. Pin sources, preview changes, and sync supported agents." />
+  <meta name="description" content="Manage skills through your AI agent, backed by Dalo's safety checks. Preview changes, review approvals, and sync without replacing your own folders." />
   <link rel="canonical" href="https://dalo.sh/" />
   <meta name="theme-color" content="#ffffff" />
 
@@ -12,14 +12,14 @@
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Dalo" />
   <meta property="og:url" content="https://dalo.sh/" />
-  <meta property="og:title" content="Dalo · Your team's agent setup, versioned like code" />
-  <meta property="og:description" content="Dalo is an AI agent skill manager for skills, standing instructions, and hooks from Git. Pin sources, preview changes, and sync supported agents." />
+  <meta property="og:title" content="Dalo · Manage your agent's skills through conversation" />
+  <meta property="og:description" content="Manage skills through your AI agent, backed by Dalo's safety checks. Preview changes, review approvals, and sync without replacing your own folders." />
   <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Dalo · Your team's agent setup, versioned like code" />
-  <meta name="twitter:description" content="Dalo is an AI agent skill manager for skills, standing instructions, and hooks from Git. Pin sources, preview changes, and sync supported agents." />
+  <meta name="twitter:title" content="Dalo · Manage your agent's skills through conversation" />
+  <meta name="twitter:description" content="Manage skills through your AI agent, backed by Dalo's safety checks. Preview changes, review approvals, and sync without replacing your own folders." />
   <meta name="twitter:image" content="https://dalo.sh/assets/img/og.png" />
 
   <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
@@ -38,7 +38,7 @@
     "@type": "SoftwareApplication",
     "name": "Dalo",
     "url": "https://dalo.sh/",
-    "description": "Dalo is an AI agent skill manager for skills, standing instructions, and hooks from Git. Pin sources, preview changes, and sync supported agents.",
+    "description": "Manage skills through your AI agent, backed by Dalo's safety checks. Preview changes, review approvals, and sync without replacing your own folders.",
     "sameAs": "https://github.com/sebastian-software/dalo",
     "softwareVersion": "1.3.0",
     "applicationCategory": "DeveloperApplication",
@@ -68,7 +68,7 @@
       <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
     </nav>
     <div class="header-cta">
-      <a class="pill-btn" href="#quickstart">Get started
+      <a class="pill-btn" href="#quickstart">Use your agent
         <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </a>
       <details class="mobile-menu">
@@ -98,16 +98,30 @@
     <div class="wrap hero-grid">
       <div class="hero-copy">
         <span class="eyebrow"><b>Open source</b><span>Rust CLI · v<span data-dalo-version>1.3.0</span></span></span> <!-- x-release-please-version -->
-        <h1 id="hero-title">Your team's agent setup, <span class="grad-text">versioned like code.</span></h1>
-        <p class="lede">Keep skills, instructions, and hooks in Git. Dalo pins sources, previews changes, and delivers each piece to the agents that support it.</p>
+        <h1 id="hero-title">Manage your agent's skills. <span class="grad-text">Just ask your agent.</span></h1>
+        <p class="lede">Tell your agent what to install, update, or fix. It handles the commands while Dalo checks approvals and preserves your own files during sync, so you can manage skills through conversation.</p>
         <div class="hero-actions">
-          <a class="btn" href="#quickstart">Get started
+          <a class="btn" href="#quickstart">Set up with your agent
             <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3 8h9.5M8.5 3.5 13 8l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </a>
-          <a class="link-arrow" href="https://github.com/sebastian-software/dalo" rel="noopener">View on GitHub
+          <a class="link-arrow" href="/docs/assistant.html">See what you can ask
             <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </a>
         </div>
+        <div class="agent-prompt">
+          <p class="prompt-label">Paste into your coding agent</p>
+          <div class="install prompt-box">
+            <p id="hero-install-prompt">Install Dalo from https://dalo.sh/install.md and set it up for this agent.</p>
+            <button class="copy" type="button" data-copy-target="hero-install-prompt" aria-label="Copy agent setup prompt">
+              <svg class="cp" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="5.5" y="5.5" width="8" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10.5 3.5v-.5a1.5 1.5 0 0 0-1.5-1.5H4A1.5 1.5 0 0 0 2.5 3v5A1.5 1.5 0 0 0 4 9.5h.5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
+              <svg class="ok" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span class="sr-only">Copy</span>
+            </button>
+          </div>
+          <p class="install-note">Recommended for local coding agents on macOS and Linux. The agent sets up Dalo and its bundled assistant. Then keep using it in conversation. <a href="/docs/assistant.html">How it works</a></p>
+        </div>
+        <details class="manual-setup">
+          <summary>Prefer the terminal? Install the CLI</summary>
         <div class="install-picker" data-install-picker>
           <div class="install-methods" role="group" aria-label="Choose an installation method" hidden>
             <button class="install-method" type="button" data-install-method="homebrew" data-command-value="brew install sebastian-software/tap/dalo" data-note-value="Installs the release through Homebrew. One binary, no daemon, no sudo." aria-pressed="false">
@@ -131,36 +145,33 @@
           </div>
           <p class="install-note"><span data-install-note>One binary into ~/.local/bin, no sudo. The SHA-256 checksum is always verified, Sigstore provenance when cosign is installed.</span> <a href="/install.sh">Installer source</a> · <a href="/docs/uninstall.html">Uninstall guide</a> · Windows via WSL.</p>
         </div>
+        </details>
       </div>
 
       <div class="stage" role="group" aria-label="Dalo product preview">
         <div class="card term">
           <div class="term-bar">
             <div class="dots" aria-hidden="true"><span></span><span></span><span></span></div>
-            <div class="term-title">~/work · dalo sync</div>
+            <div class="term-title">Dalo through your agent · example workflow</div>
           </div>
-          <pre class="term-body"><code><span class="ln"><span class="p">$</span> <span class="cmd">dalo sync</span></span>
-<span class="ln k-dim">dalo store: ~/.dalo</span>
-<span class="ln k-dim">target[codex]: ~/.agents/skills</span>
-<span class="ln"><span class="k-ok">applied  create</span>     target[codex]:/incident-review <span class="nb">-&gt;</span> store:/sources/company/checkout/skills/incident-review</span>
-<span class="ln"><span class="k-ok">applied  create</span>     target[codex]:/release-notes <span class="nb">-&gt;</span> store:/sources/company/checkout/skills/release-notes</span>
-<span class="ln cmd">synced: 2 skills across 1 target (2 created)</span>
-<span class="ln k-warn">pending approval: sebastian:effective-web (run: dalo approve skill sebastian:effective-web)</span>
-<span class="ln k-dim">security preflight: deterministic checks only</span>
-<span class="ln"><span class="p">$</span> <span class="cursor"></span></span></code></pre>
+          <div class="conversation">
+            <div class="message request"><span>You</span><p>Update my skills and show me what changed.</p></div>
+            <div class="message"><span>Your agent</span><p>I'll check local changes and conflicts, then show you the update plan. Dalo will keep unapproved catalog skills out of the sync.</p></div>
+            <div class="message request"><span>You</span><p>Show me which skills need approval.</p></div>
+          </div>
         </div>
 
         <div class="card approve">
           <div class="approve-top">
-            <span class="label">Approval</span>
-            <span class="status pending">pending</span>
+            <span class="label">Your decision</span>
+            <span class="status pending">review first</span>
           </div>
           <div class="skill-id">sebastian:effective-web</div>
           <div class="approve-rows">
             <div><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Security preflight<span>clean · 15 rules</span></div>
             <div><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Selected from catalog<span>sebastian</span></div>
           </div>
-          <code class="approve-cmd"><span class="p">$</span> dalo approve skill sebastian:effective-web</code>
+          <p class="approve-cmd">Your agent explains the skill; Dalo checks its approval before linking it.</p>
         </div>
 
         <div class="card agents-card">
@@ -241,7 +252,7 @@
         <div class="copy-col">
           <span class="kicker"><span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 1.8 13 3.8v3.7c0 3.1-2.1 5.6-5 6.7-2.9-1.1-5-3.6-5-6.7V3.8z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="m5.6 8 1.7 1.7 3.2-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Reviewed first</span>
           <h2>Review skills before they reach an agent.</h2>
-          <p class="body">Fifteen deterministic security rules run locally on every skill. Catalog skills also wait for your explicit approval before Dalo links them.</p>
+          <p class="body">Your agent helps you understand what a skill does before you decide to trust it. Dalo checks every skill with fifteen local security rules and requires approval for catalog skills before linking them.</p>
           <a class="link-arrow" href="/docs/security.html">Read the security model
             <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </a>
@@ -279,7 +290,7 @@
         <div class="copy-col">
           <span class="kicker"><span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="2.5" y="2.5" width="11" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5.5 8h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span>Safe by default</span>
           <h2>Only touches what it owns.</h2>
-          <p class="body">Dalo never overwrites your files or folders. Add <code class="inl">--dry-run</code> to any command and see every change first.</p>
+          <p class="body">During sync, Dalo leaves your own files and folders in place. It updates only the links and managed content it owns, and reports conflicts that need your decision. Ask your agent to preview changes with <code class="inl">--dry-run</code>.</p>
           <p class="rule">Dalo may manage what it owns. It does not take ownership by surprise.</p>
         </div>
         <div class="panel">
@@ -459,30 +470,43 @@
   <section class="quick" id="quickstart" aria-labelledby="quickstart-title">
     <div class="wrap quick-grid">
       <div class="quick-copy reveal">
-        <h2 id="quickstart-title">Up and running in minutes.</h2>
-        <p>Install Dalo, then try it against a real public catalog in a throwaway sandbox. Nothing touches your agent folders, and every command takes <code class="inl">--dry-run</code>.</p>
+        <h2 id="quickstart-title">Your first step is a message.</h2>
+        <p>Use the coding agent you already have. It handles installation and everyday skill management, with no separate model, API key, or server.</p>
         <ol class="quick-steps">
-          <li data-install-picker>
-            <span class="step-label">Install</span>
-            <div class="install">
-              <span class="pr" aria-hidden="true">$</span>
-              <code id="quick-install-command" data-install-command>curl -fsSL https://dalo.sh/install.sh | sh</code>
-              <button class="copy" type="button" data-copy-target="quick-install-command" aria-label="Copy install command">
+          <li>
+            <span class="step-label">Ask your agent to set it up</span>
+            <div class="install prompt-box">
+              <p id="quick-install-prompt">Install Dalo from https://dalo.sh/install.md and set it up for this agent.</p>
+              <button class="copy" type="button" data-copy-target="quick-install-prompt" aria-label="Copy agent setup prompt">
               <svg class="cp" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="5.5" y="5.5" width="8" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10.5 3.5v-.5a1.5 1.5 0 0 0-1.5-1.5H4A1.5 1.5 0 0 0 2.5 3v5A1.5 1.5 0 0 0 4 9.5h.5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
               <svg class="ok" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
               <span class="sr-only">Copy</span>
             </button>
             </div>
-            <p class="step-note"><code class="inl">npx getdalo</code> runs it once without installing. <a href="https://github.com/sebastian-software/dalo#installation" rel="noopener">All install methods</a></p>
+            <p class="step-note">Your agent needs local file and command access and installs the Dalo skill as part of setup.</p>
           </li>
           <li>
-            <span class="step-label">Run the sandbox</span>
-            <p>Copy the commands from the <span class="nowrap">“first sync”</span> terminal: they create a temporary store, add a public catalog, and approve one skill. Done? <code class="inl">unset DALO_STORE SKILLS_DIR</code> returns your shell to your real setup.</p>
+            <span class="step-label">Tell it what you want to do</span>
+            <p>Select the Dalo skill, then ask: “Add my team's skill repository,” or “Check my existing skills and explain what needs attention.” Use your own language.</p>
           </li>
         </ol>
       </div>
 
       <div class="quick-demo reveal">
+        <div class="everyday-requests">
+          <h3>What you can ask after setup</h3>
+          <p>Try these requests in your agent with the Dalo skill selected:</p>
+          <ul>
+            <li>“What skills do I have, and what needs attention?”</li>
+            <li>“Update my skills and show me what changed.”</li>
+            <li>“Make the same skills available in Claude Code.”</li>
+            <li>“Move my skills.sh setup to Dalo and keep my changes.”</li>
+          </ul>
+          <a class="link-arrow" href="/docs/assistant.html">More things you can ask <span aria-hidden="true">→</span></a>
+        </div>
+        <details class="manual-setup">
+          <summary>Try the CLI in a throwaway sandbox</summary>
+          <p class="install-note">Install the binary first with the terminal instructions above. <code class="inl">npx getdalo</code> also runs it without a global install. These commands use temporary folders. Afterwards, <code class="inl">unset DALO_STORE SKILLS_DIR</code> returns your shell to your real setup.</p>
         <div class="lterm">
           <div class="term-bar">
             <div class="dots" aria-hidden="true"><span></span><span></span><span></span></div>
@@ -508,6 +532,7 @@
 <span class="ln"><span class="p">$</span> dalo sync</span>
 <span class="ln k-dim">security preflight: deterministic checks only</span></code></pre>
         </div>
+        </details>
         <figure class="video-card">
           <video data-autoplay loop muted playsinline controls preload="metadata" aria-label="Fifteen-second Dalo secure-sync video">
             <source src="/assets/dalo-quickstart.mp4" type="video/mp4" />
@@ -519,15 +544,14 @@
       <div class="quick-next reveal">
         <ol class="quick-steps" start="3">
           <li>
-            <span class="step-label">Make it your team's</span>
-            <p>Put your team's skills in a Git repository with a <code class="inl">dalo.toml</code> manifest. Teammates add it once and sync; approvals stay on each machine.</p>
-            <pre class="team-snippet"><code><span class="ln k-dim"># in your team's repository</span><span class="ln"><span class="p">$</span> dalo team init company --name "Company Skills"</span><span class="ln k-dim"># commit dalo.toml and skills/&lt;name&gt;/SKILL.md, then push</span><span class="ln"> </span><span class="ln k-dim"># on every teammate's machine</span><span class="ln"><span class="p">$</span> dalo source add company git@github.com:acme/agent-skills.git</span><span class="ln"><span class="p">$</span> dalo sync</span></code></pre>
-            <a class="link-arrow" href="/docs/team.html">Read the team repository guide
+            <span class="step-label">Use it for the next change, too</span>
+            <p>Your agent reads Dalo's reports and explains what needs a decision. Catalog skills wait for approval, conflicts stay visible, and sync leaves your own folders in place. If your host caches its skills, reload them or start a new session after setup.</p>
+            <a class="link-arrow" href="/docs/assistant.html">Read the conversation guide
               <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </a>
           </li>
         </ol>
-        <a class="link-arrow" href="/docs/getting-started.html">Read the getting started guide
+        <a class="link-arrow" href="/docs/getting-started.html">Prefer commands? Follow the CLI guide
           <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </a>
       </div>
@@ -539,19 +563,19 @@
       <ul class="starts-grid" aria-labelledby="start-title">
         <li class="start" style="--c:#e8623a">
           <h4>Skills already in an agent folder</h4>
-          <p><code>dalo status</code> lists them as unmanaged, and sync never overwrites them. <code>dalo adopt</code> copies one into your private source when you are ready. <a href="/docs/getting-started.html#adopt-a-skill-an-agent-wrote">Adopt a skill</a></p>
+          <p>Ask: “Check my existing skills and bring them under Dalo. Keep my changes.” Your agent inspects them first and explains the adoption plan. <a href="/docs/getting-started.html#adopt-a-skill-an-agent-wrote">Adopt a skill</a></p>
         </li>
         <li class="start" style="--c:#7b5cf5">
           <h4>A project that uses skills.sh</h4>
-          <p><code>dalo migrate skills-sh</code> checks every installed copy against its source and writes a pinned definition only when all of them match. <a href="/docs/projects.html#migrate-a-skillssh-project">Migration guide</a></p>
+          <p>Ask: “Move this project's skills.sh setup to Dalo.” Dalo checks installed copies against their sources; your agent explains any differences that need a decision. <a href="/docs/projects.html#migrate-a-skillssh-project">Migration guide</a></p>
         </li>
         <li class="start" style="--c:#2b8fd6">
           <h4>Skills for one repository</h4>
-          <p>Commit <code>dalo-project.toml</code>, and every clone restores the same pinned set with <code>dalo install</code>, in its own store. <a href="/docs/projects.html">Project installations</a></p>
+          <p>Ask: “Set up Dalo for this repository so every clone gets the same skills.” A committed project definition pins the set, with a separate store in each clone. <a href="/docs/projects.html">Project installations</a></p>
         </li>
         <li class="start" style="--c:#16925b">
-          <h4>An agent that does the setup</h4>
-          <p>Tell your coding agent: “Install the Dalo skill manager.” The <a href="/install.md">agent setup guide</a> covers the binary and the built-in assistant. <a href="/docs/assistant.html">Conversational setup</a></p>
+          <h4>A team sharing skills</h4>
+          <p>Ask your agent to connect your team's skill repository. Everyone draws from the same Git source; catalog approvals stay on each machine. <a href="/docs/team.html">Team repository guide</a></p>
         </li>
       </ul>
     </div>
@@ -591,20 +615,19 @@
     <div class="veil" aria-hidden="true"></div>
     <div class="wrap cta-inner">
       <img class="cta-logo" src="/assets/img/logo.svg" width="160" height="140" alt="" />
-      <h2 id="cta-title">Bring your team's agent setup into Git.</h2>
-      <p>Open source under MIT or Apache-2.0. One Rust binary, no daemon, just Git.</p>
-      <div class="install" data-install-picker>
-        <span class="pr" aria-hidden="true">$</span>
-        <code id="cta-install-command" data-install-command>curl -fsSL https://dalo.sh/install.sh | sh</code>
-        <button class="copy" type="button" data-copy-target="cta-install-command" aria-label="Copy install command">
+      <h2 id="cta-title">Use your agent to manage your skills.</h2>
+      <p>Ask your agent to add skills, review updates, or fix a problem in your setup. Dalo's approval and ownership checks still apply when your agent runs the sync.</p>
+      <div class="install prompt-box">
+        <p id="cta-install-prompt">Install Dalo from https://dalo.sh/install.md and set it up for this agent.</p>
+        <button class="copy" type="button" data-copy-target="cta-install-prompt" aria-label="Copy agent setup prompt">
           <svg class="cp" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="5.5" y="5.5" width="8" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10.5 3.5v-.5a1.5 1.5 0 0 0-1.5-1.5H4A1.5 1.5 0 0 0 2.5 3v5A1.5 1.5 0 0 0 4 9.5h.5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
           <svg class="ok" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           <span class="sr-only">Copy</span>
         </button>
       </div>
-      <p class="install-note"><span data-install-note>One binary into ~/.local/bin, no sudo. The SHA-256 checksum is always verified, Sigstore provenance when cosign is installed.</span> <a href="/install.sh">Installer source</a> · <a href="/docs/uninstall.html">Uninstall guide</a> · Windows via WSL.</p>
+      <p class="install-note">Open source under MIT or Apache-2.0. Uses your existing local coding agent on macOS or Linux. <a href="/install.md">Agent setup guide</a></p>
       <div class="hero-actions">
-        <a class="btn" href="/docs/getting-started.html">Read the getting started guide
+        <a class="btn" href="/docs/assistant.html">Use Dalo through your agent
           <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3 8h9.5M8.5 3.5 13 8l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </a>
         <a class="link-arrow" href="https://github.com/sebastian-software/dalo" rel="noopener">View on GitHub
@@ -637,6 +660,7 @@
         <div class="footer-col">
           <p class="footer-h">Docs</p>
           <a href="/docs/">All documentation</a>
+          <a href="/docs/assistant.html">Use Dalo through your agent</a>
           <a href="/docs/getting-started.html">Getting started</a>
           <a href="/docs/reference.html">Reference</a>
           <a href="/docs/troubleshooting.html">Troubleshooting</a>
