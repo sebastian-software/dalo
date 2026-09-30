@@ -432,8 +432,14 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
 
 /* ── Quickstart ──────────────────────────────────────────── */
 .quick { padding: 96px 0; background: linear-gradient(180deg, #fff 0, var(--surface) 22%, var(--surface) 78%, #fff 100%); }
-.quick-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 72px; align-items: start; }
-.quick-copy { position: sticky; top: 40px; --accent: #2b8fd6; }
+/* Steps 1 and 2 sit beside the terminal they refer to; step 3 continues the
+   list below them. The source order is steps, terminal, step 3, so the terminal
+   follows step 2 when the columns stack. */
+.quick-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); grid-template-rows: auto 1fr; gap: 18px 72px; align-items: start; }
+.quick-copy { grid-column: 1; grid-row: 1; --accent: #2b8fd6; }
+.quick-demo { grid-column: 2; grid-row: 1 / span 2; }
+.quick-next { grid-column: 1; grid-row: 2; }
+.quick-next .quick-steps { margin-top: 0; counter-reset: step 2; }
 .quick-copy h2 { margin-top: 18px; font-size: clamp(30px, 3.3vw, 42px); line-height: 1.1; letter-spacing: -.035em; font-weight: 700; }
 .quick-copy > p { margin-top: 16px; font-size: 17px; line-height: 1.6; color: var(--muted); }
 .quick-steps { margin: 26px 0 0; padding: 0; list-style: none; display: grid; gap: 18px; counter-reset: step; }
@@ -445,6 +451,7 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
 }
 .quick-steps p { font-size: 15px; line-height: 1.55; color: var(--muted); padding-left: 34px; }
 .quick-steps p code { font-size: 13px; color: var(--ink-2); }
+.quick-steps .step-note { margin-top: 10px; font-size: 14px; }
 .team-snippet {
   margin: 12px 0 0 34px; padding: 12px 14px; border-radius: var(--r-sm); background: #fff;
   box-shadow: inset 0 0 0 1px var(--line); font-size: 12.5px; line-height: 1.7; color: var(--ink-2); overflow-x: auto;
@@ -454,17 +461,29 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
 /* Touch screens get 44px targets for the picker, copy buttons, and menu. */
 @media (pointer: coarse) {
   .install-method { height: 44px; line-height: 44px; }
-  .copy { width: 44px; height: 44px; }
+  .copy, .lterm .copy { width: 44px; height: 44px; }
+  .lterm .term-bar { height: 48px; }
   .mobile-menu summary { width: 44px; height: 44px; }
 }
-.quick-copy .alt { font-size: 14.5px; color: var(--muted); margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--line); }
-.quick-copy .alt a, .detail a, .compare-note a, .stab-foot a, .video-cap a { color: var(--ink); font-weight: 600; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--coral) 55%, transparent); text-underline-offset: 3px; text-decoration-thickness: 1.5px; }
-.quick-copy .alt a:hover, .detail a:hover, .compare-note a:hover, .stab-foot a:hover, .video-cap a:hover { color: var(--rust); }
-.quick-copy .link-arrow { margin-top: 24px; font-size: 15px; }
+.quick-steps p a, .start a, .detail a, .compare-note a, .stab-foot a, .video-cap a { color: var(--ink); font-weight: 600; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--coral) 55%, transparent); text-underline-offset: 3px; text-decoration-thickness: 1.5px; }
+.quick-steps p a:hover, .start a:hover, .detail a:hover, .compare-note a:hover, .stab-foot a:hover, .video-cap a:hover { color: var(--rust); }
+.quick-next > .link-arrow { margin-top: 24px; font-size: 15px; }
 .quick-demo { display: grid; gap: 20px; min-width: 0; }
 .video-card { margin: 0; background: #fff; border-radius: 14px; box-shadow: var(--shadow-soft); overflow: hidden; }
 .video-card video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: var(--ink); }
 .video-cap { padding: 12px 16px; font-size: 13.5px; color: var(--muted); border-top: 1px solid var(--line-2); }
+
+/* Alternative starting points, inside the quickstart. */
+.starts { margin-top: 80px; }
+.starts h3 { font-size: 22px; line-height: 1.2; letter-spacing: -.025em; font-weight: 700; }
+.starts-sub { margin-top: 8px; max-width: 60ch; font-size: 16px; line-height: 1.55; color: var(--muted); }
+.starts-grid { list-style: none; margin: 28px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px 40px; }
+.start { padding-top: 20px; border-top: 1px solid var(--line); }
+.start h4 { display: flex; align-items: flex-start; gap: 9px; font-size: 15px; line-height: 1.35; font-weight: 600; letter-spacing: -.01em; color: var(--ink); }
+.start h4::before { content: ""; flex: none; width: 6px; height: 6px; margin-top: .48em; border-radius: 2px; background: var(--c, var(--coral)); }
+.start p { margin-top: 8px; font-size: 14.5px; line-height: 1.6; color: var(--muted); }
+.start code { font-size: .88em; color: var(--ink-2); }
+.start a { white-space: nowrap; }
 
 /* ── Recovery ────────────────────────────────────────────── */
 .recovery-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 72px; align-items: center; }
@@ -473,7 +492,7 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
 /* ── Details ─────────────────────────────────────────────── */
 .details { padding: 88px 0 72px; border-top: 1px solid var(--line-2); }
 .details h2 { font-size: 24px; line-height: 1.2; letter-spacing: -.025em; font-weight: 700; }
-.details .sub { margin-top: 8px; font-size: 15px; color: var(--muted); }
+.details .sub { margin-top: 8px; max-width: 64ch; font-size: 15px; color: var(--muted); }
 .detail-grid { list-style: none; margin: 36px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 48px; }
 .detail { padding: 22px 0 24px; border-top: 1px solid var(--line); }
 .detail h3 { display: flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
@@ -547,7 +566,9 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
   .row { gap: 56px; }
   .panel { padding: 32px; }
   .flow-panel { padding: 44px 32px 40px; }
-  .quick-grid, .recovery-grid { gap: 48px; }
+  .quick-grid { column-gap: 48px; }
+  .recovery-grid { gap: 48px; }
+  .starts-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 980px) {
   .nav { display: none; }
@@ -565,7 +586,8 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
   .row, .row.flip { grid-template-columns: minmax(0, 1fr); gap: 36px; padding: 48px 0; }
   .row.flip .copy-col { order: 0; }
   .quick-grid, .recovery-grid, .compare-grid { grid-template-columns: minmax(0, 1fr); gap: 36px; }
-  .quick-copy { position: static; }
+  .quick-grid { grid-template-rows: none; }
+  .quick-copy, .quick-demo, .quick-next { grid-column: auto; grid-row: auto; }
   .detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 32px; }
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .stats li:nth-child(3) { border-left: 0; }
@@ -624,6 +646,8 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
   .tag { font-size: 12px; padding: 0 6px; }
   .step code { white-space: normal; overflow-wrap: anywhere; line-height: 1.6; display: flex; }
   .sec, .quick { padding: 64px 0; }
+  .starts { margin-top: 56px; }
+  .starts-grid { grid-template-columns: minmax(0, 1fr); gap: 24px; }
   .how { padding-top: 48px; }
   .sec-head p { font-size: 16.5px; }
   .flow-panel { margin-top: 32px; padding: 28px 14px 24px; border-radius: 18px; }
