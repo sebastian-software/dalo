@@ -203,12 +203,13 @@ catalogs:
 <pre><code class="language-sh">dalo --dry-run team catalog update marketing --from main
 </code></pre>
 <pre><code class="language-text">team catalog marketing: de993fb5ea15 -&gt; 28a2eec94f0e (from main)
+  pin: de993fb5ea15… -&gt; 28a2eec94f0e18ba5582792bbeb82a25bffedf02
   inventory:
     selected_changed `copywriting` changed upstream
   audits:
-    company.marketing:copywriting clean
-    company.marketing:launch clean
-  result: would update (…/company-skills/dalo.toml)
+    company.marketing:copywriting clean (0 findings, …)
+    company.marketing:launch clean (0 findings, …)
+  result: would update (dalo.toml)
 </code></pre>
 <p>Dalo resolves the ref in a temporary clone, compares the declared version with
 the candidate inventory, and runs deterministic audits over the selected
@@ -217,7 +218,7 @@ work; it changes neither the repository nor any personal store.</p>
 <p>When the report looks right, run it for real:</p>
 <pre><code class="language-sh">dalo team catalog update marketing --from main
 </code></pre>
-<pre><code class="language-text">  result: updated (…/company-skills/dalo.toml)
+<pre><code class="language-text">  result: updated (dalo.toml)
 next: commit and push dalo.toml
 </code></pre>
 <p>The write is always an exact commit — <code>--from main</code> never leaves a floating ref
@@ -231,15 +232,28 @@ candidate only; it does not override the structural blockers.</p>
 catalog&#39;s generated source state, approvals, owned links, and checkout.</p>
 <p>Changing a catalog&#39;s URL is a deliberate two-step replacement: remove the
 declaration and sync, then add the reviewed replacement URL and sync again.</p>
+<p>For review in GitHub, start from a clean team checkout at the current default
+branch and use the explicit PR mode instead:</p>
+<pre><code class="language-sh">dalo --dry-run team catalog update marketing --from main --pr
+dalo team catalog update marketing --from main --pr
+</code></pre>
+<p>Dalo uses the authenticated GitHub CLI and repository write access to commit
+only the pin change in a temporary checkout, push a proposal branch, and open a
+PR. Your checkout remains unchanged. The PR body is the same text as the human
+dry-run output, with full pins, drift and audit findings. Retry the same command
+after a PR creation failure to resume the pushed branch; an existing open PR is
+reused. Changed proposal branches and closed PRs require manual review. This
+mode supports GitHub.com origins.</p>
 <h2 id="5-commit-and-push"><a class="doc-anchor" href="#5-commit-and-push">5. Commit and push</a></h2>
-<p>Dalo never commits for you. The manifest is a reviewable file like any other:</p>
+<p>In the default manual flow, commit and push the reviewable manifest yourself:</p>
 <pre><code class="language-sh">git add dalo.toml
 git commit -m &quot;chore: advance the marketing catalog pin&quot;
 git push
 </code></pre>
-<p>Catalog mutations rewrite <code>dalo.toml</code> in canonical TOML form. Formatting may be
+<p>Manual catalog mutations rewrite <code>dalo.toml</code> in canonical TOML form. Formatting may be
 normalized and comments are not preserved, so keep the rationale in the commit
-message or the pull request.</p>
+message or the pull request. PR mode preserves existing comments and formatting
+and changes only the reviewed version value.</p>
 <h2 id="6-what-a-teammate-runs"><a class="doc-anchor" href="#6-what-a-teammate-runs">6. What a teammate runs</a></h2>
 <p>On their own machine, once:</p>
 <pre><code class="language-sh">dalo init

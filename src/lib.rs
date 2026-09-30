@@ -32,6 +32,7 @@ pub mod audit;
 pub mod autosync;
 pub mod catalog;
 // CLI plumbing: hidden from the rendered docs, not part of any contract.
+mod catalog_pr;
 #[doc(hidden)]
 pub mod cli;
 pub mod config;
@@ -39,6 +40,7 @@ pub mod delivery;
 pub mod doctor;
 pub mod error;
 pub mod git;
+mod github;
 pub mod hook;
 pub mod hook_dispatch;
 pub mod hook_sidecar;

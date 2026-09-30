@@ -3380,46 +3380,94 @@ pub fn print_team_manifest_view(report: &TeamManifestView) {
 
 /// Print a reviewed team catalog pin update.
 pub fn print_team_catalog_update(report: &TeamCatalogUpdateReport) {
-    println!(
+    print!("{}", team_catalog_update_summary(report));
+}
+
+pub(crate) fn team_catalog_update_summary(report: &TeamCatalogUpdateReport) -> String {
+    use std::fmt::Write;
+    let mut text = String::new();
+    writeln!(
+        text,
         "team catalog {}: {} -> {} (from {})",
-        report.catalog_id,
+        compact_human_text(&report.catalog_id),
         short_commit(&report.old_commit),
         short_commit(&report.candidate_commit),
-        report.from_ref
-    );
+        compact_human_text(&report.from_ref)
+    )
+    .expect("writing to a string cannot fail");
+    writeln!(
+        text,
+        "  pin: {} -> {}",
+        report.old_commit, report.candidate_commit
+    )
+    .expect("writing to a string cannot fail");
     if report.outcomes.is_empty() {
-        println!("  inventory: unchanged");
+        writeln!(text, "  inventory: unchanged").expect("writing to a string cannot fail");
     } else {
-        println!("  inventory:");
+        writeln!(text, "  inventory:").expect("writing to a string cannot fail");
         for outcome in &report.outcomes {
-            println!(
+            writeln!(
+                text,
                 "    {} {}",
                 outcome.code.as_str(),
                 compact_human_text(&outcome.message)
-            );
+            )
+            .expect("writing to a string cannot fail");
         }
     }
     if report.audits.is_empty() {
-        println!("  audits: none");
+        writeln!(text, "  audits: none").expect("writing to a string cannot fail");
     } else {
-        println!("  audits:");
+        writeln!(text, "  audits:").expect("writing to a string cannot fail");
         for audit in &report.audits {
             let status = match audit.status {
                 AuditStatus::Clean => "clean",
                 AuditStatus::Review => "review",
                 AuditStatus::Blocked => "blocked",
             };
-            println!("    {} {status}", audit.source_ref);
+            writeln!(
+                text,
+                "    {} {status} ({} findings, {})",
+                compact_human_text(&audit.source_ref),
+                audit.static_findings.len(),
+                compact_human_text(&audit.content_hash)
+            )
+            .expect("writing to a string cannot fail");
+            if let Some(acceptance) = &audit.risk_acceptance {
+                writeln!(
+                    text,
+                    "      accepted scope: {}",
+                    compact_human_text(&acceptance.scope_hash)
+                )
+                .expect("writing to a string cannot fail");
+            }
+            for finding in &audit.static_findings {
+                writeln!(
+                    text,
+                    "      {}: {} ({}{})",
+                    compact_human_text(&finding.id),
+                    compact_human_text(&finding.message),
+                    compact_human_text(&finding.path),
+                    finding
+                        .line
+                        .map_or(String::new(), |line| format!(":{line}"))
+                )
+                .expect("writing to a string cannot fail");
+            }
         }
     }
     if let Some(reason) = &report.accepted_risk_reason {
-        println!("  risk accepted: {reason}");
+        writeln!(text, "  risk accepted: {}", compact_human_text(reason))
+            .expect("writing to a string cannot fail");
     }
     for reason in &report.blocking_reasons {
-        println!("  blocked: {}", compact_human_text(reason));
+        writeln!(text, "  blocked: {}", compact_human_text(reason))
+            .expect("writing to a string cannot fail");
     }
     let result = if !report.blocking_reasons.is_empty() {
         "not updated"
+    } else if report.pull_request_url.is_some() {
+        "submitted for review"
     } else if report.updated {
         "updated"
     } else if report.dry_run && report.old_version != report.candidate_commit {
@@ -3429,7 +3477,8 @@ pub fn print_team_catalog_update(report: &TeamCatalogUpdateReport) {
     } else {
         "not updated"
     };
-    println!("  result: {result} ({})", compact_human_path(&report.path));
+    writeln!(text, "  result: {result} (dalo.toml)").expect("writing to a string cannot fail");
+    text
 }
 
 #[cfg(test)]

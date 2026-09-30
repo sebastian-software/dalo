@@ -2,13 +2,13 @@
 
 use std::fs;
 use std::path::{Component, Path, PathBuf};
-use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 
 use crate::audit::{self, AgentSelection, AuditOptions, AuditReport};
 use crate::error::{DaloError, DaloResult};
+use crate::github::{gh, gh_repository, github_slug};
 use crate::{catalog, git, inventory, source, store};
 
 /// Command input for promoting a skill.
@@ -55,11 +55,6 @@ pub struct PromoteReport {
     pub pull_request_url: Option<String>,
     /// Whether this report is only a preview.
     pub dry_run: bool,
-}
-
-struct GhRepository {
-    name_with_owner: String,
-    default_branch: String,
 }
 
 fn invalid(reason: impl Into<String>) -> DaloError {
@@ -458,73 +453,6 @@ fn validate_relative(path: &Path) -> DaloResult<()> {
         ));
     }
     Ok(())
-}
-
-fn github_slug(value: &str) -> Option<String> {
-    let path = value
-        .strip_prefix("https://github.com/")
-        .or_else(|| value.strip_prefix("ssh://git@github.com/"))
-        .or_else(|| value.strip_prefix("git@github.com:"))?;
-    let path = path
-        .trim_end_matches('/')
-        .strip_suffix(".git")
-        .unwrap_or(path.trim_end_matches('/'));
-    let parts = path.split('/').collect::<Vec<_>>();
-    if parts.len() != 2
-        || parts.iter().any(|part| {
-            part.is_empty()
-                || *part == "."
-                || *part == ".."
-                || !part
-                    .bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || b"-_.".contains(&byte))
-        })
-    {
-        return None;
-    }
-    Some(format!(
-        "{}/{}",
-        parts[0].to_ascii_lowercase(),
-        parts[1].to_ascii_lowercase()
-    ))
-}
-
-fn gh_repository(path: &Path) -> DaloResult<GhRepository> {
-    let output = gh(
-        path,
-        &["repo", "view", "--json", "nameWithOwner,defaultBranchRef"],
-    )?;
-    let value: serde_json::Value = serde_json::from_str(&output)?;
-    let name_with_owner = value
-        .get("nameWithOwner")
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| blocked("GitHub did not return the team repository identity"))?
-        .to_owned();
-    let default_branch = value
-        .get("defaultBranchRef")
-        .and_then(|value| value.get("name"))
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| blocked("GitHub did not return a default branch for the team repository"))?
-        .to_owned();
-    Ok(GhRepository {
-        name_with_owner,
-        default_branch,
-    })
-}
-
-fn gh(path: &Path, args: &[&str]) -> DaloResult<String> {
-    let output = Command::new("gh").args(args).current_dir(path).output().map_err(|error| {
-        blocked(format!("could not start GitHub CLI `gh`: {error}; install GitHub CLI and authenticate with `gh auth login`"))
-    })?;
-    if !output.status.success() {
-        let detail = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        return Err(blocked(format!(
-            "GitHub CLI command failed ({}): {}",
-            args.first().copied().unwrap_or("gh"),
-            crate::term::terminal_safe_text(&detail)
-        )));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 fn ensure_real_directory(root: &Path, relative: &Path) -> DaloResult<()> {

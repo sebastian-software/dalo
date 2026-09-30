@@ -1202,6 +1202,10 @@ pub struct TeamCatalogUpdateArgs {
     /// Accept blocking security-audit findings for this exact reviewed candidate.
     #[arg(long, value_name = "REASON")]
     pub accept_risk: Option<String>,
+
+    /// Open a GitHub pull request from an isolated checkout instead of editing locally.
+    #[arg(long)]
+    pub pr: bool,
 }
 
 /// Catalog ID argument.
@@ -4337,18 +4341,31 @@ fn run_team(options: &GlobalOptions, command: TeamCommand) -> DaloResult<()> {
         TeamSubcommand::Catalog(command) => {
             let report = match command.command {
                 TeamCatalogSubcommand::Update(args) => {
-                    let report = team_manifest::update_team_catalog_pin(
-                        &repo,
-                        &args.id,
-                        &args.from_ref,
-                        options.dry_run,
-                        args.accept_risk.as_deref(),
-                    )?;
+                    let report = if args.pr {
+                        crate::catalog_pr::update(
+                            &repo,
+                            &args.id,
+                            &args.from_ref,
+                            options.dry_run,
+                            args.accept_risk.as_deref(),
+                        )?
+                    } else {
+                        team_manifest::update_team_catalog_pin(
+                            &repo,
+                            &args.id,
+                            &args.from_ref,
+                            options.dry_run,
+                            args.accept_risk.as_deref(),
+                        )?
+                    };
                     if options.json {
                         print_json(&report)?;
                     } else {
                         status::print_team_catalog_update(&report);
                         print_team_manifest_next_step(&report.path, report.updated);
+                        if let Some(url) = &report.pull_request_url {
+                            println!("pull request: {url}");
+                        }
                     }
                     if !report.blocking_reasons.is_empty() {
                         return Err(DaloError::StateError {
