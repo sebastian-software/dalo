@@ -76,8 +76,8 @@ Before redeploying `dalo.sh`, verify the static site against the shipped repo st
 - `node site/build.mjs --check` passes.
 - Target paths match `src/target.rs` and the README target table.
 - Terminal transcripts match the current CLI output.
-- Every "What's next" entry in the stability section links an open issue; shipped
-  features belong in feature content.
+- The stability section links only checkable facts; shipped features belong in
+  feature content.
 - Footer links resolve on `main`, including `README.md`, docs, issues,
   `LICENSE-MIT`, and `LICENSE-APACHE`.
 - `install.sh` and `install.md` resolve from `https://dalo.sh/` and match README install guidance.
@@ -91,7 +91,7 @@ Before redeploying `dalo.sh`, verify the static site against the shipped repo st
 Quick checks:
 
 ```sh
-rg -n "v[0-9]+\\.[0-9]+\\.[0-9]+|~/.agents/skills|dalo team catalog add|dalo.toml|instruction" site/index.html
+rg -n "v[0-9]+\\.[0-9]+\\.[0-9]+|~/.agents/skills|dalo team init|dalo.toml|instruction" site/index.html
 rg -n "version = " Cargo.toml
 rg -n "Codex|OpenClaw" README.md src/target.rs site/index.html
 sh -n site/install.sh
