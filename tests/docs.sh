@@ -572,10 +572,11 @@ cmp "$root/logo.svg" "$root/site/assets/img/logo.svg"
 og_image_header="$(od -An -tx1 -j16 -N8 "$root/site/assets/img/og.png" | tr -d ' \n')"
 test "$og_image_header" = "000004b000000276" \
   || { echo 'site/assets/img/og.png is no longer the declared 1200x630' >&2; exit 1; }
-# The OG uses a compact version of the homepage's conversational headline.
-grep -Fq 'Manage your skills.' "$root/video/src/OgImage.tsx"
+# The OG and homepage share the setup headline and its conversational invitation.
+grep -Fq "Manage your agent's setup." "$root/site/index.html"
+grep -Fq 'Manage your agent&rsquo;s setup.' "$root/video/src/OgImage.tsx"
 for document in "$root/site/index.html" "$root/video/src/OgImage.tsx"; do
-  grep -Fq 'Just ask your agent.' "$document" \
+  grep -Fq 'Just ask.' "$document" \
     || { echo "$document no longer carries the conversational tagline" >&2; exit 1; }
 done
 refute 'the site requests a CDN-hosted player instead of self-hosted assets' \

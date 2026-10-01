@@ -7,7 +7,7 @@
 
 # Dalo
 
-**Manage your skills through conversation, backed by Dalo's safety checks.**
+**Manage your agent's setup. Just ask.**
 
 <!-- mdtheme:badges:start -->
 [![Crates.io](https://img.shields.io/crates/v/dalo.svg)](https://crates.io/crates/dalo)
@@ -18,9 +18,9 @@
 <!-- mdtheme:badges:end -->
 
 For engineers and team leads who run Claude Code, Codex, Cursor, or another
-agent: tell your agent which skills you want, what to update, or what needs
+agent: tell your agent what to install, what to update, or what needs
 fixing. It handles the commands and explains the result. Dalo enforces approval
-and ownership checks during sync, so you can manage skills through conversation
+and ownership checks during sync, so you can manage your setup through conversation
 while keeping control of what you trust.
 
 Dalo keeps skills, standing instructions, and hooks in Git, resolves one
