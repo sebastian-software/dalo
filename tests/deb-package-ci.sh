@@ -7,6 +7,7 @@ if [ "$#" -ne 2 ]; then
 fi
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+sh "$root/tests/package-deb-dependencies.sh"
 binary=$1
 target=$2
 version=$(sed -n 's/^version = "\([^"]*\)"$/\1/p' "$root/Cargo.toml" | head -n 1)

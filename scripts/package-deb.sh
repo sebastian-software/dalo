@@ -63,8 +63,11 @@ fi
 
 needed=$(readelf -d "$source_dir/dalo" | sed -n 's/.*Shared library: \[\(.*\)\].*/\1/p' | sort -u)
 for library in $needed; do
-  case "$library" in
-    libc.so.6|libm.so.6|libdl.so.2|libpthread.so.0|librt.so.1|libgcc_s.so.1) ;;
+  case "$target:$library" in
+    # The ELF interpreter is installed by libc6; only accept the loader
+    # matching the package architecture.
+    x86_64-unknown-linux-gnu:ld-linux-x86-64.so.2|aarch64-unknown-linux-gnu:ld-linux-aarch64.so.1) ;;
+    *:libc.so.6|*:libm.so.6|*:libdl.so.2|*:libpthread.so.0|*:librt.so.1|*:libgcc_s.so.1) ;;
     *)
       echo "unsupported or unaccounted binary dependency: $library" >&2
       exit 1
