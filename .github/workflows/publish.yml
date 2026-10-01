@@ -241,14 +241,43 @@ jobs:
             shasum -a 256 "${package}.tar.gz" > "${package}.tar.gz.sha256"
           )
 
+      - name: Build Debian package
+        if: ${{ (matrix.target == 'x86_64-unknown-linux-gnu' || matrix.target == 'aarch64-unknown-linux-gnu') && hashFiles('scripts/package-deb.sh') != '' }}
+        shell: bash
+        env:
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+          TARGET: ${{ matrix.target }}
+          DALO_MAX_GLIBC_VERSION: '2.23'
+        run: |
+          case "$TAG_NAME" in
+            dalo-v*) version="${TAG_NAME#dalo-v}" ;;
+            v*) version="${TAG_NAME#v}" ;;
+            *) echo "::error::unexpected release tag '${TAG_NAME}'"; exit 1 ;;
+          esac
+          sh scripts/package-deb.sh "dist/dalo-${version}-${TARGET}" "$version" "$TARGET" dist
+          case "$TARGET" in
+            x86_64-unknown-linux-gnu) architecture=amd64 ;;
+            aarch64-unknown-linux-gnu) architecture=arm64 ;;
+          esac
+          package="dist/dalo_${version}_${architecture}.deb"
+          test "$(dpkg-deb --field "$package" Package)" = dalo
+          test "$(dpkg-deb --field "$package" Version)" = "$version"
+          test "$(dpkg-deb --field "$package" Architecture)" = "$architecture"
+          dpkg-deb --field "$package" Depends | grep -Fq 'git, libc6 (>= 2.23)'
+          dpkg-deb --contents "$package" | grep -Fq './usr/bin/dalo'
+          dpkg-deb --contents "$package" | grep -Fq './usr/share/man/man1/dalo.1'
+
       - name: Install Cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
-      - name: Sign release archive
+      - name: Sign release assets
         shell: bash
         run: |
-          for archive in dist/*.tar.gz; do
-            cosign sign-blob --yes --bundle "${archive}.sigstore.json" "$archive"
+          shopt -s nullglob
+          artifacts=(dist/*.tar.gz dist/*.deb)
+          test "${#artifacts[@]}" -gt 0
+          for artifact in "${artifacts[@]}"; do
+            cosign sign-blob --yes --bundle "${artifact}.sigstore.json" "$artifact"
           done
 
       - name: Upload artifact to release
@@ -259,7 +288,10 @@ jobs:
         shell: bash
         run: |
           test "$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft')" = true
-          gh release upload "$TAG_NAME" dist/*.tar.gz dist/*.sha256 dist/*.sigstore.json --clobber
+          shopt -s nullglob
+          artifacts=(dist/*.tar.gz dist/*.deb dist/*.sha256 dist/*.sigstore.json)
+          test "${#artifacts[@]}" -gt 0
+          gh release upload "$TAG_NAME" "${artifacts[@]}" --clobber
 
   publish-github-release:
     name: Publish GitHub release
@@ -270,6 +302,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          persist-credentials: false
+
       - name: Verify staged artifacts and publish release
         shell: bash
         env:
@@ -295,6 +333,17 @@ jobs:
               printf '%s\n' "$uploaded_assets" | grep -Fx -- "$asset" > /dev/null
             done
           done
+          if [ -f scripts/package-deb.sh ]; then
+            for architecture in amd64 arm64; do
+              package="dalo_${version}_${architecture}.deb"
+              for asset in "$package" "$package.sha256" "$package.sigstore.json"; do
+                printf '%s\n' "$uploaded_assets" | grep -Fx -- "$asset" > /dev/null
+              done
+            done
+          elif printf '%s\n' "$uploaded_assets" | grep -Eq '^dalo_.*\.deb(\.sha256|\.sigstore\.json)?$'; then
+            echo "::error::legacy release has an unexpected partial Debian package set"
+            exit 1
+          fi
           gh release edit "$TAG_NAME" --draft=false
 
   update-homebrew:

@@ -126,6 +126,7 @@ none of these is removed and none changes meaning.
 | Homebrew | `brew install sebastian-software/tap/dalo` |
 | mise | `mise use -g github:sebastian-software/dalo` |
 | Nix flake | `nix profile install github:sebastian-software/dalo` |
+| Debian package | Download the `amd64` or `arm64` `.deb` from GitHub Releases and install it with `sudo apt install ./dalo_<version>_<architecture>.deb`; requires glibc 2.23+ and Git. |
 | Cargo | `cargo install dalo` |
 | Release archives | GitHub Releases, tag `dalo-v<version>` |
 

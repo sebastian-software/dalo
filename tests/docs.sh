@@ -72,6 +72,8 @@ done
 grep -q 'discussions/categories/q-a' "$root/.github/ISSUE_TEMPLATE/question.yml"
 grep -q 'fallback' "$root/.github/ISSUE_TEMPLATE/question.yml"
 grep -q 'brew uninstall dalo' "$root/docs/uninstall.md"
+grep -q 'sudo apt remove dalo' "$root/docs/uninstall.md"
+grep -Fq 'does not initialize or remove a Dalo store' "$root/docs/uninstall.md"
 # Removing Dalo has to name every built-in target, or a linked one is left
 # behind with its owned symlinks. `opencode` was missing from this list.
 for builtin_target in codex claude cursor openclaw hermes opencode generic; do
@@ -587,6 +589,10 @@ grep -q '`<version>`, `v<version>`, or `dalo-v<version>`' "$root/npm/README.md"
 refute 'the install documents still pin retired example versions' \
   grep -q -E 'dalo-v0\.6\.1|v0\.7\.0|dalo-v0\.7\.0' "$root/site/install.md" "$root/npm/README.md"
 grep -q '^## Manual Release Archives' "$root/site/install.md"
+grep -q '^   ### Debian packages$' "$root/site/install.md"
+grep -q 'glibc 2.23 or newer' "$root/site/install.md"
+grep -q 'sha256sum -c "${PACKAGE}.sha256"' "$root/site/install.md"
+grep -q 'sudo apt install "./${PACKAGE}"' "$root/site/install.md"
 grep -q 'shasum -a 256 -c' "$root/site/install.md"
 grep -q '^## Shell Completions and Man Page' "$root/site/install.md"
 grep -q 'dalo completions <bash|zsh|fish>' "$root/site/install.md"

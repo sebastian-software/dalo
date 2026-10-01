@@ -63,7 +63,11 @@ reload skills or start a new session after setup.
 
 ## Prefer the terminal?
 
-Install the binary with Homebrew, the hosted installer, or the npm launcher:
+Install the binary with Homebrew, the hosted installer, or the npm launcher.
+On Debian or Ubuntu with `amd64` or `arm64`, use the verified package steps in
+the [installation guide](https://dalo.sh/install.md#debian-packages) when the
+selected release includes matching `.deb`, checksum, and Sigstore assets;
+otherwise, use the hosted installer.
 
 ```sh
 # macOS with Homebrew
@@ -291,6 +295,9 @@ SHA-256 checksum, and caches the executable in `~/.cache/dalo`.
 ```sh
 # Homebrew (macOS)
 brew install sebastian-software/tap/dalo
+
+# Debian/Ubuntu (amd64/arm64): use only if the selected release has matching .deb assets
+# https://dalo.sh/install.md#debian-packages
 
 # Cargo Binstall
 cargo binstall dalo

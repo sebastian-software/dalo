@@ -143,6 +143,16 @@ If installed in a Nix profile:
 nix profile remove dalo
 ```
 
+If installed from a Debian package:
+
+```sh
+sudo apt remove dalo
+```
+
+Package removal removes Dalo's system binary, completions, and man page. It
+does not initialize or remove a Dalo store, alter agent targets, or edit shell
+startup files.
+
 If installed with the hosted installer or from a GitHub release archive, remove
 the copied `dalo` binary from wherever you placed it on `PATH` (by default,
 `~/.local/bin/dalo`). The hosted installer always verifies checksums; manual

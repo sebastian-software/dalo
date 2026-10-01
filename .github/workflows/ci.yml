@@ -83,6 +83,10 @@ jobs:
       - name: Release build
         run: cargo build --release --locked --target "${{ matrix.target }}"
 
+      - name: Debian package lifecycle
+        if: ${{ runner.os == 'Linux' && matrix.target == 'x86_64-unknown-linux-gnu' }}
+        run: sh tests/deb-package-ci.sh "target/${{ matrix.target }}/release/dalo" "${{ matrix.target }}"
+
       - name: Release-candidate CLI rehearsal
         env:
           DALO_REHEARSAL_BINARY: target/${{ matrix.target }}/release/dalo
@@ -153,6 +157,10 @@ jobs:
           else
             cargo build --release --locked --target "${{ matrix.target }}"
           fi
+
+      - name: Debian package lifecycle
+        if: ${{ matrix.target == 'aarch64-unknown-linux-gnu' }}
+        run: sh tests/deb-package-ci.sh "target/${{ matrix.target }}/release/dalo" "${{ matrix.target }}"
 
       - name: Run target test suite
         if: ${{ matrix.test != 'none' }}
