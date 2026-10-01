@@ -3,7 +3,7 @@
 The recommended way to install and use Dalo is through your local coding
 agent. Paste this into the agent you want to set up:
 
-> Install Dalo from https://dalo.sh/install.md and set it up for this agent.
+> Install Dalo, the agent skill manager.
 
 The agent installs the binary and bundled assistant, connects its skill folder,
 and checks the result. Then keep talking to it: “Add my team's skill repository,”

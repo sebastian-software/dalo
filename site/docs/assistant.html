@@ -110,16 +110,18 @@ commands for changes. It can inspect existing folders before Dalo is installed.<
 <h2 id="start-with-an-ordinary-request"><a class="doc-anchor" href="#start-with-an-ordinary-request">Start with an ordinary request</a></h2>
 <p>Paste this into your local coding agent:</p>
 <blockquote>
-<p>Install Dalo from <a href="https://dalo.sh/install.md" rel="noopener">https://dalo.sh/install.md</a> and set it up for this agent.</p>
+<p>Install Dalo, the agent skill manager.</p>
 </blockquote>
 <p>The agent follows the <a href="/install.md">installation guide</a> to install the
 binary, connect the intended skill folder, deliver the bundled assistant, and
 verify the result. No Dalo skill is needed first. The agent needs web or
 repository access to find the instructions and local command access to perform
-the installation. A shorter “Install the Dalo skill manager” request works
-when the agent can find the official project.</p>
-<p>Discovery depends on the host&#39;s tools; if it cannot identify the project, give
-it <a href="https://dalo.sh" rel="noopener">dalo.sh</a>. The site&#39;s <a href="https://dalo.sh/llms.txt" rel="noopener">llms.txt</a>
+the installation.</p>
+<p>If your agent cannot find the official project, include the guide directly:</p>
+<blockquote>
+<p>Install Dalo from <a href="https://dalo.sh/install.md" rel="noopener">https://dalo.sh/install.md</a> and set it up for this agent.</p>
+</blockquote>
+<p>Discovery depends on the host&#39;s tools. The site&#39;s <a href="https://dalo.sh/llms.txt" rel="noopener">llms.txt</a>
 is an additional documentation index. The same installation path is linked from
 normal HTML and the README, so it does not depend on automatic llms.txt support.</p>
 <h2 id="keep-using-dalo-through-conversation"><a class="doc-anchor" href="#keep-using-dalo-through-conversation">Keep using Dalo through conversation</a></h2>

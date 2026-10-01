@@ -249,7 +249,7 @@ for quickstart_command in \
     || { echo "the README CLI path no longer runs: $quickstart_command" >&2; exit 1; }
 done
 readme_first_screen="$(head -n 100 "$root/README.md")"
-printf '%s\n' "$readme_first_screen" | grep -Fq 'Install Dalo from https://dalo.sh/install.md and set it up for this agent.' \
+printf '%s\n' "$readme_first_screen" | grep -Fq 'Install Dalo, the agent skill manager.' \
   || { echo 'the README no longer leads with the agent setup prompt' >&2; exit 1; }
 printf '%s\n' "$readme_first_screen" | grep -Fq 'Update my skills and show me what changed.' \
   || { echo 'the README no longer introduces ongoing conversational use' >&2; exit 1; }
@@ -500,7 +500,7 @@ grep -Fq 'data-copy-target="hero-install-prompt"' "$root/site/index.html"
 grep -Fq 'data-copy-target="quick-install-prompt"' "$root/site/index.html"
 grep -Fq 'data-copy-target="cta-install-prompt"' "$root/site/index.html"
 for document in "$root/README.md" "$root/site/index.html" "$root/docs/assistant.md" "$root/docs/getting-started.md"; do
-  grep -Fq 'Install Dalo from https://dalo.sh/install.md and set it up for this agent.' "$document"
+  grep -Fq 'Install Dalo, the agent skill manager.' "$document"
 done
 refute 'the hero labels the Codex default directory as the generic target' \
   grep -Fq 'target[generic]: ~/.agents/skills' "$root/site/index.html"
