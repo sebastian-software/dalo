@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.4.0](https://github.com/sebastian-software/dalo/compare/dalo-v1.3.0...dalo-v1.4.0) (2026-10-01)
+
+
+### Features
+
+* publish Debian release packages ([b14f87c](https://github.com/sebastian-software/dalo/commit/b14f87cc2b7e7595a175585daa25cc90d37d810b))
+
+
+### Bug Fixes
+
+* **ci:** include the packaged manpage in lifecycle tests ([4315cf0](https://github.com/sebastian-software/dalo/commit/4315cf06325b6dabf71ae937363f7cb6409a94cc))
+* **packaging:** recognize architecture-specific ELF loaders ([b19574b](https://github.com/sebastian-software/dalo/commit/b19574b01ac0a287bd827c30e1482f13395754a0))
+
 ## [1.3.0](https://github.com/sebastian-software/dalo/compare/dalo-v1.2.1...dalo-v1.3.0) (2026-09-30)
 
 
