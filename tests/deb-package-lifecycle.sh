@@ -27,11 +27,29 @@ docker run --rm -i --platform "$platform" \
 version=$1
 test_root=$(mktemp -d /tmp/dalo-package-lifecycle.XXXXXX)
 trap 'rm -rf "$test_root"' EXIT
+on_failure() {
+  status=$1
+  line=$2
+  command=$3
+  trap - ERR
+  echo "lifecycle assertion failed at line $line: $command" >&2
+  echo 'dpkg path filters in the disposable Ubuntu image:' >&2
+  grep -R -E '^[[:space:]]*path-(exclude|include)[[:space:]=]+' /etc/dpkg 2>/dev/null >&2 || true
+  dpkg-query -L dalo 2>/dev/null >&2 || true
+  exit "$status"
+}
+trap 'on_failure "$?" "$LINENO" "$BASH_COMMAND"' ERR
 mkdir -p "$test_root/store/local/skills" "$test_root/agent/skills"
 printf 'keep-store\n' > "$test_root/store/local/skills/marker"
 printf 'keep-target\n' > "$test_root/agent/skills/marker"
 
 apt-get update
+dpkg-deb --contents /tmp/dalo.deb > "$test_root/package-contents"
+grep -Fq './usr/share/man/man1/dalo.1' "$test_root/package-contents"
+dpkg_options=(-o 'Dpkg::Options::=--path-include=/usr/share/man/man1/dalo.1')
+if grep -R -Eq '^[[:space:]]*path-exclude.*(/usr/share/man|/usr/share/\*/man)' /etc/dpkg 2>/dev/null; then
+  echo 'dpkg path-excludes manpages in this Ubuntu image; including Dalo manpage for lifecycle verification'
+fi
 dpkg-deb --control /tmp/dalo.deb "$test_root/control"
 for script in preinst postinst prerm postrm; do
   test ! -e "$test_root/control/$script"
@@ -42,7 +60,7 @@ cp -a "$test_root/control/." "$test_root/oldroot/DEBIAN/"
 sed -i 's/^Version: .*/Version: 0.0.0/' "$test_root/oldroot/DEBIAN/control"
 dpkg-deb --build --root-owner-group "$test_root/oldroot" "$test_root/dalo-old.deb"
 
-apt-get install -y "$test_root/dalo-old.deb"
+apt-get "${dpkg_options[@]}" install -y "$test_root/dalo-old.deb"
 dalo --version | grep -F "$version"
 test "$(dpkg-query -W dalo | awk '{print $2}')" = 0.0.0
 test "$(cat /usr/share/dalo/.dalo-install-channel)" = debian
@@ -52,7 +70,7 @@ test -f /usr/share/bash-completion/completions/dalo
 test -f /usr/share/zsh/vendor-completions/_dalo
 test -f /usr/share/fish/vendor_completions.d/dalo.fish
 
-apt-get install -y /tmp/dalo.deb
+apt-get "${dpkg_options[@]}" install -y /tmp/dalo.deb
 test "$(dpkg-query -W dalo | awk '{print $2}')" = "$version"
 apt-get remove -y dalo
 test ! -e /usr/bin/dalo
