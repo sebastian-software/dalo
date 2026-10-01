@@ -46,6 +46,16 @@ job_body() {
   ' "$workflow"
 }
 
+workflow_step_run() {
+  awk -v name="$1" '
+    $0 == "      - name: " name { found = 1; in_step = 1; next }
+    in_step && $0 == "        run: |" { in_run = 1; next }
+    in_run && /^          / { sub(/^          /, ""); print; next }
+    in_run { exit }
+    END { if (!found || !in_run) exit 1 }
+  ' "$workflow"
+}
+
 test "$(node -p 'require(process.argv[1]).packages["."].draft' "$release_config")" = true
 test "$(node -p 'require(process.argv[1]).packages["."]["force-tag-creation"]' "$release_config")" = true
 test "$(node -p 'require(process.argv[1]).packages["."]["extra-files"].includes("npm/package.json")' "$release_config")" = true
@@ -162,6 +172,8 @@ printf '%s\n' "$release_targets_job" | grep -Fq 'runs-on: ${{ matrix.os }}'
 printf '%s\n' "$release_targets_job" | grep -Fq 'cross test --locked --target "${{ matrix.target }}" --lib'
 printf '%s\n' "$release_targets_job" | grep -Fq 'cargo test --locked --target "${{ matrix.target }}"'
 printf '%s\n' "$release_targets_job" | grep -Fq 'target/${{ matrix.target }}/release/dalo'
+printf '%s\n' "$ci_test_job" | grep -Fq 'tests/deb-package-ci.sh'
+printf '%s\n' "$release_targets_job" | grep -Fq 'tests/deb-package-ci.sh'
 printf '%s\n' "$release_targets_job" | grep -Fq '"$binary" init --store "$test_root/store"'
 printf '%s\n' "$release_targets_job" | grep -Fq '"$binary" sync --store "$test_root/store" --dry-run'
 sh "$root/scripts/check-workflow-pins.sh" "$root/.github/workflows" > /dev/null
@@ -268,6 +280,11 @@ done
 printf '%s\n' "$artifacts_job" | grep -Fqx '    needs: release-please'
 printf '%s\n' "$artifacts_job" | grep -Fq "gh release view \"\$TAG_NAME\" --json isDraft --jq '.isDraft'"
 printf '%s\n' "$artifacts_job" | grep -Fq 'GH_REPO: ${{ github.repository }}'
+printf '%s\n' "$artifacts_job" | grep -Fq 'scripts/package-deb.sh'
+printf '%s\n' "$artifacts_job" | grep -Fq "hashFiles('scripts/package-deb.sh') != ''"
+printf '%s\n' "$artifacts_job" | grep -Fq 'dist/*.deb dist/*.sha256 dist/*.sigstore.json'
+printf '%s\n' "$artifacts_job" | grep -Fq 'artifacts=(dist/*.tar.gz dist/*.deb)'
+printf '%s\n' "$artifacts_job" | grep -Fq 'shopt -s nullglob'
 printf '%s\n' "$release_please_job" | grep -Fq "inputs.recover_tag != ''"
 printf '%s\n' "$release_please_job" | grep -Fq "gh release view \"\$TAG_NAME\" --json isDraft --jq '.isDraft'"
 printf '%s\n' "$release_please_job" | grep -Fq 'GH_REPO: ${{ github.repository }}'
@@ -278,6 +295,57 @@ printf '%s\n' "$final_release_job" | grep -Fqx '    needs: [release-please, rele
 printf '%s\n' "$final_release_job" | grep -Fq "needs.release-artifacts.result == 'success'"
 printf '%s\n' "$final_release_job" | grep -Fq 'GH_REPO: ${{ github.repository }}'
 printf '%s\n' "$final_release_job" | grep -Fq 'gh release edit "$TAG_NAME" --draft=false'
+printf '%s\n' "$final_release_job" | grep -Fq 'for architecture in amd64 arm64; do'
+printf '%s\n' "$final_release_job" | grep -Fq 'package="dalo_${version}_${architecture}.deb"'
+printf '%s\n' "$final_release_job" | grep -Fq 'if [ -f scripts/package-deb.sh ]; then'
+printf '%s\n' "$final_release_job" | grep -Fq 'legacy release has an unexpected partial Debian package set'
+printf '%s\n' "$final_release_job" | grep -Fq 'for asset in "$package" "$package.sha256" "$package.sigstore.json"; do'
+no_deb_assets="$test_root/no-deb-assets"
+mkdir -p "$no_deb_assets/dist" "$no_deb_assets/bin"
+touch "$no_deb_assets/dist/dalo-1.3.0-x86_64-unknown-linux-musl.tar.gz"
+touch "$no_deb_assets/dist/dalo-1.3.0-x86_64-unknown-linux-musl.tar.gz.sha256"
+cat > "$no_deb_assets/bin/cosign" <<'EOF'
+#!/bin/sh
+set -eu
+test "$1" = sign-blob
+test -f "$5"
+touch "$4"
+EOF
+cat > "$no_deb_assets/bin/gh" <<'EOF'
+#!/bin/sh
+set -eu
+if [ "$1" = release ] && [ "$2" = view ]; then
+  printf '%s\n' true
+  exit 0
+fi
+if [ "$1" = release ] && [ "$2" = upload ]; then
+  shift 2
+  test "$1" = "$TAG_NAME"
+  shift
+  for asset in "$@"; do
+    test "$asset" = --clobber && continue
+    test -f "$asset"
+    printf '%s\n' "$asset"
+  done
+  exit 0
+fi
+exit 1
+EOF
+chmod +x "$no_deb_assets/bin/cosign" "$no_deb_assets/bin/gh"
+sign_script="$test_root/sign-release-assets.sh"
+upload_script="$test_root/upload-release-assets.sh"
+workflow_step_run 'Sign release assets' > "$sign_script"
+workflow_step_run 'Upload artifact to release' > "$upload_script"
+(
+  cd "$no_deb_assets"
+  PATH="$no_deb_assets/bin:$PATH" bash "$sign_script"
+  PATH="$no_deb_assets/bin:$PATH" GH_TOKEN=stub GH_REPO=example/dalo TAG_NAME=dalo-v1.3.0 bash "$upload_script" > uploaded-assets.txt
+  test "$(wc -l < uploaded-assets.txt | tr -d ' ')" = 3
+  if grep -Fq '*.deb' uploaded-assets.txt; then
+    echo 'release upload passed a literal unmatched Debian asset glob' >&2
+    exit 1
+  fi
+)
 printf '%s\n' "$crate_job" | grep -Fq 'https://crates.io/api/v1/crates/dalo/${version}'
 printf '%s\n' "$crate_job" | grep -Fq 'is already published on crates.io'
 printf '%s\n' "$crate_job" | grep -Fq 'rust-lang/crates-io-auth-action@'

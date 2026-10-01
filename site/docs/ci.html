@@ -242,8 +242,9 @@ annotated slots in <code>site/index.html</code> (<code>softwareVersion</code> pl
 <code>data-dalo-version</code> spans). Release Please generates the GitHub release notes
 and CHANGELOG from Conventional Commits.</p>
 <p>Merging that release pull request tags <code>dalo-v1.0.0</code> and runs <code>publish.yml</code>:
-five signed archives with checksums upload to a draft release, the draft is
-published once every asset is present, and crates.io, npm, and the
+five signed archives and signed <code>amd64</code>/<code>arm64</code> Debian packages upload with
+checksums to a draft release, the draft is published once every asset is
+present, and crates.io, npm, and the
 <code>sebastian-software/homebrew-tap</code> dispatch follow. The tap bump compares
 versions with <code>sort -V</code>, so <code>1.0.0</code> supersedes <code>0.16.0</code> rather than losing to
 it in string order.</p>

@@ -158,8 +158,9 @@ annotated slots in `site/index.html` (`softwareVersion` plus the two
 and CHANGELOG from Conventional Commits.
 
 Merging that release pull request tags `dalo-v1.0.0` and runs `publish.yml`:
-five signed archives with checksums upload to a draft release, the draft is
-published once every asset is present, and crates.io, npm, and the
+five signed archives and signed `amd64`/`arm64` Debian packages upload with
+checksums to a draft release, the draft is published once every asset is
+present, and crates.io, npm, and the
 `sebastian-software/homebrew-tap` dispatch follow. The tap bump compares
 versions with `sort -V`, so `1.0.0` supersedes `0.16.0` rather than losing to
 it in string order.

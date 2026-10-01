@@ -345,7 +345,12 @@ fn render_notice(
     if let Some(command) = channel.upgrade_command(executable) {
         notice.push_str(&format!("\nupgrade with: {command}"));
     } else {
-        notice.push_str("\nupgrade guide: https://dalo.sh/install.md");
+        let guide = if channel == InstallChannel::DebianPackage {
+            "https://dalo.sh/install.md#debian-packages"
+        } else {
+            "https://dalo.sh/install.md"
+        };
+        notice.push_str(&format!("\nupgrade guide: {guide}"));
     }
     notice
 }
@@ -477,6 +482,7 @@ fn normalize_release_tag(tag: &str) -> Option<&str> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InstallChannel {
+    DebianPackage,
     Homebrew,
     Npm,
     Npx,
@@ -491,6 +497,7 @@ enum InstallChannel {
 impl InstallChannel {
     fn label(self) -> &'static str {
         match self {
+            Self::DebianPackage => "Debian package",
             Self::Homebrew => "Homebrew",
             Self::Npm => "npm",
             Self::Npx => "npx",
@@ -504,6 +511,7 @@ impl InstallChannel {
 
     fn upgrade_command(self, executable: Option<&Path>) -> Option<String> {
         match self {
+            Self::DebianPackage => None,
             Self::Homebrew => Some("brew upgrade sebastian-software/tap/dalo".to_owned()),
             Self::Npm => Some("npm install --global getdalo@latest".to_owned()),
             Self::Npx => Some("npx getdalo@latest".to_owned()),
@@ -518,19 +526,31 @@ impl InstallChannel {
 }
 
 fn detect_install_channel(executable: Option<&Path>) -> InstallChannel {
-    detect_install_channel_from(
+    detect_install_channel_from_with_debian_marker(
         env::var("DALO_INSTALL_CHANNEL").ok().as_deref(),
         executable,
         env::var_os("HOME").as_deref().map(Path::new),
         env::var_os("CARGO_HOME").as_deref().map(Path::new),
+        Some(Path::new("/usr/share/dalo/.dalo-install-channel")),
     )
 }
 
+#[cfg(test)]
 fn detect_install_channel_from(
     explicit: Option<&str>,
     executable: Option<&Path>,
     home: Option<&Path>,
     cargo_home: Option<&Path>,
+) -> InstallChannel {
+    detect_install_channel_from_with_debian_marker(explicit, executable, home, cargo_home, None)
+}
+
+fn detect_install_channel_from_with_debian_marker(
+    explicit: Option<&str>,
+    executable: Option<&Path>,
+    home: Option<&Path>,
+    cargo_home: Option<&Path>,
+    debian_marker: Option<&Path>,
 ) -> InstallChannel {
     if let Some(channel) = explicit.and_then(parse_install_channel) {
         return channel;
@@ -549,6 +569,10 @@ fn detect_install_channel_from(
         .any(|parts| parts[0] == OsStr::new("Cellar") && parts[1] == OsStr::new("dalo"))
     {
         return InstallChannel::Homebrew;
+    }
+
+    if is_debian_package(executable, debian_marker) {
+        return InstallChannel::DebianPackage;
     }
 
     if let Some(install_id) = components.windows(3).find_map(|parts| {
@@ -585,6 +609,7 @@ fn detect_install_channel_from(
 
 fn parse_install_channel(channel: &str) -> Option<InstallChannel> {
     match channel.to_ascii_lowercase().as_str() {
+        "deb" | "debian" | "apt" => Some(InstallChannel::DebianPackage),
         "homebrew" | "brew" => Some(InstallChannel::Homebrew),
         "npm" => Some(InstallChannel::Npm),
         "npx" => Some(InstallChannel::Npx),
@@ -606,6 +631,14 @@ fn read_install_receipt(executable: &Path) -> Option<InstallChannel> {
             "nix" => Some(InstallChannel::Nix),
             _ => None,
         })
+}
+
+fn has_debian_install_marker(path: &Path) -> bool {
+    fs::read_to_string(path).is_ok_and(|receipt| receipt.trim() == "debian")
+}
+
+fn is_debian_package(executable: &Path, marker: Option<&Path>) -> bool {
+    executable == Path::new("/usr/bin/dalo") && marker.is_some_and(has_debian_install_marker)
 }
 
 fn cargo_upgrade_command() -> String {
@@ -1060,6 +1093,36 @@ mod tests {
     }
 
     #[test]
+    fn only_a_marked_system_binary_should_be_detected_as_a_debian_package() {
+        let temp = tempdir().expect("tempdir");
+        let marker = temp.path().join(".dalo-install-channel");
+        fs::write(&marker, "debian\n").expect("write Debian marker");
+
+        assert!(is_debian_package(Path::new("/usr/bin/dalo"), Some(&marker)));
+        assert!(!is_debian_package(Path::new("/usr/bin/dalo"), None));
+        assert!(!is_debian_package(
+            Path::new("/usr/local/bin/dalo"),
+            Some(&marker)
+        ));
+        assert!(!is_debian_package(
+            Path::new("/usr/bin/dalo"),
+            Some(&temp.path().join("missing-marker"))
+        ));
+    }
+
+    #[test]
+    fn debian_install_marker_should_be_required_and_recognized() {
+        let temp = tempdir().expect("tempdir");
+        let marker = temp.path().join(".dalo-install-channel");
+
+        assert!(!has_debian_install_marker(&marker));
+        fs::write(&marker, "debian\n").expect("write Debian marker");
+        assert!(has_debian_install_marker(&marker));
+        fs::write(&marker, "standalone\n").expect("replace marker");
+        assert!(!has_debian_install_marker(&marker));
+    }
+
+    #[test]
     fn installer_receipt_should_preserve_custom_install_directory() {
         let temp = tempdir().expect("tempdir");
         let executable = temp.path().join("custom bin/dalo");
@@ -1154,6 +1217,17 @@ mod tests {
             ),
             "update available: dalo v1.2.4 (installed v1.2.3 via an unknown installation method)\n\
              upgrade guide: https://dalo.sh/install.md"
+        );
+
+        assert_eq!(
+            render_notice(
+                &latest_version.semver().to_string(),
+                "1.2.3",
+                InstallChannel::DebianPackage,
+                None,
+            ),
+            "update available: dalo v1.2.4 (installed v1.2.3 via Debian package)\n\
+             upgrade guide: https://dalo.sh/install.md#debian-packages"
         );
     }
 

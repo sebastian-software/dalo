@@ -29,6 +29,10 @@ it; ask only when the agent or installation scope is ambiguous.
   or conversation; ask if that choice is unresolved.
 - On macOS with Homebrew, prefer the official
   `sebastian-software/tap/dalo` formula.
+- On Debian or Ubuntu with `amd64` or `arm64`, prefer the `.deb` only when the
+  selected GitHub release includes a matching package and its checksum; verify
+  the Sigstore bundle when Cosign is installed. Otherwise, use the hosted
+  installer.
 - Otherwise, prefer the official installer at `https://dalo.sh/install.sh`.
 - The installer always verifies the release checksum and additionally verifies
   Sigstore provenance when `cosign` is available.
@@ -49,6 +53,32 @@ it; ask only when the agent or installation scope is ambiguous.
 
    ```sh
    brew install sebastian-software/tap/dalo
+   ```
+
+   ### Debian packages
+
+   On Debian or Ubuntu with `amd64` or `arm64`, first check the selected GitHub
+   release for a matching `.deb`, `.deb.sha256`, and `.deb.sigstore.json` asset.
+   Older releases may not include Debian packages yet; if any matching asset is
+   missing, use the hosted installer below. The GNU packages require glibc 2.23 or newer and declare Git as a dependency. Verify the checksum and, when
+   Cosign is installed, the Sigstore bundle before installing. This is a
+   downloaded package, not an apt repository; use the same steps with the new
+   release package when upgrading.
+
+   ```sh
+   VERSION=REPLACE_WITH_RELEASE_VERSION
+   ARCH="$(dpkg --print-architecture)" # amd64 or arm64
+   PACKAGE="dalo_${VERSION}_${ARCH}.deb"
+   BASE_URL="https://github.com/sebastian-software/dalo/releases/download/dalo-v${VERSION}"
+
+   curl -fLO "${BASE_URL}/${PACKAGE}"
+   curl -fLO "${BASE_URL}/${PACKAGE}.sha256"
+   sha256sum -c "${PACKAGE}.sha256"
+   # If Cosign is installed, also fetch ${PACKAGE}.sigstore.json and run:
+   # cosign verify-blob "$PACKAGE" --bundle "${PACKAGE}.sigstore.json" \
+   #   --certificate-identity-regexp '^https://github\.com/sebastian-software/dalo/\.github/workflows/publish\.yml@refs/heads/main$' \
+   #   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com'
+   sudo apt install "./${PACKAGE}"
    ```
 
    Otherwise, use the hosted installer:
