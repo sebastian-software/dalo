@@ -211,16 +211,34 @@ resolution diagnostics:
   shadowed: skill `company:release-notes` is unlinked because `personal:release-notes` wins the same slot
 ```
 
-The lower priority number wins. To flip the winner, change one priority:
+The lower priority number wins. If you want to change the winner, first inspect
+the source authority with `dalo source list --json`, then preview the
+source-wide priority change:
+
+```sh
+dalo --dry-run source priority company 1
+```
+
+The built-in local source priority is fixed. If `declared_by` in the source list
+names a team source, that source's catalog settings belong to its `dalo.toml`
+and must be changed through the team's workflow.
+
+If you choose that change, apply it and then preview the full store sync under
+the new priority before changing target links:
 
 ```sh
 dalo source priority company 1
-dalo sync
+dalo --dry-run sync
 ```
 
-If both variants should stay installed side by side, give one source a
-namespace instead (`dalo source namespace public acme`); its skills are linked
-as `acme__release-notes`.
+The two dry-runs alone do not compose: the sync preview still uses the current
+priority. If both variants should stay installed side by side, namespace one
+source only if changing the installed name of every skill from that source is
+acceptable. Preview the namespace change, apply it if you choose it, then
+preview the full store sync under the new namespace. A namespace produces
+names such as `acme__release-notes`; it does not rename just the colliding
+skill or edit references. Team skills with a namespace still receive upstream
+changes through their usual refresh and sync.
 
 ### Conflict
 
@@ -241,15 +259,27 @@ blocked  conflict   target[claude]:/standup-notes -> store:/sources/company/chec
 synced: 4 skills across 1 target (3 unchanged, 1 blocked)
 ```
 
-Pick one:
+For a real unmanaged directory, first inspect exact IDs and paths with
+`dalo --json resolve list`. Then choose the option that matches what you want:
 
 ```sh
-dalo adopt standup-notes --replace   # keep your version, let Dalo manage it
-dalo resolve keep standup-notes      # keep it unmanaged and stop reporting it
+dalo resolve adopt <id>              # copy it to the local source; leave original in place
+dalo resolve adopt <id> --replace    # also replace this directory with a Dalo link
+dalo resolve keep <id>               # retain it unmanaged at this target slot
 ```
 
-`dalo adopt standup-notes` without `--replace` copies the skill into the local
-source and leaves the original directory exactly where it is.
+Adoption is audited and makes a local snapshot, so it no longer follows the old
+installer or upstream. Its dry-run does not create that local skill for a
+following sync preview. Applying adoption can make the local copy win over a
+same-named managed source across other linked agents. Review the adoption audit
+and exact copy or replacement effect, apply only the choice you intended, then
+inspect status and preview the full store sync before any further target
+changes. Without `--replace`, the original stays in place and may continue
+blocking that target slot. `keep` records the unmanaged choice; the managed
+skill remains unavailable at that occupied slot. A foreign symlink is not an
+adoptable directory: preserve it and use the migration guidance for foreign
+entries only when that handover is explicitly requested. Sync has no per-target
+filter.
 
 ## 7. Keep it current
 

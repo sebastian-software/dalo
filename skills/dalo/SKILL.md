@@ -63,6 +63,15 @@ Load only the additional guidance needed:
 - Use the installed CLI's `--version` and command `--help` as the capability
   check. Prefer `--json` reports to parsing human output. Do not invent an
   `import`, `migrate`, `upgrade`, or `doctor --fix` command.
+- Classify a name conflict before changing it. Two managed sources offering the
+  same slot are a resolution/shadowing choice; an unmanaged directory or foreign
+  symlink already at a target slot is a target conflict. Start with
+  `dalo --store "$store" --json status` and
+  `dalo --store "$store" --json resolve list`; inspect source-qualified entries,
+  target paths, warnings, and all affected agents before choosing. The focused
+  playbook in [Migration](references/migration.md#resolve-name-and-target-conflicts)
+  gives the supported choices. Do not rename or edit skill references as a
+  conflict shortcut.
 - Keep the chosen scope explicit: use `--store` for store operations and
   `--project` for project operations, including migration. Respect `DALO_STORE`
   and custom target paths; resolve conflicting overrides rather than silently
@@ -71,6 +80,19 @@ Load only the additional guidance needed:
   filter. Inspect the complete preview, including effects on other agents and
   tracking sources. If those effects exceed a narrow request, resolve the scope
   before applying it rather than promising an isolated per-agent change.
+- Priority and namespace are source-wide choices. Lower numeric priority wins
+  same-slot resolution; a namespace changes the installed name of every skill
+  from that source to `<prefix>__<skill>`. Check `source list --json` for
+  management authority before proposing either change: local priority is fixed,
+  local skills cannot be namespaced, and team-manifest-owned catalogs must be
+  changed in their owning `dalo.toml` through the team workflow.
+  A dry-run of either policy command does not change config, so a following
+  sync dry-run still uses the old policy. If the user authorizes the policy
+  change, apply that exact change, then preview the whole-store sync under the
+  new policy before target mutations. Explain that separate dry-runs do not
+  compose when the user wants a wholly read-only combined preview. Do not
+  silently change source policy to settle one skill conflict. Namespaced team
+  skills continue to receive updates when that source is refreshed and synced.
 - Show a short, concrete plan for changes: affected skills and folders, what
   stays local, and what will receive upstream updates. Use `--dry-run` where
   supported. A requested migration or update authorizes its ordinary steps;
