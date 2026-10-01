@@ -14,6 +14,13 @@ so it needs no build-script entry of its own.
 shared tokens, header, footer, and buttons, mirroring `home.css`) plus
 `docs.css` (the reading layout). Both use system font stacks.
 
+The company footer is authored in `index.html` and the documentation template
+in `build.mjs`, with matching styles in `home.css` and `styles.css`. Its local
+`assets/img/sebastian-software.svg` is the transparent company logo used by the
+[open-source site](https://github.com/sebastian-software/oss.sebastian-software.com/blob/main/app/assets/logo-software.svg).
+`assets/img/sebastian-consulting.svg` is the transparent consulting logo from
+the [brand assets](https://github.com/sebastian-software/sebastian-brand/blob/main/sebastian-consulting/logo-consulting-transparent.svg).
+
 ## Build
 
 ```sh
