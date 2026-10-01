@@ -97,7 +97,7 @@ a future dirty-source check does not isolate agent access.
 | Pending skill approval | Inspect the exact source-qualified skill and audit; approve only within the requested trust scope |
 | Blocking security finding | Explain the finding and staged content; do not invent an `--accept-risk` reason |
 | Catalog selection removed upstream | Preserve the current pin until the user chooses a replacement or removal |
-| Unmanaged conflict | Follow migration; keep, adopt, or explicitly hand over the exact entry |
+| Unmanaged conflict | Classify it with `status --json` and `resolve list --json`, then follow [the conflict playbook](migration.md#resolve-name-and-target-conflicts) for the exact entry |
 | Informational `schema_migration_pending` | Let a supported ordinary write migrate that file; do not rewrite version numbers |
 | Malformed or unsupported store schema | Preserve the files and diagnose compatibility; do not delete or initialize over the store |
 

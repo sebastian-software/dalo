@@ -73,6 +73,71 @@ When provenance or the original revision cannot be recovered, keep the installed
 content. Do not silently substitute the current upstream version. HTTP-only,
 package-based, or other non-Git origins are not automatically Git sources.
 
+## Resolve name and target conflicts
+
+First classify the conflict from the machine-readable reports:
+
+```sh
+dalo --store "$store" --json status
+dalo --store "$store" --json resolve list
+```
+
+`status` shows active and shadowed managed skills, target materialization
+blocks, and unmanaged entries. `resolve list` gives exact unmanaged IDs and
+paths, scan warnings, and recorded Dalo-owned links. Match the source-qualified
+skill and target path before acting; when a selector is ambiguous, use the ID
+or path reported by the CLI. A `sync` preview covers the entire store and every
+linked target, so show all affected skills and agents before applying it.
+
+- **Two managed sources offer the same slot:** the lower numeric source priority
+  wins. If the user wants a different winner, preview the exact source priority
+  change with `--dry-run`. After the user authorizes that exact policy change,
+  apply it, then preview sync under the new priority. A policy dry-run does not
+  update config, so a later sync dry-run still uses the old priority. If the
+  user wants a wholly read-only combined preview, explain that separate
+  dry-runs do not compose.
+  Check `source list --json` before offering either policy command. Local source
+  priority is fixed and local skills cannot be namespaced. If `declared_by`
+  names a team source, its catalog priority and namespace are controlled by
+  that team's `dalo.toml`; use the existing team catalog workflow in
+  [Maintenance](maintenance.md#updates) rather than editing consumer config.
+  If both should coexist, a namespace is an option only when the user accepts
+  changing every skill name from that source to `<prefix>__<skill>`. Preview the
+  exact namespace change. After the user authorizes it, apply that change, then
+  preview the whole-store sync under the new namespace before target mutations.
+  As with priority, a namespace dry-run does not change config, and separate
+  dry-runs do not compose into a read-only combined preview. A namespace
+  affects materialized names; it does not rename source folders, edit
+  references, or change source-qualified approvals. Namespaced team skills
+  still follow normal upstream refresh and sync behavior. The built-in local
+  source cannot be namespaced.
+- **A real unmanaged directory occupies the requested target slot:** offer
+  audited `resolve adopt <id>` to copy it into the local source while leaving
+  the original in place, or `resolve adopt <id> --replace` when the user wants
+  that exact directory replaced by a Dalo-owned link after the copy. Adoption
+  creates a local snapshot; it does not keep receiving updates from the former
+  installer or upstream. Without `--replace`, the original remains and can keep
+  blocking that target slot. Adoption dry-run previews only the adoption; it
+  does not stage a local skill for a following sync dry-run. Applying adoption
+  can make the local skill win over a same-named managed source across other
+  linked targets. Review the exact adoption audit and its copy/replacement
+  effects, apply only the choice the user authorized, then inspect the new
+  `status --json` and whole-store sync preview before any further target
+  mutations. If the user wants to retain the directory unmanaged, use
+  `resolve keep <id>`; the managed skill remains unavailable at that occupied
+  target slot. Adopt only the entry and scope covered by the user's request.
+- **A foreign symlink occupies the slot, or ownership is unclear:** preserve it
+  and stop. `adopt`, `resolve keep`, and `resolve remove-owned` do not take over
+  or remove a foreign symlink. Do not unlink or replace it as if it were a real
+  directory. Follow the bounded foreign-entry handover only when that exact
+  handover is requested; otherwise report the path and blocker.
+
+Do not use a source-wide priority or namespace change to imply a per-skill
+rename. A dry-run adoption likewise cannot be composed with a sync dry-run to
+preview how the not-yet-created local skill would resolve. If neither supported
+choice matches the request, preserve both versions and explain that Dalo has no
+per-skill rename/adapt command.
+
 ## Adopt real directories
 
 Dalo discovers adoptable directories only inside already configured targets.

@@ -267,13 +267,27 @@ the other visible instead of discarding it:</p>
 resolution diagnostics:
   shadowed: skill `company:release-notes` is unlinked because `personal:release-notes` wins the same slot
 </code></pre>
-<p>The lower priority number wins. To flip the winner, change one priority:</p>
-<pre><code class="language-sh">dalo source priority company 1
-dalo sync
+<p>The lower priority number wins. If you want to change the winner, first inspect
+the source authority with <code>dalo source list --json</code>, then preview the
+source-wide priority change:</p>
+<pre><code class="language-sh">dalo --dry-run source priority company 1
 </code></pre>
-<p>If both variants should stay installed side by side, give one source a
-namespace instead (<code>dalo source namespace public acme</code>); its skills are linked
-as <code>acme__release-notes</code>.</p>
+<p>The built-in local source priority is fixed. If <code>declared_by</code> in the source list
+names a team source, that source&#39;s catalog settings belong to its <code>dalo.toml</code>
+and must be changed through the team&#39;s workflow.</p>
+<p>If you choose that change, apply it and then preview the full store sync under
+the new priority before changing target links:</p>
+<pre><code class="language-sh">dalo source priority company 1
+dalo --dry-run sync
+</code></pre>
+<p>The two dry-runs alone do not compose: the sync preview still uses the current
+priority. If both variants should stay installed side by side, namespace one
+source only if changing the installed name of every skill from that source is
+acceptable. Preview the namespace change, apply it if you choose it, then
+preview the full store sync under the new namespace. A namespace produces
+names such as <code>acme__release-notes</code>; it does not rename just the colliding
+skill or edit references. Team skills with a namespace still receive upstream
+changes through their usual refresh and sync.</p>
 <h3 id="conflict"><a class="doc-anchor" href="#conflict">Conflict</a></h3>
 <p>Dalo wants a slot that is already occupied by a real, unmanaged directory —
 usually a skill an agent wrote directly into its own folder.</p>
@@ -286,12 +300,24 @@ unmanaged skills:
 <pre><code class="language-text">blocked  conflict   target[claude]:/standup-notes -&gt; store:/sources/company/checkout/skills/standup-notes (real unmanaged entry exists at target slot) …
 synced: 4 skills across 1 target (3 unchanged, 1 blocked)
 </code></pre>
-<p>Pick one:</p>
-<pre><code class="language-sh">dalo adopt standup-notes --replace   # keep your version, let Dalo manage it
-dalo resolve keep standup-notes      # keep it unmanaged and stop reporting it
+<p>For a real unmanaged directory, first inspect exact IDs and paths with
+<code>dalo --json resolve list</code>. Then choose the option that matches what you want:</p>
+<pre><code class="language-sh">dalo resolve adopt &lt;id&gt;              # copy it to the local source; leave original in place
+dalo resolve adopt &lt;id&gt; --replace    # also replace this directory with a Dalo link
+dalo resolve keep &lt;id&gt;               # retain it unmanaged at this target slot
 </code></pre>
-<p><code>dalo adopt standup-notes</code> without <code>--replace</code> copies the skill into the local
-source and leaves the original directory exactly where it is.</p>
+<p>Adoption is audited and makes a local snapshot, so it no longer follows the old
+installer or upstream. Its dry-run does not create that local skill for a
+following sync preview. Applying adoption can make the local copy win over a
+same-named managed source across other linked agents. Review the adoption audit
+and exact copy or replacement effect, apply only the choice you intended, then
+inspect status and preview the full store sync before any further target
+changes. Without <code>--replace</code>, the original stays in place and may continue
+blocking that target slot. <code>keep</code> records the unmanaged choice; the managed
+skill remains unavailable at that occupied slot. A foreign symlink is not an
+adoptable directory: preserve it and use the migration guidance for foreign
+entries only when that handover is explicitly requested. Sync has no per-target
+filter.</p>
 <h2 id="7-keep-it-current"><a class="doc-anchor" href="#7-keep-it-current">7. Keep it current</a></h2>
 <p>Rerun <code>dalo sync</code> whenever the team repository moves. To let the machine do it:</p>
 <pre><code class="language-sh">dalo autosync install --schedule daily
