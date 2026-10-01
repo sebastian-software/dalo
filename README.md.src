@@ -33,7 +33,7 @@ team's setup stays versioned like code across people and machines.
 
 Paste this into your local coding agent:
 
-> Install Dalo from https://dalo.sh/install.md and set it up for this agent.
+> Install Dalo, the agent skill manager.
 
 The agent installs Dalo, connects its skill folder, and makes the bundled Dalo
 assistant available. No preinstalled Dalo skill is needed. Use an agent with

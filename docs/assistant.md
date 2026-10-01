@@ -16,17 +16,19 @@ commands for changes. It can inspect existing folders before Dalo is installed.
 
 Paste this into your local coding agent:
 
-> Install Dalo from https://dalo.sh/install.md and set it up for this agent.
+> Install Dalo, the agent skill manager.
 
 The agent follows the [installation guide](../site/install.md) to install the
 binary, connect the intended skill folder, deliver the bundled assistant, and
 verify the result. No Dalo skill is needed first. The agent needs web or
 repository access to find the instructions and local command access to perform
-the installation. A shorter “Install the Dalo skill manager” request works
-when the agent can find the official project.
+the installation.
 
-Discovery depends on the host's tools; if it cannot identify the project, give
-it [dalo.sh](https://dalo.sh). The site's [llms.txt](https://dalo.sh/llms.txt)
+If your agent cannot find the official project, include the guide directly:
+
+> Install Dalo from https://dalo.sh/install.md and set it up for this agent.
+
+Discovery depends on the host's tools. The site's [llms.txt](https://dalo.sh/llms.txt)
 is an additional documentation index. The same installation path is linked from
 normal HTML and the README, so it does not depend on automatic llms.txt support.
 
