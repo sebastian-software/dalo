@@ -57,6 +57,7 @@ Load only the additional guidance needed:
 | Bring existing skills under Dalo, including skills.sh installs | [Migration](references/migration.md) |
 | Add repository skills to a project's shared definition | [Setup](references/setup.md) and [project workflow](https://dalo.sh/docs/projects.html) |
 | Update, repair, add or remove skills, share a local skill, or resume an old setup | [Maintenance](references/maintenance.md) |
+| Prepare updates for an agent or host automation | [Agent-run updates](references/maintenance.md#agent-run-updates) |
 
 ## Act on evidence and intent
 
