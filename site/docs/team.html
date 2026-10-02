@@ -292,18 +292,22 @@ silently put new third-party code into a teammate&#39;s agent. If your team pref
 a broader policy, <code>dalo approve list</code> and the <code>source</code>, <code>author</code>, and <code>org</code>
 approval scopes exist — they are still granted per machine.</p>
 <h2 id="8-keeping-machines-current"><a class="doc-anchor" href="#8-keeping-machines-current">8. Keeping machines current</a></h2>
-<p>Tell teammates to install the scheduler once:</p>
-<pre><code class="language-sh">dalo autosync install --schedule daily
-dalo autosync status
+<p>After publishing a team change, teammates run <code>dalo sync</code> to refresh their
+tracking team source and reconcile the declared catalogs. For recurring updates,
+each teammate can ask their agent or host to automate the chosen store:</p>
+<pre><code class="language-sh">dalo --store &lt;store-path&gt; --json sync --check
 </code></pre>
-<p>macOS uses launchd, Linux a systemd user timer with a marked crontab fallback.
-A scheduled run is a <code>dalo sync --check</code>: it refreshes clean sources and links
-what is already approved, and it stays fail-closed on dirty sources, pending
-approvals, security findings, and target conflicts. It never grants an approval.
-The last attempt, the last success, and any blocking reason stay visible in
-<code>dalo status</code> and <code>dalo doctor</code>.</p>
-<p>So the rhythm after you push a manifest change is: autosync picks it up, and a
-teammate sees either new skills or an exact <code>dalo approve skill …</code> line.</p>
+<p>The automation chooses when to run, when to retry, and how to notify its owner.
+<code>sync --check</code> still applies eligible changes and returns a failure for an
+incomplete result. It refreshes tracking sources and follows the team&#39;s declared
+catalog pins, while personal catalog pins stay unchanged. It never grants an
+approval or bypasses dirty sources, blocking audits, or target conflicts.</p>
+<p>Read the JSON report even on a nonzero exit; safe work may have completed while
+other work remains blocked. The agent can explain changed skills or the exact
+approval needed and notify the teammate through its own host. See
+<a href="/docs/assistant.html#automate-updates">Automate updates</a>. Existing
+<a href="/docs/reference.html#dalo-autosync-installstatusuninstall">autosync installations</a> remain
+supported in Dalo 1.x.</p>
 <h2 id="9-a-second-machine"><a class="doc-anchor" href="#9-a-second-machine">9. A second machine</a></h2>
 <p>Same team, new laptop. Nothing is copied from the old machine:</p>
 <pre><code class="language-sh">dalo init
