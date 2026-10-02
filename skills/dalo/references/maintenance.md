@@ -6,6 +6,13 @@ need different actions; “outdated” does not mean reinstall everything.
 
 ## Updates
 
+Choose the update operation from the source's management authority and update
+policy, not merely its Git URL. Tracking team sources follow their upstream;
+personal catalog pins move only in an explicitly requested update. A catalog
+declared by a team follows the team's declared pin, not that catalog's latest
+upstream commit. Project installation restores the committed project definition;
+updating that definition is a separate authoring operation.
+
 - **Binary:** identify the executable and installation channel, then follow
   [setup](setup.md). The absence of an update notice in JSON or offline mode does
   not mean the installed version is current.
@@ -15,22 +22,74 @@ need different actions; “outdated” does not mean reinstall everything.
   changes. A real sync can apply unrelated safe work while another source stays
   degraded. Read the report and verify each requested source.
 - **User-managed catalog:** `source refresh <id>` fetches and reports drift but
-  does not advance the pin. For an actual update, if supported, inspect
-  `--dry-run --json source refresh <id> --advance`, review changed selections and
-  blocking findings, then run `source refresh <id> --advance`. This can update
-  affected target links directly. Newly required skills may still need approval.
+  does not advance the pin. Add `--check` when an automation needs selected-skill
+  drift to produce a nonzero exit status. For an actual update, if supported,
+  inspect `--dry-run --json source refresh <id> --advance`, review changed
+  selections and blocking findings, then run `source refresh <id> --advance`.
+  This can update affected target links directly. Newly required skills may
+  still need approval.
 - **Team-manifest catalog:** respect the authority reported by `source list`.
   The pin belongs to the team's `dalo.toml`. A consumer should refresh its team
   source; do not override the pin locally. If the task is to author the team's
   update, use the installed `team catalog update` help and the team's repository
   workflow. Do not commit, push, or publish a team update merely to refresh one
   consumer.
+- **Project source:** after pulling a changed `dalo-project.toml`, run
+  `dalo --project <root> --json install` to restore its declared pins. To author
+  an update, preview `dalo --project <root> --json project update <id> --ref <ref>`.
+  Apply a moving ref with the previewed `--expect-commit <commit> --apply`, then
+  install; changed content remains subject to local approval. Repeat `--skill`
+  only when replacing the selection is part of the request.
+
+For team catalog authoring, preview
+`dalo --dry-run --json team --repo <team-root> catalog update <id> --from <ref>`.
+Use the same operation without `--dry-run` to edit the local manifest. Add `--pr`
+only for a requested GitHub review proposal; commit and push are part of that
+operation. An exact full commit can be supplied to `--from` when the reviewed
+candidate must remain fixed. Consumers pick up the published declaration through
+their normal team sync.
 
 For “check for updates”, report differences without advancing pins or syncing
 targets. Upstream checks fetch data; do not start them during a purely local
 inventory or when offline. Do not implement a guessed update loop over every
 source kind. A request to update all existing skills does not authorize new
 source-wide approvals, new hook execution, or accepting audit exceptions.
+
+The current CLI has no read-only upstream preview for a tracking team source:
+`sync --dry-run` uses the existing checkout, and a real `sync` fetches and applies
+eligible updates. `source refresh` is catalog-only. Personal catalog `--advance`
+fetches its upstream again when applied and has no `--ref` or `--expect-commit`
+option; a previous preview does not bind the subsequent candidate. Report these
+limits when the task requires review of a fixed revision before application;
+do not substitute raw Git pulls or edits to Dalo's state files.
+
+## Agent-run updates
+
+Use the agent or host's automation facility when the user requests recurring
+updates. Keep the chosen scope, update policy, cadence, and notification
+preferences in that automation. An update request alone does not choose a
+schedule or enable Dalo autosync. Existing authorization for the named recurring
+operation applies to later runs; new trust decisions still need their own review.
+
+For an initialized global or explicit store, the ordinary tracking update is:
+
+```sh
+dalo --store "$store" --json sync --check
+```
+
+`--check` validates the resulting sync; it still mutates sources and targets.
+It is not an upstream-check-only flag. Personal catalog pins stay unchanged.
+For a project, use `dalo --project <root> --json install` to restore the current
+definition; project scope does not support `sync` or `autosync`.
+
+Read the JSON report even when the command fails. Runtime errors may be JSON on
+stderr; usage errors remain plain text. Inspect changed sources, pending
+approvals, degraded sources, and blocked operations rather than treating an exit
+code alone as a complete result. Stop for a safety or approval block instead of
+granting trust, accepting audit findings, or discarding local edits in a retry.
+Use `status --check --json` and `doctor --check --json` for the same explicit scope
+when diagnosis is needed. Leave retry timing and notifications to the automation;
+do not report a successful upstream check when fetching failed or was skipped.
 
 ## Share a local skill
 
