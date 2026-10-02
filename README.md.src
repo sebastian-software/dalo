@@ -209,9 +209,10 @@ list of things Dalo deliberately does not protect against — read the
 - **Instruction packs.** Share conventions that are not skills as managed blocks
   inside agent instruction files; everything else in the file stays yours.
   [Agent integration](docs/agents.md)
-- **Autosync.** Install a safe recurring sync on launchd or a systemd user timer
-  that never waits on a prompt and never grants approvals.
-  [Command reference](docs/reference.md)
+- **Updates through your agent.** Refresh tracking team sources and review
+  catalog or project pin changes through the CLI. Your agent or host chooses
+  when to run updates and how to report them.
+  [Automate updates](docs/assistant.md#automate-updates)
 - **Portable plugins.** Group skills, agents, and instructions in an inert
   package, with narrowly typed tools and hooks behind separate exact approvals.
   [Plugins, tools, and hooks](docs/plugins.md)
