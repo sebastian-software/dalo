@@ -275,22 +275,26 @@ approval scopes exist — they are still granted per machine.
 
 ## 8. Keeping machines current
 
-Tell teammates to install the scheduler once:
+After publishing a team change, teammates run `dalo sync` to refresh their
+tracking team source and reconcile the declared catalogs. For recurring updates,
+each teammate can ask their agent or host to automate the chosen store:
 
 ```sh
-dalo autosync install --schedule daily
-dalo autosync status
+dalo --store <store-path> --json sync --check
 ```
 
-macOS uses launchd, Linux a systemd user timer with a marked crontab fallback.
-A scheduled run is a `dalo sync --check`: it refreshes clean sources and links
-what is already approved, and it stays fail-closed on dirty sources, pending
-approvals, security findings, and target conflicts. It never grants an approval.
-The last attempt, the last success, and any blocking reason stay visible in
-`dalo status` and `dalo doctor`.
+The automation chooses when to run, when to retry, and how to notify its owner.
+`sync --check` still applies eligible changes and returns a failure for an
+incomplete result. It refreshes tracking sources and follows the team's declared
+catalog pins, while personal catalog pins stay unchanged. It never grants an
+approval or bypasses dirty sources, blocking audits, or target conflicts.
 
-So the rhythm after you push a manifest change is: autosync picks it up, and a
-teammate sees either new skills or an exact `dalo approve skill …` line.
+Read the JSON report even on a nonzero exit; safe work may have completed while
+other work remains blocked. The agent can explain changed skills or the exact
+approval needed and notify the teammate through its own host. See
+[Automate updates](assistant.md#automate-updates). Existing
+[autosync installations](reference.md#dalo-autosync-installstatusuninstall) remain
+supported in Dalo 1.x.
 
 ## 9. A second machine
 

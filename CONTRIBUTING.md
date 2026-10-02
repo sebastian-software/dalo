@@ -21,12 +21,18 @@ is something you can subscribe to, react to, and comment on.
   [#836](https://github.com/sebastian-software/dalo/issues/836).
 - Remaining proposals live in [open feature issues](https://github.com/sebastian-software/dalo/issues?q=is%3Aissue+is%3Aopen+label%3Atype%3Afeature):
   native Windows, more verified agent adapters, more install channels,
-  rename/adapt and interactive conflict resolution, blocked-autosync
-  notifications, and forge adapters beyond GitHub. Issues marked
+  rename/adapt and interactive conflict resolution, and forge adapters beyond
+  GitHub. Issues marked
   `help wanted` welcome community contributions.
 - Priorities follow demand: reactions and comments on those issues decide what
   is picked up next. There are no dates, and none of the deferred features block
   a release.
+
+For update automation, keep Dalo focused on safe CLI operations and structured
+results. Scheduling, retries, and notifications belong to the agent or host
+running those operations. The [assistant guide](docs/assistant.md#automate-updates)
+describes that boundary. Existing autosync commands remain supported under the
+[1.x compatibility contract](docs/compatibility.md).
 
 Before you build something sizeable, comment on the issue so the design is
 agreed before the diff exists. If a feature has no issue yet, open one or raise

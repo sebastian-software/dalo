@@ -748,6 +748,9 @@ edits do not change the recorded commit, and materialized symlinks expose those
 live edits directly. Catalog selections are the source kind with content and
 metadata fingerprints for upstream drift checks.</p>
 <h3 id="dalo-autosync-installstatusuninstall"><a class="doc-anchor" href="#dalo-autosync-installstatusuninstall"><code>dalo autosync install|status|uninstall</code></a></h3>
+<p>For updates managed by an agent, use the host&#39;s automation facility to choose
+timing, retries, and notifications; see <a href="/docs/assistant.html#automate-updates">Automate updates</a>.
+The existing OS-native scheduler commands below remain supported in Dalo 1.x.</p>
 <p>Install recurring <code>dalo sync --check</code> behavior through the current user&#39;s
 native scheduler. macOS uses launchd. Linux prefers a systemd user timer and
 falls back to cron only when the user manager is unavailable. Supported

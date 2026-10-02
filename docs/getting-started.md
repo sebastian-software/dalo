@@ -283,16 +283,23 @@ filter.
 
 ## 7. Keep it current
 
-Rerun `dalo sync` whenever the team repository moves. To let the machine do it:
+Run `dalo sync` to fetch and apply updates from clean tracking team sources.
+Personal catalog pins stay on their selected versions until you request an
+update.
+
+For recurring updates, ask your agent or host to automate this command for the
+chosen store:
 
 ```sh
-dalo autosync install --schedule daily
-dalo autosync status
+dalo --store <store-path> --json sync --check
 ```
 
-macOS uses launchd, Linux a systemd user timer with a marked crontab fallback.
-Scheduled runs never grant approvals and never wait on an interactive Dalo
-process; whatever they skip or block on stays visible in `status` and `doctor`.
+Choose the cadence and notifications in that automation. `--check` still applies
+the sync; it returns a failure when the result needs review. Pending approvals,
+security findings, local edits, and conflicts require attention. See
+[Automate updates](assistant.md#automate-updates) for the scope and update-policy
+choices. Existing [autosync installations](reference.md#dalo-autosync-installstatusuninstall)
+remain supported in Dalo 1.x.
 
 For a focused health check:
 

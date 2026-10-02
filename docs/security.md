@@ -63,12 +63,13 @@ personal store — `~/.dalo` by default, relocatable with `--store` or
 `DALO_STORE`. There is no repository-level approval file: a team `dalo.toml`
 declares sources and pins, never approvals.
 
-**Scheduled and non-interactive runs never grant approvals.** Autosync installs
-a recurring [`dalo sync --check`](reference.md#dalo-autosync-installstatusuninstall)
-through launchd, a systemd user timer, or cron. Pending approvals, security
-findings, dirty sources, and target conflicts stay fail-closed: the run records
-`blocked` with a reason instead of proceeding. Non-interactive commands can use
-approvals that already exist but never create new ones.
+**Non-interactive runs never grant approvals.** An agent or host can automate
+[`dalo sync --check`](reference.md#dalo-sync) and read its JSON result. Pending
+approvals, security findings, dirty sources, and target conflicts stay
+fail-closed. Non-interactive commands can use approvals that already exist but
+never create new ones. The automation handles scheduling and notifications; see
+[Automate updates](assistant.md#automate-updates). Existing Dalo autosync runs
+enforce the same checks and record their durable outcome separately.
 
 **Incoming team updates are staged before they are trusted.** A tracking source
 fetches into a detached worktree below `sources/.audit-staging/` and is audited

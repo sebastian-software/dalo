@@ -757,6 +757,10 @@ metadata fingerprints for upstream drift checks.
 
 ### `dalo autosync install|status|uninstall`
 
+For updates managed by an agent, use the host's automation facility to choose
+timing, retries, and notifications; see [Automate updates](assistant.md#automate-updates).
+The existing OS-native scheduler commands below remain supported in Dalo 1.x.
+
 Install recurring `dalo sync --check` behavior through the current user's
 native scheduler. macOS uses launchd. Linux prefers a systemd user timer and
 falls back to cron only when the user manager is unavailable. Supported

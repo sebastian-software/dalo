@@ -43,6 +43,7 @@ syntax, such as `$dalo` in Codex. Ask in your own language:
 | Understand your setup | “Dalo, what skills are installed and what needs attention?” |
 | Add your team's skills | “Add our skill repository at this URL and make its skills available here.” |
 | Review updates | “Update my skills and show me what changed.” |
+| Automate team updates | “Update my global team setup each morning and tell me when something changes or needs attention. Keep my personal catalog pins.” |
 | Connect another agent | “Make the same skills available in Claude Code.” |
 | Preserve existing work | “I used skills.sh before. Move these skills to Dalo and keep my changes.” |
 | Keep your own skills private | “Bring my own skills under version control without sharing them publicly.” |
@@ -57,6 +58,42 @@ A bare invocation starts with a local assessment and a suggested next step. It
 does not install software or change your setup. A concrete request continues
 through the relevant work, asking about choices that cannot be inferred, such
 as two different versions of a skill with the same name.
+
+## Automate updates
+
+Ask your agent or host to run updates when you need them: on demand, at session
+start where supported, or on a schedule you choose. The automation owns the
+timing, retries, and notifications. Dalo performs the requested update and
+reports its result through the CLI.
+
+Choose the scope and update policy explicitly. A global team sync refreshes
+tracking sources and follows catalog pins declared by the team; personal catalog
+pins change only in a separately requested update. In a project, installation
+restores the checked-in `dalo-project.toml`, while `project update` authors a new
+pin. A normal Git pull does not run Dalo's installation or synchronization step.
+
+For an initialized store, an automation can run:
+
+```sh
+dalo --store <store-path> --json sync --check
+```
+
+`--check` still applies the sync and exits nonzero when the result needs review.
+It is not a read-only upstream check. A project automation instead uses
+`dalo --project <project-path> --json install` to restore the current definition.
+The [CI guide](ci.md) describes JSON reports, exit codes, and read-only catalog
+drift checks.
+
+The agent reads the result and uses its own notification channel for meaningful
+changes or required decisions. Pending approvals, security findings, conflicts,
+and local edits need attention; an unattended run does not grant new trust or
+discard work. A request for recurring updates does not select a cadence or
+notification policy for you.
+
+Existing OS-native [autosync commands](reference.md#dalo-autosync-installstatusuninstall)
+remain supported in Dalo 1.x. Agent-managed update workflows use the host's
+automation facilities; desktop, webhook, and mail notifications are handled
+there.
 
 ## Dalo's checks still apply in conversation
 

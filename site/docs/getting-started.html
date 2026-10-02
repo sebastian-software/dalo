@@ -319,13 +319,19 @@ adoptable directory: preserve it and use the migration guidance for foreign
 entries only when that handover is explicitly requested. Sync has no per-target
 filter.</p>
 <h2 id="7-keep-it-current"><a class="doc-anchor" href="#7-keep-it-current">7. Keep it current</a></h2>
-<p>Rerun <code>dalo sync</code> whenever the team repository moves. To let the machine do it:</p>
-<pre><code class="language-sh">dalo autosync install --schedule daily
-dalo autosync status
+<p>Run <code>dalo sync</code> to fetch and apply updates from clean tracking team sources.
+Personal catalog pins stay on their selected versions until you request an
+update.</p>
+<p>For recurring updates, ask your agent or host to automate this command for the
+chosen store:</p>
+<pre><code class="language-sh">dalo --store &lt;store-path&gt; --json sync --check
 </code></pre>
-<p>macOS uses launchd, Linux a systemd user timer with a marked crontab fallback.
-Scheduled runs never grant approvals and never wait on an interactive Dalo
-process; whatever they skip or block on stays visible in <code>status</code> and <code>doctor</code>.</p>
+<p>Choose the cadence and notifications in that automation. <code>--check</code> still applies
+the sync; it returns a failure when the result needs review. Pending approvals,
+security findings, local edits, and conflicts require attention. See
+<a href="/docs/assistant.html#automate-updates">Automate updates</a> for the scope and update-policy
+choices. Existing <a href="/docs/reference.html#dalo-autosync-installstatusuninstall">autosync installations</a>
+remain supported in Dalo 1.x.</p>
 <p>For a focused health check:</p>
 <pre><code class="language-sh">dalo doctor
 </code></pre>
