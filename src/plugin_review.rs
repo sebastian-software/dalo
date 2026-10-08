@@ -559,6 +559,14 @@ fn member_decision(
                 diagnostic = format!("content audit failed: {error}");
             }
         }
+        if let Some(compatibility) = inventories
+            .iter()
+            .flat_map(|inventory| &inventory.skills)
+            .find(|skill| skill.source_ref == component)
+            .and_then(|skill| skill.compatibility.as_deref())
+        {
+            facts.push(fact("compatibility", compatibility));
+        }
     } else if kind == ReviewDecisionKind::AgentActivation {
         if let Some(agent) = inventories
             .iter()

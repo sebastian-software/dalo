@@ -73,6 +73,12 @@ pub struct SkillRecord {
     pub owners: Vec<String>,
     /// Declared tags.
     pub tags: Vec<String>,
+    /// Free-text environment requirements from the `compatibility` frontmatter field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compatibility: Option<String>,
+    /// String-valued entries of the `metadata` frontmatter mapping.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub metadata: BTreeMap<String, String>,
 }
 
 /// How one logical skill is delivered to linked targets.
@@ -322,7 +328,8 @@ struct DeliveryManifest {
     output_input: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+// `yaml_serde::Value` is not `Eq`, so the frontmatter model cannot derive it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 struct SkillFrontmatter {
     id: Option<String>,
@@ -331,6 +338,12 @@ struct SkillFrontmatter {
     requires: Vec<String>,
     owners: Vec<String>,
     tags: Vec<String>,
+    // Read through `FrontmatterNode` so an unexpected shape never turns into a
+    // `malformed_frontmatter` warning that drops the skill.
+    #[serde(deserialize_with = "deserialize_compatibility")]
+    compatibility: Option<yaml_serde::Value>,
+    #[serde(deserialize_with = "deserialize_metadata")]
+    metadata: BTreeMap<String, yaml_serde::Value>,
 }
 
 /// Scan a source checkout for skills.
@@ -627,9 +640,191 @@ fn scan_skill(
             requires: frontmatter.requires,
             owners: frontmatter.owners,
             tags: frontmatter.tags,
+            compatibility: compatibility_text(frontmatter.compatibility),
+            metadata: string_metadata(frontmatter.metadata),
         }),
         warnings,
     ))
+}
+
+/// Keep `compatibility` only when it is non-blank text.
+///
+/// Other YAML shapes are dropped without a warning so the skill still parses.
+fn compatibility_text(value: Option<yaml_serde::Value>) -> Option<String> {
+    match value {
+        Some(yaml_serde::Value::String(text)) if !text.trim().is_empty() => Some(text),
+        _ => None,
+    }
+}
+
+/// Keep only the string-valued `metadata` entries; nested values are dropped.
+fn string_metadata(entries: BTreeMap<String, yaml_serde::Value>) -> BTreeMap<String, String> {
+    entries
+        .into_iter()
+        .filter_map(|(key, value)| match value {
+            yaml_serde::Value::String(text) => Some((key, text)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Read `compatibility` and keep it only when it is a YAML string.
+///
+/// Any other shape yields `None` and never fails the frontmatter.
+fn deserialize_compatibility<'de, D>(deserializer: D) -> Result<Option<yaml_serde::Value>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(match FrontmatterNode::deserialize(deserializer)? {
+        FrontmatterNode::Text(text) => Some(yaml_serde::Value::String(text)),
+        FrontmatterNode::Mapping(_) | FrontmatterNode::Other => None,
+    })
+}
+
+/// Read `metadata` and keep only the entries whose key and value are strings.
+///
+/// A scalar, sequence, or empty `metadata:` yields an empty map, so the rest of
+/// the skill keeps parsing exactly as before.
+fn deserialize_metadata<'de, D>(
+    deserializer: D,
+) -> Result<BTreeMap<String, yaml_serde::Value>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(match FrontmatterNode::deserialize(deserializer)? {
+        FrontmatterNode::Mapping(entries) => entries
+            .into_iter()
+            .filter_map(|entry| match entry {
+                (FrontmatterNode::Text(key), FrontmatterNode::Text(text)) => {
+                    Some((key, yaml_serde::Value::String(text)))
+                }
+                _ => None,
+            })
+            .collect(),
+        FrontmatterNode::Text(_) | FrontmatterNode::Other => BTreeMap::new(),
+    })
+}
+
+/// A YAML node reduced to the shapes Dalo can carry, built without a tree.
+///
+/// `yaml_serde::Value` rejects duplicate mapping keys, and an alias can produce
+/// them, so reading these fields as a `Value` would fail a skill that parsed
+/// before they existed. Strings and mapping entries are kept; every other node
+/// is drained with `IgnoredAny`, which does not check for duplicate keys.
+enum FrontmatterNode {
+    Text(String),
+    Mapping(Vec<(FrontmatterNode, FrontmatterNode)>),
+    Other,
+}
+
+impl<'de> Deserialize<'de> for FrontmatterNode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_any(FrontmatterNodeVisitor)
+    }
+}
+
+struct FrontmatterNodeVisitor;
+
+impl<'de> serde::de::Visitor<'de> for FrontmatterNodeVisitor {
+    type Value = FrontmatterNode;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("any YAML value")
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(FrontmatterNode::Text(value.to_owned()))
+    }
+
+    fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(FrontmatterNode::Text(value))
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: serde::de::MapAccess<'de>,
+    {
+        let mut entries = Vec::new();
+        while let Some(entry) = map.next_entry::<FrontmatterNode, FrontmatterNode>()? {
+            entries.push(entry);
+        }
+        Ok(FrontmatterNode::Mapping(entries))
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+    where
+        A: serde::de::SeqAccess<'de>,
+    {
+        while seq.next_element::<serde::de::IgnoredAny>()?.is_some() {}
+        Ok(FrontmatterNode::Other)
+    }
+
+    fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error>
+    where
+        A: serde::de::EnumAccess<'de>,
+    {
+        let (_tag, contents) = data.variant::<String>()?;
+        serde::de::VariantAccess::newtype_variant::<serde::de::IgnoredAny>(contents)?;
+        Ok(FrontmatterNode::Other)
+    }
+
+    fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_any(self)
+    }
+
+    fn visit_bool<E>(self, _value: bool) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(FrontmatterNode::Other)
+    }
+
+    fn visit_i64<E>(self, _value: i64) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(FrontmatterNode::Other)
+    }
+
+    fn visit_u64<E>(self, _value: u64) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(FrontmatterNode::Other)
+    }
+
+    fn visit_f64<E>(self, _value: f64) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(FrontmatterNode::Other)
+    }
+
+    fn visit_unit<E>(self) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(FrontmatterNode::Other)
+    }
+
+    fn visit_none<E>(self) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(FrontmatterNode::Other)
+    }
 }
 
 fn scan_delivery(
@@ -2563,6 +2758,135 @@ required = true
             inventory.warnings[0].code,
             InventoryWarningCode::MalformedFrontmatter
         );
+    }
+
+    #[test]
+    fn compatibility_text_should_keep_only_non_blank_strings_verbatim() {
+        assert_eq!(
+            compatibility_text(Some(yaml_serde::Value::String(" Needs git ".to_owned()))),
+            Some(" Needs git ".to_owned())
+        );
+        assert_eq!(
+            compatibility_text(Some(yaml_serde::Value::String("  ".to_owned()))),
+            None
+        );
+        assert_eq!(
+            compatibility_text(Some(
+                yaml_serde::from_str("[git]").expect("sequence should parse")
+            )),
+            None
+        );
+        assert_eq!(compatibility_text(None), None);
+    }
+
+    #[test]
+    fn string_metadata_should_keep_only_string_values() {
+        let entries: BTreeMap<String, yaml_serde::Value> = yaml_serde::from_str(
+            "dalo.requires-commands: git\nowner:\n  team: docs\nattempts: 3\n",
+        )
+        .expect("metadata should parse");
+
+        assert_eq!(
+            string_metadata(entries),
+            BTreeMap::from([("dalo.requires-commands".to_owned(), "git".to_owned())])
+        );
+    }
+
+    #[test]
+    fn scan_source_should_carry_compatibility_and_string_metadata() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("page-scan");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        fs::write(
+            skill_dir.join(SKILL_FILE),
+            "---\nname: page-scan\ncompatibility: \"Needs agent-browser on PATH.\"\nmetadata:\n  dalo.requires-commands: agent-browser\n---\n# Page scan\n",
+        )
+        .expect("skill file should be written");
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should succeed");
+
+        assert_eq!(inventory.skills.len(), 1);
+        assert_eq!(
+            inventory.skills[0].compatibility.as_deref(),
+            Some("Needs agent-browser on PATH.")
+        );
+        assert_eq!(
+            inventory.skills[0].metadata,
+            BTreeMap::from([(
+                "dalo.requires-commands".to_owned(),
+                "agent-browser".to_owned()
+            )])
+        );
+        assert!(inventory.warnings.is_empty());
+    }
+
+    #[test]
+    fn scan_source_should_drop_unexpected_compatibility_and_metadata_shapes_silently() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let nested = temp_dir.path().join("nested");
+        let scalar = temp_dir.path().join("scalar");
+        let empty = temp_dir.path().join("empty");
+        let blank = temp_dir.path().join("blank");
+        for dir in [&nested, &scalar, &empty, &blank] {
+            fs::create_dir_all(dir).expect("skill dir should be created");
+        }
+        fs::write(
+            nested.join(SKILL_FILE),
+            "---\nname: nested\ncompatibility:\n  - python\n  - git\nmetadata:\n  owner:\n    team: docs\n  dalo.requires-commands: git\n  attempts: 3\n---\n# Nested\n",
+        )
+        .expect("skill file should be written");
+        fs::write(
+            scalar.join(SKILL_FILE),
+            "---\nname: scalar\nmetadata: not-a-mapping\n---\n# Scalar\n",
+        )
+        .expect("skill file should be written");
+        fs::write(
+            empty.join(SKILL_FILE),
+            "---\nname: empty\nmetadata:\n---\n# Empty\n",
+        )
+        .expect("skill file should be written");
+        fs::write(
+            blank.join(SKILL_FILE),
+            "---\nname: blank\ncompatibility: \"\"\n---\n# Blank\n",
+        )
+        .expect("skill file should be written");
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should succeed");
+        let skill = |slot: &str| {
+            inventory
+                .skills
+                .iter()
+                .find(|skill| skill.slot_name == slot)
+                .unwrap_or_else(|| panic!("skill `{slot}` should still be discovered"))
+        };
+
+        assert_eq!(inventory.skills.len(), 4);
+        assert_eq!(skill("nested").compatibility, None);
+        assert_eq!(
+            skill("nested").metadata,
+            BTreeMap::from([("dalo.requires-commands".to_owned(), "git".to_owned())])
+        );
+        assert!(skill("scalar").metadata.is_empty());
+        assert!(skill("empty").metadata.is_empty());
+        assert_eq!(skill("blank").compatibility, None);
+        assert!(inventory.warnings.is_empty());
+    }
+
+    #[test]
+    fn scan_source_should_not_fail_on_duplicate_metadata_keys() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("duplicated");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        fs::write(
+            skill_dir.join(SKILL_FILE),
+            "---\nname: duplicated\nmetadata:\n  &key dalo.requires-commands: git\n  *key: gh\n---\n# Duplicated\n",
+        )
+        .expect("skill file should be written");
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should succeed");
+
+        assert_eq!(inventory.skills.len(), 1);
+        assert!(inventory.warnings.is_empty());
     }
 
     #[test]

@@ -2743,6 +2743,7 @@ mod tests {
                     source_priority: 0,
                     path: (*path).to_path_buf(),
                     delivery: crate::inventory::SkillDelivery::Direct,
+                    compatibility: None,
                     local_override: false,
                     requires: Vec::new(),
                 })

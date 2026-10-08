@@ -1591,6 +1591,9 @@ pub fn print_status_report(report: &StatusReport) {
                     &format!("approve skill {}", skill.source_ref)
                 )
             );
+            if let Some(compatibility) = &skill.compatibility {
+                println!("    compatibility: {}", terminal_safe_text(compatibility));
+            }
         }
     }
 
@@ -2027,6 +2030,12 @@ pub fn print_sync_report(report: &SyncReport) {
                 &format!("approve skill {}", skill.source_ref)
             )
         );
+        if let Some(compatibility) = &skill.compatibility {
+            println!(
+                "{prefix}  compatibility: {}",
+                terminal_safe_text(compatibility)
+            );
+        }
     }
     for blocked in &report.resolution.blocked_skills {
         println!(
@@ -2706,6 +2715,9 @@ pub fn print_catalog_inspect_report(report: &CatalogInspectReport, store_root: &
                 candidate.path
             ),
             (false, false) => println!("    {:<24} {}", candidate.slot_name, candidate.path),
+        }
+        if let Some(compatibility) = &candidate.compatibility {
+            println!("      compatibility: {}", terminal_safe_text(compatibility));
         }
     }
 }

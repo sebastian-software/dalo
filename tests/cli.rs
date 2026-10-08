@@ -13888,6 +13888,12 @@ fn source_inspect_json_should_model_catalog_candidates() {
         report
             .candidates
             .iter()
+            .all(|candidate| candidate.compatibility.is_none())
+    );
+    assert!(
+        report
+            .candidates
+            .iter()
             .any(|candidate| candidate.slot_name == "copy-editing" && candidate.selected)
     );
     assert!(
@@ -13895,6 +13901,205 @@ fn source_inspect_json_should_model_catalog_candidates() {
             .candidates
             .iter()
             .any(|candidate| candidate.slot_name == "launch-copy" && !candidate.selected)
+    );
+}
+
+/// Catalog with one skill that declares `compatibility` and `metadata`, and one
+/// plain skill that declares neither.
+fn create_git_compatibility_catalog_repo(repo: &std::path::Path) {
+    let page_scan = repo.join("skills/page-scan");
+    std::fs::create_dir_all(&page_scan).expect("repo dirs created");
+    std::fs::write(
+        page_scan.join("SKILL.md"),
+        "---\nname: page-scan\ndescription: Scan rendered pages\ncompatibility: \"Rendered-page scans need agent-browser on PATH; everything else works without it.\"\nmetadata:\n  dalo.requires-commands: \"agent-browser\"\n---\n# Page scan\n",
+    )
+    .expect("skill written");
+    let plain = repo.join("skills/plain");
+    std::fs::create_dir_all(&plain).expect("repo dirs created");
+    std::fs::write(plain.join("SKILL.md"), "---\nname: plain\n---\n# Plain\n")
+        .expect("skill written");
+    run_git(repo, &["-c", "init.defaultBranch=main", "init", "-q"]);
+    run_git(repo, &["add", "."]);
+    run_git(
+        repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "initial",
+            "-q",
+        ],
+    );
+}
+
+#[test]
+fn source_inspect_should_show_compatibility_text() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_compatibility_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "inspect", "marketing"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "compatibility: Rendered-page scans need agent-browser on PATH",
+        ));
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "source", "inspect", "marketing"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let output = String::from_utf8(output).expect("inspect JSON should be UTF-8");
+
+    assert!(output.contains(
+        "\"compatibility\": \"Rendered-page scans need agent-browser on PATH; everything else works without it.\""
+    ));
+    assert!(output.contains("\"compatibility\": null"));
+}
+
+#[test]
+fn status_and_sync_should_show_compatibility_for_pending_skills() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_compatibility_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "page-scan"])
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("pending approval:"))
+        .stdout(predicate::str::contains(
+            "compatibility: Rendered-page scans",
+        ));
+    let status = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let status = String::from_utf8(status).expect("status JSON should be UTF-8");
+    assert!(status.contains("\"compatibility\": \"Rendered-page scans"));
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "compatibility: Rendered-page scans",
+        ));
+}
+
+#[test]
+fn approve_skill_should_print_compatibility() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_compatibility_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "page-scan", "plain"])
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "skill", "marketing:page-scan"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "compatibility: Rendered-page scans",
+        ));
+    let plain = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "approve", "skill", "marketing:plain"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let plain: serde_json::Value =
+        serde_json::from_slice(&plain).expect("approve skill should emit valid JSON");
+    assert!(plain.get("compatibility").is_none());
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "revoke", "skill", "marketing:page-scan"])
+        .assert()
+        .success();
+    let page_scan = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "approve", "skill", "marketing:page-scan"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let page_scan: serde_json::Value =
+        serde_json::from_slice(&page_scan).expect("approve skill should emit valid JSON");
+    assert_eq!(
+        page_scan["compatibility"],
+        "Rendered-page scans need agent-browser on PATH; everything else works without it."
     );
 }
 
@@ -14165,6 +14370,7 @@ struct CatalogInspectSchema {
 #[derive(serde::Deserialize)]
 struct CatalogCandidateSchema {
     slot_name: String,
+    compatibility: Option<String>,
     selected: bool,
 }
 

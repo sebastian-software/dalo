@@ -236,6 +236,9 @@ pub struct ResolvedSkill {
     pub path: PathBuf,
     /// Target-aware delivery strategy retained from inventory.
     pub delivery: SkillDelivery,
+    /// Free-text environment requirements declared by the skill.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compatibility: Option<String>,
     /// Whether this is a local override over another source.
     pub local_override: bool,
     /// Same-source requirements retained for link-time closure checks.
@@ -795,6 +798,7 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
                     source_priority: source.priority,
                     path: skill.path.clone(),
                     delivery,
+                    compatibility: skill.compatibility.clone(),
                     local_override: false,
                     requires: skill.requires.clone(),
                 },
@@ -2357,6 +2361,8 @@ mod tests {
             requires: Vec::new(),
             owners: Vec::new(),
             tags: Vec::new(),
+            compatibility: None,
+            metadata: BTreeMap::new(),
         }
     }
 
