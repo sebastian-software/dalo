@@ -28,6 +28,12 @@ const MAX_FRONTMATTER_BYTES: usize = 64 * 1024;
 pub(crate) const MAX_SKILL_METADATA_BYTES: usize = MAX_FRONTMATTER_BYTES + 16;
 const MAX_FRONTMATTER_FLOW_DEPTH: usize = 64;
 const MAX_FRONTMATTER_ANCHOR_OR_ALIAS_REFERENCES: usize = 16;
+/// Frontmatter `metadata` key that lists the commands a skill needs on `PATH`.
+///
+/// The value is a space-separated list of command names. Dalo looks each name
+/// up on `PATH` without running it; see [`SkillRecord::required_commands`].
+pub const REQUIRES_COMMANDS_METADATA_KEY: &str = "dalo.requires-commands";
+const MAX_COMMAND_NAME_LENGTH: usize = 128;
 
 /// Inventory for one source checkout.
 #[derive(Debug, Clone, Serialize)]
@@ -79,6 +85,90 @@ pub struct SkillRecord {
     /// String-valued entries of the `metadata` frontmatter mapping.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub metadata: BTreeMap<String, String>,
+}
+
+impl SkillRecord {
+    /// Command names declared through [`REQUIRES_COMMANDS_METADATA_KEY`].
+    ///
+    /// The value is split on ASCII whitespace. A token is kept only when it is
+    /// 1 to 128 characters from `[A-Za-z0-9._+-]` and does not start with `-`
+    /// or `.`; other tokens are skipped silently. Duplicates are removed, keeping
+    /// the first occurrence. A missing key yields an empty list.
+    #[must_use]
+    pub fn required_commands(&self) -> Vec<String> {
+        let Some(value) = self.metadata.get(REQUIRES_COMMANDS_METADATA_KEY) else {
+            return Vec::new();
+        };
+        let mut commands: Vec<String> = Vec::new();
+        for token in value
+            .split_ascii_whitespace()
+            .filter(|token| is_command_name(token))
+        {
+            if !commands.iter().any(|command| command == token) {
+                commands.push(token.to_owned());
+            }
+        }
+        commands
+    }
+}
+
+/// Whether a `dalo.requires-commands` token is a plain command name.
+fn is_command_name(token: &str) -> bool {
+    !token.is_empty()
+        && token.len() <= MAX_COMMAND_NAME_LENGTH
+        && !token.starts_with(['-', '.'])
+        && token
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'+' | b'-'))
+}
+
+/// One active skill's declared commands, checked against `PATH` by lookup only.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SkillCommandCheck {
+    /// Source-qualified skill ref.
+    pub(crate) source_ref: String,
+    /// Free-text `compatibility` value, used as the install hint.
+    pub(crate) compatibility: Option<String>,
+    /// Every valid command the skill declares, in declaration order.
+    pub(crate) declared: Vec<String>,
+    /// Declared commands that no `PATH` directory provides as an executable.
+    pub(crate) missing: Vec<String>,
+}
+
+/// Check the commands that each active skill declares, using file lookups on `PATH`.
+///
+/// Skills without a declaration are omitted, and so are active skills whose
+/// record is absent from `inventories`. No declared command is ever executed.
+pub(crate) fn check_declared_commands<'a>(
+    active_skills: &[crate::resolver::ResolvedSkill],
+    inventories: impl IntoIterator<Item = &'a SourceInventory>,
+) -> Vec<SkillCommandCheck> {
+    let records = inventories
+        .into_iter()
+        .flat_map(|inventory| &inventory.skills)
+        .map(|record| (record.source_ref.as_str(), record))
+        .collect::<BTreeMap<_, _>>();
+    active_skills
+        .iter()
+        .filter_map(|skill| {
+            let record = records.get(skill.source_ref.as_str())?;
+            let declared = record.required_commands();
+            if declared.is_empty() {
+                return None;
+            }
+            let missing = declared
+                .iter()
+                .filter(|command| !crate::tool::executable_on_path(command))
+                .cloned()
+                .collect();
+            Some(SkillCommandCheck {
+                source_ref: record.source_ref.clone(),
+                compatibility: record.compatibility.clone(),
+                declared,
+                missing,
+            })
+        })
+        .collect()
 }
 
 /// How one logical skill is delivered to linked targets.
@@ -3708,5 +3798,69 @@ required = true
         let inventory = scan_source("company", temp_dir.path()).expect("scan should succeed");
 
         assert_eq!(inventory.skills[0].id.as_deref(), Some("team.copy-editing"));
+    }
+
+    fn skill_with_requires_commands(value: Option<&str>) -> SkillRecord {
+        let mut metadata = BTreeMap::new();
+        if let Some(value) = value {
+            metadata.insert(REQUIRES_COMMANDS_METADATA_KEY.to_owned(), value.to_owned());
+        }
+        SkillRecord {
+            source_id: "team".to_owned(),
+            source_ref: "team:page-scan".to_owned(),
+            id: None,
+            slot_name: "page-scan".to_owned(),
+            path: PathBuf::from("skills/page-scan"),
+            skill_file: PathBuf::from("skills/page-scan/SKILL.md"),
+            delivery: SkillDelivery::Direct,
+            description: None,
+            requires: Vec::new(),
+            owners: Vec::new(),
+            tags: Vec::new(),
+            compatibility: None,
+            metadata,
+        }
+    }
+
+    #[test]
+    fn required_commands_should_keep_valid_names_in_declaration_order() {
+        let skill = skill_with_requires_commands(Some("agent-browser  jq\tnode3.1_x+y"));
+
+        assert_eq!(
+            skill.required_commands(),
+            vec!["agent-browser", "jq", "node3.1_x+y"]
+        );
+    }
+
+    #[test]
+    fn required_commands_should_remove_duplicates_keeping_first_occurrence() {
+        let skill = skill_with_requires_commands(Some("jq rg jq agent-browser rg"));
+
+        assert_eq!(skill.required_commands(), vec!["jq", "rg", "agent-browser"]);
+    }
+
+    #[test]
+    fn required_commands_should_skip_paths_flags_and_dot_prefixed_tokens() {
+        let skill = skill_with_requires_commands(Some("../evil /usr/bin/jq -x .hidden fake-tool"));
+
+        assert_eq!(skill.required_commands(), vec!["fake-tool"]);
+    }
+
+    #[test]
+    fn required_commands_should_bound_name_length_at_128_characters() {
+        let longest = "b".repeat(128);
+        let too_long = "c".repeat(129);
+        let skill = skill_with_requires_commands(Some(&format!("{too_long} {longest}")));
+
+        assert_eq!(skill.required_commands(), vec![longest]);
+    }
+
+    #[test]
+    fn required_commands_should_be_empty_without_the_metadata_key() {
+        assert!(
+            skill_with_requires_commands(None)
+                .required_commands()
+                .is_empty()
+        );
     }
 }
