@@ -805,6 +805,21 @@ impl<'de> serde::de::Visitor<'de> for FrontmatterNodeVisitor {
         Ok(FrontmatterNode::Other)
     }
 
+    // yaml_serde reports integers outside the 64-bit range through these.
+    fn visit_i128<E>(self, _value: i128) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(FrontmatterNode::Other)
+    }
+
+    fn visit_u128<E>(self, _value: u128) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(FrontmatterNode::Other)
+    }
+
     fn visit_f64<E>(self, _value: f64) -> Result<Self::Value, E>
     where
         E: serde::de::Error,
@@ -2869,6 +2884,28 @@ required = true
         assert!(skill("scalar").metadata.is_empty());
         assert!(skill("empty").metadata.is_empty());
         assert_eq!(skill("blank").compatibility, None);
+        assert!(inventory.warnings.is_empty());
+    }
+
+    #[test]
+    fn scan_source_should_tolerate_128_bit_integers_in_compatibility_and_metadata() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_dir = temp_dir.path().join("wide");
+        fs::create_dir_all(&skill_dir).expect("skill dir should be created");
+        fs::write(
+            skill_dir.join(SKILL_FILE),
+            "---\nname: wide\ncompatibility: -99999999999999999999999\nmetadata:\n  big: 99999999999999999999999\n  dalo.requires-commands: git\n---\n# Wide\n",
+        )
+        .expect("skill file should be written");
+
+        let inventory = scan_source("team", temp_dir.path()).expect("scan should succeed");
+
+        assert_eq!(inventory.skills.len(), 1);
+        assert_eq!(inventory.skills[0].compatibility, None);
+        assert_eq!(
+            inventory.skills[0].metadata,
+            BTreeMap::from([("dalo.requires-commands".to_owned(), "git".to_owned())])
+        );
         assert!(inventory.warnings.is_empty());
     }
 
