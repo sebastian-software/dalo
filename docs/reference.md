@@ -531,7 +531,7 @@ JSON output shape: `SourceNamespaceReport`.
 
 ### `dalo source inspect <id>`
 
-Inspect a catalog source and list available candidate skills, including ID, slot name, path, description, dependencies, and selection status.
+Inspect a catalog source and list available candidate skills, including ID, slot name, path, description, compatibility, dependencies, and selection status.
 
 Examples:
 
@@ -1416,7 +1416,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `source list` | `SourceListReport` | `sources[]`, each with existing `SourceConfig` fields plus `provenance` |
 | `source priority` | `SourcePriorityReport` | `source`, `dry_run` |
 | `source namespace <id> [<prefix>] [--clear]` | `SourceNamespaceReport` | `source`, `changed`, `dry_run` |
-| `source inspect` | `CatalogInspectReport` | `source_id`, `candidates[]` |
+| `source inspect` | `CatalogInspectReport` | `source_id`, `candidates[]` (`id`, `slot_name`, `path`, `description`, `compatibility`, `requires[]`, `selected`) |
 | `source select` | `CatalogSelectReport` | `source_id`, changed user references in `added[]` / `removed[]`, complete resulting `selected[]`, `dry_run`, `audits[]` for skills named by the operation, `migration_warnings[]` for degraded legacy sibling catalogs |
 | `source refresh` | `CatalogDrift` | `source_id`, `pinned_commit`, `upstream_commit`, `outcomes[]`, `migration_warnings[]` for degraded legacy sibling catalogs |
 | `source refresh --advance` | `CatalogAdvanceReport` | exact `old_lock`/`new_lock`, selections, `outcomes[]`, `audits[]`, `sync`, `blocking_reasons[]`, `dry_run`, and `advanced` |
@@ -1441,7 +1441,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, skill `operations[]`, optional `instruction_operations[]` (`source_id`, `pack_id`, `target`, `action`, `previous_commit`, `commit`), `resolution`, `degraded_sources[]` (`id`, `path`, `reason`), optional `inventory_warnings[]` (`code`, `path`, `message`), optional `unrefreshed_tracking_sources[]`, `unselected_catalogs[]` (`source_id`, `available_skills`) |
 | `audit` | `AuditReport` | `schema_version`, `source_ref`, `skill_path`, `content_hash`, `static_engine_version`, `scanned_at_unix`, `coverage`, `status`, optional `max_severity`, `static_findings[]`, optional `spec_findings[]`, optional `agent_review`, optional `risk_acceptance` |
 | `approve list` | `ApprovalListReport` | `schema_version`, `approvals[]` (optional `granted_at_unix`), `accepted_risks[]` (`source_ref`, `content_hash`, `reason`, `accepted_at_unix`, `scope_hash`, `active`, `audit_command`) |
-| `approve skill` | audited approval outcome | `audit` (`AuditReport`), `approval` (`ApprovalReport`) |
+| `approve skill` | audited approval outcome | `audit` (`AuditReport`), `approval` (`ApprovalReport`), optional `compatibility` |
 | `approve agent` / `source` / `author` / `org` | `ApprovalReport` | `scope`, `value`, `action`, `dry_run` |
 | `approve tool` / `approve revoke tool` | `ToolApprovalReport` | `tool`, content-bound `approval_value`, `action`, optional immutable `staged_path`, `dry_run` |
 | `approve delivery` / `approve revoke delivery` | `DeliveryApprovalReport` | `skill`, revision- and recipe-bound `approval_value`, optional `generator` and `generator_contract_hash`, `providers`, `action`, `dry_run`, `execution` (`not_run` during approval) |
@@ -1473,6 +1473,10 @@ Each `StatusReport.audit_failures[]` entry contains `source_ref`, `source_id`,
 and the technical `reason`. The failed skill is omitted from the active
 materialization plan, while the owning source is treated as degraded so an
 existing owned link is not removed solely because the audit was incomplete.
+
+Every `ResolvedSkill` in a `resolution` object (`status`, `sync`, `install`,
+`plan`) carries an optional `compatibility` string copied from the skill's
+frontmatter.
 
 Common status values:
 
@@ -1900,6 +1904,9 @@ tags:
   - review
 requires:
   - base-style
+compatibility: "Rendered-page scans need agent-browser on PATH; everything else works without it."
+metadata:
+  dalo.requires-commands: "agent-browser"
 ---
 
 # Review Helper
@@ -1913,6 +1920,8 @@ requires:
 | `owners[]` | no | Approval owner strings matched by `author` and `org` approvals. |
 | `tags[]` | no | User metadata. |
 | `requires[]` | no | Same-source or same-catalog dependencies. Required skills are expanded only when the closure is linkable and approved. |
+| `compatibility` | no | Free-text environment requirements from the Agent Skills specification (at most 500 characters). Shown unchanged by `source inspect`, `status`, `sync`, `approve skill`, and `plugin review` so the person approving a skill sees what it needs from the machine. |
+| `metadata` | no | String-to-string mapping, the specification's extension point. Dalo carries string-valued entries; non-string entries are ignored. |
 
 If `name` is absent, the directory name is the slot name. Duplicate slot names within one source are warned and de-duplicated by resolver behavior.
 
