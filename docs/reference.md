@@ -920,7 +920,7 @@ JSON output shape: `RemoveOwnedReport`.
 
 ### `dalo doctor`
 
-Run read-only diagnostics for store layout, config, state, lock, approvals, Git availability, targets, owned symlinks, dirty sources, pending approvals, required closures, instruction packs, and cloud-synced target paths.
+Run read-only diagnostics for store layout, config, state, lock, approvals, Git availability, targets, owned symlinks, dirty sources, pending approvals, required closures, instruction packs, declared skill commands, and cloud-synced target paths.
 
 Examples:
 
@@ -933,7 +933,9 @@ dalo --json doctor
 JSON output shape: `DoctorReport`.
 
 `--check` exits with code 1 when the report contains an error finding. Warnings
-remain report-only so CI can choose its own warning policy.
+remain report-only so CI can choose its own warning policy. A declared skill
+command that is missing from `PATH` is a `skill_command_missing` warning, so it
+keeps `--check` green.
 Doctor emits `source_lock_ok` only when `source-lock.toml` exists and parses. If
 the file is malformed, it reports `source_lock_invalid` and suppresses dependent
 catalog provenance comparisons so recovery guidance cannot contradict itself.
@@ -1438,7 +1440,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `autosync status` | `AutosyncStatusReport` | `configured`, `installed`, `enabled`, backend, schedule, executable, store, artifacts, optional `scheduler_error`, optional `disabled_reason`, and optional `last_run` |
 | `autosync run` | `SyncReport` or `AutosyncRunState` | `SyncReport` when synchronization starts; `AutosyncRunState` with `outcome: "skipped"` and `reason` when another process holds the store lock. Catalog-drift and blocked failures keep the JSON sync report on stdout and emit the standard JSON error on stderr. |
 | `status` | `StatusReport` | `store`, `assistant`, `sources[]` with `skill_count`, `agent_count`, and `provenance`, `targets[]`, `inventory_warnings[]`, `agent_inventory_warnings[]`, `resolution`, dry-run `materialization[]`, `blocking_audits[]`, `audit_failures[]`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]`, `autosync` |
-| `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, skill `operations[]`, optional `instruction_operations[]` (`source_id`, `pack_id`, `target`, `action`, `previous_commit`, `commit`), `resolution`, `degraded_sources[]` (`id`, `path`, `reason`), optional `inventory_warnings[]` (`code`, `path`, `message`), optional `unrefreshed_tracking_sources[]`, `unselected_catalogs[]` (`source_id`, `available_skills`) |
+| `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, skill `operations[]`, optional `instruction_operations[]` (`source_id`, `pack_id`, `target`, `action`, `previous_commit`, `commit`), `resolution`, `degraded_sources[]` (`id`, `path`, `reason`), optional `inventory_warnings[]` (`code`, `path`, `message`), optional `missing_commands[]` (`source_ref`, `command`, optional `compatibility`), optional `unrefreshed_tracking_sources[]`, `unselected_catalogs[]` (`source_id`, `available_skills`) |
 | `audit` | `AuditReport` | `schema_version`, `source_ref`, `skill_path`, `content_hash`, `static_engine_version`, `scanned_at_unix`, `coverage`, `status`, optional `max_severity`, `static_findings[]`, optional `spec_findings[]`, optional `agent_review`, optional `risk_acceptance` |
 | `approve list` | `ApprovalListReport` | `schema_version`, `approvals[]` (optional `granted_at_unix`), `accepted_risks[]` (`source_ref`, `content_hash`, `reason`, `accepted_at_unix`, `scope_hash`, `active`, `audit_command`) |
 | `approve skill` | audited approval outcome | `audit` (`AuditReport`), `approval` (`ApprovalReport`), optional `compatibility` |
@@ -1924,6 +1926,16 @@ metadata:
 | `metadata` | no | String-to-string mapping, the specification's extension point. Dalo carries string-valued entries; non-string entries are ignored. |
 
 If `name` is absent, the directory name is the slot name. Duplicate slot names within one source are warned and de-duplicated by resolver behavior.
+
+Dalo reads one `metadata` key as a command requirement: `dalo.requires-commands`,
+a space-separated list of command names such as `agent-browser` in the example
+above. Each name must be 1 to 128 characters from `[A-Za-z0-9._+-]` and must not
+start with `-` or `.`; other tokens are skipped, and repeated names count once.
+Dalo checks each name with a file lookup on `PATH` and never runs it, so version
+checks are out of scope. A missing command is a `doctor` warning
+(`skill_command_missing`) and one line in the note after `sync` and `install`.
+The skill's `compatibility` text is shown as the install hint. The check never
+blocks a skill.
 
 `SKILL.md` may reference another file inside the same source checkout, but a
 metadata symlink whose resolved target escapes the checkout is skipped and
