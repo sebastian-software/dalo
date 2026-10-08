@@ -111,7 +111,8 @@ The preflight is local, reads files, and never executes skill code. It runs on
 `source add`, on catalog selection and approval, on
 [`dalo audit`](reference.md#dalo-audit-skill-or-path), and — against the exact
 content hash of every active skill — before
-[`dalo sync`](reference.md#dalo-sync) changes any link.
+[`dalo sync`](reference.md#dalo-sync) changes any link. The declared-command check
+for `dalo.requires-commands` is a `PATH` lookup and never runs the command it names.
 
 It walks every entry in the skill directory, then scans each text file line by
 line. These are the rules it can report:
