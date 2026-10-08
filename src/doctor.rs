@@ -237,6 +237,10 @@ pub enum DoctorCode {
     SchemaMigrationPending,
     /// An approval record predates source-qualified approvals and is not honored.
     LegacyApprovalRecord,
+    /// An active skill declares a command that is not on PATH.
+    SkillCommandMissing,
+    /// Every command an active skill declares is on PATH.
+    SkillCommandsAvailable,
 }
 
 /// Run read-only diagnostics.
@@ -302,6 +306,7 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
     if let Some(config) = config.as_ref() {
         check_sources(config, &source_lock, &mut findings);
         check_source_inventories(live_resolution.as_ref(), &mut findings);
+        check_skill_commands(live_resolution.as_ref(), &mut findings);
         check_source_store_debris(&paths, config, &mut findings);
     }
     let tool_report = match (
@@ -1419,6 +1424,54 @@ fn check_source_inventories(
     }
 }
 
+/// Warn about active skills whose `dalo.requires-commands` are not on `PATH`.
+///
+/// A missing command is a warning, not an error, because skills usually degrade
+/// without it. The lookup never runs the command.
+fn check_skill_commands(
+    live_resolution: Option<&resolver::LiveResolution>,
+    findings: &mut Vec<DoctorFinding>,
+) {
+    let Some(live_resolution) = live_resolution else {
+        return;
+    };
+    let checks = crate::inventory::check_declared_commands(
+        &live_resolution.resolution.active_skills,
+        live_resolution
+            .scans
+            .iter()
+            .filter_map(|scan| scan.inventory.as_ref()),
+    );
+    for check in checks {
+        if check.missing.is_empty() {
+            findings.push(ok(
+                DoctorCode::SkillCommandsAvailable,
+                format!(
+                    "skill `{}` has every declared command on PATH ({})",
+                    check.source_ref,
+                    check.declared.join(", ")
+                ),
+            ));
+            continue;
+        }
+        for command in check.missing {
+            let mut message = format!(
+                "skill `{}` wants `{command}` on PATH, but it is missing",
+                check.source_ref
+            );
+            if let Some(compatibility) = &check.compatibility {
+                message.push_str(": ");
+                message.push_str(compatibility);
+            }
+            findings.push(finding_warning(
+                DoctorCode::SkillCommandMissing,
+                message,
+                None,
+            ));
+        }
+    }
+}
+
 fn source_inventory_fix_hint(source: &SourceConfig, warnings: &[InventoryWarning]) -> String {
     if let Some(warning) = warnings
         .iter()
@@ -2014,6 +2067,8 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::AutosyncStateInvalid => "autosync_state_invalid",
         DoctorCode::SchemaMigrationPending => "schema_migration_pending",
         DoctorCode::LegacyApprovalRecord => "legacy_approval_record",
+        DoctorCode::SkillCommandMissing => "skill_command_missing",
+        DoctorCode::SkillCommandsAvailable => "skill_commands_available",
     }
 }
 

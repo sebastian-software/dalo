@@ -5885,6 +5885,151 @@ fn doctor_human_output_should_escape_terminal_controls_from_inventory_paths() {
     assert!(human.contains("review\\u{1b}[2J"));
 }
 
+fn page_scan_skill_body(requires_commands: &str) -> String {
+    format!(
+        "---\nname: page-scan\ndescription: Scan rendered pages\ncompatibility: \"Rendered-page scans need fake-tool on PATH; everything else works without it.\"\nmetadata:\n  dalo.requires-commands: \"{requires_commands}\"\n---\n# Page scan\n"
+    )
+}
+
+#[test]
+fn doctor_should_warn_for_a_missing_declared_command() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo_with_skill(&repo, "page-scan", &page_scan_skill_body("fake-tool"));
+    setup_store_with_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "team"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "doctor"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"code\": \"skill_command_missing\""))
+        .stdout(predicate::str::contains(
+            "skill `team:page-scan` wants `fake-tool` on PATH, but it is missing: Rendered-page scans need fake-tool on PATH",
+        ));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("doctor")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "warning skill_command_missing: skill `team:page-scan` wants `fake-tool` on PATH, but it is missing: Rendered-page scans need fake-tool on PATH",
+        ));
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["doctor", "--check"])
+        .assert()
+        .success();
+}
+
+#[test]
+fn doctor_should_not_warn_when_the_declared_command_is_on_path() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo_with_skill(&repo, "page-scan", &page_scan_skill_body("fake-tool"));
+    setup_store_with_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "team"])
+        .arg(&repo)
+        .assert()
+        .success();
+
+    // The script records that it ran; the doctor check must never execute it.
+    let mut doctor = dalo_command();
+    let fake_tool = doctor.test_environment().path.join("fake-tool");
+    std::fs::write(&fake_tool, "#!/bin/sh\n: > \"${0%/*}/fake-tool.ran\"\n")
+        .expect("fake tool should be written");
+    std::fs::set_permissions(&fake_tool, std::fs::Permissions::from_mode(0o755))
+        .expect("fake tool should be executable");
+
+    doctor
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "doctor"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "\"code\": \"skill_commands_available\"",
+        ))
+        .stdout(predicate::str::contains("skill_command_missing").not());
+    assert!(
+        !doctor
+            .test_environment()
+            .path
+            .join("fake-tool.ran")
+            .exists(),
+        "doctor must look up declared commands without running them"
+    );
+}
+
+#[test]
+fn doctor_should_ignore_invalid_command_tokens() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo_with_skill(
+        &repo,
+        "page-scan",
+        &page_scan_skill_body("../evil -x fake-tool"),
+    );
+    setup_store_with_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "team"])
+        .arg(&repo)
+        .assert()
+        .success();
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "doctor"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value =
+        serde_json::from_slice(&output).expect("doctor JSON should parse");
+    let missing = report["findings"]
+        .as_array()
+        .expect("findings should be an array")
+        .iter()
+        .filter(|finding| finding["code"] == "skill_command_missing")
+        .collect::<Vec<_>>();
+
+    assert_eq!(missing.len(), 1);
+    let message = missing[0]["message"]
+        .as_str()
+        .expect("finding message should be a string");
+    assert!(message.contains("`fake-tool`"));
+    assert!(!message.contains("evil"));
+}
+
 #[test]
 fn status_check_should_succeed_for_a_clean_store() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");

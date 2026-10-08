@@ -657,7 +657,11 @@ fn platform_matches(platforms: &[ToolPlatform]) -> bool {
         }
 }
 
-fn executable_on_path(name: &str) -> bool {
+/// Whether an executable file named `name` exists in a `PATH` directory.
+///
+/// This only stats `<directory>/<name>` and checks the executable bits. It
+/// never spawns the program, so callers can use it to check declarations.
+pub(crate) fn executable_on_path(name: &str) -> bool {
     env::var_os("PATH").is_some_and(|path| {
         env::split_paths(&path).any(|directory| {
             fs::metadata(directory.join(name)).is_ok_and(|metadata| {
