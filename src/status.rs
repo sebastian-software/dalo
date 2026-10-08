@@ -1290,6 +1290,16 @@ fn audit_report_lines(report: &AuditReport) -> Vec<String> {
     for finding in &report.static_findings {
         lines.push(audit_finding_line("static", finding));
     }
+    if !report.spec_findings.is_empty() {
+        lines.push(format!(
+            "  spec: {} finding(s); informational, not part of the result",
+            report.spec_findings.len()
+        ));
+        for finding in &report.spec_findings {
+            // The rule id is the only stable handle for a specification finding.
+            lines.push(audit_finding_line(&format!("spec {}", finding.id), finding));
+        }
+    }
     if let Some(review) = &report.agent_review {
         lines.push(format!(
             "  agent review: {} (isolation: {}; non-authoritative)",
@@ -3509,6 +3519,7 @@ mod tests {
                 message: "message\nwith\rcontrols".to_owned(),
                 evidence: None,
             }],
+            spec_findings: Vec::new(),
             agent_review: Some(audit::AgentReview {
                 provider: audit::AgentProvider::Claude,
                 isolation: audit::AgentIsolation::NoTools,

@@ -25,7 +25,7 @@ const SKILL_FILE: &str = "SKILL.md";
 pub const MAX_SLOT_NAME_LENGTH: usize = 120;
 const DELIVERY_FILE: &str = "DELIVERY.toml";
 const MAX_FRONTMATTER_BYTES: usize = 64 * 1024;
-const MAX_SKILL_METADATA_BYTES: usize = MAX_FRONTMATTER_BYTES + 16;
+pub(crate) const MAX_SKILL_METADATA_BYTES: usize = MAX_FRONTMATTER_BYTES + 16;
 const MAX_FRONTMATTER_FLOW_DEPTH: usize = 64;
 const MAX_FRONTMATTER_ANCHOR_OR_ALIAS_REFERENCES: usize = 16;
 
@@ -1092,7 +1092,10 @@ pub(crate) fn invalid_slot_name_warning(skill_dir: &Path) -> DaloResult<Option<I
         .find(|warning| warning.code == InventoryWarningCode::InvalidSlotName))
 }
 
-fn read_skill_metadata(path: &Path) -> io::Result<(String, bool)> {
+/// Read the bounded `SKILL.md` prefix used for frontmatter parsing.
+///
+/// Returns the text and whether the file was longer than the metadata window.
+pub(crate) fn read_skill_metadata(path: &Path) -> io::Result<(String, bool)> {
     let file = fs::File::open(path)?;
     let metadata_truncated = file.metadata()?.len() > MAX_SKILL_METADATA_BYTES as u64;
     let mut bytes = Vec::with_capacity(MAX_SKILL_METADATA_BYTES);
@@ -1181,6 +1184,74 @@ fn parse_frontmatter(
             });
             (None, warnings)
         }
+    }
+}
+
+/// Raw frontmatter mapping for specification linting, after the same safety guards as `parse_frontmatter`.
+pub(crate) enum RawFrontmatter {
+    /// The document does not start with a frontmatter fence.
+    Missing,
+    /// The block exists but cannot be used; carries the reason.
+    Malformed(String),
+    /// Parsed mapping plus the number of body lines after the closing fence.
+    Mapping {
+        /// Top-level frontmatter fields in document order.
+        fields: yaml_serde::Mapping,
+        /// Body lines after the closing fence within the bounded read.
+        body_line_count: usize,
+    },
+}
+
+/// Parse the frontmatter of `markdown` as a raw YAML mapping.
+///
+/// This applies the same fence handling, end-marker search, size, flow-depth,
+/// and anchor/alias guards as `parse_frontmatter` and reports the same
+/// messages. Unlike `parse_frontmatter`, it keeps every field so specification
+/// checks can inspect unknown keys and value types. `metadata_truncated` must
+/// come from `read_skill_metadata`, so a truncated block reports the size limit.
+pub(crate) fn raw_frontmatter(markdown: &str, metadata_truncated: bool) -> RawFrontmatter {
+    let opened = markdown
+        .strip_prefix("---\n")
+        .or_else(|| markdown.strip_prefix("---\r\n"));
+    let Some(rest) = opened else {
+        return RawFrontmatter::Missing;
+    };
+    let Some(end_index) = frontmatter_end_index(rest) else {
+        return RawFrontmatter::Malformed(if metadata_truncated {
+            format!("frontmatter exceeds the {MAX_FRONTMATTER_BYTES}-byte safety limit")
+        } else {
+            "frontmatter start marker has no matching end marker".to_owned()
+        });
+    };
+
+    let frontmatter = &rest[..end_index];
+    if frontmatter.len() > MAX_FRONTMATTER_BYTES {
+        return RawFrontmatter::Malformed(format!(
+            "frontmatter exceeds the {MAX_FRONTMATTER_BYTES}-byte safety limit"
+        ));
+    }
+    if frontmatter_flow_depth_exceeds(frontmatter, MAX_FRONTMATTER_FLOW_DEPTH) {
+        return RawFrontmatter::Malformed(format!(
+            "frontmatter flow nesting exceeds the {MAX_FRONTMATTER_FLOW_DEPTH}-level safety limit"
+        ));
+    }
+    if frontmatter_anchor_or_alias_references_exceed(
+        frontmatter,
+        MAX_FRONTMATTER_ANCHOR_OR_ALIAS_REFERENCES,
+    ) {
+        return RawFrontmatter::Malformed(format!(
+            "frontmatter anchor/alias references exceed the {MAX_FRONTMATTER_ANCHOR_OR_ALIAS_REFERENCES}-reference safety limit"
+        ));
+    }
+
+    match yaml_serde::from_str::<yaml_serde::Value>(frontmatter) {
+        Ok(yaml_serde::Value::Mapping(fields)) => RawFrontmatter::Mapping {
+            fields,
+            // The first line of `rest` at `end_index` is the closing fence, not body text.
+            body_line_count: rest[end_index..].lines().skip(1).count(),
+        },
+        Ok(_) => RawFrontmatter::Malformed("frontmatter is not a mapping".to_owned()),
+        Err(error) => RawFrontmatter::Malformed(error.to_string()),
     }
 }
 
@@ -2516,6 +2587,72 @@ required = true
             InventoryWarningCode::MalformedFrontmatter
         );
         assert!(inventory.warnings[0].message.contains("byte safety limit"));
+    }
+
+    #[test]
+    fn raw_frontmatter_should_apply_the_parser_guards_with_the_same_messages() {
+        let flow = format!(
+            "---\nvalue: {}{}\n---\n# Flow\n",
+            "[".repeat(MAX_FRONTMATTER_FLOW_DEPTH + 1),
+            "]".repeat(MAX_FRONTMATTER_FLOW_DEPTH + 1)
+        );
+        let aliases = format!(
+            "---\nvalue: [&tag bounded, {}*tag]\n---\n# Aliases\n",
+            "*tag, ".repeat(MAX_FRONTMATTER_ANCHOR_OR_ALIAS_REFERENCES)
+        );
+        let oversized = format!(
+            "---\nname: oversized\ndescription: {}\n---\n",
+            "x".repeat(MAX_FRONTMATTER_BYTES)
+        );
+        for (markdown, metadata_truncated, expected) in [
+            (
+                "---\nname: review\n",
+                false,
+                "frontmatter start marker has no matching end marker",
+            ),
+            ("---\nname: review\n", true, "byte safety limit"),
+            (oversized.as_str(), false, "byte safety limit"),
+            (flow.as_str(), false, "flow nesting exceeds"),
+            (aliases.as_str(), false, "anchor/alias references exceed"),
+            (
+                "---\n- review\n---\n",
+                false,
+                "frontmatter is not a mapping",
+            ),
+        ] {
+            match raw_frontmatter(markdown, metadata_truncated) {
+                RawFrontmatter::Malformed(message) => {
+                    assert!(
+                        message.contains(expected),
+                        "{message} should contain {expected}"
+                    );
+                }
+                RawFrontmatter::Missing | RawFrontmatter::Mapping { .. } => {
+                    panic!("{markdown:?} should be malformed")
+                }
+            }
+        }
+        assert!(matches!(
+            raw_frontmatter("# No frontmatter\n", false),
+            RawFrontmatter::Missing
+        ));
+    }
+
+    #[test]
+    fn raw_frontmatter_should_keep_unknown_fields_and_count_body_lines_after_crlf_fences() {
+        let RawFrontmatter::Mapping {
+            fields,
+            body_line_count,
+        } = raw_frontmatter(
+            "---\r\nname: review\r\nfoo: bar\r\n---\r\none\r\ntwo\r\n",
+            false,
+        )
+        else {
+            panic!("frontmatter should parse as a mapping");
+        };
+
+        assert_eq!(fields.len(), 2);
+        assert_eq!(body_line_count, 2);
     }
 
     #[test]
