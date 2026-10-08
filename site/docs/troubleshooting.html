@@ -711,6 +711,11 @@ repository, push the change, then run <code>dalo sync</code>.</p>
 <td>For listed inventory warnings, follow the reported repair hint and then run <code>dalo sync</code>. If the inventory could not be scanned at all, inspect the reported source path and error, restore its checkout or permissions, and rerun <code>dalo doctor</code>; <code>dalo status</code> provides detail but is not itself a repair. Existing links are preserved until the source can be scanned safely.</td>
 </tr>
 <tr>
+<td><code>skill_command_missing</code></td>
+<td>warning</td>
+<td>Install the command named in the finding (the skill&#39;s <code>compatibility</code> text usually says how), or ignore it if you do not need that part of the skill; rerun <code>dalo doctor</code>.</td>
+</tr>
+<tr>
 <td><code>pending_approval</code></td>
 <td>warning</td>
 <td>Add the needed approval or leave the skill pending.</td>
