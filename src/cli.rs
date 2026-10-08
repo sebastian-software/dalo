@@ -1626,6 +1626,7 @@ fn run_project(
     }
     if !json {
         eprintln!("scope: project ({})", project.root.display());
+        eprintln!("approvals: {}", manifest.approval_mode().summary());
     }
     if matches!(command, Command::Install) {
         if dry_run {
@@ -1633,7 +1634,7 @@ fn run_project(
             if json {
                 println!(
                     "{}",
-                    serde_json::json!({"scope": "project", "project": project.root, "store": project.store, "dry_run": true, "sources": manifest.sources, "targets": manifest.targets, "removals": removals, "note": "declaration and local removal preview only; no fetch, audit, approval, or delivery performed"})
+                    serde_json::json!({"scope": "project", "project": project.root, "store": project.store, "dry_run": true, "approval": manifest.approval_mode(), "sources": manifest.sources, "targets": manifest.targets, "removals": removals, "note": "declaration and local removal preview only; no fetch, audit, approval, or delivery performed"})
                 );
             } else {
                 println!(

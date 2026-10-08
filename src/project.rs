@@ -19,17 +19,71 @@ use toml_edit::{Array as TomlArray, DocumentMut, Item as TomlItem, Value as Toml
 /// Separate from the existing team-source `dalo.toml` format.
 pub const MANIFEST: &str = "dalo-project.toml";
 
-/// A portable project declaration. Machine paths and approvals are never included.
+/// Who approves the skills a project declaration selects.
+///
+/// Schema version 2 introduced the explicit choice. Schema version 1
+/// declarations always use [`ProjectApproval::Local`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ProjectApproval {
+    /// Each project store records its own local, per-skill approvals.
+    #[default]
+    Local,
+    /// The reviewed declaration approves its explicit selections and their
+    /// required closure. Audits still gate delivery.
+    Declaration,
+}
+
+impl ProjectApproval {
+    /// Declaration value of this mode.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Local => "local",
+            Self::Declaration => "declaration",
+        }
+    }
+
+    /// Whether declared project sources are registered as trusted catalogs.
+    #[must_use]
+    pub const fn approves_declared_sources(self) -> bool {
+        matches!(self, Self::Declaration)
+    }
+
+    /// Human summary naming where approval decisions live.
+    #[must_use]
+    pub const fn summary(self) -> &'static str {
+        match self {
+            Self::Local => "local (.dalo/approvals.toml)",
+            Self::Declaration => "declaration (dalo-project.toml)",
+        }
+    }
+}
+
+/// A portable project declaration. Machine paths and approval records are
+/// never included; schema version 2 may name the approval authority.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Manifest {
     /// Project schema, independently versioned from store and team schemas.
     pub schema_version: u32,
+    /// Approval authority for the selected skills. Requires schema version 2;
+    /// absent means [`ProjectApproval::Local`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval: Option<ProjectApproval>,
     /// Agent IDs whose project folders receive the resolved skills.
     pub targets: Vec<String>,
     /// External sources, in priority order.
     #[serde(default, rename = "source")]
     pub sources: Vec<ProjectSource>,
+}
+
+impl Manifest {
+    /// Effective approval authority for this declaration.
+    #[must_use]
+    pub fn approval_mode(&self) -> ProjectApproval {
+        self.approval.unwrap_or_default()
+    }
 }
 
 /// One immutable external skill collection.
@@ -740,6 +794,7 @@ impl Project {
             })
         });
         effects.approvals_to_revoke = approvals.approvals.len() - next_approvals.approvals.len();
+        let declaration_approves = manifest.approval_mode().approves_declared_sources();
         for (index, declared) in manifest.sources.iter().enumerate() {
             if let Some(configured) = config
                 .sources
@@ -748,6 +803,8 @@ impl Project {
             {
                 configured.priority =
                     i32::try_from(index + 1).map_err(|_| invalid("too many project sources"))?;
+                // Preview with the declared approval authority, as install will.
+                configured.trusted = declaration_approves;
                 if git::rev_parse_head(&configured.path)? == declared.commit {
                     configured.selection =
                         catalog::canonical_skill_selection(&paths, &declared.id, &declared.skills)?;
@@ -812,8 +869,18 @@ impl Project {
         }
         let manifest: Manifest =
             toml::from_str(&text).map_err(|e| invalid(format!("invalid {MANIFEST}: {e}")))?;
-        if manifest.schema_version != 1 {
-            return Err(invalid("unsupported project schema_version; expected 1"));
+        match manifest.schema_version {
+            1 if manifest.approval.is_some() => {
+                return Err(invalid(
+                    "project `approval` requires schema_version = 2; schema_version 1 always uses local approvals",
+                ));
+            }
+            1 | 2 => {}
+            _ => {
+                return Err(invalid(
+                    "unsupported project schema_version; expected 1 or 2",
+                ));
+            }
         }
         if manifest.targets.is_empty() {
             return Err(invalid("project targets must not be empty"));
@@ -1424,16 +1491,29 @@ impl Project {
                 }
             }
         }
+        let declaration_approves = manifest.approval_mode().approves_declared_sources();
         for declared in &manifest.sources {
-            if let Some(configured) = config.sources.iter().find(|s| s.id == declared.id)
-                && !allow_pin_updates
-                && !configured.selection.is_empty()
+            let Some(configured) = config.sources.iter().find(|s| s.id == declared.id) else {
+                continue;
+            };
+            if allow_pin_updates {
+                continue;
+            }
+            if !configured.selection.is_empty()
                 && configured.selection
                     != catalog::canonical_skill_selection(&paths, &declared.id, &declared.skills)?
             {
                 return Err(invalid(
                     "project selection differs from its local installation; run `dalo install` to reconcile it",
                 ));
+            }
+            // The store must not act on an approval authority the declaration
+            // no longer names, in either direction.
+            if configured.trusted != declaration_approves {
+                return Err(invalid(format!(
+                    "project approval mode `{}` differs from its local installation; run `dalo install` to reconcile it",
+                    manifest.approval_mode().as_str()
+                )));
             }
         }
         let state = store::read_state(&paths)?;
@@ -1490,9 +1570,16 @@ impl Project {
         Ok(())
     }
 
-    /// Prepare immutable, untrusted catalogs. The caller holds the store lock.
+    /// Prepare immutable catalogs. The caller holds the store lock.
+    ///
+    /// Each declared source's `trusted` flag is reconciled from the declared
+    /// approval mode on every install: `declaration` registers trusted catalogs
+    /// whose explicit selection and required closure need no local approval
+    /// records, `local` registers untrusted catalogs. Local approval records
+    /// are never created or deleted by this reconciliation.
     pub fn prepare(&self, manifest: &Manifest) -> DaloResult<()> {
         self.validate_store_for_install(manifest)?;
+        let declaration_approves = manifest.approval_mode().approves_declared_sources();
         let paths = store::StorePaths::new(self.store.clone());
         let mut config = store::read_config(&paths)?;
         let original_config = config.clone();
@@ -1514,6 +1601,7 @@ impl Project {
             .sources
             .retain(|source| !removed_ids.contains(&source.id));
         // Removing an earlier source shifts priorities of the retained sources.
+        // The approval mode is reconciled in the same journaled config update.
         for source in &mut config.sources {
             if let Some(index) = manifest
                 .sources
@@ -1522,6 +1610,7 @@ impl Project {
             {
                 source.priority =
                     i32::try_from(index + 1).map_err(|_| invalid("too many project sources"))?;
+                source.trusted = declaration_approves;
             }
         }
         if config != original_config {
@@ -1646,7 +1735,9 @@ impl Project {
                         .map_err(|_| invalid("too many project sources"))?,
                     namespace: None,
                     enabled: true,
-                    trusted: false,
+                    // Selection starts empty, so a trusted catalog activates
+                    // nothing until the declared selectors are applied below.
+                    trusted: declaration_approves,
                     url: Some(url.clone()),
                     branch: None,
                     update_policy: Some("pin".into()),
@@ -1878,8 +1969,28 @@ mod tests {
 
         let cases = [
             (
-                "schema_version = 2\ntargets = [\"claude\"]\n",
+                "schema_version = 3\ntargets = [\"claude\"]\n",
                 "unsupported project schema_version",
+            ),
+            (
+                "schema_version = 1\napproval = \"declaration\"\ntargets = [\"claude\"]\n",
+                "`approval` requires schema_version = 2",
+            ),
+            (
+                "schema_version = 1\napproval = \"local\"\ntargets = [\"claude\"]\n",
+                "`approval` requires schema_version = 2",
+            ),
+            (
+                "schema_version = 2\napproval = \"trusted\"\ntargets = [\"claude\"]\n",
+                "unknown variant `trusted`",
+            ),
+            (
+                "schema_version = 2\napproval = \"Declaration\"\ntargets = [\"claude\"]\n",
+                "unknown variant `Declaration`",
+            ),
+            (
+                "schema_version = 2\napproval = true\ntargets = [\"claude\"]\n",
+                "wanted string",
             ),
             (
                 "schema_version = 1\ntargets = []\n",
@@ -1926,6 +2037,43 @@ mod tests {
             .expect_err("oversized manifest should be rejected")
             .to_string();
         assert!(error.contains("exceeds 1 MiB"));
+    }
+
+    #[test]
+    fn manifest_reads_the_declared_approval_mode() {
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let root = temp.path().join("project");
+        fs::create_dir(&root).expect("project directory");
+        let project = Project::new(&root).expect("project");
+
+        for (declaration, expected) in [
+            (
+                "schema_version = 1\ntargets = [\"claude\"]\n",
+                ProjectApproval::Local,
+            ),
+            (
+                "schema_version = 2\ntargets = [\"claude\"]\n",
+                ProjectApproval::Local,
+            ),
+            (
+                "schema_version = 2\napproval = \"local\"\ntargets = [\"claude\"]\n",
+                ProjectApproval::Local,
+            ),
+            (
+                "schema_version = 2\napproval = \"declaration\"\ntargets = [\"claude\"]\n",
+                ProjectApproval::Declaration,
+            ),
+        ] {
+            fs::write(root.join(MANIFEST), declaration).expect("write manifest");
+            let manifest = project.manifest().expect("valid manifest");
+            assert_eq!(manifest.approval_mode(), expected, "{declaration}");
+        }
+        assert!(ProjectApproval::Declaration.approves_declared_sources());
+        assert!(!ProjectApproval::Local.approves_declared_sources());
+        assert_eq!(
+            ProjectApproval::Declaration.summary(),
+            "declaration (dalo-project.toml)"
+        );
     }
 
     #[test]
