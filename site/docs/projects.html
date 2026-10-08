@@ -273,7 +273,15 @@ exact audited content. Record it with
 <code>dalo audit &lt;source:skill&gt; --accept-risk &quot;&lt;reason&gt;&quot;</code>; that command does not
 create an approval record.</li>
 <li>Only the explicit selection and its required closure are delivered. Other
-skills in the same source stay unselected offers.</li>
+skills in the same source stay unselected offers. A plugin selection in the
+source&#39;s own <code>dalo.toml</code> (<code>[selection]</code>) is ignored in project scope, in both
+modes: it adds no skills and nothing is projected as a provider plugin. Even
+a broad local <code>dalo approve source</code> record cannot deliver more. Any other
+skill outside the declared closure, for example one selected with a global
+command against <code>.dalo</code>, is held back with an <code>undeclared_project_skill</code>
+diagnostic and makes install exit nonzero.</li>
+<li>Source trust approves skills only. Instruction packs, agents, tools, hooks,
+and generated deliveries still need their own exact local approvals.</li>
 <li>Dirty sources, changed pins, redirected paths, unmanaged same-name entries,
 and a foreign <code>.dalo</code> still block installation.</li>
 <li>Project scope delivers skills only. A project installation must not change

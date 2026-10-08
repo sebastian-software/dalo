@@ -440,7 +440,7 @@ pub fn refresh_active_packs(
                     ),
                 });
             }
-            ensure_instruction_source_approved(source, approvals, Some(&entry.pack_id))?;
+            ensure_instruction_source_approved(paths, source, approvals, Some(&entry.pack_id))?;
 
             let previous_commit = entry.commit.clone().ok_or_else(|| DaloError::StateError {
                 reason: format!(
@@ -1416,7 +1416,7 @@ fn resolve_pack(paths: &StorePaths, selector: &str) -> DaloResult<ResolvedInstru
         });
     }
     let approvals = store::read_approvals(paths)?;
-    ensure_instruction_source_approved(source, &approvals.approvals, Some(&pack_id))?;
+    ensure_instruction_source_approved(paths, source, &approvals.approvals, Some(&pack_id))?;
     let commit = validate_source_pack(paths, source, &pack_id, None)?;
     Ok(ResolvedInstructionPack {
         pack: read_source_pack(source, &pack_id)?,
@@ -1426,11 +1426,16 @@ fn resolve_pack(paths: &StorePaths, selector: &str) -> DaloResult<ResolvedInstru
 }
 
 fn ensure_instruction_source_approved(
+    paths: &StorePaths,
     source: &SourceConfig,
     approvals: &[ApprovalRecord],
     pack_id: Option<&str>,
 ) -> DaloResult<()> {
-    if source.trusted
+    // A project declaration approves skills only. Source trust in a project
+    // store never approves an instruction pack; it needs an explicit source
+    // approval like any other untrusted source.
+    let trusted = source.trusted && !crate::project::is_project_store(&paths.root);
+    if trusted
         || approvals
             .iter()
             .any(|approval| approval.scope == "source" && approval.value == source.id)

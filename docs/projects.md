@@ -169,7 +169,15 @@ The opt-in changes approval only. Everything else stays as it is:
   `dalo audit <source:skill> --accept-risk "<reason>"`; that command does not
   create an approval record.
 - Only the explicit selection and its required closure are delivered. Other
-  skills in the same source stay unselected offers.
+  skills in the same source stay unselected offers. A plugin selection in the
+  source's own `dalo.toml` (`[selection]`) is ignored in project scope, in both
+  modes: it adds no skills and nothing is projected as a provider plugin. Even
+  a broad local `dalo approve source` record cannot deliver more. Any other
+  skill outside the declared closure, for example one selected with a global
+  command against `.dalo`, is held back with an `undeclared_project_skill`
+  diagnostic and makes install exit nonzero.
+- Source trust approves skills only. Instruction packs, agents, tools, hooks,
+  and generated deliveries still need their own exact local approvals.
 - Dirty sources, changed pins, redirected paths, unmanaged same-name entries,
   and a foreign `.dalo` still block installation.
 - Project scope delivers skills only. A project installation must not change

@@ -162,6 +162,9 @@ id = &quot;company&quot;
 [selection]
 plugins = [{ ref = &quot;company:review-workflow&quot;, requirement = &quot;required&quot; }]
 </code></pre>
+<p><a href="/docs/projects.html">Project installations</a> do not support plugins and ignore this
+selection: a project store delivers only the skills its <code>dalo-project.toml</code>
+selects and their required closure.</p>
 <p>A local selection is additive on top of that stack:</p>
 <pre><code class="language-sh">dalo plugin list
 dalo plugin show company:review-workflow

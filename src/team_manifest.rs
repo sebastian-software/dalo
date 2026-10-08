@@ -1937,6 +1937,7 @@ mod tests {
             sources: vec![team.clone(), derived],
             plugins: crate::config::PluginConfig::default(),
             plugin_policy: Vec::new(),
+            project_selections: None,
         };
         let mut lock = catalog::SourceLock::empty();
         lock.catalogs.push(CatalogLock {
@@ -2066,6 +2067,7 @@ mod tests {
             sources: vec![existing_team, incoming_team.clone(), existing.clone()],
             plugins: crate::config::PluginConfig::default(),
             plugin_policy: Vec::new(),
+            project_selections: None,
         };
         assert!(source_matches_owned_declaration(&existing, "x.y"));
         assert!(!source_matches_owned_declaration(&existing, "y"));

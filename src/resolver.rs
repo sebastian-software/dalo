@@ -338,6 +338,9 @@ pub enum ResolutionDiagnosticCode {
     /// A slot's winner was blocked by its required closure while an approved,
     /// lower-precedence alternate is available for the same slot.
     BlockedWinnerAlternateAvailable,
+    /// A project store held back a skill outside the selectors its
+    /// `dalo-project.toml` declares and their required closure.
+    UndeclaredProjectSkill,
 }
 
 impl ResolutionDiagnosticCode {
@@ -351,6 +354,7 @@ impl ResolutionDiagnosticCode {
                 | Self::RequiredBlocked
                 | Self::LegacyBareApproval
                 | Self::AuditFailed
+                | Self::UndeclaredProjectSkill
         )
     }
 }
@@ -529,7 +533,16 @@ pub(crate) fn resolve_from_config_with_plugin_inventories_with_source_errors(
         }
     }
 
-    let mut plugins = plugin::resolve_plugins(config, &inventories);
+    // Project scope delivers skills only. Plugin selections, whether direct or
+    // authored by a source's own `dalo.toml` stack, never widen a project
+    // store's catalog selections or reach plugin projection, whatever the
+    // approval mode. This is the one place status, doctor, install, and the
+    // removal preview resolve through, so they cannot disagree.
+    let mut plugins = if config.is_project_store() {
+        PluginResolution::default()
+    } else {
+        plugin::resolve_plugins(config, &inventories)
+    };
     let mut effective_sources = enabled;
     for resolved in &plugins.plugins {
         if matches!(
@@ -561,11 +574,14 @@ pub(crate) fn resolve_from_config_with_plugin_inventories_with_source_errors(
             }
         }
     }
-    let resolution = resolve(&ResolutionInput {
+    let mut resolution = resolve(&ResolutionInput {
         sources: &effective_sources,
         inventories: inventories.clone(),
         approvals: approvals.clone(),
     });
+    if let Some(declared) = &config.project_selections {
+        restrict_to_declared_closure(&mut resolution, &config.sources, &inventories, declared);
+    }
     let agents = agent::resolve_agents(&effective_sources, &inventories, &approvals);
     plugin::apply_component_resolution(&mut plugins, &resolution, &agents, &BTreeSet::new());
 
@@ -578,6 +594,100 @@ pub(crate) fn resolve_from_config_with_plugin_inventories_with_source_errors(
         },
         plugin_inventories,
     }
+}
+
+/// Hold back every skill a project's declaration did not select.
+///
+/// A project store delivers its own local skills and, from catalog sources,
+/// only the skills `dalo-project.toml` selects plus their same-source required
+/// closure, computed from the declaration itself rather than from the store's
+/// configuration. Any other skill that reached the resolved set, through source
+/// trust, a broad approval, a locally changed selection, or a future selection
+/// path, is removed from the active and pending sets and reported. It is never
+/// linked, and `install` and `status --check` fail closed.
+fn restrict_to_declared_closure(
+    resolution: &mut Resolution,
+    sources: &[SourceConfig],
+    inventories: &[SourceInventory],
+    declared: &BTreeMap<String, Vec<String>>,
+) {
+    let source_by_id = sources
+        .iter()
+        .filter(|source| source.enabled)
+        .map(|source| (source.id.as_str(), source))
+        .collect::<BTreeMap<_, _>>();
+    // Only catalog sources deliver declared skills; any other non-local source
+    // kind in a project store has no declared closure at all.
+    let closures = declared
+        .iter()
+        .filter_map(|(source_id, selectors)| {
+            let source = source_by_id.get(source_id.as_str())?;
+            let skills = inventory_for(inventories, source_id)?;
+            (source.kind == SourceKind::Catalog).then(|| {
+                (
+                    source_id.as_str(),
+                    closure_for_selection(selectors, skills, &source.path),
+                )
+            })
+        })
+        .collect::<BTreeMap<_, _>>();
+    let is_declared = |skill: &ResolvedSkill| {
+        if skill.source_kind == SourceKind::Local {
+            return true;
+        }
+        let (Some(source), Some(closure), Some(skills)) = (
+            source_by_id.get(skill.source_id.as_str()),
+            closures.get(skill.source_id.as_str()),
+            inventory_for(inventories, &skill.source_id),
+        ) else {
+            return false;
+        };
+        skills
+            .iter()
+            .find(|record| record.source_ref == skill.source_ref)
+            .is_some_and(|record| crate::catalog::skill_is_selected(record, closure, &source.path))
+    };
+    let mut held_back = Vec::new();
+    for skills in [
+        &mut resolution.active_skills,
+        &mut resolution.pending_approval_skills,
+    ] {
+        skills.retain(|skill| {
+            let keep = is_declared(skill);
+            if !keep {
+                held_back.push(skill.source_ref.clone());
+            }
+            keep
+        });
+    }
+    held_back.sort();
+    held_back.dedup();
+    if held_back.is_empty() {
+        return;
+    }
+    // A held-back skill must not be presented as awaiting approval: approving
+    // it would not deliver it.
+    resolution.diagnostics.retain(|diagnostic| {
+        diagnostic.code != ResolutionDiagnosticCode::PendingApproval
+            || diagnostic
+                .source_ref
+                .as_ref()
+                .is_none_or(|source_ref| held_back.binary_search(source_ref).is_err())
+    });
+    for source_ref in held_back {
+        resolution.diagnostics.push(ResolutionDiagnostic {
+            code: ResolutionDiagnosticCode::UndeclaredProjectSkill,
+            message: format!(
+                "skill `{source_ref}` is outside the project's declared selections and their required closure; project scope does not deliver it"
+            ),
+            source_ref: Some(source_ref),
+        });
+    }
+    resolution.diagnostics.sort_by(|left, right| {
+        diagnostic_code_name(left.code)
+            .cmp(diagnostic_code_name(right.code))
+            .then_with(|| left.source_ref.cmp(&right.source_ref))
+    });
 }
 
 /// Scan one enabled source, returning a human-readable error on failure.
@@ -1125,6 +1235,7 @@ pub fn diagnostic_code_name(code: ResolutionDiagnosticCode) -> &'static str {
         ResolutionDiagnosticCode::BlockedWinnerAlternateAvailable => {
             "blocked_winner_alternate_available"
         }
+        ResolutionDiagnosticCode::UndeclaredProjectSkill => "undeclared_project_skill",
     }
 }
 
@@ -1453,9 +1564,81 @@ mod tests {
             ResolutionDiagnosticCode::RequiredBlocked,
             ResolutionDiagnosticCode::LegacyBareApproval,
             ResolutionDiagnosticCode::AuditFailed,
+            ResolutionDiagnosticCode::UndeclaredProjectSkill,
         ] {
             assert!(code.requires_review());
         }
+    }
+
+    #[test]
+    fn project_resolution_holds_back_everything_outside_the_declared_closure() {
+        // A trusted catalog whose configured selection was widened beyond the
+        // declaration, plus a source-wide approval for an untrusted one.
+        let sources = vec![
+            source("local", SourceKind::Local, 0),
+            catalog("shared", 1, &["review", "extra"]),
+            {
+                let mut other = catalog("other", 2, &["tool"]);
+                other.trusted = false;
+                other
+            },
+        ];
+        let inventories = vec![
+            inventory("local", vec![skill("local", "mine")]),
+            inventory(
+                "shared",
+                vec![
+                    skill_req("shared", "review", &["helper"]),
+                    skill("shared", "helper"),
+                    skill("shared", "extra"),
+                ],
+            ),
+            inventory("other", vec![skill("other", "tool")]),
+        ];
+        let mut resolution = resolve_with(sources.clone(), inventories.clone(), Vec::new());
+        assert!(
+            resolution
+                .pending_approval_skills
+                .iter()
+                .any(|skill| skill.source_ref == "other:tool")
+        );
+        let declared = BTreeMap::from([("shared".to_owned(), vec!["review".to_owned()])]);
+        restrict_to_declared_closure(&mut resolution, &sources, &inventories, &declared);
+
+        let active = resolution
+            .active_skills
+            .iter()
+            .map(|skill| skill.source_ref.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(active, ["shared:helper", "local:mine", "shared:review"]);
+        assert!(resolution.pending_approval_skills.is_empty());
+        let held_back = resolution
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| {
+                diagnostic.code == ResolutionDiagnosticCode::UndeclaredProjectSkill
+            })
+            .filter_map(|diagnostic| diagnostic.source_ref.as_deref())
+            .collect::<Vec<_>>();
+        assert_eq!(held_back, ["other:tool", "shared:extra"]);
+        assert!(
+            !resolution
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == ResolutionDiagnosticCode::PendingApproval),
+            "a held-back skill is not offered for approval"
+        );
+
+        // An unreadable declaration declares nothing, so no catalog skill is
+        // delivered at all.
+        let mut resolution = resolve_with(sources.clone(), inventories.clone(), Vec::new());
+        restrict_to_declared_closure(&mut resolution, &sources, &inventories, &BTreeMap::new());
+        let active = resolution
+            .active_skills
+            .iter()
+            .map(|skill| skill.source_ref.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(active, ["local:mine"]);
     }
 
     #[test]

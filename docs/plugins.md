@@ -82,6 +82,10 @@ id = "company"
 plugins = [{ ref = "company:review-workflow", requirement = "required" }]
 ```
 
+[Project installations](projects.md) do not support plugins and ignore this
+selection: a project store delivers only the skills its `dalo-project.toml`
+selects and their required closure.
+
 A local selection is additive on top of that stack:
 
 ```sh

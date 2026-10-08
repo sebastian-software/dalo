@@ -1164,6 +1164,9 @@ pub fn resolve_agents(
 }
 
 fn agent_is_approved(candidate: &ResolvedAgent, approvals: &[ApprovalRecord]) -> bool {
+    // Source trust deliberately plays no part: a trusted source, including a
+    // project source approved by its declaration, never activates an agent
+    // without an explicit, source-qualified `agent` approval.
     candidate.source_kind == SourceKind::Local
         || approvals.iter().any(|approval| {
             approval.scope == "agent"

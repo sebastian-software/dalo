@@ -166,13 +166,21 @@ pub fn reconcile(
     let mut desired = Vec::new();
     let mut reports = Vec::new();
     let mut pending = Vec::new();
+    // Project scope does not support plugins. Project resolution already
+    // selects none; a project store also never projects one, and any earlier
+    // owned projection is withdrawn below as stale.
+    let projected_plugins: &[crate::plugin::ResolvedPlugin] =
+        if crate::project::is_project_store(&paths.root) {
+            &[]
+        } else {
+            &plugins.plugins
+        };
     for target in state
         .targets
         .iter()
         .filter(|target| target.enabled && matches!(target.id.as_str(), "codex" | "claude"))
     {
-        for plugin in plugins
-            .plugins
+        for plugin in projected_plugins
             .iter()
             .filter(|plugin| matches!(plugin.state, PluginState::Selected | PluginState::Blocked))
         {
