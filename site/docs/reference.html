@@ -862,7 +862,7 @@ dalo --json resolve remove-owned claude:review-helper
 </code></pre>
 <p>JSON output shape: <code>RemoveOwnedReport</code>.</p>
 <h3 id="dalo-doctor"><a class="doc-anchor" href="#dalo-doctor"><code>dalo doctor</code></a></h3>
-<p>Run read-only diagnostics for store layout, config, state, lock, approvals, Git availability, targets, owned symlinks, dirty sources, pending approvals, required closures, instruction packs, and cloud-synced target paths.</p>
+<p>Run read-only diagnostics for store layout, config, state, lock, approvals, Git availability, targets, owned symlinks, dirty sources, pending approvals, required closures, instruction packs, declared skill commands, and cloud-synced target paths.</p>
 <p>Examples:</p>
 <pre><code class="language-sh">dalo doctor
 dalo doctor --check
@@ -870,7 +870,9 @@ dalo --json doctor
 </code></pre>
 <p>JSON output shape: <code>DoctorReport</code>.</p>
 <p><code>--check</code> exits with code 1 when the report contains an error finding. Warnings
-remain report-only so CI can choose its own warning policy.
+remain report-only so CI can choose its own warning policy. A declared skill
+command that is missing from <code>PATH</code> is a <code>skill_command_missing</code> warning, so it
+keeps <code>--check</code> green.
 Doctor emits <code>source_lock_ok</code> only when <code>source-lock.toml</code> exists and parses. If
 the file is malformed, it reports <code>source_lock_invalid</code> and suppresses dependent
 catalog provenance comparisons so recovery guidance cannot contradict itself.</p>
@@ -1469,7 +1471,7 @@ dalo completions fish &gt; dalo.fish
 <tr>
 <td><code>sync</code></td>
 <td><code>SyncReport</code></td>
-<td><code>store</code>, <code>dry_run</code>, <code>linked_targets</code>, skill <code>operations[]</code>, optional <code>instruction_operations[]</code> (<code>source_id</code>, <code>pack_id</code>, <code>target</code>, <code>action</code>, <code>previous_commit</code>, <code>commit</code>), <code>resolution</code>, <code>degraded_sources[]</code> (<code>id</code>, <code>path</code>, <code>reason</code>), optional <code>inventory_warnings[]</code> (<code>code</code>, <code>path</code>, <code>message</code>), optional <code>unrefreshed_tracking_sources[]</code>, <code>unselected_catalogs[]</code> (<code>source_id</code>, <code>available_skills</code>)</td>
+<td><code>store</code>, <code>dry_run</code>, <code>linked_targets</code>, skill <code>operations[]</code>, optional <code>instruction_operations[]</code> (<code>source_id</code>, <code>pack_id</code>, <code>target</code>, <code>action</code>, <code>previous_commit</code>, <code>commit</code>), <code>resolution</code>, <code>degraded_sources[]</code> (<code>id</code>, <code>path</code>, <code>reason</code>), optional <code>inventory_warnings[]</code> (<code>code</code>, <code>path</code>, <code>message</code>), optional <code>missing_commands[]</code> (<code>source_ref</code>, <code>command</code>, optional <code>compatibility</code>), optional <code>unrefreshed_tracking_sources[]</code>, <code>unselected_catalogs[]</code> (<code>source_id</code>, <code>available_skills</code>)</td>
 </tr>
 <tr>
 <td><code>audit</code></td>
@@ -2381,6 +2383,15 @@ metadata:
 </tr>
 </tbody></table></div>
 <p>If <code>name</code> is absent, the directory name is the slot name. Duplicate slot names within one source are warned and de-duplicated by resolver behavior.</p>
+<p>Dalo reads one <code>metadata</code> key as a command requirement: <code>dalo.requires-commands</code>,
+a space-separated list of command names such as <code>agent-browser</code> in the example
+above. Each name must be 1 to 128 characters from <code>[A-Za-z0-9._+-]</code> and must not
+start with <code>-</code> or <code>.</code>; other tokens are skipped, and repeated names count once.
+Dalo checks each name with a file lookup on <code>PATH</code> and never runs it, so version
+checks are out of scope. A missing command is a <code>doctor</code> warning
+(<code>skill_command_missing</code>) and one line in the note after <code>sync</code> and <code>install</code>.
+The skill&#39;s <code>compatibility</code> text is shown as the install hint. The check never
+blocks a skill.</p>
 <p><code>SKILL.md</code> may reference another file inside the same source checkout, but a
 metadata symlink whose resolved target escapes the checkout is skipped and
 reported as <code>skipped_symlink</code>. This keeps skill identity and approval metadata

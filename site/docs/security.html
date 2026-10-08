@@ -205,7 +205,8 @@ links keep exposing the last accepted commit while an update is blocked.</p>
 <code>source add</code>, on catalog selection and approval, on
 <a href="/docs/reference.html#dalo-audit-skill-or-path"><code>dalo audit</code></a>, and — against the exact
 content hash of every active skill — before
-<a href="/docs/reference.html#dalo-sync"><code>dalo sync</code></a> changes any link.</p>
+<a href="/docs/reference.html#dalo-sync"><code>dalo sync</code></a> changes any link. The declared-command check
+for <code>dalo.requires-commands</code> is a <code>PATH</code> lookup and never runs the command it names.</p>
 <p>It walks every entry in the skill directory, then scans each text file line by
 line. These are the rules it can report:</p>
 <div class="doc-table"><table>
