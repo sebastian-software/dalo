@@ -919,6 +919,32 @@ reported, but does not block materialization on its own. This policy keeps
 high-confidence persistence and privilege-escalation primitives behind an
 explicit, content-bound risk acceptance without treating every technical skill
 as unsafe by default.</p>
+<p>Agent Skills specification checks run on <code>SKILL.md</code> against the
+<a href="https://agentskills.io/specification" rel="noopener">Agent Skills specification</a>. They are
+reported in <code>spec_findings</code>, with category <code>spec</code>, and cover these rules:</p>
+<ul>
+<li><code>spec.frontmatter-missing</code> and <code>spec.frontmatter-malformed</code>: the file has no
+<code>---</code> frontmatter block, or the block is not a YAML mapping within Dalo&#39;s
+safety limits. No other specification finding is reported in either case.</li>
+<li><code>spec.name-missing</code>, <code>spec.name-invalid</code>, and <code>spec.name-slot-mismatch</code>: <code>name</code>
+is 1 to 64 lowercase ASCII letters, digits, and hyphens, without a leading,
+trailing, or doubled hyphen, and it matches the slot Dalo materializes.</li>
+<li><code>spec.directory-name-mismatch</code> (<code>info</code>): a valid <code>name</code> matches the slot, but
+the source folder has a different name.</li>
+<li><code>spec.description-missing</code> and <code>spec.description-too-long</code>: <code>description</code> is a
+non-blank string of at most 1024 characters.</li>
+<li><code>spec.compatibility-not-string</code> and <code>spec.compatibility-too-long</code>:
+<code>compatibility</code> is a string of at most 500 characters.</li>
+<li><code>spec.metadata-not-mapping</code> and <code>spec.metadata-value-not-string</code>: <code>metadata</code> is
+a mapping whose values are all strings.</li>
+<li><code>spec.unknown-key</code>: a top-level key is outside the specification fields and
+Dalo&#39;s <code>id</code>, <code>owners</code>, <code>tags</code>, and <code>requires</code>.</li>
+<li><code>spec.body-too-long</code> (<code>info</code>): the Markdown body after the closing fence has
+more than 500 lines.</li>
+</ul>
+<p>Findings use the <code>low</code> or <code>info</code> severity. They are recomputed on every audit
+rather than read from the report cache, and they never change <code>status</code>,
+<code>--check</code>, or risk acceptance.</p>
 <p>Reports live below <code>audits/</code> and are keyed by both the source-qualified skill
 reference and the complete skill directory hash. After re-hashing the current
 directory, a report with the matching source, static-engine version, and scan
@@ -1448,7 +1474,7 @@ dalo completions fish &gt; dalo.fish
 <tr>
 <td><code>audit</code></td>
 <td><code>AuditReport</code></td>
-<td><code>schema_version</code>, <code>source_ref</code>, <code>skill_path</code>, <code>content_hash</code>, <code>static_engine_version</code>, <code>scanned_at_unix</code>, <code>coverage</code>, <code>status</code>, optional <code>max_severity</code>, <code>static_findings[]</code>, optional <code>agent_review</code>, optional <code>risk_acceptance</code></td>
+<td><code>schema_version</code>, <code>source_ref</code>, <code>skill_path</code>, <code>content_hash</code>, <code>static_engine_version</code>, <code>scanned_at_unix</code>, <code>coverage</code>, <code>status</code>, optional <code>max_severity</code>, <code>static_findings[]</code>, optional <code>spec_findings[]</code>, optional <code>agent_review</code>, optional <code>risk_acceptance</code></td>
 </tr>
 <tr>
 <td><code>approve list</code></td>
@@ -1538,6 +1564,7 @@ dalo completions fish &gt; dalo.fish
 </tbody></table></div>
 <p>Each <code>AuditReport.static_findings[]</code> entry contains <code>id</code>, <code>severity</code>,
 <code>category</code>, <code>path</code>, optional <code>line</code>, <code>message</code>, and optional bounded <code>evidence</code>.
+<code>AuditReport.spec_findings[]</code> entries have the same shape.
 When present, <code>risk_acceptance</code> contains <code>reason</code>, <code>accepted_at_unix</code>, and
 <code>scope_hash</code>; <code>agent_review</code> identifies the provider and isolation boundary and
 includes its findings, summary, expected capabilities/actions, and undeclared

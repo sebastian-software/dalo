@@ -994,6 +994,33 @@ high-confidence persistence and privilege-escalation primitives behind an
 explicit, content-bound risk acceptance without treating every technical skill
 as unsafe by default.
 
+Agent Skills specification checks run on `SKILL.md` against the
+[Agent Skills specification](https://agentskills.io/specification). They are
+reported in `spec_findings`, with category `spec`, and cover these rules:
+
+- `spec.frontmatter-missing` and `spec.frontmatter-malformed`: the file has no
+  `---` frontmatter block, or the block is not a YAML mapping within Dalo's
+  safety limits. No other specification finding is reported in either case.
+- `spec.name-missing`, `spec.name-invalid`, and `spec.name-slot-mismatch`: `name`
+  is 1 to 64 lowercase ASCII letters, digits, and hyphens, without a leading,
+  trailing, or doubled hyphen, and it matches the slot Dalo materializes.
+- `spec.directory-name-mismatch` (`info`): a valid `name` matches the slot, but
+  the source folder has a different name.
+- `spec.description-missing` and `spec.description-too-long`: `description` is a
+  non-blank string of at most 1024 characters.
+- `spec.compatibility-not-string` and `spec.compatibility-too-long`:
+  `compatibility` is a string of at most 500 characters.
+- `spec.metadata-not-mapping` and `spec.metadata-value-not-string`: `metadata` is
+  a mapping whose values are all strings.
+- `spec.unknown-key`: a top-level key is outside the specification fields and
+  Dalo's `id`, `owners`, `tags`, and `requires`.
+- `spec.body-too-long` (`info`): the Markdown body after the closing fence has
+  more than 500 lines.
+
+Findings use the `low` or `info` severity. They are recomputed on every audit
+rather than read from the report cache, and they never change `status`,
+`--check`, or risk acceptance.
+
 Reports live below `audits/` and are keyed by both the source-qualified skill
 reference and the complete skill directory hash. After re-hashing the current
 directory, a report with the matching source, static-engine version, and scan
@@ -1412,7 +1439,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `autosync run` | `SyncReport` or `AutosyncRunState` | `SyncReport` when synchronization starts; `AutosyncRunState` with `outcome: "skipped"` and `reason` when another process holds the store lock. Catalog-drift and blocked failures keep the JSON sync report on stdout and emit the standard JSON error on stderr. |
 | `status` | `StatusReport` | `store`, `assistant`, `sources[]` with `skill_count`, `agent_count`, and `provenance`, `targets[]`, `inventory_warnings[]`, `agent_inventory_warnings[]`, `resolution`, dry-run `materialization[]`, `blocking_audits[]`, `audit_failures[]`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]`, `autosync` |
 | `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, skill `operations[]`, optional `instruction_operations[]` (`source_id`, `pack_id`, `target`, `action`, `previous_commit`, `commit`), `resolution`, `degraded_sources[]` (`id`, `path`, `reason`), optional `inventory_warnings[]` (`code`, `path`, `message`), optional `unrefreshed_tracking_sources[]`, `unselected_catalogs[]` (`source_id`, `available_skills`) |
-| `audit` | `AuditReport` | `schema_version`, `source_ref`, `skill_path`, `content_hash`, `static_engine_version`, `scanned_at_unix`, `coverage`, `status`, optional `max_severity`, `static_findings[]`, optional `agent_review`, optional `risk_acceptance` |
+| `audit` | `AuditReport` | `schema_version`, `source_ref`, `skill_path`, `content_hash`, `static_engine_version`, `scanned_at_unix`, `coverage`, `status`, optional `max_severity`, `static_findings[]`, optional `spec_findings[]`, optional `agent_review`, optional `risk_acceptance` |
 | `approve list` | `ApprovalListReport` | `schema_version`, `approvals[]` (optional `granted_at_unix`), `accepted_risks[]` (`source_ref`, `content_hash`, `reason`, `accepted_at_unix`, `scope_hash`, `active`, `audit_command`) |
 | `approve skill` | audited approval outcome | `audit` (`AuditReport`), `approval` (`ApprovalReport`) |
 | `approve agent` / `source` / `author` / `org` | `ApprovalReport` | `scope`, `value`, `action`, `dry_run` |
@@ -1433,6 +1460,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 
 Each `AuditReport.static_findings[]` entry contains `id`, `severity`,
 `category`, `path`, optional `line`, `message`, and optional bounded `evidence`.
+`AuditReport.spec_findings[]` entries have the same shape.
 When present, `risk_acceptance` contains `reason`, `accepted_at_unix`, and
 `scope_hash`; `agent_review` identifies the provider and isolation boundary and
 includes its findings, summary, expected capabilities/actions, and undeclared

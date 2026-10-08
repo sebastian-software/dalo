@@ -142,6 +142,13 @@ on their own. `dalo audit --check` exits non-zero only for unaccepted `high` or
 and privilege escalation are high-confidence primitives, while dynamic execution
 appears in many legitimate technical skills.
 
+**Specification conformance is informational.** The same audit also checks
+`SKILL.md` against the Agent Skills specification and reports `spec.*`
+findings with category `spec` in `spec_findings`. These findings are kept
+separate from the security verdict: they never set the report's status, never
+block sync or approval, and never change `--check` or risk acceptance. The
+[reference](reference.md#dalo-audit-skill-or-path) lists the rules.
+
 **Unscannable content is a finding, not a gap.** Oversized, non-text, symlinked,
 special, and `.git` entries mark the report's coverage as `partial` and are
 reported. Dalo does not silently pass over what it could not read.
