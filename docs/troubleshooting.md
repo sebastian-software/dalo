@@ -320,7 +320,10 @@ dalo install            # restores the pinned skills, in this and every clone
 ```
 
 Sources are added with `dalo project add`; the guide walks through its preview,
-the apply step, and the local approvals.
+the apply step, and the local approvals. A team that reviews the declaration in
+pull requests can let it approve the selection with `approval = "declaration"`,
+so fresh clones and worktrees install without per-skill approvals; see
+[Approval modes](projects.md#approval-modes).
 
 The older alternative is a per-machine recipe: redirect a target of your
 existing store at a folder inside the repository. It needs no definition file,

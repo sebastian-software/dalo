@@ -4,6 +4,9 @@ Status: Accepted
 Date: 2026-09-26  
 Related: [Issue 851](https://github.com/sebastian-software/dalo/issues/851)
 
+Amended by [ADR 0010](0010-project-declarations-as-approval-authority.md) for
+projects that opt in to declaration approval.
+
 ## Context
 
 A project should describe its skills in version control without committing

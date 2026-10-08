@@ -60,14 +60,35 @@ from an older Dalo is reported for re-approval rather than honored.
 
 **Approvals live in your own store.** `approvals.toml` sits at the root of the
 personal store — `~/.dalo` by default, relocatable with `--store` or
-`DALO_STORE`. There is no repository-level approval file: a team `dalo.toml`
-declares sources and pins, never approvals.
+`DALO_STORE` — or of a project's own `.dalo` store. There is no repository-level
+approval file: a team `dalo.toml` declares sources and pins, never approvals. A
+project's `dalo-project.toml` records no approval decisions either. With
+`approval = "declaration"` (schema version 2), its reviewed selection is the
+approval for that project's store, as described next.
+
+**In a project, the repository is the trust boundary.** A repository can already
+deliver content to its own agents without Dalo: it can commit files into
+`.claude/skills/` or run code from a `postinstall` script. A declaration that
+pins a full commit is equivalent to committing that commit's content. Requiring
+each developer to re-approve each skill in every clone and worktree therefore
+does not protect anyone from the repository, and installing is not a deliberate
+act when `postinstall`, an agent, or CI runs it. A project that reviews
+`dalo-project.toml` changes in pull requests can opt in with
+`approval = "declaration"`. Dalo then registers the declared sources as trusted
+catalogs for that project's store: the explicit selection and its required
+closure need no local approval records, and the audit gate still applies.
+Without the opt-in, project sources stay untrusted catalogs and every project
+store needs local approvals. See [Approval modes](projects.md#approval-modes)
+and [ADR 0010](adr/0010-project-declarations-as-approval-authority.md).
 
 **Non-interactive runs never grant approvals.** An agent or host can automate
 [`dalo sync --check`](reference.md#dalo-sync) and read its JSON result. Pending
 approvals, security findings, dirty sources, and target conflicts stay
 fail-closed. Non-interactive commands can use approvals that already exist but
-never create new ones. The automation handles scheduling and notifications; see
+never create new ones. Project `dalo install` never creates approval records
+either; in an opted-in project the reviewed declaration is itself the approval,
+so a non-interactive install delivers exactly its selection. The automation
+handles scheduling and notifications; see
 [Automate updates](assistant.md#automate-updates). Existing Dalo autosync runs
 enforce the same checks and record their durable outcome separately.
 
@@ -343,6 +364,12 @@ skill; it does not make running third-party instructions safe.
   folder. What your agent does when it reads that text is your agent's
   permission model, not Dalo's. A skill that passes the preflight can still try
   to steer the agent that reads it.
+- **An untrusted repository.** Installing a project whose declaration sets
+  `approval = "declaration"` approves whatever its reviewed declaration selects,
+  just as building that repository runs whatever it contains. Dalo does not
+  decide whether the repository, its review process, or a merged declaration
+  change deserves that trust. Do not install a project you would not otherwise
+  build or run, and review declaration changes like dependency changes.
 - **Compromised upstream hosting or maintainer accounts.** If an upstream
   repository or account is taken over, a new commit is just a new commit. Pins
   and staged audits shrink the window and make the change visible; they do not
@@ -380,7 +407,12 @@ skill; it does not make running third-party instructions safe.
   name means whatever it means tomorrow.
 - **Keep approvals personal.** `approvals.toml` lives in each person's own
   store. Do not copy it between machines or users — an approval is one person's
-  recorded decision, and copying it discards the review it stood for.
+  recorded decision, and copying it discards the review it stood for. A project
+  that wants one shared decision opts in through its declaration instead.
+- **Review project declarations like dependencies.** In a project with
+  `approval = "declaration"`, a merged change to `dalo-project.toml` is the
+  approval. Read the skills a new pin or selection brings in, not only the
+  commit line, and treat a change of the `approval` field as a policy change.
 - **Run the checks in CI.** `dalo status --check --json` fails on pending
   approvals, blocking or failed audits, lock drift, resolution diagnostics, and
   unmanaged blockers. `dalo doctor --check --json` fails on error findings such

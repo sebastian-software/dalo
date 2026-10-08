@@ -67,11 +67,16 @@ list take precedence over later sources. Supported targets are `claude`,
 `codex`, `opencode`, `hermes`, and `openclaw`; Codex and OpenClaw share
 `.agents/skills`, so choose only one of those target IDs.
 
-`init` creates the definition only and never replaces an existing one. `install`
-creates `.dalo/` inside the project, clones the declared sources at their exact
-commits, and links approved skills into the selected agents' project folders.
-Each fresh clone gets its own store and local approval decisions. The global
-store and global agent folders are not part of this installation.
+Schema version 2 adds an optional top-level `approval` field that chooses who
+approves the selected skills: `"local"` (the default, as in schema version 1)
+or `"declaration"`. See [Approval modes](#approval-modes).
+
+`init` creates the definition only and never replaces an existing one; it
+writes schema version 1. `install` creates `.dalo/` inside the project, clones
+the declared sources at their exact commits, and links approved skills into the
+selected agents' project folders. Each fresh clone or worktree gets its own
+store. The global store and global agent folders are not part of this
+installation.
 
 Add the following entries to your project's `.gitignore`, selecting only the
 agent folders managed by this definition:
@@ -90,9 +95,9 @@ locks and approvals must not be committed either.
 
 ## Review and installation
 
-The definition declares desired content, not approval. Initial installation
-prepares the pinned sources but exits nonzero when approval is pending. Review
-and approve skills locally, then rerun installation:
+By default the definition declares desired content, not approval. Initial
+installation prepares the pinned sources but exits nonzero when approval is
+pending. Review and approve skills locally, then rerun installation:
 
 ```sh
 dalo status
@@ -102,17 +107,101 @@ dalo install
 dalo doctor --check
 ```
 
+Each clone and worktree has its own store, so each one repeats these local
+approvals. A project that reviews its declaration in pull requests can instead
+make the declaration the approval authority; see [Approval modes](#approval-modes).
+
 Security findings still require the existing explicit, content-bound review
-flow. Installation never auto-approves skills or executes their contents.
-Repeated installation preserves the pins even if upstream has advanced.
-Dirty checkouts, changed pins, redirected output directories, and unmanaged
-same-name entries are not overwritten. After a failed initial preparation,
-registered sources remain available for inspection and a retry; an
+flow in both modes. Installation never creates approval records or executes
+skill contents. Repeated installation preserves the pins even if upstream has
+advanced. Dirty checkouts, changed pins, redirected output directories, and
+unmanaged same-name entries are not overwritten. After a failed initial
+preparation, registered sources remain available for inspection and a retry; an
 unregistered leftover checkout is reported for manual preservation/recovery.
 
 `--dry-run install` validates and previews the declaration without fetching,
 creating a store, auditing remote content, or delivering links. It is not a
 promise that the remote sources or approvals are ready.
+
+## Approval modes
+
+Human `install` and `status` output names the active mode on stderr, for example
+`approvals: declaration (dalo-project.toml)`. The `--dry-run --json install`
+preview reports it as `approval`.
+
+| `dalo-project.toml` | Who approves | Fresh clone or worktree |
+| --- | --- | --- |
+| `schema_version = 1` | Each project store, in `.dalo/approvals.toml` | Pending until approved locally |
+| `schema_version = 2` without `approval`, or `approval = "local"` | Each project store, in `.dalo/approvals.toml` | Pending until approved locally |
+| `schema_version = 2` and `approval = "declaration"` | The reviewed declaration | Installs the declared selection directly |
+
+With `approval = "declaration"`, every explicitly selected skill and the
+required skills it pulls in are approved for that project store without local
+approval records. A fresh clone, a new worktree, a `postinstall` hook, or CI
+restores the same reviewed skill set with one `dalo install`:
+
+```toml
+schema_version = 2
+approval = "declaration"
+targets = ["claude", "codex"]
+
+[[source]]
+id = "team"
+url = "https://github.com/example/team-skills.git"
+commit = "0123456789abcdef0123456789abcdef01234567"
+skills = ["review", "documentation"]
+```
+
+The approval comes from repository trust. A repository could already commit
+the same skill content into `.claude/skills/` or run code from a `postinstall`
+script, and a full-commit pin is equivalent to committing that content. Opt in
+only when changes to `dalo-project.toml` get the same review as dependency
+changes. Read a new pin, selection, or mode like a dependency bump: inspect the
+skills it brings in, not only the commit line. See
+[Security](security.md#trust-boundaries) for what this mode does not protect
+against.
+
+The opt-in changes approval only. Everything else stays as it is:
+
+- Deterministic audits run on every install, and unaccepted high or critical
+  findings still block delivery. An accepted risk stays local and bound to the
+  exact audited content. Record it with
+  `dalo audit <source:skill> --accept-risk "<reason>"`; that command does not
+  create an approval record.
+- Only the explicit selection and its required closure are delivered. Other
+  skills in the same source stay unselected offers.
+- Dirty sources, changed pins, redirected paths, unmanaged same-name entries,
+  and a foreign `.dalo` still block installation.
+- Project scope delivers skills only. A project installation must not change
+  the global store, global agent folders, or provider settings; such an effect
+  is a bug, not something the declaration can approve.
+
+There are no local opt-outs. To deliver a different set, change the declaration
+through the repository's review.
+
+### Opt in an existing project
+
+1. Make sure every teammate, CI job, and automation uses a Dalo version that
+   supports project schema version 2. Dalo 1.4.0 and earlier reject the file
+   instead of guessing.
+2. Set `schema_version = 2`, add `approval = "declaration"`, and review that
+   change like any other declaration change. `project add`, `project update`,
+   and `project remove` keep both lines and their comments.
+3. Run `dalo install` after pulling it. Until then, `status`, `doctor`,
+   `audit`, `approve`, `project add`, and `project update` ask for this install
+   because the store does not match the declared mode yet.
+
+The first install after opting in activates every declared skill that was
+still pending and lists each one as an ordinary `create` sync operation, so the
+output shows exactly what the opt-in delivered. Existing records in
+`.dalo/approvals.toml` are kept but not needed while the mode is `declaration`.
+Install neither creates nor deletes them for the mode switch. A later pin update
+still revokes local records for changed or removed content, so they can never
+approve stale content.
+
+To return to local approval, set `approval = "local"` (or remove the field) and
+run `dalo install`. Skills without a matching local approval return to pending
+and their links are removed; preserved local approvals apply again.
 
 ## Add a source from the project
 
@@ -147,10 +236,13 @@ committed URL stays portable. Duplicate source IDs are blocked; reviewed changes
 to an existing source or selection belong to the separate update workflow.
 
 Adding a source edits only `dalo-project.toml`. Run `dalo install` afterwards to
-prepare the pinned checkout. It uses the ordinary project review and approval
-flow, and does not activate unapproved skills. A teammate can commit the
-declaration and restore the same commit and selection with `dalo install` in a
-fresh checkout; their approvals remain local.
+prepare the pinned checkout. With local approval it uses the ordinary project
+review and approval flow, and does not activate unapproved skills. A teammate can
+commit the declaration and restore the same commit and selection with
+`dalo install` in a fresh checkout; their approvals remain local. With
+`approval = "declaration"`, the reviewed declaration change is the approval:
+install activates the new selection and its required skills on every checkout,
+subject to the same audits.
 
 ## Update a project source
 
@@ -178,8 +270,10 @@ then reconciles delivery through the normal transactional sync. Dirty source
 checkouts and unmanaged target content block the operation. Per-skill approvals
 for changed or removed content are revoked in the local project store, including
 required dependencies and previously deselected skills. Unchanged content keeps
-its decision. Changed skills stay inactive until
-their new content is reviewed and approved locally. Accepted audit risks remain
+its decision. With local approval, changed skills stay inactive until their new
+content is reviewed and approved locally. With `approval = "declaration"`, the
+reviewed update is the approval, and install activates the changed content
+directly. Accepted audit risks remain
 bound to the exact audit content hash. Candidate audit findings are shown during
 preview and remain blocking until resolved; a blocking finding also prevents
 applying the declaration update.
@@ -265,6 +359,10 @@ dalo install
 dalo approve skill imported-1:review
 dalo install
 ```
+
+The generated definition uses schema version 1 with local approval. To let the
+reviewed definition approve its selection instead, opt in as described in
+[Approval modes](#approval-modes) before committing it.
 
 The command searches upward for `skills-lock.json`, stopping at the nearest Git
 boundary. `--project <directory>` selects an exact directory. Global/store

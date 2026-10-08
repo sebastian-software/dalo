@@ -962,7 +962,10 @@ in Dalo 1.1 (<a href="https://github.com/sebastian-software/dalo/issues/851" rel
 dalo install            # restores the pinned skills, in this and every clone
 </code></pre>
 <p>Sources are added with <code>dalo project add</code>; the guide walks through its preview,
-the apply step, and the local approvals.</p>
+the apply step, and the local approvals. A team that reviews the declaration in
+pull requests can let it approve the selection with <code>approval = &quot;declaration&quot;</code>,
+so fresh clones and worktrees install without per-skill approvals; see
+<a href="/docs/projects.html#approval-modes">Approval modes</a>.</p>
 <p>The older alternative is a per-machine recipe: redirect a target of your
 existing store at a folder inside the repository. It needs no definition file,
 but nothing in the repository records it.</p>

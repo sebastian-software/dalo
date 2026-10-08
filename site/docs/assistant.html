@@ -185,7 +185,11 @@ reports its result through the CLI.</p>
 tracking sources and follows catalog pins declared by the team; personal catalog
 pins change only in a separately requested update. In a project, installation
 restores the checked-in <code>dalo-project.toml</code>, while <code>project update</code> authors a new
-pin. A normal Git pull does not run Dalo&#39;s installation or synchronization step.</p>
+pin. A normal Git pull does not run Dalo&#39;s installation or synchronization step.
+If the declaration sets <code>approval = &quot;declaration&quot;</code>, the reviewed declaration
+approves its selection, so the agent does not ask you to approve each skill in
+every clone or worktree; otherwise each project store keeps its own local
+approvals. See <a href="/docs/projects.html#approval-modes">Approval modes</a>.</p>
 <p>For an initialized store, an automation can run:</p>
 <pre><code class="language-sh">dalo --store &lt;store-path&gt; --json sync --check
 </code></pre>

@@ -224,6 +224,19 @@ grep -Fq 'dalo project add' "$root/skills/dalo/references/setup.md"
 grep -Fq 'dalo project update' "$root/skills/dalo/references/setup.md"
 grep -Fq 'dalo project add' "$root/skills/dalo/references/inventory.md"
 grep -Fq 'dalo project update' "$root/skills/dalo/references/inventory.md"
+# A project declaration can opt into being the approval authority (ADR 0010,
+# issue 939). The guide, file reference, security overview, and the assistant
+# all have to describe the same opt-in, or agents keep asking for approvals.
+test -f "$root/docs/adr/0010-project-declarations-as-approval-authority.md"
+grep -Fq '0010-project-declarations-as-approval-authority.md' "$root/docs/adr/README.md"
+grep -Fq '## Approval modes' "$root/docs/projects.md"
+grep -Fq '## `dalo-project.toml`' "$root/docs/reference.md"
+grep -Fq '`dalo-project.toml`' "$root/docs/compatibility.md"
+for approval_document in docs/projects.md docs/reference.md docs/security.md \
+  docs/assistant.md skills/dalo/references/inventory.md; do
+  grep -Fq 'approval = "declaration"' "$root/$approval_document" \
+    || { echo "$approval_document no longer describes the declaration approval opt-in" >&2; exit 1; }
+done
 grep -Fq '[Team repository guide](docs/team.md)' "$root/README.md"
 # A reader who does not start from a team repository still needs a way in: the
 # getting-started guide routes by situation, and the README, the landing page,
