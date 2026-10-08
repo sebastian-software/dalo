@@ -583,7 +583,7 @@ dalo source namespace company --clear
 </code></pre>
 <p>JSON output shape: <code>SourceNamespaceReport</code>.</p>
 <h3 id="dalo-source-inspect-id"><a class="doc-anchor" href="#dalo-source-inspect-id"><code>dalo source inspect &lt;id&gt;</code></a></h3>
-<p>Inspect a catalog source and list available candidate skills, including ID, slot name, path, description, dependencies, and selection status.</p>
+<p>Inspect a catalog source and list available candidate skills, including ID, slot name, path, description, compatibility, dependencies, and selection status.</p>
 <p>Examples:</p>
 <pre><code class="language-sh">dalo source inspect public
 dalo --json source inspect public
@@ -1359,7 +1359,7 @@ dalo completions fish &gt; dalo.fish
 <tr>
 <td><code>source inspect</code></td>
 <td><code>CatalogInspectReport</code></td>
-<td><code>source_id</code>, <code>candidates[]</code></td>
+<td><code>source_id</code>, <code>candidates[]</code> (<code>id</code>, <code>slot_name</code>, <code>path</code>, <code>description</code>, <code>compatibility</code>, <code>requires[]</code>, <code>selected</code>)</td>
 </tr>
 <tr>
 <td><code>source select</code></td>
@@ -1484,7 +1484,7 @@ dalo completions fish &gt; dalo.fish
 <tr>
 <td><code>approve skill</code></td>
 <td>audited approval outcome</td>
-<td><code>audit</code> (<code>AuditReport</code>), <code>approval</code> (<code>ApprovalReport</code>)</td>
+<td><code>audit</code> (<code>AuditReport</code>), <code>approval</code> (<code>ApprovalReport</code>), optional <code>compatibility</code></td>
 </tr>
 <tr>
 <td><code>approve agent</code> / <code>source</code> / <code>author</code> / <code>org</code></td>
@@ -1576,6 +1576,9 @@ skill is selected.</p>
 and the technical <code>reason</code>. The failed skill is omitted from the active
 materialization plan, while the owning source is treated as degraded so an
 existing owned link is not removed solely because the audit was incomplete.</p>
+<p>Every <code>ResolvedSkill</code> in a <code>resolution</code> object (<code>status</code>, <code>sync</code>, <code>install</code>,
+<code>plan</code>) carries an optional <code>compatibility</code> string copied from the skill&#39;s
+frontmatter.</p>
 <p>Common status values:</p>
 <div class="doc-table"><table>
 <thead>
@@ -2321,6 +2324,9 @@ tags:
   - review
 requires:
   - base-style
+compatibility: &quot;Rendered-page scans need agent-browser on PATH; everything else works without it.&quot;
+metadata:
+  dalo.requires-commands: &quot;agent-browser&quot;
 ---
 
 # Review Helper
@@ -2362,6 +2368,16 @@ requires:
 <td><code>requires[]</code></td>
 <td>no</td>
 <td>Same-source or same-catalog dependencies. Required skills are expanded only when the closure is linkable and approved.</td>
+</tr>
+<tr>
+<td><code>compatibility</code></td>
+<td>no</td>
+<td>Free-text environment requirements from the Agent Skills specification (at most 500 characters). Shown unchanged by <code>source inspect</code>, <code>status</code>, <code>sync</code>, <code>approve skill</code>, and <code>plugin review</code> so the person approving a skill sees what it needs from the machine.</td>
+</tr>
+<tr>
+<td><code>metadata</code></td>
+<td>no</td>
+<td>String-to-string mapping, the specification&#39;s extension point. Dalo carries string-valued entries; non-string entries are ignored.</td>
 </tr>
 </tbody></table></div>
 <p>If <code>name</code> is absent, the directory name is the slot name. Duplicate slot names within one source are warned and de-duplicated by resolver behavior.</p>
