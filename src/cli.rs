@@ -3762,6 +3762,10 @@ where
             &degraded_sources,
         )?;
         report.inventory_warnings = inventory_warnings;
+        report.missing_commands = materialize::missing_skill_commands(
+            &report.resolution.active_skills,
+            live.scans.iter().filter_map(|scan| scan.inventory.as_ref()),
+        );
         let instruction_sync = match instructions::refresh_active_packs(
             &paths,
             &config.sources,

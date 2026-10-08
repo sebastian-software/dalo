@@ -6031,6 +6031,62 @@ fn doctor_should_ignore_invalid_command_tokens() {
 }
 
 #[test]
+fn sync_should_note_missing_declared_commands_once() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo_with_skill(&repo, "page-scan", &page_scan_skill_body("fake-tool"));
+    setup_store_with_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add", "team"])
+        .arg(&repo)
+        .assert()
+        .success();
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let human = String::from_utf8(output).expect("sync output should be UTF-8");
+
+    assert_eq!(
+        human
+            .matches("declared command(s) missing from PATH")
+            .count(),
+        1
+    );
+    assert!(human.contains("note: 1 declared command(s) missing from PATH:"));
+    assert!(
+        human
+            .contains("team:page-scan wants fake-tool: Rendered-page scans need fake-tool on PATH")
+    );
+
+    let json = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "sync"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value = serde_json::from_slice(&json).expect("sync JSON should parse");
+    assert_eq!(
+        report["missing_commands"][0]["source_ref"],
+        "team:page-scan"
+    );
+    assert_eq!(report["missing_commands"][0]["command"], "fake-tool");
+}
+
+#[test]
 fn status_check_should_succeed_for_a_clean_store() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

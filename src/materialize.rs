@@ -33,6 +33,18 @@ pub struct DegradedSource {
     pub reason: String,
 }
 
+/// A command that an active skill declares through `dalo.requires-commands` but that is not on `PATH`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MissingSkillCommand {
+    /// Source-qualified ref of the skill that declares the command.
+    pub source_ref: String,
+    /// Command name that was not found on `PATH`.
+    pub command: String,
+    /// Free-text `compatibility` value, shown as the install hint.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compatibility: Option<String>,
+}
+
 /// Sync and materialization report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SyncReport {
@@ -54,6 +66,9 @@ pub struct SyncReport {
     /// Non-fatal skill inventory warnings observed during this sync.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub inventory_warnings: Vec<crate::inventory::InventoryWarning>,
+    /// Commands that active skills declare through `dalo.requires-commands` but that are not on PATH.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub missing_commands: Vec<MissingSkillCommand>,
     /// Tracking team sources that a dry-run intentionally did not fetch.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub unrefreshed_tracking_sources: Vec<String>,
@@ -380,6 +395,7 @@ pub fn materialize_with_degraded_sources_rollback(
             resolution,
             degraded_sources: degraded_sources.to_vec(),
             inventory_warnings: Vec::new(),
+            missing_commands: Vec::new(),
             unrefreshed_tracking_sources: Vec::new(),
             instruction_operations: Vec::new(),
             instruction_removal_operations: Vec::new(),
@@ -390,6 +406,27 @@ pub fn materialize_with_degraded_sources_rollback(
         },
         rollback,
     ))
+}
+
+/// Declared commands that the given active skills need but that are not on `PATH`.
+///
+/// Sync and install fill [`SyncReport::missing_commands`] with this list. It uses
+/// the same lookup as `dalo doctor` and never runs a command.
+pub(crate) fn missing_skill_commands<'a>(
+    active_skills: &[ResolvedSkill],
+    inventories: impl IntoIterator<Item = &'a crate::inventory::SourceInventory>,
+) -> Vec<MissingSkillCommand> {
+    let mut missing = Vec::new();
+    for check in crate::inventory::check_declared_commands(active_skills, inventories) {
+        for command in check.missing {
+            missing.push(MissingSkillCommand {
+                source_ref: check.source_ref.clone(),
+                command,
+                compatibility: check.compatibility.clone(),
+            });
+        }
+    }
+    missing
 }
 
 fn delivery_reports(
