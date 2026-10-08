@@ -299,6 +299,12 @@ on their own. <code>dalo audit --check</code> exits non-zero only for unaccepted
 <code>critical</code> findings. That line is deliberate — persistence
 and privilege escalation are high-confidence primitives, while dynamic execution
 appears in many legitimate technical skills.</p>
+<p><strong>Specification conformance is informational.</strong> The same audit also checks
+<code>SKILL.md</code> against the Agent Skills specification and reports <code>spec.*</code>
+findings with category <code>spec</code> in <code>spec_findings</code>. These findings are kept
+separate from the security verdict: they never set the report&#39;s status, never
+block sync or approval, and never change <code>--check</code> or risk acceptance. The
+<a href="/docs/reference.html#dalo-audit-skill-or-path">reference</a> lists the rules.</p>
 <p><strong>Unscannable content is a finding, not a gap.</strong> Oversized, non-text, symlinked,
 special, and <code>.git</code> entries mark the report&#39;s coverage as <code>partial</code> and are
 reported. Dalo does not silently pass over what it could not read.</p>
