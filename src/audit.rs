@@ -248,6 +248,9 @@ pub struct AuditReport {
     pub max_severity: Option<Severity>,
     /// Deterministic findings.
     pub static_findings: Vec<AuditFinding>,
+    /// Deterministic Agent Skills specification findings; informational and never part of the verdict.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub spec_findings: Vec<AuditFinding>,
     /// Optional semantic agent review.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_review: Option<AgentReview>,
@@ -654,6 +657,11 @@ pub(crate) fn audit_skill_with_verified_content_hash(
         })
     };
 
+    // Specification findings are recomputed for every audit and are never
+    // taken from the cache. They stay out of the verdict, the acceptance scope,
+    // and `is_blocking`.
+    let spec_findings = spec_scan(source_ref, skill_path);
+
     let mut report = AuditReport {
         schema_version: AUDIT_SCHEMA_VERSION,
         source_ref: source_ref.to_owned(),
@@ -666,6 +674,7 @@ pub(crate) fn audit_skill_with_verified_content_hash(
         status,
         max_severity,
         static_findings,
+        spec_findings,
         agent_review,
         risk_acceptance,
     };
@@ -1521,6 +1530,266 @@ fn finding(
         line,
         message: message.to_owned(),
         evidence,
+    }
+}
+
+/// Deterministic Agent Skills specification checks for one skill directory.
+///
+/// The rules follow <https://agentskills.io/specification>. Findings use the
+/// `spec` category, so they are informational: they never change the security
+/// verdict, blocking behavior, acceptance scope, or report cache reuse.
+fn spec_scan(source_ref: &str, skill_path: &Path) -> Vec<AuditFinding> {
+    const KNOWN_KEYS: [&str; 10] = [
+        "name",
+        "description",
+        "license",
+        "compatibility",
+        "metadata",
+        "allowed-tools",
+        // Dalo's documented frontmatter fields.
+        "id",
+        "owners",
+        "tags",
+        "requires",
+    ];
+    const MAX_DESCRIPTION_CHARS: usize = 1024;
+    const MAX_COMPATIBILITY_CHARS: usize = 500;
+    const MAX_BODY_LINES: usize = 500;
+    const MISSING_MESSAGE: &str =
+        "SKILL.md is missing, unreadable, or does not start with a `---` frontmatter block";
+
+    let (markdown, metadata_truncated) =
+        match inventory::read_skill_metadata(&skill_path.join("SKILL.md")) {
+            Ok(metadata) => metadata,
+            Err(_) => {
+                return vec![spec_finding(
+                    "spec.frontmatter-missing",
+                    Severity::Low,
+                    None,
+                    MISSING_MESSAGE,
+                )];
+            }
+        };
+    let (fields, body_line_count) = match inventory::raw_frontmatter(&markdown, metadata_truncated)
+    {
+        inventory::RawFrontmatter::Missing => {
+            return vec![spec_finding(
+                "spec.frontmatter-missing",
+                Severity::Low,
+                None,
+                MISSING_MESSAGE,
+            )];
+        }
+        inventory::RawFrontmatter::Malformed(reason) => {
+            return vec![spec_finding(
+                "spec.frontmatter-malformed",
+                Severity::Low,
+                None,
+                &format!("frontmatter cannot be used for specification checks: {reason}"),
+            )];
+        }
+        inventory::RawFrontmatter::Mapping {
+            fields,
+            body_line_count,
+        } => (fields, body_line_count),
+    };
+
+    let key_line = |key: &str| frontmatter_key_line(&markdown, key);
+    let mut findings = Vec::new();
+
+    match fields.get("name") {
+        Some(yaml_serde::Value::String(name)) if is_agent_skill_name(name) => {
+            let directory = skill_path
+                .file_name()
+                .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
+            match materialized_slot(source_ref) {
+                Some(slot) if name.as_str() != slot => findings.push(spec_finding(
+                    "spec.name-slot-mismatch",
+                    Severity::Low,
+                    key_line("name"),
+                    &format!("`name` `{name}` differs from the slot `{slot}` that Dalo materializes"),
+                )),
+                Some(slot) if directory.as_str() != name.as_str() => {
+                    findings.push(spec_finding(
+                        "spec.directory-name-mismatch",
+                        Severity::Info,
+                        key_line("name"),
+                        &format!(
+                            "source folder `{directory}` differs from name `{name}`; Dalo materializes it as `{slot}`, strict validators reject the source folder"
+                        ),
+                    ));
+                }
+                _ => {}
+            }
+        }
+        Some(yaml_serde::Value::String(name)) => findings.push(spec_finding(
+            "spec.name-invalid",
+            Severity::Low,
+            key_line("name"),
+            &format!(
+                "`name` `{name}` must be 1 to 64 lowercase ASCII letters, digits, or hyphens, without a leading, trailing, or doubled hyphen"
+            ),
+        )),
+        _ => findings.push(spec_finding(
+            "spec.name-missing",
+            Severity::Low,
+            key_line("name"),
+            "frontmatter `name` is missing or not a string",
+        )),
+    }
+
+    match fields.get("description") {
+        Some(yaml_serde::Value::String(description)) if !description.trim().is_empty() => {
+            if description.chars().count() > MAX_DESCRIPTION_CHARS {
+                findings.push(spec_finding(
+                    "spec.description-too-long",
+                    Severity::Low,
+                    key_line("description"),
+                    &format!("`description` has more than {MAX_DESCRIPTION_CHARS} characters"),
+                ));
+            }
+        }
+        _ => findings.push(spec_finding(
+            "spec.description-missing",
+            Severity::Low,
+            key_line("description"),
+            "frontmatter `description` is missing, not a string, or blank",
+        )),
+    }
+
+    if let Some(compatibility) = fields.get("compatibility") {
+        match compatibility {
+            yaml_serde::Value::String(text) if text.chars().count() > MAX_COMPATIBILITY_CHARS => {
+                findings.push(spec_finding(
+                    "spec.compatibility-too-long",
+                    Severity::Low,
+                    key_line("compatibility"),
+                    &format!("`compatibility` has more than {MAX_COMPATIBILITY_CHARS} characters"),
+                ));
+            }
+            yaml_serde::Value::String(_) => {}
+            _ => findings.push(spec_finding(
+                "spec.compatibility-not-string",
+                Severity::Low,
+                key_line("compatibility"),
+                "`compatibility` is not a string",
+            )),
+        }
+    }
+
+    if let Some(metadata) = fields.get("metadata") {
+        match metadata {
+            yaml_serde::Value::Mapping(entries) => {
+                for (key, value) in entries {
+                    if !matches!(value, yaml_serde::Value::String(_)) {
+                        findings.push(spec_finding(
+                            "spec.metadata-value-not-string",
+                            Severity::Low,
+                            None,
+                            &format!(
+                                "`metadata` value for `{}` is not a string",
+                                yaml_key_label(key)
+                            ),
+                        ));
+                    }
+                }
+            }
+            _ => findings.push(spec_finding(
+                "spec.metadata-not-mapping",
+                Severity::Low,
+                key_line("metadata"),
+                "frontmatter `metadata` is not a mapping",
+            )),
+        }
+    }
+
+    for key in fields.keys() {
+        if matches!(key, yaml_serde::Value::String(name) if KNOWN_KEYS.contains(&name.as_str())) {
+            continue;
+        }
+        let line = match key {
+            yaml_serde::Value::String(name) => key_line(name),
+            _ => None,
+        };
+        findings.push(spec_finding(
+            "spec.unknown-key",
+            Severity::Low,
+            line,
+            &format!(
+                "`{}` is not an Agent Skills field; agent runtimes tolerate it, strict validators reject it",
+                yaml_key_label(key)
+            ),
+        ));
+    }
+
+    if body_line_count > MAX_BODY_LINES {
+        findings.push(spec_finding(
+            "spec.body-too-long",
+            Severity::Info,
+            None,
+            &format!(
+                "the body has {body_line_count} lines; the specification recommends staying under {MAX_BODY_LINES}"
+            ),
+        ));
+    }
+
+    findings
+}
+
+fn spec_finding(id: &str, severity: Severity, line: Option<usize>, message: &str) -> AuditFinding {
+    finding(id, severity, "spec", "SKILL.md", line, message, None)
+}
+
+/// Whether `name` matches the Agent Skills name rule.
+///
+/// The rule is 1 to 64 lowercase ASCII letters, digits, and hyphens, without a
+/// leading or trailing hyphen and without a doubled hyphen.
+fn is_agent_skill_name(name: &str) -> bool {
+    (1..=64).contains(&name.len())
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+        && !name.starts_with('-')
+        && !name.ends_with('-')
+        && !name.contains("--")
+}
+
+/// Slot name Dalo materializes for a source ref.
+///
+/// Source-qualified refs are `<source>:<slot>`, optionally with an `@<provider>`
+/// suffix that Dalo does not materialize. Synthetic path refs are
+/// `path:<dir>@<hash>`.
+fn materialized_slot(source_ref: &str) -> Option<&str> {
+    if let Some((directory, _hash)) = source_ref
+        .strip_prefix("path:")
+        .and_then(|rest| rest.rsplit_once('@'))
+    {
+        return Some(directory);
+    }
+    let (_, slot) = source_ref.split_once(':')?;
+    Some(slot.split_once('@').map_or(slot, |(slot, _)| slot))
+}
+
+/// One-based line of a top-level frontmatter key written as `<key>:` at column 0.
+fn frontmatter_key_line(markdown: &str, key: &str) -> Option<usize> {
+    let prefix = format!("{key}:");
+    markdown
+        .lines()
+        .enumerate()
+        .skip(1)
+        .take_while(|(_, line)| *line != "---")
+        .find(|(_, line)| line.starts_with(&prefix))
+        .map(|(index, _)| index + 1)
+}
+
+/// Display label for a frontmatter key, escaping nothing: the caller sanitizes output.
+fn yaml_key_label(key: &yaml_serde::Value) -> String {
+    match key {
+        yaml_serde::Value::String(text) => text.clone(),
+        other => yaml_serde::to_string(other).map_or_else(
+            |_| "<non-string key>".to_owned(),
+            |text| text.trim().to_owned(),
+        ),
     }
 }
 
@@ -2426,6 +2695,39 @@ fn now_unix() -> u64 {
 mod tests {
     use super::*;
     use proptest::prelude::*;
+
+    #[test]
+    fn materialized_slot_should_ignore_provider_and_synthetic_hash_suffixes() {
+        assert_eq!(materialized_slot("local:review"), Some("review"));
+        assert_eq!(
+            materialized_slot("marketing:impeccable@codex"),
+            Some("impeccable")
+        );
+        assert_eq!(
+            materialized_slot("path:review-helper@abc123"),
+            Some("review-helper")
+        );
+        assert_eq!(
+            materialized_slot("path:review@helper@abc123"),
+            Some("review@helper")
+        );
+        assert_eq!(materialized_slot("path:review"), Some("review"));
+        assert_eq!(materialized_slot("review"), None);
+    }
+
+    #[test]
+    fn spec_scan_should_compare_provider_refs_with_the_materialized_slot() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let skill_path = temp_dir.path().join("impeccable");
+        fs::create_dir_all(&skill_path).expect("skill directory should be created");
+        fs::write(
+            skill_path.join("SKILL.md"),
+            "---\nname: impeccable\ndescription: Polishes interfaces.\n---\n# Impeccable\n",
+        )
+        .expect("skill should be written");
+
+        assert!(spec_scan("marketing:impeccable@codex", &skill_path).is_empty());
+    }
 
     fn direct_resolution(skills: &[(&str, &str, &Path)]) -> Resolution {
         Resolution {
