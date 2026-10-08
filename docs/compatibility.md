@@ -79,6 +79,7 @@ version it does not support instead of guessing.
 | [`source-lock.toml`](reference.md#source-locktoml) | store root | `schema_version` | `3` (versions `1` and `2` are read and migrated forward) |
 | [`.dalo-bundle.toml`](reference.md#bundled-assistant-receipt) | `local/skills/dalo/` | `schema_version` | `1` |
 | [`dalo.toml`](reference.md#team-repository-dalotoml) | team repository root | `schema_version` | `1` |
+| [`dalo-project.toml`](reference.md#dalo-projecttoml) | project root | `schema_version` | `2` (version `1` remains supported and is what `init` writes) |
 | [`PLUGIN.toml`](reference.md#plugintoml-portable-plugins-tools-and-hooks) | `plugins/<name>/` in a source | `schema_version` | `1` (tool descriptor `1`, hook descriptor `1`) |
 
 The optional `sources[].subpath` in `config.toml` and `sources[].subpath` in
@@ -420,6 +421,15 @@ This is recorded as
 
 ### Project declarations
 
-`dalo-project.toml` uses project schema version 1, separate from team manifests
-and machine-local store schemas. It contains target IDs and exact source pins,
-not absolute target paths or approval decisions. See [Project installations](projects.md).
+`dalo-project.toml` uses project schema version 1 or 2, separate from team
+manifests and machine-local store schemas. It contains target IDs and exact
+source pins, not absolute target paths or approval records. Schema version 2
+adds the optional `approval` field (`local` by default, or `declaration`); see
+[Project installations](projects.md#approval-modes). Schema version 1 keeps its
+exact meaning, and `init` still writes it.
+
+Dalo 1.4.0 and earlier reject schema version 2 instead of guessing, so a team
+moves a declaration to schema version 2 only after every teammate, CI job, and
+automation runs a version that supports it. Later 1.x versions keep reading
+both schema versions. The [`dalo-project.toml` reference](reference.md#dalo-projecttoml)
+lists the fields.

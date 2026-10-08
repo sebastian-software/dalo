@@ -255,6 +255,12 @@ version it does not support instead of guessing.</p>
 <td><code>1</code></td>
 </tr>
 <tr>
+<td><a href="/docs/reference.html#dalo-projecttoml"><code>dalo-project.toml</code></a></td>
+<td>project root</td>
+<td><code>schema_version</code></td>
+<td><code>2</code> (version <code>1</code> remains supported and is what <code>init</code> writes)</td>
+</tr>
+<tr>
 <td><a href="/docs/reference.html#plugintoml-portable-plugins-tools-and-hooks"><code>PLUGIN.toml</code></a></td>
 <td><code>plugins/&lt;name&gt;/</code> in a source</td>
 <td><code>schema_version</code></td>
@@ -703,9 +709,17 @@ something that happens by accident because a module was public.</li>
 <p>This is recorded as
 <a href="https://github.com/sebastian-software/dalo/blob/main/docs/adr/0008-compatibility-contract.md" rel="noopener">ADR 0008</a>.</p>
 <h3 id="project-declarations"><a class="doc-anchor" href="#project-declarations">Project declarations</a></h3>
-<p><code>dalo-project.toml</code> uses project schema version 1, separate from team manifests
-and machine-local store schemas. It contains target IDs and exact source pins,
-not absolute target paths or approval decisions. See <a href="/docs/projects.html">Project installations</a>.</p>
+<p><code>dalo-project.toml</code> uses project schema version 1 or 2, separate from team
+manifests and machine-local store schemas. It contains target IDs and exact
+source pins, not absolute target paths or approval records. Schema version 2
+adds the optional <code>approval</code> field (<code>local</code> by default, or <code>declaration</code>); see
+<a href="/docs/projects.html#approval-modes">Project installations</a>. Schema version 1 keeps its
+exact meaning, and <code>init</code> still writes it.</p>
+<p>Dalo 1.4.0 and earlier reject schema version 2 instead of guessing, so a team
+moves a declaration to schema version 2 only after every teammate, CI job, and
+automation runs a version that supports it. Later 1.x versions keep reading
+both schema versions. The <a href="/docs/reference.html#dalo-projecttoml"><code>dalo-project.toml</code> reference</a>
+lists the fields.</p>
 <p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/compatibility.md" rel="noopener">docs/compatibility.md</a></p>
   </article>
   <nav class="doc-toc" aria-label="On this page">

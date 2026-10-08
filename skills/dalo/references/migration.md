@@ -43,7 +43,9 @@ dalo --project "$project" --json migrate skills-sh
 
 Review all blockers and inferred targets. With migration authorized, apply using
 `dalo --project "$project" migrate skills-sh --apply`, then run `dalo install` in
-that project, review and approve pending skills locally, and install again.
+that project, review and approve pending skills locally, and install again. The
+generated definition uses local approval; switching it to
+`approval = "declaration"` is a separate declaration change for the team's review.
 The importer verifies complete installed content against the recorded Git ref
 (or current default branch); it never treats `computedHash` as a commit. A
 changed source or local edit blocks the entire apply. Preserve such content and

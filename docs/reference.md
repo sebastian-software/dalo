@@ -1632,7 +1632,7 @@ Fields:
 | `sources[].priority` | Lower numbers win. |
 | `sources[].namespace` | Optional prefix applied to every materialized skill from the source. A skill named `review` becomes `prefix__review`; the source content and source-qualified approval identity stay unchanged. |
 | `sources[].enabled` | Disabled sources are skipped by resolution. |
-| `sources[].trusted` | Trusted sources are approved automatically. User-added catalog sources always start untrusted. |
+| `sources[].trusted` | Trusted sources are approved automatically. User-added catalog sources always start untrusted. In a project store, install sets it from the declaration's `approval` mode. |
 | `sources[].url` | Git URL for team/catalog sources. URLs with embedded credentials are rejected; use SSH or a credential helper. |
 | `sources[].branch` | Optional requested Git ref for a directly added pinned source. |
 | `sources[].update_policy` | Usually `track` for team sources and `pin` for catalog sources. |
@@ -1698,6 +1698,46 @@ pin advancement reject derived catalogs; edit and review `dalo.toml` instead.
 Changing a catalog URL uses an explicit two-sync replacement: remove the
 declaration and sync, then add the reviewed replacement URL and sync again.
 
+## `dalo-project.toml`
+
+Schema version: `schema_version = 1` or `schema_version = 2`.
+
+The committed project declaration read by [`dalo install`](#dalo-install) and
+edited by the `dalo project` commands. `init` writes schema version 1. Schema
+version 2 adds the optional `approval` field; Dalo 1.4.0 and earlier reject
+schema version 2, so every teammate and automation needs a supporting version
+before a project opts in.
+
+```toml
+schema_version = 2
+approval = "declaration"
+targets = ["claude", "codex"]
+
+[[source]]
+id = "team"
+url = "https://github.com/example/team-skills.git"
+commit = "0123456789abcdef0123456789abcdef01234567"
+skills = ["review", "documentation"]
+```
+
+Fields:
+
+| Field | Meaning |
+| --- | --- |
+| `schema_version` | `1` or `2`. Other values are rejected. |
+| `approval` | Schema version 2 only. `"local"` (default) keeps per-store approvals in `.dalo/approvals.toml`. `"declaration"` approves every explicitly selected skill and its required closure for the project store; audits still block. Any other value, or the field in schema version 1, is rejected. |
+| `targets` | Non-empty list of `claude`, `codex`, `opencode`, `hermes`, or `openclaw`, each with a distinct project folder. |
+| `source[].id` | Source ID unique in the project; `local` is reserved. |
+| `source[].url` | Git URL or a project-relative local repository path. Embedded credentials are rejected. |
+| `source[].commit` | Full lowercase Git commit ID. Branches and tags are resolved by `project add` and `project update`, not stored. |
+| `source[].skills` | Non-empty explicit selectors: stable ID, catalog name, or skill path. |
+
+Unknown fields are rejected. `project add`, `project update`, and
+`project remove` change only source entries and preserve the schema version,
+the `approval` field, comments, and formatting. See
+[Project installations](projects.md#approval-modes) for the approval modes and
+the migration path.
+
 ## `approvals.toml`
 
 Schema version: `schema_version = 1`.
@@ -1733,7 +1773,7 @@ Approval scopes:
 | `author` | `<source-id>:<owner>` | Skills from that source whose `owners` frontmatter contains that owner. |
 | `org` | `<source-id>:<owner>` | Same matching behavior as `author`; the scope is a policy label. |
 
-Local skills and skills from `trusted = true` sources are approved automatically. Non-interactive commands can use existing approvals but never create new approvals.
+Local skills and skills from `trusted = true` sources are approved automatically. Non-interactive commands can use existing approvals but never create new approvals. In a project whose `dalo-project.toml` sets `approval = "declaration"`, install marks the declared sources trusted and leaves this file unchanged; its records apply again after a switch back to `approval = "local"`.
 
 Prefer `dalo approve` for all approval changes. The TOML format remains
 documented for auditability and recovery, but does not need to be edited for
@@ -2163,9 +2203,20 @@ non-zero instead of being overridden. Rerun it after approving skills or after
 pulling a changed declaration; repeated runs keep the declared pins even when
 upstream has advanced. JSON output is the `SyncReport` shape.
 
+The declaration's [`approval`](#dalo-projecttoml) mode decides who approves the
+selected skills. With `approval = "declaration"`, install approves the explicit
+selection and its required closure without local approval records, so a fresh
+clone or worktree installs without pending approvals; audits still block.
+Install reconciles each declared source's `trusted` flag from that mode on
+every run, and it never creates approval records. Human output names the mode
+on stderr, for example `approvals: declaration (dalo-project.toml)`.
+
 `--dry-run` validates and previews the declaration without fetching, creating
 a store, auditing, or linking. Its JSON object contains `scope`, `project`,
-`store`, `dry_run`, `sources`, `targets`, `removals`, and `note`.
+`store`, `dry_run`, `approval` (`local` or `declaration`), `sources`,
+`targets`, `removals`, and `note`. The removal preview applies the declared
+approval mode, so `removals.deactivated_skills` includes skills that a switch
+to `local` returns to pending.
 
 Outside a project, `install` fails with exit `1` and names
 `dalo --project . init`, which writes the declaration. `--global` and `--store`
@@ -2188,7 +2239,8 @@ dalo install
 The default is a read-only preview. It fetches to a temporary directory, resolves
 the requested ref to an exact commit, lists the selected skills and target
 folders, and prints the TOML entry and apply command. `--apply` writes only the
-declaration; installation and local approvals remain separate. Applying a
+declaration; installation and approval remain separate (local approvals, or
+the declaration itself with `approval = "declaration"`). Applying a
 branch or tag requires `--expect-commit` to match the commit shown in the
 preview. A full commit ID can be applied directly. Repeat required `--skill`
 options to select multiple catalog entries. Local repositories must be inside
@@ -2218,7 +2270,8 @@ the selection. An implicitly selected skill removed upstream blocks apply; an
 explicit replacement selection is required. A candidate with a blocking audit
 finding is reported and cannot be applied. `--apply` changes only the
 declaration's `commit` and `skills` values; install stages the new checkout and
-uses the ordinary local approval and transactional delivery flow.
+uses the ordinary approval and transactional delivery flow. With
+`approval = "declaration"`, the reviewed update approves the changed content.
 
 Installing a changed pin checks every existing per-skill approval for that
 source, including dependencies and deselected skills. Changed or removed

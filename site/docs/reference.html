@@ -1890,7 +1890,7 @@ selection = [&quot;review-helper&quot;]
 </tr>
 <tr>
 <td><code>sources[].trusted</code></td>
-<td>Trusted sources are approved automatically. User-added catalog sources always start untrusted.</td>
+<td>Trusted sources are approved automatically. User-added catalog sources always start untrusted. In a project store, install sets it from the declaration&#39;s <code>approval</code> mode.</td>
 </tr>
 <tr>
 <td><code>sources[].url</code></td>
@@ -1990,6 +1990,65 @@ local approval matches. <code>source select</code>, <code>source priority</code>
 pin advancement reject derived catalogs; edit and review <code>dalo.toml</code> instead.
 Changing a catalog URL uses an explicit two-sync replacement: remove the
 declaration and sync, then add the reviewed replacement URL and sync again.</p>
+<h2 id="dalo-projecttoml"><a class="doc-anchor" href="#dalo-projecttoml"><code>dalo-project.toml</code></a></h2>
+<p>Schema version: <code>schema_version = 1</code> or <code>schema_version = 2</code>.</p>
+<p>The committed project declaration read by <a href="#dalo-install"><code>dalo install</code></a> and
+edited by the <code>dalo project</code> commands. <code>init</code> writes schema version 1. Schema
+version 2 adds the optional <code>approval</code> field; Dalo 1.4.0 and earlier reject
+schema version 2, so every teammate and automation needs a supporting version
+before a project opts in.</p>
+<pre><code class="language-toml">schema_version = 2
+approval = &quot;declaration&quot;
+targets = [&quot;claude&quot;, &quot;codex&quot;]
+
+[[source]]
+id = &quot;team&quot;
+url = &quot;https://github.com/example/team-skills.git&quot;
+commit = &quot;0123456789abcdef0123456789abcdef01234567&quot;
+skills = [&quot;review&quot;, &quot;documentation&quot;]
+</code></pre>
+<p>Fields:</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>schema_version</code></td>
+<td><code>1</code> or <code>2</code>. Other values are rejected.</td>
+</tr>
+<tr>
+<td><code>approval</code></td>
+<td>Schema version 2 only. <code>&quot;local&quot;</code> (default) keeps per-store approvals in <code>.dalo/approvals.toml</code>. <code>&quot;declaration&quot;</code> approves every explicitly selected skill and its required closure for the project store; audits still block. Any other value, or the field in schema version 1, is rejected.</td>
+</tr>
+<tr>
+<td><code>targets</code></td>
+<td>Non-empty list of <code>claude</code>, <code>codex</code>, <code>opencode</code>, <code>hermes</code>, or <code>openclaw</code>, each with a distinct project folder.</td>
+</tr>
+<tr>
+<td><code>source[].id</code></td>
+<td>Source ID unique in the project; <code>local</code> is reserved.</td>
+</tr>
+<tr>
+<td><code>source[].url</code></td>
+<td>Git URL or a project-relative local repository path. Embedded credentials are rejected.</td>
+</tr>
+<tr>
+<td><code>source[].commit</code></td>
+<td>Full lowercase Git commit ID. Branches and tags are resolved by <code>project add</code> and <code>project update</code>, not stored.</td>
+</tr>
+<tr>
+<td><code>source[].skills</code></td>
+<td>Non-empty explicit selectors: stable ID, catalog name, or skill path.</td>
+</tr>
+</tbody></table></div>
+<p>Unknown fields are rejected. <code>project add</code>, <code>project update</code>, and
+<code>project remove</code> change only source entries and preserve the schema version,
+the <code>approval</code> field, comments, and formatting. See
+<a href="/docs/projects.html#approval-modes">Project installations</a> for the approval modes and
+the migration path.</p>
 <h2 id="approvalstoml"><a class="doc-anchor" href="#approvalstoml"><code>approvals.toml</code></a></h2>
 <p>Schema version: <code>schema_version = 1</code>.</p>
 <p>Example:</p>
@@ -2057,7 +2116,7 @@ value = &quot;team:platform-team&quot;
 <td>Same matching behavior as <code>author</code>; the scope is a policy label.</td>
 </tr>
 </tbody></table></div>
-<p>Local skills and skills from <code>trusted = true</code> sources are approved automatically. Non-interactive commands can use existing approvals but never create new approvals.</p>
+<p>Local skills and skills from <code>trusted = true</code> sources are approved automatically. Non-interactive commands can use existing approvals but never create new approvals. In a project whose <code>dalo-project.toml</code> sets <code>approval = &quot;declaration&quot;</code>, install marks the declared sources trusted and leaves this file unchanged; its records apply again after a switch back to <code>approval = &quot;local&quot;</code>.</p>
 <p>Prefer <code>dalo approve</code> for all approval changes. The TOML format remains
 documented for auditability and recovery, but does not need to be edited for
 normal approval workflows.</p>
@@ -2541,9 +2600,19 @@ findings, dirty checkouts, and unmanaged same-name entries make it exit
 non-zero instead of being overridden. Rerun it after approving skills or after
 pulling a changed declaration; repeated runs keep the declared pins even when
 upstream has advanced. JSON output is the <code>SyncReport</code> shape.</p>
+<p>The declaration&#39;s <a href="#dalo-projecttoml"><code>approval</code></a> mode decides who approves the
+selected skills. With <code>approval = &quot;declaration&quot;</code>, install approves the explicit
+selection and its required closure without local approval records, so a fresh
+clone or worktree installs without pending approvals; audits still block.
+Install reconciles each declared source&#39;s <code>trusted</code> flag from that mode on
+every run, and it never creates approval records. Human output names the mode
+on stderr, for example <code>approvals: declaration (dalo-project.toml)</code>.</p>
 <p><code>--dry-run</code> validates and previews the declaration without fetching, creating
 a store, auditing, or linking. Its JSON object contains <code>scope</code>, <code>project</code>,
-<code>store</code>, <code>dry_run</code>, <code>sources</code>, <code>targets</code>, <code>removals</code>, and <code>note</code>.</p>
+<code>store</code>, <code>dry_run</code>, <code>approval</code> (<code>local</code> or <code>declaration</code>), <code>sources</code>,
+<code>targets</code>, <code>removals</code>, and <code>note</code>. The removal preview applies the declared
+approval mode, so <code>removals.deactivated_skills</code> includes skills that a switch
+to <code>local</code> returns to pending.</p>
 <p>Outside a project, <code>install</code> fails with exit <code>1</code> and names
 <code>dalo --project . init</code>, which writes the declaration. <code>--global</code> and <code>--store</code>
 select a non-project store and therefore fail the same way. See
@@ -2560,7 +2629,8 @@ dalo install
 <p>The default is a read-only preview. It fetches to a temporary directory, resolves
 the requested ref to an exact commit, lists the selected skills and target
 folders, and prints the TOML entry and apply command. <code>--apply</code> writes only the
-declaration; installation and local approvals remain separate. Applying a
+declaration; installation and approval remain separate (local approvals, or
+the declaration itself with <code>approval = &quot;declaration&quot;</code>). Applying a
 branch or tag requires <code>--expect-commit</code> to match the commit shown in the
 preview. A full commit ID can be applied directly. Repeat required <code>--skill</code>
 options to select multiple catalog entries. Local repositories must be inside
@@ -2584,7 +2654,8 @@ the selection. An implicitly selected skill removed upstream blocks apply; an
 explicit replacement selection is required. A candidate with a blocking audit
 finding is reported and cannot be applied. <code>--apply</code> changes only the
 declaration&#39;s <code>commit</code> and <code>skills</code> values; install stages the new checkout and
-uses the ordinary local approval and transactional delivery flow.</p>
+uses the ordinary approval and transactional delivery flow. With
+<code>approval = &quot;declaration&quot;</code>, the reviewed update approves the changed content.</p>
 <p>Installing a changed pin checks every existing per-skill approval for that
 source, including dependencies and deselected skills. Changed or removed
 content loses its approval; unchanged content keeps it. Selecting a skill again
@@ -2687,6 +2758,7 @@ PR URL when created.</p>
       <li><a href="#store-layout">Store Layout</a></li>
       <li><a href="#configtoml"><code>config.toml</code></a></li>
       <li><a href="#team-repository-dalotoml">Team repository <code>dalo.toml</code></a></li>
+      <li><a href="#dalo-projecttoml"><code>dalo-project.toml</code></a></li>
       <li><a href="#approvalstoml"><code>approvals.toml</code></a></li>
       <li><a href="#locktoml"><code>lock.toml</code></a></li>
       <li><a href="#statetoml"><code>state.toml</code></a></li>

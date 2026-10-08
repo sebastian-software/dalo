@@ -132,5 +132,21 @@ replaces it. `.dalo` and generated links are machine-local; commit only
 declaration and run install to reconcile it. Required skills stay active through
 remaining consumers, and removed sources' cached checkouts are retained even
 when dirty. Source URL replacement remains separate migration work.
+
+Read the declaration's approval mode before suggesting approvals. With
+`schema_version = 2` and `approval = "declaration"`, the reviewed declaration
+approves its explicit selection and required skills: `install` names
+`approvals: declaration (dalo-project.toml)` and needs no `dalo approve skill`
+in any clone or worktree, so do not ask the user to approve each skill there.
+A remaining block is an audit finding, dirty source, target conflict, or a store
+not yet reconciled with `install`. A blocking finding still needs the user's
+decision; only after they accept the risk, record it with
+`dalo audit <source:skill> --accept-risk "<reason>"`, which creates no approval
+record. Schema version 1 and `approval = "local"` keep per-store local
+approvals. Opting in is a declaration change for the repository's own review,
+and every teammate and automation then needs a Dalo version that supports
+schema version 2. Suggest it when a team wants reproducible project installs;
+do not make it a side effect of another request. See
+`https://dalo.sh/docs/projects.html#approval-modes`.
 A global assistant bundle check needs `--global` (or an explicit custom store)
 inside a project; keep that check separate from the requested project operation.

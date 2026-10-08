@@ -13,6 +13,7 @@ context, the decision in present tense, and the consequences.
 | [0006](0006-passive-portable-plugins.md) | Passive Portable Plugins | [RFC 0005](../rfcs/0005-portable-plugins-and-agent-stacks.md) |
 | [0008](0008-compatibility-contract.md) | Compatibility Contract and Library API Stance | [Issue 802](https://github.com/sebastian-software/dalo/issues/802) |
 | [0009](0009-explicit-project-scope.md) | Project Discovery and Explicit Scope Overrides | [Issue 851](https://github.com/sebastian-software/dalo/issues/851) |
+| [0010](0010-project-declarations-as-approval-authority.md) | Project Declarations as Approval Authority | [Issue 939](https://github.com/sebastian-software/dalo/issues/939) |
 
 [`docs/rfcs/`](../rfcs/) keeps the long-form proposals these records summarize.
 An RFC explains the reasoning and the rejected alternatives; the ADR is the

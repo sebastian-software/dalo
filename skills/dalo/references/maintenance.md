@@ -38,8 +38,9 @@ updating that definition is a separate authoring operation.
   `dalo --project <root> --json install` to restore its declared pins. To author
   an update, preview `dalo --project <root> --json project update <id> --ref <ref>`.
   Apply a moving ref with the previewed `--expect-commit <commit> --apply`, then
-  install; changed content remains subject to local approval. Repeat `--skill`
-  only when replacing the selection is part of the request.
+  install; changed content remains subject to blocking audits and, unless the
+  declaration sets `approval = "declaration"`, to local approval. Repeat
+  `--skill` only when replacing the selection is part of the request.
 
 For team catalog authoring, preview
 `dalo --dry-run --json team --repo <team-root> catalog update <id> --from <ref>`.
@@ -188,7 +189,10 @@ existing project source forward, use `dalo project update` to review the new
 pin, inventory, dependency changes, and audits before applying it. Installation
 revokes per-skill approvals for changed or removed content, including required
 dependencies and previously deselected skills. Review and approve the changed
-content locally before retrying installation. Do not add a project dependency to
+content locally before retrying installation. When the declaration sets
+`approval = "declaration"`, the reviewed declaration change is the approval:
+install activates the selection without `dalo approve skill`, and only audit
+findings, dirty sources, or conflicts need attention. Do not add a project dependency to
 the global store. Connect another agent through setup and preview the resulting
 active set before syncing.
 

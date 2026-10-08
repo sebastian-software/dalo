@@ -43,7 +43,8 @@ If `dalo-project.toml` exists, preview a pinned selection with `dalo project add
 review its source, commit, skills, and targets, then apply the exact commit and
 run `dalo install`. For an existing project source, use `dalo project update` to
 review the new pin and inventory before applying it, then run `dalo install`;
-changed content remains subject to local approval and blocking audits. If the
+changed content remains subject to blocking audits and, unless the declaration
+sets `approval = "declaration"`, to local approval. If the
 project has no definition, initialize it explicitly
 with `dalo --project . init` first. The declaration is committed; the `.dalo`
 store, approvals, and generated links remain local. Do not edit a repository's
