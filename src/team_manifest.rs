@@ -1763,6 +1763,8 @@ mod tests {
             requires: Vec::new(),
             owners: Vec::new(),
             tags: Vec::new(),
+            compatibility: None,
+            metadata: std::collections::BTreeMap::new(),
         }
     }
 

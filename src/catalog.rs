@@ -203,6 +203,8 @@ pub struct CatalogCandidate {
     pub path: String,
     /// Optional description.
     pub description: Option<String>,
+    /// Free-text environment requirements declared by the skill.
+    pub compatibility: Option<String>,
     /// Declared dependencies.
     pub requires: Vec<String>,
     /// Whether this candidate is currently selected.
@@ -679,6 +681,7 @@ fn catalog_candidates_from_scan(
             slot_name: skill.slot_name.clone(),
             path: relative_path(checkout, &skill.path),
             description: skill.description.clone(),
+            compatibility: skill.compatibility.clone(),
             requires: skill.requires.clone(),
             selected: false,
         })
@@ -1952,6 +1955,7 @@ mod tests {
             slot_name: slot.to_owned(),
             path: path.to_owned(),
             description: None,
+            compatibility: None,
             requires: Vec::new(),
             selected: false,
         }

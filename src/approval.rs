@@ -203,6 +203,14 @@ fn canonical_value(paths: &StorePaths, scope: &str, value: &str) -> DaloResult<S
 
 /// Resolve a source-qualified slot or stable ID to its canonical skill ref.
 pub fn canonical_skill(paths: &StorePaths, value: &str) -> DaloResult<String> {
+    canonical_skill_record(paths, value).map(|skill| skill.source_ref)
+}
+
+/// Resolve a source-qualified slot or stable ID to the discovered skill record.
+pub fn canonical_skill_record(
+    paths: &StorePaths,
+    value: &str,
+) -> DaloResult<inventory::SkillRecord> {
     let (source_id, selector) = value
         .split_once(':')
         .filter(|(source, skill)| !source.is_empty() && !skill.is_empty())
@@ -247,7 +255,7 @@ pub fn canonical_skill(paths: &StorePaths, value: &str) -> DaloResult<String> {
                 next_command,
             )
         })?;
-    Ok(skill.source_ref.clone())
+    Ok(skill.clone())
 }
 
 /// Resolve a source-qualified slot or stable ID to its canonical agent ref.

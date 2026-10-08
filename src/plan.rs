@@ -1110,6 +1110,7 @@ mod tests {
             source_priority: 10,
             path: PathBuf::from("/store/company/review"),
             delivery: SkillDelivery::Direct,
+            compatibility: None,
             local_override: false,
             requires: Vec::new(),
         }

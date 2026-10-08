@@ -5289,11 +5289,11 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
             }
         }
         ApproveSubcommand::Skill(args) => {
-            let canonical = approval::canonical_skill(&paths, &args.value)?;
+            let skill = approval::canonical_skill_record(&paths, &args.value)?;
             let agent = prepare_agent_review(args.reviewer.reviewer)?;
             let audit_report = audit::audit_target(
                 &paths,
-                &canonical,
+                &skill.source_ref,
                 &audit::AuditOptions {
                     agent,
                     refresh: args.refresh_audit,
@@ -5320,9 +5320,16 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
                 print_json(&SkillApprovalOutcome {
                     audit: audit_report,
                     approval: approval_report,
+                    compatibility: skill.compatibility,
                 })?;
             } else {
                 status::print_audit_report(&audit_report);
+                if let Some(compatibility) = &skill.compatibility {
+                    println!(
+                        "compatibility: {}",
+                        status::terminal_safe_text(compatibility)
+                    );
+                }
                 status::print_approval_report(&approval_report, &options.store);
             }
         }
@@ -5446,6 +5453,8 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
 struct SkillApprovalOutcome {
     audit: audit::AuditReport,
     approval: approval::ApprovalReport,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    compatibility: Option<String>,
 }
 
 #[derive(serde::Serialize)]
