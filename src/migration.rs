@@ -374,6 +374,7 @@ pub fn migrate(root: &Path, apply: bool) -> DaloResult<MigrationReport> {
     if apply && report.ready {
         let manifest = Manifest {
             schema_version: 1,
+            approval: None,
             targets: targets.into_iter().collect(),
             sources: sources
                 .into_iter()
@@ -489,6 +490,7 @@ mod tests {
         let moves = vec![movement(), movement()];
         let manifest = Manifest {
             schema_version: 1,
+            approval: None,
             targets: vec!["codex".into()],
             sources: vec![],
         };
