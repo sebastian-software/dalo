@@ -1429,6 +1429,133 @@ fn scope_flags_conflict_and_store_independent_commands_stay_available() {
         .failure();
 }
 
+#[test]
+fn project_scope_neither_reads_nor_reconciles_global_provider_hook_files() {
+    let temp = tempfile::tempdir().unwrap();
+    let project = temp.path().join("project");
+    fs::create_dir(&project).unwrap();
+    let commit = upstream(&project.join("catalog"));
+    let isolated = dalo_command();
+    let environment = isolated.test_environment();
+    // Resolve provider files from HOME, as on a developer machine.
+    let dalo = || {
+        let mut command = environment.command();
+        command
+            .env_remove("CLAUDE_CONFIG_DIR")
+            .env_remove("CODEX_HOME")
+            .current_dir(&project);
+        command
+    };
+    dalo()
+        .arg("--project")
+        .arg(&project)
+        .arg("init")
+        .assert()
+        .success();
+    dalo()
+        .arg("--project")
+        .arg(&project)
+        .args(["project", "add", "fixture", "catalog", "--ref", &commit])
+        .args(["--skill", "review", "--apply"])
+        .assert()
+        .success();
+    // Dispatcher entries without ownership state in this store, as projected by
+    // the global store, are a conflict for any store that reconciles the file.
+    let global_hooks = br#"{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"dalo hook dispatch --projection x"}]}]}}"#;
+    let provider_files = [
+        environment.home.join(".claude/settings.json"),
+        environment.home.join(".codex/hooks.json"),
+    ];
+    for path in &provider_files {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, global_hooks).unwrap();
+    }
+    dalo()
+        .arg("--project")
+        .arg(&project)
+        .arg("install")
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("pending"));
+    dalo()
+        .arg("--project")
+        .arg(&project)
+        .args(["approve", "source", "fixture"])
+        .assert()
+        .success();
+    let hook_target_count =
+        |report: &serde_json::Value| report["hook_targets"].as_array().map_or(0, Vec::len);
+
+    let install = dalo()
+        .arg("--project")
+        .arg(&project)
+        .args(["--json", "install"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let install: serde_json::Value = serde_json::from_slice(&install).unwrap();
+    assert_eq!(hook_target_count(&install), 0, "{install}");
+    assert!(project.join(".claude/skills/review").is_symlink());
+    assert!(project.join(".agents/skills/review").is_symlink());
+
+    let status = dalo()
+        .arg("--project")
+        .arg(&project)
+        .args(["--json", "status", "--check"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let status: serde_json::Value = serde_json::from_slice(&status).unwrap();
+    assert_eq!(status["hook_targets"], serde_json::json!([]));
+
+    let doctor = dalo()
+        .arg("--project")
+        .arg(&project)
+        .args(["--json", "doctor", "--check"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let doctor: serde_json::Value = serde_json::from_slice(&doctor).unwrap();
+    assert!(
+        doctor["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|finding| !finding["code"].as_str().unwrap().starts_with("hook_")),
+        "{doctor}"
+    );
+    for path in &provider_files {
+        assert_eq!(fs::read(path).unwrap(), global_hooks);
+    }
+
+    // The global store still owns HOME-level hook files and keeps refusing to
+    // reconcile dispatcher entries it has no ownership state for.
+    dalo().args(["--global", "init"]).assert().success();
+    dalo()
+        .args(["--global", "target", "link", "claude"])
+        .assert()
+        .success();
+    let sync = dalo()
+        .args(["--global", "--json", "sync"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let sync: serde_json::Value = serde_json::from_slice(&sync).unwrap();
+    assert_eq!(sync["hook_targets"][0]["target"], "claude", "{sync}");
+    assert_eq!(sync["hook_targets"][0]["state"], "conflict", "{sync}");
+    for path in &provider_files {
+        assert_eq!(fs::read(path).unwrap(), global_hooks);
+    }
+}
+
 fn init_in_terminal(
     root: &std::path::Path,
     home_store: &mut std::path::PathBuf,

@@ -102,6 +102,9 @@ struct ProviderFacts {
 }
 
 /// Reconcile selected plugin hooks independently for every linked native target.
+///
+/// A project store has no native hook targets and returns an empty list
+/// without reading provider configuration.
 pub fn reconcile(
     paths: &StorePaths,
     state: &StateFile,
@@ -114,6 +117,8 @@ pub fn reconcile(
 
 /// Reconcile native hook sidecars from a hook report already built by the
 /// command's shared plugin inventory pass.
+///
+/// Like [`reconcile`], this returns no targets for a project store.
 pub fn reconcile_with_hooks(
     paths: &StorePaths,
     state: &StateFile,
@@ -131,6 +136,12 @@ fn reconcile_with_loaded_hooks(
     hooks: &[HookStatusReport],
     dry_run: bool,
 ) -> DaloResult<Vec<HookTargetReport>> {
+    // Native hook sidecars are HOME-level provider files that only the global
+    // store reconciles. A project store must neither read them nor fail on
+    // entries that another store owns, so it has no hook targets.
+    if crate::project::is_project_store(&paths.root) {
+        return Ok(Vec::new());
+    }
     let executable = env::current_exe()?;
     let mut reports = Vec::new();
     for target in state.targets.iter().filter(|target| target.enabled) {

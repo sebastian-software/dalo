@@ -545,6 +545,16 @@ pub fn repository_root(start: &Path) -> DaloResult<Option<PathBuf>> {
     Ok(None)
 }
 
+/// Whether `store` is a project's own store, identified by the ownership
+/// receipt that project installation writes when it creates `.dalo`.
+///
+/// A project store delivers only into project folders. HOME-level provider
+/// configuration, such as native hook files, belongs to the global store.
+pub(crate) fn is_project_store(store: &Path) -> bool {
+    fs::read_to_string(store.join("project-owner"))
+        .is_ok_and(|receipt| receipt == "dalo-project-v1\n")
+}
+
 fn entry_exists(path: &Path) -> DaloResult<bool> {
     match fs::symlink_metadata(path) {
         Ok(_) => Ok(true),
