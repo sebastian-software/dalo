@@ -313,6 +313,10 @@ when you intend to synchronize the global store from inside a project.</p>
 boundary, so no separate portable lockfile is needed. Changing a source&#39;s URL
 under the same ID remains explicit migration work. Declaration removals are
 reconciled by install; they never authorize deleting cached content.</p>
+<p>Project <code>install</code>, <code>status</code>, and <code>doctor</code> never read or modify global provider
+hook configuration, such as <code>~/.claude/settings.json</code> or <code>~/.codex/hooks.json</code>.
+Hooks projected by the global store cannot block a project installation, and
+project reports list no hook targets.</p>
 <h2 id="migrate-a-skillssh-project"><a class="doc-anchor" href="#migrate-a-skillssh-project">Migrate a skills.sh project</a></h2>
 <p>For a project with a version 1 <code>skills-lock.json</code>, preview a verified migration:</p>
 <pre><code class="language-sh">dalo migrate skills-sh

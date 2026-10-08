@@ -247,6 +247,11 @@ boundary, so no separate portable lockfile is needed. Changing a source's URL
 under the same ID remains explicit migration work. Declaration removals are
 reconciled by install; they never authorize deleting cached content.
 
+Project `install`, `status`, and `doctor` never read or modify global provider
+hook configuration, such as `~/.claude/settings.json` or `~/.codex/hooks.json`.
+Hooks projected by the global store cannot block a project installation, and
+project reports list no hook targets.
+
 ## Migrate a skills.sh project
 
 For a project with a version 1 `skills-lock.json`, preview a verified migration:
