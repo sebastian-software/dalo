@@ -25,7 +25,8 @@ use crate::instructions::{
 use crate::inventory::{InventoryWarning, InventoryWarningCode};
 use crate::lockfile::{self, LockDrift, LockDriftCode};
 use crate::materialize::{
-    self, MaterializeOperation, MaterializeOperationStatus, SkillDeliveryReport, SyncReport,
+    self, MaterializeOperation, MaterializeOperationStatus, MissingSkillCommand,
+    SkillDeliveryReport, SyncReport,
 };
 use crate::plan::InstallationPlan;
 use crate::plugin::{PluginInventoryWarning, PluginResolution};
@@ -1993,6 +1994,7 @@ pub fn print_sync_report(report: &SyncReport) {
         }
         print_sync_summary(report);
     }
+    print_missing_skill_commands(&report.missing_commands);
     let prefix = if report.operations.is_empty() {
         "  "
     } else {
@@ -2167,6 +2169,31 @@ fn print_sync_summary(report: &SyncReport) {
         },
         outcomes.join(", ")
     );
+}
+
+/// Print one note listing declared skill commands that are not on `PATH`.
+///
+/// Sync and install print this once, after the summary. Each entry names the
+/// skill and command, followed by its `compatibility` text as the install hint.
+fn print_missing_skill_commands(missing: &[MissingSkillCommand]) {
+    if missing.is_empty() {
+        return;
+    }
+    println!(
+        "note: {} declared command(s) missing from PATH:",
+        missing.len()
+    );
+    for entry in missing {
+        let hint = entry
+            .compatibility
+            .as_deref()
+            .map_or_else(|| "no install hint declared".to_owned(), terminal_safe_text);
+        println!(
+            "  {} wants {}: {hint}",
+            terminal_safe_text(&entry.source_ref),
+            terminal_safe_text(&entry.command),
+        );
+    }
 }
 
 fn pluralized_source_list(ids: &[String]) -> String {
