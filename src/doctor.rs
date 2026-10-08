@@ -2419,6 +2419,7 @@ mod tests {
             }],
             plugins: crate::config::PluginConfig::default(),
             plugin_policy: Vec::new(),
+            project_selections: None,
         };
         store::write_config(&paths, &config).expect("config should be written");
         fs::write(&paths.source_lock_file, "schema_version = ")
@@ -2891,6 +2892,7 @@ mod tests {
             }],
             plugins: crate::config::PluginConfig::default(),
             plugin_policy: Vec::new(),
+            project_selections: None,
         };
         store::write_config(&paths, &config).expect("config should be written");
     }
@@ -2943,6 +2945,7 @@ mod tests {
             sources,
             plugins: crate::config::PluginConfig::default(),
             plugin_policy: Vec::new(),
+            project_selections: None,
         };
         store::write_config(&paths, &config).expect("config should be written");
     }

@@ -237,6 +237,13 @@ for approval_document in docs/projects.md docs/reference.md docs/security.md \
   grep -Fq 'approval = "declaration"' "$root/$approval_document" \
     || { echo "$approval_document no longer describes the declaration approval opt-in" >&2; exit 1; }
 done
+# Project resolution is bounded by the declaration in both modes; the held-back
+# diagnostic is documented where users look up resolution codes.
+for project_bound_document in docs/projects.md docs/security.md docs/reference.md \
+  docs/troubleshooting.md docs/adr/0010-project-declarations-as-approval-authority.md; do
+  grep -Fq 'undeclared_project_skill' "$root/$project_bound_document" \
+    || { echo "$project_bound_document no longer documents undeclared_project_skill" >&2; exit 1; }
+done
 grep -Fq '[Team repository guide](docs/team.md)' "$root/README.md"
 # A reader who does not start from a team repository still needs a way in: the
 # getting-started guide routes by situation, and the README, the landing page,

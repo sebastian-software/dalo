@@ -2849,6 +2849,7 @@ requirement = "optional"
                 direct: direct.iter().map(|value| (*value).to_owned()).collect(),
             },
             plugin_policy: Vec::new(),
+            project_selections: None,
         }
     }
 

@@ -77,6 +77,14 @@ act when `postinstall`, an agent, or CI runs it. A project that reviews
 `approval = "declaration"`. Dalo then registers the declared sources as trusted
 catalogs for that project's store: the explicit selection and its required
 closure need no local approval records, and the audit gate still applies.
+Project resolution is bounded by the declaration itself, in both modes. Plugin
+selections, including one authored by a source's own `dalo.toml`
+`[selection]`, are ignored in project scope, and any catalog skill outside the
+declared selectors and their required closure is held back with an
+`undeclared_project_skill` diagnostic. Neither source trust nor a broad local
+approval delivers more than the declaration selects, and trust in a project
+store never approves instruction packs, agents, tools, hooks, or generated
+deliveries.
 Without the opt-in, project sources stay untrusted catalogs and every project
 store needs local approvals. See [Approval modes](projects.md#approval-modes)
 and [ADR 0010](adr/0010-project-declarations-as-approval-authority.md).

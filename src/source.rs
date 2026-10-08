@@ -74,6 +74,13 @@ pub struct SourceConfig {
     /// Whether the source participates in resolution.
     pub enabled: bool,
     /// Whether this source is configured as trusted.
+    ///
+    /// Trust approves the source's resolved skills and, outside project
+    /// stores, its instruction packs. It never approves agents, tools, hooks,
+    /// or generated deliveries, which need their own exact approval records.
+    /// In a project store, install sets it from the declaration's approval
+    /// mode, and project resolution bounds it to the declared selections and
+    /// their required closure; see `resolver::restrict_to_declared_closure`.
     pub trusted: bool,
     /// Optional Git URL for team sources.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1631,6 +1638,7 @@ mod tests {
             ],
             plugins: crate::config::PluginConfig::default(),
             plugin_policy: Vec::new(),
+            project_selections: None,
         };
         let mut inspections = BTreeMap::new();
 
@@ -1695,6 +1703,7 @@ mod tests {
             }],
             plugins: crate::config::PluginConfig::default(),
             plugin_policy: Vec::new(),
+            project_selections: None,
         };
 
         let failures = refresh_tracking_team_sources_with(
@@ -1736,6 +1745,7 @@ mod tests {
             }],
             plugins: crate::config::PluginConfig::default(),
             plugin_policy: Vec::new(),
+            project_selections: None,
         };
 
         let error = refresh_tracking_team_sources_with(&config, |_| Ok(true), |_| Ok(()))

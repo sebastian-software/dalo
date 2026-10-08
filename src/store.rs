@@ -788,6 +788,10 @@ pub fn read_config(paths: &StorePaths) -> DaloResult<UserConfig> {
         }
     }
     validate_plugin_config(&paths.config_file, &config)?;
+    // Derived from the store, not from config.toml, so an edited or copied
+    // config cannot move a project store out of project resolution.
+    config.project_selections = crate::project::is_project_store(&paths.root)
+        .then(|| crate::project::declared_selections(&paths.root));
     Ok(config)
 }
 

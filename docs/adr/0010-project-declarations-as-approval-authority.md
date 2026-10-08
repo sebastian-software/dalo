@@ -43,10 +43,29 @@ preserve the schema version, the field, and its formatting.
 `install` reconciles each declared source's persisted `trusted` flag from the
 declared mode on every run, through the existing journaled snapshot path:
 `declaration` registers trusted catalogs, `local` registers untrusted catalogs.
-A trusted catalog still activates only its explicit selection and its required
-closure. Until `install` has reconciled the store, `status`, `doctor`, `audit`,
+Until `install` has reconciled the store, `status`, `doctor`, `audit`,
 `approve`, `project add`, and `project update` refuse a store whose flags
 differ from the declaration.
+
+Source trust alone is wider than the declaration: a source can reach further
+skills through other selection paths, such as a plugin that its own
+`dalo.toml` selects with `[selection]`. Project resolution therefore bounds
+every project store to the declaration itself, in both modes and in the one
+resolution path that `install`, `status`, `doctor`, and the removal preview
+share:
+
+- Plugin selections are ignored in project scope, whether a source's own
+  `dalo.toml` authors them or they are selected directly. They add no skills,
+  and nothing is projected as a provider plugin.
+- Any catalog skill outside the declaration's selectors and their required
+  closure, computed from `dalo-project.toml` rather than from the store's
+  configuration, is held back with an `undeclared_project_skill` diagnostic.
+  It is never linked, and `install` and `status --check` fail. Neither source
+  trust nor a broad local approval such as `dalo approve source` can deliver
+  more than the declaration selects.
+- Source trust in a project store never approves instruction packs, agents,
+  tools, hooks, or generated deliveries. They keep needing their own exact
+  approvals.
 
 This amends two statements of ADR 0009 for opted-in projects: "Declarations
 cannot grant trust" and the reuse of "local content-bound approvals". The rest
@@ -102,5 +121,9 @@ CLI tests use real local Git repositories and isolated homes to verify fresh
 installs, a second clone, and a `git worktree` without approval records;
 declaration updates to changed content; blocking audits with a local risk
 acceptance; switching back to pending with preserved local approvals; the
-selection and closure boundary of a trusted catalog; dirty sources and unmanaged
-targets; editor preservation of schema version 2; and fail-closed parsing.
+selection and closure boundary of a trusted catalog; a source whose own
+`dalo.toml` selects a plugin bundling an undeclared skill, in both modes, with
+no plugin projection and no change below `HOME`; withdrawal of earlier plugin
+projections and of a locally widened selection; instruction packs that trust
+does not approve; dirty sources and unmanaged targets; editor preservation of
+schema version 2; and fail-closed parsing.

@@ -1482,7 +1482,7 @@ canonical `resolved_commit`, and the observed `checkout_commit`. For catalogs,
 the resolved commit comes from `source-lock.toml`; a differing checkout commit
 is preserved in output so drift remains visible.
 
-Resolution diagnostics use these codes when present in `status.resolution.diagnostics`: `pending_approval`, `local_override`, `shadowed`, `required_expanded`, `cross_source_require`, `required_blocked`, `legacy_bare_approval`, `audit_failed`, and `blocked_winner_alternate_available`. Each JSON entry has `code`, a human-readable `message`, and optional `source_ref`. `blocked_winner_alternate_available` is advisory: its `source_ref` identifies the approved alternate, while `required_blocked` identifies the blocked winner and remains the check-blocking diagnostic. For recovery steps, see [Troubleshooting and FAQ](troubleshooting.md).
+Resolution diagnostics use these codes when present in `status.resolution.diagnostics`: `pending_approval`, `local_override`, `shadowed`, `required_expanded`, `cross_source_require`, `required_blocked`, `legacy_bare_approval`, `audit_failed`, `blocked_winner_alternate_available`, and `undeclared_project_skill`. Each JSON entry has `code`, a human-readable `message`, and optional `source_ref`. `blocked_winner_alternate_available` is advisory: its `source_ref` identifies the approved alternate, while `required_blocked` identifies the blocked winner and remains the check-blocking diagnostic. `undeclared_project_skill` appears only for a project store: it names a skill outside the declaration's selectors and their required closure, which is held back and makes `--check` fail. For recovery steps, see [Troubleshooting and FAQ](troubleshooting.md).
 
 ## Store Layout
 
@@ -1734,7 +1734,15 @@ Fields:
 
 Unknown fields are rejected. `project add`, `project update`, and
 `project remove` change only source entries and preserve the schema version,
-the `approval` field, comments, and formatting. See
+the `approval` field, comments, and formatting.
+
+In both approval modes, a project store delivers only the declared selectors
+and their required closure. A plugin selection in a source's own `dalo.toml`
+(`[selection]`) is ignored in project scope and projects nothing; any other
+skill outside the declared closure is held back with an
+`undeclared_project_skill` diagnostic. Source trust in a project store approves
+skills only, never instruction packs, agents, tools, hooks, or generated
+deliveries. See
 [Project installations](projects.md#approval-modes) for the approval modes and
 the migration path.
 

@@ -117,6 +117,7 @@ pub fn validate_with_source_id(
                 .collect(),
         },
         plugin_policy: Vec::new(),
+        project_selections: None,
     };
     // Run the same graph resolver and component projection used by normal
     // planning. The synthetic config is in-memory and carries no approvals.

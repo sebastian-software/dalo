@@ -142,8 +142,11 @@ A remaining block is an audit finding, dirty source, target conflict, or a store
 not yet reconciled with `install`. A blocking finding still needs the user's
 decision; only after they accept the risk, record it with
 `dalo audit <source:skill> --accept-risk "<reason>"`, which creates no approval
-record. Schema version 1 and `approval = "local"` keep per-store local
-approvals. Opting in is a declaration change for the repository's own review,
+record. In both modes a project delivers only the declared selectors and their
+required skills: a source's own `dalo.toml` plugin selection is ignored, and
+an `undeclared_project_skill` diagnostic means the store resolved something
+else, which `install` withdraws. Schema version 1 and `approval = "local"` keep
+per-store local approvals. Opting in is a declaration change for the repository's own review,
 and every teammate and automation then needs a Dalo version that supports
 schema version 2. Suggest it when a team wants reproducible project installs;
 do not make it a side effect of another request. See

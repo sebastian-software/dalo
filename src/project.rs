@@ -1,6 +1,6 @@
 //! Project discovery and isolated stores with portable, commit-pinned declarations.
 
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -18,6 +18,9 @@ use toml_edit::{Array as TomlArray, DocumentMut, Item as TomlItem, Value as Toml
 
 /// Separate from the existing team-source `dalo.toml` format.
 pub const MANIFEST: &str = "dalo-project.toml";
+
+/// Declarations above this size are rejected rather than parsed.
+const MAX_MANIFEST_BYTES: usize = 1024 * 1024;
 
 /// Who approves the skills a project declaration selects.
 ///
@@ -609,6 +612,46 @@ pub(crate) fn is_project_store(store: &Path) -> bool {
         .is_ok_and(|receipt| receipt == "dalo-project-v1\n")
 }
 
+/// Declared skill selectors per source ID for the project that owns `store`.
+///
+/// Project resolution delivers no catalog skill beyond these selectors and
+/// their required closure, independently of the store's own configuration,
+/// approvals, or source trust. The declaration is read from the store's
+/// parent, the project root. A missing, redirected, oversized, or unparsable
+/// declaration yields no selectors, so nothing from a catalog is delivered.
+pub(crate) fn declared_selections(store: &Path) -> BTreeMap<String, Vec<String>> {
+    let Some(root) = store.parent() else {
+        return BTreeMap::new();
+    };
+    let path = root.join(MANIFEST);
+    if !fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.is_file()) {
+        return BTreeMap::new();
+    }
+    read_manifest_text(&path)
+        .ok()
+        .and_then(|text| toml::from_str::<Manifest>(&text).ok())
+        .map(|manifest| {
+            manifest
+                .sources
+                .into_iter()
+                .map(|source| (source.id, source.skills))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Read a declaration with the size bound every reader applies.
+fn read_manifest_text(path: &Path) -> DaloResult<String> {
+    let mut text = String::new();
+    fs::File::open(path)?
+        .take(u64::try_from(MAX_MANIFEST_BYTES).unwrap_or(u64::MAX) + 1)
+        .read_to_string(&mut text)?;
+    if text.len() > MAX_MANIFEST_BYTES {
+        return Err(invalid("project manifest exceeds 1 MiB"));
+    }
+    Ok(text)
+}
+
 fn entry_exists(path: &Path) -> DaloResult<bool> {
     match fs::symlink_metadata(path) {
         Ok(_) => Ok(true),
@@ -860,13 +903,7 @@ impl Project {
     /// Read a bounded, validated project manifest without changing state.
     pub fn manifest(&self) -> DaloResult<Manifest> {
         check_path(&self.root, Path::new(MANIFEST))?;
-        let mut text = String::new();
-        fs::File::open(self.root.join(MANIFEST))?
-            .take(1024 * 1024 + 1)
-            .read_to_string(&mut text)?;
-        if text.len() > 1024 * 1024 {
-            return Err(invalid("project manifest exceeds 1 MiB"));
-        }
+        let text = read_manifest_text(&self.root.join(MANIFEST))?;
         let manifest: Manifest =
             toml::from_str(&text).map_err(|e| invalid(format!("invalid {MANIFEST}: {e}")))?;
         match manifest.schema_version {

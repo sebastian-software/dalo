@@ -1,5 +1,6 @@
 //! User configuration schema and validation.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -25,6 +26,16 @@ pub struct UserConfig {
     /// Explicit local plugin policy decisions.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub plugin_policy: Vec<PluginPolicy>,
+    /// Declared skill selectors of the project this store belongs to, keyed by
+    /// source ID. `Some` marks a project store, identified by its ownership
+    /// receipt when the store is read; the selectors come from the adjacent
+    /// `dalo-project.toml`. Never persisted.
+    ///
+    /// Project resolution ignores every plugin selection and delivers no
+    /// catalog skill beyond these selectors and their required closure,
+    /// whatever approvals or source trust exist in that store.
+    #[serde(skip)]
+    pub project_selections: Option<BTreeMap<String, Vec<String>>>,
 }
 
 /// Local plugin selection settings.
@@ -108,6 +119,13 @@ impl UserConfig {
             }],
             plugins: PluginConfig::default(),
             plugin_policy: Vec::new(),
+            project_selections: None,
         }
+    }
+
+    /// Whether this configuration was read from a project store.
+    #[must_use]
+    pub const fn is_project_store(&self) -> bool {
+        self.project_selections.is_some()
     }
 }

@@ -242,6 +242,11 @@ dalo --json doctor
 <td>Use the closure block reason below to fix the dependency, approval, shadowing, or target conflict.</td>
 </tr>
 <tr>
+<td><code>undeclared_project_skill</code></td>
+<td>A project store resolved a skill outside <code>dalo-project.toml</code>&#39;s selectors and their required closure, for example after a global command such as <code>dalo --store &lt;project&gt;/.dalo source select</code> changed the store&#39;s selection outside project scope. Dalo holds it back and does not link it.</td>
+<td>Run <code>dalo install</code> to restore the declared selection. To deliver the skill, add it to the declaration through review with <code>dalo project update &lt;source&gt; --skill ...</code>.</td>
+</tr>
+<tr>
 <td><code>blocked_winner_alternate_available</code></td>
 <td>A higher-precedence winner was blocked by its required closure while an approved lower-precedence alternate for the same slot remains shadowed. This advisory does not auto-promote the alternate or itself make <code>--check</code> fail; the related <code>required_blocked</code> diagnostic does.</td>
 <td>Resolve the winner&#39;s blocked requirement(s), or give the approved alternate higher precedence with a lower <code>dalo source priority</code> value.</td>

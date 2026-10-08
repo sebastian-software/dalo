@@ -2580,3 +2580,319 @@ fn approval_outside_schema_2_and_unknown_modes_fail_closed() {
         assert!(!project.join(".claude").exists());
     }
 }
+
+/// Upstream whose own `dalo.toml` selects a plugin bundling `extra`, beside the
+/// `review` skill a project declares.
+fn plugin_stack_upstream(repo: &Path) -> String {
+    upstream(repo);
+    write_project_skill(repo, "extra", "");
+    fs::create_dir_all(repo.join("plugins/bundle")).unwrap();
+    fs::write(
+        repo.join("plugins/bundle/PLUGIN.toml"),
+        "schema_version = 1\n\n[plugin]\nname = \"bundle\"\ndescription = \"Bundles the extra skill.\"\n\n[[plugin.members]]\nref = \"skill:extra\"\nrequirement = \"required\"\n",
+    )
+    .unwrap();
+    fs::write(
+        repo.join("dalo.toml"),
+        "[source]\nid = \"shared\"\n\n[selection]\nplugins = [{ ref = \"shared:bundle\", requirement = \"required\" }]\n",
+    )
+    .unwrap();
+    commit_all(repo, "select a plugin from the source manifest")
+}
+
+/// Every path below `root`, without following symlinks.
+fn tree_listing(root: &Path) -> Vec<std::path::PathBuf> {
+    let mut paths = Vec::new();
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(directory) = pending.pop() {
+        let Ok(entries) = fs::read_dir(&directory) else {
+            continue;
+        };
+        for entry in entries {
+            let path = entry.unwrap().path();
+            if fs::symlink_metadata(&path).unwrap().is_dir() {
+                pending.push(path.clone());
+            }
+            paths.push(path.strip_prefix(root).unwrap().to_path_buf());
+        }
+    }
+    paths.sort();
+    paths
+}
+
+fn folder_entries(folder: &Path) -> Vec<String> {
+    let mut names = fs::read_dir(folder)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    names.sort();
+    names
+}
+
+#[test]
+fn project_scope_ignores_source_plugin_selections_in_both_approval_modes() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo = temp.path().join("upstream");
+    let commit = plugin_stack_upstream(&repo);
+    for mode in ["declaration", "local"] {
+        let project = temp.path().join(format!("project-{mode}"));
+        fs::create_dir(&project).unwrap();
+        fs::write(
+            project.join("dalo-project.toml"),
+            format!(
+                "schema_version = 2\napproval = {mode:?}\ntargets = [\"claude\", \"codex\"]\n\n[[source]]\nid = \"shared\"\nurl = {:?}\ncommit = {commit:?}\nskills = [\"review\"]\n",
+                repo.to_str().unwrap()
+            ),
+        )
+        .unwrap();
+        let isolated = dalo_command();
+        let environment = isolated.test_environment();
+        let provider_roots = [
+            environment.home.clone(),
+            environment.claude_config_dir.clone(),
+            environment.codex_home.clone(),
+        ];
+        let before = provider_roots
+            .iter()
+            .map(|root| tree_listing(root))
+            .collect::<Vec<_>>();
+        let dalo = || {
+            let mut command = environment.command();
+            command.current_dir(&project);
+            command
+        };
+        if mode == "local" {
+            dalo().arg("install").assert().failure();
+            // Even a source-wide local approval reaches only the declared
+            // selection and its required closure in project scope.
+            dalo()
+                .args(["approve", "source", "shared"])
+                .assert()
+                .success();
+        }
+
+        let install = dalo()
+            .args(["--json", "install"])
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+        let install: serde_json::Value = serde_json::from_slice(&install).unwrap();
+        assert_eq!(
+            install["plugin_targets"].as_array().map_or(0, Vec::len),
+            0,
+            "{mode}: {install}"
+        );
+        for folder in [".claude/skills", ".agents/skills"] {
+            assert_eq!(
+                folder_entries(&project.join(folder)),
+                vec!["review".to_owned()],
+                "{mode}: only the declared skill is delivered to {folder}"
+            );
+        }
+        assert!(!project.join(".agents/plugins").exists(), "{mode}");
+        assert!(!project.join(".dalo/plugins/artifacts").exists(), "{mode}");
+
+        let status = dalo()
+            .args(["--json", "status", "--check"])
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+        let status: serde_json::Value = serde_json::from_slice(&status).unwrap();
+        assert_eq!(
+            status["plugins"]["plugins"],
+            serde_json::json!([]),
+            "{mode}"
+        );
+        assert_eq!(status["plugin_targets"], serde_json::json!([]), "{mode}");
+        assert!(
+            status["resolution"]["active_skills"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|skill| skill["source_ref"] == "shared:review"),
+            "{mode}: {status}"
+        );
+        dalo()
+            .args(["--json", "doctor", "--check"])
+            .assert()
+            .success();
+        let preview = dalo()
+            .args(["--json", "--dry-run", "install"])
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+        let preview: serde_json::Value = serde_json::from_slice(&preview).unwrap();
+        assert_eq!(
+            preview["removals"]["link_operations"],
+            serde_json::json!([]),
+            "{mode}: {preview}"
+        );
+        assert_eq!(
+            preview["removals"]["deactivated_skills"],
+            serde_json::json!([]),
+            "{mode}: {preview}"
+        );
+
+        let after = provider_roots
+            .iter()
+            .map(|root| tree_listing(root))
+            .collect::<Vec<_>>();
+        assert_eq!(before, after, "{mode}: no HOME-level provider changes");
+    }
+}
+
+#[test]
+fn project_install_withdraws_undeclared_skills_and_stale_plugin_projections() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo = temp.path().join("upstream");
+    let commit = plugin_stack_upstream(&repo);
+    let project = temp.path().join("project");
+    fs::create_dir(&project).unwrap();
+    fs::write(
+        project.join("dalo-project.toml"),
+        format!(
+            "schema_version = 2\napproval = \"declaration\"\ntargets = [\"claude\", \"codex\"]\n\n[[source]]\nid = \"shared\"\nurl = {:?}\ncommit = {commit:?}\nskills = [\"review\"]\n",
+            repo.to_str().unwrap()
+        ),
+    )
+    .unwrap();
+    dalo_command()
+        .current_dir(&project)
+        .arg("install")
+        .assert()
+        .success();
+    let store = project.join(".dalo");
+    let claude = project.join(".claude/skills");
+    let codex_plugins = project.join(".agents/plugins/dalo");
+
+    // Model a store that delivered the source's plugin selection before
+    // project resolution ignored it: without its ownership receipt, the same
+    // store resolves like any other store.
+    let receipt = store.join("project-owner");
+    let saved_receipt = fs::read(&receipt).unwrap();
+    fs::remove_file(&receipt).unwrap();
+    dalo_command()
+        .arg("--store")
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    assert!(claude.join("extra").is_symlink());
+    assert!(
+        folder_entries(&claude)
+            .iter()
+            .any(|name| name.starts_with("dalo-shared-bundle-"))
+    );
+    assert_eq!(folder_entries(&codex_plugins).len(), 1);
+    fs::write(&receipt, saved_receipt).unwrap();
+
+    // Install withdraws the undeclared skill and the owned plugin projections.
+    dalo_command()
+        .current_dir(&project)
+        .args(["--json", "install"])
+        .assert()
+        .success();
+    assert_eq!(folder_entries(&claude), vec!["review".to_owned()]);
+    assert_eq!(
+        folder_entries(&project.join(".agents/skills")),
+        vec!["review".to_owned()]
+    );
+    assert!(folder_entries(&codex_plugins).is_empty());
+
+    // A selection widened outside project scope is still not delivered: the
+    // declaration, not the store's configuration, bounds what may be linked.
+    dalo_command()
+        .arg("--store")
+        .arg(&store)
+        .args(["source", "select", "shared", "extra"])
+        .assert()
+        .success();
+    let sync = dalo_command()
+        .arg("--store")
+        .arg(&store)
+        .args(["--json", "sync", "--check"])
+        .assert()
+        .failure()
+        .get_output()
+        .stdout
+        .clone();
+    let sync: serde_json::Value = serde_json::from_slice(&sync).unwrap();
+    assert!(
+        sync["resolution"]["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(
+                |diagnostic| diagnostic["code"] == "undeclared_project_skill"
+                    && diagnostic["source_ref"] == "shared:extra"
+            ),
+        "{sync}"
+    );
+    assert!(!claude.join("extra").exists());
+    dalo_command()
+        .current_dir(&project)
+        .arg("status")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("project selection differs"));
+    dalo_command()
+        .current_dir(&project)
+        .args(["status", "--check"])
+        .assert()
+        .failure();
+    dalo_command()
+        .current_dir(&project)
+        .arg("install")
+        .assert()
+        .success();
+    assert_eq!(folder_entries(&claude), vec!["review".to_owned()]);
+    dalo_command()
+        .current_dir(&project)
+        .args(["status", "--check"])
+        .assert()
+        .success();
+}
+
+#[test]
+fn declaration_trust_never_approves_instruction_packs() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo = temp.path().join("upstream");
+    upstream(&repo);
+    fs::create_dir_all(repo.join("instructions")).unwrap();
+    fs::write(
+        repo.join("instructions/style.md"),
+        "# Team Style\n\nUse concise review comments.\n",
+    )
+    .unwrap();
+    let commit = commit_all(&repo, "add an instruction pack");
+    let project = temp.path().join("project");
+    fs::create_dir(&project).unwrap();
+    declaration_manifest(&project, &repo, &commit, &["review"]);
+    dalo_command()
+        .current_dir(&project)
+        .arg("install")
+        .assert()
+        .success();
+    assert!(shared_source_is_trusted(&project));
+
+    // The declaration approves skills only. Source trust in a project store
+    // does not stand in for the source approval an instruction pack needs.
+    let instruction_file = temp.path().join("AGENTS.md");
+    dalo_command()
+        .arg("--store")
+        .arg(project.join(".dalo"))
+        .args(["instructions", "enable", "shared:style"])
+        .arg(&instruction_file)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "approval for instruction pack `shared:style` is missing",
+        ));
+    assert!(!instruction_file.exists());
+}
