@@ -967,8 +967,8 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Keep the actionable tool, hook, plugin-projection, inventory, and owned-link
-# doctor rows in the troubleshooting table aligned with the production emitter.
+# Keep the actionable binary, tool, hook, plugin-projection, inventory, and
+# owned-link doctor rows in the troubleshooting table aligned with the production emitter.
 # The expected names come from DoctorCode callsites and its serializer mapping;
 # this deliberately avoids a hand-maintained list of code strings.
 doctor_source="$root/src/doctor.rs"
@@ -984,7 +984,7 @@ awk '
 ' "$doctor_source" \
   | grep -o 'DoctorCode::[A-Za-z0-9_]*' \
   | sed 's/DoctorCode:://' \
-  | grep -E '^(Tool|Hook|PluginProjection|SourceInventoryDegraded|OwnedSymlinkRepointed)' \
+  | grep -E '^(Binary|Tool|Hook|PluginProjection|SourceInventoryDegraded|OwnedSymlinkRepointed)' \
   | sort -u > "$doctor_emitted"
 
 awk '
@@ -1032,7 +1032,7 @@ awk '
   }
 ' "$root/docs/troubleshooting.md" > "$doctor_table"
 
-grep -E '^(tool_.*|hook_.*|plugin_projection_.*|source_inventory_degraded|owned_symlink_repointed)$' \
+grep -E '^(binary_.*|tool_.*|hook_.*|plugin_projection_.*|source_inventory_degraded|owned_symlink_repointed)$' \
   "$doctor_table" | sort > "$doctor_documented"
 
 duplicates="$(sort "$doctor_documented" | uniq -d)"

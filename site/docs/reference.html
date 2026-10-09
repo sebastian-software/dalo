@@ -1075,16 +1075,20 @@ followed by an actionable diagnostic. <code>show</code> returns the declaration 
 platform&#39;s asset, digest, and derived URL, the platform of the running Dalo
 binary, the exact approval value, the staged path when present, and the
 diagnostic. States are <code>platform_unsupported</code>, <code>pending_approval</code>, <code>hash_drift</code>,
-<code>revoked</code>, <code>approved_not_staged</code>, <code>audit_failure</code>, and <code>ready</code>. This release has
-no command that grants a binary approval or stages its bytes, so users see
-<code>platform_unsupported</code> or <code>pending_approval</code> in practice. <code>binary list --check</code>
-returns a non-zero exit code when any skill has an invalid binary declaration;
-each one is listed as an <code>invalid_binary_declaration</code> warning. <code>dalo --json status</code> also lists the binaries of each active skill under
-<code>resolution.active_skills[].binaries</code>.</p>
+<code>revoked</code>, <code>approved_not_staged</code>, <code>audit_failure</code>, and <code>ready</code>. <code>ready</code> requires
+the exact approval, staged bytes that re-hash to the pinned digest, and the
+exposure link <code>&lt;store&gt;/bin/&lt;id&gt;</code> pointing at those bytes; <code>show</code> reports that
+link as <code>exposed_path</code>. Verified bytes that are staged but not linked report
+<code>approved_not_staged</code> with the command that links them. Only
+<code>dalo approve binary &lt;identity&gt;</code> downloads or stages a binary; <code>list</code> and <code>show</code>
+never do. <code>binary list --check</code> returns a non-zero exit code when any skill has
+an invalid binary declaration; each one is listed as an
+<code>invalid_binary_declaration</code> warning. <code>dalo --json status</code> also lists the
+binaries of each active skill under <code>resolution.active_skills[].binaries</code>.</p>
 <p>JSON shapes: <code>BinaryListReport</code> (<code>binaries[]</code>, <code>warnings[]</code>) and
 <code>BinaryStatusReport</code> (<code>binary</code>, <code>skill_source_ref</code>, <code>skill_path</code>,
 <code>source_provenance</code>, <code>approval_value</code>, <code>host_platform</code>, <code>state</code>, optional
-<code>staged_path</code>, <code>diagnostic</code>).</p>
+<code>staged_path</code>, optional <code>exposed_path</code>, <code>diagnostic</code>).</p>
 <h3 id="dalo-hook-list---check-dalo-hook-show-sourcepluginhookid"><a class="doc-anchor" href="#dalo-hook-list---check-dalo-hook-show-sourcepluginhookid"><code>dalo hook list [--check]</code>; <code>dalo hook show &lt;source:plugin#hook:id&gt;</code></a></h3>
 <p>Inspect portable hook contracts without installing or executing them:</p>
 <pre><code class="language-sh">dalo hook list --check
@@ -1111,6 +1115,7 @@ dalo approve skill public:review-helper --reviewer codex
 dalo approve skill public:review-helper --accept-risk &quot;reviewed exception&quot;
 dalo approve agent team:reviewer
 dalo approve tool team:quality#tool:detector
+dalo approve binary team:page-engine#binary:impeccino
 dalo approve delivery team:generated-review
 dalo approve hook team:quality#hook:pre-commit
 dalo approve source team
@@ -1118,6 +1123,7 @@ dalo approve author public:maintainers
 dalo approve org public:example-org
 dalo approve revoke skill public:review-helper
 dalo approve revoke tool team:quality#tool:detector
+dalo approve revoke binary team:page-engine#binary:impeccino
 dalo approve revoke delivery team:generated-review
 dalo approve revoke hook team:quality#hook:pre-commit
 </code></pre>
@@ -1125,14 +1131,19 @@ dalo approve revoke hook team:quality#hook:pre-commit
 <code>status</code> can be approved narrowly with <code>dalo approve skill &lt;source:skill&gt;</code>.
 A pending canonical agent shown by <code>agent list</code> can be activated with
 <code>dalo approve agent &lt;source:agent&gt;</code>. Tool approval validates and immutably
-stages the exact executable closure without running it. Delivery approval is
+stages the exact executable closure without running it. Binary approval
+downloads only the host platform&#39;s asset over HTTPS from GitHub, verifies its
+SHA-256 digest before anything is renamed into place, stages the bytes read-only
+under <code>binaries/&lt;sha256&gt;/</code>, links them at <code>&lt;store&gt;/bin/&lt;id&gt;</code>, and then records
+the exact approval. A mismatch, an oversized asset, or a redirect outside GitHub
+fails without writing anything. Revoking a binary removes only the approval; its
+staged bytes and link stay until a later cleanup. Delivery approval is
 inert and grants only the exact revision- and recipe-bound generated delivery.
 Hook approval grants the exact hook contract after its referenced tool is
 ready. Revoking a generated delivery withdraws its Dalo-owned materialized
 output on the next sync. The revoke scope is one of <code>skill</code>, <code>agent</code>, <code>tool</code>,
-<code>delivery</code>, <code>hook</code>,
-<code>source</code>, <code>author</code>, or <code>org</code>; Clap validates this value and exposes the choices
-to shell completion.
+<code>binary</code>, <code>delivery</code>, <code>hook</code>, <code>source</code>, <code>author</code>, or <code>org</code>; Clap validates this
+value and exposes the choices to shell completion.
 Skill approval always runs the deterministic preflight first and refuses a
 blocking result unless a reason is supplied with <code>--accept-risk</code>. <code>--reviewer</code>
 adds the same isolated semantic review as <code>dalo audit</code>.</p>
@@ -1144,12 +1155,19 @@ scope binding, and a same-store command for re-inspection. The human output
 explains that <code>@sha256:</code> suffixes bind a record to an exact reviewed contract or
 recipe hash.</p>
 <p>JSON output shapes: <code>ApprovalListReport</code> for <code>list</code>; successful <code>approve skill</code>
-output is <code>{ &quot;audit&quot;: AuditReport, &quot;approval&quot;: ApprovalReport }</code>; <code>agent</code>,
-<code>source</code>, <code>author</code>, and <code>org</code> mutations emit a bare <code>ApprovalReport</code>; tool,
-delivery, and hook grants and revocations emit <code>ToolApprovalReport</code>,
-<code>DeliveryApprovalReport</code>, and <code>HookApprovalReport</code>, respectively. Other
-revocations emit <code>ApprovalReport</code>. If the skill audit blocks approval, Dalo
-prints only the blocking <code>AuditReport</code> and exits non-zero.</p>
+output is <code>{ &quot;audit&quot;: AuditReport, &quot;approval&quot;: ApprovalReport }</code>, plus
+<code>compatibility</code> when the skill declares it and <code>binaries[]</code> when it declares
+release binaries; <code>agent</code>, <code>source</code>, <code>author</code>, and <code>org</code> mutations emit a bare
+<code>ApprovalReport</code>; tool, binary, delivery, and hook grants and revocations emit
+<code>ToolApprovalReport</code>, <code>BinaryApprovalReport</code>, <code>DeliveryApprovalReport</code>, and
+<code>HookApprovalReport</code>, respectively. Other revocations emit <code>ApprovalReport</code>. If
+the skill audit blocks approval, Dalo prints only the blocking <code>AuditReport</code> and
+exits non-zero.</p>
+<p>After a successful <code>approve skill</code>, the human output names each binary the skill
+declares: <code>binary &lt;identity&gt;: ready</code> when it is ready, and otherwise its state
+with the command that approves it, for example
+<code>binary &lt;identity&gt;: pending_approval (run: dalo approve binary &lt;identity&gt;)</code>.
+Skill approval never approves a binary; the binary keeps its own approval.</p>
 <h3 id="dalo-instructions-enable-pack-ref-file--target-agent"><a class="doc-anchor" href="#dalo-instructions-enable-pack-ref-file--target-agent"><code>dalo instructions enable &lt;pack-ref&gt; &lt;file|--target agent...&gt;</code></a></h3>
 <p>Render a local pack from <code>local/instructions/&lt;pack&gt;.md</code>, or a source-backed pack
 selected as <code>&lt;source&gt;:&lt;pack&gt;</code>, into an instruction file as a managed block. The
@@ -1479,7 +1497,7 @@ dalo completions fish &gt; dalo.fish
 <tr>
 <td><code>binary show</code></td>
 <td><code>BinaryStatusReport</code></td>
-<td>declaration, owning skill and source provenance, <code>approval_value</code>, <code>host_platform</code>, <code>state</code>, optional <code>staged_path</code>, <code>diagnostic</code></td>
+<td>declaration, owning skill and source provenance, <code>approval_value</code>, <code>host_platform</code>, <code>state</code>, optional <code>staged_path</code>, optional <code>exposed_path</code>, <code>diagnostic</code></td>
 </tr>
 <tr>
 <td><code>autosync install</code> / <code>uninstall</code></td>
@@ -1519,7 +1537,7 @@ dalo completions fish &gt; dalo.fish
 <tr>
 <td><code>approve skill</code></td>
 <td>audited approval outcome</td>
-<td><code>audit</code> (<code>AuditReport</code>), <code>approval</code> (<code>ApprovalReport</code>), optional <code>compatibility</code></td>
+<td><code>audit</code> (<code>AuditReport</code>), <code>approval</code> (<code>ApprovalReport</code>), optional <code>compatibility</code>, optional <code>binaries[]</code> (<code>BinaryStatusReport</code>, omitted when the skill declares none)</td>
 </tr>
 <tr>
 <td><code>approve agent</code> / <code>source</code> / <code>author</code> / <code>org</code></td>
@@ -1530,6 +1548,11 @@ dalo completions fish &gt; dalo.fish
 <td><code>approve tool</code> / <code>approve revoke tool</code></td>
 <td><code>ToolApprovalReport</code></td>
 <td><code>tool</code>, content-bound <code>approval_value</code>, <code>action</code>, optional immutable <code>staged_path</code>, <code>dry_run</code></td>
+</tr>
+<tr>
+<td><code>approve binary</code> / <code>approve revoke binary</code></td>
+<td><code>BinaryApprovalReport</code></td>
+<td><code>binary</code> (identity), content-bound <code>approval_value</code>, <code>action</code> (<code>planned</code>, <code>granted</code>, <code>unchanged</code>, or <code>revoked</code>), optional <code>staged_path</code> and <code>exposed_path</code>, <code>dry_run</code></td>
 </tr>
 <tr>
 <td><code>approve delivery</code> / <code>approve revoke delivery</code></td>
@@ -1797,12 +1820,12 @@ is preserved in output so drift remains visible.</p>
 <td>The first native plugin projection is applied; the state file records projection ownership.</td>
 </tr>
 <tr>
-<td><code>binaries/</code></td>
-<td>Reserved; created when the first binary is approved.</td>
+<td><code>binaries/&lt;sha256&gt;/&lt;id&gt;</code></td>
+<td>Created by the first <code>dalo approve binary</code> for that digest: the verified asset, read-only, addressed by its pinned SHA-256. Later approvals of the same bytes reuse it.</td>
 </tr>
 <tr>
-<td><code>bin/</code></td>
-<td>Reserved; created when the first binary is approved.</td>
+<td><code>bin/&lt;id&gt;</code></td>
+<td>Created by <code>dalo approve binary</code>: a relative symlink to the verified file, the stable path launchers look for.</td>
 </tr>
 </tbody></table></div>
 <p>Provider plugin and hook projections are <strong>experimental</strong>: the native files
@@ -2438,7 +2461,7 @@ binaries:
 <tr>
 <td><code>binaries</code></td>
 <td>no</td>
-<td>Verified release binaries the skill needs, keyed by id. Dalo validates each declaration, inventories it with <code>dalo binary list</code> and <code>dalo binary show</code>, and will fetch, verify, and expose the host asset in a later release.</td>
+<td>Verified release binaries the skill needs, keyed by id. Dalo validates each declaration, shows its state with <code>dalo binary list</code> and <code>dalo binary show</code>, and downloads, verifies, stages, and exposes the host asset only through <code>dalo approve binary</code>.</td>
 </tr>
 </tbody></table></div>
 <p><strong>Binary declarations.</strong> <code>binaries</code> maps each binary id to one declaration. The
@@ -2465,8 +2488,25 @@ reports one <code>invalid_binary_declaration</code> warning naming the binary id
 so the skill does not activate. Dalo releases that predate this field ignore
 <code>binaries</code> and activate the skill without the binary, so upgrade before relying
 on a declaration. A YAML error inside <code>binaries</code> makes the whole
-frontmatter malformed, as any other frontmatter error does. This release only
-inventories declarations; it never fetches or verifies a release asset.</p>
+frontmatter malformed, as any other frontmatter error does.</p>
+<p>Reading a declaration never touches the network. <code>dalo approve binary &lt;identity&gt;</code>
+is the only command that downloads one. It fetches the host platform&#39;s asset
+from <code>https://github.com/&lt;repo&gt;/releases/download/&lt;tag&gt;/&lt;asset&gt;</code>, verifies the
+bytes against the pinned digest, stages them read-only under
+<code>binaries/&lt;sha256&gt;/&lt;id&gt;</code>, links them at <code>&lt;store&gt;/bin/&lt;id&gt;</code>, and then records the
+exact approval. Assets for other platforms are never fetched.
+<code>dalo approve revoke binary &lt;identity&gt;</code> removes only the approval.</p>
+<p>A skill launcher should look for the verified file first and fall back to its
+own download on hosts without Dalo:</p>
+<pre><code class="language-sh">#!/bin/sh
+candidate=&quot;${DALO_STORE:-$HOME/.dalo}/bin/impeccino&quot;
+if [ -x &quot;$candidate&quot; ]; then
+  exec &quot;$candidate&quot; &quot;$@&quot;
+fi
+exec &quot;$(dirname &quot;$0&quot;)/impeccino-fallback&quot; &quot;$@&quot;
+</code></pre>
+<p>The lookup contract is <code>${DALO_STORE:-$HOME/.dalo}/bin/&lt;id&gt;</code>. The path stays the
+same when a digest changes, so launchers never need to know the digest.</p>
 <p>If <code>name</code> is absent, the directory name is the slot name. Duplicate slot names within one source are warned and de-duplicated by resolver behavior.</p>
 <p>Dalo reads one <code>metadata</code> key as a command requirement: <code>dalo.requires-commands</code>,
 a space-separated list of command names such as <code>agent-browser</code> in the example
