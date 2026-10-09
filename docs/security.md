@@ -280,7 +280,11 @@ into the store, so a replaced upstream asset fails verification and leaves no
 staged file and no approval. Downloads are capped at 256 MiB, follow at most
 five redirects, and refuse any redirect outside those hosts before connecting to
 it. The approval is exact, so a changed digest, tag, or repository needs a new
-approval. Inspection (`dalo binary list|show` and `dalo doctor`) never downloads,
+approval. Revocation and removal delete only Dalo-created paths under `binaries/`
+and `bin/`: a staged digest directory, and an exposure symlink that points into
+`binaries/`. They never follow a symlink, never delete a real file or a foreign
+link at `bin/<id>`, and report such entries as warnings instead. Inspection
+(`dalo binary list|show` and `dalo doctor`) never downloads,
 and Dalo never executes the staged file.
 
 ## The OS sandbox

@@ -571,6 +571,11 @@ path, or a source-qualified `<source-id>:<slot-or-stable-id>` reference. The
 source ID must match the catalog being changed. This is the explicit negation
 counterpart to `source select`.
 
+Unselecting also cleans up release binaries. A staged binary whose declaring
+skill is no longer selected, and that no other approved declaration pins, is
+removed with its exposure link. The removed paths appear as `removed:` lines in
+human output and in `removed_binary_paths[]` in JSON.
+
 Examples:
 
 ```sh
@@ -622,7 +627,9 @@ hash before retrying the advance.
 Remove a team or catalog source as one coordinated change. Dalo first reconciles
 only links it owns, then removes the source from `config.toml`, its catalog lock
 entry (when present), and approvals qualified with that source ID. The source
-checkout is removed after the durable store state is committed. Use
+checkout is removed after the durable store state is committed. Staged release
+binaries that no other approved declaration pins are removed right after that
+commit, and their paths are listed in `affected_paths[]`. Use
 `--keep-checkout` to retain it for manual inspection. The built-in `local`
 source cannot be removed. A retained checkout must be moved or removed before
 the same source ID can be added again.
@@ -957,6 +964,15 @@ dalo audit public:review-helper --reviewer claude --refresh-audit
 Use `--refresh-audit` to ignore a compatible cached semantic review and run the
 selected provider again.
 
+The report lists each release binary the skill declares under `binaries[]`:
+identity, repository, tag, platforms, and `contract_hash`. The listing is
+informational. Approving the skill does not approve its binaries, and neither
+the verdict, the acceptance scope, `--check`, nor the cached report depends on
+it. A declaration that fails validation adds one `spec.binaries-invalid` finding
+(low severity) to `spec_findings[]` instead, and nothing is listed. An invalid
+declaration also drops the skill from its source inventory, so `<source>:<skill>`
+cannot resolve it; pass the skill directory path to audit it.
+
 `--reviewer auto|codex|claude|opencode` adds a semantic review through an installed
 agent CLI. Dalo starts a fresh non-persistent reviewer and treats a bounded
 snapshot as untrusted data. Claude and OpenCode run with tools denied. Codex
@@ -1186,7 +1202,8 @@ followed by an actionable diagnostic. `show` returns the declaration with each
 platform's asset, digest, and derived URL, the platform of the running Dalo
 binary, the exact approval value, the staged path when present, and the
 diagnostic. States are `platform_unsupported`, `pending_approval`, `hash_drift`,
-`revoked`, `approved_not_staged`, `audit_failure`, and `ready`. `ready` requires
+`revoked`, `approved_not_staged`, `audit_failure`, `ready`, and `blocked`.
+`ready` requires
 the exact approval, staged bytes that re-hash to the pinned digest, and the
 exposure link `<store>/bin/<id>` pointing at those bytes; `show` reports that
 link as `exposed_path`. Verified bytes that are staged but not linked report
@@ -1200,7 +1217,20 @@ binaries of each active skill under `resolution.active_skills[].binaries`.
 JSON shapes: `BinaryListReport` (`binaries[]`, `warnings[]`) and
 `BinaryStatusReport` (`binary`, `skill_source_ref`, `skill_path`,
 `source_provenance`, `approval_value`, `host_platform`, `state`, optional
-`staged_path`, optional `exposed_path`, `diagnostic`).
+`staged_path`, optional `exposed_path`, optional `slot_owner`, `diagnostic`).
+
+`blocked` is an exposure conflict. Two declarations with the same binary id
+compete for `<store>/bin/<id>`. The declaration that comes first by source
+priority (a lower `dalo source priority` value wins), then by source ID, then by
+skill ref, owns the slot, whatever its state. Every other declaration with that
+id is `blocked`, is never exposed, and cannot be approved: `dalo approve binary`
+refuses it before any download. Its `slot_owner` names the owner, `dalo doctor`
+reports `binary_slot_conflict` with `dalo binary show <owner>` as the next step,
+and `dalo binary list` shows it. A catalog skill that its source does not select
+is an offer rather than part of the resolution, so it is not listed at all.
+
+`dalo status` prints each declared binary of an active skill as
+`binary <identity>: <state>` under that skill.
 
 ### `dalo hook list [--check]`; `dalo hook show <source:plugin#hook:id>`
 
@@ -1259,8 +1289,13 @@ downloads only the host platform's asset over HTTPS from GitHub, verifies its
 SHA-256 digest before anything is renamed into place, stages the bytes read-only
 under `binaries/<sha256>/`, links them at `<store>/bin/<id>`, and then records
 the exact approval. A mismatch, an oversized asset, or a redirect outside GitHub
-fails without writing anything. Revoking a binary removes only the approval; its
-staged bytes and link stay until a later cleanup. Delivery approval is
+fails without writing anything. Revoking a binary removes its approval, then removes the staged bytes
+and the link that no approved declaration still backs. The human output names
+each removed path as `removed: <path>` and each kept entry as
+`warning: <text>`; the JSON report carries `removed_paths[]` and
+`cleanup_warnings[]`. Cleanup does nothing, with a warning, while an enabled
+source cannot be scanned or a source is disabled, because the declarations
+behind it cannot be seen. Delivery approval is
 inert and grants only the exact revision- and recipe-bound generated delivery.
 Hook approval grants the exact hook contract after its referenced tool is
 ready. Revoking a generated delivery withdraws its Dalo-owned materialized
@@ -1467,10 +1502,10 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `source priority` | `SourcePriorityReport` | `source`, `dry_run` |
 | `source namespace <id> [<prefix>] [--clear]` | `SourceNamespaceReport` | `source`, `changed`, `dry_run` |
 | `source inspect` | `CatalogInspectReport` | `source_id`, `candidates[]` (`id`, `slot_name`, `path`, `description`, `compatibility`, `requires[]`, `selected`) |
-| `source select` | `CatalogSelectReport` | `source_id`, changed user references in `added[]` / `removed[]`, complete resulting `selected[]`, `dry_run`, `audits[]` for skills named by the operation, `migration_warnings[]` for degraded legacy sibling catalogs |
+| `source select` | `CatalogSelectReport` | `source_id`, changed user references in `added[]` / `removed[]`, complete resulting `selected[]`, `dry_run`, `audits[]` for skills named by the operation, `migration_warnings[]` for degraded legacy sibling catalogs, and optional `removed_binary_paths[]` and `binary_cleanup_warnings[]` after `source unselect` |
 | `source refresh` | `CatalogDrift` | `source_id`, `pinned_commit`, `upstream_commit`, `outcomes[]`, `migration_warnings[]` for degraded legacy sibling catalogs |
 | `source refresh --advance` | `CatalogAdvanceReport` | exact `old_lock`/`new_lock`, selections, `outcomes[]`, `audits[]`, `sync`, `blocking_reasons[]`, `dry_run`, and `advanced` |
-| `source remove` | `SourceRemoveReport` | `source_id`, `checkout_path`, `kept_checkout`, `removed_approvals`, `removed_catalog_lock`, `reconciled_links[]`, `deactivated_skills[]`, `deactivated_instruction_packs[]`, `cleanup_warnings[]`, `affected_paths[]`, `dry_run` |
+| `source remove` | `SourceRemoveReport` | `source_id`, `checkout_path`, `kept_checkout`, `removed_approvals`, `removed_catalog_lock`, `reconciled_links[]`, `deactivated_skills[]`, `deactivated_instruction_packs[]`, `cleanup_warnings[]`, `affected_paths[]` (including removed staged-binary paths), `dry_run` |
 | `agent list` | `AgentListReport` | `resolution`, `inventory_warnings[]`, `source_errors[]` |
 | `agent show` | `AgentShowReport` | `agent`, provider `compilations[]` |
 | `plan` | `InstallationPlan` | `schema_version`, `store`, `canonical_plugins`, `inventory_warnings[]`, `tools[]`, `hooks[]`, optional `native_plugins[]`, physical `destinations[]` with per-target plugin/component explanations |
@@ -1485,18 +1520,18 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `hook list` | `HookListReport` | `hooks[]` with hook and referenced-tool states, `warnings[]` |
 | `hook show` | `HookStatusReport` | hook and tool contracts, package and source provenance, `approval_value`, `tool_state`, `state`, `diagnostic` |
 | `binary list` | `BinaryListReport` | `binaries[]` with declaration, owning skill, `approval_value`, `host_platform`, `state`, optional `staged_path`, `diagnostic`; `warnings[]` (`invalid_binary_declaration`) |
-| `binary show` | `BinaryStatusReport` | declaration, owning skill and source provenance, `approval_value`, `host_platform`, `state`, optional `staged_path`, optional `exposed_path`, `diagnostic` |
+| `binary show` | `BinaryStatusReport` | declaration, owning skill and source provenance, `approval_value`, `host_platform`, `state`, optional `staged_path`, optional `exposed_path`, optional `slot_owner` (blocked only), `diagnostic` |
 | `autosync install` / `uninstall` | `AutosyncMutationReport` | `action`, `dry_run`, resulting `status` |
 | `autosync status` | `AutosyncStatusReport` | `configured`, `installed`, `enabled`, backend, schedule, executable, store, artifacts, optional `scheduler_error`, optional `disabled_reason`, and optional `last_run` |
 | `autosync run` | `SyncReport` or `AutosyncRunState` | `SyncReport` when synchronization starts; `AutosyncRunState` with `outcome: "skipped"` and `reason` when another process holds the store lock. Catalog-drift and blocked failures keep the JSON sync report on stdout and emit the standard JSON error on stderr. |
 | `status` | `StatusReport` | `store`, `assistant`, `sources[]` with `skill_count`, `agent_count`, and `provenance`, `targets[]`, `inventory_warnings[]`, `agent_inventory_warnings[]`, `resolution`, dry-run `materialization[]`, `blocking_audits[]`, `audit_failures[]`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]`, `autosync` |
 | `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, skill `operations[]`, optional `instruction_operations[]` (`source_id`, `pack_id`, `target`, `action`, `previous_commit`, `commit`), `resolution`, `degraded_sources[]` (`id`, `path`, `reason`), optional `inventory_warnings[]` (`code`, `path`, `message`), optional `missing_commands[]` (`source_ref`, `command`, optional `compatibility`), optional `unrefreshed_tracking_sources[]`, `unselected_catalogs[]` (`source_id`, `available_skills`) |
-| `audit` | `AuditReport` | `schema_version`, `source_ref`, `skill_path`, `content_hash`, `static_engine_version`, `scanned_at_unix`, `coverage`, `status`, optional `max_severity`, `static_findings[]`, optional `spec_findings[]`, optional `agent_review`, optional `risk_acceptance` |
+| `audit` | `AuditReport` | `schema_version`, `source_ref`, `skill_path`, `content_hash`, `static_engine_version`, `scanned_at_unix`, `coverage`, `status`, optional `max_severity`, `static_findings[]`, optional `spec_findings[]`, optional `binaries[]` (`identity`, `repo`, `tag`, `platforms[]`, `contract_hash`), optional `agent_review`, optional `risk_acceptance` |
 | `approve list` | `ApprovalListReport` | `schema_version`, `approvals[]` (optional `granted_at_unix`), `accepted_risks[]` (`source_ref`, `content_hash`, `reason`, `accepted_at_unix`, `scope_hash`, `active`, `audit_command`) |
 | `approve skill` | audited approval outcome | `audit` (`AuditReport`), `approval` (`ApprovalReport`), optional `compatibility`, optional `binaries[]` (`BinaryStatusReport`, omitted when the skill declares none) |
 | `approve agent` / `source` / `author` / `org` | `ApprovalReport` | `scope`, `value`, `action`, `dry_run` |
 | `approve tool` / `approve revoke tool` | `ToolApprovalReport` | `tool`, content-bound `approval_value`, `action`, optional immutable `staged_path`, `dry_run` |
-| `approve binary` / `approve revoke binary` | `BinaryApprovalReport` | `binary` (identity), content-bound `approval_value`, `action` (`planned`, `granted`, `unchanged`, or `revoked`), optional `staged_path` and `exposed_path`, `dry_run` |
+| `approve binary` / `approve revoke binary` | `BinaryApprovalReport` | `binary` (identity), content-bound `approval_value`, `action` (`planned`, `granted`, `unchanged`, or `revoked`), optional `staged_path` and `exposed_path`, `dry_run`; a revocation adds `removed_paths[]` and `cleanup_warnings[]` |
 | `approve delivery` / `approve revoke delivery` | `DeliveryApprovalReport` | `skill`, revision- and recipe-bound `approval_value`, optional `generator` and `generator_contract_hash`, `providers`, `action`, `dry_run`, `execution` (`not_run` during approval) |
 | `approve hook` / `approve revoke hook` | `HookApprovalReport` | `hook`, content-bound `approval_value`, `action`, `dry_run` |
 | `approve revoke skill` / `agent` / `source` / `author` / `org` | `ApprovalReport` | `scope`, `value`, `action`, `dry_run` |
@@ -1603,8 +1638,8 @@ Assistant, hook, plugin, and binary paths are created lazily, not by `dalo init`
 | `.assistant-installing/` | An assistant installation stages `new/` and temporarily preserves `previous/`; retained if recovery is needed. |
 | `hooks/`, `hooks/state.json` | The first native hook projection is applied; the state file records dispatcher ownership. |
 | `plugins/`, `plugins/state.json` | The first native plugin projection is applied; the state file records projection ownership. |
-| `binaries/<sha256>/<id>` | Created by the first `dalo approve binary` for that digest: the verified asset, read-only, addressed by its pinned SHA-256. Later approvals of the same bytes reuse it. |
-| `bin/<id>` | Created by `dalo approve binary`: a relative symlink to the verified file, the stable path launchers look for. |
+| `binaries/<sha256>/<id>` | Created by the first `dalo approve binary` for that digest: the verified asset, read-only, addressed by its pinned SHA-256. Later approvals of the same bytes reuse it. Removed once no approved declaration references the digest (`approve revoke binary`, `source unselect`, `source remove`). |
+| `bin/<id>` | Created by `dalo approve binary`: a relative symlink to the verified file, the stable path launchers look for. Removed with the last digest it points at, or when no approved declaration owns `<id>`. A real file or foreign link at that path is never removed. |
 
 Provider plugin and hook projections are **experimental**: the native files
 Dalo writes under `plugins/` and `hooks/`, and the provider mappings behind
@@ -1890,6 +1925,7 @@ Top-level fields:
 | `unlinked_skills[]` | Managed skills not linked, with a reason such as shadowing. |
 | `target_materializations[]` | Last sync operations by target path. |
 | `active_instruction_packs[]` | Instruction packs rendered into instruction files. |
+| `binaries[]` | Release binaries staged and exposed at the last sync, one per binary in state `ready`. Omitted when empty. |
 
 Important record fields:
 
@@ -1899,6 +1935,15 @@ Important record fields:
 | `LockedSkill` | `source_ref`, `slot_name`, optional `id`, `source_id`, `source_kind`, optional `delivery` provenance/recipe/derivation/output fingerprints, optional `reason` |
 | `LockedTargetMaterialization` | `link_path`, optional `desired_path`, `kind`, `status`, optional `reason` |
 | `LockedInstructionPack` | `pack_id`, `target`, optional `logical_targets[]`, `source_id`, optional `commit`, optional `version` |
+| `LockedBinary` | `source_ref`, `contract_hash`, `platform`, `digest`, `staged_path`, `exposed_path` |
+
+`binaries[]` is additive, so the schema version stays at `6`. Dalo builds that
+predate the field refuse a lock that contains it, as described in
+[Downgrade](compatibility.md#downgrade); the list is written only when a binary
+is `ready`, so a lock without staged release binaries is unchanged. Every real
+`sync` rewrites the list, and so does `source remove` in the same commit.
+`approve binary`, `approve revoke binary`, and `source unselect` change the
+staged files at once, and the list catches up at the next `sync`.
 
 ## `state.toml`
 

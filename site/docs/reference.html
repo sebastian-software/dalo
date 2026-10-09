@@ -610,6 +610,10 @@ dalo --dry-run source select public review-helper
 path, or a source-qualified <code>&lt;source-id&gt;:&lt;slot-or-stable-id&gt;</code> reference. The
 source ID must match the catalog being changed. This is the explicit negation
 counterpart to <code>source select</code>.</p>
+<p>Unselecting also cleans up release binaries. A staged binary whose declaring
+skill is no longer selected, and that no other approved declaration pins, is
+removed with its exposure link. The removed paths appear as <code>removed:</code> lines in
+human output and in <code>removed_binary_paths[]</code> in JSON.</p>
 <p>Examples:</p>
 <pre><code class="language-sh">dalo source unselect public formatter
 dalo --dry-run source unselect public formatter
@@ -648,7 +652,9 @@ hash before retrying the advance.</p>
 <p>Remove a team or catalog source as one coordinated change. Dalo first reconciles
 only links it owns, then removes the source from <code>config.toml</code>, its catalog lock
 entry (when present), and approvals qualified with that source ID. The source
-checkout is removed after the durable store state is committed. Use
+checkout is removed after the durable store state is committed. Staged release
+binaries that no other approved declaration pins are removed right after that
+commit, and their paths are listed in <code>affected_paths[]</code>. Use
 <code>--keep-checkout</code> to retain it for manual inspection. The built-in <code>local</code>
 source cannot be removed. A retained checkout must be moved or removed before
 the same source ID can be added again.</p>
@@ -888,6 +894,14 @@ dalo audit public:review-helper --reviewer claude --refresh-audit
 </code></pre>
 <p>Use <code>--refresh-audit</code> to ignore a compatible cached semantic review and run the
 selected provider again.</p>
+<p>The report lists each release binary the skill declares under <code>binaries[]</code>:
+identity, repository, tag, platforms, and <code>contract_hash</code>. The listing is
+informational. Approving the skill does not approve its binaries, and neither
+the verdict, the acceptance scope, <code>--check</code>, nor the cached report depends on
+it. A declaration that fails validation adds one <code>spec.binaries-invalid</code> finding
+(low severity) to <code>spec_findings[]</code> instead, and nothing is listed. An invalid
+declaration also drops the skill from its source inventory, so <code>&lt;source&gt;:&lt;skill&gt;</code>
+cannot resolve it; pass the skill directory path to audit it.</p>
 <p><code>--reviewer auto|codex|claude|opencode</code> adds a semantic review through an installed
 agent CLI. Dalo starts a fresh non-persistent reviewer and treats a bounded
 snapshot as untrusted data. Claude and OpenCode run with tools denied. Codex
@@ -1075,7 +1089,8 @@ followed by an actionable diagnostic. <code>show</code> returns the declaration 
 platform&#39;s asset, digest, and derived URL, the platform of the running Dalo
 binary, the exact approval value, the staged path when present, and the
 diagnostic. States are <code>platform_unsupported</code>, <code>pending_approval</code>, <code>hash_drift</code>,
-<code>revoked</code>, <code>approved_not_staged</code>, <code>audit_failure</code>, and <code>ready</code>. <code>ready</code> requires
+<code>revoked</code>, <code>approved_not_staged</code>, <code>audit_failure</code>, <code>ready</code>, and <code>blocked</code>.
+<code>ready</code> requires
 the exact approval, staged bytes that re-hash to the pinned digest, and the
 exposure link <code>&lt;store&gt;/bin/&lt;id&gt;</code> pointing at those bytes; <code>show</code> reports that
 link as <code>exposed_path</code>. Verified bytes that are staged but not linked report
@@ -1088,7 +1103,18 @@ binaries of each active skill under <code>resolution.active_skills[].binaries</c
 <p>JSON shapes: <code>BinaryListReport</code> (<code>binaries[]</code>, <code>warnings[]</code>) and
 <code>BinaryStatusReport</code> (<code>binary</code>, <code>skill_source_ref</code>, <code>skill_path</code>,
 <code>source_provenance</code>, <code>approval_value</code>, <code>host_platform</code>, <code>state</code>, optional
-<code>staged_path</code>, optional <code>exposed_path</code>, <code>diagnostic</code>).</p>
+<code>staged_path</code>, optional <code>exposed_path</code>, optional <code>slot_owner</code>, <code>diagnostic</code>).</p>
+<p><code>blocked</code> is an exposure conflict. Two declarations with the same binary id
+compete for <code>&lt;store&gt;/bin/&lt;id&gt;</code>. The declaration that comes first by source
+priority (a lower <code>dalo source priority</code> value wins), then by source ID, then by
+skill ref, owns the slot, whatever its state. Every other declaration with that
+id is <code>blocked</code>, is never exposed, and cannot be approved: <code>dalo approve binary</code>
+refuses it before any download. Its <code>slot_owner</code> names the owner, <code>dalo doctor</code>
+reports <code>binary_slot_conflict</code> with <code>dalo binary show &lt;owner&gt;</code> as the next step,
+and <code>dalo binary list</code> shows it. A catalog skill that its source does not select
+is an offer rather than part of the resolution, so it is not listed at all.</p>
+<p><code>dalo status</code> prints each declared binary of an active skill as
+<code>binary &lt;identity&gt;: &lt;state&gt;</code> under that skill.</p>
 <h3 id="dalo-hook-list---check-dalo-hook-show-sourcepluginhookid"><a class="doc-anchor" href="#dalo-hook-list---check-dalo-hook-show-sourcepluginhookid"><code>dalo hook list [--check]</code>; <code>dalo hook show &lt;source:plugin#hook:id&gt;</code></a></h3>
 <p>Inspect portable hook contracts without installing or executing them:</p>
 <pre><code class="language-sh">dalo hook list --check
@@ -1136,8 +1162,13 @@ downloads only the host platform&#39;s asset over HTTPS from GitHub, verifies it
 SHA-256 digest before anything is renamed into place, stages the bytes read-only
 under <code>binaries/&lt;sha256&gt;/</code>, links them at <code>&lt;store&gt;/bin/&lt;id&gt;</code>, and then records
 the exact approval. A mismatch, an oversized asset, or a redirect outside GitHub
-fails without writing anything. Revoking a binary removes only the approval; its
-staged bytes and link stay until a later cleanup. Delivery approval is
+fails without writing anything. Revoking a binary removes its approval, then removes the staged bytes
+and the link that no approved declaration still backs. The human output names
+each removed path as <code>removed: &lt;path&gt;</code> and each kept entry as
+<code>warning: &lt;text&gt;</code>; the JSON report carries <code>removed_paths[]</code> and
+<code>cleanup_warnings[]</code>. Cleanup does nothing, with a warning, while an enabled
+source cannot be scanned or a source is disabled, because the declarations
+behind it cannot be seen. Delivery approval is
 inert and grants only the exact revision- and recipe-bound generated delivery.
 Hook approval grants the exact hook contract after its referenced tool is
 ready. Revoking a generated delivery withdraws its Dalo-owned materialized
@@ -1407,7 +1438,7 @@ dalo completions fish &gt; dalo.fish
 <tr>
 <td><code>source select</code></td>
 <td><code>CatalogSelectReport</code></td>
-<td><code>source_id</code>, changed user references in <code>added[]</code> / <code>removed[]</code>, complete resulting <code>selected[]</code>, <code>dry_run</code>, <code>audits[]</code> for skills named by the operation, <code>migration_warnings[]</code> for degraded legacy sibling catalogs</td>
+<td><code>source_id</code>, changed user references in <code>added[]</code> / <code>removed[]</code>, complete resulting <code>selected[]</code>, <code>dry_run</code>, <code>audits[]</code> for skills named by the operation, <code>migration_warnings[]</code> for degraded legacy sibling catalogs, and optional <code>removed_binary_paths[]</code> and <code>binary_cleanup_warnings[]</code> after <code>source unselect</code></td>
 </tr>
 <tr>
 <td><code>source refresh</code></td>
@@ -1422,7 +1453,7 @@ dalo completions fish &gt; dalo.fish
 <tr>
 <td><code>source remove</code></td>
 <td><code>SourceRemoveReport</code></td>
-<td><code>source_id</code>, <code>checkout_path</code>, <code>kept_checkout</code>, <code>removed_approvals</code>, <code>removed_catalog_lock</code>, <code>reconciled_links[]</code>, <code>deactivated_skills[]</code>, <code>deactivated_instruction_packs[]</code>, <code>cleanup_warnings[]</code>, <code>affected_paths[]</code>, <code>dry_run</code></td>
+<td><code>source_id</code>, <code>checkout_path</code>, <code>kept_checkout</code>, <code>removed_approvals</code>, <code>removed_catalog_lock</code>, <code>reconciled_links[]</code>, <code>deactivated_skills[]</code>, <code>deactivated_instruction_packs[]</code>, <code>cleanup_warnings[]</code>, <code>affected_paths[]</code> (including removed staged-binary paths), <code>dry_run</code></td>
 </tr>
 <tr>
 <td><code>agent list</code></td>
@@ -1497,7 +1528,7 @@ dalo completions fish &gt; dalo.fish
 <tr>
 <td><code>binary show</code></td>
 <td><code>BinaryStatusReport</code></td>
-<td>declaration, owning skill and source provenance, <code>approval_value</code>, <code>host_platform</code>, <code>state</code>, optional <code>staged_path</code>, optional <code>exposed_path</code>, <code>diagnostic</code></td>
+<td>declaration, owning skill and source provenance, <code>approval_value</code>, <code>host_platform</code>, <code>state</code>, optional <code>staged_path</code>, optional <code>exposed_path</code>, optional <code>slot_owner</code> (blocked only), <code>diagnostic</code></td>
 </tr>
 <tr>
 <td><code>autosync install</code> / <code>uninstall</code></td>
@@ -1527,7 +1558,7 @@ dalo completions fish &gt; dalo.fish
 <tr>
 <td><code>audit</code></td>
 <td><code>AuditReport</code></td>
-<td><code>schema_version</code>, <code>source_ref</code>, <code>skill_path</code>, <code>content_hash</code>, <code>static_engine_version</code>, <code>scanned_at_unix</code>, <code>coverage</code>, <code>status</code>, optional <code>max_severity</code>, <code>static_findings[]</code>, optional <code>spec_findings[]</code>, optional <code>agent_review</code>, optional <code>risk_acceptance</code></td>
+<td><code>schema_version</code>, <code>source_ref</code>, <code>skill_path</code>, <code>content_hash</code>, <code>static_engine_version</code>, <code>scanned_at_unix</code>, <code>coverage</code>, <code>status</code>, optional <code>max_severity</code>, <code>static_findings[]</code>, optional <code>spec_findings[]</code>, optional <code>binaries[]</code> (<code>identity</code>, <code>repo</code>, <code>tag</code>, <code>platforms[]</code>, <code>contract_hash</code>), optional <code>agent_review</code>, optional <code>risk_acceptance</code></td>
 </tr>
 <tr>
 <td><code>approve list</code></td>
@@ -1552,7 +1583,7 @@ dalo completions fish &gt; dalo.fish
 <tr>
 <td><code>approve binary</code> / <code>approve revoke binary</code></td>
 <td><code>BinaryApprovalReport</code></td>
-<td><code>binary</code> (identity), content-bound <code>approval_value</code>, <code>action</code> (<code>planned</code>, <code>granted</code>, <code>unchanged</code>, or <code>revoked</code>), optional <code>staged_path</code> and <code>exposed_path</code>, <code>dry_run</code></td>
+<td><code>binary</code> (identity), content-bound <code>approval_value</code>, <code>action</code> (<code>planned</code>, <code>granted</code>, <code>unchanged</code>, or <code>revoked</code>), optional <code>staged_path</code> and <code>exposed_path</code>, <code>dry_run</code>; a revocation adds <code>removed_paths[]</code> and <code>cleanup_warnings[]</code></td>
 </tr>
 <tr>
 <td><code>approve delivery</code> / <code>approve revoke delivery</code></td>
@@ -1821,11 +1852,11 @@ is preserved in output so drift remains visible.</p>
 </tr>
 <tr>
 <td><code>binaries/&lt;sha256&gt;/&lt;id&gt;</code></td>
-<td>Created by the first <code>dalo approve binary</code> for that digest: the verified asset, read-only, addressed by its pinned SHA-256. Later approvals of the same bytes reuse it.</td>
+<td>Created by the first <code>dalo approve binary</code> for that digest: the verified asset, read-only, addressed by its pinned SHA-256. Later approvals of the same bytes reuse it. Removed once no approved declaration references the digest (<code>approve revoke binary</code>, <code>source unselect</code>, <code>source remove</code>).</td>
 </tr>
 <tr>
 <td><code>bin/&lt;id&gt;</code></td>
-<td>Created by <code>dalo approve binary</code>: a relative symlink to the verified file, the stable path launchers look for.</td>
+<td>Created by <code>dalo approve binary</code>: a relative symlink to the verified file, the stable path launchers look for. Removed with the last digest it points at, or when no approved declaration owns <code>&lt;id&gt;</code>. A real file or foreign link at that path is never removed.</td>
 </tr>
 </tbody></table></div>
 <p>Provider plugin and hook projections are <strong>experimental</strong>: the native files
@@ -2258,6 +2289,10 @@ normal approval workflows.</p>
 <td><code>active_instruction_packs[]</code></td>
 <td>Instruction packs rendered into instruction files.</td>
 </tr>
+<tr>
+<td><code>binaries[]</code></td>
+<td>Release binaries staged and exposed at the last sync, one per binary in state <code>ready</code>. Omitted when empty.</td>
+</tr>
 </tbody></table></div>
 <p>Important record fields:</p>
 <div class="doc-table"><table>
@@ -2283,7 +2318,18 @@ normal approval workflows.</p>
 <td><code>LockedInstructionPack</code></td>
 <td><code>pack_id</code>, <code>target</code>, optional <code>logical_targets[]</code>, <code>source_id</code>, optional <code>commit</code>, optional <code>version</code></td>
 </tr>
+<tr>
+<td><code>LockedBinary</code></td>
+<td><code>source_ref</code>, <code>contract_hash</code>, <code>platform</code>, <code>digest</code>, <code>staged_path</code>, <code>exposed_path</code></td>
+</tr>
 </tbody></table></div>
+<p><code>binaries[]</code> is additive, so the schema version stays at <code>6</code>. Dalo builds that
+predate the field refuse a lock that contains it, as described in
+<a href="/docs/compatibility.html#downgrade">Downgrade</a>; the list is written only when a binary
+is <code>ready</code>, so a lock without staged release binaries is unchanged. Every real
+<code>sync</code> rewrites the list, and so does <code>source remove</code> in the same commit.
+<code>approve binary</code>, <code>approve revoke binary</code>, and <code>source unselect</code> change the
+staged files at once, and the list catches up at the next <code>sync</code>.</p>
 <h2 id="statetoml"><a class="doc-anchor" href="#statetoml"><code>state.toml</code></a></h2>
 <p>Schema version: <code>schema_version = 1</code>.</p>
 <p>This is internal state. Users normally inspect it through <code>target detect</code>, <code>status</code>, <code>sync</code>, and <code>resolve list</code>.</p>
