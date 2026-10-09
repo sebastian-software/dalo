@@ -367,6 +367,7 @@ dependencies = [
  "toml",
  "toml_edit",
  "update-informer",
+ "ureq",
  "yaml_serde",
 ]
 
