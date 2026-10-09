@@ -167,8 +167,8 @@ It:
    source's inventory;
 2. downloads the host asset over HTTPS to a temporary file inside the store,
    hashing while streaming, with a bounded size (256 MiB) and timeout,
-   following redirects only to `github.com` and
-   `objects.githubusercontent.com`, and never sending credentials;
+   following redirects only to `github.com` and hosts below
+   `githubusercontent.com`, and never sending credentials;
 3. compares the digest with the pinned one and deletes the temporary file on
    any mismatch, reporting `binary verification failed` without creating an
    approval record;
@@ -236,8 +236,10 @@ reviewer sees that approving the skill is not the whole story.
 
 `lock.toml` records every staged binary under an additive `binaries[]` list:
 `source_ref`, `contract_hash`, `platform`, `digest`, `staged_path`, and
-`exposed_path`. The schema version does not change; older Dalo versions ignore
-the list and newer ones treat an empty list as "nothing staged".
+`exposed_path`. The schema version does not change, and the list is written
+only while a binary is ready. The lock rejects unknown fields, so a Dalo that
+predates this field refuses such a lock, which is the documented downgrade
+behavior: downgrade is not supported and fails closed.
 
 A staged digest is removed when no approval record references a declaration
 pinning it: on `approve revoke binary`, on `source unselect` or `source remove`
