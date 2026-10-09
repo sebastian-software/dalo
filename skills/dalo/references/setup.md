@@ -79,6 +79,12 @@ for third-party collections, then inspect, select, review, and narrowly approve
 the requested skills. Do not treat a public URL as a trusted team source simply
 to skip selection or approval.
 
+Before approving a selected skill, show its `compatibility` text and any
+binaries it declares. Skill approval leaves a declared binary `pending_approval`;
+`dalo approve binary <identity>` is a separate step that downloads and verifies
+the host asset, so take it only when the user wants that skill's full
+functionality on this machine.
+
 Check existing source IDs and normalized origins before adding anything. Reuse
 a matching source when its scope and update policy fit. Prefer selectors
 reported by `source inspect` over guessed directory names. An add-catalog dry

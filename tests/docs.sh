@@ -244,6 +244,18 @@ for project_bound_document in docs/projects.md docs/security.md docs/reference.m
   grep -Fq 'undeclared_project_skill' "$root/$project_bound_document" \
     || { echo "$project_bound_document no longer documents undeclared_project_skill" >&2; exit 1; }
 done
+# The assistant has to guide users through what a skill needs from the machine
+# (issues 934 and 937): the compatibility text, declared commands, and release
+# binaries with their separate approval.
+for machine_requirement_document in skills/dalo/SKILL.md skills/dalo/references/maintenance.md \
+  skills/dalo/references/setup.md; do
+  grep -Fq 'approve binary' "$root/$machine_requirement_document" \
+    || { echo "$machine_requirement_document no longer explains binary approval" >&2; exit 1; }
+done
+grep -Fq 'skill_command_missing' "$root/skills/dalo/references/maintenance.md"
+grep -Fq 'dalo.requires-commands' "$root/skills/dalo/SKILL.md"
+grep -Fq 'binary list' "$root/skills/dalo/references/inventory.md"
+grep -Fq 'release binaries' "$root/docs/assistant.md"
 grep -Fq '[Team repository guide](docs/team.md)' "$root/README.md"
 # A reader who does not start from a team repository still needs a way in: the
 # getting-started guide routes by situation, and the README, the landing page,
