@@ -614,6 +614,9 @@ fn source_warning_code(code: inventory::InventoryWarningCode) -> String {
             inventory::InventoryWarningCode::UnreadablePath => "unreadable_path",
             inventory::InventoryWarningCode::SkippedSymlink => "skipped_symlink",
             inventory::InventoryWarningCode::InvalidDelivery => "invalid_delivery",
+            inventory::InventoryWarningCode::InvalidBinaryDeclaration => {
+                "invalid_binary_declaration"
+            }
         }
     )
 }

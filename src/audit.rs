@@ -1539,7 +1539,7 @@ fn finding(
 /// `spec` category, so they are informational: they never change the security
 /// verdict, blocking behavior, acceptance scope, or report cache reuse.
 fn spec_scan(source_ref: &str, skill_path: &Path) -> Vec<AuditFinding> {
-    const KNOWN_KEYS: [&str; 10] = [
+    const KNOWN_KEYS: [&str; 11] = [
         "name",
         "description",
         "license",
@@ -1551,6 +1551,7 @@ fn spec_scan(source_ref: &str, skill_path: &Path) -> Vec<AuditFinding> {
         "owners",
         "tags",
         "requires",
+        "binaries",
     ];
     const MAX_DESCRIPTION_CHARS: usize = 1024;
     const MAX_COMPATIBILITY_CHARS: usize = 500;
@@ -2744,6 +2745,7 @@ mod tests {
                     path: (*path).to_path_buf(),
                     delivery: crate::inventory::SkillDelivery::Direct,
                     compatibility: None,
+                    binaries: Vec::new(),
                     local_override: false,
                     requires: Vec::new(),
                 })

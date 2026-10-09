@@ -30,6 +30,7 @@ pub mod approval;
 pub mod assistant;
 pub mod audit;
 pub mod autosync;
+pub mod binary;
 pub mod catalog;
 // CLI plumbing: hidden from the rendered docs, not part of any contract.
 mod catalog_pr;

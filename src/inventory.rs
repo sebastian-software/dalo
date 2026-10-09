@@ -85,6 +85,9 @@ pub struct SkillRecord {
     /// String-valued entries of the `metadata` frontmatter mapping.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub metadata: BTreeMap<String, String>,
+    /// Verified release binaries declared by the skill.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub binaries: Vec<crate::binary::BinaryRecord>,
 }
 
 impl SkillRecord {
@@ -403,6 +406,8 @@ pub enum InventoryWarningCode {
     SkippedSymlink,
     /// A delivery manifest or provider artifact was invalid or unsafe.
     InvalidDelivery,
+    /// A `binaries` frontmatter declaration was invalid, so the skill was dropped.
+    InvalidBinaryDeclaration,
 }
 
 #[derive(Debug, Deserialize)]
@@ -434,6 +439,21 @@ struct SkillFrontmatter {
     compatibility: Option<yaml_serde::Value>,
     #[serde(deserialize_with = "deserialize_metadata")]
     metadata: BTreeMap<String, yaml_serde::Value>,
+    // Read as a plain value so a YAML error inside `binaries` fails the whole
+    // frontmatter, and an explicit null stays visible as a non-mapping declaration.
+    #[serde(default, deserialize_with = "deserialize_binaries")]
+    binaries: Option<yaml_serde::Value>,
+}
+
+/// Keep the `binaries` value exactly as written, including an explicit null.
+///
+/// Serde would otherwise turn a null into `None`, hiding a non-mapping value
+/// that must fail closed as an invalid declaration.
+fn deserialize_binaries<'de, D>(deserializer: D) -> Result<Option<yaml_serde::Value>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    yaml_serde::Value::deserialize(deserializer).map(Some)
 }
 
 /// Scan a source checkout for skills.
@@ -716,6 +736,23 @@ fn scan_skill(
             return Ok((None, warnings));
         }
     };
+    // A declaration that fails validation drops the whole skill, like an invalid
+    // delivery manifest: a skill must never activate without the binaries it
+    // declared, and a partially valid declaration is never silently trimmed.
+    let binaries = match frontmatter.binaries.as_ref() {
+        None => Vec::new(),
+        Some(declarations) => match crate::binary::parse_declarations(&source_ref, declarations) {
+            Ok(binaries) => binaries,
+            Err(message) => {
+                warnings.push(InventoryWarning {
+                    code: InventoryWarningCode::InvalidBinaryDeclaration,
+                    path: skill_file,
+                    message,
+                });
+                return Ok((None, warnings));
+            }
+        },
+    };
 
     Ok((
         Some(SkillRecord {
@@ -732,6 +769,7 @@ fn scan_skill(
             tags: frontmatter.tags,
             compatibility: compatibility_text(frontmatter.compatibility),
             metadata: string_metadata(frontmatter.metadata),
+            binaries,
         }),
         warnings,
     ))
@@ -2099,6 +2137,7 @@ fn warning_code_name(code: InventoryWarningCode) -> &'static str {
         InventoryWarningCode::UnreadablePath => "unreadable_path",
         InventoryWarningCode::SkippedSymlink => "skipped_symlink",
         InventoryWarningCode::InvalidDelivery => "invalid_delivery",
+        InventoryWarningCode::InvalidBinaryDeclaration => "invalid_binary_declaration",
     }
 }
 
@@ -2170,6 +2209,62 @@ required = true
         assert_eq!(
             snapshot.catalog_hash,
             crate::catalog::hash_directory(&root).expect("audit hash input should remain stable")
+        );
+    }
+
+    const BINARY_DIGEST: &str = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
+
+    fn page_engine_document(digest: &str) -> String {
+        format!(
+            "---\nname: page-engine\ndescription: Audit pages\nbinaries:\n  impeccino:\n    source: github-release\n    repo: sebastian-software/impeccino\n    tag: engine-v0.2.0\n    assets:\n      linux-x64:\n        asset: impeccino-linux-x64\n        sha256: \"{digest}\"\n---\n# Page engine\n"
+        )
+    }
+
+    fn write_page_engine(root: &Path, document: &str) {
+        let skill = root.join("skills/page-engine");
+        fs::create_dir_all(&skill).unwrap();
+        fs::write(skill.join(SKILL_FILE), document).unwrap();
+    }
+
+    #[test]
+    fn skill_with_a_valid_binary_declaration_is_discovered_with_its_record() {
+        let temp = tempfile::tempdir().unwrap();
+        write_page_engine(temp.path(), &page_engine_document(BINARY_DIGEST));
+        let inventory = scan_source("team", temp.path()).unwrap();
+        assert!(inventory.warnings.is_empty(), "{:?}", inventory.warnings);
+        assert_eq!(inventory.skills.len(), 1);
+        let binaries = &inventory.skills[0].binaries;
+        assert_eq!(binaries.len(), 1);
+        assert_eq!(binaries[0].source_ref, "team:page-engine#binary:impeccino");
+    }
+
+    #[test]
+    fn skill_with_an_invalid_binary_digest_is_dropped_with_one_named_warning() {
+        let temp = tempfile::tempdir().unwrap();
+        write_page_engine(temp.path(), &page_engine_document(&BINARY_DIGEST[..63]));
+        let inventory = scan_source("team", temp.path()).unwrap();
+        assert!(inventory.skills.is_empty());
+        assert_eq!(inventory.warnings.len(), 1, "{:?}", inventory.warnings);
+        let warning = &inventory.warnings[0];
+        assert_eq!(warning.code, InventoryWarningCode::InvalidBinaryDeclaration);
+        assert!(warning.message.contains("impeccino"), "{}", warning.message);
+        assert!(warning.path.ends_with(SKILL_FILE));
+    }
+
+    #[test]
+    fn duplicate_keys_inside_binaries_fail_the_frontmatter_closed() {
+        let temp = tempfile::tempdir().unwrap();
+        let document = page_engine_document(BINARY_DIGEST).replace(
+            "    repo: sebastian-software/impeccino\n",
+            "    repo: sebastian-software/impeccino\n    repo: example/other\n",
+        );
+        write_page_engine(temp.path(), &document);
+        let inventory = scan_source("team", temp.path()).unwrap();
+        assert!(inventory.skills.is_empty());
+        assert_eq!(inventory.warnings.len(), 1, "{:?}", inventory.warnings);
+        assert_eq!(
+            inventory.warnings[0].code,
+            InventoryWarningCode::MalformedFrontmatter
         );
     }
 
@@ -3819,6 +3914,7 @@ required = true
             tags: Vec::new(),
             compatibility: None,
             metadata,
+            binaries: Vec::new(),
         }
     }
 
