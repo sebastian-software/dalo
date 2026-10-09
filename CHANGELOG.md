@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/sebastian-software/dalo/compare/dalo-v1.5.0...dalo-v1.5.1) (2026-10-09)
+
+
+### Bug Fixes
+
+* **project:** scope symlink inventory warnings to declared skills ([01f893c](https://github.com/sebastian-software/dalo/commit/01f893c4759680dd3fca4dee61a7822a7454dcd2))
+
 ## [1.5.0](https://github.com/sebastian-software/dalo/compare/dalo-v1.4.0...dalo-v1.5.0) (2026-10-09)
 
 
