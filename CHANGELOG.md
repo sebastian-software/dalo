@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.5.0](https://github.com/sebastian-software/dalo/compare/dalo-v1.4.0...dalo-v1.5.0) (2026-10-09)
+
+
+### Features
+
+* **audit:** report Agent Skills spec conformance findings ([ae20f97](https://github.com/sebastian-software/dalo/commit/ae20f970b444eeb5ad15b7494e27a1bef766ff9c))
+* **binary:** approve, fetch, verify, and expose declared release binaries ([76a6896](https://github.com/sebastian-software/dalo/commit/76a6896e42b07c48e7a0eedc211db7857ea1b7e2))
+* **binary:** record staged binaries in the lock and clean them up on revoke and removal ([5d815bd](https://github.com/sebastian-software/dalo/commit/5d815bd80aaf8da0a6f9c67c9e616495d42e6594)), closes [#937](https://github.com/sebastian-software/dalo/issues/937)
+* **doctor:** warn when a skill's declared commands are missing from PATH ([d0f611c](https://github.com/sebastian-software/dalo/commit/d0f611c8659035d538ddcdb3fa9d205009e769e5)), closes [#934](https://github.com/sebastian-software/dalo/issues/934)
+* let project declarations approve their selection ([3ab4ce6](https://github.com/sebastian-software/dalo/commit/3ab4ce69706a28ce540daaef8660193f13dee2c7)), closes [#939](https://github.com/sebastian-software/dalo/issues/939)
+* **skills:** declare verified release binaries in SKILL.md frontmatter ([ca7a356](https://github.com/sebastian-software/dalo/commit/ca7a3565104cdfa3f5b4df8a87b0469a0d78d628))
+* **skills:** surface the Agent Skills compatibility field ([5f3f38e](https://github.com/sebastian-software/dalo/commit/5f3f38ef27da5eed00f379f0201cca0a0e31792d))
+* **sync:** note declared skill commands missing from PATH ([6687fca](https://github.com/sebastian-software/dalo/commit/6687fca8dd4551efc2e74bb6d78dd1c4b776469d)), closes [#934](https://github.com/sebastian-software/dalo/issues/934)
+
+
+### Bug Fixes
+
+* **binary:** resolve relative redirect locations against the request URL ([70c0413](https://github.com/sebastian-software/dalo/commit/70c04139b73b2a5436ffffb4fe2c3ff0bfe9a0a6))
+* **inventory:** tolerate 128-bit integers in compatibility and metadata ([83eeaba](https://github.com/sebastian-software/dalo/commit/83eeaba2b2b119e7ed1273ca6da027debfeeeccf))
+* keep project installs out of global provider hook files ([bbff62e](https://github.com/sebastian-software/dalo/commit/bbff62e1f655f6211db763d5e74124a229c0fa04)), closes [#940](https://github.com/sebastian-software/dalo/issues/940)
+* limit declaration approval to the declared closure ([0c5358f](https://github.com/sebastian-software/dalo/commit/0c5358f51214861a476888511dde4c34c5be3bba)), closes [#939](https://github.com/sebastian-software/dalo/issues/939)
+
 ## [1.4.0](https://github.com/sebastian-software/dalo/compare/dalo-v1.3.0...dalo-v1.4.0) (2026-10-01)
 
 
