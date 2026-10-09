@@ -511,7 +511,15 @@ pub(crate) fn resolve_from_config_with_plugin_inventories_with_source_errors(
             |error| (PluginInventory::default(), Err(error.clone())),
         );
         match scanned {
-            Ok(inventory) => {
+            Ok(mut inventory) => {
+                if source.kind == SourceKind::Catalog
+                    && let Some(selectors) = config
+                        .project_selections
+                        .as_ref()
+                        .and_then(|declared| declared.get(&source.id))
+                {
+                    scope_project_symlink_warnings(source, selectors, &mut inventory);
+                }
                 inventories.push(inventory.clone());
                 scans.push(SourceScan {
                     source: source.clone(),
@@ -600,6 +608,55 @@ pub(crate) fn resolve_from_config_with_plugin_inventories_with_source_errors(
         },
         plugin_inventories,
     }
+}
+
+/// Project declarations bound delivery to a known same-source skill closure.
+/// Only a complete closure can prove that skipped discovery elsewhere cannot
+/// hide a desired skill. Global catalogs keep their conservative full scan.
+fn scope_project_symlink_warnings(
+    source: &SourceConfig,
+    selectors: &[String],
+    inventory: &mut SourceInventory,
+) {
+    let mut queue = selectors
+        .iter()
+        .map(|reference| (reference.clone(), true))
+        .collect::<VecDeque<_>>();
+    let mut paths = BTreeSet::new();
+    while let Some((reference, explicit)) = queue.pop_front() {
+        let Some(skill) = inventory.skills.iter().find(|skill| {
+            if explicit {
+                selection_ref_matches_skill(&reference, skill, &source.path)
+            } else {
+                ref_matches_skill(&reference, skill)
+            }
+        }) else {
+            // A missing selection or requirement must preserve recorded links,
+            // even when discovery did not produce a warning at that path.
+            inventory.warnings.push(inventory::InventoryWarning {
+                code: InventoryWarningCode::UnreadablePath,
+                path: source.path.clone(),
+                message: format!(
+                    "project-selected skill or requirement `{reference}` could not be inventoried"
+                ),
+            });
+            return;
+        };
+        if paths.insert(skill.path.clone()) {
+            queue.extend(
+                skill
+                    .requires
+                    .iter()
+                    .map(|reference| (reference.clone(), false)),
+            );
+        }
+    }
+    inventory.warnings.retain(|warning| {
+        warning.code != InventoryWarningCode::SkippedSymlink
+            || paths
+                .iter()
+                .any(|path| warning.path.starts_with(path) || path.starts_with(&warning.path))
+    });
 }
 
 /// Hold back every skill a project's declaration did not select.

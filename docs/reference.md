@@ -757,6 +757,14 @@ scan, including the affected path and reason, so the removal-safety message is
 not the only diagnosis. JSON consumers can inspect the same typed entries in
 `SyncReport.inventory_warnings[]`.
 
+In project scope, skipped directory symlinks outside the declared skill selection
+and its transitive same-source `requires` closure do not degrade the source when
+that entire closure was inventoried successfully. This includes provider aliases
+and unrelated monorepo fixtures. Symlinks overlapping the selected skill paths,
+missing selected skills or requirements, other unsafe inventory warnings, and
+scan or audit failures still block healthy installation and preserve recorded
+links. Global stores retain conservative source-wide discovery.
+
 Lock drift for local and team sources is commit-based. Uncommitted working-tree
 edits do not change the recorded commit, and materialized symlinks expose those
 live edits directly. Catalog selections are the source kind with content and
