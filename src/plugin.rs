@@ -263,6 +263,15 @@ pub enum ToolAvailability {
     Optional,
 }
 
+impl std::fmt::Display for ToolAvailability {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Required => "required",
+            Self::Optional => "optional",
+        })
+    }
+}
+
 /// One regular file participating in the tool contract closure.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolFileRecord {
@@ -1225,7 +1234,8 @@ fn hash_tool_contract(tool: &ToolRecord) -> String {
         .collect()
 }
 
-fn hash_contract_value(hash: &mut Sha256, value: &str) {
+/// Length-prefixed framing shared by every contract hash in this crate.
+pub(crate) fn hash_contract_value(hash: &mut Sha256, value: &str) {
     hash.update((value.len() as u64).to_be_bytes());
     hash.update(value.as_bytes());
 }
@@ -1472,7 +1482,8 @@ fn reject_duplicate_stable_ids(
     }
 }
 
-fn is_plugin_name(value: &str) -> bool {
+/// Lower kebab-case name rule shared by plugin slots, tool IDs, and binary IDs.
+pub(crate) fn is_plugin_name(value: &str) -> bool {
     !value.is_empty()
         && value
             .bytes()

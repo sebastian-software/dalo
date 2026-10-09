@@ -239,6 +239,9 @@ pub struct ResolvedSkill {
     /// Free-text environment requirements declared by the skill.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compatibility: Option<String>,
+    /// Verified release binaries declared by the skill, in identity order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub binaries: Vec<crate::binary::BinaryRecord>,
     /// Whether this is a local override over another source.
     pub local_override: bool,
     /// Same-source requirements retained for link-time closure checks.
@@ -730,6 +733,7 @@ pub fn inventory_degrades_source_for_removal(inventory: &SourceInventory) -> boo
                 | InventoryWarningCode::InvalidSlotName
                 | InventoryWarningCode::SkippedSymlink
                 | InventoryWarningCode::InvalidDelivery
+                | InventoryWarningCode::InvalidBinaryDeclaration
         )
     })
 }
@@ -799,6 +803,7 @@ pub fn resolve(input: &ResolutionInput) -> Resolution {
                     path: skill.path.clone(),
                     delivery,
                     compatibility: skill.compatibility.clone(),
+                    binaries: skill.binaries.clone(),
                     local_override: false,
                     requires: skill.requires.clone(),
                 },
@@ -2363,6 +2368,7 @@ mod tests {
             tags: Vec::new(),
             compatibility: None,
             metadata: BTreeMap::new(),
+            binaries: Vec::new(),
         }
     }
 

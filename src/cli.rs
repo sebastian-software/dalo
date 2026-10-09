@@ -15,6 +15,7 @@ use crate::approval;
 use crate::assistant;
 use crate::audit;
 use crate::autosync;
+use crate::binary;
 use crate::catalog;
 use crate::config;
 use crate::doctor;
@@ -300,6 +301,8 @@ pub enum Command {
     Tool(ToolCommand),
     /// Inspect plugin-provided hooks and their approval state.
     Hook(HookCommand),
+    /// Inspect skill-declared release binaries without downloading them.
+    Binary(BinaryCommand),
     /// Show the effective plugin setup for linked targets.
     #[command(
         long_about = "Show the effective plugin setup for linked targets without changing files.\n\nUse this report before `sync` to see selected plugins, target compatibility, approval state, and provider package paths. It covers every linked target by default; use `--target` for one target. Planning does not write source, approval, or target files, and never runs tools or hooks.",
@@ -424,6 +427,30 @@ pub enum ToolSubcommand {
 pub struct ToolReferenceArgs {
     /// Tool in `<source>:<plugin>#tool:<id>` form.
     pub tool: String,
+}
+
+/// Release-binary inspection commands.
+#[derive(Debug, Args)]
+pub struct BinaryCommand {
+    /// Inspect a skill-declared release binary.
+    #[command(subcommand)]
+    pub command: BinarySubcommand,
+}
+
+/// Release-binary inspection commands. None of these download or verify a binary.
+#[derive(Debug, Subcommand)]
+pub enum BinarySubcommand {
+    /// List skill-declared release binaries and their state.
+    List(CheckArgs),
+    /// Show one skill-declared release binary.
+    Show(BinaryReferenceArgs),
+}
+
+/// One source-qualified skill-local binary identity.
+#[derive(Debug, Args)]
+pub struct BinaryReferenceArgs {
+    /// Binary in `<source>:<skill>#binary:<id>` form.
+    pub binary: String,
 }
 
 /// Hook inspection commands.
@@ -1462,6 +1489,7 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
                 | Command::Team(_)
                 | Command::Tool(_)
                 | Command::Hook(_)
+                | Command::Binary(_)
                 | Command::Autosync(_)
                 | Command::Status(CheckArgs { check: true })
                 | Command::Doctor(CheckArgs { check: true })
@@ -1496,6 +1524,7 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         Command::Plugin(command) => run_plugin(&options, command),
         Command::Tool(command) => run_tool(&options, command),
         Command::Hook(command) => run_hook(&options, command),
+        Command::Binary(command) => run_binary(&options, command),
         Command::Plan(args) => run_plan(&options, args),
         Command::Team(command) => run_team(&options, command),
         Command::Status(args) => run_status(&options, args),
@@ -1741,6 +1770,7 @@ fn command_ignores_dry_run(command: &Command) -> bool {
                     | PluginSubcommand::Validate(_)
             })
             | Command::Tool(_)
+            | Command::Binary(_)
             | Command::Hook(HookCommand {
                 command: HookSubcommand::List(_) | HookSubcommand::Show(_)
             })
@@ -2493,6 +2523,86 @@ fn run_tool(options: &GlobalOptions, command: ToolCommand) -> DaloResult<()> {
                 }
             }
             ensure_tool_audit_passed(&report)?;
+        }
+    }
+    Ok(())
+}
+
+fn run_binary(options: &GlobalOptions, command: BinaryCommand) -> DaloResult<()> {
+    let paths = store::StorePaths::new(options.store.clone());
+    ensure_initialized(&paths)?;
+    match command.command {
+        BinarySubcommand::List(args) => {
+            let report = binary::list(&paths)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                if report.binaries.is_empty() {
+                    println!("no skill-declared binaries discovered");
+                }
+                for item in &report.binaries {
+                    println!(
+                        "{} state={} contract=sha256:{}",
+                        status::terminal_safe_text(&item.binary.source_ref),
+                        item.state,
+                        status::terminal_safe_text(&item.binary.contract_hash)
+                    );
+                    println!("  {}", status::terminal_safe_text(&item.diagnostic));
+                }
+                for warning in &report.warnings {
+                    println!(
+                        "warning {}: {}",
+                        status::terminal_safe_text(&warning.path.to_string_lossy()),
+                        status::terminal_safe_text(&warning.message)
+                    );
+                }
+            }
+            if args.check && !report.warnings.is_empty() {
+                return Err(DaloError::CheckFailed {
+                    reason: format!(
+                        "binary list found {} invalid binary declaration{}",
+                        report.warnings.len(),
+                        if report.warnings.len() == 1 { "" } else { "s" }
+                    ),
+                });
+            }
+        }
+        BinarySubcommand::Show(args) => {
+            let report = binary::show(&paths, &args.binary)?;
+            if options.json {
+                return print_json(&report);
+            }
+            println!("{}", status::terminal_safe_text(&report.binary.source_ref));
+            println!("state: {}", report.state);
+            println!("repo: {}", status::terminal_safe_text(&report.binary.repo));
+            println!("tag: {}", status::terminal_safe_text(&report.binary.tag));
+            println!("availability: {}", report.binary.availability);
+            for (platform, asset) in &report.binary.assets {
+                let host = if report.host_platform == Some(*platform) {
+                    " (host)"
+                } else {
+                    ""
+                };
+                println!(
+                    "asset {platform}: {} sha256:{}{host}",
+                    status::terminal_safe_text(&asset.asset),
+                    status::terminal_safe_text(&asset.sha256)
+                );
+            }
+            println!(
+                "approval value: {}",
+                status::terminal_safe_text(&report.approval_value)
+            );
+            if let Some(path) = &report.staged_path {
+                println!(
+                    "staged path: {}",
+                    status::terminal_safe_text(&path.to_string_lossy())
+                );
+            }
+            println!(
+                "diagnostic: {}",
+                status::terminal_safe_text(&report.diagnostic)
+            );
         }
     }
     Ok(())

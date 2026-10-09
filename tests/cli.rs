@@ -842,6 +842,250 @@ fn tool_and_hook_warnings_should_escape_repo_controlled_terminal_sequences() {
     fixture.assert_never_executed();
 }
 
+const BINARY_SOURCE_REF: &str = "team:page-engine#binary:impeccino";
+const LINUX_X64_DIGEST: &str = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
+
+/// A `SKILL.md` whose frontmatter declares the Impeccino binary. `assets` is the
+/// YAML placed under `assets:`, indented for the declaration.
+fn page_engine_skill(assets: &str) -> String {
+    format!(
+        "---\nname: page-engine\ndescription: Audit rendered pages with the Impeccino engine\nbinaries:\n  impeccino:\n    source: github-release\n    repo: sebastian-software/impeccino\n    tag: engine-v0.2.0\n    availability: required\n    assets:\n{assets}---\n# Page engine\n"
+    )
+}
+
+fn linux_x64_asset(digest: &str) -> String {
+    format!("      linux-x64:\n        asset: impeccino-linux-x64\n        sha256: \"{digest}\"\n")
+}
+
+fn all_platform_assets() -> String {
+    format!(
+        "      macos-arm64:\n        asset: impeccino-darwin-arm64\n        sha256: \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"\n      macos-x64:\n        asset: impeccino-darwin-x64\n        sha256: \"{}\"\n      linux-arm64:\n        asset: impeccino-linux-arm64\n        sha256: \"{}\"\n{}",
+        "1".repeat(64),
+        "2".repeat(64),
+        linux_x64_asset(LINUX_X64_DIGEST),
+    )
+}
+
+/// A team repository whose only skill declares the binary. Nothing is fetched.
+struct TeamBinaryFixture {
+    _temp: tempfile::TempDir,
+    store: std::path::PathBuf,
+}
+
+impl TeamBinaryFixture {
+    fn new(skill: &str) -> Self {
+        let temp = tempfile::tempdir().unwrap();
+        let store = store::comparable_path(&temp.path().join("store"));
+        let repo = temp.path().join("team");
+        create_git_skill_repo_with_skill(&repo, "page-engine", skill);
+        dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .arg("init")
+            .assert()
+            .success();
+        add_source(&store, "team", &repo);
+        Self { _temp: temp, store }
+    }
+
+    fn command(&self) -> common::DaloCommand {
+        let mut command = dalo_command();
+        command.args(["--store"]).arg(&self.store);
+        command
+    }
+
+    fn list_json(&self) -> serde_json::Value {
+        let output = self
+            .command()
+            .args(["--json", "binary", "list"])
+            .output()
+            .expect("binary list should run");
+        assert!(output.status.success());
+        serde_json::from_slice(&output.stdout).expect("binary list JSON should parse")
+    }
+}
+
+#[test]
+fn binary_inventory_should_report_pending_declarations_without_fetching_them() {
+    let fixture = TeamBinaryFixture::new(&page_engine_skill(&all_platform_assets()));
+
+    let report = fixture.list_json();
+    let binary = &report["binaries"][0];
+    assert_eq!(binary["binary"]["source_ref"], BINARY_SOURCE_REF);
+    assert_eq!(binary["skill_source_ref"], "team:page-engine");
+    assert_eq!(binary["state"], "pending_approval");
+    assert!(
+        binary["approval_value"]
+            .as_str()
+            .unwrap()
+            .starts_with("team:page-engine#binary:impeccino@sha256:")
+    );
+    let assets = &binary["binary"]["assets"];
+    assert_eq!(assets.as_object().unwrap().len(), 4);
+    for (platform, asset) in [
+        ("macos-arm64", "impeccino-darwin-arm64"),
+        ("macos-x64", "impeccino-darwin-x64"),
+        ("linux-arm64", "impeccino-linux-arm64"),
+        ("linux-x64", "impeccino-linux-x64"),
+    ] {
+        assert_eq!(
+            assets[platform]["url"],
+            format!(
+                "https://github.com/sebastian-software/impeccino/releases/download/engine-v0.2.0/{asset}"
+            )
+        );
+    }
+    assert!(!fixture.store.join("binaries").exists());
+    assert!(!fixture.store.join("bin").exists());
+
+    let show = fixture
+        .command()
+        .args(["binary", "show", BINARY_SOURCE_REF])
+        .output()
+        .expect("binary show should run");
+    assert!(show.status.success());
+    let stdout = String::from_utf8(show.stdout).expect("output should be UTF-8");
+    assert!(stdout.contains("state: pending_approval"));
+    assert!(stdout.contains("repo: sebastian-software/impeccino"));
+    assert!(stdout.contains("tag: engine-v0.2.0"));
+    assert!(stdout.contains("availability: required"));
+    assert!(stdout.contains("approval value: team:page-engine#binary:impeccino@sha256:"));
+    let host = dalo::binary::host_platform().expect("test hosts are declarable platforms");
+    let host_lines = stdout
+        .lines()
+        .filter(|line| line.ends_with("(host)"))
+        .collect::<Vec<_>>();
+    assert_eq!(host_lines.len(), 1, "{stdout}");
+    assert!(host_lines[0].starts_with(&format!("asset {host}: ")));
+    assert!(!fixture.store.join("binaries").exists());
+}
+
+#[test]
+fn binary_declared_for_linux_only_follows_the_host_platform() {
+    let fixture = TeamBinaryFixture::new(&page_engine_skill(&linux_x64_asset(LINUX_X64_DIGEST)));
+
+    let expected = if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+        "pending_approval"
+    } else {
+        "platform_unsupported"
+    };
+    let report = fixture.list_json();
+    assert_eq!(report["binaries"][0]["state"], expected);
+}
+
+#[test]
+fn binary_list_check_should_fail_for_an_invalid_declaration() {
+    let fixture = TeamBinaryFixture::new(&page_engine_skill(&linux_x64_asset(
+        &LINUX_X64_DIGEST[..63],
+    )));
+
+    fixture
+        .command()
+        .args(["binary", "list", "--check"])
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(predicate::str::contains("warning"))
+        .stdout(predicate::str::contains(
+            "must pin a 64-character lower-case SHA-256 digest",
+        ))
+        .stderr(predicate::str::contains(
+            "binary list found 1 invalid binary declaration",
+        ));
+}
+
+#[test]
+fn binary_show_should_reject_a_tool_identity() {
+    let fixture = TeamBinaryFixture::new(&page_engine_skill(&all_platform_assets()));
+
+    fixture
+        .command()
+        .args(["binary", "show", "team:page-engine#tool:x"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("invalid binary identity"));
+}
+
+#[test]
+fn binary_show_should_report_hash_drift_after_an_earlier_approval_for_the_identity() {
+    let fixture = TeamBinaryFixture::new(&page_engine_skill(&all_platform_assets()));
+    let paths = store::StorePaths::new(fixture.store.clone());
+    let mut approvals = store::read_approvals(&paths).unwrap();
+    approvals.approvals.push(store::ApprovalRecord {
+        scope: "binary".to_owned(),
+        value: format!("{BINARY_SOURCE_REF}@sha256:{}", "0".repeat(64)),
+        granted_at_unix: None,
+    });
+    store::write_approvals(&paths, &approvals).unwrap();
+
+    fixture
+        .command()
+        .args(["binary", "show", BINARY_SOURCE_REF])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("state: hash_drift"));
+    assert_eq!(fixture.list_json()["binaries"][0]["state"], "hash_drift");
+}
+
+#[test]
+fn status_json_should_show_the_active_skill_with_its_binaries() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = temp.path().join("store");
+    let target = temp.path().join("skills");
+    setup_store_with_target(&store, &target);
+    let skill = store.join("local/skills/page-engine");
+    std::fs::create_dir_all(&skill).expect("skill should be created");
+    std::fs::write(
+        skill.join("SKILL.md"),
+        page_engine_skill(&all_platform_assets()),
+    )
+    .expect("skill should be written");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .output()
+        .expect("status should run");
+    assert!(output.status.success());
+    let status: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("status JSON should parse");
+    let active = status["resolution"]["active_skills"]
+        .as_array()
+        .expect("active skills should be an array")
+        .iter()
+        .find(|skill| skill["source_ref"] == "local:page-engine")
+        .expect("page-engine should be active");
+    assert_eq!(
+        active["binaries"][0]["source_ref"],
+        "local:page-engine#binary:impeccino"
+    );
+    assert_eq!(active["binaries"][0]["id"], "impeccino");
+}
+
+#[test]
+fn status_should_warn_about_an_invalid_binary_declaration() {
+    let fixture = TeamBinaryFixture::new(&page_engine_skill(&linux_x64_asset(
+        &LINUX_X64_DIGEST[..63],
+    )));
+
+    fixture
+        .command()
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("invalid_binary_declaration"))
+        .stdout(predicate::str::contains(
+            "must pin a 64-character lower-case SHA-256 digest",
+        ));
+}
+
 #[test]
 fn plugin_plan_should_report_selected_tool_as_pending_without_execution() {
     let fixture = PluginToolFixture::new();

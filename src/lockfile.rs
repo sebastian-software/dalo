@@ -1047,6 +1047,7 @@ mod tests {
             path: PathBuf::from(format!("/store/{slot_name}")),
             delivery: crate::inventory::SkillDelivery::Direct,
             compatibility: None,
+            binaries: Vec::new(),
             local_override: false,
             requires: Vec::new(),
         }

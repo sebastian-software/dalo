@@ -1765,6 +1765,7 @@ mod tests {
             tags: Vec::new(),
             compatibility: None,
             metadata: std::collections::BTreeMap::new(),
+            binaries: Vec::new(),
         }
     }
 

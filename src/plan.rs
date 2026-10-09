@@ -1111,6 +1111,7 @@ mod tests {
             path: PathBuf::from("/store/company/review"),
             delivery: SkillDelivery::Direct,
             compatibility: None,
+            binaries: Vec::new(),
             local_override: false,
             requires: Vec::new(),
         }

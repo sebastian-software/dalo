@@ -77,6 +77,10 @@ pub struct StorePaths {
     pub local_agents_dir: PathBuf,
     /// Immutable content-addressed approved local-tool closures.
     pub tools_dir: PathBuf,
+    /// Immutable content-addressed verified release binaries.
+    pub binaries_dir: PathBuf,
+    /// Stable exposure paths for ready binaries.
+    pub bin_dir: PathBuf,
     /// Immutable content-addressed generated skill derivations.
     pub generated_dir: PathBuf,
     /// Owned hook projections, dispatcher manifests, and reconciliation state.
@@ -123,6 +127,8 @@ impl StorePaths {
             local_instructions_dir: local_dir.join("instructions"),
             local_agents_dir: local_dir.join("agents"),
             tools_dir: root.join("tools"),
+            binaries_dir: root.join("binaries"),
+            bin_dir: root.join("bin"),
             generated_dir: root.join("generated"),
             hooks_dir: root.join("hooks"),
             hook_state_file: root.join("hooks/state.json"),
