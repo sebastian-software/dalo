@@ -107,6 +107,11 @@ terminal. Catalog skills need approval, sync preserves unmanaged files and
 reports unresolved conflicts, and dirty source checkouts block refresh so local
 edits are preserved.
 
+Before an approval the agent shows what a skill needs from the machine: its
+`compatibility` text, commands it expects on `PATH`, and release binaries it
+declares. A declared binary keeps its own approval, which downloads and verifies
+the pinned asset only when you ask for it.
+
 If a check blocks an operation, the agent can explain the finding and help you
 choose what to do next. You keep the decisions about sources, skills, and risk;
 the agent handles command syntax and reports. The [security overview](security.md)

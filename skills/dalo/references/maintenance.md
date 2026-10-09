@@ -50,6 +50,13 @@ operation. An exact full commit can be supplied to `--from` when the reviewed
 candidate must remain fixed. Consumers pick up the published declaration through
 their normal team sync.
 
+A source update can change a skill's pinned release binary. The binary then
+reports `hash_drift`; show the new repository, tag, and digest with
+`binary show` and re-approve only on the user's decision, because
+`approve binary` downloads again. `approve revoke binary`, `source unselect`,
+and `source remove` delete staged bytes that no approved declaration still
+references; they never touch anything else under the store.
+
 For “check for updates”, report differences without advancing pins or syncing
 targets. Upstream checks fetch data; do not start them during a purely local
 inventory or when offline. Do not implement a guessed update loop over every
@@ -158,6 +165,11 @@ a future dirty-source check does not isolate agent access.
 | Blocking security finding | Explain the finding and staged content; do not invent an `--accept-risk` reason |
 | Catalog selection removed upstream | Preserve the current pin until the user chooses a replacement or removal |
 | Unmanaged conflict | Classify it with `status --json` and `resolve list --json`, then follow [the conflict playbook](migration.md#resolve-name-and-target-conflicts) for the exact entry |
+| `skill_command_missing` warning or a `missing_commands` sync note | Relay the command and the skill's `compatibility` hint; it never blocks, and Dalo never runs the command |
+| `binary_pending_approval` or `binary_hash_drift` | Show the `binary show` facts; run `approve binary` only on request, because it downloads from GitHub |
+| `binary_audit_failed` | The staged bytes changed; revoke and re-approve on the user's decision, never edit `binaries/` or `bin/` by hand |
+| `binary_slot_conflict` | Two skills declare one binary id and the first by source priority owns `bin/<id>`; resolve through selection or priority, not by renaming |
+| `invalid_binary_declaration` warning | The skill is dropped until its declaration is fixed; report the rule from the warning to the skill's author instead of patching the source |
 | Informational `schema_migration_pending` | Let a supported ordinary write migrate that file; do not rewrite version numbers |
 | Malformed or unsupported store schema | Preserve the files and diagnose compatibility; do not delete or initialize over the store |
 

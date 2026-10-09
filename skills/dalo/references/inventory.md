@@ -20,7 +20,10 @@ dalo --store "$store" --json target detect
 ```
 
 For an existing store also read `status`, `doctor`, `source list`, and
-`resolve list` with the same `--store` and `--json` flags. Missing commands on an
+`resolve list` with the same `--store` and `--json` flags. `binary list` adds
+the release binaries that active or selected skills declare, with their state,
+and never downloads. `source inspect` and `status` include each skill's
+`compatibility` text, and `doctor` names declared commands missing from `PATH`. Missing commands on an
 older binary are compatibility information; use available reports and inspect
 files read-only. Distinguish a missing store from malformed state, an unsupported
 schema, missing permissions, or an unavailable source checkout.

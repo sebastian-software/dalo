@@ -213,6 +213,10 @@ runs Dalo, the same approval, audit, and ownership checks apply as in the
 terminal. Catalog skills need approval, sync preserves unmanaged files and
 reports unresolved conflicts, and dirty source checkouts block refresh so local
 edits are preserved.</p>
+<p>Before an approval the agent shows what a skill needs from the machine: its
+<code>compatibility</code> text, commands it expects on <code>PATH</code>, and release binaries it
+declares. A declared binary keeps its own approval, which downloads and verifies
+the pinned asset only when you ask for it.</p>
 <p>If a check blocks an operation, the agent can explain the finding and help you
 choose what to do next. You keep the decisions about sources, skills, and risk;
 the agent handles command syntax and reports. The <a href="/docs/security.html">security overview</a>
