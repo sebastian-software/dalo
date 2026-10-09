@@ -1015,7 +1015,7 @@ reported in `spec_findings`, with category `spec`, and cover these rules:
 - `spec.metadata-not-mapping` and `spec.metadata-value-not-string`: `metadata` is
   a mapping whose values are all strings.
 - `spec.unknown-key`: a top-level key is outside the specification fields and
-  Dalo's `id`, `owners`, `tags`, and `requires`.
+  Dalo's `id`, `owners`, `tags`, `requires`, and `binaries`.
 - `spec.body-too-long` (`info`): the Markdown body after the closing fence has
   more than 500 lines.
 
@@ -1168,6 +1168,36 @@ JSON shapes: `ToolListReport` (`tools[]`, `warnings[]`), `ToolStatusReport`
 `approval_value`, `state`, optional `staged_path`, `diagnostic`), and
 `ToolAuditReport` (`tool`, `contract_hash`, `plugin_package_hash`, `passed`,
 `findings[]`).
+
+### `dalo binary list [--check]`; `dalo binary show <source:skill#binary:id>`
+
+Inspect release binaries declared in `SKILL.md` frontmatter (see
+**Binary declarations** in the `SKILL.md` Frontmatter section). Both commands
+are read-only and never download, verify, stage, or execute a binary:
+
+```sh
+dalo binary list --check
+dalo binary show company:review-helper#binary:impeccino
+dalo --json binary show company:review-helper#binary:impeccino
+```
+
+`list` reports every valid declaration with its state and contract hash,
+followed by an actionable diagnostic. `show` returns the declaration with each
+platform's asset, digest, and derived URL, the platform of the running Dalo
+binary, the exact approval value, the staged path when present, and the
+diagnostic. States are `platform_unsupported`, `pending_approval`, `hash_drift`,
+`revoked`, `approved_not_staged`, `audit_failure`, and `ready`. This release has
+no command that grants a binary approval or stages its bytes, so users see
+`platform_unsupported` or `pending_approval` in practice. `binary list --check`
+returns a non-zero exit code when any skill has an invalid binary declaration;
+each one is listed as an `invalid_binary_declaration` warning. `dalo --json
+status` also lists the binaries of each active skill under
+`resolution.active_skills[].binaries`.
+
+JSON shapes: `BinaryListReport` (`binaries[]`, `warnings[]`) and
+`BinaryStatusReport` (`binary`, `skill_source_ref`, `skill_path`,
+`source_provenance`, `approval_value`, `host_platform`, `state`, optional
+`staged_path`, `diagnostic`).
 
 ### `dalo hook list [--check]`; `dalo hook show <source:plugin#hook:id>`
 
@@ -1436,6 +1466,8 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `tool audit` | `ToolAuditReport` | `tool`, `contract_hash`, `plugin_package_hash`, `passed`, `findings[]` |
 | `hook list` | `HookListReport` | `hooks[]` with hook and referenced-tool states, `warnings[]` |
 | `hook show` | `HookStatusReport` | hook and tool contracts, package and source provenance, `approval_value`, `tool_state`, `state`, `diagnostic` |
+| `binary list` | `BinaryListReport` | `binaries[]` with declaration, owning skill, `approval_value`, `host_platform`, `state`, optional `staged_path`, `diagnostic`; `warnings[]` (`invalid_binary_declaration`) |
+| `binary show` | `BinaryStatusReport` | declaration, owning skill and source provenance, `approval_value`, `host_platform`, `state`, optional `staged_path`, `diagnostic` |
 | `autosync install` / `uninstall` | `AutosyncMutationReport` | `action`, `dry_run`, resulting `status` |
 | `autosync status` | `AutosyncStatusReport` | `configured`, `installed`, `enabled`, backend, schedule, executable, store, artifacts, optional `scheduler_error`, optional `disabled_reason`, and optional `last_run` |
 | `autosync run` | `SyncReport` or `AutosyncRunState` | `SyncReport` when synchronization starts; `AutosyncRunState` with `outcome: "skipped"` and `reason` when another process holds the store lock. Catalog-drift and blocked failures keep the JSON sync report on stdout and emit the standard JSON error on stderr. |
@@ -1544,7 +1576,7 @@ After `dalo init`, the store contains:
 | `sources/<id>/checkout/` | Team and catalog Git checkouts. |
 | `sources/.audit-staging/` | Detached incoming team commits retained only while security review is required. |
 
-Assistant, hook, and plugin paths are created lazily, not by `dalo init`:
+Assistant, hook, plugin, and binary paths are created lazily, not by `dalo init`:
 
 | Path | Created when |
 | --- | --- |
@@ -1552,6 +1584,8 @@ Assistant, hook, and plugin paths are created lazily, not by `dalo init`:
 | `.assistant-installing/` | An assistant installation stages `new/` and temporarily preserves `previous/`; retained if recovery is needed. |
 | `hooks/`, `hooks/state.json` | The first native hook projection is applied; the state file records dispatcher ownership. |
 | `plugins/`, `plugins/state.json` | The first native plugin projection is applied; the state file records projection ownership. |
+| `binaries/` | Reserved; created when the first binary is approved. |
+| `bin/` | Reserved; created when the first binary is approved. |
 
 Provider plugin and hook projections are **experimental**: the native files
 Dalo writes under `plugins/` and `hooks/`, and the provider mappings behind
@@ -1909,6 +1943,19 @@ requires:
 compatibility: "Rendered-page scans need agent-browser on PATH; everything else works without it."
 metadata:
   dalo.requires-commands: "agent-browser"
+binaries:
+  impeccino:
+    source: github-release
+    repo: sebastian-software/impeccino
+    tag: engine-v0.2.0
+    availability: required
+    assets:
+      macos-arm64:
+        asset: impeccino-darwin-arm64
+        sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      linux-x64:
+        asset: impeccino-linux-x64
+        sha256: "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
 ---
 
 # Review Helper
@@ -1924,6 +1971,35 @@ metadata:
 | `requires[]` | no | Same-source or same-catalog dependencies. Required skills are expanded only when the closure is linkable and approved. |
 | `compatibility` | no | Free-text environment requirements from the Agent Skills specification (at most 500 characters). Shown unchanged by `source inspect`, `status`, `sync`, `approve skill`, and `plugin review` so the person approving a skill sees what it needs from the machine. |
 | `metadata` | no | String-to-string mapping, the specification's extension point. Dalo carries string-valued entries; non-string entries are ignored. |
+| `binaries` | no | Verified release binaries the skill needs, keyed by id. Dalo validates each declaration, inventories it with `dalo binary list` and `dalo binary show`, and will fetch, verify, and expose the host asset in a later release. |
+
+**Binary declarations.** `binaries` maps each binary id to one declaration. The
+id is the mapping key: lower kebab-case, unique (a duplicate key is a YAML
+error), so the identity is `<source>:<skill>#binary:<id>`, where `<source>:<skill>`
+is the skill's source reference. `binaries: {}` declares no binaries, and a value
+that is not a mapping is invalid. Each declaration takes `source` (required,
+exactly `github-release`); `repo` (required, `<owner>/<name>`: two segments of 1
+to 100 characters from letters, digits, `.`, `_`, and `-`, neither starting with
+`.`); `tag` (required, 1 to 128 characters from letters, digits, `.`, `_`, `/`,
+and `-`, not starting with `-`, `.`, or `/`, not ending with `/`, and containing
+neither `..` nor `//`); `availability` (optional, `required` or `optional`,
+default `required`); and `assets` (required, a non-empty mapping keyed by
+`macos-arm64`, `macos-x64`, `linux-arm64`, or `linux-x64`). Each asset requires
+`asset` (1 to 255 characters from letters, digits, `.`, `_`, and `-`, not
+starting with `.`, not containing `..`) and `sha256` (exactly 64 lowercase
+hexadecimal characters). Unknown keys are invalid at every level. Dalo derives
+each download URL as `https://github.com/<repo>/releases/download/<tag>/<asset>`.
+The contract hash covers the id, source, repo, tag, availability, and each
+asset's platform, file name, and digest, so a description edit does not change
+it. The approval value is `<identity>@sha256:<contract-hash>`.
+
+A declaration that breaks any rule drops its skill from the inventory and
+reports one `invalid_binary_declaration` warning naming the binary id and rule,
+so the skill does not activate. Dalo releases that predate this field ignore
+`binaries` and activate the skill without the binary, so upgrade before relying
+on a declaration. A YAML error inside `binaries` makes the whole
+frontmatter malformed, as any other frontmatter error does. This release only
+inventories declarations; it never fetches or verifies a release asset.
 
 If `name` is absent, the directory name is the slot name. Duplicate slot names within one source are warned and de-duplicated by resolver behavior.
 
