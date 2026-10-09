@@ -75,6 +75,11 @@ pub struct StatusReport {
     pub plugin_targets: Vec<crate::plugin_projection::PluginTargetReport>,
     /// Resolution output.
     pub resolution: Resolution,
+    /// Readiness of every declared release binary, joined for the human active-skill block.
+    ///
+    /// JSON already carries each active skill's declarations, so this is omitted there.
+    #[serde(skip)]
+    pub binary_states: Vec<crate::binary::BinaryStatusReport>,
     /// Dry-run materialization operations that expose target-level blockers.
     pub materialization: Vec<MaterializeOperation>,
     /// Target-aware delivery selections and provider artifact provenance.
@@ -213,6 +218,20 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
     let plugin_inventories = resolver::plugin_inventories(&resolved);
     let reconciliation_inventories = resolver::inventories_with_plugins(&resolved);
     let live = resolved.live;
+    let binary_states = {
+        let scanned = live
+            .scans
+            .iter()
+            .filter_map(|scan| scan.inventory.clone())
+            .collect::<Vec<_>>();
+        crate::binary::list_from_inventories(
+            &paths,
+            &config.sources,
+            &approvals.approvals,
+            &scanned,
+        )
+        .binaries
+    };
     let scan_by_id = live
         .scans
         .iter()
@@ -458,6 +477,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         hook_targets,
         plugin_targets,
         resolution,
+        binary_states,
         materialization: materialization.operations,
         deliveries,
         blocking_audits: audits.blocking,
@@ -1301,6 +1321,21 @@ fn audit_report_lines(report: &AuditReport) -> Vec<String> {
             lines.push(audit_finding_line(&format!("spec {}", finding.id), finding));
         }
     }
+    for binary in &report.binaries {
+        let platforms = binary
+            .platforms
+            .iter()
+            .map(|platform| terminal_safe_text(platform))
+            .collect::<Vec<_>>()
+            .join(", ");
+        lines.push(format!(
+            "  binary {}: {}@{} ({platforms}) contract sha256:{}",
+            terminal_safe_text(&binary.identity),
+            terminal_safe_text(&binary.repo),
+            terminal_safe_text(&binary.tag),
+            terminal_safe_text(&binary.contract_hash)
+        ));
+    }
     if let Some(review) = &report.agent_review {
         lines.push(format!(
             "  agent review: {} (isolation: {}; non-authoritative)",
@@ -1568,6 +1603,17 @@ pub fn print_status_report(report: &StatusReport) {
                 ""
             };
             println!("  {} -> {}{}", skill.slot_name, skill.source_ref, marker);
+            for binary in &skill.binaries {
+                let state = report
+                    .binary_states
+                    .iter()
+                    .find(|item| item.binary.source_ref == binary.source_ref)
+                    .map_or_else(|| "unknown".to_owned(), |item| item.state.to_string());
+                println!(
+                    "    binary {}: {state}",
+                    terminal_safe_text(&binary.source_ref)
+                );
+            }
         }
         let omitted = report
             .resolution
@@ -2784,6 +2830,12 @@ pub fn print_catalog_select_report(report: &CatalogSelectReport, store_root: &Pa
         println!("catalog {}: no change", report.source_id);
     }
     print_catalog_selection(&report.selected);
+    for path in &report.removed_binary_paths {
+        println!("removed: {}", compact_store_path(store_root, path));
+    }
+    for warning in &report.binary_cleanup_warnings {
+        println!("warning: {}", terminal_safe_text(warning));
+    }
     for audit in &report.audits {
         print_audit_report(audit);
     }
@@ -3559,6 +3611,7 @@ mod tests {
                 evidence: None,
             }],
             spec_findings: Vec::new(),
+            binaries: Vec::new(),
             agent_review: Some(audit::AgentReview {
                 provider: audit::AgentProvider::Claude,
                 isolation: audit::AgentIsolation::NoTools,

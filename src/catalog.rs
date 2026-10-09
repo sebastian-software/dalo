@@ -6,7 +6,7 @@ use std::fs;
 use std::io::Read;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -237,6 +237,12 @@ pub struct CatalogSelectReport {
     pub audits: Vec<AuditReport>,
     /// Legacy sibling catalogs that could not be migrated during this operation.
     pub migration_warnings: Vec<String>,
+    /// Staged binary paths removed because an unselect left their declaration unreferenced.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub removed_binary_paths: Vec<PathBuf>,
+    /// Binary cleanup warnings raised after an unselect.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub binary_cleanup_warnings: Vec<String>,
 }
 
 /// Report returned after adding a catalog source.
@@ -571,6 +577,8 @@ pub fn select_skills(
         dry_run,
         audits,
         migration_warnings,
+        removed_binary_paths: Vec::new(),
+        binary_cleanup_warnings: Vec::new(),
     })
 }
 

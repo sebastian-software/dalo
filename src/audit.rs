@@ -217,6 +217,26 @@ pub struct RiskAcceptance {
     pub scope_hash: String,
 }
 
+/// One release binary a skill declares, listed by `dalo audit`.
+///
+/// The listing is informational. Approving the skill does not approve its
+/// binaries, and the listing never changes the verdict, the acceptance scope,
+/// the blocking decision, or whether a cached report is reused.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AuditBinary {
+    /// Skill-qualified binary identity, `<source>:<skill>#binary:<id>`.
+    pub identity: String,
+    /// GitHub repository that publishes the release, `<owner>/<name>`.
+    pub repo: String,
+    /// Release tag the assets are attached to.
+    pub tag: String,
+    /// Platforms with a pinned asset, in platform order.
+    pub platforms: Vec<String>,
+    /// Contract hash of the declaration, without the `sha256:` prefix.
+    pub contract_hash: String,
+}
+
 /// Complete layered audit report for one immutable skill snapshot.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -251,6 +271,9 @@ pub struct AuditReport {
     /// Deterministic Agent Skills specification findings; informational and never part of the verdict.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub spec_findings: Vec<AuditFinding>,
+    /// Release binaries the skill declares; informational and never part of the verdict.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub binaries: Vec<AuditBinary>,
     /// Optional semantic agent review.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_review: Option<AgentReview>,
@@ -657,10 +680,12 @@ pub(crate) fn audit_skill_with_verified_content_hash(
         })
     };
 
-    // Specification findings are recomputed for every audit and are never
-    // taken from the cache. They stay out of the verdict, the acceptance scope,
-    // and `is_blocking`.
-    let spec_findings = spec_scan(source_ref, skill_path);
+    // Specification findings and the binary listing are recomputed for every
+    // audit and are never taken from the cache. They stay out of the verdict, the
+    // acceptance scope, and `is_blocking`.
+    let mut spec_findings = spec_scan(source_ref, skill_path);
+    let (binaries, binary_finding) = declared_binaries(source_ref, skill_path);
+    spec_findings.extend(binary_finding);
 
     let mut report = AuditReport {
         schema_version: AUDIT_SCHEMA_VERSION,
@@ -675,6 +700,7 @@ pub(crate) fn audit_skill_with_verified_content_hash(
         max_severity,
         static_findings,
         spec_findings,
+        binaries,
         agent_review,
         risk_acceptance,
     };
@@ -1739,6 +1765,61 @@ fn spec_scan(source_ref: &str, skill_path: &Path) -> Vec<AuditFinding> {
 
 fn spec_finding(id: &str, severity: Severity, line: Option<usize>, message: &str) -> AuditFinding {
     finding(id, severity, "spec", "SKILL.md", line, message, None)
+}
+
+/// Read the `binaries` declaration of one skill for the audit listing.
+///
+/// Returns the declared binaries, or one `spec.binaries-invalid` finding when the
+/// declaration fails validation, in which case nothing is listed. The identities
+/// use the skill ref without any `@provider` suffix, so they match `dalo binary list`.
+fn declared_binaries(
+    source_ref: &str,
+    skill_path: &Path,
+) -> (Vec<AuditBinary>, Option<AuditFinding>) {
+    let skill_ref = source_ref
+        .rsplit_once('@')
+        .map_or(source_ref, |(skill_ref, _provider)| skill_ref);
+    let Ok((markdown, metadata_truncated)) =
+        inventory::read_skill_metadata(&skill_path.join("SKILL.md"))
+    else {
+        return (Vec::new(), None);
+    };
+    let inventory::RawFrontmatter::Mapping { fields, .. } =
+        inventory::raw_frontmatter(&markdown, metadata_truncated)
+    else {
+        return (Vec::new(), None);
+    };
+    let Some(declaration) = fields.get("binaries") else {
+        return (Vec::new(), None);
+    };
+    match crate::binary::parse_declarations(skill_ref, declaration) {
+        Ok(records) => (
+            records
+                .into_iter()
+                .map(|record| AuditBinary {
+                    identity: record.source_ref,
+                    repo: record.repo,
+                    tag: record.tag,
+                    platforms: record
+                        .assets
+                        .keys()
+                        .map(|platform| platform.as_str().to_owned())
+                        .collect(),
+                    contract_hash: record.contract_hash,
+                })
+                .collect(),
+            None,
+        ),
+        Err(message) => (
+            Vec::new(),
+            Some(spec_finding(
+                "spec.binaries-invalid",
+                Severity::Low,
+                frontmatter_key_line(&markdown, "binaries"),
+                &message,
+            )),
+        ),
+    }
 }
 
 /// Whether `name` matches the Agent Skills name rule.

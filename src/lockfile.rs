@@ -44,6 +44,36 @@ pub struct UserLock {
     /// Canonical target-independent passive plugin resolution.
     #[serde(default)]
     pub plugins: Vec<LockedPlugin>,
+    /// Release binaries staged and exposed at the last sync, one per `ready` binary.
+    ///
+    /// The field is additive and omitted when empty, so a lock without staged
+    /// release binaries is byte-compatible with earlier layouts. The schema
+    /// version is unchanged; a Dalo build that predates this field rejects a
+    /// lock that contains it, because its lock parser denies unknown fields.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub binaries: Vec<LockedBinary>,
+}
+
+/// One staged release binary recorded by sync in the user lock.
+///
+/// Sync writes a record for every binary whose state is `ready` on the host.
+/// The record documents what the last sync observed; `dalo binary list` stays
+/// the source of truth for live state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LockedBinary {
+    /// Skill-qualified binary identity, `<source>:<skill>#binary:<id>`.
+    pub source_ref: String,
+    /// Contract hash the exact approval pins, without the `sha256:` prefix.
+    pub contract_hash: String,
+    /// Host platform whose asset was verified, such as `linux-x64`.
+    pub platform: String,
+    /// Pinned lowercase hexadecimal SHA-256 digest of the staged bytes.
+    pub digest: String,
+    /// Staged file at `binaries/<sha256>/<id>`.
+    pub staged_path: PathBuf,
+    /// Exposure link at `bin/<id>` that points at the staged file.
+    pub exposed_path: PathBuf,
 }
 
 /// Canonical passive plugin state retained in the user lock.
@@ -219,6 +249,7 @@ impl UserLock {
             target_materializations: Vec::new(),
             active_instruction_packs: Vec::new(),
             plugins: Vec::new(),
+            binaries: Vec::new(),
         }
     }
 }
@@ -305,6 +336,9 @@ pub(crate) fn build_user_lock_with_head_cache(
         // Instruction packs are managed by the `instructions` command, not by sync;
         // the caller restores the previous lock's packs after rebuilding.
         active_instruction_packs: Vec::new(),
+        // Release binaries come from the binary inventory rather than the resolution;
+        // the callers that commit a lock fill them with `binary::lock_records`.
+        binaries: Vec::new(),
         plugins: plugins.map_or_else(Vec::new, |resolution| {
             resolution
                 .plugins
@@ -496,6 +530,8 @@ fn sort_user_lock(lock: &mut UserLock) {
             .then_with(|| left.kind.cmp(&right.kind))
     });
     lock.plugins
+        .sort_by(|left, right| left.source_ref.cmp(&right.source_ref));
+    lock.binaries
         .sort_by(|left, right| left.source_ref.cmp(&right.source_ref));
 }
 
