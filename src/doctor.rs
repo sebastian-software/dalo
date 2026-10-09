@@ -205,6 +205,8 @@ pub enum DoctorCode {
     BinaryAuditFailed,
     /// Interrupted release-binary download debris was never verified or staged.
     BinaryStagingDebris,
+    /// Another declaration owns the exposure slot `bin/<id>`, so this binary is blocked.
+    BinarySlotConflict,
     /// A generated delivery cache or read-only planning pass failed verification.
     GeneratedDeliveryInvalid,
     /// Interrupted generated-delivery staging debris was never promoted.
@@ -740,6 +742,13 @@ fn check_binaries(
                     DoctorCode::BinaryAuditFailed,
                     format!("binary `{identity}`: {}", item.diagnostic),
                     approve,
+                )),
+                BinaryState::Blocked => findings.push(finding_warning(
+                    DoctorCode::BinarySlotConflict,
+                    format!("binary `{identity}`: {}", item.diagnostic),
+                    item.slot_owner
+                        .as_ref()
+                        .map(|owner| format!("dalo binary show {owner}")),
                 )),
             }
         }
@@ -2180,6 +2189,7 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::BinaryApprovalRevoked => "binary_approval_revoked",
         DoctorCode::BinaryAuditFailed => "binary_audit_failed",
         DoctorCode::BinaryStagingDebris => "binary_staging_debris",
+        DoctorCode::BinarySlotConflict => "binary_slot_conflict",
         DoctorCode::GeneratedDeliveryInvalid => "generated_delivery_invalid",
         DoctorCode::GeneratedDeliveryStagingDebris => "generated_delivery_staging_debris",
         DoctorCode::HookPendingApproval => "hook_pending_approval",

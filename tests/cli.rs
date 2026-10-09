@@ -874,10 +874,22 @@ struct TeamBinaryFixture {
 
 impl TeamBinaryFixture {
     fn new(skill: &str) -> Self {
+        Self::with_skills(&[("page-engine", skill)])
+    }
+
+    /// A team repository with every given skill, the first one committed by the
+    /// shared helper and the rest written beside it before that commit.
+    fn with_skills(skills: &[(&str, &str)]) -> Self {
         let temp = tempfile::tempdir().unwrap();
         let store = store::comparable_path(&temp.path().join("store"));
         let repo = temp.path().join("team");
-        create_git_skill_repo_with_skill(&repo, "page-engine", skill);
+        for (slot_name, body) in skills.iter().skip(1) {
+            let skill_dir = repo.join("skills").join(slot_name);
+            std::fs::create_dir_all(&skill_dir).unwrap();
+            std::fs::write(skill_dir.join("SKILL.md"), body).unwrap();
+        }
+        let (first_slot, first_body) = skills[0];
+        create_git_skill_repo_with_skill(&repo, first_slot, first_body);
         dalo_command()
             .args(["--store"])
             .arg(&store)
@@ -1301,7 +1313,7 @@ fn binary_approval_should_reuse_staged_bytes_offline_and_expose_them() {
 }
 
 #[test]
-fn binary_revocation_should_keep_the_bytes_and_report_the_approval_revoked() {
+fn binary_revocation_should_remove_the_unreferenced_bytes_and_report_their_paths() {
     let bytes = b"verified impeccino bytes";
     let fixture = TeamBinaryFixture::new(&page_engine_skill(&host_asset(&sha256_hex(bytes))));
     let digest = approve_staged_host_binary(&fixture, bytes);
@@ -1313,22 +1325,19 @@ fn binary_revocation_should_keep_the_bytes_and_report_the_approval_revoked() {
         .success()
         .stdout(predicate::str::contains(format!(
             "revoked binary {BINARY_SOURCE_REF}"
-        )));
+        )))
+        .stdout(predicate::str::contains(format!(
+            "removed: store:/binaries/{digest}"
+        )))
+        .stdout(predicate::str::contains("removed: store:/bin/impeccino"));
     assert!(binary_approval_records(&fixture.store).is_empty());
-    assert!(
-        fixture
-            .store
-            .join("binaries")
-            .join(&digest)
-            .join("impeccino")
-            .is_file()
-    );
-    assert!(fixture.store.join("bin/impeccino").exists());
-    assert_eq!(binary_show_json(&fixture)["state"], "revoked");
+    assert!(!fixture.store.join("binaries").join(&digest).exists());
+    assert!(std::fs::symlink_metadata(fixture.store.join("bin/impeccino")).is_err());
+    assert_eq!(binary_show_json(&fixture)["state"], "pending_approval");
     assert!(
         doctor_findings(&fixture)
             .iter()
-            .any(|(severity, code)| severity == "warning" && code == "binary_approval_revoked")
+            .all(|(_, code)| code != "binary_approval_revoked")
     );
 }
 
@@ -1401,6 +1410,416 @@ fn leftover_binary_download_should_be_reported_as_staging_debris() {
         doctor_findings(&fixture)
             .iter()
             .any(|(severity, code)| severity == "warning" && code == "binary_staging_debris")
+    );
+}
+
+/// The durable lock record of every staged binary, read through the store API.
+fn locked_binaries(fixture: &TeamBinaryFixture) -> Vec<dalo::lockfile::LockedBinary> {
+    store::read_user_lock(&store::StorePaths::new(fixture.store.clone()))
+        .expect("lock should parse")
+        .binaries
+}
+
+/// The `binary list` state of one declaration, identified by its source ref.
+fn binary_state_in_list(fixture: &TeamBinaryFixture, identity: &str) -> String {
+    let report = fixture.list_json();
+    report["binaries"]
+        .as_array()
+        .expect("binaries should be an array")
+        .iter()
+        .find(|item| item["binary"]["source_ref"] == identity)
+        .unwrap_or_else(|| panic!("`{identity}` should be listed"))["state"]
+        .as_str()
+        .expect("state should be a string")
+        .to_owned()
+}
+
+#[test]
+fn binary_lock_should_record_the_staged_binary_until_revocation_removes_it() {
+    let bytes = b"verified impeccino bytes";
+    let fixture = TeamBinaryFixture::new(&page_engine_skill(&host_asset(&sha256_hex(bytes))));
+    let digest = approve_staged_host_binary(&fixture, bytes);
+
+    fixture.command().arg("sync").assert().success();
+    let locked = locked_binaries(&fixture);
+    assert_eq!(locked.len(), 1, "{locked:?}");
+    assert_eq!(locked[0].source_ref, BINARY_SOURCE_REF);
+    assert_eq!(locked[0].digest, digest);
+    assert_eq!(locked[0].platform, host_platform_name());
+    assert_eq!(
+        locked[0].staged_path,
+        fixture
+            .store
+            .join("binaries")
+            .join(&digest)
+            .join("impeccino")
+    );
+    assert_eq!(locked[0].exposed_path, fixture.store.join("bin/impeccino"));
+    let lock_text =
+        std::fs::read_to_string(fixture.store.join("lock.toml")).expect("lock should be readable");
+    assert!(lock_text.contains("[[binaries]]"), "{lock_text}");
+
+    fixture
+        .command()
+        .args(["approve", "revoke", "binary", BINARY_SOURCE_REF])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "removed: store:/binaries/{digest}"
+        )))
+        .stdout(predicate::str::contains("removed: store:/bin/impeccino"));
+    assert!(!fixture.store.join("binaries").join(&digest).exists());
+    assert!(std::fs::symlink_metadata(fixture.store.join("bin/impeccino")).is_err());
+
+    fixture.command().arg("sync").assert().success();
+    assert!(locked_binaries(&fixture).is_empty());
+}
+
+#[test]
+fn binary_slot_conflict_should_block_the_later_declaration_and_doctor_should_name_the_owner() {
+    let engine = page_engine_skill(&host_asset(&"7".repeat(64)));
+    let tools = engine.replace("name: page-engine", "name: page-tools");
+    let fixture =
+        TeamBinaryFixture::with_skills(&[("page-engine", &engine), ("page-tools", &tools)]);
+    let blocked = "team:page-tools#binary:impeccino";
+
+    assert_eq!(
+        binary_state_in_list(&fixture, BINARY_SOURCE_REF),
+        "pending_approval"
+    );
+    assert_eq!(binary_state_in_list(&fixture, blocked), "blocked");
+
+    fixture
+        .command()
+        .args(["approve", "binary", blocked])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("cannot be approved"))
+        .stderr(predicate::str::contains(format!(
+            "belongs to `{BINARY_SOURCE_REF}`"
+        )))
+        .stderr(predicate::str::contains("nothing was downloaded"));
+    assert!(binary_approval_records(&fixture.store).is_empty());
+    assert!(!fixture.store.join("bin").exists());
+
+    let output = fixture
+        .command()
+        .args(["--json", "doctor"])
+        .output()
+        .expect("doctor should run");
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("doctor JSON should parse");
+    let conflict = report["findings"]
+        .as_array()
+        .expect("findings should be an array")
+        .iter()
+        .find(|finding| finding["code"] == "binary_slot_conflict")
+        .expect("doctor should report binary_slot_conflict");
+    assert_eq!(conflict["severity"], "warning");
+    assert_eq!(
+        conflict["next_command"],
+        format!("dalo binary show {BINARY_SOURCE_REF}")
+    );
+}
+
+#[test]
+fn source_remove_should_delete_the_staged_binary_and_link_and_list_them() {
+    let bytes = b"verified impeccino bytes";
+    let fixture = TeamBinaryFixture::new(&page_engine_skill(&host_asset(&sha256_hex(bytes))));
+    let digest = approve_staged_host_binary(&fixture, bytes);
+    fixture.command().arg("sync").assert().success();
+
+    let output = fixture
+        .command()
+        .args(["--json", "source", "remove", "team"])
+        .output()
+        .expect("source remove should run");
+    assert!(output.status.success(), "{output:?}");
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("source remove JSON should parse");
+    let affected = report["affected_paths"]
+        .as_array()
+        .expect("affected_paths should be an array")
+        .iter()
+        .map(|path| path.as_str().expect("path should be a string").to_owned())
+        .collect::<Vec<_>>();
+    assert!(
+        affected
+            .iter()
+            .any(|path| path.ends_with(&format!("binaries/{digest}"))),
+        "{affected:?}"
+    );
+    assert!(
+        affected.iter().any(|path| path.ends_with("bin/impeccino")),
+        "{affected:?}"
+    );
+    assert!(!fixture.store.join("binaries").join(&digest).exists());
+    assert!(std::fs::symlink_metadata(fixture.store.join("bin/impeccino")).is_err());
+    assert!(locked_binaries(&fixture).is_empty());
+}
+
+#[test]
+fn foreign_file_at_the_exposure_path_survives_revocation_and_removal_with_warnings() {
+    let bytes = b"verified impeccino bytes";
+    let fixture = TeamBinaryFixture::new(&page_engine_skill(&host_asset(&sha256_hex(bytes))));
+    let digest = approve_staged_host_binary(&fixture, bytes);
+    let link = fixture.store.join("bin/impeccino");
+    std::fs::remove_file(&link).expect("the Dalo link should be removable");
+    std::fs::write(&link, b"user-authored").expect("foreign file should be written");
+
+    fixture
+        .command()
+        .args(["approve", "revoke", "binary", BINARY_SOURCE_REF])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "removed: store:/binaries/{digest}"
+        )))
+        .stdout(predicate::str::contains("warning: "))
+        .stdout(predicate::str::contains("bin/impeccino"));
+    assert!(!fixture.store.join("binaries").join(&digest).exists());
+    assert_eq!(
+        std::fs::read(&link).expect("foreign file should survive"),
+        b"user-authored"
+    );
+
+    let output = fixture
+        .command()
+        .args(["--json", "source", "remove", "team"])
+        .output()
+        .expect("source remove should run");
+    assert!(output.status.success(), "{output:?}");
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("source remove JSON should parse");
+    assert!(
+        report["cleanup_warnings"]
+            .as_array()
+            .expect("cleanup_warnings should be an array")
+            .iter()
+            .any(|warning| warning.as_str().unwrap().contains("bin/impeccino")),
+        "{report}"
+    );
+    assert_eq!(
+        std::fs::read(&link).expect("foreign file should survive removal"),
+        b"user-authored"
+    );
+}
+
+#[test]
+fn binary_cleanup_should_remove_abandoned_download_debris_and_keep_a_fresh_one() {
+    let bytes = b"verified impeccino bytes";
+    let fixture = TeamBinaryFixture::new(&page_engine_skill(&host_asset(&sha256_hex(bytes))));
+    approve_staged_host_binary(&fixture, bytes);
+    let binaries = fixture.store.join("binaries");
+    let abandoned = binaries.join(".binary-download-abandoned");
+    let fresh = binaries.join(".binary-download-fresh");
+    std::fs::write(&abandoned, b"partial").expect("debris should be written");
+    std::fs::write(&fresh, b"partial").expect("debris should be written");
+    let two_hours_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 60 * 60);
+    std::fs::File::options()
+        .write(true)
+        .open(&abandoned)
+        .expect("debris should open")
+        .set_modified(two_hours_ago)
+        .expect("debris timestamp should be set");
+
+    fixture
+        .command()
+        .args(["approve", "revoke", "binary", BINARY_SOURCE_REF])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "removed: store:/binaries/.binary-download-abandoned",
+        ));
+    assert!(!abandoned.exists());
+    assert!(fresh.is_file(), "a fresh download may still be running");
+}
+
+#[test]
+fn audit_should_list_declared_binaries_without_changing_the_verdict() {
+    let fixture = TeamBinaryFixture::new(&page_engine_skill(&all_platform_assets()));
+
+    let output = fixture
+        .command()
+        .args(["--json", "audit", "team:page-engine"])
+        .output()
+        .expect("audit should run");
+    assert!(output.status.success(), "{output:?}");
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("audit JSON should parse");
+    assert_eq!(report["status"], "clean");
+    let binary = &report["binaries"][0];
+    assert_eq!(binary["identity"], BINARY_SOURCE_REF);
+    assert_eq!(binary["repo"], "sebastian-software/impeccino");
+    assert_eq!(binary["tag"], "engine-v0.2.0");
+    assert_eq!(
+        binary["platforms"],
+        serde_json::json!(["macos-arm64", "macos-x64", "linux-arm64", "linux-x64"])
+    );
+    assert_eq!(
+        binary["contract_hash"],
+        binary_show_json(&fixture)["binary"]["contract_hash"]
+    );
+
+    fixture
+        .command()
+        .args(["audit", "team:page-engine"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "  binary {BINARY_SOURCE_REF}: sebastian-software/impeccino@engine-v0.2.0 (macos-arm64, macos-x64, linux-arm64, linux-x64) contract sha256:"
+        )));
+}
+
+#[test]
+fn audit_should_report_an_invalid_binary_declaration_as_a_spec_finding() {
+    let fixture = TeamBinaryFixture::new(&page_engine_skill(&linux_x64_asset(
+        &LINUX_X64_DIGEST[..63],
+    )));
+    // An invalid declaration drops the skill from the inventory, so the
+    // `<source>:<skill>` form cannot resolve it. The skill path form audits the
+    // directory directly, and that is where the finding is produced.
+    let skill_dir = fixture
+        .store
+        .parent()
+        .expect("the store sits in the fixture directory")
+        .join("team/skills/page-engine");
+
+    let output = fixture
+        .command()
+        .args(["--json", "audit"])
+        .arg(&skill_dir)
+        .output()
+        .expect("audit should run");
+    assert!(output.status.success(), "{output:?}");
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("audit JSON should parse");
+    assert_eq!(report["status"], "clean");
+    assert!(report.get("binaries").is_none(), "{report}");
+    assert!(
+        report["spec_findings"]
+            .as_array()
+            .expect("spec_findings should be an array")
+            .iter()
+            .any(|finding| finding["id"] == "spec.binaries-invalid"
+                && finding["severity"] == "low"
+                && finding["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("64-character lower-case SHA-256 digest")),
+        "{report}"
+    );
+}
+
+#[test]
+fn status_should_list_a_ready_binary_under_its_active_skill() {
+    let bytes = b"verified impeccino bytes";
+    let fixture = TeamBinaryFixture::new(&page_engine_skill(&host_asset(&sha256_hex(bytes))));
+    fixture
+        .command()
+        .args(["approve", "skill", "team:page-engine"])
+        .assert()
+        .success();
+    approve_staged_host_binary(&fixture, bytes);
+
+    fixture
+        .command()
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "    binary {BINARY_SOURCE_REF}: ready"
+        )));
+}
+
+#[test]
+fn catalog_binaries_should_follow_the_selection_and_be_cleaned_on_unselect() {
+    let bytes = b"verified impeccino bytes";
+    let digest = sha256_hex(bytes);
+    let temp = tempfile::tempdir().expect("tempdir should be created");
+    let store = store::comparable_path(&temp.path().join("store"));
+    let repo = temp.path().join("catalog-repo");
+    // `launch-copy` declares a binary too, but it is never selected, so it is only an offer.
+    let offered_dir = repo.join("skills/launch-copy");
+    std::fs::create_dir_all(&offered_dir).expect("offered skill dir should be created");
+    std::fs::write(
+        offered_dir.join("SKILL.md"),
+        page_engine_skill(&host_asset(&"8".repeat(64)))
+            .replace("name: page-engine", "name: launch-copy"),
+    )
+    .expect("offered skill should be written");
+    create_git_skill_repo_with_skill(
+        &repo,
+        "copy-editing",
+        &page_engine_skill(&host_asset(&digest)).replace("name: page-engine", "name: copy-editing"),
+    );
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "copy-editing"])
+        .assert()
+        .success();
+    let identity = "marketing:copy-editing#binary:impeccino";
+    stage_host_bytes(&store, &digest, bytes);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "binary", identity])
+        .assert()
+        .success();
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "binary", "list"])
+        .output()
+        .expect("binary list should run");
+    let listed: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("binary list JSON should parse");
+    let binaries = listed["binaries"].as_array().expect("binaries array");
+    assert_eq!(binaries.len(), 1, "{listed}");
+    assert_eq!(binaries[0]["binary"]["source_ref"], identity);
+    assert_eq!(binaries[0]["state"], "ready");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "unselect", "marketing", "copy-editing"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "removed: store:/binaries/{digest}"
+        )))
+        .stdout(predicate::str::contains("removed: store:/bin/impeccino"));
+    assert!(!store.join("binaries").join(&digest).exists());
+    assert!(std::fs::symlink_metadata(store.join("bin/impeccino")).is_err());
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "binary", "list"])
+        .output()
+        .expect("binary list should run");
+    let listed: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("binary list JSON should parse");
+    assert!(
+        listed["binaries"]
+            .as_array()
+            .expect("binaries array")
+            .is_empty(),
+        "{listed}"
     );
 }
 

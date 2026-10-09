@@ -3955,6 +3955,18 @@ where
                 Some(&live.plugins),
             );
             lock.active_instruction_packs = instruction_sync.active_instruction_packs;
+            // Staged release binaries come from the scans this resolution already used.
+            let scanned = live
+                .scans
+                .iter()
+                .filter_map(|scan| scan.inventory.clone())
+                .collect::<Vec<_>>();
+            lock.binaries = binary::lock_records(&binary::list_from_inventories(
+                &paths,
+                &config.sources,
+                &approvals.approvals,
+                &scanned,
+            ));
             write_sync_lock_with_rollback(
                 &paths,
                 previous,
@@ -4757,8 +4769,19 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             } else {
                 Some(store::StoreLock::acquire(&paths)?)
             };
-            let report =
+            let mut report =
                 catalog::select_skills(&paths, &args.id, &args.skills, true, options.dry_run)?;
+            if !options.dry_run {
+                // An unselected skill may have been the last declaration of a staged binary.
+                let config = store::read_config(&paths)?;
+                let approvals = store::read_approvals(&paths)?;
+                let cleanup = binary::collect_unreferenced(
+                    &paths,
+                    &binary::snapshot(&paths, &config.sources, &approvals.approvals),
+                );
+                report.removed_binary_paths = cleanup.removed_paths;
+                report.binary_cleanup_warnings = cleanup.warnings;
+            }
             if options.json {
                 print_json(&report)?;
             } else {
@@ -4931,6 +4954,9 @@ fn run_source_remove(
         Some(&live.plugins),
     );
     user_lock.active_instruction_packs = instruction_removal.active_instruction_packs;
+    // The removed source is already absent from the configuration being committed.
+    let binary_snapshot = binary::snapshot(paths, &plan.config.sources, &plan.approvals.approvals);
+    user_lock.binaries = binary::lock_records(&binary_snapshot.list);
 
     let commit = (|| -> DaloResult<()> {
         source_remove_boundary("config")?;
@@ -4953,6 +4979,13 @@ fn run_source_remove(
             error,
         );
     }
+
+    // Bytes are removed only after the approvals that backed them are committed.
+    // A cleanup failure is reported, never rolled back into the metadata.
+    let cleanup = binary::collect_unreferenced(paths, &binary_snapshot);
+    plan.report.affected_paths.extend(cleanup.removed_paths);
+    plan.report.affected_paths.sort();
+    plan.report.cleanup_warnings.extend(cleanup.warnings);
 
     // Metadata and materialization are committed. Checkout deletion is garbage
     // collection from this point forward: failures are visible but must never
@@ -5610,6 +5643,15 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
                         status::terminal_safe_text(&report.binary),
                         if report.dry_run { " [dry-run]" } else { "" }
                     );
+                    for path in &report.removed_paths {
+                        println!(
+                            "removed: {}",
+                            status::compact_store_path(&options.store, path)
+                        );
+                    }
+                    for warning in &report.cleanup_warnings {
+                        println!("warning: {}", status::terminal_safe_text(warning));
+                    }
                 }
             } else if args.scope == ApprovalScopeArg::Delivery {
                 let report = crate::delivery::revoke(&paths, &args.value, options.dry_run)?;
@@ -5665,30 +5707,7 @@ fn skill_binary_statuses(
     if skill.binaries.is_empty() {
         return Ok(Vec::new());
     }
-    let config = store::read_config(paths)?;
-    let source = config
-        .sources
-        .iter()
-        .find(|source| source.id == skill.source_id)
-        .ok_or_else(|| {
-            DaloError::unknown_source(
-                &skill.source_id,
-                config
-                    .sources
-                    .iter()
-                    .map(|candidate| candidate.id.clone())
-                    .collect(),
-            )
-        })?;
-    let source_lock = catalog::read_source_lock(paths).ok();
-    let provenance = source::source_provenance(source, source_lock.as_ref());
-    let approvals = store::read_approvals(paths)?;
-    Ok(binary::skill_binary_statuses(
-        paths,
-        skill,
-        &approvals.approvals,
-        &provenance,
-    ))
+    binary::skill_binary_statuses(paths, skill)
 }
 
 #[derive(serde::Serialize)]

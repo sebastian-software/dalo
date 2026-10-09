@@ -11,7 +11,7 @@
 //! under `binaries/<sha256>/`, links it at `bin/<id>`, and only then records
 //! the exact approval. Dalo never executes the staged bytes.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::os::unix::fs::{PermissionsExt, symlink};
@@ -19,7 +19,7 @@ use std::path::{Component, Path, PathBuf};
 use std::process;
 #[cfg(test)]
 use std::sync::{Mutex, PoisonError};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -30,8 +30,9 @@ use ureq::http::header::{CONTENT_LENGTH, LOCATION};
 
 use crate::error::{DaloError, DaloResult};
 use crate::inventory::{InventoryWarning, InventoryWarningCode, SkillRecord, SourceInventory};
+use crate::lockfile::LockedBinary;
 use crate::plugin::{self, ToolAvailability};
-use crate::source::{SourceConfig, SourceHeadCache, SourceProvenance};
+use crate::source::{SourceConfig, SourceHeadCache, SourceKind, SourceProvenance};
 use crate::store::{self, ApprovalRecord, StorePaths};
 use crate::tool::make_directories_read_only;
 
@@ -49,6 +50,10 @@ const MAX_REDIRECTS: u32 = 5;
 
 /// Prefix of temporary download files, so `doctor` can find interrupted ones.
 pub(crate) const DOWNLOAD_TEMPORARY_PREFIX: &str = ".binary-download-";
+
+/// Age after which download debris is assumed abandoned. A younger file may
+/// belong to a download that is still running, so cleanup leaves it alone.
+const DOWNLOAD_DEBRIS_MIN_AGE: Duration = Duration::from_secs(60 * 60);
 
 /// Test-only switch that lets the download policy accept plain-HTTP loopback
 /// URLs, so unit tests can serve assets from a `127.0.0.1` fixture server.
@@ -367,6 +372,9 @@ pub struct BinaryStatusReport {
     /// Exposure link at `<store>/bin/<id>`, reported when it resolves to the staged file.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exposed_path: Option<PathBuf>,
+    /// Identity of the declaration that owns `bin/<id>`, reported only when this one is `blocked`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub slot_owner: Option<String>,
     /// Actionable explanation.
     pub diagnostic: String,
 }
@@ -389,6 +397,8 @@ pub enum BinaryState {
     AuditFailure,
     /// Exact approval, staged bytes that match the pinned digest, and the exposure link to them.
     Ready,
+    /// Another declaration owns the exposure slot `bin/<id>`, so this one is never exposed.
+    Blocked,
 }
 
 impl std::fmt::Display for BinaryState {
@@ -401,6 +411,7 @@ impl std::fmt::Display for BinaryState {
             Self::ApprovedNotStaged => "approved_not_staged",
             Self::AuditFailure => "audit_failure",
             Self::Ready => "ready",
+            Self::Blocked => "blocked",
         })
     }
 }
@@ -409,7 +420,7 @@ impl std::fmt::Display for BinaryState {
 pub fn list(paths: &StorePaths) -> DaloResult<BinaryListReport> {
     let config = store::read_config(paths)?;
     let approvals = store::read_approvals(paths)?;
-    let inventories = scan_skill_inventories(&config.sources);
+    let (inventories, _unscanned) = scan_enabled_sources(&config.sources);
     Ok(list_from_inventories(
         paths,
         &config.sources,
@@ -418,21 +429,89 @@ pub fn list(paths: &StorePaths) -> DaloResult<BinaryListReport> {
     ))
 }
 
-/// Scan the skills of every enabled source. A source whose scan fails reports
-/// nothing, because skill discovery is read-only and never executes code.
-fn scan_skill_inventories(sources: &[SourceConfig]) -> Vec<SourceInventory> {
-    sources
+/// Scan the skills of every enabled source and name the enabled sources whose
+/// scan failed. Skill discovery is read-only and never executes code.
+fn scan_enabled_sources(sources: &[SourceConfig]) -> (Vec<SourceInventory>, Vec<String>) {
+    let mut inventories = Vec::new();
+    let mut unscanned = Vec::new();
+    for source in sources.iter().filter(|source| source.enabled) {
+        let scanned = crate::source::scoped_source_root(&source.path, source.subpath.as_deref())
+            .and_then(|root| crate::inventory::scan_source(&source.id, &root));
+        match scanned {
+            Ok(inventory) => inventories.push(inventory),
+            Err(_) => unscanned.push(source.id.clone()),
+        }
+    }
+    (inventories, unscanned)
+}
+
+/// The declarations a cleanup pass sees, plus the sources that stop it from
+/// proving which staged bytes are unreferenced.
+pub(crate) struct BinarySnapshot {
+    /// Listing built from every enabled source that scanned successfully.
+    pub(crate) list: BinaryListReport,
+    /// Disabled or unscannable sources. Cleanup does nothing while any exists,
+    /// because their declarations cannot be seen and their bytes may still be wanted.
+    pub(crate) incomplete_sources: Vec<String>,
+}
+
+/// Take a listing for cleanup and lock decisions from explicit configuration.
+///
+/// Callers pass the configuration and approvals they are about to commit, so a
+/// source being removed is already absent from `sources`.
+pub(crate) fn snapshot(
+    paths: &StorePaths,
+    sources: &[SourceConfig],
+    approvals: &[ApprovalRecord],
+) -> BinarySnapshot {
+    let (inventories, mut incomplete_sources) = scan_enabled_sources(sources);
+    incomplete_sources.extend(
+        sources
+            .iter()
+            .filter(|source| !source.enabled)
+            .map(|source| source.id.clone()),
+    );
+    incomplete_sources.sort();
+    let list = list_from_inventories(paths, sources, approvals, &inventories);
+    BinarySnapshot {
+        list,
+        incomplete_sources,
+    }
+}
+
+/// Lock records for the binaries that are `ready` on this host, sorted by identity.
+#[must_use]
+pub(crate) fn lock_records(report: &BinaryListReport) -> Vec<LockedBinary> {
+    let mut records = report
+        .binaries
         .iter()
-        .filter(|source| source.enabled)
-        .filter_map(|source| {
-            let root =
-                crate::source::scoped_source_root(&source.path, source.subpath.as_deref()).ok()?;
-            crate::inventory::scan_source(&source.id, &root).ok()
+        .filter(|item| item.state == BinaryState::Ready)
+        .filter_map(|item| {
+            let platform = item.host_platform?;
+            let asset = item.binary.assets.get(&platform)?;
+            Some(LockedBinary {
+                source_ref: item.binary.source_ref.clone(),
+                contract_hash: item.binary.contract_hash.clone(),
+                platform: platform.as_str().to_owned(),
+                digest: asset.sha256.clone(),
+                staged_path: item.staged_path.clone()?,
+                exposed_path: item.exposed_path.clone()?,
+            })
         })
-        .collect()
+        .collect::<Vec<_>>();
+    records.sort_by(|left, right| left.source_ref.cmp(&right.source_ref));
+    records
 }
 
 /// Join already-scanned skill inventories with local binary trust and staging state.
+///
+/// Two rules decide which declarations take part. A catalog skill that its
+/// source does not select, directly or through a same-catalog `requires`, is an
+/// offer rather than part of the resolution, so it is left out just as the
+/// resolver leaves it out. Among the remaining declarations, the first by source
+/// priority, then by source ID, then by skill ref owns the exposure slot
+/// `bin/<id>`; every other declaration with the same ID is reported as `blocked`
+/// and is never exposed.
 #[must_use]
 pub fn list_from_inventories(
     paths: &StorePaths,
@@ -443,13 +522,16 @@ pub fn list_from_inventories(
     let source_lock = crate::catalog::read_source_lock(paths).ok();
     let mut head_cache = SourceHeadCache::default();
     let host_platform = host_platform();
-    let mut binaries = Vec::new();
+    let enabled_sources = sources
+        .iter()
+        .filter(|source| source.enabled)
+        .map(|source| (source.id.as_str(), source))
+        .collect::<BTreeMap<_, _>>();
+    let selections = crate::resolver::expand_catalog_selections(&enabled_sources, inventories);
     let mut warnings = Vec::new();
+    let mut declarations: Vec<(&SourceConfig, &SkillRecord, &BinaryRecord)> = Vec::new();
     for inventory in inventories {
-        let Some(source) = sources
-            .iter()
-            .find(|source| source.enabled && source.id == inventory.source_id)
-        else {
+        let Some(&source) = enabled_sources.get(inventory.source_id.as_str()) else {
             continue;
         };
         warnings.extend(
@@ -459,33 +541,78 @@ pub fn list_from_inventories(
                 .filter(|warning| warning.code == InventoryWarningCode::InvalidBinaryDeclaration)
                 .cloned(),
         );
-        // Provenance can cost a Git lookup, so it is resolved only for a source
-        // that actually declares a binary; doctor and status pay nothing otherwise.
-        let mut provenance: Option<SourceProvenance> = None;
+        let selection = selections
+            .get(source.id.as_str())
+            .map_or(source.selection.as_slice(), Vec::as_slice);
         for skill in &inventory.skills {
+            if source.kind == SourceKind::Catalog
+                && !crate::catalog::skill_is_selected(skill, selection, &source.path)
+            {
+                continue;
+            }
             for binary in &skill.binaries {
-                let provenance = provenance.get_or_insert_with(|| {
-                    crate::source::source_provenance_with_head_cache(
-                        source,
-                        source_lock.as_ref(),
-                        &mut head_cache,
-                    )
-                });
-                binaries.push(status_for(
-                    paths,
-                    binary.clone(),
-                    skill.source_ref.clone(),
-                    skill.path.clone(),
-                    provenance.clone(),
-                    approvals,
-                    host_platform,
-                ));
+                declarations.push((source, skill, binary));
             }
         }
+    }
+    // Sorted so that the first declaration of each ID is its slot owner.
+    declarations.sort_by(|left, right| {
+        left.0
+            .priority
+            .cmp(&right.0.priority)
+            .then_with(|| left.0.id.cmp(&right.0.id))
+            .then_with(|| left.1.source_ref.cmp(&right.1.source_ref))
+    });
+    let mut owners: BTreeMap<&str, &str> = BTreeMap::new();
+    for (_, _, binary) in &declarations {
+        owners
+            .entry(binary.id.as_str())
+            .or_insert(binary.source_ref.as_str());
+    }
+    // Provenance can cost a Git lookup, so it is resolved once for each source
+    // that actually declares a binary; doctor and status pay nothing otherwise.
+    let mut provenance: BTreeMap<&str, SourceProvenance> = BTreeMap::new();
+    let mut binaries = Vec::with_capacity(declarations.len());
+    for (source, skill, binary) in declarations {
+        let provenance = provenance
+            .entry(source.id.as_str())
+            .or_insert_with(|| {
+                crate::source::source_provenance_with_head_cache(
+                    source,
+                    source_lock.as_ref(),
+                    &mut head_cache,
+                )
+            })
+            .clone();
+        let mut status = status_for(
+            paths,
+            binary.clone(),
+            skill.source_ref.clone(),
+            skill.path.clone(),
+            provenance,
+            approvals,
+            host_platform,
+        );
+        let owner = owners[binary.id.as_str()];
+        if owner != binary.source_ref {
+            block_slot(&mut status, owner);
+        }
+        binaries.push(status);
     }
     binaries.sort_by(|left, right| left.binary.source_ref.cmp(&right.binary.source_ref));
     warnings.sort_by(|left, right| left.path.cmp(&right.path));
     BinaryListReport { binaries, warnings }
+}
+
+/// Mark a declaration whose exposure slot another declaration owns.
+fn block_slot(report: &mut BinaryStatusReport, owner: &str) {
+    report.state = BinaryState::Blocked;
+    report.slot_owner = Some(owner.to_owned());
+    report.exposed_path = None;
+    report.diagnostic = format!(
+        "exposure slot `bin/{}` belongs to `{owner}`; this declaration is blocked and is never exposed",
+        report.binary.id
+    );
 }
 
 /// Find one exact skill-qualified binary declaration.
@@ -545,6 +672,7 @@ fn status_for(
         state: evaluation.state,
         staged_path: evaluation.staged_path,
         exposed_path: evaluation.exposed_path,
+        slot_owner: None,
         diagnostic: evaluation.diagnostic,
     }
 }
@@ -721,31 +849,27 @@ pub struct BinaryApprovalReport {
     pub exposed_path: Option<PathBuf>,
     /// Whether mutation was suppressed.
     pub dry_run: bool,
+    /// Staged directories, links, and debris removed by the cleanup that follows a revocation.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub removed_paths: Vec<PathBuf>,
+    /// Entries cleanup kept because removing them could not be proven safe.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cleanup_warnings: Vec<String>,
 }
 
 /// Status of every binary one skill declares, for `approve skill` output.
+///
+/// The statuses come from the full listing, so a declaration that loses its
+/// exposure slot to another skill reads `blocked` here, as it does in `binary list`.
 pub(crate) fn skill_binary_statuses(
     paths: &StorePaths,
     skill: &SkillRecord,
-    approvals: &[ApprovalRecord],
-    provenance: &SourceProvenance,
-) -> Vec<BinaryStatusReport> {
-    let host_platform = host_platform();
-    skill
+) -> DaloResult<Vec<BinaryStatusReport>> {
+    Ok(list(paths)?
         .binaries
-        .iter()
-        .map(|binary| {
-            status_for(
-                paths,
-                binary.clone(),
-                skill.source_ref.clone(),
-                skill.path.clone(),
-                provenance.clone(),
-                approvals,
-                host_platform,
-            )
-        })
-        .collect()
+        .into_iter()
+        .filter(|item| item.skill_source_ref == skill.source_ref)
+        .collect())
 }
 
 /// Download, verify, stage, and expose the host asset, then grant the exact approval.
@@ -756,6 +880,14 @@ pub(crate) fn skill_binary_statuses(
 /// mismatch leaves neither a staged file nor an approval record.
 pub fn approve(paths: &StorePaths, value: &str, dry_run: bool) -> DaloResult<BinaryApprovalReport> {
     let status = show(paths, value)?;
+    if status.state == BinaryState::Blocked {
+        return Err(DaloError::StateError {
+            reason: format!(
+                "binary `{}` cannot be approved: {}; nothing was downloaded",
+                status.binary.source_ref, status.diagnostic
+            ),
+        });
+    }
     let host_asset = status.host_platform.and_then(|platform| {
         status
             .binary
@@ -787,6 +919,8 @@ pub fn approve(paths: &StorePaths, value: &str, dry_run: bool) -> DaloResult<Bin
             staged_path: Some(planned_staged),
             exposed_path: Some(planned_exposed),
             dry_run,
+            removed_paths: Vec::new(),
+            cleanup_warnings: Vec::new(),
         });
     }
     let staged_path = fetch_and_stage(paths, &status.binary, platform)?;
@@ -807,13 +941,16 @@ pub fn approve(paths: &StorePaths, value: &str, dry_run: bool) -> DaloResult<Bin
         staged_path: Some(staged_path),
         exposed_path: Some(exposed_path),
         dry_run,
+        removed_paths: Vec::new(),
+        cleanup_warnings: Vec::new(),
     })
 }
 
 /// Remove every approval for one exact binary identity.
 ///
-/// Staged bytes and the exposure link stay in place; the state becomes
-/// `revoked` until a later cleanup removes them.
+/// A real run then removes the staged bytes and the exposure link that no
+/// approved declaration still backs (see `garbage_collect`). Anything cleanup
+/// keeps is reported as a warning rather than failing the revocation.
 pub fn revoke(paths: &StorePaths, value: &str, dry_run: bool) -> DaloResult<BinaryApprovalReport> {
     validate_identity_shape(value)?;
     let mut approvals = store::read_approvals(paths)?;
@@ -831,6 +968,15 @@ pub fn revoke(paths: &StorePaths, value: &str, dry_run: bool) -> DaloResult<Bina
     if changed && !dry_run {
         store::write_approvals(paths, &approvals)?;
     }
+    let cleanup = if dry_run {
+        BinaryCleanupReport::default()
+    } else {
+        let config = store::read_config(paths)?;
+        collect_unreferenced(
+            paths,
+            &snapshot(paths, &config.sources, &approvals.approvals),
+        )
+    };
     Ok(BinaryApprovalReport {
         binary: value.to_owned(),
         approval_value: removed.unwrap_or(prefix),
@@ -838,7 +984,257 @@ pub fn revoke(paths: &StorePaths, value: &str, dry_run: bool) -> DaloResult<Bina
         staged_path: None,
         exposed_path: None,
         dry_run,
+        removed_paths: cleanup.removed_paths,
+        cleanup_warnings: cleanup.warnings,
     })
+}
+
+/// Paths one cleanup pass removed, and the entries it kept on purpose.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct BinaryCleanupReport {
+    /// Staged directories, exposure links, and download debris that were deleted.
+    pub removed_paths: Vec<PathBuf>,
+    /// Entries kept because removing them could not be proven safe, and cleanup steps that failed.
+    pub warnings: Vec<String>,
+}
+
+/// Run one cleanup pass over a snapshot, or explain why it must not run.
+///
+/// Cleanup is skipped while any enabled source is unscannable or any source is
+/// disabled, because the declarations behind those sources cannot be seen. A
+/// failure inside the pass becomes a warning, since the caller has already
+/// committed the change that triggered it.
+pub(crate) fn collect_unreferenced(
+    paths: &StorePaths,
+    snapshot: &BinarySnapshot,
+) -> BinaryCleanupReport {
+    if !snapshot.incomplete_sources.is_empty() {
+        return BinaryCleanupReport {
+            removed_paths: Vec::new(),
+            warnings: vec![format!(
+                "binary cleanup skipped: source(s) {} are disabled or could not be scanned, so their staged bytes cannot be proven unreferenced",
+                snapshot.incomplete_sources.join(", ")
+            )],
+        };
+    }
+    garbage_collect(paths, &snapshot.list.binaries).unwrap_or_else(|error| BinaryCleanupReport {
+        removed_paths: Vec::new(),
+        warnings: vec![format!("binary cleanup failed: {error}")],
+    })
+}
+
+/// Remove staged bytes, exposure links, and download debris that no approved
+/// declaration in `live` still backs.
+///
+/// A digest directory `binaries/<sha256>/` is kept when an entry with an approval
+/// record (`ready`, `approved_not_staged`, or `audit_failure`) pins that digest for
+/// the host platform. Otherwise it is removed, provided it holds exactly one
+/// regular file. An exposure link `bin/<id>` is removed when it is a symbolic link
+/// into `binaries/` and either its target is gone or no approved entry owns `<id>`.
+/// Download debris is removed once it is older than an hour. Anything else is left
+/// in place and reported as a warning, and nothing is ever deleted through a
+/// symbolic link.
+pub(crate) fn garbage_collect(
+    paths: &StorePaths,
+    live: &[BinaryStatusReport],
+) -> DaloResult<BinaryCleanupReport> {
+    let backed = live
+        .iter()
+        .filter(|item| {
+            matches!(
+                item.state,
+                BinaryState::Ready | BinaryState::ApprovedNotStaged | BinaryState::AuditFailure
+            )
+        })
+        .collect::<Vec<_>>();
+    let pinned = backed
+        .iter()
+        .filter_map(|item| {
+            item.host_platform
+                .and_then(|platform| item.binary.assets.get(&platform))
+        })
+        .map(|asset| asset.sha256.as_str())
+        .collect::<BTreeSet<_>>();
+    let owned = backed
+        .iter()
+        .map(|item| item.binary.id.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut report = BinaryCleanupReport::default();
+    collect_staged_store(paths, &pinned, &mut report)?;
+    collect_exposure_links(paths, &owned, &mut report)?;
+    report.removed_paths.sort();
+    Ok(report)
+}
+
+/// Clean `binaries/`: unpinned digest directories and abandoned download debris.
+fn collect_staged_store(
+    paths: &StorePaths,
+    pinned: &BTreeSet<&str>,
+    report: &mut BinaryCleanupReport,
+) -> DaloResult<()> {
+    let root = &paths.binaries_dir;
+    let metadata = match fs::symlink_metadata(root) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    if !metadata.file_type().is_dir() {
+        report.warnings.push(format!(
+            "left `{}` in place: it is not a real directory",
+            root.display()
+        ));
+        return Ok(());
+    }
+    for entry in fs::read_dir(root)? {
+        let entry = entry?;
+        let path = entry.path();
+        let file_name = entry.file_name();
+        // Names that are not UTF-8 cannot be Dalo's, so they are never touched.
+        let Some(name) = file_name.to_str() else {
+            continue;
+        };
+        if name.starts_with(DOWNLOAD_TEMPORARY_PREFIX) {
+            remove_download_debris(&path, report);
+        } else if is_sha256_hex(name) && !pinned.contains(name) {
+            remove_staged_digest(&path, report);
+        }
+    }
+    Ok(())
+}
+
+/// Remove one interrupted download once it is old enough to be abandoned.
+fn remove_download_debris(path: &Path, report: &mut BinaryCleanupReport) {
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return;
+    };
+    if !metadata.file_type().is_file() {
+        report.warnings.push(format!(
+            "left `{}` in place: download debris must be a regular file",
+            path.display()
+        ));
+        return;
+    }
+    // A file with an unreadable or future timestamp is kept, not guessed at.
+    let Ok(modified) = metadata.modified() else {
+        return;
+    };
+    let abandoned = SystemTime::now()
+        .duration_since(modified)
+        .is_ok_and(|age| age > DOWNLOAD_DEBRIS_MIN_AGE);
+    if !abandoned {
+        return;
+    }
+    match fs::remove_file(path) {
+        Ok(()) => report.removed_paths.push(path.to_path_buf()),
+        Err(error) => report.warnings.push(format!(
+            "could not remove download debris `{}`: {error}",
+            path.display()
+        )),
+    }
+}
+
+/// Remove one staged digest directory that no approved declaration pins.
+///
+/// The directory must hold exactly one regular file, the verified binary Dalo
+/// staged there. A symbolic link, or a directory with any other content, is kept.
+fn remove_staged_digest(path: &Path, report: &mut BinaryCleanupReport) {
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return;
+    };
+    if metadata.file_type().is_symlink() {
+        report.warnings.push(format!(
+            "left `{}` in place: it is a symbolic link, not a staged directory",
+            path.display()
+        ));
+        return;
+    }
+    if !metadata.file_type().is_dir() {
+        report.warnings.push(format!(
+            "left `{}` in place: it is not a staged directory",
+            path.display()
+        ));
+        return;
+    }
+    let entries = fs::read_dir(path).and_then(|entries| entries.collect::<io::Result<Vec<_>>>());
+    let entries = match entries {
+        Ok(entries) => entries,
+        Err(error) => {
+            report
+                .warnings
+                .push(format!("left `{}` in place: {error}", path.display()));
+            return;
+        }
+    };
+    let [entry] = entries.as_slice() else {
+        report.warnings.push(format!(
+            "left `{}` in place: it holds {} entries, expected one staged file",
+            path.display(),
+            entries.len()
+        ));
+        return;
+    };
+    let file = entry.path();
+    if !fs::symlink_metadata(&file).is_ok_and(|metadata| metadata.file_type().is_file()) {
+        report.warnings.push(format!(
+            "left `{}` in place: its entry is not a regular file",
+            path.display()
+        ));
+        return;
+    }
+    // The directory is read-only; making it writable is what lets its single file go.
+    let outcome = fs::set_permissions(path, fs::Permissions::from_mode(0o755))
+        .and_then(|()| fs::remove_file(&file))
+        .and_then(|()| fs::remove_dir(path));
+    match outcome {
+        Ok(()) => report.removed_paths.push(path.to_path_buf()),
+        Err(error) => report.warnings.push(format!(
+            "could not remove staged binary `{}`: {error}",
+            path.display()
+        )),
+    }
+}
+
+/// Clean `bin/`: links into `binaries/` whose target is gone or whose owner is not approved.
+///
+/// Anything else in `bin/`, including a real file a user placed there, is kept and
+/// reported. Revocation and removal never delete a foreign entry.
+fn collect_exposure_links(
+    paths: &StorePaths,
+    owned: &BTreeSet<&str>,
+    report: &mut BinaryCleanupReport,
+) -> DaloResult<()> {
+    let entries = match fs::read_dir(&paths.bin_dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    for entry in entries {
+        let entry = entry?;
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let dalo_link = fs::symlink_metadata(&path)
+            .is_ok_and(|metadata| metadata.file_type().is_symlink())
+            && link_targets_binaries(&path, &paths.binaries_dir);
+        if !dalo_link {
+            report.warnings.push(format!(
+                "left `{}` in place: it is not a symbolic link into `binaries/`",
+                path.display()
+            ));
+            continue;
+        }
+        // `fs::metadata` follows the link, so a link whose target is gone reads as missing.
+        let dangling = fs::metadata(&path).is_err();
+        if dangling || !owned.contains(name.as_str()) {
+            match fs::remove_file(&path) {
+                Ok(()) => report.removed_paths.push(path),
+                Err(error) => report.warnings.push(format!(
+                    "could not remove exposure link `{}`: {error}",
+                    path.display()
+                )),
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Stage the verified host asset of one binary, downloading it only when needed.
@@ -2066,5 +2462,90 @@ binaries:
             "{error}"
         );
         assert_eq!(fs::read_link(&link).unwrap(), foreign);
+    }
+
+    #[test]
+    fn garbage_collect_removes_only_unpinned_single_file_digests_and_refuses_anything_else() {
+        let store = TestStore::new();
+        let unpinned_digest = sha256_hex(b"unpinned bytes");
+        stage(&store.paths, &unpinned_digest, b"unpinned bytes");
+        let unpinned = staged_root(&store.paths, &unpinned_digest);
+
+        // A symbolic link named like a digest is never followed, even into a directory outside the store.
+        let outside = store.paths.root.parent().unwrap().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("keep"), "outside").unwrap();
+        let linked_digest = sha256_hex(b"linked");
+        symlink(&outside, store.paths.binaries_dir.join(&linked_digest)).unwrap();
+
+        // A digest directory with two entries is not one staged binary.
+        let crowded_digest = sha256_hex(b"crowded");
+        stage(&store.paths, &crowded_digest, b"crowded");
+        let crowded = staged_root(&store.paths, &crowded_digest);
+        fs::write(crowded.join("other"), "other").unwrap();
+
+        // Dalo's link to the unpinned digest dangles once that digest is gone; a real file is not Dalo's.
+        fs::create_dir_all(&store.paths.bin_dir).unwrap();
+        symlink(
+            unpinned.join("impeccino"),
+            store.paths.bin_dir.join("impeccino"),
+        )
+        .unwrap();
+        fs::write(store.paths.bin_dir.join("user-tool"), "user").unwrap();
+
+        let report = garbage_collect(&store.paths, &[]).unwrap();
+
+        assert!(!unpinned.exists());
+        assert!(report.removed_paths.contains(&unpinned), "{report:?}");
+        assert!(
+            report
+                .removed_paths
+                .contains(&store.paths.bin_dir.join("impeccino")),
+            "{report:?}"
+        );
+        assert_eq!(report.removed_paths.len(), 2, "{report:?}");
+        assert_eq!(fs::read_to_string(outside.join("keep")).unwrap(), "outside");
+        assert!(fs::symlink_metadata(store.paths.binaries_dir.join(&linked_digest)).is_ok());
+        assert!(crowded.join("impeccino").is_file());
+        assert!(crowded.join("other").is_file());
+        assert!(store.paths.bin_dir.join("user-tool").is_file());
+        for expected in [
+            "is a symbolic link, not a staged directory",
+            "holds 2 entries",
+            "is not a symbolic link into `binaries/`",
+        ] {
+            assert!(
+                report
+                    .warnings
+                    .iter()
+                    .any(|warning| warning.contains(expected)),
+                "missing `{expected}` in {:?}",
+                report.warnings
+            );
+        }
+    }
+
+    #[test]
+    fn cleanup_does_nothing_while_a_source_is_disabled_or_unscanned() {
+        let store = TestStore::new();
+        let digest = sha256_hex(b"kept bytes");
+        stage(&store.paths, &digest, b"kept bytes");
+        let snapshot = BinarySnapshot {
+            list: BinaryListReport {
+                binaries: Vec::new(),
+                warnings: Vec::new(),
+            },
+            incomplete_sources: vec!["team".to_owned()],
+        };
+
+        let report = collect_unreferenced(&store.paths, &snapshot);
+
+        assert!(report.removed_paths.is_empty(), "{report:?}");
+        assert!(report.warnings[0].contains("binary cleanup skipped"));
+        assert!(
+            staged_root(&store.paths, &digest)
+                .join("impeccino")
+                .is_file()
+        );
     }
 }

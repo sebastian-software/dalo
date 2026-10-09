@@ -1285,7 +1285,7 @@ fn inventory_for<'a>(
 
 /// Expand each catalog source's explicit selection with the transitive closure of
 /// its same-catalog `requires`. Cross-source requires are never expanded here.
-fn expand_catalog_selections(
+pub(crate) fn expand_catalog_selections(
     source_by_id: &BTreeMap<&str, &SourceConfig>,
     inventories: &[SourceInventory],
 ) -> BTreeMap<String, Vec<String>> {
