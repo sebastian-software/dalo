@@ -348,7 +348,7 @@ pub enum Command {
     Audit(AuditCommand),
     /// Grant, list, and revoke scoped approval records.
     #[command(
-        after_help = "Examples:\n  dalo approve list\n  dalo approve skill public:review-helper\n  dalo approve agent team:reviewer\n  dalo approve tool team:quality#tool:detector\n  dalo approve source team\n  dalo approve author public:maintainers\n  dalo approve org public:example-org\n  dalo approve revoke tool team:quality#tool:detector"
+        after_help = "Examples:\n  dalo approve list\n  dalo approve skill public:review-helper\n  dalo approve agent team:reviewer\n  dalo approve tool team:quality#tool:detector\n  dalo approve binary team:page-engine#binary:impeccino\n  dalo approve source team\n  dalo approve author public:maintainers\n  dalo approve org public:example-org\n  dalo approve revoke tool team:quality#tool:detector\n  dalo approve revoke binary team:page-engine#binary:impeccino"
     )]
     Approve(ApproveCommand),
     /// Manage instruction packs rendered into instruction files.
@@ -677,6 +677,10 @@ pub enum ApproveSubcommand {
     Agent(AgentApprovalArgs),
     /// Approve and immutably stage one exact plugin-local tool contract.
     Tool(ToolApprovalArgs),
+    /// Download, verify, stage, and expose one exact release binary.
+    ///
+    /// `approve binary` downloads the host platform's asset from GitHub and verifies its SHA-256 digest before anything is written. Nothing is staged, linked, or approved when verification fails.
+    Binary(BinaryApprovalArgs),
     /// Approve one exact generated-delivery recipe without executing it.
     Delivery(DeliveryApprovalArgs),
     /// Approve one exact hook contract after its tool is ready.
@@ -723,6 +727,14 @@ pub struct AgentApprovalArgs {
 #[derive(Debug, Args)]
 pub struct ToolApprovalArgs {
     /// Tool in `<source>:<plugin>#tool:<id>` form.
+    #[arg(value_name = "VALUE")]
+    pub value: String,
+}
+
+/// One exact release-binary approval.
+#[derive(Debug, Args)]
+pub struct BinaryApprovalArgs {
+    /// Binary in `<source>:<skill>#binary:<id>` form.
     #[arg(value_name = "VALUE")]
     pub value: String,
 }
@@ -829,7 +841,7 @@ pub struct OrgApprovalArgs {
 /// One approval to revoke.
 #[derive(Debug, Args)]
 pub struct ApprovalRevokeArgs {
-    /// Approval scope: skill, agent, tool, delivery, hook, source, author, or org.
+    /// Approval scope: skill, agent, tool, binary, delivery, hook, source, author, or org.
     #[arg(value_enum)]
     pub scope: ApprovalScopeArg,
     /// Approval value in the format required by the selected scope.
@@ -845,6 +857,8 @@ pub enum ApprovalScopeArg {
     Agent,
     /// One exact content-bound plugin-local tool contract.
     Tool,
+    /// One exact content-bound release-binary contract.
+    Binary,
     /// One exact revision- and content-bound generated-delivery recipe.
     Delivery,
     /// One exact content-bound plugin-local hook contract.
@@ -863,6 +877,7 @@ impl ApprovalScopeArg {
             Self::Skill => "skill",
             Self::Agent => "agent",
             Self::Tool => "tool",
+            Self::Binary => "binary",
             Self::Delivery => "delivery",
             Self::Hook => "hook",
             Self::Source => "source",
@@ -2596,6 +2611,12 @@ fn run_binary(options: &GlobalOptions, command: BinaryCommand) -> DaloResult<()>
             if let Some(path) = &report.staged_path {
                 println!(
                     "staged path: {}",
+                    status::terminal_safe_text(&path.to_string_lossy())
+                );
+            }
+            if let Some(path) = &report.exposed_path {
+                println!(
+                    "exposed path: {}",
                     status::terminal_safe_text(&path.to_string_lossy())
                 );
             }
@@ -5430,11 +5451,13 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
                 });
             }
             let approval_report = approval::grant(&paths, "skill", &args.value, options.dry_run)?;
+            let binaries = skill_binary_statuses(&paths, &skill)?;
             if options.json {
                 print_json(&SkillApprovalOutcome {
                     audit: audit_report,
                     approval: approval_report,
                     compatibility: skill.compatibility,
+                    binaries,
                 })?;
             } else {
                 status::print_audit_report(&audit_report);
@@ -5443,6 +5466,17 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
                         "compatibility: {}",
                         status::terminal_safe_text(compatibility)
                     );
+                }
+                for item in &binaries {
+                    let identity = status::terminal_safe_text(&item.binary.source_ref);
+                    if item.state == binary::BinaryState::Ready {
+                        println!("binary {identity}: ready");
+                    } else {
+                        println!(
+                            "binary {identity}: {} (run: dalo approve binary {identity})",
+                            item.state
+                        );
+                    }
                 }
                 status::print_approval_report(&approval_report, &options.store);
             }
@@ -5468,6 +5502,43 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
                         "immutable tool root: {}",
                         status::compact_store_path(&options.store, &path)
                     );
+                }
+            }
+        }
+        ApproveSubcommand::Binary(args) => {
+            let report = binary::approve(&paths, &args.value, options.dry_run)?;
+            if options.json {
+                print_json(&report)?;
+            } else {
+                println!(
+                    "{} binary {}{}",
+                    report.action,
+                    status::terminal_safe_text(&report.binary),
+                    if report.dry_run { " [dry-run]" } else { "" }
+                );
+                if let Some(path) = &report.staged_path {
+                    println!(
+                        "staged path: {}",
+                        status::compact_store_path(&options.store, path)
+                    );
+                }
+                if let Some(path) = &report.exposed_path {
+                    println!(
+                        "exposed path: {}",
+                        status::compact_store_path(&options.store, path)
+                    );
+                }
+                if report.action == "granted" {
+                    // The staged directory is named by the verified digest.
+                    let digest = report
+                        .staged_path
+                        .as_ref()
+                        .and_then(|path| path.parent())
+                        .and_then(|directory| directory.file_name())
+                        .map(|name| name.to_string_lossy().into_owned());
+                    if let (Some(digest), Some(platform)) = (digest, binary::host_platform()) {
+                        println!("verified sha256:{digest} for {platform}");
+                    }
                 }
             }
         }
@@ -5528,6 +5599,18 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
                         if report.dry_run { " [dry-run]" } else { "" }
                     );
                 }
+            } else if args.scope == ApprovalScopeArg::Binary {
+                let report = binary::revoke(&paths, &args.value, options.dry_run)?;
+                if options.json {
+                    print_json(&report)?;
+                } else {
+                    println!(
+                        "{} binary {}{}",
+                        report.action,
+                        status::terminal_safe_text(&report.binary),
+                        if report.dry_run { " [dry-run]" } else { "" }
+                    );
+                }
             } else if args.scope == ApprovalScopeArg::Delivery {
                 let report = crate::delivery::revoke(&paths, &args.value, options.dry_run)?;
                 if options.json {
@@ -5569,6 +5652,43 @@ struct SkillApprovalOutcome {
     approval: approval::ApprovalReport,
     #[serde(skip_serializing_if = "Option::is_none")]
     compatibility: Option<String>,
+    /// Release binaries the approved skill declares, each with its own approval state.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    binaries: Vec<binary::BinaryStatusReport>,
+}
+
+/// Readiness of every release binary one skill declares, joined with local state.
+fn skill_binary_statuses(
+    paths: &store::StorePaths,
+    skill: &inventory::SkillRecord,
+) -> DaloResult<Vec<binary::BinaryStatusReport>> {
+    if skill.binaries.is_empty() {
+        return Ok(Vec::new());
+    }
+    let config = store::read_config(paths)?;
+    let source = config
+        .sources
+        .iter()
+        .find(|source| source.id == skill.source_id)
+        .ok_or_else(|| {
+            DaloError::unknown_source(
+                &skill.source_id,
+                config
+                    .sources
+                    .iter()
+                    .map(|candidate| candidate.id.clone())
+                    .collect(),
+            )
+        })?;
+    let source_lock = catalog::read_source_lock(paths).ok();
+    let provenance = source::source_provenance(source, source_lock.as_ref());
+    let approvals = store::read_approvals(paths)?;
+    Ok(binary::skill_binary_statuses(
+        paths,
+        skill,
+        &approvals.approvals,
+        &provenance,
+    ))
 }
 
 #[derive(serde::Serialize)]

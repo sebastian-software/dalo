@@ -2,26 +2,62 @@
 //!
 //! A skill declares binaries in its `SKILL.md` frontmatter under `binaries`.
 //! This module owns the declaration types, their validation, and the
-//! content-bound contract hash, and joins each declaration with local approval
-//! and staging state for `dalo binary list|show`. Nothing here downloads,
-//! verifies, stages, or executes a binary; those steps belong to a later,
-//! explicitly approved workflow.
+//! content-bound contract hash, and joins each declaration with local approval,
+//! staging, and exposure state for `dalo binary list|show`.
+//!
+//! Inspection never touches the network. The only path that downloads is
+//! [`approve`], which fetches the host platform's asset, verifies its pinned
+//! SHA-256 digest before anything is renamed into place, stages it read-only
+//! under `binaries/<sha256>/`, links it at `bin/<id>`, and only then records
+//! the exact approval. Dalo never executes the staged bytes.
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::io::{self, Read, Write};
+use std::os::unix::fs::{PermissionsExt, symlink};
+use std::path::{Component, Path, PathBuf};
+use std::process;
+#[cfg(test)]
+use std::sync::{Mutex, PoisonError};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use tempfile::NamedTempFile;
+use ureq::ResponseExt;
+use ureq::http::Uri;
+use ureq::http::header::{CONTENT_LENGTH, LOCATION};
 
 use crate::error::{DaloError, DaloResult};
-use crate::inventory::{InventoryWarning, InventoryWarningCode, SourceInventory};
+use crate::inventory::{InventoryWarning, InventoryWarningCode, SkillRecord, SourceInventory};
 use crate::plugin::{self, ToolAvailability};
 use crate::source::{SourceConfig, SourceHeadCache, SourceProvenance};
 use crate::store::{self, ApprovalRecord, StorePaths};
+use crate::tool::make_directories_read_only;
 
 /// Stable approval scope for exact release-binary contracts.
 pub const APPROVAL_SCOPE: &str = "binary";
+
+/// Largest release asset Dalo will download or accept as staged bytes.
+const MAX_BINARY_BYTES: u64 = 256 * 1024 * 1024;
+
+/// Global timeout for one download, including every redirect hop.
+const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// Redirects followed before a download is abandoned.
+const MAX_REDIRECTS: u32 = 5;
+
+/// Prefix of temporary download files, so `doctor` can find interrupted ones.
+pub(crate) const DOWNLOAD_TEMPORARY_PREFIX: &str = ".binary-download-";
+
+/// Test-only switch that lets the download policy accept plain-HTTP loopback
+/// URLs, so unit tests can serve assets from a `127.0.0.1` fixture server.
+///
+/// It exists behind `cfg(test)`, so it is compiled out of the shipped binary
+/// and is not part of the CLI surface, the same way `update.rs` overrides its
+/// release endpoint for tests.
+#[cfg(test)]
+static TEST_ALLOW_INSECURE_LOOPBACK: Mutex<bool> = Mutex::new(false);
 
 /// One validated release-binary declaration. Inventory never downloads it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -328,6 +364,9 @@ pub struct BinaryStatusReport {
     /// Staged file for the host asset, when present.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub staged_path: Option<PathBuf>,
+    /// Exposure link at `<store>/bin/<id>`, reported when it resolves to the staged file.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exposed_path: Option<PathBuf>,
     /// Actionable explanation.
     pub diagnostic: String,
 }
@@ -344,11 +383,11 @@ pub enum BinaryState {
     HashDrift,
     /// Verified bytes remain staged but the exact approval was revoked.
     Revoked,
-    /// Approval exists, but the host asset has not been staged.
+    /// Approval exists, but the host asset has not been staged, or the verified bytes are not linked at `bin/<id>`.
     ApprovedNotStaged,
     /// The staged file no longer re-hashes to its pinned digest.
     AuditFailure,
-    /// Exact approval and the staged bytes both match the pinned digest.
+    /// Exact approval, staged bytes that match the pinned digest, and the exposure link to them.
     Ready,
 }
 
@@ -420,13 +459,18 @@ pub fn list_from_inventories(
                 .filter(|warning| warning.code == InventoryWarningCode::InvalidBinaryDeclaration)
                 .cloned(),
         );
-        let provenance = crate::source::source_provenance_with_head_cache(
-            source,
-            source_lock.as_ref(),
-            &mut head_cache,
-        );
+        // Provenance can cost a Git lookup, so it is resolved only for a source
+        // that actually declares a binary; doctor and status pay nothing otherwise.
+        let mut provenance: Option<SourceProvenance> = None;
         for skill in &inventory.skills {
             for binary in &skill.binaries {
+                let provenance = provenance.get_or_insert_with(|| {
+                    crate::source::source_provenance_with_head_cache(
+                        source,
+                        source_lock.as_ref(),
+                        &mut head_cache,
+                    )
+                });
                 binaries.push(status_for(
                     paths,
                     binary.clone(),
@@ -500,6 +544,7 @@ fn status_for(
         host_platform,
         state: evaluation.state,
         staged_path: evaluation.staged_path,
+        exposed_path: evaluation.exposed_path,
         diagnostic: evaluation.diagnostic,
     }
 }
@@ -507,10 +552,11 @@ fn status_for(
 struct Evaluation {
     state: BinaryState,
     staged_path: Option<PathBuf>,
+    exposed_path: Option<PathBuf>,
     diagnostic: String,
 }
 
-/// Decide the readiness state from the declaration, approvals, and staged bytes.
+/// Decide the readiness state from the declaration, approvals, staged bytes, and exposure link.
 fn evaluate(
     paths: &StorePaths,
     binary: &BinaryRecord,
@@ -536,17 +582,31 @@ fn evaluate(
         (Some(asset), Some(path)) => staged_bytes_match(path, &asset.sha256),
         _ => false,
     };
+    let exposure = paths.bin_dir.join(&binary.id);
+    let linked = staged_path
+        .as_deref()
+        .is_some_and(|path| link_resolves_to(&exposure, path));
+    let exposed_path = linked.then(|| exposure.clone());
     let (state, diagnostic) = if host_asset.is_none() {
         let diagnostic = match host_platform {
             Some(platform) => format!("no asset is declared for host platform `{platform}`"),
             None => "this host is not one of the platforms a binary can declare".to_owned(),
         };
         (BinaryState::PlatformUnsupported, diagnostic)
-    } else if exact_approval && staged && verified {
+    } else if exact_approval && staged && verified && linked {
         (
             BinaryState::Ready,
-            "exact binary contract approved and the staged bytes match the pinned digest"
+            "exact binary contract approved, the staged bytes match the pinned digest, and the exposure link points at them"
                 .to_owned(),
+        )
+    } else if exact_approval && staged && verified {
+        (
+            BinaryState::ApprovedNotStaged,
+            format!(
+                "verified bytes are staged but `{}` is not linked to them; rerun `dalo approve binary {}`",
+                exposure.display(),
+                binary.source_ref
+            ),
         )
     } else if exact_approval && staged {
         (
@@ -571,21 +631,35 @@ fn evaluate(
     } else {
         (
             BinaryState::PendingApproval,
-            "exact binary contract has no approval; this release only inventories declarations"
-                .to_owned(),
+            format!(
+                "exact binary contract has no approval; run `dalo approve binary {}`",
+                binary.source_ref
+            ),
         )
     };
     Evaluation {
         state,
         staged_path,
+        exposed_path,
         diagnostic,
     }
 }
 
-/// Re-hash one staged file, refusing anything that is not a regular file.
+/// Whether `link` is a symlink that resolves to `staged_path`.
+fn link_resolves_to(link: &Path, staged_path: &Path) -> bool {
+    fs::symlink_metadata(link).is_ok_and(|metadata| metadata.file_type().is_symlink())
+        && matches!(
+            (fs::canonicalize(link), fs::canonicalize(staged_path)),
+            (Ok(linked), Ok(staged)) if linked == staged
+        )
+}
+
+/// Re-hash one staged file by streaming it, refusing anything that is not a regular file.
 fn staged_bytes_match(path: &Path, expected_sha256: &str) -> bool {
     fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_file())
-        && fs::read(path).is_ok_and(|bytes| hash_bytes(&bytes) == expected_sha256)
+        && fs::File::open(path)
+            .and_then(|mut file| hash_reader(&mut file))
+            .is_ok_and(|digest| digest == expected_sha256)
 }
 
 fn approval_value(binary: &BinaryRecord) -> String {
@@ -607,16 +681,526 @@ fn validate_identity_shape(value: &str) -> DaloResult<()> {
     }
 }
 
-fn hash_bytes(bytes: &[u8]) -> String {
-    Sha256::digest(bytes)
+fn hex_digest(digest: impl AsRef<[u8]>) -> String {
+    digest
+        .as_ref()
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect()
 }
 
+/// SHA-256 of everything `reader` yields, read in fixed-size chunks.
+fn hash_reader(reader: &mut impl Read) -> io::Result<String> {
+    let mut hasher = Sha256::new();
+    let mut buffer = vec![0_u8; 64 * 1024];
+    loop {
+        match reader.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(read) => hasher.update(&buffer[..read]),
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(hex_digest(hasher.finalize()))
+}
+
+/// Result of granting, planning, or revoking one exact release binary approval.
+#[derive(Debug, Clone, Serialize)]
+pub struct BinaryApprovalReport {
+    /// Exact skill-qualified binary identity, `<source>:<skill>#binary:<id>`.
+    pub binary: String,
+    /// Exact content-bound approval value.
+    pub approval_value: String,
+    /// `planned` for a dry run, `granted`, `unchanged`, or `revoked`.
+    pub action: String,
+    /// Verified staged file for the host asset; for a dry run, where it would be staged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub staged_path: Option<PathBuf>,
+    /// Exposure link at `<store>/bin/<id>`; for a dry run, where it would be created.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exposed_path: Option<PathBuf>,
+    /// Whether mutation was suppressed.
+    pub dry_run: bool,
+}
+
+/// Status of every binary one skill declares, for `approve skill` output.
+pub(crate) fn skill_binary_statuses(
+    paths: &StorePaths,
+    skill: &SkillRecord,
+    approvals: &[ApprovalRecord],
+    provenance: &SourceProvenance,
+) -> Vec<BinaryStatusReport> {
+    let host_platform = host_platform();
+    skill
+        .binaries
+        .iter()
+        .map(|binary| {
+            status_for(
+                paths,
+                binary.clone(),
+                skill.source_ref.clone(),
+                skill.path.clone(),
+                provenance.clone(),
+                approvals,
+                host_platform,
+            )
+        })
+        .collect()
+}
+
+/// Download, verify, stage, and expose the host asset, then grant the exact approval.
+///
+/// This is the only operation in this module that reaches the network. A dry
+/// run reports the plan and touches nothing. A real run verifies the bytes
+/// against the pinned digest before anything is renamed into place, so a
+/// mismatch leaves neither a staged file nor an approval record.
+pub fn approve(paths: &StorePaths, value: &str, dry_run: bool) -> DaloResult<BinaryApprovalReport> {
+    let status = show(paths, value)?;
+    let host_asset = status.host_platform.and_then(|platform| {
+        status
+            .binary
+            .assets
+            .get(&platform)
+            .map(|asset| (platform, asset))
+    });
+    let Some((platform, asset)) = host_asset else {
+        return Err(DaloError::StateError {
+            reason: format!(
+                "binary `{}` cannot be approved on this host: {}; nothing was downloaded",
+                status.binary.source_ref, status.diagnostic
+            ),
+        });
+    };
+    let planned_staged = staged_root(paths, &asset.sha256).join(&status.binary.id);
+    let planned_exposed = paths.bin_dir.join(&status.binary.id);
+    let mut approvals = store::read_approvals(paths)?;
+    let record = ApprovalRecord::granted(APPROVAL_SCOPE.to_owned(), status.approval_value.clone());
+    let exists = approvals
+        .approvals
+        .iter()
+        .any(|approval| approval.matches(&record));
+    if dry_run {
+        return Ok(BinaryApprovalReport {
+            binary: status.binary.source_ref,
+            approval_value: status.approval_value,
+            action: "planned".to_owned(),
+            staged_path: Some(planned_staged),
+            exposed_path: Some(planned_exposed),
+            dry_run,
+        });
+    }
+    let staged_path = fetch_and_stage(paths, &status.binary, platform)?;
+    let exposed_path = expose(paths, &status.binary, &staged_path)?;
+    if !exists {
+        approvals.approvals.push(record);
+        approvals.approvals.sort_by(|left, right| {
+            left.scope
+                .cmp(&right.scope)
+                .then(left.value.cmp(&right.value))
+        });
+        store::write_approvals(paths, &approvals)?;
+    }
+    Ok(BinaryApprovalReport {
+        binary: status.binary.source_ref,
+        approval_value: status.approval_value,
+        action: if exists { "unchanged" } else { "granted" }.to_owned(),
+        staged_path: Some(staged_path),
+        exposed_path: Some(exposed_path),
+        dry_run,
+    })
+}
+
+/// Remove every approval for one exact binary identity.
+///
+/// Staged bytes and the exposure link stay in place; the state becomes
+/// `revoked` until a later cleanup removes them.
+pub fn revoke(paths: &StorePaths, value: &str, dry_run: bool) -> DaloResult<BinaryApprovalReport> {
+    validate_identity_shape(value)?;
+    let mut approvals = store::read_approvals(paths)?;
+    let prefix = format!("{value}@sha256:");
+    let before = approvals.approvals.len();
+    let mut removed = None;
+    approvals.approvals.retain(|record| {
+        let matches = record.scope == APPROVAL_SCOPE && record.value.starts_with(&prefix);
+        if matches {
+            removed = Some(record.value.clone());
+        }
+        !matches
+    });
+    let changed = before != approvals.approvals.len();
+    if changed && !dry_run {
+        store::write_approvals(paths, &approvals)?;
+    }
+    Ok(BinaryApprovalReport {
+        binary: value.to_owned(),
+        approval_value: removed.unwrap_or(prefix),
+        action: if changed { "revoked" } else { "unchanged" }.to_owned(),
+        staged_path: None,
+        exposed_path: None,
+        dry_run,
+    })
+}
+
+/// Stage the verified host asset of one binary, downloading it only when needed.
+///
+/// Bytes already staged under the pinned digest are reused without any network
+/// access, which also lets two skills that pin the same bytes share them. Otherwise
+/// the asset is streamed into a temporary file in the store and renamed into
+/// `binaries/<sha256>/<id>` only once its digest matches; a mismatch deletes the
+/// temporary file and stages nothing.
+pub(crate) fn fetch_and_stage(
+    paths: &StorePaths,
+    binary: &BinaryRecord,
+    platform: BinaryPlatform,
+) -> DaloResult<PathBuf> {
+    let asset = binary
+        .assets
+        .get(&platform)
+        .ok_or_else(|| DaloError::InvalidArgument {
+            reason: format!(
+                "binary `{}` declares no asset for platform `{platform}`",
+                binary.source_ref
+            ),
+        })?;
+    let root = staged_root(paths, &asset.sha256);
+    let destination = root.join(&binary.id);
+    if staged_bytes_match(&destination, &asset.sha256) {
+        return Ok(destination);
+    }
+    let temporary = download_verified(paths, binary, asset)?;
+    // Another process may have staged the same digest while this one downloaded it.
+    if staged_bytes_match(&destination, &asset.sha256) {
+        return Ok(destination);
+    }
+    prepare_staging_directory(&root)?;
+    fs::set_permissions(temporary.path(), fs::Permissions::from_mode(0o555))?;
+    if let Err(error) = temporary.persist(&destination) {
+        if staged_bytes_match(&destination, &asset.sha256) {
+            return Ok(destination);
+        }
+        return Err(error.error.into());
+    }
+    make_directories_read_only(&root)?;
+    Ok(destination)
+}
+
+/// Make `root` a writable directory so a verified file can be renamed into it.
+///
+/// A symlink or other non-directory at this path is refused rather than followed,
+/// so permissions are never changed outside the store.
+fn prepare_staging_directory(root: &Path) -> DaloResult<()> {
+    match fs::symlink_metadata(root) {
+        Ok(metadata) if metadata.file_type().is_dir() => {
+            fs::set_permissions(root, fs::Permissions::from_mode(0o755))?;
+            Ok(())
+        }
+        Ok(_) => Err(DaloError::StateError {
+            reason: format!(
+                "content-addressed binary path `{}` is not a directory",
+                root.display()
+            ),
+        }),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            fs::create_dir(root)?;
+            Ok(())
+        }
+        Err(error) => Err(error.into()),
+    }
+}
+
+/// Download the host asset into a temporary file in the store and verify its digest.
+///
+/// The temporary file is returned only when its digest matches the pin. Every
+/// other outcome, including a policy refusal, a size refusal, or a digest
+/// mismatch, drops it, which deletes it.
+fn download_verified(
+    paths: &StorePaths,
+    binary: &BinaryRecord,
+    asset: &BinaryAsset,
+) -> DaloResult<NamedTempFile> {
+    let mut response = request_asset(asset, &binary.source_ref)?;
+    let declared = response
+        .headers()
+        .get(CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok());
+    if let Some(length) = declared.filter(|length| *length > MAX_BINARY_BYTES) {
+        return Err(DaloError::StateError {
+            reason: format!(
+                "binary `{}` declares {length} bytes, above the 256 MiB limit; refusing to download it",
+                binary.source_ref
+            ),
+        });
+    }
+    fs::create_dir_all(&paths.binaries_dir)?;
+    let mut temporary = tempfile::Builder::new()
+        .prefix(DOWNLOAD_TEMPORARY_PREFIX)
+        .tempfile_in(&paths.binaries_dir)?;
+    // One byte past the limit, so an oversized body reaches the explicit check in
+    // `stream_and_hash` instead of surfacing as a reader error.
+    let mut reader = response
+        .body_mut()
+        .with_config()
+        .limit(MAX_BINARY_BYTES + 1)
+        .reader();
+    let downloaded = stream_and_hash(
+        &mut reader,
+        temporary.as_file_mut(),
+        MAX_BINARY_BYTES,
+        &binary.source_ref,
+    )?;
+    if downloaded != asset.sha256 {
+        return Err(DaloError::StateError {
+            reason: format!(
+                "binary verification failed for `{}`: expected sha256:{}, downloaded sha256:{downloaded}",
+                binary.source_ref, asset.sha256
+            ),
+        });
+    }
+    temporary.as_file().sync_all()?;
+    Ok(temporary)
+}
+
+/// Copy `reader` into `writer` while hashing it, refusing more than `limit` bytes.
+fn stream_and_hash(
+    reader: &mut impl Read,
+    writer: &mut impl Write,
+    limit: u64,
+    identity: &str,
+) -> DaloResult<String> {
+    let mut hasher = Sha256::new();
+    let mut total = 0_u64;
+    let mut buffer = vec![0_u8; 64 * 1024];
+    loop {
+        let read = match reader.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(read) => read,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => {
+                return Err(DaloError::Io(io::Error::other(format!(
+                    "could not download the asset for `{identity}`: {error}"
+                ))));
+            }
+        };
+        total += read as u64;
+        if total > limit {
+            return Err(DaloError::StateError {
+                reason: format!(
+                    "binary `{identity}` is larger than {limit} bytes; refusing to stage it"
+                ),
+            });
+        }
+        hasher.update(&buffer[..read]);
+        writer.write_all(&buffer[..read])?;
+    }
+    Ok(hex_digest(hasher.finalize()))
+}
+
+/// Send the asset request, following at most [`MAX_REDIRECTS`] redirects.
+///
+/// Each target is checked before Dalo connects to it, so a redirect outside
+/// GitHub is refused without a request reaching that host. No credentials are
+/// ever attached. The final response URI is checked again before its body is read.
+fn request_asset(
+    asset: &BinaryAsset,
+    identity: &str,
+) -> DaloResult<ureq::http::Response<ureq::Body>> {
+    let agent = download_agent();
+    let mut url = asset.url.clone();
+    let mut redirects = 0_u32;
+    loop {
+        let uri: Uri = url.parse().map_err(|_| DaloError::StateError {
+            reason: format!("binary `{identity}` has an invalid download URL"),
+        })?;
+        check_download_uri(&uri, identity)?;
+        let response = agent
+            .get(url.as_str())
+            .header("Accept", "application/octet-stream")
+            .call()
+            .map_err(|error| {
+                DaloError::Io(io::Error::other(format!(
+                    "could not download the asset for `{identity}`: {error}"
+                )))
+            })?;
+        let status = response.status();
+        if matches!(status.as_u16(), 301 | 302 | 303 | 307 | 308) {
+            if redirects == MAX_REDIRECTS {
+                return Err(DaloError::StateError {
+                    reason: format!(
+                        "binary download for `{identity}` followed more than {MAX_REDIRECTS} redirects"
+                    ),
+                });
+            }
+            redirects += 1;
+            let location = response
+                .headers()
+                .get(LOCATION)
+                .and_then(|value| value.to_str().ok())
+                .ok_or_else(|| DaloError::StateError {
+                    reason: format!(
+                        "binary download for `{identity}` redirected without a usable Location header"
+                    ),
+                })?;
+            url = location.to_owned();
+            continue;
+        }
+        if !status.is_success() {
+            return Err(DaloError::StateError {
+                reason: format!(
+                    "binary download for `{identity}` returned HTTP status {}",
+                    status.as_u16()
+                ),
+            });
+        }
+        check_download_uri(response.get_uri(), identity)?;
+        return Ok(response);
+    }
+}
+
+/// Refuse any download target that is not HTTPS on GitHub or its release CDN.
+fn check_download_uri(uri: &Uri, identity: &str) -> DaloResult<()> {
+    if loopback_http_allowed(uri) {
+        return Ok(());
+    }
+    if uri.scheme_str() != Some("https") {
+        return Err(DaloError::StateError {
+            reason: format!("binary download for `{identity}` must use https; refusing `{uri}`"),
+        });
+    }
+    let host = uri.host().unwrap_or_default().to_ascii_lowercase();
+    if host == "github.com" || host.ends_with(".githubusercontent.com") {
+        return Ok(());
+    }
+    Err(DaloError::StateError {
+        reason: format!(
+            "binary download for `{identity}` may only come from github.com or *.githubusercontent.com; refusing `{host}`"
+        ),
+    })
+}
+
+/// Whether a test may fetch a plain-HTTP loopback URL.
+#[cfg(test)]
+fn loopback_http_allowed(uri: &Uri) -> bool {
+    uri.scheme_str() == Some("http")
+        && uri.host() == Some("127.0.0.1")
+        && *TEST_ALLOW_INSECURE_LOOPBACK
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Production builds never accept a plain-HTTP download target.
+#[cfg(not(test))]
+fn loopback_http_allowed(_uri: &Uri) -> bool {
+    false
+}
+
+/// HTTP agent for one download: a global timeout, no automatic redirects, and
+/// Dalo's own user agent. Proxies follow `ureq`'s standard environment handling.
+fn download_agent() -> ureq::Agent {
+    ureq::Agent::new_with_config(
+        ureq::Agent::config_builder()
+            .timeout_global(Some(DOWNLOAD_TIMEOUT))
+            .max_redirects(0)
+            .max_redirects_will_error(false)
+            .user_agent(concat!("dalo/", env!("CARGO_PKG_VERSION")))
+            .build(),
+    )
+}
+
+/// Expose one verified binary at `<store>/bin/<id>` as a relative symlink.
+///
+/// A link that already resolves to `staged_path` is left alone. A symlink into
+/// `binaries/` for another digest, or a dangling one, is replaced atomically through
+/// a temporary link. Anything else at that path (a real file, a directory, or a
+/// foreign symlink) is refused and never removed.
+pub(crate) fn expose(
+    paths: &StorePaths,
+    binary: &BinaryRecord,
+    staged_path: &Path,
+) -> DaloResult<PathBuf> {
+    fs::create_dir_all(&paths.bin_dir)?;
+    let link = paths.bin_dir.join(&binary.id);
+    if link_resolves_to(&link, staged_path) {
+        return Ok(link);
+    }
+    let staged_relative =
+        staged_path
+            .strip_prefix(&paths.root)
+            .map_err(|_| DaloError::StateError {
+                reason: format!(
+                    "staged binary `{}` is outside the store",
+                    staged_path.display()
+                ),
+            })?;
+    let target = Path::new("..").join(staged_relative);
+    match fs::symlink_metadata(&link) {
+        Ok(metadata)
+            if metadata.file_type().is_symlink()
+                && link_targets_binaries(&link, &paths.binaries_dir) => {}
+        Ok(_) => {
+            return Err(DaloError::StateError {
+                reason: format!(
+                    "`{}` already exists and is not a Dalo link to a verified binary; refusing to replace it",
+                    link.display()
+                ),
+            });
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+    replace_link(&link, &target, &binary.id)?;
+    Ok(link)
+}
+
+/// Atomically point `link` at `target` by renaming a temporary symlink over it.
+fn replace_link(link: &Path, target: &Path, id: &str) -> DaloResult<()> {
+    let temporary = link.with_file_name(format!("{id}.tmp-{}", process::id()));
+    if fs::symlink_metadata(&temporary).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
+        fs::remove_file(&temporary)?;
+    }
+    symlink(target, &temporary)?;
+    if let Err(error) = fs::rename(&temporary, link) {
+        let _ = fs::remove_file(&temporary);
+        return Err(error.into());
+    }
+    Ok(())
+}
+
+/// Whether the symlink at `link` lexically targets a path inside `binaries_dir`.
+fn link_targets_binaries(link: &Path, binaries_dir: &Path) -> bool {
+    let Ok(target) = fs::read_link(link) else {
+        return false;
+    };
+    let resolved = if target.is_absolute() {
+        target
+    } else {
+        link.parent().unwrap_or(Path::new("")).join(target)
+    };
+    lexical_normalize(&resolved).starts_with(lexical_normalize(binaries_dir))
+}
+
+/// Resolve `.` and `..` without touching the filesystem.
+fn lexical_normalize(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            Component::CurDir => {}
+            other => normalized.push(other.as_os_str()),
+        }
+    }
+    normalized
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::{TcpListener, TcpStream};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::thread;
     use tempfile::TempDir;
 
     const SKILL_REF: &str = "team:page-engine";
@@ -954,7 +1538,7 @@ binaries:
         let temp = TempDir::new().unwrap();
         let paths = StorePaths::new(temp.path().join("store"));
         let bytes = b"verified release bytes";
-        let digest = hash_bytes(bytes);
+        let digest = sha256_hex(bytes);
         let record = declaration(BinaryPlatform::LinuxX64, &digest);
         let host = Some(BinaryPlatform::LinuxX64);
         let approvals = [exact_approval()];
@@ -975,11 +1559,421 @@ binaries:
         );
 
         stage(&paths, &digest, bytes);
+        let unlinked = evaluate(&paths, &record, &approvals, host);
+        assert_eq!(unlinked.state, BinaryState::ApprovedNotStaged);
+        assert!(unlinked.exposed_path.is_none());
+        assert!(
+            unlinked
+                .diagnostic
+                .contains("is not linked to them; rerun `dalo approve binary team:page-engine#binary:impeccino`"),
+            "{}",
+            unlinked.diagnostic
+        );
+
+        let staged = staged_root(&paths, &digest).join("impeccino");
+        expose(&paths, &record, &staged).unwrap();
         let ready = evaluate(&paths, &record, &approvals, host);
         assert_eq!(ready.state, BinaryState::Ready);
-        assert_eq!(
-            ready.staged_path,
-            Some(staged_root(&paths, &digest).join("impeccino"))
+        assert_eq!(ready.staged_path, Some(staged));
+        assert_eq!(ready.exposed_path, Some(paths.bin_dir.join("impeccino")));
+    }
+
+    /// Serializes the tests that toggle the loopback download override.
+    static LOOPBACK_POLICY: Mutex<()> = Mutex::new(());
+
+    /// Run `body` with plain-HTTP loopback downloads allowed or refused.
+    fn with_loopback_policy<T>(allowed: bool, body: impl FnOnce() -> T) -> T {
+        let _serial = LOOPBACK_POLICY
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        *TEST_ALLOW_INSECURE_LOOPBACK
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = allowed;
+        let result = body();
+        *TEST_ALLOW_INSECURE_LOOPBACK
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = false;
+        result
+    }
+
+    fn sha256_hex(bytes: &[u8]) -> String {
+        hex_digest(Sha256::digest(bytes))
+    }
+
+    /// A plain-HTTP fixture on `127.0.0.1` that answers each accepted connection
+    /// with the next canned response, repeating the last one, and counts connections.
+    struct Loopback {
+        port: u16,
+        accepted: Arc<AtomicUsize>,
+    }
+
+    impl Loopback {
+        /// Start serving the responses that `responses` builds for this port.
+        fn serve(responses: impl FnOnce(u16) -> Vec<Vec<u8>>) -> Self {
+            let listener = TcpListener::bind(("127.0.0.1", 0)).expect("loopback port should bind");
+            let port = listener.local_addr().expect("local address").port();
+            let responses = responses(port);
+            let accepted = Arc::new(AtomicUsize::new(0));
+            let counter = Arc::clone(&accepted);
+            thread::spawn(move || {
+                for stream in listener.incoming() {
+                    let Ok(mut stream) = stream else { continue };
+                    let index = counter.fetch_add(1, Ordering::SeqCst);
+                    read_request_head(&mut stream);
+                    let response = &responses[index.min(responses.len() - 1)];
+                    let _ = stream.write_all(response);
+                }
+            });
+            Self { port, accepted }
+        }
+
+        fn url(&self, path: &str) -> String {
+            format!("http://127.0.0.1:{}{path}", self.port)
+        }
+
+        fn connections(&self) -> usize {
+            self.accepted.load(Ordering::SeqCst)
+        }
+    }
+
+    fn read_request_head(stream: &mut TcpStream) {
+        let mut seen = Vec::new();
+        let mut chunk = [0_u8; 1024];
+        while !seen.windows(4).any(|window| window == b"\r\n\r\n") && seen.len() < 16 * 1024 {
+            match stream.read(&mut chunk) {
+                Ok(0) | Err(_) => break,
+                Ok(read) => seen.extend_from_slice(&chunk[..read]),
+            }
+        }
+    }
+
+    /// One complete `Connection: close` HTTP/1.1 response.
+    fn response(status: &str, headers: &[(&str, String)], body: &[u8]) -> Vec<u8> {
+        let mut head = format!("HTTP/1.1 {status}\r\nConnection: close\r\n");
+        for (name, value) in headers {
+            head.push_str(&format!("{name}: {value}\r\n"));
+        }
+        head.push_str("\r\n");
+        let mut bytes = head.into_bytes();
+        bytes.extend_from_slice(body);
+        bytes
+    }
+
+    fn ok_with(body: &[u8]) -> Vec<u8> {
+        response(
+            "200 OK",
+            &[("Content-Length", body.len().to_string())],
+            body,
+        )
+    }
+
+    /// A store whose read-only staging is made writable again on drop, so the
+    /// temporary directory can be removed.
+    struct TestStore {
+        _temp: TempDir,
+        paths: StorePaths,
+    }
+
+    impl TestStore {
+        fn new() -> Self {
+            let temp = TempDir::new().unwrap();
+            let paths = StorePaths::new(temp.path().join("store"));
+            fs::create_dir_all(&paths.root).unwrap();
+            Self { _temp: temp, paths }
+        }
+
+        fn leftover_entries(&self) -> usize {
+            fs::read_dir(&self.paths.binaries_dir).map_or(0, Iterator::count)
+        }
+    }
+
+    impl Drop for TestStore {
+        fn drop(&mut self) {
+            if let Ok(entries) = fs::read_dir(&self.paths.binaries_dir) {
+                for entry in entries.flatten() {
+                    let _ = fs::set_permissions(entry.path(), fs::Permissions::from_mode(0o755));
+                }
+            }
+            let _ =
+                fs::set_permissions(&self.paths.binaries_dir, fs::Permissions::from_mode(0o755));
+        }
+    }
+
+    fn mode(path: &Path) -> u32 {
+        fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    /// A linux-x64 declaration whose asset URL points at a test server.
+    fn downloadable(url: &str, sha256: &str) -> BinaryRecord {
+        let mut record = declaration(BinaryPlatform::LinuxX64, sha256);
+        record
+            .assets
+            .get_mut(&BinaryPlatform::LinuxX64)
+            .expect("linux-x64 asset")
+            .url = url.to_owned();
+        record
+    }
+
+    fn fetch(store: &TestStore, record: &BinaryRecord) -> DaloResult<PathBuf> {
+        fetch_and_stage(&store.paths, record, BinaryPlatform::LinuxX64)
+    }
+
+    #[test]
+    fn fetch_should_stage_a_matching_asset_read_only_at_its_digest_path() {
+        let bytes = b"verified release bytes";
+        let digest = sha256_hex(bytes);
+        let server = Loopback::serve(|_| vec![ok_with(bytes)]);
+        let store = TestStore::new();
+        let record = downloadable(&server.url("/impeccino-linux-x64"), &digest);
+
+        let staged = with_loopback_policy(true, || fetch(&store, &record)).unwrap();
+
+        assert_eq!(staged, staged_root(&store.paths, &digest).join("impeccino"));
+        assert_eq!(fs::read(&staged).unwrap(), bytes);
+        assert_eq!(mode(&staged), 0o555);
+        assert_eq!(mode(&staged_root(&store.paths, &digest)), 0o555);
+        assert_eq!(server.connections(), 1);
+        assert_eq!(store.leftover_entries(), 1, "only the digest directory");
+    }
+
+    #[test]
+    fn a_second_fetch_reuses_the_staged_bytes_without_any_request() {
+        let bytes = b"verified release bytes";
+        let digest = sha256_hex(bytes);
+        let server = Loopback::serve(|_| vec![ok_with(bytes)]);
+        let store = TestStore::new();
+        let record = downloadable(&server.url("/impeccino-linux-x64"), &digest);
+
+        let first = with_loopback_policy(true, || fetch(&store, &record)).unwrap();
+        let second = with_loopback_policy(true, || fetch(&store, &record)).unwrap();
+
+        assert_eq!(first, second);
+        assert_eq!(server.connections(), 1);
+    }
+
+    #[test]
+    fn a_tampered_download_fails_verification_and_leaves_nothing_behind() {
+        let digest = sha256_hex(b"the pinned release bytes");
+        let server = Loopback::serve(|_| vec![ok_with(b"tampered bytes")]);
+        let store = TestStore::new();
+        let record = downloadable(&server.url("/impeccino-linux-x64"), &digest);
+
+        let error = with_loopback_policy(true, || fetch(&store, &record)).unwrap_err();
+
+        let message = error.to_string();
+        assert!(message.contains("binary verification failed"), "{message}");
+        assert!(
+            message.contains(&format!("expected sha256:{digest}")),
+            "{message}"
         );
+        assert!(!staged_root(&store.paths, &digest).exists());
+        assert_eq!(
+            store.leftover_entries(),
+            0,
+            "no temporary download may remain"
+        );
+    }
+
+    #[test]
+    fn a_content_length_above_the_limit_is_refused_before_the_body_is_read() {
+        let digest = sha256_hex(b"unused");
+        let oversized = (MAX_BINARY_BYTES + 1).to_string();
+        let server = Loopback::serve(|_| {
+            vec![response(
+                "200 OK",
+                &[("Content-Length", oversized.clone())],
+                b"",
+            )]
+        });
+        let store = TestStore::new();
+        let record = downloadable(&server.url("/impeccino-linux-x64"), &digest);
+
+        let error = with_loopback_policy(true, || fetch(&store, &record)).unwrap_err();
+
+        assert!(
+            error.to_string().contains("above the 256 MiB limit"),
+            "{error}"
+        );
+        assert_eq!(store.leftover_entries(), 0);
+    }
+
+    #[test]
+    fn a_body_past_the_size_limit_is_refused_while_streaming() {
+        let mut input: &[u8] = b"0123456789";
+        let mut sink = Vec::new();
+
+        let error =
+            stream_and_hash(&mut input, &mut sink, 4, "team:page-engine#binary:x").unwrap_err();
+
+        assert!(error.to_string().contains("larger than 4 bytes"), "{error}");
+        let mut input: &[u8] = b"0123456789";
+        let digest = stream_and_hash(&mut input, &mut Vec::new(), 10, "x").unwrap();
+        assert_eq!(digest, sha256_hex(b"0123456789"));
+    }
+
+    #[test]
+    fn a_redirect_is_followed_only_to_an_allowed_target() {
+        let bytes = b"verified release bytes";
+        let digest = sha256_hex(bytes);
+        let server = Loopback::serve(|port| {
+            vec![
+                response(
+                    "302 Found",
+                    &[("Location", format!("http://127.0.0.1:{port}/final"))],
+                    b"",
+                ),
+                ok_with(bytes),
+            ]
+        });
+        let store = TestStore::new();
+        let record = downloadable(&server.url("/impeccino-linux-x64"), &digest);
+
+        let staged = with_loopback_policy(true, || fetch(&store, &record)).unwrap();
+
+        assert_eq!(fs::read(staged).unwrap(), bytes);
+        assert_eq!(server.connections(), 2);
+    }
+
+    #[test]
+    fn a_redirect_outside_github_is_refused_before_it_is_contacted() {
+        let digest = sha256_hex(b"unused");
+        let server = Loopback::serve(|_| {
+            vec![response(
+                "302 Found",
+                &[("Location", "http://example.invalid/impeccino".to_owned())],
+                b"",
+            )]
+        });
+        let store = TestStore::new();
+        let record = downloadable(&server.url("/impeccino-linux-x64"), &digest);
+
+        let error = with_loopback_policy(true, || fetch(&store, &record)).unwrap_err();
+
+        assert!(error.to_string().contains("example.invalid"), "{error}");
+        assert_eq!(
+            server.connections(),
+            1,
+            "the redirect target is never requested"
+        );
+        assert_eq!(store.leftover_entries(), 0);
+    }
+
+    #[test]
+    fn a_plain_http_loopback_asset_is_refused_without_the_test_override() {
+        let digest = sha256_hex(b"unused");
+        let server = Loopback::serve(|_| vec![ok_with(b"unused")]);
+        let store = TestStore::new();
+        let record = downloadable(&server.url("/impeccino-linux-x64"), &digest);
+
+        let error = with_loopback_policy(false, || fetch(&store, &record)).unwrap_err();
+
+        assert!(error.to_string().contains("must use https"), "{error}");
+        assert_eq!(server.connections(), 0);
+    }
+
+    #[test]
+    fn download_policy_accepts_only_https_github_hosts() {
+        let accepted = [
+            "https://github.com/sebastian-software/impeccino/releases/download/v1/a",
+            "https://objects.githubusercontent.com/a",
+            "https://release-assets.githubusercontent.com/a",
+        ];
+        let refused = [
+            "http://github.com/a",
+            "https://api.github.com/a",
+            "https://github.com.evil.example/a",
+            "https://evil.githubusercontent.com.example/a",
+            "https://evil.example/github.com",
+            "https://user@evil.example/github.com",
+        ];
+        for url in accepted {
+            let uri: Uri = url.parse().unwrap();
+            assert!(check_download_uri(&uri, "x").is_ok(), "{url}");
+        }
+        for url in refused {
+            let uri: Uri = url.parse().unwrap();
+            assert!(check_download_uri(&uri, "x").is_err(), "{url}");
+        }
+    }
+
+    #[test]
+    fn expose_links_a_staged_binary_with_a_relative_target_and_is_idempotent() {
+        let store = TestStore::new();
+        let bytes = b"verified release bytes";
+        let digest = sha256_hex(bytes);
+        stage(&store.paths, &digest, bytes);
+        let staged = staged_root(&store.paths, &digest).join("impeccino");
+        let record = declaration(BinaryPlatform::LinuxX64, &digest);
+
+        let link = expose(&store.paths, &record, &staged).unwrap();
+        assert_eq!(link, store.paths.bin_dir.join("impeccino"));
+        assert_eq!(
+            fs::read_link(&link).unwrap(),
+            PathBuf::from(format!("../binaries/{digest}/impeccino"))
+        );
+        expose(&store.paths, &record, &staged).unwrap();
+        assert_eq!(fs::read(&link).unwrap(), bytes);
+    }
+
+    #[test]
+    fn expose_replaces_a_stale_link_into_the_binaries_directory() {
+        let store = TestStore::new();
+        let old_digest = sha256_hex(b"old release bytes");
+        let new_bytes = b"new release bytes";
+        let new_digest = sha256_hex(new_bytes);
+        stage(&store.paths, &old_digest, b"old release bytes");
+        stage(&store.paths, &new_digest, new_bytes);
+        let old_record = declaration(BinaryPlatform::LinuxX64, &old_digest);
+        let new_record = declaration(BinaryPlatform::LinuxX64, &new_digest);
+        expose(
+            &store.paths,
+            &old_record,
+            &staged_root(&store.paths, &old_digest).join("impeccino"),
+        )
+        .unwrap();
+
+        let link = expose(
+            &store.paths,
+            &new_record,
+            &staged_root(&store.paths, &new_digest).join("impeccino"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            fs::read_link(&link).unwrap(),
+            PathBuf::from(format!("../binaries/{new_digest}/impeccino"))
+        );
+        assert_eq!(fs::read(&link).unwrap(), new_bytes);
+        let leftovers = fs::read_dir(&store.paths.bin_dir).unwrap().count();
+        assert_eq!(leftovers, 1, "the temporary link must not remain");
+    }
+
+    #[test]
+    fn expose_refuses_a_real_file_or_a_foreign_link_and_never_removes_it() {
+        let store = TestStore::new();
+        let digest = sha256_hex(b"release bytes");
+        stage(&store.paths, &digest, b"release bytes");
+        let staged = staged_root(&store.paths, &digest).join("impeccino");
+        let record = declaration(BinaryPlatform::LinuxX64, &digest);
+        fs::create_dir_all(&store.paths.bin_dir).unwrap();
+        let link = store.paths.bin_dir.join("impeccino");
+
+        fs::write(&link, "user content").unwrap();
+        let error = expose(&store.paths, &record, &staged).unwrap_err();
+        assert!(
+            error.to_string().contains("refusing to replace it"),
+            "{error}"
+        );
+        assert_eq!(fs::read_to_string(&link).unwrap(), "user content");
+
+        fs::remove_file(&link).unwrap();
+        let foreign = store.paths.root.parent().unwrap().join("foreign-tool");
+        symlink(&foreign, &link).unwrap();
+        let error = expose(&store.paths, &record, &staged).unwrap_err();
+        assert!(
+            error.to_string().contains("refusing to replace it"),
+            "{error}"
+        );
+        assert_eq!(fs::read_link(&link).unwrap(), foreign);
     }
 }
