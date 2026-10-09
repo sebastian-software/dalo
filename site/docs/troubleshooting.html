@@ -781,6 +781,41 @@ repository, push the change, then run <code>dalo sync</code>.</p>
 <td>After confirming no sync or approval is running, remove the reported <code>.tool-stage-*</code> directory; it was never approved or promoted.</td>
 </tr>
 <tr>
+<td><code>binary_pending_approval</code></td>
+<td>warning (info when the binary is <code>optional</code>)</td>
+<td>Check the declared asset and digest in the reviewed skill, then run the reported <code>dalo approve binary &lt;identity&gt;</code> command.</td>
+</tr>
+<tr>
+<td><code>binary_hash_drift</code></td>
+<td>warning</td>
+<td>The declared tag, repository, or digest changed since its last approval. Review the new declaration, then run <code>dalo approve binary &lt;identity&gt;</code> to approve it.</td>
+</tr>
+<tr>
+<td><code>binary_platform_unsupported</code></td>
+<td>warning (info when the binary is <code>optional</code>)</td>
+<td>The skill declares no asset for this host, so nothing is downloaded. Run the skill on a supported host, or accept that it runs without the binary.</td>
+</tr>
+<tr>
+<td><code>binary_approval_revoked</code></td>
+<td>warning</td>
+<td>The approval was revoked and the verified bytes remain staged. Run <code>dalo approve binary &lt;identity&gt;</code> if the binary should run again.</td>
+</tr>
+<tr>
+<td><code>binary_audit_failed</code></td>
+<td>error</td>
+<td>The staged bytes no longer match the pinned digest, or the approved binary is not staged and linked to its verified bytes. Run <code>dalo approve revoke binary &lt;identity&gt;</code>, then <code>dalo approve binary &lt;identity&gt;</code>. The second command re-verifies the staged bytes, and downloads and verifies the asset again when they are missing or altered.</td>
+</tr>
+<tr>
+<td><code>binary_ready</code></td>
+<td>ok</td>
+<td>The binary is exactly approved, its verified bytes are staged, and <code>bin/&lt;id&gt;</code> links to them; no recovery is required.</td>
+</tr>
+<tr>
+<td><code>binary_staging_debris</code></td>
+<td>warning</td>
+<td>After confirming no <code>dalo approve binary</code> is running, remove the reported <code>.binary-download-*</code> file; it was never verified or staged.</td>
+</tr>
+<tr>
 <td><code>hook_pending_approval</code></td>
 <td>warning/error</td>
 <td>Review the hook and its referenced tool. Run the reported <code>dalo approve hook &lt;source-ref&gt;</code> command when the hook itself is pending; also resolve any provider blocker in the finding.</td>

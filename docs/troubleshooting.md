@@ -201,6 +201,13 @@ Doctor includes `ok` and `info` codes as well as warnings/errors. Codes not list
 | `tool_audit_failed` | error | Run the reported `dalo tool audit <source-ref>` command; repair the immutable staging or approval problem before using the tool. |
 | `tool_ready` | ok | The tool's exact execution contract is approved and staged; no recovery is required. |
 | `tool_staging_debris` | warning | After confirming no sync or approval is running, remove the reported `.tool-stage-*` directory; it was never approved or promoted. |
+| `binary_pending_approval` | warning (info when the binary is `optional`) | Check the declared asset and digest in the reviewed skill, then run the reported `dalo approve binary <identity>` command. |
+| `binary_hash_drift` | warning | The declared tag, repository, or digest changed since its last approval. Review the new declaration, then run `dalo approve binary <identity>` to approve it. |
+| `binary_platform_unsupported` | warning (info when the binary is `optional`) | The skill declares no asset for this host, so nothing is downloaded. Run the skill on a supported host, or accept that it runs without the binary. |
+| `binary_approval_revoked` | warning | The approval was revoked and the verified bytes remain staged. Run `dalo approve binary <identity>` if the binary should run again. |
+| `binary_audit_failed` | error | The staged bytes no longer match the pinned digest, or the approved binary is not staged and linked to its verified bytes. Run `dalo approve revoke binary <identity>`, then `dalo approve binary <identity>`. The second command re-verifies the staged bytes, and downloads and verifies the asset again when they are missing or altered. |
+| `binary_ready` | ok | The binary is exactly approved, its verified bytes are staged, and `bin/<id>` links to them; no recovery is required. |
+| `binary_staging_debris` | warning | After confirming no `dalo approve binary` is running, remove the reported `.binary-download-*` file; it was never verified or staged. |
 | `hook_pending_approval` | warning/error | Review the hook and its referenced tool. Run the reported `dalo approve hook <source-ref>` command when the hook itself is pending; also resolve any provider blocker in the finding. |
 | `hook_hash_drift` | error | Inspect the changed contract with the reported `dalo hook show <source-ref>` command, then approve the reviewed hook again. |
 | `hook_tool_unavailable` | error | Review and approve the referenced tool with the reported `dalo approve tool <source-ref>` command. |

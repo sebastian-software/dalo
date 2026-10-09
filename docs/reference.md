@@ -1186,18 +1186,21 @@ followed by an actionable diagnostic. `show` returns the declaration with each
 platform's asset, digest, and derived URL, the platform of the running Dalo
 binary, the exact approval value, the staged path when present, and the
 diagnostic. States are `platform_unsupported`, `pending_approval`, `hash_drift`,
-`revoked`, `approved_not_staged`, `audit_failure`, and `ready`. This release has
-no command that grants a binary approval or stages its bytes, so users see
-`platform_unsupported` or `pending_approval` in practice. `binary list --check`
-returns a non-zero exit code when any skill has an invalid binary declaration;
-each one is listed as an `invalid_binary_declaration` warning. `dalo --json
-status` also lists the binaries of each active skill under
-`resolution.active_skills[].binaries`.
+`revoked`, `approved_not_staged`, `audit_failure`, and `ready`. `ready` requires
+the exact approval, staged bytes that re-hash to the pinned digest, and the
+exposure link `<store>/bin/<id>` pointing at those bytes; `show` reports that
+link as `exposed_path`. Verified bytes that are staged but not linked report
+`approved_not_staged` with the command that links them. Only
+`dalo approve binary <identity>` downloads or stages a binary; `list` and `show`
+never do. `binary list --check` returns a non-zero exit code when any skill has
+an invalid binary declaration; each one is listed as an
+`invalid_binary_declaration` warning. `dalo --json status` also lists the
+binaries of each active skill under `resolution.active_skills[].binaries`.
 
 JSON shapes: `BinaryListReport` (`binaries[]`, `warnings[]`) and
 `BinaryStatusReport` (`binary`, `skill_source_ref`, `skill_path`,
 `source_provenance`, `approval_value`, `host_platform`, `state`, optional
-`staged_path`, `diagnostic`).
+`staged_path`, optional `exposed_path`, `diagnostic`).
 
 ### `dalo hook list [--check]`; `dalo hook show <source:plugin#hook:id>`
 
@@ -1234,6 +1237,7 @@ dalo approve skill public:review-helper --reviewer codex
 dalo approve skill public:review-helper --accept-risk "reviewed exception"
 dalo approve agent team:reviewer
 dalo approve tool team:quality#tool:detector
+dalo approve binary team:page-engine#binary:impeccino
 dalo approve delivery team:generated-review
 dalo approve hook team:quality#hook:pre-commit
 dalo approve source team
@@ -1241,6 +1245,7 @@ dalo approve author public:maintainers
 dalo approve org public:example-org
 dalo approve revoke skill public:review-helper
 dalo approve revoke tool team:quality#tool:detector
+dalo approve revoke binary team:page-engine#binary:impeccino
 dalo approve revoke delivery team:generated-review
 dalo approve revoke hook team:quality#hook:pre-commit
 ```
@@ -1249,14 +1254,19 @@ Approval writes support `--dry-run` and `--json`. A pending skill shown by
 `status` can be approved narrowly with `dalo approve skill <source:skill>`.
 A pending canonical agent shown by `agent list` can be activated with
 `dalo approve agent <source:agent>`. Tool approval validates and immutably
-stages the exact executable closure without running it. Delivery approval is
+stages the exact executable closure without running it. Binary approval
+downloads only the host platform's asset over HTTPS from GitHub, verifies its
+SHA-256 digest before anything is renamed into place, stages the bytes read-only
+under `binaries/<sha256>/`, links them at `<store>/bin/<id>`, and then records
+the exact approval. A mismatch, an oversized asset, or a redirect outside GitHub
+fails without writing anything. Revoking a binary removes only the approval; its
+staged bytes and link stay until a later cleanup. Delivery approval is
 inert and grants only the exact revision- and recipe-bound generated delivery.
 Hook approval grants the exact hook contract after its referenced tool is
 ready. Revoking a generated delivery withdraws its Dalo-owned materialized
 output on the next sync. The revoke scope is one of `skill`, `agent`, `tool`,
-`delivery`, `hook`,
-`source`, `author`, or `org`; Clap validates this value and exposes the choices
-to shell completion.
+`binary`, `delivery`, `hook`, `source`, `author`, or `org`; Clap validates this
+value and exposes the choices to shell completion.
 Skill approval always runs the deterministic preflight first and refuses a
 blocking result unless a reason is supplied with `--accept-risk`. `--reviewer`
 adds the same isolated semantic review as `dalo audit`.
@@ -1270,12 +1280,20 @@ explains that `@sha256:` suffixes bind a record to an exact reviewed contract or
 recipe hash.
 
 JSON output shapes: `ApprovalListReport` for `list`; successful `approve skill`
-output is `{ "audit": AuditReport, "approval": ApprovalReport }`; `agent`,
-`source`, `author`, and `org` mutations emit a bare `ApprovalReport`; tool,
-delivery, and hook grants and revocations emit `ToolApprovalReport`,
-`DeliveryApprovalReport`, and `HookApprovalReport`, respectively. Other
-revocations emit `ApprovalReport`. If the skill audit blocks approval, Dalo
-prints only the blocking `AuditReport` and exits non-zero.
+output is `{ "audit": AuditReport, "approval": ApprovalReport }`, plus
+`compatibility` when the skill declares it and `binaries[]` when it declares
+release binaries; `agent`, `source`, `author`, and `org` mutations emit a bare
+`ApprovalReport`; tool, binary, delivery, and hook grants and revocations emit
+`ToolApprovalReport`, `BinaryApprovalReport`, `DeliveryApprovalReport`, and
+`HookApprovalReport`, respectively. Other revocations emit `ApprovalReport`. If
+the skill audit blocks approval, Dalo prints only the blocking `AuditReport` and
+exits non-zero.
+
+After a successful `approve skill`, the human output names each binary the skill
+declares: `binary <identity>: ready` when it is ready, and otherwise its state
+with the command that approves it, for example
+`binary <identity>: pending_approval (run: dalo approve binary <identity>)`.
+Skill approval never approves a binary; the binary keeps its own approval.
 
 ### `dalo instructions enable <pack-ref> <file|--target agent...>`
 
@@ -1467,7 +1485,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `hook list` | `HookListReport` | `hooks[]` with hook and referenced-tool states, `warnings[]` |
 | `hook show` | `HookStatusReport` | hook and tool contracts, package and source provenance, `approval_value`, `tool_state`, `state`, `diagnostic` |
 | `binary list` | `BinaryListReport` | `binaries[]` with declaration, owning skill, `approval_value`, `host_platform`, `state`, optional `staged_path`, `diagnostic`; `warnings[]` (`invalid_binary_declaration`) |
-| `binary show` | `BinaryStatusReport` | declaration, owning skill and source provenance, `approval_value`, `host_platform`, `state`, optional `staged_path`, `diagnostic` |
+| `binary show` | `BinaryStatusReport` | declaration, owning skill and source provenance, `approval_value`, `host_platform`, `state`, optional `staged_path`, optional `exposed_path`, `diagnostic` |
 | `autosync install` / `uninstall` | `AutosyncMutationReport` | `action`, `dry_run`, resulting `status` |
 | `autosync status` | `AutosyncStatusReport` | `configured`, `installed`, `enabled`, backend, schedule, executable, store, artifacts, optional `scheduler_error`, optional `disabled_reason`, and optional `last_run` |
 | `autosync run` | `SyncReport` or `AutosyncRunState` | `SyncReport` when synchronization starts; `AutosyncRunState` with `outcome: "skipped"` and `reason` when another process holds the store lock. Catalog-drift and blocked failures keep the JSON sync report on stdout and emit the standard JSON error on stderr. |
@@ -1475,9 +1493,10 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `sync` | `SyncReport` | `store`, `dry_run`, `linked_targets`, skill `operations[]`, optional `instruction_operations[]` (`source_id`, `pack_id`, `target`, `action`, `previous_commit`, `commit`), `resolution`, `degraded_sources[]` (`id`, `path`, `reason`), optional `inventory_warnings[]` (`code`, `path`, `message`), optional `missing_commands[]` (`source_ref`, `command`, optional `compatibility`), optional `unrefreshed_tracking_sources[]`, `unselected_catalogs[]` (`source_id`, `available_skills`) |
 | `audit` | `AuditReport` | `schema_version`, `source_ref`, `skill_path`, `content_hash`, `static_engine_version`, `scanned_at_unix`, `coverage`, `status`, optional `max_severity`, `static_findings[]`, optional `spec_findings[]`, optional `agent_review`, optional `risk_acceptance` |
 | `approve list` | `ApprovalListReport` | `schema_version`, `approvals[]` (optional `granted_at_unix`), `accepted_risks[]` (`source_ref`, `content_hash`, `reason`, `accepted_at_unix`, `scope_hash`, `active`, `audit_command`) |
-| `approve skill` | audited approval outcome | `audit` (`AuditReport`), `approval` (`ApprovalReport`), optional `compatibility` |
+| `approve skill` | audited approval outcome | `audit` (`AuditReport`), `approval` (`ApprovalReport`), optional `compatibility`, optional `binaries[]` (`BinaryStatusReport`, omitted when the skill declares none) |
 | `approve agent` / `source` / `author` / `org` | `ApprovalReport` | `scope`, `value`, `action`, `dry_run` |
 | `approve tool` / `approve revoke tool` | `ToolApprovalReport` | `tool`, content-bound `approval_value`, `action`, optional immutable `staged_path`, `dry_run` |
+| `approve binary` / `approve revoke binary` | `BinaryApprovalReport` | `binary` (identity), content-bound `approval_value`, `action` (`planned`, `granted`, `unchanged`, or `revoked`), optional `staged_path` and `exposed_path`, `dry_run` |
 | `approve delivery` / `approve revoke delivery` | `DeliveryApprovalReport` | `skill`, revision- and recipe-bound `approval_value`, optional `generator` and `generator_contract_hash`, `providers`, `action`, `dry_run`, `execution` (`not_run` during approval) |
 | `approve hook` / `approve revoke hook` | `HookApprovalReport` | `hook`, content-bound `approval_value`, `action`, `dry_run` |
 | `approve revoke skill` / `agent` / `source` / `author` / `org` | `ApprovalReport` | `scope`, `value`, `action`, `dry_run` |
@@ -1584,8 +1603,8 @@ Assistant, hook, plugin, and binary paths are created lazily, not by `dalo init`
 | `.assistant-installing/` | An assistant installation stages `new/` and temporarily preserves `previous/`; retained if recovery is needed. |
 | `hooks/`, `hooks/state.json` | The first native hook projection is applied; the state file records dispatcher ownership. |
 | `plugins/`, `plugins/state.json` | The first native plugin projection is applied; the state file records projection ownership. |
-| `binaries/` | Reserved; created when the first binary is approved. |
-| `bin/` | Reserved; created when the first binary is approved. |
+| `binaries/<sha256>/<id>` | Created by the first `dalo approve binary` for that digest: the verified asset, read-only, addressed by its pinned SHA-256. Later approvals of the same bytes reuse it. |
+| `bin/<id>` | Created by `dalo approve binary`: a relative symlink to the verified file, the stable path launchers look for. |
 
 Provider plugin and hook projections are **experimental**: the native files
 Dalo writes under `plugins/` and `hooks/`, and the provider mappings behind
@@ -1971,7 +1990,7 @@ binaries:
 | `requires[]` | no | Same-source or same-catalog dependencies. Required skills are expanded only when the closure is linkable and approved. |
 | `compatibility` | no | Free-text environment requirements from the Agent Skills specification (at most 500 characters). Shown unchanged by `source inspect`, `status`, `sync`, `approve skill`, and `plugin review` so the person approving a skill sees what it needs from the machine. |
 | `metadata` | no | String-to-string mapping, the specification's extension point. Dalo carries string-valued entries; non-string entries are ignored. |
-| `binaries` | no | Verified release binaries the skill needs, keyed by id. Dalo validates each declaration, inventories it with `dalo binary list` and `dalo binary show`, and will fetch, verify, and expose the host asset in a later release. |
+| `binaries` | no | Verified release binaries the skill needs, keyed by id. Dalo validates each declaration, shows its state with `dalo binary list` and `dalo binary show`, and downloads, verifies, stages, and exposes the host asset only through `dalo approve binary`. |
 
 **Binary declarations.** `binaries` maps each binary id to one declaration. The
 id is the mapping key: lower kebab-case, unique (a duplicate key is a YAML
@@ -1998,8 +2017,30 @@ reports one `invalid_binary_declaration` warning naming the binary id and rule,
 so the skill does not activate. Dalo releases that predate this field ignore
 `binaries` and activate the skill without the binary, so upgrade before relying
 on a declaration. A YAML error inside `binaries` makes the whole
-frontmatter malformed, as any other frontmatter error does. This release only
-inventories declarations; it never fetches or verifies a release asset.
+frontmatter malformed, as any other frontmatter error does.
+
+Reading a declaration never touches the network. `dalo approve binary <identity>`
+is the only command that downloads one. It fetches the host platform's asset
+from `https://github.com/<repo>/releases/download/<tag>/<asset>`, verifies the
+bytes against the pinned digest, stages them read-only under
+`binaries/<sha256>/<id>`, links them at `<store>/bin/<id>`, and then records the
+exact approval. Assets for other platforms are never fetched.
+`dalo approve revoke binary <identity>` removes only the approval.
+
+A skill launcher should look for the verified file first and fall back to its
+own download on hosts without Dalo:
+
+```sh
+#!/bin/sh
+candidate="${DALO_STORE:-$HOME/.dalo}/bin/impeccino"
+if [ -x "$candidate" ]; then
+  exec "$candidate" "$@"
+fi
+exec "$(dirname "$0")/impeccino-fallback" "$@"
+```
+
+The lookup contract is `${DALO_STORE:-$HOME/.dalo}/bin/<id>`. The path stays the
+same when a digest changes, so launchers never need to know the digest.
 
 If `name` is absent, the directory name is the slot name. Duplicate slot names within one source are warned and de-duplicated by resolver behavior.
 

@@ -49,3 +49,20 @@ frontmatter field of `SKILL.md`, keyed by binary id, with one GitHub release
   stays visible in `approve skill`, `status`, and `doctor` output.
 - Supporting a new download source, archive assets, or attestation is an
   additive declaration change, not a new file format.
+
+## Evidence
+
+Unit tests in `src/binary.rs` run against a loopback HTTP fixture and cover the
+download and verification path: a matching digest stages a read-only file at
+`binaries/<sha256>/<id>` and a second fetch makes no request; a tampered body fails
+with `binary verification failed` and leaves nothing under `binaries/`; a
+`Content-Length` above 256 MiB is refused before the body is read, and a streamed
+body past the limit is refused as it is read; a redirect is followed only to an
+allowed target, and one to a host outside GitHub is refused before it is
+contacted; `expose` links the staged file with a relative target, replaces a stale
+Dalo link, and refuses a real file or a foreign symlink without removing it.
+Integration tests in `tests/cli.rs` run without network access: an undeclared host
+writes nothing, a dry run plans only, pre-staged bytes approve offline and expose
+`bin/<id>`, revocation keeps the bytes and reports `revoked`, tampered bytes fail
+the audit with `binary_audit_failed`, `approve skill` names each pending binary,
+and leftover download debris is reported as `binary_staging_debris`.

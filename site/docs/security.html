@@ -407,6 +407,18 @@ Depending on its declared effect it can deny a tool call, rewrite a tool&#39;s
 input, replace the model-facing result, inject context into the session, or
 force another agent turn. Approving a hook is a decision to let that plugin
 influence what your agent does — read the effect, not only the name.</p>
+<p><strong>Release binaries.</strong> A skill can declare a native binary from a GitHub release
+(see <a href="/docs/reference.html#skillmd-frontmatter">Binary declarations</a>). Only
+<code>dalo approve binary</code> reaches the network, and it fetches only the host
+platform&#39;s asset, only over HTTPS from <code>github.com</code> or <code>*.githubusercontent.com</code>,
+with no credentials attached. Dalo hashes the bytes while streaming and compares
+them with the digest pinned in the reviewed source before anything is renamed
+into the store, so a replaced upstream asset fails verification and leaves no
+staged file and no approval. Downloads are capped at 256 MiB, follow at most
+five redirects, and refuse any redirect outside those hosts before connecting to
+it. The approval is exact, so a changed digest, tag, or repository needs a new
+approval. Inspection (<code>dalo binary list|show</code> and <code>dalo doctor</code>) never downloads,
+and Dalo never executes the staged file.</p>
 <h2 id="the-os-sandbox"><a class="doc-anchor" href="#the-os-sandbox">The OS sandbox</a></h2>
 <p>Dalo normally links skill directories and runs nothing from a source. There is
 exactly one case where it executes source-provided code during <code>sync</code>: a
