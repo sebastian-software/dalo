@@ -1036,12 +1036,13 @@ fn request_asset(
                 .headers()
                 .get(LOCATION)
                 .and_then(|value| value.to_str().ok())
+                .and_then(|value| resolve_location(&uri, value))
                 .ok_or_else(|| DaloError::StateError {
                     reason: format!(
                         "binary download for `{identity}` redirected without a usable Location header"
                     ),
                 })?;
-            url = location.to_owned();
+            url = location;
             continue;
         }
         if !status.is_success() {
@@ -1055,6 +1056,37 @@ fn request_asset(
         check_download_uri(response.get_uri(), identity)?;
         return Ok(response);
     }
+}
+
+/// Resolve a redirect `Location` header against the URI of the request that received it.
+///
+/// An absolute location is returned unchanged. A root-relative one (`/path`) keeps
+/// the request's scheme and authority. Any other location is relative to the
+/// directory of the request path, up to and including its last `/`. The authority
+/// never changes, so a relative location cannot move the request to another host;
+/// the download policy still checks the result. Returns `None` when the result is
+/// not a valid URI.
+fn resolve_location(current: &Uri, location: &str) -> Option<String> {
+    if location
+        .parse::<Uri>()
+        .is_ok_and(|uri| uri.scheme().is_some())
+    {
+        return Some(location.to_owned());
+    }
+    let scheme = current.scheme_str()?;
+    let authority = current.authority()?.as_str();
+    let path = if location.starts_with('/') {
+        location.to_owned()
+    } else {
+        let base = current.path();
+        let directory = match base.rfind('/') {
+            Some(index) => &base[..=index],
+            None => "/",
+        };
+        format!("{directory}{location}")
+    };
+    let resolved = format!("{scheme}://{authority}{path}");
+    resolved.parse::<Uri>().ok().map(|_| resolved)
 }
 
 /// Refuse any download target that is not HTTPS on GitHub or its release CDN.
@@ -1894,6 +1926,65 @@ binaries:
             let uri: Uri = url.parse().unwrap();
             assert!(check_download_uri(&uri, "x").is_err(), "{url}");
         }
+    }
+
+    #[test]
+    fn a_root_relative_redirect_resolves_against_the_request_url() {
+        let bytes = b"verified release bytes";
+        let digest = sha256_hex(bytes);
+        let server = Loopback::serve(|_| {
+            vec![
+                response(
+                    "302 Found",
+                    &[("Location", "/final/impeccino-linux-x64".to_owned())],
+                    b"",
+                ),
+                ok_with(bytes),
+            ]
+        });
+        let store = TestStore::new();
+        let record = downloadable(&server.url("/impeccino-linux-x64"), &digest);
+
+        let staged = with_loopback_policy(true, || fetch(&store, &record)).unwrap();
+
+        assert_eq!(fs::read(staged).unwrap(), bytes);
+        assert_eq!(server.connections(), 2);
+    }
+
+    #[test]
+    fn resolve_location_keeps_absolute_locations_and_resolves_relative_ones() {
+        let current: Uri = "https://github.com/owner/repo/releases/download/v1/asset.bin"
+            .parse()
+            .unwrap();
+
+        assert_eq!(
+            resolve_location(&current, "https://objects.githubusercontent.com/blob/x"),
+            Some("https://objects.githubusercontent.com/blob/x".to_owned())
+        );
+        assert_eq!(
+            resolve_location(&current, "/owner/repo/releases/download/v2/asset.bin"),
+            Some("https://github.com/owner/repo/releases/download/v2/asset.bin".to_owned())
+        );
+        assert_eq!(
+            resolve_location(&current, "other.bin"),
+            Some("https://github.com/owner/repo/releases/download/v1/other.bin".to_owned())
+        );
+    }
+
+    #[test]
+    fn resolve_location_never_changes_the_authority_of_a_relative_location() {
+        let current: Uri = "https://github.com/owner/repo/releases/download/v1/asset.bin"
+            .parse()
+            .unwrap();
+
+        let scheme_relative = resolve_location(&current, "//evil.example/asset.bin")
+            .expect("a path-shaped location should resolve");
+        let uri: Uri = scheme_relative.parse().unwrap();
+        assert_eq!(uri.host(), Some("github.com"));
+        assert_eq!(
+            resolve_location(&current, "https://bad host/asset.bin"),
+            None
+        );
     }
 
     #[test]
