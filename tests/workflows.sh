@@ -346,6 +346,54 @@ workflow_step_run 'Upload artifact to release' > "$upload_script"
     exit 1
   fi
 )
+
+# A package listing can exceed the pipe buffer after the matching entry.
+# Early-exit grep turns that successful check into a broken pipe under pipefail.
+deb_checks="$test_root/deb-checks"
+mkdir -p "$deb_checks/bin" "$deb_checks/scripts"
+printf '%s\n' '#!/bin/sh' 'exit 0' > "$deb_checks/scripts/package-deb.sh"
+cat > "$deb_checks/bin/dpkg-deb" <<'EOF'
+#!/bin/sh
+set -eu
+case "$1" in
+  --field)
+    case "$3" in
+      Package) printf '%s\n' dalo ;;
+      Version) printf '%s\n' 1.4.0 ;;
+      Architecture) printf '%s\n' "$DEB_TEST_ARCH" ;;
+      Depends) printf '%s\n' 'git, libc6 (>= 2.23)' ;;
+      *) exit 1 ;;
+    esac
+    ;;
+  --contents)
+    awk -v missing="${DEB_TEST_MISSING_MANPAGE:-false}" 'BEGIN {
+      print "./usr/bin/dalo"
+      if (missing != "true") print "./usr/share/man/man1/dalo.1"
+      for (i = 0; i < 100000; i++) print "./usr/share/doc/dalo/entry-" i
+    }'
+    ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$deb_checks/bin/dpkg-deb"
+deb_check_script="$test_root/build-debian-package.sh"
+workflow_step_run 'Build Debian package' > "$deb_check_script"
+(
+  cd "$deb_checks"
+  for architecture in amd64 arm64; do
+    case "$architecture" in
+      amd64) target=x86_64-unknown-linux-gnu ;;
+      arm64) target=aarch64-unknown-linux-gnu ;;
+    esac
+    PATH="$deb_checks/bin:$PATH" TAG_NAME=dalo-v1.4.0 TARGET="$target" DEB_TEST_ARCH="$architecture" \
+      bash -e -o pipefail "$deb_check_script"
+  done
+  if PATH="$deb_checks/bin:$PATH" TAG_NAME=dalo-v1.4.0 TARGET=x86_64-unknown-linux-gnu \
+    DEB_TEST_ARCH=amd64 DEB_TEST_MISSING_MANPAGE=true bash -e -o pipefail "$deb_check_script"; then
+    echo 'release package validation accepted a missing manpage' >&2
+    exit 1
+  fi
+)
 printf '%s\n' "$crate_job" | grep -Fq 'https://crates.io/api/v1/crates/dalo/${version}'
 printf '%s\n' "$crate_job" | grep -Fq 'is already published on crates.io'
 printf '%s\n' "$crate_job" | grep -Fq 'rust-lang/crates-io-auth-action@'
