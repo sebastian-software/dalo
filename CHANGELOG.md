@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.2](https://github.com/sebastian-software/dalo/compare/dalo-v1.5.1...dalo-v1.5.2) (2026-10-09)
+
+
+### Bug Fixes
+
+* **site:** clarify product value and keep setup steps together ([20bacf1](https://github.com/sebastian-software/dalo/commit/20bacf15a879f1defb5cb75050cfc44f6cfa6a5e))
+
 ## [1.5.1](https://github.com/sebastian-software/dalo/compare/dalo-v1.5.0...dalo-v1.5.1) (2026-10-09)
 
 
