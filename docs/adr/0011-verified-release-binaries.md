@@ -63,6 +63,23 @@ contacted; `expose` links the staged file with a relative target, replaces a sta
 Dalo link, and refuses a real file or a foreign symlink without removing it.
 Integration tests in `tests/cli.rs` run without network access: an undeclared host
 writes nothing, a dry run plans only, pre-staged bytes approve offline and expose
-`bin/<id>`, revocation keeps the bytes and reports `revoked`, tampered bytes fail
-the audit with `binary_audit_failed`, `approve skill` names each pending binary,
-and leftover download debris is reported as `binary_staging_debris`.
+`bin/<id>`, revocation removes the bytes and link that no approved declaration
+still backs, tampered bytes fail the audit with `binary_audit_failed`,
+`approve skill` names each pending binary, and leftover download debris is
+reported as `binary_staging_debris`.
+
+The lock, cleanup, and listing tests run without network access as well. Sync
+records a `ready` binary in `lock.toml`, and the entry is gone after a
+revocation and the next sync. Two skills that declare one id block the later
+one: its approval is refused and doctor reports `binary_slot_conflict`.
+`source remove` deletes the staged directory and its link and lists both under
+`affected_paths`. A real file a user placed at `bin/<id>` survives revocation
+and removal, with a warning. Download debris older than an hour is removed, and
+a fresh one is kept. `audit` lists `binaries[]` while its verdict stays `clean`,
+and an invalid declaration yields `spec.binaries-invalid`, checked through the
+skill path because the inventory drops such a skill. `status` prints
+`binary <identity>: ready`. Unselecting a catalog skill removes its staged bytes,
+and the listing no longer reports an unselected offer. Unit tests in
+`src/binary.rs` show that cleanup never removes a symbolic link named like a
+digest, a digest directory with more than one entry, or a foreign link under
+`bin/`, and that it does nothing while a source is unscannable.

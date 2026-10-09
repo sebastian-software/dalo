@@ -798,7 +798,7 @@ repository, push the change, then run <code>dalo sync</code>.</p>
 <tr>
 <td><code>binary_approval_revoked</code></td>
 <td>warning</td>
-<td>The approval was revoked and the verified bytes remain staged. Run <code>dalo approve binary &lt;identity&gt;</code> if the binary should run again.</td>
+<td>The approval was revoked, but cleanup kept its verified bytes, so they remain staged. The revoke output names each kept entry as a <code>warning:</code> line; resolve that cause, then run <code>dalo approve binary &lt;identity&gt;</code> if the binary should run again.</td>
 </tr>
 <tr>
 <td><code>binary_audit_failed</code></td>
@@ -814,6 +814,11 @@ repository, push the change, then run <code>dalo sync</code>.</p>
 <td><code>binary_staging_debris</code></td>
 <td>warning</td>
 <td>After confirming no <code>dalo approve binary</code> is running, remove the reported <code>.binary-download-*</code> file; it was never verified or staged.</td>
+</tr>
+<tr>
+<td><code>binary_slot_conflict</code></td>
+<td>warning</td>
+<td>Another skill declares the same binary id and owns <code>bin/&lt;id&gt;</code>, so this declaration is <code>blocked</code> and never exposed. Run the reported <code>dalo binary show &lt;owner&gt;</code> to see the owning declaration; to use this one instead, change the source priority or stop selecting the other skill, and then approve it.</td>
 </tr>
 <tr>
 <td><code>hook_pending_approval</code></td>
