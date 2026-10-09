@@ -433,6 +433,11 @@ dalo --json doctor
 <td>Dalo skipped a symlinked directory or an out-of-tree <code>SKILL.md</code> metadata symlink to keep source discovery and skill identity inside a bounded checkout.</td>
 <td>Replace it with a real in-tree path, or remove the symlink.</td>
 </tr>
+<tr>
+<td><code>invalid_binary_declaration</code></td>
+<td>A <code>binaries</code> declaration in <code>SKILL.md</code> frontmatter is invalid, so the skill was dropped. The message names the binary id and the rule it breaks.</td>
+<td>Correct the declaration named in the warning (id, repo, tag, platform key, asset name, or 64-character lowercase SHA-256), then rerun <code>dalo status</code>.</td>
+</tr>
 </tbody></table></div>
 <p>For a local source, make the repair in its local source path. For Git-backed
 team or catalog sources, do not edit Dalo&#39;s managed checkout: fix the upstream

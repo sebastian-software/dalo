@@ -940,7 +940,7 @@ non-blank string of at most 1024 characters.</li>
 <li><code>spec.metadata-not-mapping</code> and <code>spec.metadata-value-not-string</code>: <code>metadata</code> is
 a mapping whose values are all strings.</li>
 <li><code>spec.unknown-key</code>: a top-level key is outside the specification fields and
-Dalo&#39;s <code>id</code>, <code>owners</code>, <code>tags</code>, and <code>requires</code>.</li>
+Dalo&#39;s <code>id</code>, <code>owners</code>, <code>tags</code>, <code>requires</code>, and <code>binaries</code>.</li>
 <li><code>spec.body-too-long</code> (<code>info</code>): the Markdown body after the closing fence has
 more than 500 lines.</li>
 </ul>
@@ -1062,6 +1062,29 @@ inventory warnings.</p>
 <code>approval_value</code>, <code>state</code>, optional <code>staged_path</code>, <code>diagnostic</code>), and
 <code>ToolAuditReport</code> (<code>tool</code>, <code>contract_hash</code>, <code>plugin_package_hash</code>, <code>passed</code>,
 <code>findings[]</code>).</p>
+<h3 id="dalo-binary-list---check-dalo-binary-show-sourceskillbinaryid"><a class="doc-anchor" href="#dalo-binary-list---check-dalo-binary-show-sourceskillbinaryid"><code>dalo binary list [--check]</code>; <code>dalo binary show &lt;source:skill#binary:id&gt;</code></a></h3>
+<p>Inspect release binaries declared in <code>SKILL.md</code> frontmatter (see
+<strong>Binary declarations</strong> in the <code>SKILL.md</code> Frontmatter section). Both commands
+are read-only and never download, verify, stage, or execute a binary:</p>
+<pre><code class="language-sh">dalo binary list --check
+dalo binary show company:review-helper#binary:impeccino
+dalo --json binary show company:review-helper#binary:impeccino
+</code></pre>
+<p><code>list</code> reports every valid declaration with its state and contract hash,
+followed by an actionable diagnostic. <code>show</code> returns the declaration with each
+platform&#39;s asset, digest, and derived URL, the platform of the running Dalo
+binary, the exact approval value, the staged path when present, and the
+diagnostic. States are <code>platform_unsupported</code>, <code>pending_approval</code>, <code>hash_drift</code>,
+<code>revoked</code>, <code>approved_not_staged</code>, <code>audit_failure</code>, and <code>ready</code>. This release has
+no command that grants a binary approval or stages its bytes, so users see
+<code>platform_unsupported</code> or <code>pending_approval</code> in practice. <code>binary list --check</code>
+returns a non-zero exit code when any skill has an invalid binary declaration;
+each one is listed as an <code>invalid_binary_declaration</code> warning. <code>dalo --json status</code> also lists the binaries of each active skill under
+<code>resolution.active_skills[].binaries</code>.</p>
+<p>JSON shapes: <code>BinaryListReport</code> (<code>binaries[]</code>, <code>warnings[]</code>) and
+<code>BinaryStatusReport</code> (<code>binary</code>, <code>skill_source_ref</code>, <code>skill_path</code>,
+<code>source_provenance</code>, <code>approval_value</code>, <code>host_platform</code>, <code>state</code>, optional
+<code>staged_path</code>, <code>diagnostic</code>).</p>
 <h3 id="dalo-hook-list---check-dalo-hook-show-sourcepluginhookid"><a class="doc-anchor" href="#dalo-hook-list---check-dalo-hook-show-sourcepluginhookid"><code>dalo hook list [--check]</code>; <code>dalo hook show &lt;source:plugin#hook:id&gt;</code></a></h3>
 <p>Inspect portable hook contracts without installing or executing them:</p>
 <pre><code class="language-sh">dalo hook list --check
@@ -1449,6 +1472,16 @@ dalo completions fish &gt; dalo.fish
 <td>hook and tool contracts, package and source provenance, <code>approval_value</code>, <code>tool_state</code>, <code>state</code>, <code>diagnostic</code></td>
 </tr>
 <tr>
+<td><code>binary list</code></td>
+<td><code>BinaryListReport</code></td>
+<td><code>binaries[]</code> with declaration, owning skill, <code>approval_value</code>, <code>host_platform</code>, <code>state</code>, optional <code>staged_path</code>, <code>diagnostic</code>; <code>warnings[]</code> (<code>invalid_binary_declaration</code>)</td>
+</tr>
+<tr>
+<td><code>binary show</code></td>
+<td><code>BinaryStatusReport</code></td>
+<td>declaration, owning skill and source provenance, <code>approval_value</code>, <code>host_platform</code>, <code>state</code>, optional <code>staged_path</code>, <code>diagnostic</code></td>
+</tr>
+<tr>
 <td><code>autosync install</code> / <code>uninstall</code></td>
 <td><code>AutosyncMutationReport</code></td>
 <td><code>action</code>, <code>dry_run</code>, resulting <code>status</code></td>
@@ -1739,7 +1772,7 @@ is preserved in output so drift remains visible.</p>
 <td>Detached incoming team commits retained only while security review is required.</td>
 </tr>
 </tbody></table></div>
-<p>Assistant, hook, and plugin paths are created lazily, not by <code>dalo init</code>:</p>
+<p>Assistant, hook, plugin, and binary paths are created lazily, not by <code>dalo init</code>:</p>
 <div class="doc-table"><table>
 <thead>
 <tr>
@@ -1762,6 +1795,14 @@ is preserved in output so drift remains visible.</p>
 <tr>
 <td><code>plugins/</code>, <code>plugins/state.json</code></td>
 <td>The first native plugin projection is applied; the state file records projection ownership.</td>
+</tr>
+<tr>
+<td><code>binaries/</code></td>
+<td>Reserved; created when the first binary is approved.</td>
+</tr>
+<tr>
+<td><code>bin/</code></td>
+<td>Reserved; created when the first binary is approved.</td>
 </tr>
 </tbody></table></div>
 <p>Provider plugin and hook projections are <strong>experimental</strong>: the native files
@@ -2329,6 +2370,19 @@ requires:
 compatibility: &quot;Rendered-page scans need agent-browser on PATH; everything else works without it.&quot;
 metadata:
   dalo.requires-commands: &quot;agent-browser&quot;
+binaries:
+  impeccino:
+    source: github-release
+    repo: sebastian-software/impeccino
+    tag: engine-v0.2.0
+    availability: required
+    assets:
+      macos-arm64:
+        asset: impeccino-darwin-arm64
+        sha256: &quot;0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef&quot;
+      linux-x64:
+        asset: impeccino-linux-x64
+        sha256: &quot;fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210&quot;
 ---
 
 # Review Helper
@@ -2381,7 +2435,38 @@ metadata:
 <td>no</td>
 <td>String-to-string mapping, the specification&#39;s extension point. Dalo carries string-valued entries; non-string entries are ignored.</td>
 </tr>
+<tr>
+<td><code>binaries</code></td>
+<td>no</td>
+<td>Verified release binaries the skill needs, keyed by id. Dalo validates each declaration, inventories it with <code>dalo binary list</code> and <code>dalo binary show</code>, and will fetch, verify, and expose the host asset in a later release.</td>
+</tr>
 </tbody></table></div>
+<p><strong>Binary declarations.</strong> <code>binaries</code> maps each binary id to one declaration. The
+id is the mapping key: lower kebab-case, unique (a duplicate key is a YAML
+error), so the identity is <code>&lt;source&gt;:&lt;skill&gt;#binary:&lt;id&gt;</code>, where <code>&lt;source&gt;:&lt;skill&gt;</code>
+is the skill&#39;s source reference. <code>binaries: {}</code> declares no binaries, and a value
+that is not a mapping is invalid. Each declaration takes <code>source</code> (required,
+exactly <code>github-release</code>); <code>repo</code> (required, <code>&lt;owner&gt;/&lt;name&gt;</code>: two segments of 1
+to 100 characters from letters, digits, <code>.</code>, <code>_</code>, and <code>-</code>, neither starting with
+<code>.</code>); <code>tag</code> (required, 1 to 128 characters from letters, digits, <code>.</code>, <code>_</code>, <code>/</code>,
+and <code>-</code>, not starting with <code>-</code>, <code>.</code>, or <code>/</code>, not ending with <code>/</code>, and containing
+neither <code>..</code> nor <code>//</code>); <code>availability</code> (optional, <code>required</code> or <code>optional</code>,
+default <code>required</code>); and <code>assets</code> (required, a non-empty mapping keyed by
+<code>macos-arm64</code>, <code>macos-x64</code>, <code>linux-arm64</code>, or <code>linux-x64</code>). Each asset requires
+<code>asset</code> (1 to 255 characters from letters, digits, <code>.</code>, <code>_</code>, and <code>-</code>, not
+starting with <code>.</code>, not containing <code>..</code>) and <code>sha256</code> (exactly 64 lowercase
+hexadecimal characters). Unknown keys are invalid at every level. Dalo derives
+each download URL as <code>https://github.com/&lt;repo&gt;/releases/download/&lt;tag&gt;/&lt;asset&gt;</code>.
+The contract hash covers the id, source, repo, tag, availability, and each
+asset&#39;s platform, file name, and digest, so a description edit does not change
+it. The approval value is <code>&lt;identity&gt;@sha256:&lt;contract-hash&gt;</code>.</p>
+<p>A declaration that breaks any rule drops its skill from the inventory and
+reports one <code>invalid_binary_declaration</code> warning naming the binary id and rule,
+so the skill does not activate. Dalo releases that predate this field ignore
+<code>binaries</code> and activate the skill without the binary, so upgrade before relying
+on a declaration. A YAML error inside <code>binaries</code> makes the whole
+frontmatter malformed, as any other frontmatter error does. This release only
+inventories declarations; it never fetches or verifies a release asset.</p>
 <p>If <code>name</code> is absent, the directory name is the slot name. Duplicate slot names within one source are warned and de-duplicated by resolver behavior.</p>
 <p>Dalo reads one <code>metadata</code> key as a command requirement: <code>dalo.requires-commands</code>,
 a space-separated list of command names such as <code>agent-browser</code> in the example
