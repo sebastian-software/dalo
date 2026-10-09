@@ -16,7 +16,8 @@ if [ "${ID:-}" != ubuntu ] || [ -z "${VERSION_ID:-}" ]; then
   echo "Debian package lifecycle test requires an Ubuntu CI runner" >&2
   exit 1
 fi
-ubuntu_image="ubuntu:${VERSION_ID}"
+# Docker's official ECR mirror avoids Docker Hub's anonymous pull limits.
+ubuntu_image="public.ecr.aws/docker/library/ubuntu:${VERSION_ID}"
 test_root=$(mktemp -d "${TMPDIR:-/tmp}/dalo-deb-ci.XXXXXX")
 cleanup() {
   rm -rf "$test_root"
