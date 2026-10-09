@@ -103,7 +103,7 @@ Lock drift compares the previous `lock.toml` with the current live resolution.
 | `invalid_slot_name` | Frontmatter `name` or folder name is not a portable slot name. | Rename the folder or frontmatter `name` to a lowercase portable token. |
 | `duplicate_slot_name` | One source contains multiple skills with the same slot name. | Rename one skill or split the source. |
 | `unreadable_path` | Dalo could not read a skill path. | Fix filesystem permissions, broken links, or the source checkout. |
-| `skipped_symlink` | Dalo skipped a symlinked directory or an out-of-tree `SKILL.md` metadata symlink to keep source discovery and skill identity inside a bounded checkout. | Replace it with a real in-tree path, or remove the symlink. |
+| `skipped_symlink` | Dalo skipped a symlinked directory or an out-of-tree `SKILL.md` metadata symlink to keep source discovery and skill identity inside a bounded checkout. | Replace it with a real in-tree path, or remove the symlink. In project scope, unrelated symlinks are ignored only when the declared skill selection and its required closure were fully inventoried. |
 | `invalid_binary_declaration` | A `binaries` declaration in `SKILL.md` frontmatter is invalid, so the skill was dropped. The message names the binary id and the rule it breaks. | Correct the declaration named in the warning (id, repo, tag, platform key, asset name, or 64-character lowercase SHA-256), then rerun `dalo status`. |
 
 For a local source, make the repair in its local source path. For Git-backed

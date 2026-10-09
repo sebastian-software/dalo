@@ -2198,6 +2198,266 @@ fn declaration_approval_restores_clones_and_worktrees_without_local_records() {
 }
 
 #[test]
+fn project_install_ignores_symlinks_outside_the_complete_declared_closure() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo = temp.path().join("upstream");
+    closure_upstream(&repo);
+    fs::create_dir_all(repo.join(".claude")).unwrap();
+    symlink("../skills", repo.join(".claude/skills")).unwrap();
+    fs::create_dir_all(repo.join("test/fixtures")).unwrap();
+    symlink("../../skills", repo.join("test/fixtures/packages")).unwrap();
+    symlink("missing", repo.join("test/fixtures/broken")).unwrap();
+    let commit = commit_all(&repo, "unrelated symlinks and provider alias");
+    let project = temp.path().join("project");
+    fs::create_dir(&project).unwrap();
+    declaration_manifest(&project, &repo, &commit, &["skills/review"]);
+
+    // Full source discovery remains conservative outside project scope.
+    let inventory = dalo::inventory::scan_source("shared", &repo).unwrap();
+    assert!(dalo::resolver::inventory_degrades_source_for_removal(
+        &inventory
+    ));
+    assert_eq!(inventory.warnings.len(), 3);
+    for _ in 0..2 {
+        let install = dalo_command()
+            .current_dir(&project)
+            .args(["--json", "install"])
+            .assert()
+            .success();
+        let report: serde_json::Value =
+            serde_json::from_slice(&install.get_output().stdout).unwrap();
+        assert_eq!(report["degraded_sources"], serde_json::json!([]));
+        for skill in ["review", "helper"] {
+            assert!(project.join(".claude/skills").join(skill).is_symlink());
+        }
+        assert!(!project.join(".claude/skills/extra").exists());
+        dalo_command()
+            .current_dir(&project)
+            .args(["status", "--check"])
+            .assert()
+            .success();
+        dalo_command()
+            .current_dir(&project)
+            .args(["doctor", "--check"])
+            .assert()
+            .success();
+    }
+    // An intentional declaration edit can still remove recorded links.
+    declaration_manifest(&project, &repo, &commit, &["extra"]);
+    dalo_command()
+        .current_dir(&project)
+        .arg("install")
+        .assert()
+        .success();
+    assert!(!project.join(".claude/skills/review").exists());
+    assert!(!project.join(".claude/skills/helper").exists());
+    assert!(project.join(".claude/skills/extra").is_symlink());
+}
+
+#[test]
+fn project_install_restores_nextjs_pinned_symlink_layout() {
+    let temp = tempfile::tempdir().unwrap();
+    let nextjs = temp.path().join("nextjs");
+    let react = temp.path().join("react");
+    let skills = [
+        "next-bundle-optimizer",
+        "next-cache-components-adoption",
+        "next-cache-components-optimizer",
+    ];
+    for name in skills {
+        write_project_skill(&nextjs, name, "");
+    }
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/project-nextjs/symlinks.json")).unwrap();
+    for path in fixture["directories"].as_array().unwrap() {
+        let directory = nextjs.join(path.as_str().unwrap());
+        fs::create_dir_all(&directory).unwrap();
+        // Git does not preserve empty directories in the installed checkout.
+        fs::write(directory.join("fixture.txt"), "Symlink target fixture.\n").unwrap();
+    }
+    // Keep a real provider skill behind the .claude/skills alias. It remains
+    // an unselected offer, rather than a duplicate or an active project skill.
+    fs::create_dir_all(nextjs.join(".agents/skills/authoring-skills")).unwrap();
+    fs::write(nextjs.join(".agents/skills/authoring-skills/SKILL.md"),
+        "---\nname: authoring-skills\ndescription: Write documentation.\n---\n\nWrite documentation.\n").unwrap();
+    for entry in fixture["symlinks"].as_array().unwrap() {
+        let path = nextjs.join(entry["path"].as_str().unwrap());
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        symlink(entry["target"].as_str().unwrap(), path).unwrap();
+    }
+    git(&nextjs, &["init"]);
+    let nextjs_commit = commit_all(&nextjs, "pinned Next.js discovery layout");
+    write_project_skill(&react, "react-best-practices", "");
+    git(&react, &["init"]);
+    let react_commit = commit_all(&react, "selected React skill");
+    let inventory = dalo::inventory::scan_source("nextjs", &nextjs).unwrap();
+    assert_eq!(inventory.warnings.len(), 25);
+    assert!(
+        inventory
+            .warnings
+            .iter()
+            .all(|warning| warning.code == dalo::inventory::InventoryWarningCode::SkippedSymlink)
+    );
+    let project = temp.path().join("project");
+    fs::create_dir(&project).unwrap();
+    fs::write(project.join("dalo-project.toml"), format!(
+        "schema_version = 2\napproval = \"declaration\"\ntargets = [\"claude\", \"codex\"]\n\n[[source]]\nid = \"nextjs\"\nurl = {:?}\ncommit = {nextjs_commit:?}\nskills = [\"skills/next-bundle-optimizer\", \"skills/next-cache-components-adoption\", \"skills/next-cache-components-optimizer\"]\n\n[[source]]\nid = \"vercel-react\"\nurl = {:?}\ncommit = {react_commit:?}\nskills = [\"skills/react-best-practices\"]\n",
+        nextjs.to_str().unwrap(), react.to_str().unwrap())).unwrap();
+    for _ in 0..2 {
+        let install = dalo_command()
+            .current_dir(&project)
+            .args(["--json", "install"])
+            .assert()
+            .success();
+        let report: serde_json::Value =
+            serde_json::from_slice(&install.get_output().stdout).unwrap();
+        assert!(report["degraded_sources"].as_array().unwrap().is_empty());
+        assert_eq!(
+            report["resolution"]["active_skills"]
+                .as_array()
+                .unwrap()
+                .len(),
+            4
+        );
+        for folder in [".claude/skills", ".agents/skills"] {
+            for name in skills.into_iter().chain(["react-best-practices"]) {
+                assert!(project.join(folder).join(name).is_symlink());
+            }
+            assert!(!project.join(folder).join("authoring-skills").exists());
+        }
+        let checkout = project.join(".dalo/sources/nextjs/checkout");
+        for entry in fixture["symlinks"].as_array().unwrap() {
+            let path = checkout.join(entry["path"].as_str().unwrap());
+            assert!(path.is_symlink() && path.is_dir(), "{}", path.display());
+        }
+        for id in ["nextjs", "vercel-react"] {
+            assert!(
+                git(
+                    &project.join(".dalo/sources").join(id).join("checkout"),
+                    &["status", "--porcelain"]
+                )
+                .is_empty()
+            );
+        }
+        dalo_command()
+            .current_dir(&project)
+            .args(["--json", "doctor", "--check"])
+            .assert()
+            .success();
+    }
+}
+
+#[test]
+fn project_inventory_preserves_links_for_missing_or_symlinked_declared_closure() {
+    for affected in ["review", "helper"] {
+        for damage in ["missing", "directory_symlink", "metadata_symlink"] {
+            let temp = tempfile::tempdir().unwrap();
+            let repo = temp.path().join("upstream");
+            let commit = closure_upstream(&repo);
+            let project = temp.path().join("project");
+            fs::create_dir(&project).unwrap();
+            declaration_manifest(&project, &repo, &commit, &["review"]);
+            dalo_command()
+                .current_dir(&project)
+                .arg("install")
+                .assert()
+                .success();
+            let checkout = project.join(".dalo/sources/shared/checkout");
+            let skill = checkout.join("skills").join(affected);
+            let link = project
+                .join(".claude/skills")
+                .canonicalize()
+                .unwrap()
+                .join(affected);
+            let original_target = fs::read_link(&link).unwrap();
+            match damage {
+                "missing" => fs::remove_dir_all(&skill).unwrap(),
+                "directory_symlink" => {
+                    fs::remove_dir_all(&skill).unwrap();
+                    symlink("extra", &skill).unwrap();
+                }
+                "metadata_symlink" => {
+                    fs::remove_file(skill.join("SKILL.md")).unwrap();
+                    let outside = temp.path().join("outside.md");
+                    fs::write(&outside, "# Outside skill\n").unwrap();
+                    symlink(outside, skill.join("SKILL.md")).unwrap();
+                }
+                _ => unreachable!(),
+            }
+            dalo_command()
+                .current_dir(&project)
+                .args(["--json", "doctor", "--check"])
+                .assert()
+                .failure()
+                .stderr(predicate::str::contains("local edits"));
+            // Inspect the core safety plan as well: project command preflight
+            // rejects dirty checkouts before it reaches inventory or delivery.
+            let doctor = dalo::doctor::run_doctor(&project.join(".dalo"));
+            assert!(
+                doctor.findings.iter().any(
+                    |finding| finding.code == dalo::doctor::DoctorCode::SourceInventoryDegraded
+                )
+            );
+            let report = serde_json::to_value(
+                dalo::status::build_status_report(&project.join(".dalo")).unwrap(),
+            )
+            .unwrap();
+            assert!(
+                report["materialization"].as_array().unwrap().iter().any(
+                    |operation| operation["link_path"] == link.to_str().unwrap()
+                        && operation["status"] == "blocked"
+                        && operation["reason"]
+                            .as_str()
+                            .unwrap()
+                            .contains("scan degraded")
+                ),
+                "{affected}: {damage}: {report}"
+            );
+            dalo_command()
+                .current_dir(&project)
+                .arg("install")
+                .assert()
+                .failure();
+            assert_eq!(fs::read_link(&link).unwrap(), original_target);
+        }
+    }
+}
+
+#[test]
+fn project_install_rejects_incomplete_selected_skills_and_requirements() {
+    for affected in ["review", "helper"] {
+        for symlinked in [false, true] {
+            let temp = tempfile::tempdir().unwrap();
+            let repo = temp.path().join("upstream");
+            closure_upstream(&repo);
+            fs::remove_dir_all(repo.join("skills").join(affected)).unwrap();
+            if symlinked {
+                symlink("extra", repo.join("skills").join(affected)).unwrap();
+            }
+            fs::create_dir_all(repo.join(".claude")).unwrap();
+            symlink("../skills", repo.join(".claude/skills")).unwrap();
+            let commit = commit_all(&repo, "incomplete selected closure");
+            let project = temp.path().join("project");
+            fs::create_dir(&project).unwrap();
+            declaration_manifest(&project, &repo, &commit, &["review"]);
+            dalo_command()
+                .current_dir(&project)
+                .arg("install")
+                .assert()
+                .failure();
+            dalo_command()
+                .current_dir(&project)
+                .args(["--json", "doctor", "--check"])
+                .assert()
+                .failure()
+                .stdout(predicate::str::contains("source_inventory_degraded"));
+            assert!(!project.join(".claude/skills/review").is_symlink());
+            assert!(!project.join(".claude/skills/helper").is_symlink());
+        }
+    }
+}
+
+#[test]
 fn approval_mode_switches_preserve_local_records_and_return_to_pending() {
     let temp = tempfile::tempdir().unwrap();
     let repo = temp.path().join("upstream");

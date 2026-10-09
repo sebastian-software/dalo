@@ -431,7 +431,7 @@ dalo --json doctor
 <tr>
 <td><code>skipped_symlink</code></td>
 <td>Dalo skipped a symlinked directory or an out-of-tree <code>SKILL.md</code> metadata symlink to keep source discovery and skill identity inside a bounded checkout.</td>
-<td>Replace it with a real in-tree path, or remove the symlink.</td>
+<td>Replace it with a real in-tree path, or remove the symlink. In project scope, unrelated symlinks are ignored only when the declared skill selection and its required closure were fully inventoried.</td>
 </tr>
 <tr>
 <td><code>invalid_binary_declaration</code></td>

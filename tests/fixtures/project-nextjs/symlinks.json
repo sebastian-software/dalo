@@ -1,0 +1,126 @@
+{
+  "directories": [
+    ".agents/skills",
+    "test/e2e/app-dir/next-condition/node_modules/.pnpm/my-cjs-package@file+packages+my-cjs-package/node_modules/my-cjs-package",
+    "test/e2e/app-dir/next-condition/node_modules/.pnpm/my-esm-package@file+packages+my-esm-package/node_modules/my-esm-package",
+    "test/e2e/app-dir/next-condition/node_modules/.pnpm/my-external-cjs-package@file+packages+my-external-cjs-package/node_modules/my-external-cjs-package",
+    "test/e2e/app-dir/next-condition/node_modules/.pnpm/my-external-esm-package@file+packages+my-external-esm-package/node_modules/my-external-esm-package",
+    "test/e2e/app-dir/next-condition/packages",
+    "test/e2e/app-dir/webpack-loader-fs/app/glob-target",
+    "test/production/app-dir/symbolic-links/src/somewhere-else/src/symlinked-package",
+    "test/production/build-trace-extra-entries-turbo/app/content",
+    "test/production/build-trace-extra-entries/app/node_modules/pkg",
+    "turbopack/crates/turbopack-tests/tests/execution/turbopack/resolving/import-meta-glob/input/dir",
+    "turbopack/crates/turbopack-tests/tests/snapshot/swc_transforms/mono_transforms/input/packages/component",
+    "turbopack/crates/turbopack-tracing/tests/node-file-trace/integration/pnpm/node_modules/.pnpm/foo@2.1.0/node_modules/foo",
+    "turbopack/crates/turbopack-tracing/tests/node-file-trace/integration/pnpm/node_modules/.pnpm/lodash-pnpm-test@1.0.0/node_modules/lodash-pnpm-test",
+    "turbopack/crates/turbopack-tracing/tests/node-file-trace/test/unit/module-sync-condition-cjs-nested-symlink/node_modules/.store/helpers@1.0.0/node_modules/@scope/helpers",
+    "turbopack/crates/turbopack-tracing/tests/node-file-trace/test/unit/module-sync-condition-cjs-nested-symlink/node_modules/.store/pkg@1.0.0/node_modules/pkg",
+    "turbopack/crates/turbopack-tracing/tests/node-file-trace/test/unit/pkg-project-root-symlink-directory/assets",
+    "turbopack/crates/turbopack-tracing/tests/node-file-trace/test/unit/yarn-workspace-esm/packages/common",
+    "turbopack/crates/turbopack-tracing/tests/node-file-trace/test/unit/yarn-workspace-esm/packages/web",
+    "turbopack/crates/turbopack-tracing/tests/node-file-trace/test/unit/yarn-workspaces/packages/x"
+  ],
+  "symlinks": [
+    {
+      "path": ".claude/skills",
+      "target": "../.agents/skills"
+    },
+    {
+      "path": "test/e2e/app-dir/next-condition/fixtures/instrumentation/sym-linked-packages",
+      "target": "../../packages"
+    },
+    {
+      "path": "test/e2e/app-dir/next-condition/fixtures/middleware/sym-linked-packages",
+      "target": "../../packages"
+    },
+    {
+      "path": "test/e2e/app-dir/next-condition/fixtures/proxy/sym-linked-packages",
+      "target": "../../packages"
+    },
+    {
+      "path": "test/e2e/app-dir/next-condition/fixtures/render/sym-linked-packages",
+      "target": "../../packages"
+    },
+    {
+      "path": "test/e2e/app-dir/next-condition/node_modules/my-cjs-package",
+      "target": ".pnpm/my-cjs-package@file+packages+my-cjs-package/node_modules/my-cjs-package"
+    },
+    {
+      "path": "test/e2e/app-dir/next-condition/node_modules/my-esm-package",
+      "target": ".pnpm/my-esm-package@file+packages+my-esm-package/node_modules/my-esm-package"
+    },
+    {
+      "path": "test/e2e/app-dir/next-condition/node_modules/my-external-cjs-package",
+      "target": ".pnpm/my-external-cjs-package@file+packages+my-external-cjs-package/node_modules/my-external-cjs-package"
+    },
+    {
+      "path": "test/e2e/app-dir/next-condition/node_modules/my-external-esm-package",
+      "target": ".pnpm/my-external-esm-package@file+packages+my-external-esm-package/node_modules/my-external-esm-package"
+    },
+    {
+      "path": "test/e2e/app-dir/webpack-loader-fs/app/path/to/symlink",
+      "target": "../../glob-target"
+    },
+    {
+      "path": "test/production/app-dir/symbolic-links/src/symlinked-package",
+      "target": "somewhere-else/src/symlinked-package"
+    },
+    {
+      "path": "test/production/app-dir/symbolic-links/src/symlinked-package-chain",
+      "target": "symlinked-package"
+    },
+    {
+      "path": "test/production/build-trace-extra-entries-turbo/app/include-me/link-to-dir",
+      "target": "../content"
+    },
+    {
+      "path": "test/production/build-trace-extra-entries/app/node_modules/pkg-behind-symlink",
+      "target": "pkg"
+    },
+    {
+      "path": "turbopack/crates/turbopack-tests/tests/execution/turbopack/resolving/import-meta-glob/input/linked",
+      "target": "dir"
+    },
+    {
+      "path": "turbopack/crates/turbopack-tests/tests/snapshot/swc_transforms/mono_transforms/input/node_modules/component",
+      "target": "../packages/component/"
+    },
+    {
+      "path": "turbopack/crates/turbopack-tracing/tests/node-file-trace/integration/pnpm/node_modules/.pnpm/foo@2.1.0/node_modules/lodash-pnpm-test",
+      "target": "../../lodash-pnpm-test@1.0.0/node_modules/lodash-pnpm-test"
+    },
+    {
+      "path": "turbopack/crates/turbopack-tracing/tests/node-file-trace/integration/pnpm/node_modules/foo",
+      "target": ".pnpm/foo@2.1.0/node_modules/foo"
+    },
+    {
+      "path": "turbopack/crates/turbopack-tracing/tests/node-file-trace/test/unit/module-sync-condition-cjs-nested-symlink/node_modules/.store/node_modules/@scope/helpers",
+      "target": "../../helpers@1.0.0/node_modules/@scope/helpers"
+    },
+    {
+      "path": "turbopack/crates/turbopack-tracing/tests/node-file-trace/test/unit/module-sync-condition-cjs-nested-symlink/node_modules/.store/pkg@1.0.0/node_modules/@scope/helpers",
+      "target": "../../../helpers@1.0.0/node_modules/@scope/helpers"
+    },
+    {
+      "path": "turbopack/crates/turbopack-tracing/tests/node-file-trace/test/unit/module-sync-condition-cjs-nested-symlink/node_modules/pkg",
+      "target": ".store/pkg@1.0.0/node_modules/pkg"
+    },
+    {
+      "path": "turbopack/crates/turbopack-tracing/tests/node-file-trace/test/unit/pkg-project-root-symlink-directory/linked-assets",
+      "target": "assets"
+    },
+    {
+      "path": "turbopack/crates/turbopack-tracing/tests/node-file-trace/test/unit/yarn-workspace-esm/node_modules/@example/common",
+      "target": "../../packages/common"
+    },
+    {
+      "path": "turbopack/crates/turbopack-tracing/tests/node-file-trace/test/unit/yarn-workspace-esm/node_modules/@example/web",
+      "target": "../../packages/web"
+    },
+    {
+      "path": "turbopack/crates/turbopack-tracing/tests/node-file-trace/test/unit/yarn-workspaces/node_modules/x",
+      "target": "../packages/x"
+    }
+  ]
+}
