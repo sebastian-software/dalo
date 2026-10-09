@@ -550,7 +550,7 @@ fn stage(paths: &StorePaths, status: &ToolStatusReport) -> DaloResult<()> {
     Ok(())
 }
 
-fn make_directories_read_only(root: &Path) -> DaloResult<()> {
+pub(crate) fn make_directories_read_only(root: &Path) -> DaloResult<()> {
     let mut directories = vec![root.to_path_buf()];
     for entry in fs::read_dir(root)? {
         let path = entry?.path();

@@ -191,6 +191,20 @@ pub enum DoctorCode {
     ToolReady,
     /// Interrupted tool staging debris is safely outside promoted hashes.
     ToolStagingDebris,
+    /// A release binary is exactly approved, staged, and linked to its verified bytes.
+    BinaryReady,
+    /// A release binary awaits its exact approval.
+    BinaryPendingApproval,
+    /// A previously approved release-binary contract changed.
+    BinaryHashDrift,
+    /// A release binary declares no asset for the current platform.
+    BinaryPlatformUnsupported,
+    /// A release-binary approval was revoked while verified bytes remain staged.
+    BinaryApprovalRevoked,
+    /// A release binary's staged bytes or exposure link failed verification or are missing.
+    BinaryAuditFailed,
+    /// Interrupted release-binary download debris was never verified or staged.
+    BinaryStagingDebris,
     /// A generated delivery cache or read-only planning pass failed verification.
     GeneratedDeliveryInvalid,
     /// Interrupted generated-delivery staging debris was never promoted.
@@ -343,6 +357,13 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
         _ => None,
     };
     check_tools(&paths, tool_report.as_ref(), &mut findings);
+    check_binaries(
+        &paths,
+        config.as_ref(),
+        approvals.as_ref(),
+        reconciliation_inventories.as_deref(),
+        &mut findings,
+    );
     check_generated_delivery_staging(&paths, &mut findings);
     check_hooks(hook_report.as_ref(), &mut findings);
 
@@ -653,6 +674,114 @@ fn check_tools(
                 ));
             }
         }
+    }
+}
+
+/// Report every release binary declared by an enabled source's skills, plus
+/// interrupted download debris. Only the inventories already scanned for this
+/// run are read; nothing is downloaded or executed.
+fn check_binaries(
+    paths: &StorePaths,
+    config: Option<&UserConfig>,
+    approvals: Option<&ApprovalsFile>,
+    inventories: Option<&[SourceInventory]>,
+    findings: &mut Vec<DoctorFinding>,
+) {
+    use crate::binary::BinaryState;
+
+    if let (Some(config), Some(approvals), Some(inventories)) = (config, approvals, inventories) {
+        let report = crate::binary::list_from_inventories(
+            paths,
+            &config.sources,
+            &approvals.approvals,
+            inventories,
+        );
+        for item in &report.binaries {
+            let identity = &item.binary.source_ref;
+            let approve = Some(format!("dalo approve binary {identity}"));
+            let required = item.binary.availability == crate::plugin::ToolAvailability::Required;
+            match item.state {
+                BinaryState::Ready => findings.push(ok(
+                    DoctorCode::BinaryReady,
+                    format!("binary `{identity}` is exactly approved, staged, and linked"),
+                )),
+                BinaryState::PlatformUnsupported => findings.push(availability_finding(
+                    required,
+                    DoctorCode::BinaryPlatformUnsupported,
+                    format!("binary `{identity}`: {}", item.diagnostic),
+                    None,
+                )),
+                BinaryState::PendingApproval => findings.push(availability_finding(
+                    required,
+                    DoctorCode::BinaryPendingApproval,
+                    format!("binary `{identity}` is pending exact approval"),
+                    approve,
+                )),
+                BinaryState::HashDrift => findings.push(finding_warning(
+                    DoctorCode::BinaryHashDrift,
+                    format!("binary `{identity}` changed its pinned contract and needs reapproval"),
+                    approve,
+                )),
+                BinaryState::Revoked => findings.push(finding_warning(
+                    DoctorCode::BinaryApprovalRevoked,
+                    format!(
+                        "binary `{identity}` no longer has approval; its verified bytes remain staged"
+                    ),
+                    approve,
+                )),
+                BinaryState::AuditFailure => findings.push(finding_error(
+                    DoctorCode::BinaryAuditFailed,
+                    format!(
+                        "binary `{identity}`: the staged bytes no longer match the pinned digest; run `dalo approve revoke binary {identity}`, then `dalo approve binary {identity}`"
+                    ),
+                    approve,
+                )),
+                BinaryState::ApprovedNotStaged => findings.push(finding_error(
+                    DoctorCode::BinaryAuditFailed,
+                    format!("binary `{identity}`: {}", item.diagnostic),
+                    approve,
+                )),
+            }
+        }
+    }
+    if let Ok(entries) = fs::read_dir(&paths.binaries_dir) {
+        for entry in entries.flatten() {
+            if entry
+                .file_name()
+                .to_str()
+                .is_some_and(|name| name.starts_with(crate::binary::DOWNLOAD_TEMPORARY_PREFIX))
+            {
+                findings.push(finding_warning(
+                    DoctorCode::BinaryStagingDebris,
+                    format!(
+                        "interrupted binary download debris exists at `{}`; it was never verified or staged",
+                        entry.path().display()
+                    ),
+                    None,
+                ));
+            }
+        }
+    }
+}
+
+/// A finding whose severity follows the binary's availability: a required
+/// binary warns, an optional one is informational.
+fn availability_finding(
+    required: bool,
+    code: DoctorCode,
+    message: impl Into<String>,
+    next_command: Option<String>,
+) -> DoctorFinding {
+    DoctorFinding {
+        severity: if required {
+            DoctorSeverity::Warning
+        } else {
+            DoctorSeverity::Info
+        },
+        code,
+        message: message.into(),
+        next_command,
+        inventory_warnings: Vec::new(),
     }
 }
 
@@ -2044,6 +2173,13 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::ToolAuditFailed => "tool_audit_failed",
         DoctorCode::ToolReady => "tool_ready",
         DoctorCode::ToolStagingDebris => "tool_staging_debris",
+        DoctorCode::BinaryReady => "binary_ready",
+        DoctorCode::BinaryPendingApproval => "binary_pending_approval",
+        DoctorCode::BinaryHashDrift => "binary_hash_drift",
+        DoctorCode::BinaryPlatformUnsupported => "binary_platform_unsupported",
+        DoctorCode::BinaryApprovalRevoked => "binary_approval_revoked",
+        DoctorCode::BinaryAuditFailed => "binary_audit_failed",
+        DoctorCode::BinaryStagingDebris => "binary_staging_debris",
         DoctorCode::GeneratedDeliveryInvalid => "generated_delivery_invalid",
         DoctorCode::GeneratedDeliveryStagingDebris => "generated_delivery_staging_debris",
         DoctorCode::HookPendingApproval => "hook_pending_approval",

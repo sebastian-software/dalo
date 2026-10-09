@@ -905,6 +905,20 @@ impl TeamBinaryFixture {
     }
 }
 
+impl Drop for TeamBinaryFixture {
+    fn drop(&mut self) {
+        // Staged digests are read-only; restore them so the temporary store can be removed.
+        let binaries = self.store.join("binaries");
+        if let Ok(entries) = std::fs::read_dir(&binaries) {
+            for entry in entries.flatten() {
+                let _ =
+                    std::fs::set_permissions(entry.path(), std::fs::Permissions::from_mode(0o755));
+            }
+        }
+        let _ = std::fs::set_permissions(&binaries, std::fs::Permissions::from_mode(0o755));
+    }
+}
+
 #[test]
 fn binary_inventory_should_report_pending_declarations_without_fetching_them() {
     let fixture = TeamBinaryFixture::new(&page_engine_skill(&all_platform_assets()));
@@ -1084,6 +1098,310 @@ fn status_should_warn_about_an_invalid_binary_declaration() {
         .stdout(predicate::str::contains(
             "must pin a 64-character lower-case SHA-256 digest",
         ));
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::Digest;
+    sha2::Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+/// The host platform's name, which every host-scoped fixture below must declare.
+fn host_platform_name() -> &'static str {
+    dalo::binary::host_platform()
+        .expect("test hosts are declarable platforms")
+        .as_str()
+}
+
+/// An asset line for the host platform, pinned to `digest`.
+fn host_asset(digest: &str) -> String {
+    let host = host_platform_name();
+    format!("      {host}:\n        asset: impeccino-{host}\n        sha256: \"{digest}\"\n")
+}
+
+/// An asset line for a platform other than the host, so the host has no asset.
+fn other_platform_asset() -> String {
+    let other = if host_platform_name() == "linux-x64" {
+        "macos-arm64"
+    } else {
+        "linux-x64"
+    };
+    format!(
+        "      {other}:\n        asset: impeccino-{other}\n        sha256: \"{}\"\n",
+        "3".repeat(64)
+    )
+}
+
+/// Stage `bytes` under `digest` for the host asset, as a previous approval would.
+fn stage_host_bytes(store: &std::path::Path, digest: &str, bytes: &[u8]) -> std::path::PathBuf {
+    let paths = store::StorePaths::new(store.to_path_buf());
+    let directory = dalo::binary::staged_root(&paths, digest);
+    std::fs::create_dir_all(&directory).expect("staged directory should be created");
+    let staged = directory.join("impeccino");
+    std::fs::write(&staged, bytes).expect("staged bytes should be written");
+    staged
+}
+
+/// Severity and code of every doctor finding, from `--json doctor`.
+fn doctor_findings(fixture: &TeamBinaryFixture) -> Vec<(String, String)> {
+    let output = fixture
+        .command()
+        .args(["--json", "doctor"])
+        .output()
+        .expect("doctor should run");
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("doctor JSON should parse");
+    report["findings"]
+        .as_array()
+        .expect("findings should be an array")
+        .iter()
+        .map(|finding| {
+            (
+                finding["severity"].as_str().unwrap().to_owned(),
+                finding["code"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect()
+}
+
+fn binary_approval_records(store: &std::path::Path) -> Vec<String> {
+    store::read_approvals(&store::StorePaths::new(store.to_path_buf()))
+        .expect("approvals should parse")
+        .approvals
+        .into_iter()
+        .filter(|record| record.scope == "binary")
+        .map(|record| record.value)
+        .collect()
+}
+
+fn binary_show_json(fixture: &TeamBinaryFixture) -> serde_json::Value {
+    let output = fixture
+        .command()
+        .args(["--json", "binary", "show", BINARY_SOURCE_REF])
+        .output()
+        .expect("binary show should run");
+    assert!(output.status.success());
+    serde_json::from_slice(&output.stdout).expect("binary show JSON should parse")
+}
+
+/// Approve the host binary whose bytes are pre-staged, returning those bytes' digest.
+fn approve_staged_host_binary(fixture: &TeamBinaryFixture, bytes: &[u8]) -> String {
+    let digest = sha256_hex(bytes);
+    stage_host_bytes(&fixture.store, &digest, bytes);
+    fixture
+        .command()
+        .args(["approve", "binary", BINARY_SOURCE_REF])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "granted binary {BINARY_SOURCE_REF}"
+        )));
+    digest
+}
+
+#[test]
+fn binary_approval_should_refuse_a_host_without_an_asset_and_write_nothing() {
+    let fixture = TeamBinaryFixture::new(&page_engine_skill(&other_platform_asset()));
+
+    fixture
+        .command()
+        .args(["approve", "binary", BINARY_SOURCE_REF])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("cannot be approved on this host"))
+        .stderr(predicate::str::contains("nothing was downloaded"));
+    assert!(!fixture.store.join("binaries").exists());
+    assert!(!fixture.store.join("bin").exists());
+    assert!(binary_approval_records(&fixture.store).is_empty());
+}
+
+#[test]
+fn binary_approval_dry_run_should_plan_without_writing() {
+    let fixture = TeamBinaryFixture::new(&page_engine_skill(&host_asset(&"4".repeat(64))));
+
+    fixture
+        .command()
+        .args(["--dry-run", "approve", "binary", BINARY_SOURCE_REF])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "planned binary {BINARY_SOURCE_REF} [dry-run]"
+        )));
+    assert!(!fixture.store.join("binaries").exists());
+    assert!(!fixture.store.join("bin").exists());
+    assert!(binary_approval_records(&fixture.store).is_empty());
+}
+
+#[test]
+fn binary_approval_should_reuse_staged_bytes_offline_and_expose_them() {
+    let bytes = b"verified impeccino bytes";
+    let fixture = TeamBinaryFixture::new(&page_engine_skill(&host_asset(&sha256_hex(bytes))));
+    let digest = sha256_hex(bytes);
+    stage_host_bytes(&fixture.store, &digest, bytes);
+
+    let output = fixture
+        .command()
+        .args(["approve", "binary", BINARY_SOURCE_REF])
+        .output()
+        .expect("approve binary should run");
+    assert!(output.status.success(), "{output:?}");
+    let stdout = String::from_utf8(output.stdout).expect("output should be UTF-8");
+    assert!(stdout.contains(&format!("granted binary {BINARY_SOURCE_REF}")));
+    assert!(
+        stdout.contains("exposed path: store:/bin/impeccino"),
+        "{stdout}"
+    );
+    assert!(stdout.contains(&format!(
+        "verified sha256:{digest} for {}",
+        host_platform_name()
+    )));
+
+    let link = fixture.store.join("bin/impeccino");
+    assert_eq!(
+        std::fs::read_link(&link).expect("bin/impeccino should be a symlink"),
+        std::path::PathBuf::from(format!("../binaries/{digest}/impeccino"))
+    );
+    let show = binary_show_json(&fixture);
+    assert_eq!(
+        binary_approval_records(&fixture.store),
+        [show["approval_value"].as_str().unwrap().to_owned()]
+    );
+    assert_eq!(show["state"], "ready");
+    assert!(
+        show["exposed_path"]
+            .as_str()
+            .unwrap()
+            .ends_with("bin/impeccino")
+    );
+    assert!(
+        doctor_findings(&fixture)
+            .iter()
+            .any(|(severity, code)| severity == "ok" && code == "binary_ready")
+    );
+
+    fixture
+        .command()
+        .args(["binary", "show", BINARY_SOURCE_REF])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("state: ready"))
+        .stdout(predicate::str::contains("exposed path: "));
+    let again = fixture
+        .command()
+        .args(["approve", "binary", BINARY_SOURCE_REF])
+        .output()
+        .expect("second approval should run");
+    assert!(
+        String::from_utf8(again.stdout)
+            .unwrap()
+            .starts_with("unchanged binary")
+    );
+}
+
+#[test]
+fn binary_revocation_should_keep_the_bytes_and_report_the_approval_revoked() {
+    let bytes = b"verified impeccino bytes";
+    let fixture = TeamBinaryFixture::new(&page_engine_skill(&host_asset(&sha256_hex(bytes))));
+    let digest = approve_staged_host_binary(&fixture, bytes);
+
+    fixture
+        .command()
+        .args(["approve", "revoke", "binary", BINARY_SOURCE_REF])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "revoked binary {BINARY_SOURCE_REF}"
+        )));
+    assert!(binary_approval_records(&fixture.store).is_empty());
+    assert!(
+        fixture
+            .store
+            .join("binaries")
+            .join(&digest)
+            .join("impeccino")
+            .is_file()
+    );
+    assert!(fixture.store.join("bin/impeccino").exists());
+    assert_eq!(binary_show_json(&fixture)["state"], "revoked");
+    assert!(
+        doctor_findings(&fixture)
+            .iter()
+            .any(|(severity, code)| severity == "warning" && code == "binary_approval_revoked")
+    );
+}
+
+#[test]
+fn tampered_staged_bytes_should_fail_the_binary_audit() {
+    let bytes = b"verified impeccino bytes";
+    let fixture = TeamBinaryFixture::new(&page_engine_skill(&host_asset(&sha256_hex(bytes))));
+    let digest = approve_staged_host_binary(&fixture, bytes);
+
+    let staged = fixture
+        .store
+        .join("binaries")
+        .join(&digest)
+        .join("impeccino");
+    std::fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o644))
+        .expect("staged file should become writable for the tamper");
+    std::fs::write(&staged, b"tampered impeccino bytes").expect("tamper should be written");
+
+    assert_eq!(binary_show_json(&fixture)["state"], "audit_failure");
+    assert!(
+        doctor_findings(&fixture)
+            .iter()
+            .any(|(severity, code)| severity == "error" && code == "binary_audit_failed")
+    );
+    fixture
+        .command()
+        .args(["doctor", "--check"])
+        .assert()
+        .failure()
+        .code(1);
+}
+
+#[test]
+fn approve_skill_should_name_each_declared_binary_and_its_next_step() {
+    let fixture = TeamBinaryFixture::new(&page_engine_skill(&host_asset(&"5".repeat(64))));
+
+    fixture
+        .command()
+        .args(["approve", "skill", "team:page-engine"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "binary {BINARY_SOURCE_REF}: pending_approval (run: dalo approve binary {BINARY_SOURCE_REF})"
+        )));
+
+    let output = fixture
+        .command()
+        .args(["--json", "approve", "skill", "team:page-engine"])
+        .output()
+        .expect("approve skill should run");
+    assert!(output.status.success());
+    let outcome: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("approve skill JSON should parse");
+    assert_eq!(
+        outcome["binaries"][0]["binary"]["source_ref"],
+        BINARY_SOURCE_REF
+    );
+    assert_eq!(outcome["binaries"][0]["state"], "pending_approval");
+}
+
+#[test]
+fn leftover_binary_download_should_be_reported_as_staging_debris() {
+    let fixture = TeamBinaryFixture::new(&page_engine_skill(&host_asset(&"6".repeat(64))));
+    let binaries = fixture.store.join("binaries");
+    std::fs::create_dir_all(&binaries).expect("binaries directory should be created");
+    std::fs::write(binaries.join(".binary-download-xyz"), b"partial")
+        .expect("debris should be written");
+
+    assert!(
+        doctor_findings(&fixture)
+            .iter()
+            .any(|(severity, code)| severity == "warning" && code == "binary_staging_debris")
+    );
 }
 
 #[test]
@@ -5037,7 +5355,7 @@ fn approval_validation_errors_should_match_the_selected_scope() {
         .code(2)
         .stderr(predicate::str::contains("invalid value 'banana'"))
         .stderr(predicate::str::contains(
-            "possible values: skill, agent, tool, delivery, hook, source, author, org",
+            "possible values: skill, agent, tool, binary, delivery, hook, source, author, org",
         ))
         .stderr(predicate::str::contains("check failed").not());
 
