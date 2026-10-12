@@ -68,7 +68,7 @@
       <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
     </nav>
     <div class="header-cta">
-      <a class="pill-btn" href="#quickstart">Use your agent
+      <a class="pill-btn" href="#quickstart">Get started
         <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </a>
       <details class="mobile-menu">
@@ -119,6 +119,17 @@
             </button>
           </div>
           <p class="install-note">Recommended for local coding agents on macOS and Linux. The agent sets up Dalo and its bundled assistant. Then keep using it in conversation. <a href="/docs/assistant.html">How it works</a></p>
+          <details class="manual-setup prompt-help">
+            <summary>Agent can't find Dalo?</summary>
+            <div class="install prompt-box">
+              <p id="hero-guide-prompt">Install Dalo from https://dalo.sh/install.md and set it up for this agent.</p>
+              <button class="copy" type="button" data-copy-target="hero-guide-prompt" aria-label="Copy setup prompt with installation guide">
+                <svg class="cp" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="5.5" y="5.5" width="8" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10.5 3.5v-.5a1.5 1.5 0 0 0-1.5-1.5H4A1.5 1.5 0 0 0 2.5 3v5A1.5 1.5 0 0 0 4 9.5h.5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
+                <svg class="ok" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span class="sr-only">Copy</span>
+              </button>
+            </div>
+          </details>
         </div>
         <details class="manual-setup">
           <summary>Prefer the terminal? Install the CLI</summary>
@@ -241,7 +252,7 @@
           </li>
           <li>
             <span class="step-label">Tell it what you want to do</span>
-            <p>Select the Dalo skill, then ask: “Add my team's skill repository,” or “Check my existing skills and explain what needs attention.” Use your own language.</p>
+            <p>In Codex, type <code>$dalo</code>. In other agents, select Dalo from the skill picker or use the agent's skill command. Then ask: “Add my team's skill repository,” or “Check my existing skills and explain what needs attention.” Use your own language.</p>
           </li>
           <li>
             <span class="step-label">Use it for the next change, too</span>
@@ -574,8 +585,8 @@
         </li>
         <li>
           <a href="https://github.com/sebastian-software/dalo/issues?q=is%3Aissue+label%3Asecurity+is%3Aclosed" rel="noopener">
-            <strong>4</strong>
-            <span>findings from the 2026-09 audit, all closed</span>
+            <strong class="stat-outcome">All findings resolved</strong>
+            <span>4 findings from the September 2026 audit, all closed</span>
           </a>
         </li>
       </ul>

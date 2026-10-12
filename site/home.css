@@ -105,7 +105,7 @@ svg { display: block; }
 .header-cta { margin-left: auto; display: flex; align-items: center; gap: 12px; }
 .pill-btn {
   display: inline-flex; align-items: center; gap: 6px;
-  height: 34px; padding: 0 14px 0 16px; border-radius: 999px;
+  min-height: 34px; padding: 0 14px 0 16px; border-radius: 999px; white-space: nowrap; flex-shrink: 0;
   background: rgba(11, 23, 51, .9); color: #fff; font-weight: 600; font-size: 14px;
   transition: background .2s;
 }
@@ -196,6 +196,8 @@ svg { display: block; }
 .copy[data-copied="true"] .ok { display: block; }
 .copy[data-copied="true"] .cp { display: none; }
 .copy[data-copied="error"] { color: #c2361f; }
+.install + .copy-feedback, .lterm + .copy-feedback { margin-top: 10px; font: 400 14px/1.55 var(--sans); color: var(--rust); }
+.prompt-help .prompt-box { margin-top: 12px; }
 
 /* ── Hero ────────────────────────────────────────────────── */
 .hero { position: relative; padding: 74px 0 40px; }
@@ -471,8 +473,9 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
 .quick-steps .prompt-box p { padding-left: 0; font-size: 16px; color: var(--ink); }
 .quick-steps .step-note { margin-top: 10px; font-size: 14px; }
 .quick-steps .link-arrow { margin: 12px 0 0 34px; font-size: 14.5px; }
-/* Touch screens get 44px targets for the picker, copy buttons, and menu. */
+/* Touch screens get 44px targets for the header CTA, picker, copy buttons, and menu. */
 @media (pointer: coarse) {
+  .pill-btn { min-height: 44px; }
   .install-method { height: 44px; line-height: 44px; }
   .copy, .lterm .copy { width: 44px; height: 44px; }
   .lterm .term-bar { height: 48px; }
@@ -534,6 +537,7 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
 .stats a:hover { background: #fbfcfd; }
 .stats strong { display: block; font-size: 34px; line-height: 1; font-weight: 700; letter-spacing: -.035em; color: var(--ink); }
 .stats strong small { font-size: 15px; font-weight: 600; letter-spacing: -.01em; color: var(--muted); margin-left: 6px; }
+.stats strong.stat-outcome { font-size: 22px; line-height: 1.2; letter-spacing: -.025em; }
 .stats span { display: block; margin-top: 10px; font-size: 13.5px; line-height: 1.45; color: var(--muted); }
 .stab-foot { margin-top: 18px; font-size: 14px; color: var(--muted); }
 

@@ -145,9 +145,14 @@ document.documentElement.classList.add("js");
   }
 
   document.querySelectorAll("[data-copy-target]").forEach(function (button) {
+    var feedback;
+    var resetTimer;
+    var attempt = 0;
     button.addEventListener("click", function () {
       var target = document.getElementById(button.getAttribute("data-copy-target"));
       if (!target) return;
+      var currentAttempt = ++attempt;
+      window.clearTimeout(resetTimer);
       var text = commandTextFrom(target);
       var copy = navigator.clipboard && window.isSecureContext
         ? navigator.clipboard.writeText(text)
@@ -156,13 +161,28 @@ document.documentElement.classList.add("js");
         });
 
       copy.then(function () {
+        if (currentAttempt !== attempt) return;
+        if (feedback) {
+          feedback.hidden = true;
+          button.removeAttribute("aria-describedby");
+        }
         setCopyState(button, true);
         announce("Copied to the clipboard.");
-        window.setTimeout(function () { setCopyState(button, false); }, 1600);
+        resetTimer = window.setTimeout(function () { setCopyState(button, false); }, 1600);
       }).catch(function () {
+        if (currentAttempt !== attempt) return;
+        if (!feedback) {
+          feedback = document.createElement("p");
+          feedback.id = target.id + "-copy-error";
+          feedback.className = "copy-feedback";
+          feedback.textContent = "Couldn't copy. Select the text and copy it manually.";
+          var box = button.closest(".install, .lterm") || target;
+          box.insertAdjacentElement("afterend", feedback);
+        }
+        feedback.hidden = false;
+        button.setAttribute("aria-describedby", feedback.id);
         setCopyState(button, "error");
         announce("Copy failed. Select the text and copy it manually.");
-        window.setTimeout(function () { setCopyState(button, false); }, 2400);
       });
     });
   });
