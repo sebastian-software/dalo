@@ -10,8 +10,8 @@ links also lead to `install.md`, so setup does not depend on automatic index
 discovery. `build.mjs` copies every deployable file in `site/` into `site/build/`,
 so it needs no build-script entry of its own.
 
-`index.html` loads only `home.css`; every other page loads `styles.css` (the
-shared tokens, header, footer, and buttons, mirroring `home.css`) plus
+`index.html` loads `home.css` and `feature-stories.css`; every other page loads
+`styles.css` (the shared tokens, header, footer, and buttons, mirroring `home.css`) plus
 `docs.css` (the reading layout). Both use system font stacks.
 
 The company footer is authored in `index.html` and the documentation template
@@ -55,6 +55,15 @@ motion and JavaScript-free visits show the complete static result.
 The original Dalo logo stays unchanged. The three fictional persona avatars are
 self-hosted in `assets/img/personas/`; that directory's README records their
 generation prompts and export dimensions.
+
+The three feature illustrations use `feature-stories.js` and
+`feature-stories.css`. Their timelines are independent: the pin and catalog
+approval examples wait for an explicit example action before updating or
+delivering a skill. The ownership example updates only its managed skill rows;
+the personal folder is outside every animation and packet path. All examples
+have static fallbacks, pause offscreen or in hidden documents, and can be
+replayed. Reduced motion keeps the update and approval controls functional
+without spatial animation. These controls only change the illustration.
 
 ## Binary assets
 

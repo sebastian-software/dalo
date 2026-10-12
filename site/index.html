@@ -27,6 +27,7 @@
   <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
 
   <link rel="stylesheet" href="/home.css" />
+  <link rel="stylesheet" href="/feature-stories.css" />
 
   <!-- Plain-text entry points for agents: the llms.txt index and the install guide. -->
   <link rel="describedby" type="text/plain" href="/llms.txt" title="Dalo agent documentation" />
@@ -387,39 +388,40 @@
   </section>
 
   <!-- ───────────────────────── CORE MESSAGES ───────────────────────── -->
-  <section class="features" aria-label="Why Dalo">
+  <section class="features" id="feature-stories" aria-label="Why Dalo">
     <div class="wrap">
 
-      <article class="row reveal" style="--accent:#2b8fd6; --accent-2:#7b5cf5">
+      <article class="row reveal" id="pinned-versions" style="--accent:#2b8fd6; --accent-2:#7b5cf5">
         <div class="copy-col">
           <span class="kicker"><span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="3.5" cy="3.5" r="1.8" fill="currentColor"/><circle cx="3.5" cy="12.5" r="1.8" fill="currentColor"/><circle cx="12.5" cy="8" r="2.2" fill="currentColor"/><path d="M3.5 3.5C8 3.5 8 8 12.5 8M3.5 12.5C8 12.5 8 8 12.5 8" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></span>One source of truth</span>
           <h2>One pinned set. Every machine.</h2>
-          <p class="body">Your team's skills live in Git. Dalo resolves one pinned set and links it into supported agent folders, byte for byte the same on every laptop. In a global team setup, each machine approves catalog skills locally. Project installations can instead use a reviewed declaration to approve the selected skills. <a href="/docs/projects.html#approval-modes">Compare approval modes.</a></p>
+          <p class="body">Keep your team's skills at a chosen Git revision. A new source commit does not silently change that set. Advance the pin when you're ready, then sync the same version on every machine.</p>
+          <p class="feature-copy-note">In a global team setup, catalog approvals stay local. Project installations can use a reviewed declaration. <a href="/docs/projects.html#approval-modes">Compare approval modes.</a></p>
           <a class="link-arrow" href="#how">See how it works
             <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </a>
         </div>
-        <div class="panel">
-          <div class="ui src" role="group" aria-label="Three sources in one store: local, the company team repository and the sebastian catalog, each with its priority and pinned commit">
-            <table class="src-table">
-              <thead>
-                <tr><th scope="col">Source</th><th scope="col">Priority</th><th scope="col">Pinned</th><th scope="col">Delivers</th></tr>
-              </thead>
-              <tbody>
-                <tr style="--c:#e8623a"><th scope="row"><b>local</b><small>your machine</small></th><td class="src-prio">0</td><td class="src-pin"><span class="src-none">not pinned</span></td><td class="src-del">your experiments</td></tr>
-                <tr style="--c:#7b5cf5"><th scope="row"><b>company</b><small>team repository</small></th><td class="src-prio">10</td><td class="src-pin"><code>9fd01b1745d3</code></td><td class="src-del">2 skills</td></tr>
-                <tr style="--c:#43b3f2"><th scope="row"><b>sebastian</b><small>public catalog</small></th><td class="src-prio">20</td><td class="src-pin"><code>0de93f7bf544</code></td><td class="src-del">1 selected · pending</td></tr>
-              </tbody>
-            </table>
-            <div class="src-foot">
-              <span><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Pinned to exact commits</span>
-              <span><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Lower priority wins name conflicts</span>
+        <figure class="panel feature-demo pin-demo" data-feature-demo="pins" aria-labelledby="pin-caption">
+          <figcaption class="feature-toolbar"><span>Interactive example · pinned versions</span><button class="feature-control" data-feature-control type="button" hidden aria-label="Replay pinned versions example"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 5a5 5 0 1 1-1 5M3 1v4h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Replay</span></button></figcaption>
+          <div class="feature-scene pin-scene" data-feature-scene>
+            <div class="feature-repo-label"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h13v16H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 12h13M7 7h7M7 10h5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>acme/agent-skills</div>
+            <div class="pin-track">
+              <div class="pin-revision" data-pin-from><span class="pin-pointer" data-pin-pointer aria-hidden="true"><svg viewBox="0 0 28 28"><path d="M10 3h8l-1 7 4 4v2h-6v9h-2v-9H7v-2l4-4Z" fill="currentColor"/></svg></span><strong>v1</strong><span data-pin-label="previous">Current team pin</span></div>
+              <div class="pin-revision pin-new" data-pin-to><strong>v2</strong><span data-pin-label="next">Available update</span><b data-pin-new-label>New</b></div>
+            </div>
+            <div class="pin-team-set"><span class="feature-mini-label">Your team's pinned set</span><strong>Team version <span data-feature-version>v1</span></strong><div class="feature-skill-pair"><span><i class="coral" aria-hidden="true">✦</i>incident-review</span><span><i class="violet" aria-hidden="true">✦</i>release-notes</span></div></div>
+            <div class="pin-recipients" aria-label="Both teammates use the same team version">
+              <div data-pin-recipient><img src="/assets/img/personas/alex.png" width="32" height="32" alt=""/><span>Alex</span><b data-feature-version>v1</b></div>
+              <div data-pin-recipient><img src="/assets/img/personas/mia.png" width="32" height="32" alt=""/><span>Mia</span><b data-feature-version>v1</b></div>
             </div>
           </div>
-        </div>
+          <div class="feature-explanation"><p id="pin-caption">A new version does not change the team's pin.</p><p class="feature-status" data-feature-status role="status">v2 is available. Your team stays on v1.</p></div>
+          <button class="feature-action" data-feature-action type="button" hidden>Update example <span aria-hidden="true">↗</span></button>
+          <p class="feature-boundary">Updates happen when you choose to advance the pin.</p>
+        </figure>
       </article>
 
-      <article class="row flip reveal" style="--accent:#7b5cf5; --accent-2:#e8623a">
+      <article class="row flip reveal" id="catalog-approval" style="--accent:#7b5cf5; --accent-2:#e8623a">
         <div class="copy-col">
           <span class="kicker"><span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 1.8 13 3.8v3.7c0 3.1-2.1 5.6-5 6.7-2.9-1.1-5-3.6-5-6.7V3.8z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="m5.6 8 1.7 1.7 3.2-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Reviewed first</span>
           <h2>Review skills before they reach an agent.</h2>
@@ -428,68 +430,47 @@
             <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </a>
         </div>
-        <div class="panel">
-          <div class="ui review">
-            <div class="review-head">
-              <div>
-                <div class="skill-id">sebastian:effective-web</div>
-                <div class="src">Public catalog · pinned</div>
-              </div>
-              <span class="status pending">review first</span>
+        <figure class="panel feature-demo approval-demo" data-feature-demo="review" aria-labelledby="approval-caption">
+          <figcaption class="feature-toolbar"><span>Interactive example · catalog approval</span><button class="feature-control" data-feature-control type="button" hidden aria-label="Replay catalog approval example"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 5a5 5 0 1 1-1 5M3 1v4h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Replay</span></button></figcaption>
+          <div class="feature-scene approval-scene" data-feature-scene>
+            <svg class="feature-paths" data-feature-paths aria-hidden="true"></svg>
+            <div class="approval-route">
+              <div class="approval-skill" data-review-source><span class="feature-star coral" aria-hidden="true">✦</span><strong>effective-web</strong><span>Public catalog skill</span></div>
+              <div class="approval-gate" data-review-gate><svg viewBox="0 0 32 32" width="32" height="32" aria-hidden="true"><rect x="7" y="14" width="18" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path class="approval-shackle" d="M11 14V9a5 5 0 0 1 10 0v5" fill="none" stroke="currentColor" stroke-width="2"/><path class="approval-shackle-open" d="M21 14V9a5 5 0 0 0-10 0v1" fill="none" stroke="currentColor" stroke-width="2"/><path class="approval-unlocked" d="m11 21 3 3 7-7" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>Approval</span></div>
+              <div class="approval-agent" data-review-target><svg width="40" height="34" viewBox="0 0 40 34" aria-hidden="true"><rect x="6" y="3" width="28" height="22" rx="3" fill="#f6f8fb" stroke="currentColor" stroke-width="1.5"/><path d="M2 28h36l-3 3H5Z" fill="#fff" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg><strong>Codex</strong><span data-review-target-label>Not linked yet</span><i class="feature-delivered-skill coral" aria-hidden="true">✦</i></div>
             </div>
-            <ol class="steps">
-              <li class="step">
-                <span class="dot"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-                <div><h3>Selected</h3><p>Only the skills you pick from a catalog.</p></div>
-              </li>
-              <li class="step">
-                <span class="dot"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-                <div><h3>Security preflight</h3><p>High findings block until you accept the risk.</p></div>
-              </li>
-              <li class="step">
-                <span class="dot gate"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></span>
-                <div><h3>Approved by you</h3>
-                  <code><span class="p">$</span>dalo approve skill sebastian:effective-web</code>
-                </div>
-              </li>
-            </ol>
+            <div class="approval-check"><span class="approval-check-icon" aria-hidden="true">✓</span><p>Local preflight supports your review.</p></div>
+            <div class="approval-person"><img src="/assets/img/personas/alex.png" width="36" height="36" alt=""/><div><strong>Your decision</strong><span>Alex reviews the skill before approving it.</span></div><span class="status pending">review first</span></div>
+            <span class="feature-packet coral" data-feature-packet aria-hidden="true">✦</span>
           </div>
-        </div>
+          <div class="feature-explanation"><p id="approval-caption">The skill waits for your explicit approval.</p><p class="feature-status" data-feature-status role="status">Checks do not approve a skill for you.</p></div>
+          <button class="feature-action" data-feature-action type="button" hidden>Approve example <span aria-hidden="true">→</span></button>
+          <p class="feature-boundary">Illustrates local approval for a catalog skill.</p>
+        </figure>
       </article>
 
-      <article class="row reveal" style="--accent:#c24b22; --accent-2:#ffb58c">
+      <article class="row reveal" id="file-ownership" style="--accent:#c24b22; --accent-2:#ffb58c">
         <div class="copy-col">
           <span class="kicker"><span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="2.5" y="2.5" width="11" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5.5 8h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span>Safe by default</span>
           <h2>Only touches what it owns.</h2>
           <p class="body">During sync, Dalo leaves your own files and folders in place. It updates only the links and managed content it owns, and reports conflicts that need your decision. Ask your agent to preview changes with <code class="inl">--dry-run</code>.</p>
           <p class="rule">Dalo may manage what it owns. It does not take ownership by surprise.</p>
         </div>
-        <div class="panel">
-          <div class="ui tree">
-            <div class="tree-head">
-              <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M1.8 4.2c0-.8.6-1.4 1.4-1.4h3l1.5 1.6h5.1c.8 0 1.4.6 1.4 1.4v6c0 .8-.6 1.4-1.4 1.4H3.2c-.8 0-1.4-.6-1.4-1.4z" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
-              ~/.claude/skills
+        <figure class="panel feature-demo ownership-demo" data-feature-demo="ownership" aria-labelledby="ownership-caption">
+          <figcaption class="feature-toolbar"><span>Illustrative workflow · file ownership</span><button class="feature-control" data-feature-control type="button" hidden aria-label="Replay file ownership example"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 5a5 5 0 1 1-1 5M3 1v4h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Replay</span></button></figcaption>
+          <div class="feature-scene ownership-scene" data-feature-scene>
+            <svg class="feature-paths" data-feature-paths aria-hidden="true"></svg>
+            <div class="ownership-heading"><div><img src="/assets/img/personas/sam.png" width="36" height="36" alt=""/><span><strong>Sam's agent folder</strong><small>Claude Code · ~/.claude/skills</small></span></div><div class="ownership-dalo" data-own-source><img src="/assets/img/logo.svg" width="28" height="25" alt=""/><span>Dalo</span></div></div>
+            <div class="ownership-managed"><span class="feature-mini-label">Managed by Dalo</span>
+              <div class="owned-skill" data-owned-skill data-result="updated"><i class="feature-star coral" aria-hidden="true">✦</i><strong>incident-review</strong><span class="owned-result" data-owned-result>Updated</span></div>
+              <div class="owned-skill" data-owned-skill data-result="updated"><i class="feature-star violet" aria-hidden="true">✦</i><strong>release-notes</strong><span class="owned-result" data-owned-result>Updated</span></div>
             </div>
-            <ul class="tree-rows">
-              <li>
-                <span class="ic"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6.8 9.2a2.8 2.8 0 0 0 4 0l2-2a2.8 2.8 0 0 0-4-4l-.8.8M9.2 6.8a2.8 2.8 0 0 0-4 0l-2 2a2.8 2.8 0 0 0 4 4l.8-.8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span>
-                <span class="name">incident-review <i>-&gt; store</i></span>
-                <span class="tag managed">managed</span>
-              </li>
-              <li>
-                <span class="ic"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6.8 9.2a2.8 2.8 0 0 0 4 0l2-2a2.8 2.8 0 0 0-4-4l-.8.8M9.2 6.8a2.8 2.8 0 0 0-4 0l-2 2a2.8 2.8 0 0 0 4 4l.8-.8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span>
-                <span class="name">release-notes <i>-&gt; store</i></span>
-                <span class="tag managed">managed</span>
-              </li>
-              <li>
-                <span class="ic user"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M1.8 4.2c0-.8.6-1.4 1.4-1.4h3l1.5 1.6h5.1c.8 0 1.4.6 1.4 1.4v6c0 .8-.6 1.4-1.4 1.4H3.2c-.8 0-1.4-.6-1.4-1.4z" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></span>
-                <span class="name">my-draft/</span>
-                <span class="tag yours">yours · untouched</span>
-              </li>
-            </ul>
-            <div class="tree-foot"><span class="p">$</span><span class="cmd">dalo sync --dry-run</span></div>
+            <div class="personal-folder" data-personal-folder><svg width="48" height="44" viewBox="0 0 48 44" aria-hidden="true"><path d="M4 12a4 4 0 0 1 4-4h10l5 5h17a4 4 0 0 1 4 4v20a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3Z" fill="#fff" stroke="currentColor" stroke-width="1.8"/><path d="m25 23 6-6 4 4-6 6-6 2Z" fill="#fff" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg><div><strong>my-draft/</strong><span>Your own files</span></div><b>Unchanged</b></div>
+            <span class="feature-packet coral" data-feature-packet aria-hidden="true">✦</span><span class="feature-packet violet" data-feature-packet aria-hidden="true">✦</span>
           </div>
-        </div>
+          <div class="feature-explanation"><p id="ownership-caption">Managed skills change. Your own folder stays put.</p><p class="feature-status" data-feature-status role="status">Two managed links updated. Your files are unchanged.</p></div>
+          <p class="feature-boundary">Dalo reports conflicts instead of overwriting your files.</p>
+        </figure>
       </article>
     </div>
   </section>
@@ -720,5 +701,6 @@
 <p class="sr-only" id="copy-status" role="status" aria-live="polite"></p>
 <script src="/main.js" defer></script>
 <script src="/team-story.js" defer></script>
+<script src="/feature-stories.js" defer></script>
 </body>
 </html>
