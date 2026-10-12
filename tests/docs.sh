@@ -957,7 +957,7 @@ for target_id in $registry_ids; do
     }
 done
 for target_path in $registry_paths; do
-  for document in "$root/README.md" "$root/docs/reference.md" "$root/docs/agents.md" "$root/site/index.html"; do
+  for document in "$root/README.md" "$root/docs/reference.md" "$root/docs/agents.md"; do
     grep -Fq "$target_path" "$document" ||
       {
         echo "default target path $target_path is missing from $document" >&2
@@ -965,6 +965,9 @@ for target_path in $registry_paths; do
       }
   done
 done
+# The homepage demonstrates the team workflow and links to the complete target
+# matrix; default folder paths live in the reference documentation above.
+grep -Fq 'href="/docs/agents.html"' "$root/site/index.html"
 refute 'src/target.rs still registers an experimental target' \
   grep -q 'support: TargetSupport::Experimental' "$registry_source"
 refute 'the reference target table still labels a target experimental' \

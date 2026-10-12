@@ -44,11 +44,24 @@ node site/build.mjs --check   # fail if the checked-in output is stale
 The rendered documentation and the stamped version are committed, so the site
 stays deployable from a plain checkout and `--check` can prove they are current.
 
+## Team workflow animation
+
+The homepage uses `team-story.js` and native Web Animations to show three steps:
+choose the team's skills in Git, connect the repository, and sync the same set
+into each team member's agent. It plays once on entering view, offers pause and
+replay controls, and pauses offscreen or while the document is hidden. Reduced
+motion and JavaScript-free visits show the complete static result.
+
+The original Dalo logo stays unchanged. The three fictional persona avatars are
+self-hosted in `assets/img/personas/`; that directory's README records their
+generation prompts and export dimensions.
+
 ## Binary assets
 
 The terminal demo is retained for historical links and is no longer embedded
 on the homepage. [Issue 960](https://github.com/sebastian-software/dalo/issues/960)
-tracks the replacement animation around the agent workflow.
+contains the original motion brief; the homepage now focuses its animation on
+the shared team repository workflow described above.
 
 Both binary assets are generated from checked-in Remotion sources in `video/`,
 so neither is ever edited by hand:
