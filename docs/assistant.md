@@ -38,16 +38,24 @@ Installation is the first request. The same agent can manage your skills from
 then on. Select the Dalo skill in your agent, or use its skill invocation
 syntax, such as `$dalo` in Codex. Ask in your own language:
 
-| What you want | What to tell your agent |
-| --- | --- |
-| Understand your setup | “Dalo, what skills are installed and what needs attention?” |
-| Add your team's skills | “Add our skill repository at this URL and make its skills available here.” |
-| Review updates | “Update my skills and show me what changed.” |
-| Automate team updates | “Update my global team setup each morning and tell me when something changes or needs attention. Keep my personal catalog pins.” |
-| Connect another agent | “Make the same skills available in Claude Code.” |
-| Preserve existing work | “I used skills.sh before. Move these skills to Dalo and keep my changes.” |
-| Keep your own skills private | “Bring my own skills under version control without sharing them publicly.” |
-| Recover an old setup | “I installed Dalo months ago. Get this setup working again.” |
+<dl class="agent-requests">
+  <dt>Understand your setup</dt>
+  <dd><p>“Dalo, what skills are installed and what needs attention?”</p></dd>
+  <dt>Add your team's skills</dt>
+  <dd><p>“Add our skill repository at this URL and make its skills available here.”</p></dd>
+  <dt>Review updates</dt>
+  <dd><p>“Update my skills and show me what changed.”</p></dd>
+  <dt>Automate team updates</dt>
+  <dd><p>“Update my global team setup each morning and tell me when something changes or needs attention. Keep my personal catalog pins.”</p></dd>
+  <dt>Connect another agent</dt>
+  <dd><p>“Make the same skills available in Claude Code.”</p></dd>
+  <dt>Preserve existing work</dt>
+  <dd><p>“I used skills.sh before. Move these skills to Dalo and keep my changes.”</p></dd>
+  <dt>Keep your own skills private</dt>
+  <dd><p>“Bring my own skills under version control without sharing them publicly.”</p></dd>
+  <dt>Recover an old setup</dt>
+  <dd><p>“I installed Dalo months ago. Get this setup working again.”</p></dd>
+</dl>
 
 You supply the goal and decide which sources and changes to trust. The agent
 checks the actual folders, previews changes, and turns Dalo's reports into an

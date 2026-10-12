@@ -180,6 +180,13 @@
 .doc-body td:first-child { color: var(--ink); }
 .doc-body tbody tr:hover { background: rgba(246, 248, 251, .6); }
 
+/* Pair a task with its example request, without requiring sideways reading. */
+.doc-body .agent-requests { margin: 24px 0 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.agent-requests dt, .agent-requests dd { margin: 0; padding: 14px 16px; border-top: 1px solid var(--line-2); }
+.agent-requests dt:first-of-type, .agent-requests dd:first-of-type { border-top: 0; }
+.agent-requests dt { font-weight: 600; color: var(--ink); background: var(--surface); }
+.agent-requests dd p { margin: 0; color: var(--ink-2); }
+
 .doc-body .doc-source {
   margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line-2);
   font-size: 13.5px; color: var(--faint);
@@ -253,6 +260,9 @@
   .doc-menu-nav a[aria-current="page"] { font-weight: 600; color: var(--ink); background: linear-gradient(95deg, rgba(232, 98, 58, .08), rgba(123, 92, 245, .08)); }
 }
 @media (max-width: 640px) {
+  .doc-body .agent-requests { grid-template-columns: minmax(0, 1fr); }
+  .agent-requests dt { padding-bottom: 6px; background: none; }
+  .agent-requests dd { padding-top: 0; border-top: 0; }
   .doc-body { font-size: 16px; }
   .doc-body h1 { font-size: 32px; }
   .doc-body h1 + p, .doc-body .doc-lede { font-size: 16.5px; }

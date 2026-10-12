@@ -27,7 +27,7 @@ Dalo keeps skills, standing instructions, and hooks in Git, resolves one
 approved set, and delivers it to the folders your agents already read. Your
 team's setup stays versioned like code across people and machines.
 
-**[Visit dalo.sh](https://dalo.sh)** · **[Watch the 15-second demo](https://dalo.sh/#quickstart)** · **[Use Dalo through your agent](docs/assistant.md)**
+**[Visit dalo.sh](https://dalo.sh)** · **[Set up with your agent](https://dalo.sh/#quickstart)** · **[Use Dalo through your agent](docs/assistant.md)**
 
 ## Install through your agent (recommended)
 
@@ -110,9 +110,6 @@ security preflight: deterministic checks only
 `status` lists managed, unmanaged, shadowed, blocked, and pending skills;
 `dalo doctor` adds a focused health check. You can also ask your agent to check
 these reports and explain what needs attention.
-
-The quickstart is also available as a
-[short MP4 video](https://dalo.sh/assets/dalo-quickstart.mp4).
 
 ## When something is off
 

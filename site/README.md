@@ -46,6 +46,10 @@ stays deployable from a plain checkout and `--check` can prove they are current.
 
 ## Binary assets
 
+The terminal demo is retained for historical links and is no longer embedded
+on the homepage. [Issue 960](https://github.com/sebastian-software/dalo/issues/960)
+tracks the replacement animation around the agent workflow.
+
 Both binary assets are generated from checked-in Remotion sources in `video/`,
 so neither is ever edited by hand:
 

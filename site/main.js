@@ -187,14 +187,6 @@ document.documentElement.classList.add("js");
     });
   });
 
-  // The demo video autoplays only when the visitor has not asked for less motion.
-  if (!reduceMotion) {
-    document.querySelectorAll("video[data-autoplay]").forEach(function (video) {
-      var playing = video.play();
-      if (playing && playing.catch) playing.catch(function () {});
-    });
-  }
-
   // The header is sticky; it turns solid once the hero has scrolled under it.
   var header = document.querySelector(".site-header");
   if (header) {
