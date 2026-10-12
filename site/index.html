@@ -159,50 +159,99 @@
         </details>
       </div>
 
-      <div class="stage" role="group" aria-label="Dalo product preview">
-        <div class="card term">
-          <div class="term-bar">
-            <div class="dots" aria-hidden="true"><span></span><span></span><span></span></div>
-            <div class="term-title">Dalo through your agent · example workflow</div>
-          </div>
-          <div class="conversation">
-            <div class="message request"><span>You</span><p>Update my skills and show me what changed.</p></div>
-            <div class="message"><span>Your agent</span>
-              <ul class="message-result">
-                <li><strong>Updated</strong> incident-review and release-notes in Codex and Claude Code.</li>
-                <li><strong>Needs approval</strong> sebastian:effective-web stays out of the sync.</li>
-                <li><strong>Unchanged</strong> Your own my-draft/ folder stays in place.</li>
-              </ul>
-            </div>
-          </div>
-        </div>
+      <aside class="hero-team-preview" aria-labelledby="hero-preview-title">
+        <p class="hero-preview-label" id="hero-preview-title">Dalo through your agent · example workflow</p>
+        <p class="hero-team-question">“Connect our team's Dalo repository.”</p>
+        <p class="hero-team-answer">Use the same team skills in the agents you already work with.</p>
+        <div class="hero-team-repo"><span aria-hidden="true">⑂</span><div><strong>acme/agent-skills</strong><span>Your team's shared skill set</span></div></div>
+        <a class="link-arrow" href="#how">See the team workflow <span aria-hidden="true">↓</span></a>
+      </aside>
+    </div>
+  </section>
 
-        <div class="card approve">
-          <div class="approve-top">
-            <span class="label">Your decision</span>
-            <span class="status pending">review first</span>
-          </div>
-          <div class="skill-id">sebastian:effective-web</div>
-          <div class="approve-rows">
-            <div><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Security preflight<span>clean · 15 rules</span></div>
-            <div><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Selected from catalog<span>sebastian</span></div>
-          </div>
-          <p class="approve-cmd">Your agent explains the skill; Dalo checks its approval before linking it.</p>
+  <!-- ───────────────────────── TEAM WORKFLOW ───────────────────────── -->
+  <section class="team-story" id="how" aria-labelledby="how-title">
+    <div class="wrap">
+      <div class="team-story-heading">
+        <div>
+          <span class="kicker">One shared setup</span>
+          <h2 id="how-title">Your team chooses the skills.<br>Everyone can use the same set.</h2>
         </div>
-
-        <div class="card agents-card">
-          <span class="label">Verified agents</span>
-          <div class="count"><strong>6</strong><span>plus any skill folder</span></div>
-          <div class="chips">
-            <span class="chip" style="--c:#e8623a">Codex</span>
-            <span class="chip" style="--c:#7b5cf5">Claude Code</span>
-            <span class="chip" style="--c:#43b3f2">OpenClaw</span>
-            <span class="chip" style="--c:#f59e6b">Hermes</span>
-            <span class="chip" style="--c:#16925b">OpenCode</span>
-            <span class="chip" style="--c:#0b1733">Cursor</span>
-          </div>
-        </div>
+        <p>Keep your team's skills in one Git repository. Connect it on your machine, then sync the set into the agents you use.</p>
       </div>
+      <figure class="team-demo" data-team-demo aria-labelledby="team-demo-title">
+        <figcaption class="team-toolbar">
+          <span id="team-demo-title">Illustrative workflow · sharing your team's own skills</span>
+          <button class="team-control" data-team-control type="button" hidden aria-label="Replay team repository animation">
+            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 5a5 5 0 1 1-1 5M3 1v4h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Replay</span>
+          </button>
+        </figcaption>
+        <div class="team-scene" data-team-scene role="group" aria-label="Three steps to share team skills">
+          <svg class="team-paths" data-team-paths aria-hidden="true"></svg>
+          <section class="team-repository">
+            <div class="team-column-label" data-team-chapter><span>1</span><h3>Choose the team skills</h3></div>
+            <p class="team-step-copy">The team decides what belongs in the shared set.</p>
+            <div class="team-repo-card" data-team-repository>
+              <div class="team-repo-heading">
+                <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h13v16H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 12h13M7 7h7M7 10h5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+                <div><h4>acme/agent-skills</h4><p>Team repository</p></div>
+              </div>
+              <ul class="team-skill-set" role="list">
+                <li data-team-input data-team-skill="incident-review" data-team-color="#e8623a"><span class="team-skill-icon" aria-hidden="true">✦</span>incident-review</li>
+                <li data-team-input data-team-skill="release-notes" data-team-color="#7b5cf5"><span class="team-skill-icon" aria-hidden="true">✦</span>release-notes</li>
+              </ul>
+              <p class="team-repo-foot">Your team's skills, kept in Git.</p>
+            </div>
+          </section>
+          <section class="team-connect-column">
+            <div class="team-column-label" data-team-chapter><span>2</span><h3>Connect the repository</h3></div>
+            <p class="team-step-copy">Add the team's repository once on your machine.</p>
+            <div class="team-connector" data-team-sync>
+              <img src="/assets/img/logo.svg" width="84" height="74" alt="" />
+              <strong>Dalo</strong>
+              <p>acme/agent-skills</p>
+              <span class="team-connect-status" data-team-connected>Repository connected</span>
+            </div>
+          </section>
+          <section class="team-machines">
+            <div class="team-column-label" data-team-chapter><span>3</span><h3>Sync the same set</h3></div>
+            <p class="team-step-copy">Team members use the shared skills in their own agents.</p>
+            <div class="team-machine-list">
+              <article class="team-machine" data-team-machine>
+                <div class="team-machine-heading"><img class="team-avatar" src="/assets/img/personas/alex.png" width="36" height="36" alt="" /><div><h4>Alex's laptop</h4><p>Codex</p></div></div>
+                <div class="team-sync-indicator" data-team-indicator role="progressbar" aria-label="Sync team skills on Alex's laptop" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100" aria-valuetext="Team skills synced">
+                  <svg class="team-progress-ring" viewBox="0 0 36 36" aria-hidden="true"><circle class="team-progress-track" cx="18" cy="18" r="13"/><circle class="team-progress-value" data-team-progress cx="18" cy="18" r="13" pathLength="100"/></svg>
+                  <svg class="team-progress-check" viewBox="0 0 36 36" aria-hidden="true"><path d="m11 18 5 5 9-10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+              </article>
+              <article class="team-machine" data-team-machine>
+                <div class="team-machine-heading"><img class="team-avatar" src="/assets/img/personas/sam.png" width="36" height="36" alt="" /><div><h4>Sam's laptop</h4><p>Claude Code</p></div></div>
+                <div class="team-sync-indicator" data-team-indicator role="progressbar" aria-label="Sync team skills on Sam's laptop" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100" aria-valuetext="Team skills synced">
+                  <svg class="team-progress-ring" viewBox="0 0 36 36" aria-hidden="true"><circle class="team-progress-track" cx="18" cy="18" r="13"/><circle class="team-progress-value" data-team-progress cx="18" cy="18" r="13" pathLength="100"/></svg>
+                  <svg class="team-progress-check" viewBox="0 0 36 36" aria-hidden="true"><path d="m11 18 5 5 9-10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+              </article>
+              <article class="team-machine" data-team-machine>
+                <div class="team-machine-heading"><img class="team-avatar" src="/assets/img/personas/mia.png" width="36" height="36" alt="" /><div><h4>Mia's laptop</h4><p>Cursor</p></div></div>
+                <div class="team-sync-indicator" data-team-indicator role="progressbar" aria-label="Sync team skills on Mia's laptop" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100" aria-valuetext="Team skills synced">
+                  <svg class="team-progress-ring" viewBox="0 0 36 36" aria-hidden="true"><circle class="team-progress-track" cx="18" cy="18" r="13"/><circle class="team-progress-value" data-team-progress cx="18" cy="18" r="13" pathLength="100"/></svg>
+                  <svg class="team-progress-check" viewBox="0 0 36 36" aria-hidden="true"><path d="m11 18 5 5 9-10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+              </article>
+            </div>
+          </section>
+          <span class="team-packet" data-team-packet aria-hidden="true">✦</span>
+          <span class="team-packet" data-team-packet aria-hidden="true">✦</span>
+          <span class="team-packet" data-team-packet aria-hidden="true">✦</span>
+          <span class="team-packet" data-team-packet aria-hidden="true">✦</span>
+          <span class="team-packet" data-team-packet aria-hidden="true">✦</span>
+          <span class="team-packet" data-team-packet aria-hidden="true">✦</span>
+          <span class="team-packet" data-team-packet aria-hidden="true">✦</span>
+          <span class="team-packet" data-team-packet aria-hidden="true">✦</span>
+        </div>
+      </figure>
+      <div class="team-story-links"><a class="link-arrow" href="/docs/team.html">Set up a team repository <span aria-hidden="true">↗</span></a><a href="/docs/agents.html">6 verified agents + any skill folder <span aria-hidden="true">↗</span></a></div>
     </div>
   </section>
 
@@ -386,7 +435,7 @@
                 <div class="skill-id">sebastian:effective-web</div>
                 <div class="src">Public catalog · pinned</div>
               </div>
-              <span class="status">approved</span>
+              <span class="status pending">review first</span>
             </div>
             <ol class="steps">
               <li class="step">
@@ -442,54 +491,6 @@
           </div>
         </div>
       </article>
-    </div>
-  </section>
-
-  <!-- ───────────────────────── HOW IT WORKS ───────────────────────── -->
-  <section class="sec how" id="how" aria-labelledby="how-title">
-    <div class="wrap">
-      <div class="sec-head center reveal" style="--accent:#e8623a">
-        <h2 id="how-title">Many sources in. <span class="nowrap">One reviewed set out.</span></h2>
-        <p>The store is the source of truth; agent folders are output targets.</p>
-      </div>
-      <div class="panel flow-panel reveal">
-<svg class="flow flow-d" viewBox="0 0 1120 434" role="img" aria-labelledby="flow-t">
-<title id="flow-t">Local skills, a team repository and a public catalog flow into Dalo, which pins and checks one approved set and links it into Codex, Claude Code, OpenClaw, Hermes, OpenCode, Cursor and any folder.</title>
-<defs><linearGradient id="beam-d" gradientUnits="userSpaceOnUse" x1="280" y1="0" x2="860" y2="0"><stop offset="0" stop-color="#e8623a"/><stop offset=".5" stop-color="#d94a6e"/><stop offset="1" stop-color="#7b5cf5"/></linearGradient></defs>
-<text class="lab" x="40" y="30">Sources</text><text class="lab" x="560" y="30" text-anchor="middle">One resolved set</text><text class="lab" x="1080" y="30" text-anchor="end">Agent folders</text>
-<g class="wires"><path class="wire" d="M280 120 C365 120 365 210 450 210"/><path class="wire" d="M280 210 C365 210 365 210 450 210"/><path class="wire" d="M280 300 C365 300 365 210 450 210"/><path class="wire" d="M670 210 C765 210 765 75 860 75"/><path class="wire" d="M670 210 C765 210 765 129 860 129"/><path class="wire" d="M670 210 C765 210 765 183 860 183"/><path class="wire" d="M670 210 C765 210 765 237 860 237"/><path class="wire" d="M670 210 C765 210 765 291 860 291"/><path class="wire" d="M670 210 C765 210 765 345 860 345"/><path class="wire" d="M670 210 C765 210 765 399 860 399"/></g>
-<g class="beams" stroke="url(#beam-d)" aria-hidden="true"><path class="beam beam-a" pathLength="100" d="M280 120 C365 120 365 210 450 210" style="--l:26;--d:0.00s"/><path class="beam beam-b" pathLength="100" d="M280 120 C365 120 365 210 450 210" style="--l:10;--d:0.00s"/><path class="beam beam-c" pathLength="100" d="M280 120 C365 120 365 210 450 210" style="--l:2.5;--d:0.00s"/><path class="beam beam-a" pathLength="100" d="M280 210 C365 210 365 210 450 210" style="--l:26;--d:0.35s"/><path class="beam beam-b" pathLength="100" d="M280 210 C365 210 365 210 450 210" style="--l:10;--d:0.35s"/><path class="beam beam-c" pathLength="100" d="M280 210 C365 210 365 210 450 210" style="--l:2.5;--d:0.35s"/><path class="beam beam-a" pathLength="100" d="M280 300 C365 300 365 210 450 210" style="--l:26;--d:0.70s"/><path class="beam beam-b" pathLength="100" d="M280 300 C365 300 365 210 450 210" style="--l:10;--d:0.70s"/><path class="beam beam-c" pathLength="100" d="M280 300 C365 300 365 210 450 210" style="--l:2.5;--d:0.70s"/><path class="beam beam-a" pathLength="100" d="M670 210 C765 210 765 75 860 75" style="--l:26;--d:1.25s"/><path class="beam beam-b" pathLength="100" d="M670 210 C765 210 765 75 860 75" style="--l:10;--d:1.25s"/><path class="beam beam-c" pathLength="100" d="M670 210 C765 210 765 75 860 75" style="--l:2.5;--d:1.25s"/><path class="beam beam-a" pathLength="100" d="M670 210 C765 210 765 129 860 129" style="--l:26;--d:1.37s"/><path class="beam beam-b" pathLength="100" d="M670 210 C765 210 765 129 860 129" style="--l:10;--d:1.37s"/><path class="beam beam-c" pathLength="100" d="M670 210 C765 210 765 129 860 129" style="--l:2.5;--d:1.37s"/><path class="beam beam-a" pathLength="100" d="M670 210 C765 210 765 183 860 183" style="--l:26;--d:1.49s"/><path class="beam beam-b" pathLength="100" d="M670 210 C765 210 765 183 860 183" style="--l:10;--d:1.49s"/><path class="beam beam-c" pathLength="100" d="M670 210 C765 210 765 183 860 183" style="--l:2.5;--d:1.49s"/><path class="beam beam-a" pathLength="100" d="M670 210 C765 210 765 237 860 237" style="--l:26;--d:1.61s"/><path class="beam beam-b" pathLength="100" d="M670 210 C765 210 765 237 860 237" style="--l:10;--d:1.61s"/><path class="beam beam-c" pathLength="100" d="M670 210 C765 210 765 237 860 237" style="--l:2.5;--d:1.61s"/><path class="beam beam-a" pathLength="100" d="M670 210 C765 210 765 291 860 291" style="--l:26;--d:1.73s"/><path class="beam beam-b" pathLength="100" d="M670 210 C765 210 765 291 860 291" style="--l:10;--d:1.73s"/><path class="beam beam-c" pathLength="100" d="M670 210 C765 210 765 291 860 291" style="--l:2.5;--d:1.73s"/><path class="beam beam-a" pathLength="100" d="M670 210 C765 210 765 345 860 345" style="--l:26;--d:1.85s"/><path class="beam beam-b" pathLength="100" d="M670 210 C765 210 765 345 860 345" style="--l:10;--d:1.85s"/><path class="beam beam-c" pathLength="100" d="M670 210 C765 210 765 345 860 345" style="--l:2.5;--d:1.85s"/><path class="beam beam-a" pathLength="100" d="M670 210 C765 210 765 399 860 399" style="--l:26;--d:1.97s"/><path class="beam beam-b" pathLength="100" d="M670 210 C765 210 765 399 860 399" style="--l:10;--d:1.97s"/><path class="beam beam-c" pathLength="100" d="M670 210 C765 210 765 399 860 399" style="--l:2.5;--d:1.97s"/></g>
-<g class="fnode" style="--c:#e8623a"><rect x="40.5" y="90.5" width="240" height="59" rx="10"/><rect class="ib" x="54.5" y="105.5" width="29" height="29" rx="7"/><g class="ic"><path transform="translate(61 112)" d="M1.5 4.5a1.5 1.5 0 0 1 1.5-1.5h3.2l1.6 1.8h5.2a1.5 1.5 0 0 1 1.5 1.5v6.2a1.5 1.5 0 0 1-1.5 1.5H3a1.5 1.5 0 0 1-1.5-1.5z"/></g><text class="t" x="97" y="117">Local</text><text class="s" x="97" y="134">~/.dalo/local</text></g>
-<g class="fnode" style="--c:#7b5cf5"><rect x="40.5" y="180.5" width="240" height="59" rx="10"/><rect class="ib" x="54.5" y="195.5" width="29" height="29" rx="7"/><g class="ic"><circle cx="65.5" cy="205.5" r="1.7"/><circle cx="65.5" cy="214.5" r="1.7"/><circle cx="72.5" cy="207" r="1.7"/><path d="M65.5 207.2v5.6M72.5 208.7c0 3-7 2.6-7 4.1"/></g><text class="t" x="97" y="207">Team repo</text><text class="s" x="97" y="224">acme/agent-skills</text></g>
-<g class="fnode" style="--c:#2b8fd6"><rect x="40.5" y="270.5" width="240" height="59" rx="10"/><rect class="ib" x="54.5" y="285.5" width="29" height="29" rx="7"/><g class="ic"><rect x="63" y="294" width="5" height="5" rx="1.2"/><rect x="70" y="294" width="5" height="5" rx="1.2"/><rect x="63" y="301" width="5" height="5" rx="1.2"/><rect x="70" y="301" width="5" height="5" rx="1.2"/></g><text class="t" x="97" y="297">Public catalog</text><text class="s" x="97" y="314">selected + pinned</text></g>
-<g class="fnode agent"><rect x="860.5" y="52.5" width="219" height="45" rx="10"/><circle class="dot" cx="879" cy="68" r="3"/><text class="t" x="891" y="72.5">Codex</text><text class="s" x="891" y="88">~/.agents/skills</text></g>
-<g class="fnode agent"><rect x="860.5" y="106.5" width="219" height="45" rx="10"/><circle class="dot" cx="879" cy="122" r="3"/><text class="t" x="891" y="126.5">Claude Code</text><text class="s" x="891" y="142">~/.claude/skills</text></g>
-<g class="fnode agent"><rect x="860.5" y="160.5" width="219" height="45" rx="10"/><circle class="dot" cx="879" cy="176" r="3"/><text class="t" x="891" y="180.5">OpenClaw</text><text class="s" x="891" y="196">~/.agents/skills</text></g>
-<g class="fnode agent"><rect x="860.5" y="214.5" width="219" height="45" rx="10"/><circle class="dot" cx="879" cy="230" r="3"/><text class="t" x="891" y="234.5">Hermes</text><text class="s" x="891" y="250">~/.hermes/skills</text></g>
-<g class="fnode agent"><rect x="860.5" y="268.5" width="219" height="45" rx="10"/><circle class="dot" cx="879" cy="284" r="3"/><text class="t" x="891" y="288.5">OpenCode</text><text class="s" x="891" y="304">~/.config/opencode/skills</text></g>
-<g class="fnode agent"><rect x="860.5" y="322.5" width="219" height="45" rx="10"/><circle class="dot" cx="879" cy="338" r="3"/><text class="t" x="891" y="342.5">Cursor</text><text class="s" x="891" y="358">~/.cursor/skills</text></g><g class="fnode agent any"><rect x="860.5" y="376.5" width="219" height="45" rx="10"/><circle class="dot" cx="879" cy="392" r="3"/><text class="t" x="891" y="396.5">Any folder</text><text class="s" x="891" y="412">generic · any path</text></g>
-<g class="fhub"><rect class="halo" x="438" y="146" width="244" height="128" rx="20"/><rect class="core" x="450.5" y="158.5" width="219" height="103" rx="14"/><image href="/assets/img/logo.svg" x="512" y="172" width="39" height="34"/><image href="/assets/img/wordmark.svg" x="560" y="182.5" width="51" height="13"/><line class="sep" x1="466" x2="654" y1="219.5" y2="219.5"/><text class="s c" x="560" y="243">Pinned · checked</text></g>
-<circle class="port" cx="280.5" cy="120" r="3"/><circle class="port" cx="280.5" cy="210" r="3"/><circle class="port" cx="280.5" cy="300" r="3"/><circle class="port" cx="860.5" cy="75" r="3"/><circle class="port" cx="860.5" cy="129" r="3"/><circle class="port" cx="860.5" cy="183" r="3"/><circle class="port" cx="860.5" cy="237" r="3"/><circle class="port" cx="860.5" cy="291" r="3"/><circle class="port" cx="860.5" cy="345" r="3"/><circle class="port" cx="860.5" cy="399" r="3"/><circle class="port" cx="450.5" cy="210" r="3"/><circle class="port" cx="669.5" cy="210" r="3"/>
-</svg>
-<svg class="flow flow-m" viewBox="0 0 342 554" role="img" aria-labelledby="flow-tm">
-<title id="flow-tm">Local skills, a team repository and a public catalog flow into Dalo, which links one pinned, checked and approved set into Codex, Claude Code, OpenClaw, Hermes, OpenCode, Cursor and any folder.</title>
-<defs><linearGradient id="beam-m" gradientUnits="userSpaceOnUse" x1="0" y1="70" x2="0" y2="542"><stop offset="0" stop-color="#e8623a"/><stop offset=".45" stop-color="#d94a6e"/><stop offset="1" stop-color="#7b5cf5"/></linearGradient></defs>
-<text class="lab" x="0" y="14">Sources</text><text class="lab" x="24" y="254">Agent folders</text>
-<g class="wires"><path class="wire" d="M53 70 C53 104 171 94 171 128"/><path class="wire" d="M171 70 L171 128"/><path class="wire" d="M289 70 C289 104 171 94 171 128"/><path class="wire" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V274 Q8 282 16 282 H24"/><path class="wire" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V316 Q8 324 16 324 H24"/><path class="wire" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V358 Q8 366 16 366 H24"/><path class="wire" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V400 Q8 408 16 408 H24"/><path class="wire" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V442 Q8 450 16 450 H24"/><path class="wire" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V484 Q8 492 16 492 H24"/><path class="wire" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V526 Q8 534 16 534 H24"/></g>
-<g class="beams" stroke="url(#beam-m)" aria-hidden="true"><path class="beam beam-a" pathLength="100" d="M53 70 C53 104 171 94 171 128" style="--l:26;--d:0.00s"/><path class="beam beam-b" pathLength="100" d="M53 70 C53 104 171 94 171 128" style="--l:10;--d:0.00s"/><path class="beam beam-c" pathLength="100" d="M53 70 C53 104 171 94 171 128" style="--l:2.5;--d:0.00s"/><path class="beam beam-a" pathLength="100" d="M171 70 L171 128" style="--l:26;--d:0.30s"/><path class="beam beam-b" pathLength="100" d="M171 70 L171 128" style="--l:10;--d:0.30s"/><path class="beam beam-c" pathLength="100" d="M171 70 L171 128" style="--l:2.5;--d:0.30s"/><path class="beam beam-a" pathLength="100" d="M289 70 C289 104 171 94 171 128" style="--l:26;--d:0.60s"/><path class="beam beam-b" pathLength="100" d="M289 70 C289 104 171 94 171 128" style="--l:10;--d:0.60s"/><path class="beam beam-c" pathLength="100" d="M289 70 C289 104 171 94 171 128" style="--l:2.5;--d:0.60s"/><path class="beam beam-a" pathLength="100" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V274 Q8 282 16 282 H24" style="--l:26;--d:1.10s"/><path class="beam beam-b" pathLength="100" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V274 Q8 282 16 282 H24" style="--l:10;--d:1.10s"/><path class="beam beam-c" pathLength="100" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V274 Q8 282 16 282 H24" style="--l:2.5;--d:1.10s"/><path class="beam beam-a" pathLength="100" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V316 Q8 324 16 324 H24" style="--l:26;--d:1.22s"/><path class="beam beam-b" pathLength="100" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V316 Q8 324 16 324 H24" style="--l:10;--d:1.22s"/><path class="beam beam-c" pathLength="100" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V316 Q8 324 16 324 H24" style="--l:2.5;--d:1.22s"/><path class="beam beam-a" pathLength="100" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V358 Q8 366 16 366 H24" style="--l:26;--d:1.34s"/><path class="beam beam-b" pathLength="100" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V358 Q8 366 16 366 H24" style="--l:10;--d:1.34s"/><path class="beam beam-c" pathLength="100" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V358 Q8 366 16 366 H24" style="--l:2.5;--d:1.34s"/><path class="beam beam-a" pathLength="100" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V400 Q8 408 16 408 H24" style="--l:26;--d:1.46s"/><path class="beam beam-b" pathLength="100" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V400 Q8 408 16 408 H24" style="--l:10;--d:1.46s"/><path class="beam beam-c" pathLength="100" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V400 Q8 408 16 408 H24" style="--l:2.5;--d:1.46s"/><path class="beam beam-a" pathLength="100" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V442 Q8 450 16 450 H24" style="--l:26;--d:1.58s"/><path class="beam beam-b" pathLength="100" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V442 Q8 450 16 450 H24" style="--l:10;--d:1.58s"/><path class="beam beam-c" pathLength="100" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V442 Q8 450 16 450 H24" style="--l:2.5;--d:1.58s"/><path class="beam beam-a" pathLength="100" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V484 Q8 492 16 492 H24" style="--l:26;--d:1.70s"/><path class="beam beam-b" pathLength="100" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V484 Q8 492 16 492 H24" style="--l:10;--d:1.70s"/><path class="beam beam-c" pathLength="100" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V484 Q8 492 16 492 H24" style="--l:2.5;--d:1.70s"/><path class="beam beam-a" pathLength="100" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V526 Q8 534 16 534 H24" style="--l:26;--d:1.82s"/><path class="beam beam-b" pathLength="100" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V526 Q8 534 16 534 H24" style="--l:10;--d:1.82s"/><path class="beam beam-c" pathLength="100" d="M171 208 V220 Q171 228 163 228 H16 Q8 228 8 236 V526 Q8 534 16 534 H24" style="--l:2.5;--d:1.82s"/></g>
-<g class="fnode" style="--c:#e8623a"><rect x="0.5" y="30.5" width="105" height="39" rx="9"/><text class="t" x="53" y="54.5" text-anchor="middle">Local</text></g>
-<g class="fnode" style="--c:#7b5cf5"><rect x="118.5" y="30.5" width="105" height="39" rx="9"/><text class="t" x="171" y="54.5" text-anchor="middle">Team repo</text></g>
-<g class="fnode" style="--c:#2b8fd6"><rect x="236.5" y="30.5" width="105" height="39" rx="9"/><text class="t" x="289" y="54.5" text-anchor="middle">Catalog</text></g>
-<g class="fnode agent"><rect x="24.5" y="264.5" width="317" height="35" rx="9"/><circle class="dot" cx="40" cy="282" r="2.6"/><text class="t" x="52" y="286.5">Codex</text><text class="s r" x="329" y="286" text-anchor="end">~/.agents/skills</text></g>
-<g class="fnode agent"><rect x="24.5" y="306.5" width="317" height="35" rx="9"/><circle class="dot" cx="40" cy="324" r="2.6"/><text class="t" x="52" y="328.5">Claude Code</text><text class="s r" x="329" y="328" text-anchor="end">~/.claude/skills</text></g>
-<g class="fnode agent"><rect x="24.5" y="348.5" width="317" height="35" rx="9"/><circle class="dot" cx="40" cy="366" r="2.6"/><text class="t" x="52" y="370.5">OpenClaw</text><text class="s r" x="329" y="370" text-anchor="end">~/.agents/skills</text></g>
-<g class="fnode agent"><rect x="24.5" y="390.5" width="317" height="35" rx="9"/><circle class="dot" cx="40" cy="408" r="2.6"/><text class="t" x="52" y="412.5">Hermes</text><text class="s r" x="329" y="412" text-anchor="end">~/.hermes/skills</text></g>
-<g class="fnode agent"><rect x="24.5" y="432.5" width="317" height="35" rx="9"/><circle class="dot" cx="40" cy="450" r="2.6"/><text class="t" x="52" y="454.5">OpenCode</text><text class="s r" x="329" y="454" text-anchor="end">~/.config/opencode/skills</text></g>
-<g class="fnode agent"><rect x="24.5" y="474.5" width="317" height="35" rx="9"/><circle class="dot" cx="40" cy="492" r="2.6"/><text class="t" x="52" y="496.5">Cursor</text><text class="s r" x="329" y="496" text-anchor="end">~/.cursor/skills</text></g><g class="fnode agent any"><rect x="24.5" y="516.5" width="317" height="35" rx="9"/><circle class="dot" cx="40" cy="534" r="2.6"/><text class="t" x="52" y="538.5">Any folder</text><text class="s r" x="329" y="538" text-anchor="end">generic · any path</text></g>
-<g class="fhub"><rect class="halo" x="68" y="118" width="206" height="100" rx="18"/><rect class="core" x="78.5" y="128.5" width="185" height="79" rx="13"/><image href="/assets/img/logo.svg" x="131" y="139" width="32" height="28"/><image href="/assets/img/wordmark.svg" x="170" y="147.5" width="43" height="11"/><text class="s c" x="171" y="192">Pinned · checked</text></g>
-<circle class="port" cx="53" cy="69.5" r="2.6"/><circle class="port" cx="171" cy="69.5" r="2.6"/><circle class="port" cx="289" cy="69.5" r="2.6"/><circle class="port" cx="24.5" cy="282" r="2.6"/><circle class="port" cx="24.5" cy="324" r="2.6"/><circle class="port" cx="24.5" cy="366" r="2.6"/><circle class="port" cx="24.5" cy="408" r="2.6"/><circle class="port" cx="24.5" cy="450" r="2.6"/><circle class="port" cx="24.5" cy="492" r="2.6"/><circle class="port" cx="24.5" cy="534" r="2.6"/><circle class="port" cx="171" cy="128.5" r="2.6"/><circle class="port" cx="171" cy="207.5" r="2.6"/>
-</svg>
-      </div>
     </div>
   </section>
 
@@ -718,5 +719,6 @@
 
 <p class="sr-only" id="copy-status" role="status" aria-live="polite"></p>
 <script src="/main.js" defer></script>
+<script src="/team-story.js" defer></script>
 </body>
 </html>
