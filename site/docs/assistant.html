@@ -128,47 +128,24 @@ normal HTML and the README, so it does not depend on automatic llms.txt support.
 <p>Installation is the first request. The same agent can manage your skills from
 then on. Select the Dalo skill in your agent, or use its skill invocation
 syntax, such as <code>$dalo</code> in Codex. Ask in your own language:</p>
-<div class="doc-table"><table>
-<thead>
-<tr>
-<th>What you want</th>
-<th>What to tell your agent</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>Understand your setup</td>
-<td>“Dalo, what skills are installed and what needs attention?”</td>
-</tr>
-<tr>
-<td>Add your team&#39;s skills</td>
-<td>“Add our skill repository at this URL and make its skills available here.”</td>
-</tr>
-<tr>
-<td>Review updates</td>
-<td>“Update my skills and show me what changed.”</td>
-</tr>
-<tr>
-<td>Automate team updates</td>
-<td>“Update my global team setup each morning and tell me when something changes or needs attention. Keep my personal catalog pins.”</td>
-</tr>
-<tr>
-<td>Connect another agent</td>
-<td>“Make the same skills available in Claude Code.”</td>
-</tr>
-<tr>
-<td>Preserve existing work</td>
-<td>“I used skills.sh before. Move these skills to Dalo and keep my changes.”</td>
-</tr>
-<tr>
-<td>Keep your own skills private</td>
-<td>“Bring my own skills under version control without sharing them publicly.”</td>
-</tr>
-<tr>
-<td>Recover an old setup</td>
-<td>“I installed Dalo months ago. Get this setup working again.”</td>
-</tr>
-</tbody></table></div>
-<p>You supply the goal and decide which sources and changes to trust. The agent
+<dl class="agent-requests">
+  <dt>Understand your setup</dt>
+  <dd><p>“Dalo, what skills are installed and what needs attention?”</p></dd>
+  <dt>Add your team's skills</dt>
+  <dd><p>“Add our skill repository at this URL and make its skills available here.”</p></dd>
+  <dt>Review updates</dt>
+  <dd><p>“Update my skills and show me what changed.”</p></dd>
+  <dt>Automate team updates</dt>
+  <dd><p>“Update my global team setup each morning and tell me when something changes or needs attention. Keep my personal catalog pins.”</p></dd>
+  <dt>Connect another agent</dt>
+  <dd><p>“Make the same skills available in Claude Code.”</p></dd>
+  <dt>Preserve existing work</dt>
+  <dd><p>“I used skills.sh before. Move these skills to Dalo and keep my changes.”</p></dd>
+  <dt>Keep your own skills private</dt>
+  <dd><p>“Bring my own skills under version control without sharing them publicly.”</p></dd>
+  <dt>Recover an old setup</dt>
+  <dd><p>“I installed Dalo months ago. Get this setup working again.”</p></dd>
+</dl><p>You supply the goal and decide which sources and changes to trust. The agent
 checks the actual folders, previews changes, and turns Dalo&#39;s reports into an
 explanation and next step. It can account for the store and target paths already
 in use, local edits, and skills installed by another tool.</p>

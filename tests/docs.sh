@@ -45,10 +45,9 @@ grep -q '(docs/security.md)' "$root/README.md"
 grep -q '(docs/security.md)' "$root/SECURITY.md"
 grep -q '(security.md)' "$root/docs/troubleshooting.md"
 grep -q '## What Dalo does not protect against' "$root/docs/security.md"
-grep -q 'Watch the 15-second demo' "$root/README.md"
+grep -q 'Set up with your agent' "$root/README.md"
 refute 'README.md still advertises the 20-second demo' \
   grep -q '20-second demo' "$root/README.md"
-grep -q '15-second secure-sync demo' "$root/site/index.html"
 refute 'the retired github-pr-auto-review example is still referenced' \
   grep -R -q --exclude-dir=node_modules --exclude-dir=build 'github-pr-auto-review' "$root/README.md" "$root/site"
 # The V1 status snapshot is frozen: it lives in the archive, it says so at the
@@ -513,7 +512,7 @@ grep -Fq 'href="/docs/reference.html"' "$root/site/spec/0.1/index.html"
 grep -Fq 'href="/spec/0.1/"' "$root/site/spec/0.1/compatibility.html"
 grep -Fq 'href="/spec/0.1/plugin-v1.schema.json"' "$root/site/spec/0.1/compatibility.html"
 grep -Fq 'href="/spec/"' "$root/site/index.html"
-grep -Fq '>Product</a>' "$root/site/index.html"
+grep -Fq '<a href="#how">How it works</a>' "$root/site/index.html"
 grep -Fq '>Docs</a>' "$root/site/index.html"
 grep -Fq '>Spec</a>' "$root/site/index.html"
 grep -Fq '>GitHub</a>' "$root/site/index.html"
@@ -555,9 +554,12 @@ refute 'the hero terminal still shows the pre-0.14 sync output' \
 if [ -d "$root/site/node_modules" ]; then
   node "$root/site/build.mjs" --check
 fi
-grep -q 'dalo-quickstart.mp4' "$root/site/index.html"
-grep -q 'type="video/mp4"' "$root/site/index.html"
-grep -q 'dalo-quickstart.mp4' "$root/README.md"
+# The retired terminal clip stays available to historical links, but is no
+# longer part of the homepage or README's active setup path.
+refute 'the homepage still embeds the retired terminal demo' \
+  grep -q 'dalo-quickstart.mp4' "$root/site/index.html"
+refute 'the README still advertises the retired terminal demo' \
+  grep -q 'dalo-quickstart.mp4' "$root/README.md"
 grep -q 'Get it wrong. Dalo gets you back.' "$root/site/index.html"
 grep -q 'dalo synk' "$root/site/index.html"
 grep -q "a similar subcommand exists: 'sync'" "$root/site/index.html"
