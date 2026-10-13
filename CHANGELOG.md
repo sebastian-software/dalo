@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.6.0](https://github.com/sebastian-software/dalo/compare/dalo-v1.5.1...dalo-v1.6.0) (2026-10-13)
+
+
+### Features
+
+* **site:** explain shared team skills with an animation ([15019d2](https://github.com/sebastian-software/dalo/commit/15019d2305d4942798c6107fc0bd0b8b13021aef))
+* **site:** illustrate pin updates, approvals, and file ownership ([5f4f161](https://github.com/sebastian-software/dalo/commit/5f4f161e13a94a57d7ceb3c9997796cc94421381))
+* **site:** play the promo film from the hero ([94f0b4d](https://github.com/sebastian-software/dalo/commit/94f0b4dcbe0800202f44878471541d01e3e19426))
+* **video:** add the promo film with score and voiceover pipeline ([ffdb9f5](https://github.com/sebastian-software/dalo/commit/ffdb9f56ebf5b04681e47d885ecea7d8bd293702))
+
+
+### Bug Fixes
+
+* **site:** clarify approvals and improve mobile setup guidance ([741c582](https://github.com/sebastian-software/dalo/commit/741c5824e15582c628efa7cdb0d04e521d221850))
+* **site:** clarify onboarding and show copy errors ([c4e5d41](https://github.com/sebastian-software/dalo/commit/c4e5d41931423a8579e60124b582490ea1fe331e))
+* **site:** clarify product value and keep setup steps together ([20bacf1](https://github.com/sebastian-software/dalo/commit/20bacf15a879f1defb5cb75050cfc44f6cfa6a5e))
+* **site:** drop the privacy summary from the footer ([be7b88a](https://github.com/sebastian-software/dalo/commit/be7b88a253ee8c6457dba5d529cc6a94a605587e))
+
 ## [1.5.1](https://github.com/sebastian-software/dalo/compare/dalo-v1.5.0...dalo-v1.5.1) (2026-10-09)
 
 
