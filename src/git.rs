@@ -72,7 +72,12 @@ pub(crate) fn acquire_pinned_commit(url: &str, destination: &Path, commit: &str)
     if commit.len() == 64 {
         run_git(destination, &["init", "-q", "--object-format=sha256"])?;
     } else {
-        run_git(destination, &["init", "-q", "--object-format=sha1"])?;
+        // Older Git versions predate --object-format but already use SHA-1.
+        // They ignore this config key; newer versions honor the explicit format.
+        run_git(
+            destination,
+            &["-c", "init.defaultObjectFormat=sha1", "init", "-q"],
+        )?;
     }
     run_git(destination, &["remote", "add", "--", "origin", url])?;
     print_network_progress(&format!(
@@ -1505,52 +1510,74 @@ mod tests {
     }
 
     #[test]
-    fn pinned_acquisition_should_preserve_sha256_commit_ids() {
+    fn pinned_acquisition_should_preserve_supported_commit_formats() {
         let temp = tempfile::tempdir().expect("tempdir should be created");
-        let source = temp.path().join("source");
-        fs::create_dir(&source).expect("source should be created");
-        run_git(&source, &["init", "-q", "--object-format=sha256"])
-            .expect("SHA-256 source should initialize");
-        fs::write(source.join("SKILL.md"), "# SHA-256 skill\n").expect("skill should be written");
-        run_git(&source, &["add", "."]).expect("skill should stage");
-        run_git(
-            &source,
-            &[
-                "-c",
-                "user.name=Dalo Test",
-                "-c",
-                "user.email=dalo@example.invalid",
-                "-c",
-                "commit.gpgSign=false",
-                "commit",
-                "-qm",
-                "SHA-256 fixture",
-            ],
-        )
-        .expect("source should commit");
-        let commit = rev_parse_head(&source).expect("source HEAD should resolve");
-        assert_eq!(commit.len(), 64);
-        let checkout = temp.path().join("checkout");
-        acquire_pinned_commit(
-            source.to_str().expect("UTF-8 source path"),
-            &checkout,
-            &commit,
-        )
-        .expect("SHA-256 pin should restore");
-        assert_eq!(
-            rev_parse_head(&checkout).expect("HEAD should resolve"),
-            commit
-        );
-        assert_eq!(
-            fs::read(checkout.join("SKILL.md")).unwrap(),
-            b"# SHA-256 skill\n"
-        );
-        assert_eq!(
-            run_git(&checkout, &["rev-list", "--count", "HEAD"])
-                .unwrap()
-                .trim(),
-            "1"
-        );
+        for format in ["sha1", "sha256"] {
+            let source = temp.path().join(format);
+            fs::create_dir(&source).expect("source should be created");
+            let initialized = if format == "sha1" {
+                run_git(
+                    &source,
+                    &["-c", "init.defaultObjectFormat=sha1", "init", "-q"],
+                )
+            } else {
+                run_git(&source, &["init", "-q", "--object-format=sha256"])
+            };
+            // The musl test container ships Git without SHA-256 support. Only
+            // skip that optional format when Git explicitly rejects the option;
+            // all other initialization failures must still fail the test.
+            if let Err(DaloError::CommandFailed { status, stderr, .. }) = &initialized
+                && format == "sha256"
+                && status == "129"
+                && stderr.contains("unknown option")
+                && stderr.contains("object-format")
+            {
+                eprintln!("Git lacks SHA-256 support; SHA-1 acquisition was verified");
+                continue;
+            }
+            initialized.expect("source should initialize");
+            fs::write(source.join("SKILL.md"), "# Pinned skill\n")
+                .expect("skill should be written");
+            run_git(&source, &["add", "."]).expect("skill should stage");
+            run_git(
+                &source,
+                &[
+                    "-c",
+                    "user.name=Dalo Test",
+                    "-c",
+                    "user.email=dalo@example.invalid",
+                    "-c",
+                    "commit.gpgSign=false",
+                    "commit",
+                    "-qm",
+                    "pinned fixture",
+                ],
+            )
+            .expect("source should commit");
+            let commit = rev_parse_head(&source).expect("source HEAD should resolve");
+            assert_eq!(commit.len(), if format == "sha256" { 64 } else { 40 });
+            let checkout = temp.path().join(format!("checkout-{format}"));
+            acquire_pinned_commit(
+                source.to_str().expect("UTF-8 source path"),
+                &checkout,
+                &commit,
+            )
+            .expect("pin should restore");
+            assert_eq!(
+                rev_parse_head(&checkout).expect("HEAD should resolve"),
+                commit
+            );
+            assert_eq!(
+                fs::read(checkout.join("SKILL.md")).unwrap(),
+                b"# Pinned skill\n"
+            );
+            assert_eq!(
+                run_git(&checkout, &["rev-list", "--count", "HEAD"])
+                    .unwrap()
+                    .trim(),
+                "1"
+            );
+        }
     }
 
     #[test]
