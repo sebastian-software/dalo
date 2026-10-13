@@ -197,6 +197,35 @@ document.documentElement.classList.add("js");
     updateHeader();
   }
 
+  // The hero film plays from Bunny Stream in a modal dialog. The player is only
+  // requested on click and removed on close, which also stops playback. Without
+  // JS or <dialog> support the poster stays a plain link to the player page.
+  var filmDialog = document.querySelector("[data-film-dialog]");
+  var filmOpen = document.querySelector("[data-film-open]");
+  if (filmDialog && filmOpen && typeof filmDialog.showModal === "function") {
+    var filmFrame = filmDialog.querySelector("[data-film-frame]");
+    filmOpen.addEventListener("click", function (event) {
+      event.preventDefault();
+      var player = document.createElement("iframe");
+      player.src = filmOpen.getAttribute("data-film-embed");
+      player.title = "Dalo film";
+      player.allow = "autoplay; fullscreen; picture-in-picture; encrypted-media";
+      player.allowFullscreen = true;
+      filmFrame.appendChild(player);
+      filmDialog.showModal();
+    });
+    filmDialog.querySelector("[data-film-close]").addEventListener("click", function () {
+      filmDialog.close();
+    });
+    // A click on the backdrop lands on the dialog itself, not its content.
+    filmDialog.addEventListener("click", function (event) {
+      if (event.target === filmDialog) filmDialog.close();
+    });
+    filmDialog.addEventListener("close", function () {
+      filmFrame.textContent = "";
+    });
+  }
+
   document.querySelectorAll(".mobile-nav a").forEach(function (link) {
     link.addEventListener("click", function () {
       var menu = link.closest("details");
