@@ -78,6 +78,17 @@ selected agents' project folders. Each fresh clone or worktree gets its own
 store. The global store and global agent folders are not part of this
 installation.
 
+New project source checkouts fetch the declared commit with depth 1 and no
+tags. Older pins are fetched directly, even when the upstream default branch
+has advanced. The checkout contains the complete tree at that commit, but not
+its history; partial clone and sparse checkout are not used. A server that
+cannot supply that exact commit through a shallow fetch causes installation to
+fail without activating the checkout or falling back to a full-history clone.
+Once installed, an unchanged pin reuses its local checkout without fetching,
+so repeated installation works offline. Existing full checkouts are retained.
+Project add/update previews and editable team sources keep their existing
+acquisition behavior.
+
 Add the following entries to your project's `.gitignore`, selecting only the
 agent folders managed by this definition:
 

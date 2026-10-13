@@ -51,6 +51,52 @@ pub fn clone_repo(url: &str, destination: &Path) -> DaloResult<()> {
     run_git_network(cwd, &["clone", "--quiet", "--", url, &destination_arg]).map(|_| ())
 }
 
+/// Acquire a complete working tree at an exact commit without its history.
+///
+/// A rejected shallow fetch fails explicitly; it never falls back to a full
+/// clone. Callers own staging and must only publish a verified checkout.
+pub(crate) fn acquire_pinned_commit(url: &str, destination: &Path, commit: &str) -> DaloResult<()> {
+    validate_remote_url(url)?;
+    if !matches!(commit.len(), 40 | 64)
+        || !commit
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(DaloError::InvalidArgument {
+            reason: "pinned acquisition requires a full lowercase Git commit ID".to_owned(),
+        });
+    }
+    let cwd = destination.parent().unwrap_or_else(|| Path::new("."));
+    preflight_clone_source(url, cwd)?;
+    fs::create_dir(destination)?;
+    if commit.len() == 64 {
+        run_git(destination, &["init", "-q", "--object-format=sha256"])?;
+    } else {
+        run_git(destination, &["init", "-q", "--object-format=sha1"])?;
+    }
+    run_git(destination, &["remote", "add", "--", "origin", url])?;
+    print_network_progress(&format!(
+        "Fetching pinned commit `{commit}` from `{}`...",
+        display_git_value(url)
+    ));
+    run_git_network(
+        destination,
+        &["fetch", "--quiet", "--depth=1", "--no-tags", "origin", commit],
+    )
+    .map_err(|error| DaloError::CheckFailed {
+        reason: format!(
+            "could not acquire pinned commit {commit} with depth 1; the server must support shallow fetches of this exact commit; no full-history fallback was attempted: {error}"
+        ),
+    })?;
+    let fetched = rev_parse(destination, "FETCH_HEAD^{commit}")?;
+    if fetched != commit {
+        return Err(DaloError::CheckFailed {
+            reason: "fetched project commit differs from declaration".to_owned(),
+        });
+    }
+    checkout_detached(destination, commit)
+}
+
 /// Check local clone sources before a later clone would mutate its destination.
 ///
 /// Remote locations remain deliberately offline here: team manifest authoring
@@ -1438,6 +1484,73 @@ mod tests {
 
         assert!(matches!(error, DaloError::UnsafeRemoteUrl));
         assert!(!destination.exists());
+    }
+
+    #[test]
+    fn pinned_acquisition_should_reject_invalid_input_before_creating_checkout() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let destination = temp.path().join("checkout");
+        for commit in ["main", "--upload-pack=bad", &"A".repeat(40)] {
+            assert!(
+                acquire_pinned_commit("https://example.invalid/repo.git", &destination, commit)
+                    .is_err()
+            );
+            assert!(!destination.exists());
+        }
+        assert!(matches!(
+            acquire_pinned_commit("ext::sh", &destination, &"0".repeat(40)),
+            Err(DaloError::UnsafeRemoteUrl)
+        ));
+        assert!(!destination.exists());
+    }
+
+    #[test]
+    fn pinned_acquisition_should_preserve_sha256_commit_ids() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let source = temp.path().join("source");
+        fs::create_dir(&source).expect("source should be created");
+        run_git(&source, &["init", "-q", "--object-format=sha256"])
+            .expect("SHA-256 source should initialize");
+        fs::write(source.join("SKILL.md"), "# SHA-256 skill\n").expect("skill should be written");
+        run_git(&source, &["add", "."]).expect("skill should stage");
+        run_git(
+            &source,
+            &[
+                "-c",
+                "user.name=Dalo Test",
+                "-c",
+                "user.email=dalo@example.invalid",
+                "-c",
+                "commit.gpgSign=false",
+                "commit",
+                "-qm",
+                "SHA-256 fixture",
+            ],
+        )
+        .expect("source should commit");
+        let commit = rev_parse_head(&source).expect("source HEAD should resolve");
+        assert_eq!(commit.len(), 64);
+        let checkout = temp.path().join("checkout");
+        acquire_pinned_commit(
+            source.to_str().expect("UTF-8 source path"),
+            &checkout,
+            &commit,
+        )
+        .expect("SHA-256 pin should restore");
+        assert_eq!(
+            rev_parse_head(&checkout).expect("HEAD should resolve"),
+            commit
+        );
+        assert_eq!(
+            fs::read(checkout.join("SKILL.md")).unwrap(),
+            b"# SHA-256 skill\n"
+        );
+        assert_eq!(
+            run_git(&checkout, &["rev-list", "--count", "HEAD"])
+                .unwrap()
+                .trim(),
+            "1"
+        );
     }
 
     #[test]
