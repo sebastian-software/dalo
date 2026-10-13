@@ -1862,12 +1862,7 @@ impl Project {
         }
         let staging = tempfile::tempdir_in(&self.store)?;
         let clone = staging.path().join("checkout");
-        source::clone_source_checkout(url, &clone)?;
-        let commit = git::resolve_manifest_revision(&clone, &declared.commit)?;
-        if commit != declared.commit {
-            return Err(invalid("resolved project commit differs from declaration"));
-        }
-        git::checkout_detached(&clone, &commit)?;
+        git::acquire_pinned_commit(url, &clone, &declared.commit)?;
         let parent = checkout.parent().expect("project checkout parent");
         let parent_relative = parent
             .strip_prefix(&self.root)

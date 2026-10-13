@@ -2348,6 +2348,137 @@ fn project_install_restores_nextjs_pinned_symlink_layout() {
 }
 
 #[test]
+fn project_install_fetches_old_and_current_pins_without_obsolete_history() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo = temp.path().join("upstream");
+    upstream(&repo);
+    // An obsolete blob must not arrive through local clone hardlinks or a
+    // full-history transport. Exercise both a historical pin and current HEAD.
+    let obsolete = repo.join("obsolete.bin");
+    let bytes = (0_u32..262_144)
+        .flat_map(|value| value.wrapping_mul(2_654_435_761).to_le_bytes())
+        .collect::<Vec<_>>();
+    fs::write(&obsolete, bytes).unwrap();
+    let history = commit_all(&repo, "large historical file");
+    let blob = git(&repo, &["rev-parse", "HEAD:obsolete.bin"]);
+    fs::remove_file(&obsolete).unwrap();
+    let older = commit_all(&repo, "remove obsolete file");
+    git(&repo, &["tag", "old-pin", &older]);
+    let original_skill = fs::read(repo.join("skills/review/SKILL.md")).unwrap();
+    let mut current_skill = original_skill.clone();
+    current_skill.extend_from_slice(b"\nAlso summarize recent changes.\n");
+    fs::write(repo.join("skills/review/SKILL.md"), &current_skill).unwrap();
+    let current = commit_all(&repo, "advance upstream");
+
+    for (name, pin, expected) in [
+        ("older", &older, &original_skill),
+        ("current", &current, &current_skill),
+    ] {
+        let project = temp.path().join(name);
+        fs::create_dir(&project).unwrap();
+        declaration_manifest(&project, &repo, pin, &["review"]);
+        dalo_command()
+            .current_dir(&project)
+            .arg("install")
+            .assert()
+            .success();
+        let checkout = project.join(".dalo/sources/shared/checkout");
+        assert_eq!(git(&checkout, &["rev-parse", "HEAD"]), *pin);
+        assert_eq!(
+            git(&checkout, &["rev-parse", "--is-shallow-repository"]),
+            "true"
+        );
+        assert_eq!(git(&checkout, &["rev-list", "--count", "HEAD"]), "1");
+        assert_eq!(git(&checkout, &["tag", "--list"]), "");
+        assert_eq!(
+            fs::read(checkout.join("skills/review/SKILL.md")).unwrap(),
+            *expected
+        );
+        for object in [&history, &blob] {
+            assert!(
+                !Command::new("git")
+                    .arg("-C")
+                    .arg(&checkout)
+                    .args(["cat-file", "-e", object])
+                    .output()
+                    .unwrap()
+                    .status
+                    .success()
+            );
+        }
+        assert!(!checkout.join("obsolete.bin").exists());
+
+        // Make the origin unavailable and verify install, audit, and health
+        // checks use only the acquired tree, preserving content-bound state.
+        let unavailable = temp.path().join("upstream-unavailable");
+        fs::rename(&repo, &unavailable).unwrap();
+        let paths = dalo::store::StorePaths::new(project.join(".dalo"));
+        let lock = dalo::catalog::read_source_lock(&paths).unwrap();
+        let approvals = dalo::store::read_approvals(&paths).unwrap();
+        for args in [
+            vec!["install"],
+            vec!["status", "--check"],
+            vec!["doctor", "--check"],
+            vec!["audit", "shared:review"],
+        ] {
+            dalo_command()
+                .current_dir(&project)
+                .args(args)
+                .assert()
+                .success();
+        }
+        assert_eq!(dalo::catalog::read_source_lock(&paths).unwrap(), lock);
+        assert_eq!(dalo::store::read_approvals(&paths).unwrap(), approvals);
+        assert_eq!(
+            fs::read(project.join(".claude/skills/review/SKILL.md")).unwrap(),
+            *expected
+        );
+        fs::rename(&unavailable, &repo).unwrap();
+    }
+}
+
+#[test]
+fn project_install_rejected_shallow_pin_is_not_activated_and_can_be_retried() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo = temp.path().join("upstream");
+    let commit = upstream(&repo);
+    let project = temp.path().join("project");
+    fs::create_dir(&project).unwrap();
+    declaration_manifest(&project, &repo, &"0".repeat(40), &["review"]);
+    dalo_command()
+        .current_dir(&project)
+        .arg("install")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "no full-history fallback was attempted",
+        ));
+    assert!(!project.join(".dalo/sources/shared/checkout").exists());
+    assert!(!project.join(".claude/skills/review").exists());
+    let paths = dalo::store::StorePaths::new(project.join(".dalo"));
+    assert!(
+        dalo::store::read_config(&paths)
+            .unwrap()
+            .sources
+            .iter()
+            .all(|source| source.id != "shared")
+    );
+    assert!(
+        dalo::catalog::read_source_lock(&paths)
+            .unwrap()
+            .catalogs
+            .is_empty()
+    );
+    declaration_manifest(&project, &repo, &commit, &["review"]);
+    dalo_command()
+        .current_dir(&project)
+        .arg("install")
+        .assert()
+        .success();
+    assert!(project.join(".claude/skills/review").is_symlink());
+}
+
+#[test]
 fn project_inventory_preserves_links_for_missing_or_symlinked_declared_closure() {
     for affected in ["review", "helper"] {
         for damage in ["missing", "directory_symlink", "metadata_symlink"] {
