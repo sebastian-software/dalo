@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.7.0](https://github.com/sebastian-software/dalo/compare/dalo-v1.6.0...dalo-v1.7.0) (2026-10-13)
+
+
+### Features
+
+* **project:** fetch pinned sources without repository history ([0512581](https://github.com/sebastian-software/dalo/commit/051258184a61c0f0e60017fe275c79954e5fd8ee))
+
+
+### Bug Fixes
+
+* **project:** support shallow acquisition with older Git ([fdf26a6](https://github.com/sebastian-software/dalo/commit/fdf26a67b5a1e72ac6daa12a4606c318ba872353))
+
 ## [1.6.0](https://github.com/sebastian-software/dalo/compare/dalo-v1.5.1...dalo-v1.6.0) (2026-10-13)
 
 
