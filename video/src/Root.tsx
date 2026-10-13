@@ -1,5 +1,7 @@
 import {Composition, Still} from 'remotion';
 import {OgImage} from './OgImage';
+import {DaloPromo} from './promo/DaloPromo';
+import {DURATION} from './promo/timeline';
 import {QuickstartVideo} from './QuickstartVideo';
 
 export const VideoRoot = () => (
@@ -12,6 +14,7 @@ export const VideoRoot = () => (
       width={1280}
       height={720}
     />
+    <Composition id="DaloPromo" component={DaloPromo} durationInFrames={DURATION} fps={30} width={1920} height={1080} />
     <Still id="DaloOg" component={OgImage} width={1200} height={630} />
   </>
 );

@@ -1,0 +1,16 @@
+{
+  "total": 55.81,
+  "props": {"matchAt": 140, "manageAt": 32},
+  "cues": [
+    {"take": "l01d_s5", "at": 0.20, "text": "Everyone on your team has their own skills, in their own versions. None of them match."},
+    {"take": "l02_s11", "at": 8.45, "text": "Meet Dalo. There's nothing new to learn. Just ask your agent."},
+    {"take": "l03d_s1", "at": 15.25, "text": "Dalo finds them, checks them, and shows you exactly what changed."},
+    {"take": "l04_s11", "at": 22.55, "text": "Your team picks the skills once, in Git. Everyone gets the same set, in Codex, Claude Code, and Cursor."},
+    {"take": "l05_s23", "at": 33.45, "text": "Underneath the conversation sits a deterministic core."},
+    {"take": "l06_s1", "at": 37.20, "text": "Every version is pinned."},
+    {"take": "l07_s23", "at": 39.10, "text": "New skills wait for your approval."},
+    {"take": "l08_s11", "at": 41.85, "text": "And Dalo only touches what it owns."},
+    {"take": "l09_s3", "at": 44.68, "trim": [0, 0.90], "text": "Dalo."},
+    {"take": "l09_s3", "at": 45.50, "trim": [0.90, null], "text": "Manage your agent's setup. Just ask."}
+  ]
+}

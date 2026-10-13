@@ -6,15 +6,21 @@
   "scripts": {
     "studio": "remotion studio src/index.ts",
     "render": "remotion render src/index.ts DaloQuickstart ../site/assets/dalo-quickstart.mp4 --codec=h264 --pixel-format=yuv420p --crf=24 --muted",
-    "render:og": "remotion still src/index.ts DaloOg ../site/assets/img/og.png --image-format=png"
+    "render:og": "remotion still src/index.ts DaloOg ../site/assets/img/og.png --image-format=png",
+    "render:promo": "sh audio/build.sh audio/cues/team.json"
   },
   "dependencies": {
     "@remotion/cli": "4.0.530",
+    "@remotion/google-fonts": "4.0.530",
+    "class-variance-authority": "0.7.1",
+    "cn": "0.4.0",
+    "culori": "4.0.2",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "remotion": "4.0.530"
   },
   "devDependencies": {
+    "@types/culori": "4.0.1",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "typescript": "5.9.3"
