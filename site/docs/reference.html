@@ -2125,13 +2125,15 @@ pin advancement reject derived catalogs; edit and review <code>dalo.toml</code> 
 Changing a catalog URL uses an explicit two-sync replacement: remove the
 declaration and sync, then add the reviewed replacement URL and sync again.</p>
 <h2 id="dalo-projecttoml"><a class="doc-anchor" href="#dalo-projecttoml"><code>dalo-project.toml</code></a></h2>
-<p>Schema version: <code>schema_version = 1</code> or <code>schema_version = 2</code>.</p>
+<p>Schema version: <code>schema_version = 1</code>, <code>schema_version = 2</code>, or
+<code>schema_version = 3</code>.</p>
 <p>The committed project declaration read by <a href="#dalo-install"><code>dalo install</code></a> and
 edited by the <code>dalo project</code> commands. <code>init</code> writes schema version 1. Schema
-version 2 adds the optional <code>approval</code> field; Dalo 1.4.0 and earlier reject
-schema version 2, so every teammate and automation needs a supporting version
-before a project opts in.</p>
-<pre><code class="language-toml">schema_version = 2
+version 2 adds the optional <code>approval</code> field. Schema version 3 adds an optional
+source <code>path</code> for a repository-relative skill directory; Dalo versions without
+schema version 3 support reject that declaration, so every teammate and
+automation needs a supporting version before a project opts in.</p>
+<pre><code class="language-toml">schema_version = 3
 approval = &quot;declaration&quot;
 targets = [&quot;claude&quot;, &quot;codex&quot;]
 
@@ -2139,6 +2141,7 @@ targets = [&quot;claude&quot;, &quot;codex&quot;]
 id = &quot;team&quot;
 url = &quot;https://github.com/example/team-skills.git&quot;
 commit = &quot;0123456789abcdef0123456789abcdef01234567&quot;
+path = &quot;skills&quot;
 skills = [&quot;review&quot;, &quot;documentation&quot;]
 </code></pre>
 <p>Fields:</p>
@@ -2151,11 +2154,11 @@ skills = [&quot;review&quot;, &quot;documentation&quot;]
 </thead>
 <tbody><tr>
 <td><code>schema_version</code></td>
-<td><code>1</code> or <code>2</code>. Other values are rejected.</td>
+<td><code>1</code>, <code>2</code>, or <code>3</code>. Other values are rejected.</td>
 </tr>
 <tr>
 <td><code>approval</code></td>
-<td>Schema version 2 only. <code>&quot;local&quot;</code> (default) keeps per-store approvals in <code>.dalo/approvals.toml</code>. <code>&quot;declaration&quot;</code> approves every explicitly selected skill and its required closure for the project store; audits still block. Any other value, or the field in schema version 1, is rejected.</td>
+<td>Schema version 2 or 3 only. <code>&quot;local&quot;</code> (default) keeps per-store approvals in <code>.dalo/approvals.toml</code>. <code>&quot;declaration&quot;</code> approves every explicitly selected skill and its required closure for the project store; audits still block. Any other value, or the field in schema version 1, is rejected.</td>
 </tr>
 <tr>
 <td><code>targets</code></td>
@@ -2174,12 +2177,17 @@ skills = [&quot;review&quot;, &quot;documentation&quot;]
 <td>Full lowercase Git commit ID. Branches and tags are resolved by <code>project add</code> and <code>project update</code>, not stored.</td>
 </tr>
 <tr>
+<td><code>source[].path</code></td>
+<td>Schema version 3 only. Repository-relative directory that contains the source skills. <code>&quot;.&quot;</code> and <code>&quot;/&quot;</code> explicitly select the repository root. If omitted, Dalo infers the shared parent of tracked <code>SKILL.md</code> files outside dot-folders. Existing skill selectors remain relative to the repository root.</td>
+</tr>
+<tr>
 <td><code>source[].skills</code></td>
 <td>Non-empty explicit selectors: stable ID, catalog name, or skill path.</td>
 </tr>
 </tbody></table></div>
-<p>Unknown fields are rejected. <code>project add</code>, <code>project update</code>, and
-<code>project remove</code> change only source entries and preserve the schema version,
+<p>Unknown fields are rejected. <code>project add --path</code> records the scope and moves
+the declaration to schema version 3. <code>project add</code> without <code>--path</code>,
+<code>project update</code>, and <code>project remove</code> preserve the existing schema version,
 the <code>approval</code> field, comments, and formatting.</p>
 <p>In both approval modes, a project store delivers only the declared selectors
 and their required closure. A plugin selection in a source&#39;s own <code>dalo.toml</code>
