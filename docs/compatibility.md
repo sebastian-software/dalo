@@ -421,15 +421,16 @@ This is recorded as
 
 ### Project declarations
 
-`dalo-project.toml` uses project schema version 1 or 2, separate from team
+`dalo-project.toml` uses project schema version 1, 2, or 3, separate from team
 manifests and machine-local store schemas. It contains target IDs and exact
 source pins, not absolute target paths or approval records. Schema version 2
 adds the optional `approval` field (`local` by default, or `declaration`); see
-[Project installations](projects.md#approval-modes). Schema version 1 keeps its
-exact meaning, and `init` still writes it.
+[Project installations](projects.md#approval-modes). Schema version 3 adds an
+optional source path to scope checkouts to a repository directory. Schema
+version 1 keeps its exact meaning, and `init` still writes it.
 
-Dalo 1.4.0 and earlier reject schema version 2 instead of guessing, so a team
-moves a declaration to schema version 2 only after every teammate, CI job, and
-automation runs a version that supports it. Later 1.x versions keep reading
-both schema versions. The [`dalo-project.toml` reference](reference.md#dalo-projecttoml)
-lists the fields.
+Dalo versions without support for a declaration's schema reject it instead of
+guessing, so a team moves a declaration to schema version 2 or 3 only after
+every teammate, CI job, and automation runs a version that supports it. Later
+1.x versions keep reading supported older schema versions. The
+[`dalo-project.toml` reference](reference.md#dalo-projecttoml) lists the fields.

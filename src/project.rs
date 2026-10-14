@@ -64,14 +64,15 @@ impl ProjectApproval {
 }
 
 /// A portable project declaration. Machine paths and approval records are
-/// never included; schema version 2 may name the approval authority.
+/// never included; schema version 2 may name the approval authority and schema
+/// version 3 may scope an external source to one repository directory.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Manifest {
     /// Project schema, independently versioned from store and team schemas.
     pub schema_version: u32,
-    /// Approval authority for the selected skills. Requires schema version 2;
-    /// absent means [`ProjectApproval::Local`].
+    /// Approval authority for the selected skills. Requires schema version 2
+    /// or 3; absent means [`ProjectApproval::Local`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub approval: Option<ProjectApproval>,
     /// Agent IDs whose project folders receive the resolved skills.
@@ -99,6 +100,11 @@ pub struct ProjectSource {
     pub url: String,
     /// Full Git commit ID; moving refs are deliberately not supported yet.
     pub commit: String,
+    /// Optional repository-relative directory containing this source's skills.
+    /// `.` and `/` explicitly name the repository root. When absent, Dalo
+    /// infers the shared parent of visible `SKILL.md` files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
     /// Explicit skill selectors, using the existing catalog selection rules.
     pub skills: Vec<String>,
 }
@@ -239,6 +245,8 @@ pub struct ProjectAddRequest<'a> {
     pub location: &'a str,
     /// Branch, tag, or commit to resolve.
     pub revision: &'a str,
+    /// Optional repository-relative directory containing the selected skills.
+    pub path: Option<&'a str>,
     /// Explicit skill selectors.
     pub skill_refs: &'a [String],
     /// Reviewed exact commit required to apply a moving ref.
@@ -353,6 +361,7 @@ fn project_add_command(
     id: &str,
     location: &str,
     revision: &str,
+    path: Option<&str>,
     skills: &[String],
     expected_commit: Option<&str>,
 ) -> String {
@@ -363,6 +372,10 @@ fn project_add_command(
         crate::error::shell_quote_argument(location),
         crate::error::shell_quote_argument(revision),
     );
+    if let Some(path) = path {
+        command.push_str(" --path ");
+        command.push_str(&crate::error::shell_quote_argument(path));
+    }
     if let Some(expected) = expected_commit {
         command.push_str(" --expect-commit ");
         command.push_str(expected);
@@ -424,6 +437,16 @@ fn catalog_selection_closure(
     closure.into_iter().collect()
 }
 
+fn canonical_project_skill_reference(candidate: &catalog::CatalogCandidate) -> String {
+    candidate.id.clone().unwrap_or_else(|| {
+        if candidate.path.is_empty() || candidate.path == "." {
+            candidate.slot_name.clone()
+        } else {
+            candidate.path.clone()
+        }
+    })
+}
+
 fn append_manifest_source(
     root: &Path,
     original_bytes: &[u8],
@@ -445,16 +468,27 @@ fn append_manifest_source(
         )));
     }
 
-    let separator = if original.is_empty() || original.ends_with("\n\n") {
-        ""
-    } else if original.ends_with('\n') {
-        "\n"
-    } else {
-        "\n\n"
-    };
-    let mut updated = String::with_capacity(original.len() + separator.len() + addition.len());
-    updated.push_str(original);
-    updated.push_str(separator);
+    let mut document = original
+        .parse::<DocumentMut>()
+        .map_err(|error| invalid(format!("invalid {MANIFEST}: {error}")))?;
+    if source.path.is_some() && current_manifest.schema_version < 3 {
+        let schema_item = document
+            .get_mut("schema_version")
+            .and_then(TomlItem::as_value_mut)
+            .ok_or_else(|| invalid(format!("{MANIFEST} has no schema_version")))?;
+        let decor = schema_item.decor().clone();
+        let mut schema_version = TomlValue::from(3);
+        *schema_version.decor_mut() = decor;
+        *schema_item = schema_version;
+    }
+    let mut updated = document.to_string();
+    if !updated.is_empty() && !updated.ends_with("\n\n") {
+        if updated.ends_with('\n') {
+            updated.push('\n');
+        } else {
+            updated.push_str("\n\n");
+        }
+    }
     updated.push_str(addition);
     let _: Manifest = toml::from_str(&updated)
         .map_err(|error| invalid(format!("project declaration update is invalid: {error}")))?;
@@ -912,12 +946,17 @@ impl Project {
                     "project `approval` requires schema_version = 2; schema_version 1 always uses local approvals",
                 ));
             }
-            1 | 2 => {}
+            1..=3 => {}
             _ => {
                 return Err(invalid(
-                    "unsupported project schema_version; expected 1 or 2",
+                    "unsupported project schema_version; expected 1, 2, or 3",
                 ));
             }
+        }
+        if manifest.schema_version < 3
+            && manifest.sources.iter().any(|source| source.path.is_some())
+        {
+            return Err(invalid("project source `path` requires schema_version = 3"));
         }
         if manifest.targets.is_empty() {
             return Err(invalid("project targets must not be empty"));
@@ -959,6 +998,9 @@ impl Project {
                     source.id
                 )));
             }
+            if let Some(path) = &source.path {
+                git::validate_project_skill_path(path)?;
+            }
         }
         Ok(manifest)
     }
@@ -971,6 +1013,7 @@ impl Project {
             id,
             location,
             revision,
+            path,
             skill_refs,
             expected_commit,
             apply,
@@ -1021,6 +1064,9 @@ impl Project {
                 "applying a branch or tag requires `--expect-commit` from the preview so a moved ref cannot change the reviewed source",
             ));
         }
+        if let Some(path) = path {
+            git::validate_project_skill_path(path)?;
+        }
 
         let declaration_url = portable_source_location(location, &self.root)?;
         let clone_url = source::resolve_source_location(location, &self.root);
@@ -1037,20 +1083,18 @@ impl Project {
             )));
         }
         git::checkout_detached(&checkout, &commit)?;
+        let scope = git::resolve_project_skill_scope(&checkout, path)?;
+        git::configure_project_sparse_checkout(&checkout, scope.as_deref())?;
         let selected = catalog::resolve_catalog_skill_references(id, &checkout, skill_refs)?;
         let canonical_skills = selected
             .iter()
-            .map(|candidate| {
-                candidate
-                    .id
-                    .clone()
-                    .unwrap_or_else(|| candidate.path.clone())
-            })
+            .map(canonical_project_skill_reference)
             .collect::<Vec<_>>();
         let new_source = ProjectSource {
             id: id.to_owned(),
             url: declaration_url.clone(),
             commit: commit.clone(),
+            path: path.map(str::to_owned),
             skills: canonical_skills,
         };
         let declaration_change = project_source_entry(&new_source)?;
@@ -1069,6 +1113,7 @@ impl Project {
             id,
             &declaration_url,
             revision,
+            path,
             skill_refs,
             (!is_full_commit_id(revision)).then_some(commit.as_str()),
         );
@@ -1165,11 +1210,16 @@ impl Project {
         }
 
         git::checkout_detached(&checkout, &declared.commit)?;
+        let old_scope = git::resolve_project_skill_scope(&checkout, declared.path.as_deref())?;
+        git::configure_project_sparse_checkout(&checkout, old_scope.as_deref())?;
         let old_inventory_metadata = catalog::catalog_inventory(&checkout, &[])?;
         let old_selection_closure =
             catalog_selection_closure(&old_inventory_metadata, id, &declared.skills);
         let old_inventory = catalog::catalog_inventory(&checkout, &old_selection_closure)?;
         git::checkout_detached(&checkout, &commit)?;
+        let candidate_scope =
+            git::resolve_project_skill_scope(&checkout, declared.path.as_deref())?;
+        git::configure_project_sparse_checkout(&checkout, candidate_scope.as_deref())?;
         let mut selection_after = if skill_refs.is_empty() {
             declared.skills.clone()
         } else {
@@ -1188,7 +1238,11 @@ impl Project {
         let mut selected = Vec::new();
         let mut blocking_reasons = Vec::new();
         for skill in &selection_after {
-            match catalog::resolve_catalog_skill_references(id, &checkout, std::slice::from_ref(skill)) {
+            match catalog::resolve_catalog_skill_references(
+                id,
+                &checkout,
+                std::slice::from_ref(skill),
+            ) {
                 Ok(mut candidates) => selected.append(&mut candidates),
                 Err(error) => blocking_reasons.push(format!(
                     "selected skill `{skill}` cannot be resolved at candidate commit {commit}: {error}"
@@ -1203,12 +1257,7 @@ impl Project {
         selected.dedup_by(|left, right| left.id == right.id && left.path == right.path);
         let canonical_selection = selected
             .iter()
-            .map(|candidate| {
-                candidate
-                    .id
-                    .clone()
-                    .unwrap_or_else(|| candidate.path.clone())
-            })
+            .map(canonical_project_skill_reference)
             .collect::<Vec<_>>();
         if blocking_reasons.is_empty() {
             selection_after = canonical_selection;
@@ -1309,6 +1358,7 @@ impl Project {
             id: declared.id.clone(),
             url: declared.url.clone(),
             commit: commit.clone(),
+            path: declared.path.clone(),
             skills: selection_after.clone(),
         };
         let declaration_change = project_source_entry(&replacement)?;
@@ -1699,6 +1749,31 @@ impl Project {
                     })?;
                 let current_head = git::rev_parse_head(&configured.path)?;
                 if current_lock.commit == declared.commit && current_head == declared.commit {
+                    self.prepare_versioned_checkout(&url, declared, &configured.path)?;
+                    let inventory =
+                        catalog::catalog_inventory(&configured.path, &configured.selection)?;
+                    let locked = source_lock
+                        .catalogs
+                        .iter_mut()
+                        .find(|entry| entry.source_id == declared.id)
+                        .expect("project source lock was checked above");
+                    if locked.selected != configured.selection || locked.inventory != inventory {
+                        locked.selected = configured.selection.clone();
+                        locked.inventory = inventory;
+                        self.persist_source_update(
+                            &paths,
+                            ProjectPersistedSnapshot {
+                                config: &config,
+                                source_lock: &original_source_lock,
+                                approvals: &original_approvals,
+                            },
+                            ProjectPersistedSnapshot {
+                                config: &config,
+                                source_lock: &source_lock,
+                                approvals: &original_approvals,
+                            },
+                        )?;
+                    }
                     configured.path
                 } else {
                     let checkout = paths
@@ -1858,11 +1933,21 @@ impl Project {
                     checkout.display()
                 )));
             }
+            let scope = git::resolve_project_skill_scope(checkout, declared.path.as_deref())?;
+            git::configure_project_sparse_checkout(checkout, scope.as_deref())?;
+            if scope.is_some() {
+                git::compact_project_sparse_index(checkout)?;
+            }
             return Ok(());
         }
         let staging = tempfile::tempdir_in(&self.store)?;
         let clone = staging.path().join("checkout");
-        git::acquire_pinned_commit(url, &clone, &declared.commit)?;
+        git::acquire_pinned_project_commit(
+            url,
+            &clone,
+            &declared.commit,
+            declared.path.as_deref(),
+        )?;
         let parent = checkout.parent().expect("project checkout parent");
         let parent_relative = parent
             .strip_prefix(&self.root)
@@ -2001,7 +2086,7 @@ mod tests {
 
         let cases = [
             (
-                "schema_version = 3\ntargets = [\"claude\"]\n",
+                "schema_version = 4\ntargets = [\"claude\"]\n",
                 "unsupported project schema_version",
             ),
             (
@@ -2047,6 +2132,10 @@ mod tests {
             (
                 "schema_version = 1\ntargets = [\"claude\"]\n\n[[source]]\nid = \"shared\"\nurl = \"https://example.com/skills.git\"\ncommit = \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\nskills = []\n",
                 "needs explicit skill selectors",
+            ),
+            (
+                "schema_version = 2\ntargets = [\"claude\"]\n\n[[source]]\nid = \"shared\"\nurl = \"https://example.com/skills.git\"\ncommit = \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\npath = \"skills\"\nskills = [\"review\"]\n",
+                "path` requires schema_version = 3",
             ),
         ];
 

@@ -55,6 +55,7 @@ pub fn clone_repo(url: &str, destination: &Path) -> DaloResult<()> {
 ///
 /// A rejected shallow fetch fails explicitly; it never falls back to a full
 /// clone. Callers own staging and must only publish a verified checkout.
+#[cfg(test)]
 pub(crate) fn acquire_pinned_commit(url: &str, destination: &Path, commit: &str) -> DaloResult<()> {
     validate_remote_url(url)?;
     if !matches!(commit.len(), 40 | 64)
@@ -100,6 +101,253 @@ pub(crate) fn acquire_pinned_commit(url: &str, destination: &Path, commit: &str)
         });
     }
     checkout_detached(destination, commit)
+}
+
+/// Acquire a pinned project source while materializing only its skill scope.
+/// When `requested_path` is absent, infer the narrowest shared directory that
+/// contains visible `SKILL.md` files. The repository must support Git's blob
+/// filter; silently retaining every blob would defeat the scoped checkout.
+pub(crate) fn acquire_pinned_project_commit(
+    url: &str,
+    destination: &Path,
+    commit: &str,
+    requested_path: Option<&str>,
+) -> DaloResult<Option<PathBuf>> {
+    validate_remote_url(url)?;
+    validate_full_pinned_commit(commit)?;
+    let cwd = destination.parent().unwrap_or_else(|| Path::new("."));
+    preflight_clone_source(url, cwd)?;
+    fs::create_dir(destination)?;
+    init_pinned_repository(destination, commit)?;
+    run_git(destination, &["remote", "add", "--", "origin", url])?;
+    print_network_progress(&format!(
+        "Fetching scoped project commit `{commit}` from `{}`...",
+        display_git_value(url)
+    ));
+    run_git_network(
+        destination,
+        &[
+            "fetch",
+            "--quiet",
+            "--depth=1",
+            "--no-tags",
+            "--filter=blob:none",
+            "origin",
+            commit,
+        ],
+    )
+    .map_err(|error| DaloError::CheckFailed {
+        reason: format!(
+            "could not acquire pinned commit {commit} with a blob-filtered depth-1 fetch; the server must support shallow fetches of this exact commit and Git blob filtering; no full-history fallback was attempted (including an unfiltered fallback): {error}"
+        ),
+    })?;
+    let fetched = rev_parse(destination, "FETCH_HEAD^{commit}")?;
+    if fetched != commit {
+        return Err(DaloError::CheckFailed {
+            reason: "fetched project commit differs from declaration".to_owned(),
+        });
+    }
+
+    let tree_paths = project_tree_paths(destination, commit)?;
+    let scope = resolve_project_skill_scope_from_paths(&tree_paths, requested_path)?;
+    configure_project_sparse_checkout(destination, scope.as_deref())?;
+    checkout_detached(destination, commit)?;
+    if scope.is_some() {
+        compact_project_sparse_index(destination)?;
+    }
+
+    if scope.is_some()
+        && has_paths_outside_scope(&tree_paths, scope.as_deref())
+        && !run_git(
+            destination,
+            &["rev-list", "--objects", "--missing=print", commit],
+        )?
+        .lines()
+        .any(|line| line.starts_with('?'))
+    {
+        return Err(DaloError::CheckFailed {
+            reason: "the Git server ignored blob filtering, so this source would retain the full repository; use a server that supports Git partial-clone filtering or set an explicit repository-root path if a full checkout is intended".to_owned(),
+        });
+    }
+
+    Ok(scope)
+}
+
+/// Resolve an explicit or inferred project skill directory from a commit tree.
+/// `.` and `/` explicitly select the repository root.
+pub(crate) fn resolve_project_skill_scope(
+    checkout: &Path,
+    requested_path: Option<&str>,
+) -> DaloResult<Option<PathBuf>> {
+    validate_remote_url(&remote_url(checkout, "origin")?)?;
+    let commit = rev_parse_head(checkout)?;
+    let tree_paths = project_tree_paths(checkout, &commit)?;
+    resolve_project_skill_scope_from_paths(&tree_paths, requested_path)
+}
+
+/// Validate a portable path value from `dalo-project.toml`.
+pub(crate) fn validate_project_skill_path(value: &str) -> DaloResult<Option<PathBuf>> {
+    if matches!(value, "." | "/") {
+        return Ok(None);
+    }
+    let bytes = value.as_bytes();
+    let has_windows_drive_prefix =
+        bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':';
+    if value.is_empty()
+        || value.contains('\\')
+        || value.starts_with('/')
+        || has_windows_drive_prefix
+    {
+        return Err(DaloError::InvalidArgument {
+            reason: format!(
+                "project source path `{value}` must be a repository-relative directory; use `.` or `/` for the repository root"
+            ),
+        });
+    }
+    let components = value.split('/').collect::<Vec<_>>();
+    if components
+        .iter()
+        .any(|component| component.is_empty() || *component == "." || *component == "..")
+    {
+        return Err(DaloError::InvalidArgument {
+            reason: format!(
+                "project source path `{value}` must not contain empty, `.` or `..` path components"
+            ),
+        });
+    }
+    Ok(Some(components.iter().collect()))
+}
+
+fn init_pinned_repository(destination: &Path, commit: &str) -> DaloResult<()> {
+    if commit.len() == 64 {
+        run_git(destination, &["init", "-q", "--object-format=sha256"])?;
+    } else {
+        // Older Git versions predate --object-format but already use SHA-1.
+        // They ignore this config key; newer versions honor the explicit format.
+        run_git(
+            destination,
+            &["-c", "init.defaultObjectFormat=sha1", "init", "-q"],
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_full_pinned_commit(commit: &str) -> DaloResult<()> {
+    if matches!(commit.len(), 40 | 64)
+        && commit
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        Ok(())
+    } else {
+        Err(DaloError::InvalidArgument {
+            reason: "pinned acquisition requires a full lowercase Git commit ID".to_owned(),
+        })
+    }
+}
+
+fn project_tree_paths(checkout: &Path, commit: &str) -> DaloResult<Vec<String>> {
+    let output = run_git(checkout, &["ls-tree", "-r", "--name-only", "-z", commit])?;
+    Ok(output
+        .split('\0')
+        .filter(|path| !path.is_empty())
+        .map(str::to_owned)
+        .collect())
+}
+
+fn resolve_project_skill_scope_from_paths(
+    paths: &[String],
+    requested_path: Option<&str>,
+) -> DaloResult<Option<PathBuf>> {
+    if let Some(requested_path) = requested_path {
+        let Some(scope) = validate_project_skill_path(requested_path)? else {
+            return Ok(None);
+        };
+        let prefix = format!("{}/", scope.to_string_lossy());
+        if !paths.iter().any(|path| path.starts_with(&prefix)) {
+            return Err(DaloError::InvalidArgument {
+                reason: format!(
+                    "project source path `{requested_path}` does not name a tracked directory in this commit; Dalo will not fall back to a full repository checkout"
+                ),
+            });
+        }
+        return Ok(Some(scope));
+    }
+
+    let skill_directories = paths
+        .iter()
+        .filter(|path| path.rsplit('/').next() == Some("SKILL.md"))
+        .filter(|path| !path.split('/').any(|component| component.starts_with('.')))
+        .map(|path| {
+            path.split('/')
+                .take(path.split('/').count().saturating_sub(1))
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let Some(first) = skill_directories.first() else {
+        return Err(DaloError::InvalidArgument {
+            reason: "no `SKILL.md` files were found outside dot-folders; set `source.path = \".\"` to use the repository root or point `source.path` at the skill directory".to_owned(),
+        });
+    };
+    let mut common = first.clone();
+    for candidate in skill_directories.iter().skip(1) {
+        let shared = common
+            .iter()
+            .zip(candidate)
+            .take_while(|(left, right)| left == right)
+            .count();
+        common.truncate(shared);
+    }
+    if common.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(common.iter().collect()))
+    }
+}
+
+pub(crate) fn configure_project_sparse_checkout(
+    checkout: &Path,
+    scope: Option<&Path>,
+) -> DaloResult<()> {
+    let Some(scope) = scope else {
+        match run_git(checkout, &["config", "--bool", "core.sparseCheckout"]) {
+            Ok(enabled) if enabled.trim() == "true" => {
+                run_git(checkout, &["sparse-checkout", "disable"])?;
+            }
+            Ok(_) => {}
+            Err(DaloError::CommandFailed { status, .. }) if status == "1" => {}
+            Err(error) => return Err(error),
+        }
+        return Ok(());
+    };
+    run_git(checkout, &["sparse-checkout", "init", "--no-cone"])?;
+    let mut escaped_scope = String::new();
+    for character in scope.to_string_lossy().chars() {
+        if matches!(character, '*' | '?' | '[' | '\\') {
+            escaped_scope.push('\\');
+        }
+        escaped_scope.push(character);
+    }
+    let pattern = format!("/{escaped_scope}/");
+    run_git(
+        checkout,
+        &["sparse-checkout", "set", "--no-cone", "--", &pattern],
+    )?;
+    Ok(())
+}
+
+/// Use Git's path-compressed index format after a sparse project checkout.
+pub(crate) fn compact_project_sparse_index(checkout: &Path) -> DaloResult<()> {
+    run_git(checkout, &["update-index", "--index-version=4"]).map(|_| ())
+}
+
+fn has_paths_outside_scope(paths: &[String], scope: Option<&Path>) -> bool {
+    let Some(scope) = scope else {
+        return false;
+    };
+    let prefix = format!("{}/", scope.to_string_lossy());
+    paths.iter().any(|path| !path.starts_with(&prefix))
 }
 
 /// Check local clone sources before a later clone would mutate its destination.
@@ -1507,6 +1755,52 @@ mod tests {
             Err(DaloError::UnsafeRemoteUrl)
         ));
         assert!(!destination.exists());
+    }
+
+    #[test]
+    fn project_skill_scope_should_infer_common_visible_parent_and_validate_paths() {
+        let paths = vec![
+            ".agents/skills/internal/SKILL.md".to_owned(),
+            "skills/one/SKILL.md".to_owned(),
+            "skills/two/SKILL.md".to_owned(),
+            "skills/readme.md".to_owned(),
+        ];
+        assert_eq!(
+            resolve_project_skill_scope_from_paths(&paths, None).unwrap(),
+            Some(PathBuf::from("skills"))
+        );
+        assert_eq!(
+            resolve_project_skill_scope_from_paths(&paths, Some("skills")).unwrap(),
+            Some(PathBuf::from("skills"))
+        );
+        assert_eq!(
+            resolve_project_skill_scope_from_paths(&["SKILL.md".to_owned()], None).unwrap(),
+            None,
+            "a root-level skill makes the repository root the inferred scope"
+        );
+        assert_eq!(
+            validate_project_skill_path(".").unwrap(),
+            None,
+            "dot explicitly selects the repository root"
+        );
+        assert_eq!(
+            validate_project_skill_path("/").unwrap(),
+            None,
+            "slash explicitly selects the repository root"
+        );
+        for invalid in [
+            "",
+            "/skills",
+            "C:/skills",
+            "skills/../other",
+            "skills//other",
+            "skills\\other",
+        ] {
+            assert!(
+                validate_project_skill_path(invalid).is_err(),
+                "`{invalid}` should be rejected"
+            );
+        }
     }
 
     #[test]

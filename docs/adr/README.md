@@ -15,6 +15,7 @@ context, the decision in present tense, and the consequences.
 | [0009](0009-explicit-project-scope.md) | Project Discovery and Explicit Scope Overrides | [Issue 851](https://github.com/sebastian-software/dalo/issues/851) |
 | [0010](0010-project-declarations-as-approval-authority.md) | Project Declarations as Approval Authority | [Issue 939](https://github.com/sebastian-software/dalo/issues/939) |
 | [0011](0011-verified-release-binaries.md) | Verified Release Binaries Declared in Skill Frontmatter | [RFC 0006](../rfcs/0006-verified-release-binaries.md) |
+| [0012](0012-scoped-project-source-checkouts.md) | Scoped Project Source Checkouts | — |
 
 [`docs/rfcs/`](../rfcs/) keeps the long-form proposals these records summarize.
 An RFC explains the reasoning and the rejected alternatives; the ADR is the
