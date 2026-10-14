@@ -782,10 +782,13 @@ fn resolve_candidate_reference(
 }
 
 fn canonical_selection(candidate: &CatalogCandidate) -> String {
-    candidate
-        .id
-        .clone()
-        .unwrap_or_else(|| candidate.path.clone())
+    candidate.id.clone().unwrap_or_else(|| {
+        if candidate.path.is_empty() || candidate.path == "." {
+            candidate.slot_name.clone()
+        } else {
+            candidate.path.clone()
+        }
+    })
 }
 
 fn selection_matches_candidate(selection: &str, candidate: &CatalogCandidate) -> bool {

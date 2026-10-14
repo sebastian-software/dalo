@@ -383,6 +383,7 @@ pub fn migrate(root: &Path, apply: bool) -> DaloResult<MigrationReport> {
                     id: format!("imported-{}", i + 1),
                     url,
                     commit,
+                    path: None,
                     skills,
                 })
                 .collect(),

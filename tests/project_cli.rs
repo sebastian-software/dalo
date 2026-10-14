@@ -41,7 +41,33 @@ fn upstream(root: &Path) -> String {
             "fixture",
         ],
     );
+    git(root, &["config", "uploadpack.allowFilter", "true"]);
     git(root, &["rev-parse", "HEAD"])
+}
+
+fn scoped_upstream(root: &Path) -> String {
+    let _ = upstream(root);
+    fs::create_dir_all(root.join("skills/other")).unwrap();
+    fs::write(
+        root.join("skills/other/SKILL.md"),
+        "---\nname: other\ndescription: Another project skill.\n---\n\nRead another guide.\n",
+    )
+    .unwrap();
+    fs::create_dir_all(root.join(".agents/skills/internal")).unwrap();
+    fs::write(
+        root.join(".agents/skills/internal/SKILL.md"),
+        "---\nname: internal\ndescription: Internal development skill.\n---\n\nUse internally.\n",
+    )
+    .unwrap();
+    fs::create_dir_all(root.join("apps/web")).unwrap();
+    fs::write(root.join("apps/web/package.json"), "{}\n").unwrap();
+    fs::write(root.join("README.md"), "Project overview.\n").unwrap();
+    fs::write(
+        root.join("apps/web/large-generated-file.bin"),
+        vec![b'x'; 1_000_000],
+    )
+    .unwrap();
+    commit_all(root, "add unrelated monorepo content")
 }
 
 fn commit_all(root: &Path, message: &str) -> String {
@@ -307,6 +333,108 @@ fn install_restores_exact_commits_in_fresh_projects_and_requires_local_approval(
             "My local changes"
         );
     }
+}
+
+#[test]
+fn project_sources_materialize_only_the_declared_or_inferred_skill_scope() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo = temp.path().join("upstream");
+    let commit = scoped_upstream(&repo);
+
+    for (name, declared_path) in [("explicit", Some("skills")), ("inferred", None)] {
+        let project = temp.path().join(name);
+        fs::create_dir(&project).unwrap();
+        let path_field = declared_path
+            .map(|path| format!("path = {path:?}\n"))
+            .unwrap_or_default();
+        fs::write(
+            project.join("dalo-project.toml"),
+            format!(
+                "schema_version = 3\napproval = \"declaration\"\ntargets = [\"claude\"]\n\n[[source]]\nid = \"shared\"\nurl = {:?}\ncommit = {commit:?}\n{path_field}skills = [\"review\"]\n",
+                repo.to_str().unwrap(),
+            ),
+        )
+        .unwrap();
+
+        dalo_command()
+            .arg("--project")
+            .arg(&project)
+            .arg("install")
+            .assert()
+            .success();
+
+        let checkout = project.join(".dalo/sources/shared/checkout");
+        assert!(checkout.join("skills/review/SKILL.md").is_file());
+        assert!(checkout.join("skills/other/SKILL.md").is_file());
+        assert!(!checkout.join(".agents").exists());
+        assert!(!checkout.join("apps").exists());
+        assert!(!checkout.join("README.md").exists());
+        assert!(
+            git(
+                &checkout,
+                &["rev-list", "--objects", "--missing=print", "HEAD"]
+            )
+            .lines()
+            .any(|line| line.starts_with('?')),
+            "unselected blobs should remain unmaterialized"
+        );
+    }
+
+    let project = temp.path().join("invalid-path");
+    fs::create_dir(&project).unwrap();
+    fs::write(
+        project.join("dalo-project.toml"),
+        format!(
+            "schema_version = 3\ntargets = [\"claude\"]\n\n[[source]]\nid = \"shared\"\nurl = {:?}\ncommit = {commit:?}\npath = \"missing\"\nskills = [\"review\"]\n",
+            repo.to_str().unwrap(),
+        ),
+    )
+    .unwrap();
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .arg("install")
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "does not name a tracked directory",
+        ));
+    assert!(!project.join(".dalo/sources/shared/checkout").exists());
+}
+
+#[test]
+fn project_install_applies_a_new_scope_to_an_existing_clean_checkout() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo = temp.path().join("upstream");
+    let commit = scoped_upstream(&repo);
+    let project = temp.path().join("project");
+    fs::create_dir(&project).unwrap();
+    let manifest_path = project.join("dalo-project.toml");
+    let declaration = |path: &str| {
+        format!(
+            "schema_version = 3\napproval = \"declaration\"\ntargets = [\"claude\"]\n\n[[source]]\nid = \"shared\"\nurl = {:?}\ncommit = {commit:?}\npath = {path:?}\nskills = [\"review\"]\n",
+            repo.to_str().unwrap(),
+        )
+    };
+    fs::write(&manifest_path, declaration(".")).unwrap();
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .arg("install")
+        .assert()
+        .success();
+
+    let checkout = project.join(".dalo/sources/shared/checkout");
+    assert!(checkout.join("apps/web/package.json").exists());
+    fs::write(&manifest_path, declaration("skills")).unwrap();
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .arg("install")
+        .assert()
+        .success();
+    assert!(checkout.join("skills/review/SKILL.md").is_file());
+    assert!(!checkout.join("apps").exists());
 }
 
 #[test]
@@ -643,6 +771,35 @@ fn project_add_blocks_changed_refs_and_nonportable_local_sources_without_writes(
         .stderr(predicates::str::contains("outside this project"));
     assert_eq!(fs::read(&manifest_path).unwrap(), original_manifest);
     assert!(!project.join(".dalo").exists());
+}
+
+#[test]
+fn project_add_can_record_a_trusted_path_scope_and_bump_schema_version() {
+    let temp = tempfile::tempdir().unwrap();
+    let project = temp.path().join("project");
+    fs::create_dir(&project).unwrap();
+    let source = project.join("skills");
+    let commit = upstream(&source);
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .arg("init")
+        .assert()
+        .success();
+
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .args(["project", "add", "community", "skills", "--ref"])
+        .arg(&commit)
+        .args(["--path", "skills", "--skill", "review", "--apply"])
+        .assert()
+        .success();
+
+    let manifest = fs::read_to_string(project.join("dalo-project.toml")).unwrap();
+    assert!(manifest.starts_with("schema_version = 3\n"));
+    assert!(manifest.contains("path = \"skills\""));
+    assert!(manifest.contains("skills = [\"skills/review\"]"));
 }
 
 #[test]
@@ -2287,9 +2444,11 @@ fn project_install_restores_nextjs_pinned_symlink_layout() {
     }
     git(&nextjs, &["init"]);
     let nextjs_commit = commit_all(&nextjs, "pinned Next.js discovery layout");
+    git(&nextjs, &["config", "uploadpack.allowFilter", "true"]);
     write_project_skill(&react, "react-best-practices", "");
     git(&react, &["init"]);
     let react_commit = commit_all(&react, "selected React skill");
+    git(&react, &["config", "uploadpack.allowFilter", "true"]);
     let inventory = dalo::inventory::scan_source("nextjs", &nextjs).unwrap();
     assert_eq!(inventory.warnings.len(), 25);
     assert!(
@@ -2301,7 +2460,7 @@ fn project_install_restores_nextjs_pinned_symlink_layout() {
     let project = temp.path().join("project");
     fs::create_dir(&project).unwrap();
     fs::write(project.join("dalo-project.toml"), format!(
-        "schema_version = 2\napproval = \"declaration\"\ntargets = [\"claude\", \"codex\"]\n\n[[source]]\nid = \"nextjs\"\nurl = {:?}\ncommit = {nextjs_commit:?}\nskills = [\"skills/next-bundle-optimizer\", \"skills/next-cache-components-adoption\", \"skills/next-cache-components-optimizer\"]\n\n[[source]]\nid = \"vercel-react\"\nurl = {:?}\ncommit = {react_commit:?}\nskills = [\"skills/react-best-practices\"]\n",
+        "schema_version = 3\napproval = \"declaration\"\ntargets = [\"claude\", \"codex\"]\n\n[[source]]\nid = \"nextjs\"\nurl = {:?}\ncommit = {nextjs_commit:?}\npath = \".\"\nskills = [\"skills/next-bundle-optimizer\", \"skills/next-cache-components-adoption\", \"skills/next-cache-components-optimizer\"]\n\n[[source]]\nid = \"vercel-react\"\nurl = {:?}\ncommit = {react_commit:?}\nskills = [\"skills/react-best-practices\"]\n",
         nextjs.to_str().unwrap(), react.to_str().unwrap())).unwrap();
     for _ in 0..2 {
         let install = dalo_command()
@@ -2354,13 +2513,14 @@ fn project_install_fetches_old_and_current_pins_without_obsolete_history() {
     upstream(&repo);
     // An obsolete blob must not arrive through local clone hardlinks or a
     // full-history transport. Exercise both a historical pin and current HEAD.
-    let obsolete = repo.join("obsolete.bin");
+    let obsolete = repo.join("packages/archive/obsolete.bin");
+    fs::create_dir_all(obsolete.parent().unwrap()).unwrap();
     let bytes = (0_u32..262_144)
         .flat_map(|value| value.wrapping_mul(2_654_435_761).to_le_bytes())
         .collect::<Vec<_>>();
     fs::write(&obsolete, bytes).unwrap();
     let history = commit_all(&repo, "large historical file");
-    let blob = git(&repo, &["rev-parse", "HEAD:obsolete.bin"]);
+    let blob = git(&repo, &["rev-parse", "HEAD:packages/archive/obsolete.bin"]);
     fs::remove_file(&obsolete).unwrap();
     let older = commit_all(&repo, "remove obsolete file");
     git(&repo, &["tag", "old-pin", &older]);
@@ -2394,16 +2554,15 @@ fn project_install_fetches_old_and_current_pins_without_obsolete_history() {
             fs::read(checkout.join("skills/review/SKILL.md")).unwrap(),
             *expected
         );
+        let available_objects = git(
+            &checkout,
+            &["cat-file", "--batch-all-objects", "--batch-check"],
+        );
         for object in [&history, &blob] {
             assert!(
-                !Command::new("git")
-                    .arg("-C")
-                    .arg(&checkout)
-                    .args(["cat-file", "-e", object])
-                    .output()
-                    .unwrap()
-                    .status
-                    .success()
+                !available_objects
+                    .lines()
+                    .any(|line| line.split_whitespace().next() == Some(object.as_str()))
             );
         }
         assert!(!checkout.join("obsolete.bin").exists());
@@ -2927,7 +3086,7 @@ fn project_editors_preserve_schema_2_and_the_approval_mode() {
 }
 
 #[test]
-fn approval_outside_schema_2_and_unknown_modes_fail_closed() {
+fn approval_outside_supported_schemas_and_unknown_modes_fail_closed() {
     let temp = tempfile::tempdir().unwrap();
     let repo = temp.path().join("upstream");
     let commit = upstream(&repo);
@@ -2943,7 +3102,7 @@ fn approval_outside_schema_2_and_unknown_modes_fail_closed() {
             "unknown variant `everyone`",
         ),
         (
-            "schema_version = 3\napproval = \"declaration\"\n",
+            "schema_version = 4\napproval = \"declaration\"\n",
             "unsupported project schema_version",
         ),
     ] {
@@ -3148,7 +3307,7 @@ fn project_install_withdraws_undeclared_skills_and_stale_plugin_projections() {
     fs::write(
         project.join("dalo-project.toml"),
         format!(
-            "schema_version = 2\napproval = \"declaration\"\ntargets = [\"claude\", \"codex\"]\n\n[[source]]\nid = \"shared\"\nurl = {:?}\ncommit = {commit:?}\nskills = [\"review\"]\n",
+            "schema_version = 3\napproval = \"declaration\"\ntargets = [\"claude\", \"codex\"]\n\n[[source]]\nid = \"shared\"\nurl = {:?}\ncommit = {commit:?}\npath = \".\"\nskills = [\"review\"]\n",
             repo.to_str().unwrap()
         ),
     )

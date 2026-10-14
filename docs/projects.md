@@ -71,6 +71,14 @@ Schema version 2 adds an optional top-level `approval` field that chooses who
 approves the selected skills: `"local"` (the default, as in schema version 1)
 or `"declaration"`. See [Approval modes](#approval-modes).
 
+Schema version 3 adds an optional `path` to each source. It names the
+repository-relative directory that contains the source's skills. `"."` or
+`"/"` explicitly selects the repository root. When `path` is omitted, Dalo
+finds the shared parent of tracked `SKILL.md` files outside dot-folders. Skill
+selectors keep their existing repository-relative meaning. `project add
+--path` records an explicit scope and upgrades the declaration to schema
+version 3; omitting the option keeps automatic detection.
+
 `init` creates the definition only and never replaces an existing one; it
 writes schema version 1. `install` creates `.dalo/` inside the project, clones
 the declared sources at their exact commits, and links approved skills into the
@@ -80,14 +88,16 @@ installation.
 
 New project source checkouts fetch the declared commit with depth 1 and no
 tags. Older pins are fetched directly, even when the upstream default branch
-has advanced. The checkout contains the complete tree at that commit, but not
-its history; partial clone and sparse checkout are not used. A server that
-cannot supply that exact commit through a shallow fetch causes installation to
-fail without activating the checkout or falling back to a full-history clone.
-Once installed, an unchanged pin reuses its local checkout without fetching,
-so repeated installation works offline. Existing full checkouts are retained.
-Project add/update previews and editable team sources keep their existing
-acquisition behavior.
+has advanced. Dalo keeps the commit and tree metadata, then uses sparse checkout
+to materialize only the selected source directory; file contents outside that
+directory remain un-fetched. Git servers must support blob filtering. If a
+server ignores the filter, installation fails without retaining a full copy or
+falling back to an unfiltered clone. An explicit repository-root path requests
+a full working tree. Once installed, an unchanged pin reuses its local checkout
+without fetching, so repeated installation works offline. A clean existing
+checkout is narrowed when its declared scope changes; dirty checkouts still
+fail closed. Project add/update previews and editable team sources keep their
+existing acquisition behavior.
 
 Add the following entries to your project's `.gitignore`, selecting only the
 agent folders managed by this definition:

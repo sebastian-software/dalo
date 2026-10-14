@@ -137,6 +137,9 @@ pub struct ProjectAddArgs {
     /// Branch, tag, or commit to resolve (default: the source's checked-out HEAD).
     #[arg(long = "ref", default_value = "HEAD")]
     pub revision: String,
+    /// Repository-relative directory containing skills; omit to infer it from `SKILL.md` files.
+    #[arg(long, value_name = "PATH")]
+    pub path: Option<String>,
     /// Explicit skill selector. Repeat to add several skills.
     #[arg(long = "skill", value_name = "SKILL", required = true)]
     pub skills: Vec<String>,
@@ -279,7 +282,7 @@ pub enum Command {
     Migrate(MigrationArgs),
     /// Add, update, or remove sources in the current project's declaration.
     #[command(
-        after_help = "Project commands require a `dalo-project.toml` in the discovered project. Preview first; a moving ref requires the exact commit from that preview when applying.\n\nExamples:\n  dalo project add team https://github.com/example/skills.git --ref main --skill review\n  dalo project add team https://github.com/example/skills.git --ref main --skill review --expect-commit <previewed-sha> --apply\n  dalo --project /path/to/project --json project add team ./skills --skill review\n  dalo project remove team --skill skills/review\n  dalo project remove team --apply\n  dalo install"
+        after_help = "Project commands require a `dalo-project.toml` in the discovered project. Preview first; a moving ref requires the exact commit from that preview when applying. If a source is a monorepo, pass `--path` to scope its checkout; otherwise Dalo infers the shared directory containing visible `SKILL.md` files.\n\nExamples:\n  dalo project add team https://github.com/example/skills.git --ref main --skill review\n  dalo project add team https://github.com/example/monorepo.git --ref main --path skills --skill review\n  dalo project add team https://github.com/example/skills.git --ref main --skill review --expect-commit <previewed-sha> --apply\n  dalo --project /path/to/project --json project add team ./skills --skill review\n  dalo project remove team --skill skills/review\n  dalo project remove team --apply\n  dalo install"
     )]
     Project(ProjectCommand),
     /// Submit one local skill to a team repository as a GitHub pull request.
@@ -1726,6 +1729,7 @@ fn run_project_add(
         id: &args.id,
         location: &args.location,
         revision: &args.revision,
+        path: args.path.as_deref(),
         skill_refs: &args.skills,
         expected_commit: args.expect_commit.as_deref(),
         apply: args.apply,

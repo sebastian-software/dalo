@@ -1830,16 +1830,18 @@ declaration and sync, then add the reviewed replacement URL and sync again.
 
 ## `dalo-project.toml`
 
-Schema version: `schema_version = 1` or `schema_version = 2`.
+Schema version: `schema_version = 1`, `schema_version = 2`, or
+`schema_version = 3`.
 
 The committed project declaration read by [`dalo install`](#dalo-install) and
 edited by the `dalo project` commands. `init` writes schema version 1. Schema
-version 2 adds the optional `approval` field; Dalo 1.4.0 and earlier reject
-schema version 2, so every teammate and automation needs a supporting version
-before a project opts in.
+version 2 adds the optional `approval` field. Schema version 3 adds an optional
+source `path` for a repository-relative skill directory; Dalo versions without
+schema version 3 support reject that declaration, so every teammate and
+automation needs a supporting version before a project opts in.
 
 ```toml
-schema_version = 2
+schema_version = 3
 approval = "declaration"
 targets = ["claude", "codex"]
 
@@ -1847,6 +1849,7 @@ targets = ["claude", "codex"]
 id = "team"
 url = "https://github.com/example/team-skills.git"
 commit = "0123456789abcdef0123456789abcdef01234567"
+path = "skills"
 skills = ["review", "documentation"]
 ```
 
@@ -1854,16 +1857,18 @@ Fields:
 
 | Field | Meaning |
 | --- | --- |
-| `schema_version` | `1` or `2`. Other values are rejected. |
-| `approval` | Schema version 2 only. `"local"` (default) keeps per-store approvals in `.dalo/approvals.toml`. `"declaration"` approves every explicitly selected skill and its required closure for the project store; audits still block. Any other value, or the field in schema version 1, is rejected. |
+| `schema_version` | `1`, `2`, or `3`. Other values are rejected. |
+| `approval` | Schema version 2 or 3 only. `"local"` (default) keeps per-store approvals in `.dalo/approvals.toml`. `"declaration"` approves every explicitly selected skill and its required closure for the project store; audits still block. Any other value, or the field in schema version 1, is rejected. |
 | `targets` | Non-empty list of `claude`, `codex`, `opencode`, `hermes`, or `openclaw`, each with a distinct project folder. |
 | `source[].id` | Source ID unique in the project; `local` is reserved. |
 | `source[].url` | Git URL or a project-relative local repository path. Embedded credentials are rejected. |
 | `source[].commit` | Full lowercase Git commit ID. Branches and tags are resolved by `project add` and `project update`, not stored. |
+| `source[].path` | Schema version 3 only. Repository-relative directory that contains the source skills. `"."` and `"/"` explicitly select the repository root. If omitted, Dalo infers the shared parent of tracked `SKILL.md` files outside dot-folders. Existing skill selectors remain relative to the repository root. |
 | `source[].skills` | Non-empty explicit selectors: stable ID, catalog name, or skill path. |
 
-Unknown fields are rejected. `project add`, `project update`, and
-`project remove` change only source entries and preserve the schema version,
+Unknown fields are rejected. `project add --path` records the scope and moves
+the declaration to schema version 3. `project add` without `--path`,
+`project update`, and `project remove` preserve the existing schema version,
 the `approval` field, comments, and formatting.
 
 In both approval modes, a project store delivers only the declared selectors
