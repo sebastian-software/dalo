@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.8.0](https://github.com/sebastian-software/dalo/compare/dalo-v1.7.0...dalo-v1.8.0) (2026-10-14)
+
+
+### Features
+
+* **project:** scope project source checkouts ([1ed7e35](https://github.com/sebastian-software/dalo/commit/1ed7e355c0740ce50750d7937b43a3700ff3011b))
+
+
+### Bug Fixes
+
+* **ci:** refresh docs and update rustls ([826e5ef](https://github.com/sebastian-software/dalo/commit/826e5ef50939fbde0d394dc6bfa1fbe7138d0b15))
+
 ## [1.7.0](https://github.com/sebastian-software/dalo/compare/dalo-v1.6.0...dalo-v1.7.0) (2026-10-13)
 
 
