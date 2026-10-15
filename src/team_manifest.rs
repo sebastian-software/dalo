@@ -23,8 +23,10 @@ use crate::store::{self, StorePaths};
 
 /// Team manifest filename at the root of a team source.
 pub const TEAM_MANIFEST_FILE: &str = "dalo.toml";
-/// Current team manifest schema version.
+/// Default team manifest schema version for new manifests without scoped catalogs.
 pub const TEAM_MANIFEST_SCHEMA_VERSION: u32 = 1;
+/// Schema version that adds scoped catalog checkouts.
+pub const SCOPED_CATALOG_SCHEMA_VERSION: u32 = 2;
 /// Safety cap for reading a team `dalo.toml`. A tracked manifest is small even
 /// with many catalogs; a multi-megabyte file shipped in a team repo is treated
 /// as hostile rather than parsed, mirroring the skill-frontmatter read cap.
@@ -110,6 +112,9 @@ pub struct ManifestCatalog {
     /// alias; `version` is the preferred user-facing spelling.
     #[serde(alias = "ref")]
     pub version: String,
+    /// Repository-relative directory to materialize from a shallow, blob-filtered checkout.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
     /// Include/exclude filters. Empty means all. If any `+` or bare entry
     /// exists, the base set is empty; otherwise the base set is all. `-`
     /// always wins.
@@ -128,6 +133,8 @@ pub struct ManifestCatalog {
 pub struct AddTeamCatalogOptions<'a> {
     /// Git commit, tag, or ref to pin.
     pub version: &'a str,
+    /// Optional repository-relative skill directory.
+    pub path: Option<&'a str>,
     /// Include/exclude filters.
     pub skills: &'a [String],
     /// Optional global resolver priority.
@@ -267,16 +274,31 @@ pub struct ManifestRollback {
     original_lock: catalog::SourceLock,
     original_approvals: store::ApprovalsFile,
     checkout_commits: Vec<(PathBuf, String)>,
+    replaced_checkouts: Vec<CheckoutReplacement>,
     new_source_ids: Vec<String>,
 }
 
 impl ManifestRollback {
+    /// The resolved lock now refers to the replacement checkout, so only its
+    /// old, clean copy can be discarded.
+    pub fn commit(self) {
+        cleanup_replaced_checkouts(&self.replaced_checkouts);
+    }
+
     /// Restore manifest-owned state after a later sync boundary fails.
     pub fn rollback(self, paths: &StorePaths) -> DaloResult<()> {
         let mut errors = Vec::new();
         for (checkout, commit) in self.checkout_commits.iter().rev() {
             if let Err(error) = git::checkout_detached(checkout, commit) {
                 errors.push(format!("checkout `{}`: {error}", checkout.display()));
+            }
+        }
+        for replacement in self.replaced_checkouts.iter().rev() {
+            if let Err(error) = replacement.rollback() {
+                errors.push(format!(
+                    "replaced checkout `{}`: {error}",
+                    replacement.checkout.display()
+                ));
             }
         }
         for source_id in &self.new_source_ids {
@@ -419,6 +441,14 @@ pub fn add_team_catalog(
     git::validate_remote_url(&location)?;
     git::preflight_clone_source(&location, manifest_root)?;
     git::validate_manifest_revision(options.version)?;
+    if let Some(path) = options.path {
+        if git::validate_project_skill_path(path)?.is_none() {
+            return Err(DaloError::InvalidArgument {
+                reason: "team catalog path must name a repository subdirectory".to_owned(),
+            });
+        }
+        git::validate_full_pinned_commit(options.version)?;
+    }
     validate_filters(options.skills)?;
     let namespace = source::validate_source_namespace(options.namespace)?;
     let mut report = mutate_team_manifest(
@@ -436,10 +466,14 @@ pub fn add_team_catalog(
                 id: id.to_owned(),
                 url: url.to_owned(),
                 version: options.version.to_owned(),
+                path: options.path.map(str::to_owned),
                 skills: deduplicate_filters(options.skills),
                 priority: options.priority,
                 namespace,
             });
+            if options.path.is_some() {
+                manifest.schema_version = SCOPED_CATALOG_SCHEMA_VERSION;
+            }
             manifest
                 .catalogs
                 .sort_by(|left, right| left.id.cmp(&right.id));
@@ -918,6 +952,19 @@ fn preview_derived_source(
         .iter()
         .find(|candidate| candidate.id == source_id)
     {
+        if let Some(scope) = declaration.path.as_deref() {
+            if !git::scoped_catalog_checkout_matches(&existing.path, &declaration.version, scope)? {
+                return Err(dry_run_requires_sync(
+                    source_id,
+                    "scoped checkout needs acquisition",
+                ));
+            }
+        } else if git::scoped_catalog_checkout_path(&existing.path)?.is_some() {
+            return Err(dry_run_requires_sync(
+                source_id,
+                "scoped `path` was removed",
+            ));
+        }
         return Ok(existing.clone());
     }
     if let Some(legacy) = config.sources.iter().find(|candidate| {
@@ -962,6 +1009,7 @@ pub fn reconcile_team_manifests(
     let mut expected = BTreeSet::new();
     let mut configured = Vec::new();
     let mut checkout_commits = Vec::new();
+    let mut replaced_checkouts = Vec::new();
     let mut new_source_ids = Vec::new();
 
     for team in &team_sources {
@@ -992,6 +1040,7 @@ pub fn reconcile_team_manifests(
                     Ok(reconciled) => reconciled,
                     Err(error) => {
                         rollback_checkouts(&checkout_commits);
+                        rollback_replaced_checkouts(&replaced_checkouts);
                         cleanup_removed_checkouts(paths, &new_source_ids);
                         if !checkout_existed {
                             cleanup_removed_checkouts(paths, std::slice::from_ref(&source_id));
@@ -1002,6 +1051,9 @@ pub fn reconcile_team_manifests(
             if let Some(previous) = reconciled.previous_commit {
                 checkout_commits.push((reconciled.source.path.clone(), previous));
             }
+            if let Some(replacement) = reconciled.replaced_checkout {
+                replaced_checkouts.push(replacement);
+            }
             if reconciled.new_checkout {
                 new_source_ids.push(reconciled.source.id.clone());
             }
@@ -1009,6 +1061,7 @@ pub fn reconcile_team_manifests(
                 upsert_derived_source(&mut config, reconciled.source.clone(), team, declaration)
             {
                 rollback_checkouts(&checkout_commits);
+                rollback_replaced_checkouts(&replaced_checkouts);
                 cleanup_removed_checkouts(paths, &new_source_ids);
                 return Err(error);
             }
@@ -1049,6 +1102,7 @@ pub fn reconcile_team_manifests(
         &approvals,
     ) {
         rollback_checkouts(&checkout_commits);
+        rollback_replaced_checkouts(&replaced_checkouts);
         cleanup_removed_checkouts(paths, &new_source_ids);
         return Err(error);
     }
@@ -1063,6 +1117,7 @@ pub fn reconcile_team_manifests(
             original_lock,
             original_approvals,
             checkout_commits,
+            replaced_checkouts,
             new_source_ids,
         },
     ))
@@ -1071,6 +1126,37 @@ pub fn reconcile_team_manifests(
 fn rollback_checkouts(checkouts: &[(PathBuf, String)]) {
     for (checkout, commit) in checkouts.iter().rev() {
         let _ = git::checkout_detached(checkout, commit);
+    }
+}
+
+#[derive(Debug, Clone)]
+struct CheckoutReplacement {
+    checkout: PathBuf,
+    backup_dir: PathBuf,
+}
+
+impl CheckoutReplacement {
+    fn rollback(&self) -> DaloResult<()> {
+        let replacement = self.backup_dir.join("replacement");
+        fs::rename(&self.checkout, &replacement)?;
+        if let Err(error) = fs::rename(self.backup_dir.join("checkout"), &self.checkout) {
+            let _ = fs::rename(&replacement, &self.checkout);
+            return Err(error.into());
+        }
+        fs::remove_dir_all(&self.backup_dir)?;
+        Ok(())
+    }
+}
+
+fn rollback_replaced_checkouts(replacements: &[CheckoutReplacement]) {
+    for replacement in replacements.iter().rev() {
+        let _ = replacement.rollback();
+    }
+}
+
+fn cleanup_replaced_checkouts(replacements: &[CheckoutReplacement]) {
+    for replacement in replacements {
+        let _ = fs::remove_dir_all(&replacement.backup_dir);
     }
 }
 
@@ -1100,11 +1186,14 @@ pub fn read_manifest(path: &Path) -> DaloResult<Option<TeamManifest>> {
             path: path.to_path_buf(),
             reason: error.to_string(),
         })?;
-    if probe.schema_version != TEAM_MANIFEST_SCHEMA_VERSION {
+    if !matches!(
+        probe.schema_version,
+        TEAM_MANIFEST_SCHEMA_VERSION | SCOPED_CATALOG_SCHEMA_VERSION
+    ) {
         return Err(DaloError::UnsupportedSchema {
             path: path.to_path_buf(),
             version: probe.schema_version,
-            supported: TEAM_MANIFEST_SCHEMA_VERSION,
+            supported: SCOPED_CATALOG_SCHEMA_VERSION,
         });
     }
     toml::from_str(&content)
@@ -1116,11 +1205,14 @@ pub fn read_manifest(path: &Path) -> DaloResult<Option<TeamManifest>> {
 }
 
 fn validate_manifest(team_id: &str, path: &Path, manifest: &TeamManifest) -> DaloResult<()> {
-    if manifest.schema_version != TEAM_MANIFEST_SCHEMA_VERSION {
+    if !matches!(
+        manifest.schema_version,
+        TEAM_MANIFEST_SCHEMA_VERSION | SCOPED_CATALOG_SCHEMA_VERSION
+    ) {
         return Err(DaloError::UnsupportedSchema {
             path: path.to_path_buf(),
             version: manifest.schema_version,
-            supported: TEAM_MANIFEST_SCHEMA_VERSION,
+            supported: SCOPED_CATALOG_SCHEMA_VERSION,
         });
     }
     if let Some(source) = &manifest.source
@@ -1189,6 +1281,27 @@ fn validate_manifest(team_id: &str, path: &Path, manifest: &TeamManifest) -> Dal
             });
         }
         validate_filters(&catalog.skills)?;
+        if let Some(scope) = &catalog.path {
+            if manifest.schema_version < SCOPED_CATALOG_SCHEMA_VERSION {
+                return Err(DaloError::FileParse {
+                    path: path.to_path_buf(),
+                    reason: format!(
+                        "team catalog `{}` needs schema_version = {} for `path`",
+                        catalog.id, SCOPED_CATALOG_SCHEMA_VERSION
+                    ),
+                });
+            }
+            if git::validate_project_skill_path(scope)?.is_none() {
+                return Err(DaloError::FileParse {
+                    path: path.to_path_buf(),
+                    reason: format!(
+                        "team catalog `{}` path must name a repository subdirectory",
+                        catalog.id
+                    ),
+                });
+            }
+            git::validate_full_pinned_commit(&catalog.version)?;
+        }
         source::validate_source_namespace(catalog.namespace.as_deref())?;
     }
     Ok(())
@@ -1362,6 +1475,7 @@ fn existing_manifest_declaration(
 struct ReconciledCatalog {
     source: SourceConfig,
     previous_commit: Option<String>,
+    replaced_checkout: Option<CheckoutReplacement>,
     new_checkout: bool,
 }
 
@@ -1399,68 +1513,90 @@ fn reconcile_catalog(
     }
 
     let new_checkout = !checkout.join(".git").exists();
-    if new_checkout {
-        source::clone_source_checkout(&location, &checkout)?;
-    }
-
-    let locked = lock.catalog(source_id).cloned();
-    let desired_commit = if existing.is_some_and(|candidate| {
-        candidate.declared_ref.as_deref() == Some(declaration.version.as_str())
-    }) {
-        locked
-            .as_ref()
-            .map(|entry| entry.commit.clone())
-            .unwrap_or_else(|| declaration.version.clone())
+    let (desired_commit, selection, inventory, previous_commit, replaced_checkout) = if let Some(
+        scope,
+    ) =
+        declaration.path.as_deref()
+    {
+        let (selection, inventory, replacement) = reconcile_scoped_catalog(
+            paths,
+            source_id,
+            &location,
+            &checkout,
+            declaration,
+            scope,
+            new_checkout,
+        )?;
+        (
+            declaration.version.clone(),
+            selection,
+            inventory,
+            None,
+            replacement,
+        )
     } else {
-        git::fetch_upstream(&checkout)?;
-        declaration.version.clone()
-    };
-    let desired_commit = git::resolve_manifest_revision(&checkout, &desired_commit)?;
-    let current_commit = git::rev_parse_head(&checkout)?;
-    let (scan_root, staging) = if current_commit == desired_commit {
-        (checkout.clone(), None)
-    } else {
-        if git::is_dirty(&checkout)? {
-            return Err(DaloError::DirtySource {
-                source_id: source_id.to_owned(),
-                path: checkout,
+        if !new_checkout && git::scoped_catalog_checkout_path(&checkout)?.is_some() {
+            return Err(DaloError::StateError {
+                reason: format!(
+                    "team catalog `{source_id}` removed its scoped `path`; remove the catalog declaration and sync, then add it without `path` to restore a full checkout"
+                ),
             });
         }
-        let staging_root = paths.sources_dir.join(".manifest-staging");
-        fs::create_dir_all(&staging_root)?;
-        let staging = staging_root.join(format!("{source_id}-{desired_commit}"));
-        if staging.exists() {
-            let _ = git::remove_worktree(&checkout, &staging);
-            let _ = fs::remove_dir_all(&staging);
-            git::prune_worktrees(&checkout)?;
+        if new_checkout {
+            source::clone_source_checkout(&location, &checkout)?;
         }
-        git::add_detached_worktree(&checkout, &staging, &desired_commit)?;
-        (staging.clone(), Some(staging))
-    };
-
-    let candidate = (|| -> DaloResult<(Vec<String>, Vec<catalog::CatalogEntry>)> {
-        let scanned = inventory::scan_source(source_id, &scan_root)?;
-        let selection =
-            apply_skill_filters(source_id, &scan_root, &scanned.skills, &declaration.skills)?;
-        audit_selected(paths, source_id, &scan_root, &scanned.skills, &selection)?;
-        let inventory = catalog::catalog_inventory(&scan_root, &selection)?;
-        Ok((selection, inventory))
-    })();
-    let cleanup = if let Some(staging) = &staging {
-        let cleanup = git::remove_worktree(&checkout, staging);
-        if let Some(staging_root) = staging.parent() {
-            let _ = fs::remove_dir(staging_root);
-        }
-        cleanup
-    } else {
-        Ok(())
-    };
-    let (selection, inventory) = finish_candidate_after_cleanup(candidate, cleanup)?;
-    let previous_commit = if current_commit == desired_commit {
-        None
-    } else {
-        git::checkout_detached(&checkout, &desired_commit)?;
-        Some(current_commit)
+        let locked = lock.catalog(source_id).cloned();
+        let desired_commit = if existing.is_some_and(|candidate| {
+            candidate.declared_ref.as_deref() == Some(declaration.version.as_str())
+        }) {
+            locked
+                .as_ref()
+                .map(|entry| entry.commit.clone())
+                .unwrap_or_else(|| declaration.version.clone())
+        } else {
+            git::fetch_upstream(&checkout)?;
+            declaration.version.clone()
+        };
+        let desired_commit = git::resolve_manifest_revision(&checkout, &desired_commit)?;
+        let current_commit = git::rev_parse_head(&checkout)?;
+        let (scan_root, staging) = if current_commit == desired_commit {
+            (checkout.clone(), None)
+        } else {
+            if git::is_dirty(&checkout)? {
+                return Err(DaloError::DirtySource {
+                    source_id: source_id.to_owned(),
+                    path: checkout,
+                });
+            }
+            let staging_root = paths.sources_dir.join(".manifest-staging");
+            fs::create_dir_all(&staging_root)?;
+            let staging = staging_root.join(format!("{source_id}-{desired_commit}"));
+            if staging.exists() {
+                let _ = git::remove_worktree(&checkout, &staging);
+                let _ = fs::remove_dir_all(&staging);
+                git::prune_worktrees(&checkout)?;
+            }
+            git::add_detached_worktree(&checkout, &staging, &desired_commit)?;
+            (staging.clone(), Some(staging))
+        };
+        let candidate = scan_catalog_selection(paths, source_id, &scan_root, declaration);
+        let cleanup = if let Some(staging) = &staging {
+            let cleanup = git::remove_worktree(&checkout, staging);
+            if let Some(staging_root) = staging.parent() {
+                let _ = fs::remove_dir(staging_root);
+            }
+            cleanup
+        } else {
+            Ok(())
+        };
+        let (selection, inventory) = finish_candidate_after_cleanup(candidate, cleanup)?;
+        let previous_commit = if current_commit == desired_commit {
+            None
+        } else {
+            git::checkout_detached(&checkout, &desired_commit)?;
+            Some(current_commit)
+        };
+        (desired_commit, selection, inventory, previous_commit, None)
     };
     lock.catalogs.retain(|entry| entry.source_id != source_id);
     lock.catalogs.push(CatalogLock {
@@ -1490,8 +1626,80 @@ fn reconcile_catalog(
             declared_ref: Some(declaration.version.clone()),
         },
         previous_commit,
+        replaced_checkout,
         new_checkout,
     })
+}
+
+fn scan_catalog_selection(
+    paths: &StorePaths,
+    source_id: &str,
+    checkout: &Path,
+    declaration: &ManifestCatalog,
+) -> DaloResult<(Vec<String>, Vec<catalog::CatalogEntry>)> {
+    let scanned = inventory::scan_source(source_id, checkout)?;
+    let selection = apply_skill_filters(source_id, checkout, &scanned.skills, &declaration.skills)?;
+    audit_selected(paths, source_id, checkout, &scanned.skills, &selection)?;
+    let inventory = catalog::catalog_inventory(checkout, &selection)?;
+    Ok((selection, inventory))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn reconcile_scoped_catalog(
+    paths: &StorePaths,
+    source_id: &str,
+    location: &str,
+    checkout: &Path,
+    declaration: &ManifestCatalog,
+    scope: &str,
+    new_checkout: bool,
+) -> DaloResult<(
+    Vec<String>,
+    Vec<catalog::CatalogEntry>,
+    Option<CheckoutReplacement>,
+)> {
+    let commit = &declaration.version;
+    if !new_checkout && git::scoped_catalog_checkout_matches(checkout, commit, scope)? {
+        let (selection, inventory) =
+            scan_catalog_selection(paths, source_id, checkout, declaration)?;
+        return Ok((selection, inventory, None));
+    }
+    if !new_checkout && git::has_checkout_local_content(checkout)? {
+        return Err(DaloError::DirtySource {
+            source_id: source_id.to_owned(),
+            path: checkout.to_path_buf(),
+        });
+    }
+
+    let parent = checkout.parent().expect("managed checkout has a parent");
+    fs::create_dir_all(parent)?;
+    let staged_dir = tempfile::tempdir_in(parent)?;
+    let staged = staged_dir.path().join("checkout");
+    source::clone_scoped_catalog_checkout(location, &staged, commit, scope)?;
+    let (selection, inventory) = scan_catalog_selection(paths, source_id, &staged, declaration)?;
+    if new_checkout {
+        fs::rename(&staged, checkout)?;
+        return Ok((selection, inventory, None));
+    }
+
+    let backup_dir = tempfile::Builder::new()
+        .prefix(".checkout-backup-")
+        .tempdir_in(parent)?
+        .keep();
+    let old = backup_dir.join("checkout");
+    fs::rename(checkout, &old)?;
+    if let Err(error) = fs::rename(&staged, checkout) {
+        let _ = fs::rename(&old, checkout);
+        return Err(error.into());
+    }
+    Ok((
+        selection,
+        inventory,
+        Some(CheckoutReplacement {
+            checkout: checkout.to_path_buf(),
+            backup_dir,
+        }),
+    ))
 }
 
 fn apply_skill_filters(
@@ -1909,6 +2117,7 @@ mod tests {
             id: "x.y".to_owned(),
             url: "https://example.invalid/catalog.git".to_owned(),
             version: "main".to_owned(),
+            path: None,
             skills: Vec::new(),
             priority: None,
             namespace: None,
@@ -2008,6 +2217,7 @@ mod tests {
                 id: "x.y".to_owned(),
                 url: "https://example.invalid/existing.git".to_owned(),
                 version: "main".to_owned(),
+                path: None,
                 skills: Vec::new(),
                 priority: None,
                 namespace: None,
@@ -2057,6 +2267,7 @@ mod tests {
             id: "y".to_owned(),
             url: "https://example.invalid/incoming.git".to_owned(),
             version: "main".to_owned(),
+            path: None,
             skills: Vec::new(),
             priority: None,
             namespace: None,

@@ -1212,6 +1212,10 @@ pub struct TeamCatalogAddArgs {
     #[arg(long)]
     pub version: String,
 
+    /// Repository-relative skill directory to acquire without unrelated blobs or history.
+    #[arg(long)]
+    pub path: Option<String>,
+
     /// Skill include/exclude filter, repeatable. Omit to select all.
     #[arg(long = "skill", value_name = "FILTER", allow_hyphen_values = true)]
     pub skills: Vec<String>,
@@ -3983,7 +3987,9 @@ where
             // manifest-owned source configuration together. Later projection
             // failures must not delete checkouts that the committed lock now
             // references.
-            manifest_rollback = None;
+            if let Some(rollback) = manifest_rollback.take() {
+                rollback.commit();
+            }
         }
         let selected_plugins = live
             .plugins
@@ -4591,6 +4597,7 @@ fn run_team(options: &GlobalOptions, command: TeamCommand) -> DaloResult<()> {
                     &args.url,
                     team_manifest::AddTeamCatalogOptions {
                         version: &args.version,
+                        path: args.path.as_deref(),
                         skills: &args.skills,
                         priority: args.priority,
                         namespace: args.namespace.as_deref(),

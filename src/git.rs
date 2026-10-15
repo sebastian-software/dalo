@@ -232,7 +232,7 @@ fn init_pinned_repository(destination: &Path, commit: &str) -> DaloResult<()> {
     Ok(())
 }
 
-fn validate_full_pinned_commit(commit: &str) -> DaloResult<()> {
+pub(crate) fn validate_full_pinned_commit(commit: &str) -> DaloResult<()> {
     if matches!(commit.len(), 40 | 64)
         && commit
             .bytes()
@@ -244,6 +244,46 @@ fn validate_full_pinned_commit(commit: &str) -> DaloResult<()> {
             reason: "pinned acquisition requires a full lowercase Git commit ID".to_owned(),
         })
     }
+}
+
+/// Remember the exact directory acquired for a manifest-owned scoped catalog.
+/// The marker lives in Git config, so it does not make the working tree dirty.
+pub(crate) fn mark_scoped_catalog_checkout(checkout: &Path, scope: &str) -> DaloResult<()> {
+    run_git(
+        checkout,
+        &["config", "--local", "dalo.scopedCatalogPath", scope],
+    )
+    .map(|_| ())
+}
+
+/// Return Dalo's scoped catalog marker, if this checkout was acquired as one.
+pub(crate) fn scoped_catalog_checkout_path(checkout: &Path) -> DaloResult<Option<String>> {
+    match run_git(checkout, &["config", "--get", "dalo.scopedCatalogPath"]) {
+        Ok(path) => Ok(Some(path.trim().to_owned())),
+        Err(DaloError::CommandFailed { status, .. }) if status == "1" => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+/// A matching marker alone is insufficient if Git's shallow or sparse state
+/// was changed after Dalo acquired the checkout.
+pub(crate) fn scoped_catalog_checkout_matches(
+    checkout: &Path,
+    commit: &str,
+    scope: &str,
+) -> DaloResult<bool> {
+    let sparse = match run_git(checkout, &["config", "--bool", "core.sparseCheckout"]) {
+        Ok(value) => value.trim() == "true",
+        Err(DaloError::CommandFailed { status, .. }) if status == "1" => false,
+        Err(error) => return Err(error),
+    };
+    Ok(rev_parse_head(checkout)? == commit
+        && scoped_catalog_checkout_path(checkout)?.as_deref() == Some(scope)
+        && run_git(checkout, &["rev-parse", "--is-shallow-repository"])?.trim() == "true"
+        && sparse
+        && run_git(checkout, &["sparse-checkout", "list"])?.trim()
+            == project_sparse_pattern(Path::new(scope))
+        && checkout.join(scope).is_dir())
 }
 
 fn project_tree_paths(checkout: &Path, commit: &str) -> DaloResult<Vec<String>> {
@@ -322,6 +362,15 @@ pub(crate) fn configure_project_sparse_checkout(
         return Ok(());
     };
     run_git(checkout, &["sparse-checkout", "init", "--no-cone"])?;
+    let pattern = project_sparse_pattern(scope);
+    run_git(
+        checkout,
+        &["sparse-checkout", "set", "--no-cone", "--", &pattern],
+    )?;
+    Ok(())
+}
+
+fn project_sparse_pattern(scope: &Path) -> String {
     let mut escaped_scope = String::new();
     for character in scope.to_string_lossy().chars() {
         if matches!(character, '*' | '?' | '[' | '\\') {
@@ -329,12 +378,7 @@ pub(crate) fn configure_project_sparse_checkout(
         }
         escaped_scope.push(character);
     }
-    let pattern = format!("/{escaped_scope}/");
-    run_git(
-        checkout,
-        &["sparse-checkout", "set", "--no-cone", "--", &pattern],
-    )?;
-    Ok(())
+    format!("/{escaped_scope}/")
 }
 
 /// Use Git's path-compressed index format after a sparse project checkout.
@@ -497,6 +541,21 @@ pub fn push_branch_with_gh_auth(path: &Path, remote_url: &str, branch: &str) -> 
 /// staged changes, and unresolved merges count.
 pub fn is_dirty(path: &Path) -> DaloResult<bool> {
     let output = run_git(path, &["status", "--porcelain=v2", "--untracked-files=no"])?;
+    Ok(!output.trim().is_empty())
+}
+
+/// Replacing a checkout discards its old working tree, so even ignored and
+/// untracked files must block the replacement.
+pub(crate) fn has_checkout_local_content(path: &Path) -> DaloResult<bool> {
+    let output = run_git(
+        path,
+        &[
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            "--ignored=matching",
+        ],
+    )?;
     Ok(!output.trim().is_empty())
 }
 

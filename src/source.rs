@@ -732,6 +732,20 @@ pub fn clone_source_checkout(url: &str, checkout: &Path) -> DaloResult<()> {
     clone_source_checkout_with(url, checkout, git::clone_repo)
 }
 
+/// Acquire only a manifest catalog's selected directory and exact commit.
+/// The ordinary clone staging rules still protect an existing checkout.
+pub(crate) fn clone_scoped_catalog_checkout(
+    url: &str,
+    checkout: &Path,
+    commit: &str,
+    scope: &str,
+) -> DaloResult<()> {
+    clone_source_checkout_with(url, checkout, |url, temporary| {
+        git::acquire_pinned_project_commit(url, temporary, commit, Some(scope))?;
+        git::mark_scoped_catalog_checkout(temporary, scope)
+    })
+}
+
 fn clone_source_checkout_with<C>(url: &str, checkout: &Path, clone_repo: C) -> DaloResult<()>
 where
     C: FnOnce(&str, &Path) -> DaloResult<()>,
