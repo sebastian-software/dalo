@@ -10,14 +10,14 @@
     "render:promo": "sh audio/build.sh audio/cues/team.json"
   },
   "dependencies": {
-    "@remotion/cli": "4.0.530",
-    "@remotion/google-fonts": "4.0.530",
+    "@remotion/cli": "4.0.535",
+    "@remotion/google-fonts": "4.0.535",
     "class-variance-authority": "0.7.1",
     "cn": "0.4.0",
     "culori": "4.0.2",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "remotion": "4.0.530"
+    "remotion": "4.0.535"
   },
   "devDependencies": {
     "@types/culori": "4.0.1",
