@@ -2178,11 +2178,11 @@ skills = [&quot;review&quot;, &quot;documentation&quot;]
 </tr>
 <tr>
 <td><code>source[].path</code></td>
-<td>Schema version 3 only. Repository-relative directory that contains the source skills. <code>&quot;.&quot;</code> and <code>&quot;/&quot;</code> explicitly select the repository root. If omitted, Dalo infers the shared parent of tracked <code>SKILL.md</code> files outside dot-folders. Existing skill selectors remain relative to the repository root.</td>
+<td>Schema version 3 only. Repository-relative directory that contains the source skills. <code>&quot;.&quot;</code> and <code>&quot;/&quot;</code> explicitly select the repository root. If omitted, Dalo infers the shared parent of tracked <code>SKILL.md</code> files outside dot-folders. When set to a directory, skill paths in <code>skills</code> are relative to it; existing repository-relative paths remain accepted.</td>
 </tr>
 <tr>
 <td><code>source[].skills</code></td>
-<td>Non-empty explicit selectors: stable ID, catalog name, or skill path.</td>
+<td>Non-empty explicit selectors: stable ID, catalog name, or skill path relative to <code>source[].path</code> when set.</td>
 </tr>
 </tbody></table></div>
 <p>Unknown fields are rejected. <code>project add --path</code> records the scope and moves
@@ -2884,6 +2884,9 @@ options to select multiple catalog entries. Local repositories must be inside
 the project to keep their relative paths portable. JSON reports include
 <code>project</code>, <code>source_id</code>, <code>url</code>, <code>requested_ref</code>, <code>commit</code>, <code>skills</code>, <code>targets</code>,
 <code>declaration_change</code>, <code>applied</code>, <code>dry_run</code>, and <code>next_command</code>.</p>
+<p>With <code>--path skills</code>, <code>--skill react-best-practices</code> writes
+<code>skills = [&quot;react-best-practices&quot;]</code>. A nested skill path such as
+<code>--skill guides/review</code> is resolved below <code>skills/</code>.</p>
 <p>See <a href="/docs/projects.html#add-a-source-from-the-project">Project installations</a> for the
 review and restore workflow.</p>
 <h2 id="dalo-project-update"><a class="doc-anchor" href="#dalo-project-update"><code>dalo project update</code></a></h2>

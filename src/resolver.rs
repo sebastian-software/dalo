@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use serde::Serialize;
 
 use crate::agent::{self, AgentResolution};
-use crate::config::UserConfig;
+use crate::config::{ProjectSelection, UserConfig};
 use crate::inventory::{self, InventoryWarningCode, SkillDelivery, SkillRecord, SourceInventory};
 use crate::plugin::{self, PluginInventory, PluginResolution, PluginState};
 use crate::source::{SourceConfig, SourceKind};
@@ -610,14 +610,45 @@ pub(crate) fn resolve_from_config_with_plugin_inventories_with_source_errors(
     }
 }
 
+/// Resolve project selectors against the scanned source before interpreting
+/// paths relative to its declared root. Stable IDs may contain slashes.
+fn project_catalog_references_for_inventory(
+    source: &SourceConfig,
+    declared: &ProjectSelection,
+    skills: &[SkillRecord],
+) -> Vec<String> {
+    let prefix = format!("{}:", source.id);
+    declared
+        .skills
+        .iter()
+        .map(|reference| {
+            let lookup = reference.strip_prefix(&prefix).unwrap_or(reference);
+            if skills
+                .iter()
+                .any(|skill| selection_ref_matches_skill(lookup, skill, &source.path))
+            {
+                lookup.to_owned()
+            } else {
+                let scoped = crate::project::project_catalog_reference(
+                    &source.id,
+                    declared.path.as_deref(),
+                    reference,
+                );
+                scoped.strip_prefix(&prefix).unwrap_or(&scoped).to_owned()
+            }
+        })
+        .collect()
+}
+
 /// Project declarations bound delivery to a known same-source skill closure.
 /// Only a complete closure can prove that skipped discovery elsewhere cannot
 /// hide a desired skill. Global catalogs keep their conservative full scan.
 fn scope_project_symlink_warnings(
     source: &SourceConfig,
-    selectors: &[String],
+    declared: &ProjectSelection,
     inventory: &mut SourceInventory,
 ) {
+    let selectors = project_catalog_references_for_inventory(source, declared, &inventory.skills);
     let mut queue = selectors
         .iter()
         .map(|reference| (reference.clone(), true))
@@ -672,7 +703,7 @@ fn restrict_to_declared_closure(
     resolution: &mut Resolution,
     sources: &[SourceConfig],
     inventories: &[SourceInventory],
-    declared: &BTreeMap<String, Vec<String>>,
+    declared: &BTreeMap<String, ProjectSelection>,
 ) {
     let source_by_id = sources
         .iter()
@@ -683,13 +714,14 @@ fn restrict_to_declared_closure(
     // kind in a project store has no declared closure at all.
     let closures = declared
         .iter()
-        .filter_map(|(source_id, selectors)| {
+        .filter_map(|(source_id, declared)| {
             let source = source_by_id.get(source_id.as_str())?;
             let skills = inventory_for(inventories, source_id)?;
             (source.kind == SourceKind::Catalog).then(|| {
+                let selectors = project_catalog_references_for_inventory(source, declared, skills);
                 (
                     source_id.as_str(),
-                    closure_for_selection(selectors, skills, &source.path),
+                    closure_for_selection(&selectors, skills, &source.path),
                 )
             })
         })
@@ -1668,7 +1700,13 @@ mod tests {
                 .iter()
                 .any(|skill| skill.source_ref == "other:tool")
         );
-        let declared = BTreeMap::from([("shared".to_owned(), vec!["review".to_owned()])]);
+        let declared = BTreeMap::from([(
+            "shared".to_owned(),
+            ProjectSelection {
+                skills: vec!["review".to_owned()],
+                path: None,
+            },
+        )]);
         restrict_to_declared_closure(&mut resolution, &sources, &inventories, &declared);
 
         let active = resolution
