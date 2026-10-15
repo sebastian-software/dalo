@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.9.0](https://github.com/sebastian-software/dalo/compare/dalo-v1.8.1...dalo-v1.9.0) (2026-10-15)
+
+
+### Features
+
+* **team:** acquire scoped catalog paths with sparse checkouts ([308829f](https://github.com/sebastian-software/dalo/commit/308829f0c491dbc22a9be97da0e69f822b53cd62))
+
+
+### Bug Fixes
+
+* **deps:** update react monorepo to v19.3.1 ([bd8a34d](https://github.com/sebastian-software/dalo/commit/bd8a34d3a52294960c380372b465b7befafc7084))
+
 ## [1.8.1](https://github.com/sebastian-software/dalo/compare/dalo-v1.8.0...dalo-v1.8.1) (2026-10-15)
 
 
