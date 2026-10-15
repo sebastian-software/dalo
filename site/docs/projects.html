@@ -178,9 +178,13 @@ or <code>&quot;declaration&quot;</code>. See <a href="#approval-modes">Approval 
 <p>Schema version 3 adds an optional <code>path</code> to each source. It names the
 repository-relative directory that contains the source&#39;s skills. <code>&quot;.&quot;</code> or
 <code>&quot;/&quot;</code> explicitly selects the repository root. When <code>path</code> is omitted, Dalo
-finds the shared parent of tracked <code>SKILL.md</code> files outside dot-folders. Skill
-selectors keep their existing repository-relative meaning. <code>project add --path</code> records an explicit scope and upgrades the declaration to schema
-version 3; omitting the option keeps automatic detection.</p>
+finds the shared parent of tracked <code>SKILL.md</code> files outside dot-folders. With
+an explicit <code>path</code>, skill paths in <code>skills</code> are relative to that directory:
+<code>path = &quot;skills&quot;</code> and <code>skills = [&quot;react-best-practices&quot;]</code> select
+<code>skills/react-best-practices</code>. Names and stable IDs also work. Existing
+repository-relative paths such as <code>skills/react-best-practices</code> remain valid.
+<code>project add --path</code> records an explicit scope and upgrades the declaration to
+schema version 3; omitting the option keeps automatic detection.</p>
 <p><code>init</code> creates the definition only and never replaces an existing one; it
 writes schema version 1. <code>install</code> creates <code>.dalo/</code> inside the project, clones
 the declared sources at their exact commits, and links approved skills into the
@@ -349,7 +353,8 @@ dalo install
 </code></pre>
 <p>An immutable full commit can be added directly with <code>--ref &lt;full-commit&gt; --apply</code>.
 Each <code>--skill</code> is required; selectors may be a catalog name, stable ID, or skill
-path. Dalo stores stable IDs where available and paths otherwise. Local Git
+path. With <code>--path</code>, pass skill paths relative to that directory. Dalo stores
+stable IDs where available and relative paths otherwise. Local Git
 repositories are allowed only when their path is inside the project, so the
 committed URL stays portable. Duplicate source IDs are blocked; reviewed changes
 to an existing source or selection belong to the separate update workflow.</p>

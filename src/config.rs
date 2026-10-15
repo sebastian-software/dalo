@@ -35,7 +35,16 @@ pub struct UserConfig {
     /// catalog skill beyond these selectors and their required closure,
     /// whatever approvals or source trust exist in that store.
     #[serde(skip)]
-    pub project_selections: Option<BTreeMap<String, Vec<String>>>,
+    pub project_selections: Option<BTreeMap<String, ProjectSelection>>,
+}
+
+/// One source's selectors and optional path root from a project declaration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectSelection {
+    /// Selectors exactly as written in the declaration.
+    pub skills: Vec<String>,
+    /// Explicit repository-relative root for path selectors.
+    pub path: Option<String>,
 }
 
 /// Local plugin selection settings.

@@ -74,10 +74,13 @@ or `"declaration"`. See [Approval modes](#approval-modes).
 Schema version 3 adds an optional `path` to each source. It names the
 repository-relative directory that contains the source's skills. `"."` or
 `"/"` explicitly selects the repository root. When `path` is omitted, Dalo
-finds the shared parent of tracked `SKILL.md` files outside dot-folders. Skill
-selectors keep their existing repository-relative meaning. `project add
---path` records an explicit scope and upgrades the declaration to schema
-version 3; omitting the option keeps automatic detection.
+finds the shared parent of tracked `SKILL.md` files outside dot-folders. With
+an explicit `path`, skill paths in `skills` are relative to that directory:
+`path = "skills"` and `skills = ["react-best-practices"]` select
+`skills/react-best-practices`. Names and stable IDs also work. Existing
+repository-relative paths such as `skills/react-best-practices` remain valid.
+`project add --path` records an explicit scope and upgrades the declaration to
+schema version 3; omitting the option keeps automatic detection.
 
 `init` creates the definition only and never replaces an existing one; it
 writes schema version 1. `install` creates `.dalo/` inside the project, clones
@@ -259,7 +262,8 @@ dalo install
 
 An immutable full commit can be added directly with `--ref <full-commit> --apply`.
 Each `--skill` is required; selectors may be a catalog name, stable ID, or skill
-path. Dalo stores stable IDs where available and paths otherwise. Local Git
+path. With `--path`, pass skill paths relative to that directory. Dalo stores
+stable IDs where available and relative paths otherwise. Local Git
 repositories are allowed only when their path is inside the project, so the
 committed URL stays portable. Duplicate source IDs are blocked; reviewed changes
 to an existing source or selection belong to the separate update workflow.

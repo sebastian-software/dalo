@@ -799,7 +799,113 @@ fn project_add_can_record_a_trusted_path_scope_and_bump_schema_version() {
     let manifest = fs::read_to_string(project.join("dalo-project.toml")).unwrap();
     assert!(manifest.starts_with("schema_version = 3\n"));
     assert!(manifest.contains("path = \"skills\""));
-    assert!(manifest.contains("skills = [\"skills/review\"]"));
+    assert!(manifest.contains("skills = [\"review\"]"));
+}
+
+#[test]
+fn project_path_roots_nested_skill_selectors_and_preserves_legacy_paths() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo = temp.path().join("upstream");
+    upstream(&repo);
+    fs::create_dir_all(repo.join("skills/guides/nested-review")).unwrap();
+    fs::write(
+        repo.join("skills/guides/nested-review/SKILL.md"),
+        "---\nname: nested-review\ndescription: Review nested guides.\n---\n\nReview guides.\n",
+    )
+    .unwrap();
+    let commit = commit_all(&repo, "add nested skill");
+    let project = temp.path().join("project");
+    fs::create_dir(&project).unwrap();
+    let manifest_path = project.join("dalo-project.toml");
+    let declaration = |selector: &str| {
+        format!(
+            "schema_version = 3\napproval = \"declaration\"\ntargets = [\"claude\"]\n\n[[source]]\nid = \"shared\"\nurl = {:?}\ncommit = {commit:?}\npath = \"skills\"\nskills = [{selector:?}]\n",
+            repo.to_str().unwrap(),
+        )
+    };
+    fs::write(&manifest_path, declaration("guides/nested-review")).unwrap();
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .arg("install")
+        .assert()
+        .success();
+    assert!(project.join(".claude/skills/nested-review").is_symlink());
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .args(["status", "--check"])
+        .assert()
+        .success();
+
+    fs::write(&manifest_path, declaration("skills/guides/nested-review")).unwrap();
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .arg("install")
+        .assert()
+        .success();
+    assert!(project.join(".claude/skills/nested-review").is_symlink());
+
+    fs::write(
+        repo.join("skills/guides/nested-review/SKILL.md"),
+        "---\nname: nested-review\ndescription: Review nested guides.\n---\n\nReview changed guides.\n",
+    )
+    .unwrap();
+    let next_commit = commit_all(&repo, "update nested skill");
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .args(["project", "update", "shared", "--ref", &next_commit])
+        .args(["--skill", "guides/nested-review", "--apply"])
+        .assert()
+        .success();
+    let updated = fs::read_to_string(&manifest_path).unwrap();
+    assert!(updated.contains("skills = [\"guides/nested-review\"]"));
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .arg("install")
+        .assert()
+        .success();
+}
+
+#[test]
+fn project_path_preserves_stable_ids_with_slashes() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo = temp.path().join("upstream");
+    upstream(&repo);
+    fs::write(
+        repo.join("skills/review/SKILL.md"),
+        "---\nname: review\nid: org/review\ndescription: Review the project documentation.\n---\n\nReview the documentation.\n",
+    )
+    .unwrap();
+    let commit = commit_all(&repo, "add stable skill ID");
+    let project = temp.path().join("project");
+    fs::create_dir(&project).unwrap();
+    let manifest_path = project.join("dalo-project.toml");
+    fs::write(
+        &manifest_path,
+        format!(
+            "schema_version = 3\napproval = \"declaration\"\ntargets = [\"claude\"]\n\n[[source]]\nid = \"shared\"\nurl = {:?}\ncommit = {commit:?}\npath = \"skills\"\nskills = [\"org/review\"]\n",
+            repo.to_str().unwrap(),
+        ),
+    )
+    .unwrap();
+
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .arg("install")
+        .assert()
+        .success();
+    assert!(project.join(".claude/skills/review").is_symlink());
+    dalo_command()
+        .arg("--project")
+        .arg(&project)
+        .args(["status", "--check"])
+        .assert()
+        .success();
 }
 
 #[test]

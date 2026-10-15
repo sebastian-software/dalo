@@ -10,7 +10,7 @@ use tempfile::NamedTempFile;
 
 use crate::audit::{self, AuditOptions, AuditReport};
 use crate::catalog::{self, CatalogLock, DriftEntry, SourceLock};
-use crate::config::UserConfig;
+use crate::config::{ProjectSelection, UserConfig};
 use crate::error::{DaloError, DaloResult};
 use crate::source::{self, SourceConfig, SourceKind};
 use crate::{git, materialize, resolver, store, target};
@@ -437,12 +437,76 @@ fn catalog_selection_closure(
     closure.into_iter().collect()
 }
 
-fn canonical_project_skill_reference(candidate: &catalog::CatalogCandidate) -> String {
+pub(crate) fn project_catalog_reference(
+    source_id: &str,
+    scope: Option<&str>,
+    reference: &str,
+) -> String {
+    let Some(scope) = scope.filter(|scope| !matches!(*scope, "." | "/")) else {
+        return reference.to_owned();
+    };
+    let prefix = format!("{source_id}:");
+    let (qualifier, lookup) = reference
+        .strip_prefix(&prefix)
+        .map_or(("", reference), |lookup| (prefix.as_str(), lookup));
+    // Bare names retain the catalog's existing matching rules. Direct stable
+    // IDs are matched against inventory before this path fallback. Accept
+    // already rooted paths so existing schema 3 declarations keep working.
+    if !lookup.contains('/') || lookup == scope || lookup.starts_with(&format!("{scope}/")) {
+        return reference.to_owned();
+    }
+    format!("{qualifier}{scope}/{lookup}")
+}
+
+fn project_catalog_references(
+    source_id: &str,
+    scope: Option<&str>,
+    references: &[String],
+    inventory: &[catalog::CatalogEntry],
+) -> Vec<String> {
+    let prefix = format!("{source_id}:");
+    references
+        .iter()
+        .map(|reference| {
+            let lookup = reference.strip_prefix(&prefix).unwrap_or(reference);
+            if inventory.iter().any(|entry| {
+                entry.slot_name == lookup
+                    || entry.path == lookup
+                    || entry.id.as_deref() == Some(lookup)
+            }) {
+                reference.clone()
+            } else {
+                project_catalog_reference(source_id, scope, reference)
+            }
+        })
+        .collect()
+}
+
+fn canonical_project_selection(
+    paths: &store::StorePaths,
+    source_id: &str,
+    checkout: &Path,
+    scope: Option<&str>,
+    references: &[String],
+) -> DaloResult<Vec<String>> {
+    let inventory = catalog::catalog_inventory(checkout, &[])?;
+    let catalog_refs = project_catalog_references(source_id, scope, references, &inventory);
+    catalog::canonical_skill_selection(paths, source_id, &catalog_refs)
+}
+
+fn canonical_project_skill_reference(
+    candidate: &catalog::CatalogCandidate,
+    scope: Option<&str>,
+) -> String {
     candidate.id.clone().unwrap_or_else(|| {
-        if candidate.path.is_empty() || candidate.path == "." {
+        let relative = scope
+            .filter(|scope| !matches!(*scope, "." | "/"))
+            .and_then(|scope| candidate.path.strip_prefix(&format!("{scope}/")))
+            .unwrap_or(&candidate.path);
+        if relative.is_empty() || relative == "." || scope == Some(candidate.path.as_str()) {
             candidate.slot_name.clone()
         } else {
-            candidate.path.clone()
+            relative.to_owned()
         }
     })
 }
@@ -653,7 +717,7 @@ pub(crate) fn is_project_store(store: &Path) -> bool {
 /// approvals, or source trust. The declaration is read from the store's
 /// parent, the project root. A missing, redirected, oversized, or unparsable
 /// declaration yields no selectors, so nothing from a catalog is delivered.
-pub(crate) fn declared_selections(store: &Path) -> BTreeMap<String, Vec<String>> {
+pub(crate) fn declared_selections(store: &Path) -> BTreeMap<String, ProjectSelection> {
     let Some(root) = store.parent() else {
         return BTreeMap::new();
     };
@@ -668,7 +732,22 @@ pub(crate) fn declared_selections(store: &Path) -> BTreeMap<String, Vec<String>>
             manifest
                 .sources
                 .into_iter()
-                .map(|source| (source.id, source.skills))
+                .filter_map(|source| {
+                    if source
+                        .path
+                        .as_deref()
+                        .is_some_and(|path| git::validate_project_skill_path(path).is_err())
+                    {
+                        return None;
+                    }
+                    Some((
+                        source.id,
+                        ProjectSelection {
+                            skills: source.skills,
+                            path: source.path,
+                        },
+                    ))
+                })
                 .collect()
         })
         .unwrap_or_default()
@@ -883,8 +962,13 @@ impl Project {
                 // Preview with the declared approval authority, as install will.
                 configured.trusted = declaration_approves;
                 if git::rev_parse_head(&configured.path)? == declared.commit {
-                    configured.selection =
-                        catalog::canonical_skill_selection(&paths, &declared.id, &declared.skills)?;
+                    configured.selection = canonical_project_selection(
+                        &paths,
+                        &declared.id,
+                        &configured.path,
+                        declared.path.as_deref(),
+                        &declared.skills,
+                    )?;
                 } else {
                     effects.delivery_preview_complete = false;
                 }
@@ -1085,10 +1169,12 @@ impl Project {
         git::checkout_detached(&checkout, &commit)?;
         let scope = git::resolve_project_skill_scope(&checkout, path)?;
         git::configure_project_sparse_checkout(&checkout, scope.as_deref())?;
-        let selected = catalog::resolve_catalog_skill_references(id, &checkout, skill_refs)?;
+        let inventory = catalog::catalog_inventory(&checkout, &[])?;
+        let catalog_refs = project_catalog_references(id, path, skill_refs, &inventory);
+        let selected = catalog::resolve_catalog_skill_references(id, &checkout, &catalog_refs)?;
         let canonical_skills = selected
             .iter()
-            .map(canonical_project_skill_reference)
+            .map(|candidate| canonical_project_skill_reference(candidate, path))
             .collect::<Vec<_>>();
         let new_source = ProjectSource {
             id: id.to_owned(),
@@ -1213,8 +1299,14 @@ impl Project {
         let old_scope = git::resolve_project_skill_scope(&checkout, declared.path.as_deref())?;
         git::configure_project_sparse_checkout(&checkout, old_scope.as_deref())?;
         let old_inventory_metadata = catalog::catalog_inventory(&checkout, &[])?;
+        let old_catalog_refs = project_catalog_references(
+            id,
+            declared.path.as_deref(),
+            &declared.skills,
+            &old_inventory_metadata,
+        );
         let old_selection_closure =
-            catalog_selection_closure(&old_inventory_metadata, id, &declared.skills);
+            catalog_selection_closure(&old_inventory_metadata, id, &old_catalog_refs);
         let old_inventory = catalog::catalog_inventory(&checkout, &old_selection_closure)?;
         git::checkout_detached(&checkout, &commit)?;
         let candidate_scope =
@@ -1226,8 +1318,14 @@ impl Project {
             skill_refs.to_vec()
         };
         let new_inventory_metadata = catalog::catalog_inventory(&checkout, &[])?;
+        let new_catalog_refs = project_catalog_references(
+            id,
+            declared.path.as_deref(),
+            &selection_after,
+            &new_inventory_metadata,
+        );
         let new_selection_closure =
-            catalog_selection_closure(&new_inventory_metadata, id, &selection_after);
+            catalog_selection_closure(&new_inventory_metadata, id, &new_catalog_refs);
         let new_inventory = catalog::catalog_inventory(&checkout, &new_selection_closure)?;
         let outcomes = catalog::compare_catalog_inventory(
             &old_inventory,
@@ -1237,11 +1335,11 @@ impl Project {
 
         let mut selected = Vec::new();
         let mut blocking_reasons = Vec::new();
-        for skill in &selection_after {
+        for (skill, catalog_ref) in selection_after.iter().zip(&new_catalog_refs) {
             match catalog::resolve_catalog_skill_references(
                 id,
                 &checkout,
-                std::slice::from_ref(skill),
+                std::slice::from_ref(catalog_ref),
             ) {
                 Ok(mut candidates) => selected.append(&mut candidates),
                 Err(error) => blocking_reasons.push(format!(
@@ -1257,7 +1355,7 @@ impl Project {
         selected.dedup_by(|left, right| left.id == right.id && left.path == right.path);
         let canonical_selection = selected
             .iter()
-            .map(canonical_project_skill_reference)
+            .map(|candidate| canonical_project_skill_reference(candidate, declared.path.as_deref()))
             .collect::<Vec<_>>();
         if blocking_reasons.is_empty() {
             selection_after = canonical_selection;
@@ -1588,7 +1686,13 @@ impl Project {
             }
             if !configured.selection.is_empty()
                 && configured.selection
-                    != catalog::canonical_skill_selection(&paths, &declared.id, &declared.skills)?
+                    != canonical_project_selection(
+                        &paths,
+                        &declared.id,
+                        &configured.path,
+                        declared.path.as_deref(),
+                        &declared.skills,
+                    )?
             {
                 return Err(invalid(
                     "project selection differs from its local installation; run `dalo install` to reconcile it",
@@ -1893,14 +1997,19 @@ impl Project {
                     "project source checkout changed during preparation",
                 ));
             }
-            let desired =
-                catalog::canonical_skill_selection(&paths, &declared.id, &declared.skills)?;
+            let desired = canonical_project_selection(
+                &paths,
+                &declared.id,
+                &checkout,
+                declared.path.as_deref(),
+                &declared.skills,
+            )?;
             if configured.selection != desired {
                 let old_selection = configured.selection.clone();
                 if !old_selection.is_empty() {
                     catalog::select_skills(&paths, &declared.id, &old_selection, true, false)?;
                 }
-                catalog::select_skills(&paths, &declared.id, &declared.skills, false, false)?;
+                catalog::select_skills(&paths, &declared.id, &desired, false, false)?;
                 config = store::read_config(&paths)?;
             }
         }

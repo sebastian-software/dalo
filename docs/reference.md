@@ -1863,8 +1863,8 @@ Fields:
 | `source[].id` | Source ID unique in the project; `local` is reserved. |
 | `source[].url` | Git URL or a project-relative local repository path. Embedded credentials are rejected. |
 | `source[].commit` | Full lowercase Git commit ID. Branches and tags are resolved by `project add` and `project update`, not stored. |
-| `source[].path` | Schema version 3 only. Repository-relative directory that contains the source skills. `"."` and `"/"` explicitly select the repository root. If omitted, Dalo infers the shared parent of tracked `SKILL.md` files outside dot-folders. Existing skill selectors remain relative to the repository root. |
-| `source[].skills` | Non-empty explicit selectors: stable ID, catalog name, or skill path. |
+| `source[].path` | Schema version 3 only. Repository-relative directory that contains the source skills. `"."` and `"/"` explicitly select the repository root. If omitted, Dalo infers the shared parent of tracked `SKILL.md` files outside dot-folders. When set to a directory, skill paths in `skills` are relative to it; existing repository-relative paths remain accepted. |
+| `source[].skills` | Non-empty explicit selectors: stable ID, catalog name, or skill path relative to `source[].path` when set. |
 
 Unknown fields are rejected. `project add --path` records the scope and moves
 the declaration to schema version 3. `project add` without `--path`,
@@ -2479,6 +2479,10 @@ options to select multiple catalog entries. Local repositories must be inside
 the project to keep their relative paths portable. JSON reports include
 `project`, `source_id`, `url`, `requested_ref`, `commit`, `skills`, `targets`,
 `declaration_change`, `applied`, `dry_run`, and `next_command`.
+
+With `--path skills`, `--skill react-best-practices` writes
+`skills = ["react-best-practices"]`. A nested skill path such as
+`--skill guides/review` is resolved below `skills/`.
 
 See [Project installations](projects.md#add-a-source-from-the-project) for the
 review and restore workflow.
