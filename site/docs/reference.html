@@ -344,7 +344,7 @@ dalo --dry-run team init company
 </code></pre>
 <p>An existing manifest with the same source ID is left unchanged. A different ID
 is never overwritten. JSON output shape: <code>TeamManifestMutationReport</code>.</p>
-<h3 id="dalo-team-catalog-add-id-git-url-or-path---version-revision"><a class="doc-anchor" href="#dalo-team-catalog-add-id-git-url-or-path---version-revision"><code>dalo team catalog add &lt;id&gt; &lt;git-url-or-path&gt; --version &lt;revision&gt;</code></a></h3>
+<h3 id="dalo-team-catalog-add-id-git-url-or-path---version-revision---path-directory"><a class="doc-anchor" href="#dalo-team-catalog-add-id-git-url-or-path---version-revision---path-directory"><code>dalo team catalog add &lt;id&gt; &lt;git-url-or-path&gt; --version &lt;revision&gt; [--path &lt;directory&gt;]</code></a></h3>
 <p>Add a pinned external skill set to the team manifest. Repeat <code>--skill</code> for
 include/exclude filters; omitting it means all skills.</p>
 <pre><code class="language-sh">dalo team catalog add marketing https://github.com/coreyhaines31/marketingskills.git \
@@ -355,6 +355,10 @@ include/exclude filters; omitting it means all skills.</p>
 </code></pre>
 <p>Use <code>--priority &lt;number&gt;</code> to override the derived default. JSON output shape:
 <code>TeamManifestMutationReport</code>.</p>
+<p>Use <code>--path &lt;directory&gt;</code> to acquire only a repository-relative skill directory.
+This requires a full lowercase commit ID in <code>--version</code> and upgrades the team
+manifest to schema version 2. Sync uses a shallow, blob-filtered sparse checkout
+and fails if the Git server cannot provide the pinned commit and filtering.</p>
 <h3 id="dalo-team-catalog-skills-id-filter"><a class="doc-anchor" href="#dalo-team-catalog-skills-id-filter"><code>dalo team catalog skills &lt;id&gt; [filter]...</code></a></h3>
 <p>Replace the complete filter list. Calling the command without filters sets
 <code>skills = []</code>, which means all skills.</p>
@@ -2053,7 +2057,8 @@ selection = [&quot;review-helper&quot;]
 </tbody></table></div>
 <p>Unknown fields are rejected.</p>
 <h2 id="team-repository-dalotoml"><a class="doc-anchor" href="#team-repository-dalotoml">Team repository <code>dalo.toml</code></a></h2>
-<p>Schema version: <code>schema_version = 1</code>.</p>
+<p>Schema version: <code>schema_version = 1</code> or <code>schema_version = 2</code>. Version 2 is
+required when a catalog has <code>path</code>; version 1 remains valid for full checkouts.</p>
 <p>Team repositories may compose their checked-in skills with pinned external
 catalogs. <code>sync</code> namespaces ordinary IDs as <code>&lt;team-id&gt;.&lt;catalog-id&gt;</code> and stores
 the resolved commit in <code>source-lock.toml</code>. If either component itself contains
@@ -2096,6 +2101,10 @@ namespace = &quot;marketing&quot;
 <td>Required Git commit, tag, or ref. <code>ref</code> is accepted as an alias. Immutable commits are recommended.</td>
 </tr>
 <tr>
+<td><code>path</code></td>
+<td>Optional repository-relative subdirectory containing the selected skills. Requires schema version 2 and a full lowercase 40- or 64-character commit ID. Dalo acquires only this directory with a shallow, blob-filtered sparse checkout.</td>
+</tr>
+<tr>
 <td><code>skills</code></td>
 <td>Include/exclude filters. Omitted or empty means all.</td>
 </tr>
@@ -2123,7 +2132,12 @@ are untrusted by default, so their newly selected skills remain pending until a
 local approval matches. <code>source select</code>, <code>source priority</code>, <code>source remove</code>, and
 pin advancement reject derived catalogs; edit and review <code>dalo.toml</code> instead.
 Changing a catalog URL uses an explicit two-sync replacement: remove the
-declaration and sync, then add the reviewed replacement URL and sync again.</p>
+declaration and sync, then add the reviewed replacement URL and sync again.
+Adding or changing <code>path</code> replaces a clean managed checkout after auditing the
+new one. Local tracked changes, untracked files, and ignored files block the
+replacement. Removing <code>path</code> requires removing the catalog declaration and
+syncing, then adding it again without <code>path</code> and syncing a second time. A dry
+run of sync cannot preview a scoped checkout that has not yet been acquired.</p>
 <h2 id="dalo-projecttoml"><a class="doc-anchor" href="#dalo-projecttoml"><code>dalo-project.toml</code></a></h2>
 <p>Schema version: <code>schema_version = 1</code>, <code>schema_version = 2</code>, or
 <code>schema_version = 3</code>.</p>
