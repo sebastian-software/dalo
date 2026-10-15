@@ -86,6 +86,14 @@ next: commit and push dalo.toml
 reproducible choice; a branch name means different teammates can resolve
 different content. Use `--priority <number>` to override the derived default.
 
+When a repository contains unrelated files or history, add `--path <directory>`
+to acquire just the directory containing the selected skills. This requires a
+full lowercase commit ID and sets `schema_version = 2` in the manifest. Sync
+uses a shallow, blob-filtered sparse checkout; the Git server must support
+fetching the exact commit and filtering. Existing clean catalog checkouts are
+replaced after the new content passes audit. If a checkout has local files or
+changes, sync stops so they can be reviewed before retrying.
+
 The manifest now reads:
 
 ```toml

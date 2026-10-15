@@ -11,13 +11,13 @@ mod common;
 
 use common::{
     add_source, approve_source, create_git_catalog_repo,
-    create_git_catalog_repo_with_duplicate_slots, create_git_skill_repo,
-    create_git_skill_repo_with_required_pair, create_git_skill_repo_with_skill,
-    create_unmanaged_skill, create_unmanaged_skill_with_body, dalo_command,
-    dalo_command_with_git_search_path, git_command_succeeds, git_rev_parse_logger, git_stdout,
-    read_source_lock, read_user_lock, remove_source_update_policy, run_git, set_source_untrusted,
-    setup_store_with_skill_and_target, setup_store_with_target, write_local_only_config,
-    write_source_lock,
+    create_git_catalog_repo_with_duplicate_slots, create_git_repo_without_skills,
+    create_git_skill_repo, create_git_skill_repo_with_required_pair,
+    create_git_skill_repo_with_skill, create_unmanaged_skill, create_unmanaged_skill_with_body,
+    dalo_command, dalo_command_with_git_search_path, git_command_succeeds, git_rev_parse_logger,
+    git_stdout, read_source_lock, read_user_lock, remove_source_update_policy, run_git,
+    set_source_untrusted, setup_store_with_skill_and_target, setup_store_with_target,
+    write_local_only_config, write_source_lock,
 };
 
 #[test]
@@ -3717,6 +3717,226 @@ fn team_catalog_add_should_persist_selection_and_portable_permissions() {
 }
 
 #[test]
+fn scoped_team_catalog_should_acquire_only_its_pinned_skill_directory() {
+    let temp = tempfile::tempdir().unwrap();
+    let upstream = temp.path().join("upstream");
+    let team = temp.path().join("team");
+    let store = temp.path().join("store");
+    let target = temp.path().join("target");
+    create_git_skill_repo_with_skill(&upstream, "review", "# Review\n");
+    std::fs::write(upstream.join("unrelated.bin"), vec![0x5a; 256 * 1024]).unwrap();
+    run_git(&upstream, &["add", "."]);
+    commit_test_repo(&upstream, "add unrelated content");
+    run_git(&upstream, &["config", "uploadpack.allowFilter", "true"]);
+    let pin = test_git_head(&upstream);
+    let unrelated_blob = git_stdout(&upstream, &["rev-parse", "HEAD:unrelated.bin"])
+        .trim()
+        .to_owned();
+
+    create_git_repo_without_skills(&team);
+    dalo_command()
+        .current_dir(&team)
+        .args(["team", "init", "company"])
+        .assert()
+        .success();
+    dalo_command()
+        .current_dir(&team)
+        .args(["team", "catalog", "add", "external"])
+        .arg(&upstream)
+        .args(["--version"])
+        .arg(&pin)
+        .args(["--path", "skills/review", "--skill", "+review"])
+        .assert()
+        .success();
+    let manifest = read_team_manifest(&team.join("dalo.toml"));
+    assert_eq!(manifest.schema_version, 2);
+    assert_eq!(manifest.catalogs[0].path.as_deref(), Some("skills/review"));
+    run_git(&team, &["add", "dalo.toml"]);
+    commit_test_repo(&team, "pin scoped catalog");
+
+    setup_store_with_target(&store, &target);
+    add_source(&store, "company", &team);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    let checkout = store.join("sources/company.external/checkout");
+    assert_eq!(git_stdout(&checkout, &["rev-parse", "HEAD"]).trim(), pin);
+    assert_eq!(
+        git_stdout(&checkout, &["rev-parse", "--is-shallow-repository"]).trim(),
+        "true"
+    );
+    assert_eq!(
+        git_stdout(&checkout, &["rev-list", "--count", "HEAD"]).trim(),
+        "1"
+    );
+    assert!(checkout.join("skills/review/SKILL.md").is_file());
+    assert!(!checkout.join("unrelated.bin").exists());
+    assert!(
+        !git_stdout(
+            &checkout,
+            &["cat-file", "--batch-all-objects", "--batch-check"]
+        )
+        .lines()
+        .any(|line| line.split_whitespace().next() == Some(unrelated_blob.as_str()))
+    );
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "skill", "company.external:review"])
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    assert!(target.join("review").is_symlink());
+
+    run_git(&checkout, &["sparse-checkout", "set", "--no-cone", "/*"]);
+    assert!(checkout.join("unrelated.bin").is_file());
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    assert!(!checkout.join("unrelated.bin").exists());
+}
+
+#[test]
+fn scoped_team_catalog_should_replace_a_clean_full_checkout_and_preserve_approval() {
+    let temp = tempfile::tempdir().unwrap();
+    let upstream = temp.path().join("upstream");
+    let team = temp.path().join("team");
+    let store = temp.path().join("store");
+    let target = temp.path().join("target");
+    create_git_skill_repo_with_skill(&upstream, "review", "# Review\n");
+    std::fs::write(upstream.join("unrelated.bin"), vec![0x5a; 256 * 1024]).unwrap();
+    run_git(&upstream, &["add", "."]);
+    commit_test_repo(&upstream, "add unrelated content");
+    run_git(&upstream, &["config", "uploadpack.allowFilter", "true"]);
+    let pin = test_git_head(&upstream);
+    create_git_repo_without_skills(&team);
+    dalo_command()
+        .current_dir(&team)
+        .args(["team", "init", "company"])
+        .assert()
+        .success();
+    dalo_command()
+        .current_dir(&team)
+        .args(["team", "catalog", "add", "external"])
+        .arg(&upstream)
+        .args(["--version"])
+        .arg(&pin)
+        .args(["--skill", "+review"])
+        .assert()
+        .success();
+    run_git(&team, &["add", "dalo.toml"]);
+    commit_test_repo(&team, "pin full catalog");
+    setup_store_with_target(&store, &target);
+    add_source(&store, "company", &team);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "skill", "company.external:review"])
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    let checkout = store.join("sources/company.external/checkout");
+    assert!(checkout.join("unrelated.bin").is_file());
+    let approvals_before = store::read_approvals(&store::StorePaths::new(store.clone())).unwrap();
+
+    let manifest_path = team.join("dalo.toml");
+    let mut manifest = read_team_manifest(&manifest_path);
+    manifest.schema_version = 2;
+    manifest.catalogs[0].path = Some("skills/review".to_owned());
+    std::fs::write(&manifest_path, toml::to_string(&manifest).unwrap()).unwrap();
+    run_git(&team, &["add", "dalo.toml"]);
+    commit_test_repo(&team, "scope catalog");
+
+    std::fs::write(checkout.join("my-notes.txt"), "preserve this\n").unwrap();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("has local changes"));
+    assert_eq!(
+        std::fs::read_to_string(checkout.join("my-notes.txt")).unwrap(),
+        "preserve this\n"
+    );
+    assert!(checkout.join("unrelated.bin").is_file());
+    std::fs::remove_file(checkout.join("my-notes.txt")).unwrap();
+
+    let mut invalid_manifest = read_team_manifest(&manifest_path);
+    let mut later = invalid_manifest.catalogs[0].clone();
+    later.id = "later".to_owned();
+    later.skills = vec!["+missing".to_owned()];
+    invalid_manifest.catalogs.push(later);
+    std::fs::write(&manifest_path, toml::to_string(&invalid_manifest).unwrap()).unwrap();
+    run_git(&team, &["add", "dalo.toml"]);
+    commit_test_repo(&team, "add invalid later catalog");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .failure();
+    assert!(checkout.join("unrelated.bin").is_file());
+    assert_eq!(
+        git_stdout(&checkout, &["rev-parse", "--is-shallow-repository"]).trim(),
+        "false"
+    );
+    assert_eq!(
+        store::read_approvals(&store::StorePaths::new(store.clone())).unwrap(),
+        approvals_before
+    );
+
+    std::fs::write(&manifest_path, toml::to_string(&manifest).unwrap()).unwrap();
+    run_git(&team, &["add", "dalo.toml"]);
+    commit_test_repo(&team, "remove invalid catalog");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    assert_eq!(
+        git_stdout(&checkout, &["rev-parse", "--is-shallow-repository"]).trim(),
+        "true"
+    );
+    assert!(!checkout.join("unrelated.bin").exists());
+    assert!(target.join("review").is_symlink());
+    assert_eq!(
+        store::read_approvals(&store::StorePaths::new(store.clone())).unwrap(),
+        approvals_before
+    );
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["doctor", "--check"])
+        .assert()
+        .success();
+}
+
+#[test]
 fn team_catalog_skills_should_replace_the_previous_selection() {
     let fixture = TeamCatalogFixture::initialized_with_catalog();
 
@@ -3879,7 +4099,7 @@ fn team_manifest_should_explain_future_schema_before_unknown_fields() {
     std::fs::create_dir_all(&repo).expect("team repo should be created");
     std::fs::write(
         repo.join("dalo.toml"),
-        "schema_version = 2\nnew_field = true\n[source]\nid = \"team\"\n",
+        "schema_version = 3\nnew_field = true\n[source]\nid = \"team\"\n",
     )
     .expect("manifest should be writable");
 
@@ -3889,7 +4109,7 @@ fn team_manifest_should_explain_future_schema_before_unknown_fields() {
         .arg("show")
         .assert()
         .failure()
-        .stderr(predicate::str::contains("unsupported schema version 2"))
+        .stderr(predicate::str::contains("unsupported schema version 3"))
         .stderr(predicate::str::contains("upgrade dalo"));
 }
 

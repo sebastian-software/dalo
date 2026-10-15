@@ -244,7 +244,7 @@ dalo --dry-run team init company
 An existing manifest with the same source ID is left unchanged. A different ID
 is never overwritten. JSON output shape: `TeamManifestMutationReport`.
 
-### `dalo team catalog add <id> <git-url-or-path> --version <revision>`
+### `dalo team catalog add <id> <git-url-or-path> --version <revision> [--path <directory>]`
 
 Add a pinned external skill set to the team manifest. Repeat `--skill` for
 include/exclude filters; omitting it means all skills.
@@ -259,6 +259,11 @@ dalo team catalog add marketing https://github.com/coreyhaines31/marketingskills
 
 Use `--priority <number>` to override the derived default. JSON output shape:
 `TeamManifestMutationReport`.
+
+Use `--path <directory>` to acquire only a repository-relative skill directory.
+This requires a full lowercase commit ID in `--version` and upgrades the team
+manifest to schema version 2. Sync uses a shallow, blob-filtered sparse checkout
+and fails if the Git server cannot provide the pinned commit and filtering.
 
 ### `dalo team catalog skills <id> [filter]...`
 
@@ -1774,7 +1779,8 @@ Unknown fields are rejected.
 
 ## Team repository `dalo.toml`
 
-Schema version: `schema_version = 1`.
+Schema version: `schema_version = 1` or `schema_version = 2`. Version 2 is
+required when a catalog has `path`; version 1 remains valid for full checkouts.
 
 Team repositories may compose their checked-in skills with pinned external
 catalogs. `sync` namespaces ordinary IDs as `<team-id>.<catalog-id>` and stores
@@ -1807,6 +1813,7 @@ Catalog fields:
 | `id` | ID local to the manifest. The local source ID is namespaced with the team source. |
 | `url` | Git URL. Embedded credentials are rejected. |
 | `version` | Required Git commit, tag, or ref. `ref` is accepted as an alias. Immutable commits are recommended. |
+| `path` | Optional repository-relative subdirectory containing the selected skills. Requires schema version 2 and a full lowercase 40- or 64-character commit ID. Dalo acquires only this directory with a shallow, blob-filtered sparse checkout. |
 | `skills` | Include/exclude filters. Omitted or empty means all. |
 | `priority` | Optional global resolver priority; defaults to the team source priority plus one. |
 | `namespace` | Optional prefix applied to every materialized skill from this catalog. |
@@ -1827,6 +1834,11 @@ local approval matches. `source select`, `source priority`, `source remove`, and
 pin advancement reject derived catalogs; edit and review `dalo.toml` instead.
 Changing a catalog URL uses an explicit two-sync replacement: remove the
 declaration and sync, then add the reviewed replacement URL and sync again.
+Adding or changing `path` replaces a clean managed checkout after auditing the
+new one. Local tracked changes, untracked files, and ignored files block the
+replacement. Removing `path` requires removing the catalog declaration and
+syncing, then adding it again without `path` and syncing a second time. A dry
+run of sync cannot preview a scoped checkout that has not yet been acquired.
 
 ## `dalo-project.toml`
 
