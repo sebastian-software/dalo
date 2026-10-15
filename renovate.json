@@ -12,5 +12,26 @@
       "depNameTemplate": "@sebastian-software/standards",
       "datasourceTemplate": "npm"
     }
+  ],
+  "packageRules": [
+    {
+      "description": "Batch non-major updates for stable Cargo crates; pre-1.0 releases stay separate for review.",
+      "matchManagers": ["cargo"],
+      "matchCurrentVersion": ">=1.0.0",
+      "matchUpdateTypes": ["patch", "minor"],
+      "groupName": "Rust stable crates"
+    },
+    {
+      "description": "Batch non-major workflow tooling updates, including updates to pinned action digests.",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["digest", "patch", "minor"],
+      "groupName": "CI tooling"
+    },
+    {
+      "description": "Remotion packages share a version line and should be updated together.",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["remotion", "@remotion/cli", "@remotion/google-fonts"],
+      "groupName": "Remotion"
+    }
   ]
 }
