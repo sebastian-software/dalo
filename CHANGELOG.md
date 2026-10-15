@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.8.1](https://github.com/sebastian-software/dalo/compare/dalo-v1.8.0...dalo-v1.8.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* **deps:** update ci tooling ([907f2e5](https://github.com/sebastian-software/dalo/commit/907f2e5797ce6a46b40c3b7ae5046f00296fc584))
+* **deps:** update dependency marked to v18.1.1 ([30dd729](https://github.com/sebastian-software/dalo/commit/30dd72920324cc98ccd0ed5b3b9b84aa9837a54a))
+* **deps:** update dependency undici to v8 ([37e7c48](https://github.com/sebastian-software/dalo/commit/37e7c48ed41d9061abe0d859e4335ce1690c8e1c))
+* **deps:** update jdx/mise-action action to v5 ([f1af278](https://github.com/sebastian-software/dalo/commit/f1af278cf2dedadd65b17de2206b16b2dd6fc97f))
+* **deps:** update remotion to v4.0.535 ([6c17340](https://github.com/sebastian-software/dalo/commit/6c17340234486dcdbb2ff5f3f4838f4b4e609b9b))
+* **project:** resolve skills relative to source path ([1b1a22b](https://github.com/sebastian-software/dalo/commit/1b1a22bf46ed1a1fc74b5e879b9900bbfbcd87f1))
+
 ## [1.8.0](https://github.com/sebastian-software/dalo/compare/dalo-v1.7.0...dalo-v1.8.0) (2026-10-14)
 
 
