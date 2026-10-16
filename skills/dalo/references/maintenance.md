@@ -183,8 +183,8 @@ and destination versions; documentation for a newer release is not proof that
 an older binary supports its flags.
 
 After upgrading the binary, check `assistant install --help`. Current releases update an
-unmodified bundled assistant during the next requested `sync`, initialization,
-or target linking. Respect `DALO_ASSISTANT_CHECK=never`. For an older release or
+unmodified bundled assistant on the next normal invocation, including JSON
+calls. The complete skill ships with the executable; keep these versions together. Respect `DALO_ASSISTANT_CHECK=never`. For an older release or
 explicit recovery, preview and run `assistant install` to match the installed
 release. Existing target symlinks read that update immediately.
 Preserve a blocked or customized bundle; do not delete its receipt to force an

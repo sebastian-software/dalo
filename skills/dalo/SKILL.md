@@ -21,11 +21,12 @@ Read [inventory.md](references/inventory.md) for the first assessment. Reuse tha
 assessment during this conversation and refresh affected facts after changes.
 On each new invocation, when supported, run
 `dalo --store "$store" --json assistant status` to check the assistant against
-the installed binary. Current releases prepare the bundle during `init` and
-`sync`, and deliver it during `target link` or project `install`, including JSON
-calls. Continue an already requested setup without a separate assistant question.
-On an inspection-only request, report missing or outdated setup without changing
-it. Respect `DALO_ASSISTANT_CHECK=never`; explicit assistant installation remains
+the installed binary. Current releases prepare and validate the matching
+packaged bundle on normal CLI use, including JSON calls, without a separate
+`init`. The default global store delivers only its companion to existing known
+agent skill folders, without registering them for other skills. Explicit
+`assistant status` stays read-only. Continue an already requested setup without
+a separate assistant question. Respect `DALO_ASSISTANT_CHECK=never`; explicit assistant installation remains
 a separate, available recovery route. Check older binaries' help and reports
 before assuming they perform automatic setup.
 Treat `external` or `blocked` as a preservation/diagnosis case. `current` means

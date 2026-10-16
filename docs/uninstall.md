@@ -174,3 +174,14 @@ ls -la ~/.config/opencode/skills
 ```
 
 Remove only broken symlinks that point into the deleted Dalo store. Leave real directories and project/user-authored files in place.
+
+## Automatically installed companion links
+
+Set `DALO_ASSISTANT_CHECK=never` during removal so ordinary CLI calls do not
+recreate the companion. Before deleting a store, inspect
+`dalo --store <store-path> --json assistant status`. `delivered_paths` lists
+verified owned companion links and `skill_path` identifies their destination.
+Remove only symlinks whose current destination still matches that bundle; keep
+real directories or links that another installer replaced. Companion-only links
+are recorded in `assistant-links.toml` and do not appear as registered targets.
+Preserve externally installed or customized assistants.

@@ -204,6 +204,15 @@ ls -la ~/.hermes/skills
 ls -la ~/.config/opencode/skills
 </code></pre>
 <p>Remove only broken symlinks that point into the deleted Dalo store. Leave real directories and project/user-authored files in place.</p>
+<h2 id="automatically-installed-companion-links"><a class="doc-anchor" href="#automatically-installed-companion-links">Automatically installed companion links</a></h2>
+<p>Set <code>DALO_ASSISTANT_CHECK=never</code> during removal so ordinary CLI calls do not
+recreate the companion. Before deleting a store, inspect
+<code>dalo --store &lt;store-path&gt; --json assistant status</code>. <code>delivered_paths</code> lists
+verified owned companion links and <code>skill_path</code> identifies their destination.
+Remove only symlinks whose current destination still matches that bundle; keep
+real directories or links that another installer replaced. Companion-only links
+are recorded in <code>assistant-links.toml</code> and do not appear as registered targets.
+Preserve externally installed or customized assistants.</p>
 <p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/uninstall.md" rel="noopener">docs/uninstall.md</a></p>
   </article>
   <nav class="doc-toc" aria-label="On this page">
@@ -216,6 +225,7 @@ ls -la ~/.config/opencode/skills
       <li><a href="#5-remove-the-store">5. Remove the Store</a></li>
       <li><a href="#6-uninstall-the-binary">6. Uninstall the Binary</a></li>
       <li><a href="#7-final-check">7. Final Check</a></li>
+      <li><a href="#automatically-installed-companion-links">Automatically installed companion links</a></li>
     </ul>
   </nav>
 </main>

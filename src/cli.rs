@@ -54,7 +54,7 @@ pub const AFTER_LONG_HELP: &str = "Mental model:\n  store   local database under
     version,
     about = "One source of truth for the skills your AI agents run.",
     long_about = "One source of truth for the skills your AI agents run.\n\nGit-backed skill management for AI agents: Dalo keeps a local store of skill sources, resolves one approved skill set, and links that set into the folders your agents already read.",
-    after_help = "Start here: dalo init -> dalo target link <agent> -> add a team source, local skill, or adopted skill -> dalo sync\nUse `dalo next` for one state-aware next action.\nTry safely: use --store with a temporary directory and target link generic <path>.",
+    after_help = "The packaged Dalo skill is set up on first use.\nTo manage additional skills: dalo target link <agent> -> add a team source, local skill, or adopted skill -> dalo sync\nOptional: dalo init.\nUse `dalo next` for one state-aware next action.\nTry safely: use --store with a temporary directory and target link generic <path>.",
     after_long_help = AFTER_LONG_HELP
 )]
 pub struct Cli {
@@ -1427,6 +1427,8 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         || cli.project.is_some()
         || std::env::var_os(store::STORE_ENV_VAR).is_some();
     let global_store = cli.global.then(|| cli.resolved_store()).transpose()?;
+    let discover_assistant_targets =
+        cli.global || (cli.store.is_none() && std::env::var_os(store::STORE_ENV_VAR).is_none());
     let Cli {
         store,
         project: _,
@@ -1461,8 +1463,9 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
                         .to_owned(),
             });
         }
-        if !json && io::stdout().is_terminal() {
-            let options = GlobalOptions::resolve(store.as_deref(), false, dry_run)?;
+        let options = GlobalOptions::resolve(store.as_deref(), false, dry_run)?;
+        assistant_on_use(&options, discover_assistant_targets);
+        if io::stdout().is_terminal() {
             run_next(&options)?;
             return Ok(());
         }
@@ -1505,6 +1508,27 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
     let ignores_dry_run = command_ignores_dry_run(&command);
     if ignores_dry_run && !options.json {
         warn_noop_dry_run(options.dry_run);
+    }
+
+    if !matches!(
+        &command,
+        Command::Init
+            | Command::Install
+            | Command::Project(_)
+            | Command::Promote(_)
+            | Command::Assistant(_)
+            | Command::Team(_)
+            | Command::Plan(_)
+            | Command::Tool(_)
+            | Command::Hook(_)
+            | Command::Binary(_)
+            | Command::Autosync(_)
+            | Command::Target(TargetCommand {
+                command: TargetSubcommand::Unlink(_)
+            })
+    ) && !package_validation
+    {
+        assistant_on_use(&options, discover_assistant_targets);
     }
 
     let result = match command {
@@ -1651,6 +1675,9 @@ fn run_project(
         }
     } else {
         project.validate_store(&manifest)?;
+    }
+    if !matches!(command, Command::Install) && project.store.exists() {
+        assistant_on_use(&options, false);
     }
     if !json {
         eprintln!("scope: project ({})", project.root.display());
@@ -3252,6 +3279,21 @@ fn run_assistant(options: &GlobalOptions, command: AssistantCommand) -> DaloResu
     }
 }
 
+fn assistant_on_use(options: &GlobalOptions, discover: bool) {
+    if options.dry_run || !assistant::automatic_setup_enabled() {
+        return;
+    }
+    let paths = store::StorePaths::new(options.store.clone());
+    match assistant::on_use(&paths, discover) {
+        Ok(report) if !options.json => print_assistant_setup(&report),
+        Err(error) if !options.json => eprintln!(
+            "assistant: {}",
+            term::terminal_safe_text(&error.to_string())
+        ),
+        _ => {}
+    }
+}
+
 fn automatic_assistant_report(
     options: &GlobalOptions,
     target: Option<&str>,
@@ -3596,8 +3638,18 @@ fn status_review_reason(report: &status::StatusReport) -> Option<String> {
         ));
     }
 
-    if report.targets.is_empty() && !report.resolution.active_skills.is_empty() {
-        let count = report.resolution.active_skills.len();
+    let undelivered_count = report
+        .resolution
+        .active_skills
+        .iter()
+        .filter(|skill| {
+            !(skill.source_ref == "local:dalo"
+                && report.assistant.state == assistant::AssistantState::Current
+                && !report.assistant.delivered_paths.is_empty())
+        })
+        .count();
+    if report.targets.is_empty() && undelivered_count > 0 {
+        let count = undelivered_count;
         reasons.push(format!(
             "{count} active skill{} but no linked targets",
             if count == 1 { "" } else { "s" }
@@ -4292,8 +4344,21 @@ fn rollback_sync_before_lock(
 fn sync_review_reason(report: &materialize::SyncReport) -> Option<String> {
     let mut reasons = Vec::new();
 
-    if report.linked_targets == 0 && !report.resolution.active_skills.is_empty() {
-        let count = report.resolution.active_skills.len();
+    let companion_delivered = if report.linked_targets == 0 {
+        let assistant = assistant::status(&store::StorePaths::new(report.store.clone()));
+        assistant.state == assistant::AssistantState::Current
+            && !assistant.delivered_paths.is_empty()
+    } else {
+        false
+    };
+    let undelivered_count = report
+        .resolution
+        .active_skills
+        .iter()
+        .filter(|skill| !(companion_delivered && skill.source_ref == "local:dalo"))
+        .count();
+    if report.linked_targets == 0 && undelivered_count > 0 {
+        let count = undelivered_count;
         reasons.push(format!(
             "{count} active skill{} but no linked targets",
             if count == 1 { "" } else { "s" }
@@ -5827,8 +5892,9 @@ mod tests {
 
     #[test]
     fn run_cli_should_succeed_when_no_command_is_provided() {
+        let temporary = tempfile::tempdir().unwrap();
         let cli = Cli {
-            store: None,
+            store: Some(temporary.path().join("store")),
             project: None,
             global: false,
             json: false,

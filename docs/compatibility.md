@@ -97,6 +97,11 @@ Dalo, and a file you hand-authored against the documented schema keeps working.
 The internal layout *around* those files is not covered — see
 [Tier 3](#tier-3-not-covered).
 
+The additive `assistant-links.toml` receipt uses `schema_version = 1` and a
+`links` array of canonical companion symlink paths. It grants ownership only of
+links to the verified local Dalo bundle. It does not enroll those folders as
+general targets. Unknown receipt versions block automatic companion setup.
+
 ### Environment variables
 
 | Variable | Read by | Purpose |

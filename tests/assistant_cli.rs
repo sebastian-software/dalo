@@ -399,23 +399,17 @@ fn in_terminal(
 }
 
 #[test]
-fn ordinary_inspection_never_initializes_a_store_or_updates_the_bundle() {
+fn first_use_bootstraps_without_init_and_inspection_reports_the_matching_bundle() {
     let temporary = tempfile::tempdir().unwrap();
     let store = temporary.path().join("store");
     let bare = in_terminal(&store, &[], "", &[]);
     assert!(!String::from_utf8_lossy(&bare.stdout).contains("[y/N]"));
-    assert!(!store.exists());
-    let initialized = in_terminal(&store, &["init"], "", &[]);
-    assert!(!String::from_utf8_lossy(&initialized.stdout).contains("[y/N]"));
     assert_eq!(assistant_status(&store)["state"], "current");
     make_bundle_stale(&store);
     let receipt = store.join("local/skills/dalo/.dalo-bundle.toml");
     let before = fs::read(&receipt).unwrap();
     for arguments in [
-        &["next"][..],
-        &["--json", "status"],
-        &["--dry-run", "init"],
-        &["status"],
+        &["--dry-run", "init"][..],
         &["assistant", "status"],
         &["--help"],
         &["--version"],
@@ -424,7 +418,7 @@ fn ordinary_inspection_never_initializes_a_store_or_updates_the_bundle() {
         assert!(!String::from_utf8_lossy(&output.stdout).contains("[y/N]"));
         assert_eq!(fs::read(&receipt).unwrap(), before, "{arguments:?}");
     }
-    in_terminal(&store, &["init"], "", &[]);
+    in_terminal(&store, &["next"], "", &[]);
     assert_eq!(assistant_status(&store)["state"], "current");
 }
 
@@ -613,7 +607,7 @@ fn json_setup_installs_and_delivers_without_a_separate_request_or_general_sync()
 }
 
 #[test]
-fn automatic_target_setup_preserves_other_owned_links_and_does_not_deliver_elsewhere() {
+fn automatic_target_setup_preserves_other_owned_links_and_repairs_only_the_companion() {
     let temporary = tempfile::tempdir().unwrap();
     let store = temporary.path().join("store");
     let first = temporary.path().join("first");
@@ -644,7 +638,7 @@ fn automatic_target_setup_preserves_other_owned_links_and_does_not_deliver_elsew
     );
     assert!(second.join("dalo").is_symlink());
     assert!(!second.join("other").exists());
-    assert!(!first.join("dalo").exists());
+    assert!(first.join("dalo").exists());
     assert_eq!(fs::read_link(first.join("other")).unwrap(), other_link);
     let after = dalo::store::read_state(&paths).unwrap();
     for previous in before.owned_skills {
@@ -843,4 +837,177 @@ fn corrupt_lock_blocks_automatic_bundle_updates() {
         fs::read_to_string(store.join("lock.toml")).unwrap(),
         "broken = ["
     );
+}
+
+#[test]
+fn first_default_use_delivers_only_the_packaged_companion_to_existing_agents() {
+    let seed = dalo_command();
+    let home = seed.test_environment().home.clone();
+    let codex = home.join(".agents/skills");
+    let claude = home.join(".claude/skills");
+    fs::create_dir_all(&codex).unwrap();
+    fs::create_dir_all(&claude).unwrap();
+    let run = |arguments: &[&str]| {
+        dalo_command()
+            .env("HOME", &home)
+            .env_remove("DALO_ASSISTANT_CHECK")
+            .env("DALO_OFFLINE", "1")
+            .args(arguments)
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone()
+    };
+    let first: Value =
+        serde_json::from_slice(&run(&["--global", "--json", "status", "--check"])).unwrap();
+    assert_eq!(first["assistant"]["state"], "current");
+    assert_eq!(
+        first["assistant"]["delivered_paths"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(first["targets"], serde_json::json!([]));
+    let store = home.join(".dalo");
+    let paths = dalo::store::StorePaths::new(store.clone());
+    assert!(dalo::store::read_state(&paths).unwrap().targets.is_empty());
+    assert!(codex.join("dalo/references/setup.md").is_file());
+    assert!(claude.join("dalo/references/maintenance.md").is_file());
+    let receipt = fs::read(store.join("assistant-links.toml")).unwrap();
+    fs::remove_file(codex.join("dalo")).unwrap();
+    run(&["--global", "--json", "status", "--check"]);
+    assert!(codex.join("dalo").is_symlink());
+    assert_eq!(
+        fs::read(store.join("assistant-links.toml")).unwrap(),
+        receipt
+    );
+    make_bundle_stale(&store);
+    run(&["--global", "next"]);
+    assert_eq!(assistant_status(&store)["state"], "current");
+    fs::create_dir_all(store.join("local/skills/other")).unwrap();
+    fs::write(store.join("local/skills/other/SKILL.md"), "# Other\n").unwrap();
+    run(&["--global", "--json", "sync"]);
+    assert!(!codex.join("other").exists());
+    assert!(!claude.join("other").exists());
+    assert!(codex.join("dalo").is_symlink());
+    assert!(claude.join("dalo").is_symlink());
+    dalo_command()
+        .env("HOME", &home)
+        .env_remove("DALO_ASSISTANT_CHECK")
+        .args(["--global", "--json", "status", "--check"])
+        .assert()
+        .code(1);
+}
+
+#[test]
+fn first_use_opt_out_and_dry_run_leave_a_missing_store_untouched() {
+    for arguments in [
+        &["--global", "--dry-run", "status"][..],
+        &["--global", "assistant", "status"],
+        &["--global", "plan"],
+        &["--help"],
+        &["--version"],
+    ] {
+        let mut command = dalo_command();
+        let store = command.test_environment().home.join(".dalo");
+        command
+            .env_remove("DALO_ASSISTANT_CHECK")
+            .args(arguments)
+            .output()
+            .unwrap();
+        assert!(!store.exists(), "{arguments:?}");
+    }
+    let mut command = dalo_command();
+    let store = command.test_environment().home.join(".dalo");
+    command.args(["--global", "next"]).assert().success();
+    assert!(!store.exists());
+}
+
+#[test]
+fn first_use_preserves_custom_bundles_and_does_not_claim_foreign_companion_links() {
+    let seed = dalo_command();
+    let home = seed.test_environment().home.clone();
+    let target = home.join(".agents/skills");
+    fs::create_dir_all(&target).unwrap();
+    dalo_command()
+        .env("HOME", &home)
+        .env_remove("DALO_ASSISTANT_CHECK")
+        .args(["--global", "next"])
+        .assert()
+        .success();
+    let store = home.join(".dalo");
+    let skill = store.join("local/skills/dalo/SKILL.md");
+    fs::write(&skill, "# My changes\n").unwrap();
+    dalo_command()
+        .env("HOME", &home)
+        .env_remove("DALO_ASSISTANT_CHECK")
+        .args(["--global", "next"])
+        .assert()
+        .success();
+    assert_eq!(fs::read_to_string(&skill).unwrap(), "# My changes\n");
+    fs::remove_file(target.join("dalo")).unwrap();
+    let foreign = home.join("foreign");
+    fs::create_dir(&foreign).unwrap();
+    symlink(&foreign, target.join("dalo")).unwrap();
+    dalo_command()
+        .env("HOME", &home)
+        .env_remove("DALO_ASSISTANT_CHECK")
+        .args(["--global", "next"])
+        .assert()
+        .success();
+    assert_eq!(fs::read_link(target.join("dalo")).unwrap(), foreign);
+}
+
+#[test]
+fn newer_companion_receipt_blocks_updates_without_overwriting_recovery_data() {
+    let seed = dalo_command();
+    let home = seed.test_environment().home.clone();
+    fs::create_dir_all(home.join(".agents/skills")).unwrap();
+    dalo_command()
+        .env("HOME", &home)
+        .env_remove("DALO_ASSISTANT_CHECK")
+        .args(["--global", "next"])
+        .assert()
+        .success();
+    let store = home.join(".dalo");
+    make_bundle_stale(&store);
+    let bundle_receipt = fs::read(store.join("local/skills/dalo/.dalo-bundle.toml")).unwrap();
+    let newer = "schema_version = 999\nlinks = []\n";
+    fs::write(store.join("assistant-links.toml"), newer).unwrap();
+    dalo_command()
+        .env("HOME", &home)
+        .env_remove("DALO_ASSISTANT_CHECK")
+        .args(["--global", "next"])
+        .assert()
+        .success();
+    assert_eq!(
+        fs::read_to_string(store.join("assistant-links.toml")).unwrap(),
+        newer
+    );
+    assert_eq!(
+        fs::read(store.join("local/skills/dalo/.dalo-bundle.toml")).unwrap(),
+        bundle_receipt
+    );
+    assert_eq!(assistant_status(&store)["state"], "blocked");
+}
+
+#[test]
+fn first_use_of_an_explicit_custom_store_does_not_install_global_companions() {
+    let temporary = tempfile::tempdir().unwrap();
+    let store = temporary.path().join("sandbox-store");
+    let mut command = dalo_command();
+    let target = command.test_environment().home.join(".agents/skills");
+    fs::create_dir_all(&target).unwrap();
+    command
+        .arg("--store")
+        .arg(&store)
+        .env_remove("DALO_ASSISTANT_CHECK")
+        .args(["--json", "status"])
+        .assert()
+        .success();
+    assert!(store.join("local/skills/dalo/SKILL.md").is_file());
+    assert!(!target.join("dalo").exists());
+    assert!(!store.join("assistant-links.toml").exists());
 }
