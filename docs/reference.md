@@ -152,24 +152,30 @@ local bundle, so check delivery separately. External entries are inspected in
 configured/default target folders, agent configuration overrides, the Codex skill folder, and the current
 project's `.agents`, `.claude`, and `.codex` skill folders. Their freshness is
 not inferred from the name. The report is also the additive `assistant` field
-in `status --json`; it does not change `status --check` health rules.
+in `status --json`. A verified delivered companion satisfies its own delivery
+requirement; other skills retain ordinary lock and target health checks.
 
-`init` automatically prepares a missing or unmodified outdated bundle in the
-selected store. `target link` prepares it and delivers only the bundled skill
-to the chosen target, preserving all unrelated links and lock entries. `sync`
-and project `install` prepare it before ordinary resolution, audits, and
-delivery. These write operations work without prompts in terminal, JSON, and CI
-runs. Their JSON reports include an additive `assistant` status field when
-automatic setup is enabled. A blocked assistant is reported without failing an
-otherwise successful setup operation.
+The first ordinary invocation (`dalo`, `next`, `status`, source/target commands,
+or `sync`) prepares the packaged bundle automatically, creating a missing store
+without a separate `init`. Every normal use verifies the complete receipt and
+updates only an unmodified bundle to match the running executable. JSON and
+noninteractive calls follow the same policy.
 
-Bare `dalo`, read-only commands, and `--dry-run` never prepare or deliver the
-bundle. Binary-only installation channels complete setup on first store
-initialization and target linking; they do not select an agent automatically.
-`DALO_ASSISTANT_CHECK=never` disables automatic setup. It does not remove a
-bundle or keep an installed one out of ordinary sync. Explicit assistant
-commands remain available. Preserve custom or externally installed assistants
-and inspect the reported reason before switching ownership.
+For the default global store, existing known agent skill folders receive only
+the companion skill. They are not registered as targets for other skills.
+Custom stores only use already linked targets; project invocations only use
+validated project targets. `target link` remains the explicit route for new
+agent paths. `init` remains an optional setup command. `status --json` exposes
+verified companion `delivered_paths`; setup/sync JSON reports include an
+additive `assistant` status field when automatic setup is enabled.
+
+Help/version, dry runs, `plan`, explicit assistant inspection, and independent
+team/tool/hook/binary/scheduler commands do not trigger first-use setup.
+`DALO_ASSISTANT_CHECK=never` disables automatic setup and freshness updates.
+It does not remove a bundle or exclude it from ordinary sync. Preserve modified
+or externally installed assistants and inspect reported conflicts before
+switching ownership. Companion-only links use `assistant-links.toml`, separately
+from full-target ownership in `state.toml`.
 
 ### `dalo assistant install`
 
@@ -1498,7 +1504,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | Command | Shape | Important fields |
 | --- | --- | --- |
 | `init` | `InitReport` | `store`, `dry_run`, `operations[]` with `action`, `path`, `status`, optional `assistant` |
-| `assistant status` | `AssistantStatusReport` | `store`, `skill_path`, `version`, nullable `installed_version`, `state`, nullable `reason`, `external_paths[]`, `undelivered_targets[]`, nullable `next_command` |
+| `assistant status` | `AssistantStatusReport` | `store`, `skill_path`, `version`, nullable `installed_version`, `state`, nullable `reason`, `external_paths[]`, `undelivered_targets[]`, `delivered_paths[]`, nullable `next_command` |
 | `assistant install` | `AssistantInstallReport` | `store`, `skill_path`, `version`, nullable `previous_version`, `action`, `dry_run`, `next_command` |
 | `target detect` | `TargetDetectReport` | `targets[]` with `id`, `name`, `support`, `path`, `exists`, `linked` |
 | `target link` | `TargetLinkReport` | `target_id`, `path`, `canonical_path`, `status`, `created_dir`, optional `assistant` |
@@ -1644,11 +1650,13 @@ After `dalo init`, the store contains:
 | `sources/<id>/checkout/` | Team and catalog Git checkouts. |
 | `sources/.audit-staging/` | Detached incoming team commits retained only while security review is required. |
 
-Assistant, hook, plugin, and binary paths are created lazily, not by `dalo init`:
+The bundled assistant is prepared automatically or explicitly. Hook, plugin,
+and binary paths are created lazily:
 
 | Path | Created when |
 | --- | --- |
 | `local/skills/dalo/`, including `.dalo-bundle.toml` | Automatic setup or `assistant install` prepares the embedded skill and its versioned receipt. |
+| `assistant-links.toml` | Schema version 1 records canonical owned companion link paths in `links[]`. Only the Dalo skill is delivered; these folders are not registered as general targets. |
 | `.assistant-installing/` | An assistant installation stages `new/` and temporarily preserves `previous/`; retained if recovery is needed. |
 | `hooks/`, `hooks/state.json` | The first native hook projection is applied; the state file records dispatcher ownership. |
 | `plugins/`, `plugins/state.json` | The first native plugin projection is applied; the state file records projection ownership. |

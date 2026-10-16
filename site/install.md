@@ -186,10 +186,12 @@ it; ask only when the agent or installation scope is ambiguous.
    dalo --json assistant status
    ```
 
-   Current releases prepare the bundle during `init` and deliver only the Dalo
-   skill during `target link`, including JSON calls. No additional assistant
-   installation or whole-store sync is needed for a fresh setup. A binary-only
-   installer completes this step on first initialization and target linking.
+   Current releases prepare the matching packaged skill on the first normal
+   invocation, including JSON calls. No separate `init`, assistant install, or
+   whole-store sync is needed for the companion. The default global store
+   delivers it to existing known agent skill directories without enrolling
+   those folders for other skills; custom stores use already linked targets.
+   Later normal calls verify it against the running package.
    `DALO_ASSISTANT_CHECK=never` disables automatic setup. A blocked or external
    assistant is a preservation case; inspect the report before changing it.
 

@@ -49,6 +49,8 @@ pub struct AssistantStatusReport {
     pub external_paths: Vec<PathBuf>,
     /// Enabled targets that do not currently read the local bundle through an owned link.
     pub undelivered_targets: Vec<String>,
+    /// Verified owned assistant links, including companion-only agent folders.
+    pub delivered_paths: Vec<PathBuf>,
     /// Suggested explicit next operation, if needed.
     pub next_command: Option<String>,
 }
@@ -65,6 +67,7 @@ pub fn status(paths: &StorePaths) -> AssistantStatusReport {
         reason: None,
         external_paths: Vec::new(),
         undelivered_targets: Vec::new(),
+        delivered_paths: Vec::new(),
         next_command: None,
     };
     if let Err(error) = inspect(paths, &mut report) {
@@ -127,6 +130,7 @@ fn inspect(paths: &StorePaths, report: &mut AssistantStatusReport) -> DaloResult
     ] {
         candidates.insert(cwd.join(relative));
     }
+    let companion_links = read_companion_links(paths)?;
     let owns_bundle_link = |path: &Path| {
         let Ok(destination) = fs::read_link(path) else {
             return false;
@@ -136,14 +140,19 @@ fn inspect(paths: &StorePaths, report: &mut AssistantStatusReport) -> DaloResult
         } else {
             path.parent().unwrap_or(path).join(destination)
         };
-        state.owned_skills.iter().any(|owned| {
-            comparable_entry(&owned.link_path) == comparable_entry(path)
-                && store::comparable_path(&owned.store_path)
-                    == store::comparable_path(&report.skill_path)
-                && store::comparable_path(&destination)
-                    == store::comparable_path(&report.skill_path)
-        })
+        let points_to_bundle =
+            store::comparable_path(&destination) == store::comparable_path(&report.skill_path);
+        points_to_bundle
+            && (companion_links.links.contains(&comparable_entry(path))
+                || state.owned_skills.iter().any(|owned| {
+                    comparable_entry(&owned.link_path) == comparable_entry(path)
+                        && store::comparable_path(&owned.store_path)
+                            == store::comparable_path(&report.skill_path)
+                        && store::comparable_path(&destination)
+                            == store::comparable_path(&report.skill_path)
+                }))
     };
+    candidates.extend(companion_links.links.iter().cloned());
     for target in state.targets.iter().filter(|target| target.enabled) {
         let path = target.path.join("dalo");
         if !owns_bundle_link(&path) {
@@ -152,10 +161,14 @@ fn inspect(paths: &StorePaths, report: &mut AssistantStatusReport) -> DaloResult
         candidates.insert(path);
     }
     for candidate in candidates {
-        if entry_exists(&candidate)? && !owns_bundle_link(&candidate) {
+        if owns_bundle_link(&candidate) {
+            report.delivered_paths.push(comparable_entry(&candidate));
+        } else if entry_exists(&candidate)? {
             report.external_paths.push(candidate);
         }
     }
+    report.delivered_paths.sort();
+    report.delivered_paths.dedup();
     if !report.external_paths.is_empty()
         && matches!(
             report.state,
@@ -169,7 +182,10 @@ fn inspect(paths: &StorePaths, report: &mut AssistantStatusReport) -> DaloResult
         AssistantState::MissingStore => Some("init"),
         AssistantState::Missing | AssistantState::UpdateAvailable => Some("assistant install"),
         AssistantState::Current if !report.undelivered_targets.is_empty() => Some("--dry-run sync"),
-        AssistantState::Current if !state.targets.iter().any(|target| target.enabled) => {
+        AssistantState::Current
+            if report.delivered_paths.is_empty()
+                && !state.targets.iter().any(|target| target.enabled) =>
+        {
             Some("target detect")
         }
         _ => None,
@@ -184,6 +200,124 @@ fn comparable_entry(path: &Path) -> PathBuf {
 
 const RECEIPT: &str = ".dalo-bundle.toml";
 const RECEIPT_VERSION: u32 = 1;
+const COMPANION_LINKS: &str = "assistant-links.toml";
+
+#[derive(Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CompanionLinks {
+    schema_version: u32,
+    links: BTreeSet<PathBuf>,
+}
+
+fn read_companion_links(paths: &StorePaths) -> DaloResult<CompanionLinks> {
+    let path = paths.root.join(COMPANION_LINKS);
+    if !entry_exists(&path)? {
+        return Ok(CompanionLinks {
+            schema_version: 1,
+            ..Default::default()
+        });
+    }
+    if !fs::symlink_metadata(&path)?.file_type().is_file() {
+        return Err(blocked(
+            "assistant-links.toml must be a regular owned receipt",
+        ));
+    }
+    let receipt: CompanionLinks = toml::from_str(&fs::read_to_string(&path)?)
+        .map_err(|error| blocked(format!("invalid assistant link receipt: {error}")))?;
+    if receipt.schema_version != 1 {
+        return Err(blocked(format!(
+            "unsupported assistant link receipt schema {}",
+            receipt.schema_version
+        )));
+    }
+    Ok(receipt)
+}
+
+/// Bootstrap only the packaged companion on ordinary use. Detected folders
+/// receive this skill without becoming targets for any other managed content.
+pub(crate) fn on_use(paths: &StorePaths, discover: bool) -> DaloResult<AssistantStatusReport> {
+    let before = status(paths);
+    if matches!(
+        before.state,
+        AssistantState::External | AssistantState::Blocked
+    ) {
+        return Ok(before);
+    }
+    if before.state == AssistantState::MissingStore {
+        fs::create_dir_all(&paths.root)?;
+    }
+    let _lock = store::StoreLock::acquire(paths)?;
+    if !entry_exists(&paths.config_file)? {
+        require_real_directory(&paths.root)?;
+        for entry in fs::read_dir(&paths.root)? {
+            if entry?.path() != paths.lock_guard_file {
+                return Err(blocked(
+                    "the uninitialized store has unexpected content; inspect it before first-use setup",
+                ));
+            }
+        }
+        store::init_store(paths.root.clone(), false)?;
+    }
+    let mut report = prepare_automatic(paths);
+    if report.state != AssistantState::Current {
+        return Ok(report);
+    }
+    // Validate persisted state before creating links. No source or approval
+    // snapshot is rebuilt or acknowledged by companion-only setup.
+    store::read_user_lock(paths)?;
+    let mut receipt = read_companion_links(paths)?;
+    let targets = crate::target::detect_targets(&paths.root)?;
+    let mut conflicts = Vec::new();
+    for target in targets
+        .targets
+        .into_iter()
+        .filter(|target| target.exists && (discover || target.linked))
+    {
+        let Some(directory) = target.path else {
+            continue;
+        };
+        if !fs::metadata(&directory)?.is_dir() {
+            continue;
+        }
+        let link = fs::canonicalize(directory)?.join("dalo");
+        if report
+            .delivered_paths
+            .iter()
+            .any(|path| comparable_entry(path) == link)
+        {
+            continue;
+        }
+        if entry_exists(&link)? {
+            conflicts.push(link);
+            continue;
+        }
+        std::os::unix::fs::symlink(&report.skill_path, &link)?;
+        receipt.links.insert(link.clone());
+        if let Err(error) = store::write_toml_atomic(&paths.root.join(COMPANION_LINKS), &receipt) {
+            // Only undo the link this attempt created, and only while it still
+            // points to this bundle. Preserve anything that replaced it.
+            if fs::read_link(&link).is_ok_and(|target| target == report.skill_path) {
+                fs::remove_file(&link)?;
+            }
+            return Err(error);
+        }
+        report.delivered_paths.push(link);
+    }
+    report = status(paths);
+    if !conflicts.is_empty() {
+        report.state = AssistantState::Blocked;
+        report.next_command = None;
+        report.reason = Some(format!(
+            "existing assistant entries were preserved: {}",
+            conflicts
+                .iter()
+                .map(|path| path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    Ok(report)
+}
 const FILES: &[(&str, &str)] = &[
     ("SKILL.md", include_str!("../skills/dalo/SKILL.md")),
     (

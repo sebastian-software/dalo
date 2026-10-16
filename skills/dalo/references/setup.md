@@ -5,8 +5,9 @@ migration; do not recreate it as a shortcut.
 
 ## Binary missing or too old
 
-A binary-only installation completes bundled skill setup on first `init` and
-`target link`; project `install` keeps it project-local. If the
+A binary-only installation completes bundled skill setup on the first normal
+CLI invocation; it verifies the matching packaged content on later use. Project
+`install` keeps it project-local. If the
 task calls for setup, use an installation channel appropriate to the machine,
 preferring an existing package manager or the user's choice. Check the official
 [installation instructions](https://dalo.sh/docs/getting-started.html) and
@@ -22,7 +23,8 @@ binary's actual version and help again.
 
 ## Store and targets
 
-Initialize only a missing store, then connect only the intended targets:
+Normal use initializes a missing store for the packaged companion automatically.
+Use explicit initialization when needed, and connect only the intended targets:
 
 ```sh
 dalo --store "$store" --dry-run --json init

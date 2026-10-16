@@ -424,6 +424,17 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
     let resolution = materialization.resolution;
     let mut drift = lockfile::compare_user_lock(&previous_lock, &live_lock);
     suppress_initial_local_source_drift(&previous_lock, &mut drift);
+    let assistant = crate::assistant::status(&paths);
+    if assistant.state == crate::assistant::AssistantState::Current
+        && !assistant.delivered_paths.is_empty()
+    {
+        // First-use companion delivery deliberately does not acknowledge a
+        // whole-store sync. Its known administrative skill needs no such sync.
+        drift.retain(|item| {
+            !(item.code == crate::lockfile::LockDriftCode::ActiveAdded
+                && item.subject == "local:dalo")
+        });
+    }
     let lock = LockStatus {
         path: paths.lock_file.clone(),
         schema_version: previous_lock.schema_version,
@@ -464,7 +475,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
 
     Ok(StatusReport {
         store: store_root.to_path_buf(),
-        assistant: crate::assistant::status(&paths),
+        assistant,
         sources,
         targets,
         inventory_warnings,
@@ -523,7 +534,11 @@ pub fn build_next_action_report(store_root: &Path) -> DaloResult<NextActionRepor
     } else if linked_targets == 0 {
         (
             NextActionState::NoTarget,
-            "Link a target so Dalo knows where to materialize skills.".to_owned(),
+            if !report.assistant.delivered_paths.is_empty() {
+                "The Dalo skill is available in your agent. Link a target to manage additional skills.".to_owned()
+            } else {
+                "Link a target so Dalo knows where to materialize skills.".to_owned()
+            },
             Some(store::dalo_command(store_root, "target detect")),
         )
     } else if !sources_with_skills {

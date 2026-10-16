@@ -128,42 +128,45 @@ the assistant is not a sandbox for everything your agent can do.
 
 ## Bundled installation
 
-Every supported binary includes the complete skill. `dalo init` prepares it in
-`local/skills/dalo` automatically. `dalo target link` delivers just that skill
-to the target you chose, without fetching sources, syncing other skills, or
-adding approvals. A fresh setup needs only:
+Every supported binary includes the complete skill that matches that CLI
+release. The first normal invocation, including bare `dalo`, `next`, or JSON
+`status`, prepares the bundle automatically. No separate `init`, skill manager,
+or skill download is required. The local store is created when needed; existing
+incomplete or ambiguous stores remain blocked for inspection.
 
-```sh
-dalo init
-dalo target detect
-dalo target link codex
-```
+For the default global store, Dalo places only its own companion skill in
+existing known agent skill directories. These folders do not become general
+Dalo targets: adding sources or running sync does not deliver other skills to
+them. Shared physical folders receive one link. An explicit custom store only
+uses targets already linked to that store, so sandbox use cannot install skills
+into global agent folders. If no agent folder is known yet, the bundle remains
+prepared and Dalo reports the target setup needed. `init` and `target link`
+remain available as explicit setup steps.
 
-The same setup works with `--json`, redirected streams, and CI. The binary
-installation itself does not guess which agent or store to use; channels that
-only install the executable complete skill setup on first initialization and
-target linking. A project installation prepares and delivers the bundle inside
-that project's own store and declared target folders.
+Every normal invocation verifies the complete bundle against the running
+binary. An unmodified older bundle is replaced with the matching packaged
+content; existing owned links see the update immediately. Extra files, edited
+content, foreign links, and assistants supplied by another source remain
+preserved. This is an offline package consistency check, not an independent
+internet update of the skill.
 
-Normal `sync` (and project `install`) also prepares a missing bundle or updates
-an unmodified one to match the running binary before ordinary resolution and
-audits. Existing owned symlinks see bundle updates immediately. Automatic setup
-uses the local executable's embedded files and works offline. It does not look
-for a newer internet release or replace the executable.
+JSON and noninteractive calls use the same first-use setup. `--help`,
+`--version`, dry runs, `plan`, explicit assistant inspection, and independent
+team/tool/hook/scheduler commands do not trigger it. Set
+`DALO_ASSISTANT_CHECK=never` to disable automatic setup and freshness updates.
+An installed bundle remains eligible for ordinary sync. Explicit
+`dalo assistant install` remains a manual recovery route for initialized stores.
 
-Bare `dalo`, inventory/status commands, help, and dry runs never install or
-update the assistant. Set `DALO_ASSISTANT_CHECK=never` to disable automatic
-preparation and target delivery. Explicit `dalo assistant install` remains
-available for manual setup and recovery; it prepares the local bundle only,
-with delivery through an explicitly requested sync. The setting does not remove
-an installed bundle or exclude it from ordinary sync.
+Project use stays project-local: `install` prepares the bundle in the project
+store and delivers it to declared targets. Later normal project invocations
+check it only after project validation and consider only linked project targets.
+A project invocation never discovers or installs global companions.
 
-Automatic setup preserves modified bundles and external installations. A
-blocked assistant does not roll back an otherwise successful initialization or
-target link: inspect the `assistant` field in its JSON report or the diagnostic
-in terminal output. `dalo assistant status --json` and `status --json` also
-report local freshness and delivery. A current bundle can still have
-`undelivered_targets`; check those before claiming agent availability.
+`dalo assistant status --json` and `status --json` report local freshness,
+verified `delivered_paths`, external entries, and any configured
+`undelivered_targets`. Native agent discovery may require a skill reload or a
+new session. Companion-only links have a versioned `assistant-links.toml`
+ownership receipt in the store; ordinary target ownership remains separate.
 
 For an existing setup, keep its store and target paths and inspect it first.
 Review a whole-store sync preview before applying it: existing team sources may
