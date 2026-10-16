@@ -427,7 +427,7 @@ This is recorded as
 ### Team manifests
 
 Team `dalo.toml` supports schema versions 1, 2, and 3. Version 3 adds explicit
-per-catalog `update_policy = "track"`; omitted policies keep the existing pinned
+per-catalog `update = "track"`; omitted policies keep the existing pinned
 behavior, including symbolic versions. Tracking stores the requested branch in
 the generated source configuration and the exact commit in `source-lock.toml`,
 using the existing store schemas. Older Dalo versions reject team schema 3;

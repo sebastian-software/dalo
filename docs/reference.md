@@ -1831,7 +1831,7 @@ Catalog fields:
 | `id` | ID local to the manifest. The local source ID is namespaced with the team source. |
 | `url` | Git URL. Embedded credentials are rejected. |
 | `version` | Required Git commit, tag, or ref. `ref` is accepted as an alias. Immutable commits are recommended. |
-| `update_policy` | `pin` (default) or `track` (requires schema version 3). Tracking interprets `version` as a short branch name, fetches it on every real sync, and accepts fast-forwards only. Cannot be combined with `path`. |
+| `update` | `pin` (default) or `track` (requires schema version 3). `update_policy` is accepted as a compatibility alias. Tracking interprets `version` as a short branch name, fetches it on every real sync, and accepts fast-forwards only. Cannot be combined with `path`. |
 | `path` | Optional repository-relative subdirectory containing the selected skills. Requires schema version 2 and a full lowercase 40- or 64-character commit ID. Dalo acquires only this directory with a shallow, blob-filtered sparse checkout. |
 | `skills` | Include/exclude filters. Omitted or empty means all. |
 | `priority` | Optional global resolver priority; defaults to the team source priority plus one. |

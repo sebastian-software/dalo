@@ -141,7 +141,12 @@ pub struct ManifestCatalog {
     #[serde(alias = "ref")]
     pub version: String,
     /// Explicit branch tracking; omitted declarations retain their existing pin behavior.
-    #[serde(default, skip_serializing_if = "CatalogUpdatePolicy::is_pin")]
+    #[serde(
+        default,
+        rename = "update",
+        alias = "update_policy",
+        skip_serializing_if = "CatalogUpdatePolicy::is_pin"
+    )]
     pub update_policy: CatalogUpdatePolicy,
     /// Repository-relative directory to materialize from a shallow, blob-filtered checkout.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2208,6 +2213,19 @@ mod tests {
             compatibility: None,
             metadata: std::collections::BTreeMap::new(),
             binaries: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn catalog_update_field_accepts_both_spellings_and_writes_the_short_name() {
+        for field in ["update", "update_policy"] {
+            let catalog: ManifestCatalog = toml::from_str(&format!(
+                "id = \"internal\"\nurl = \"https://example.invalid/catalog.git\"\nversion = \"main\"\n{field} = \"track\"\n"
+            )).expect("both catalog update spellings should parse");
+            assert_eq!(catalog.update_policy, CatalogUpdatePolicy::Track);
+            let serialized = toml::to_string(&catalog).expect("catalog should serialize");
+            assert!(serialized.contains("update = \"track\""));
+            assert!(!serialized.contains("update_policy"));
         }
     }
 

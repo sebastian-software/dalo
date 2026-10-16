@@ -380,7 +380,7 @@ fn tracking_catalog_schema_and_branch_validation_fail_before_installation() {
         (1, "", "needs schema_version = 3"),
         (3, "path = \"skills\"", "cannot combine branch tracking"),
     ] {
-        std::fs::write(team.join("dalo.toml"), format!("schema_version = {schema}\n[source]\nid = \"company\"\n[[catalog]]\nid = \"test\"\nurl = {:?}\nversion = \"main\"\nupdate_policy = \"track\"\n{scope}\n", upstream.to_str().unwrap())).unwrap();
+        std::fs::write(team.join("dalo.toml"), format!("schema_version = {schema}\n[source]\nid = \"company\"\n[[catalog]]\nid = \"test\"\nurl = {:?}\nversion = \"main\"\nupdate = \"track\"\n{scope}\n", upstream.to_str().unwrap())).unwrap();
         dalo_command()
             .current_dir(&team)
             .args(["team", "show"])
