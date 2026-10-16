@@ -772,6 +772,7 @@ mod tests {
             inventory_warnings: Vec::new(),
             missing_commands: Vec::new(),
             unrefreshed_tracking_sources: Vec::new(),
+            manifest_catalogs: Vec::new(),
             instruction_operations: Vec::new(),
             instruction_removal_operations: Vec::new(),
             unselected_catalogs: Vec::new(),

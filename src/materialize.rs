@@ -72,6 +72,9 @@ pub struct SyncReport {
     /// Tracking team sources that a dry-run intentionally did not fetch.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub unrefreshed_tracking_sources: Vec<String>,
+    /// Manifest catalog policies and exact local commits, including upstream-check status.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub manifest_catalogs: Vec<crate::team_manifest::ManifestCatalogSyncReport>,
     /// Already-active source-backed instruction packs refreshed by sync.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub instruction_operations: Vec<crate::instructions::InstructionSyncOperation>,
@@ -513,6 +516,7 @@ pub fn materialize_with_degraded_sources_rollback(
             inventory_warnings: Vec::new(),
             missing_commands: Vec::new(),
             unrefreshed_tracking_sources: Vec::new(),
+            manifest_catalogs: Vec::new(),
             instruction_operations: Vec::new(),
             instruction_removal_operations: Vec::new(),
             unselected_catalogs: Vec::new(),

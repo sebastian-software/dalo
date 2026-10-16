@@ -251,6 +251,52 @@ dry-run output, with full pins, drift and audit findings. Retry the same command
 after a PR creation failure to resume the pushed branch; an existing open PR is
 reused. Changed proposal branches and closed PRs require manual review. This
 mode supports GitHub.com origins.</p>
+<h3 id="follow-a-first-party-branch-on-each-sync"><a class="doc-anchor" href="#follow-a-first-party-branch-on-each-sync">Follow a first-party branch on each sync</a></h3>
+<p>For a catalog you maintain and want to follow continuously, opt in explicitly:</p>
+<pre><code class="language-sh">dalo team catalog add internal https://github.com/acme/internal-skills.git \
+  --version main --track
+</code></pre>
+<p>For an existing catalog, use <code>dalo team catalog version internal main --track</code>.
+These commands upgrade the manifest to schema version 3:</p>
+<pre><code class="language-toml">schema_version = 3
+
+[source]
+id = &quot;company&quot;
+
+[[catalog]]
+id = &quot;internal&quot;
+url = &quot;https://github.com/acme/internal-skills.git&quot;
+version = &quot;main&quot;
+update_policy = &quot;track&quot;
+</code></pre>
+<p>Each real <code>dalo sync</code> fetches that exact branch and accepts only fast-forward
+updates after validating the selection and auditing its contents. The local
+source lock records the exact installed commit. Other catalogs keep their pins,
+including declarations that say <code>version = &quot;main&quot;</code> without the explicit policy.
+Consumers can resolve different commits at different times; use reviewed pins
+when every machine must resolve the same revision.</p>
+<p>Tracking does not grant trust or execution approvals. Existing skill approvals
+match the source-qualified skill identity and remain valid across content
+updates. An approved skill therefore receives audited updates automatically.
+New skill identities remain pending unless an existing broader local approval
+covers them. Agents, tools, and hooks retain their own approval gates; audit
+risk acceptances remain bound to their reviewed content and scope.</p>
+<p>A failed fetch, missing branch, non-fast-forward update, removed selected skill,
+blocking audit, or local checkout content blocks reconciliation and preserves
+the previous catalog pins and deliveries. Dalo does not silently proceed using
+stale upstream information. A later reconciliation failure also rolls back
+catalogs already advanced in that pass. As with pinned manifests, this is a
+rollback boundary within a running sync, not a crash-recovery journal.</p>
+<p><code>sync --dry-run</code> does not fetch. It reports the existing local commit and marks
+upstream as not checked; it cannot predict the next remote commit. Sync&#39;s human
+and JSON reports include each catalog&#39;s policy, requested ref, previous commit,
+resulting commit, and whether upstream was checked.</p>
+<p>Branch tracking requires a full catalog checkout. It cannot be combined with
+<code>path</code>, whose shallow sparse checkout lacks the ancestry needed to verify a
+fast-forward. A branch rewrite requires explicit review: use
+<code>dalo team catalog version internal &lt;exact-commit&gt;</code> to return to a fixed pin.
+The same command without <code>--track</code> always disables tracking. Upgrade consumers
+to a Dalo version supporting team schema 3 before publishing the manifest.</p>
 <h2 id="5-commit-and-push"><a class="doc-anchor" href="#5-commit-and-push">5. Commit and push</a></h2>
 <p>In the default manual flow, commit and push the reviewable manifest yourself:</p>
 <pre><code class="language-sh">git add dalo.toml
@@ -293,11 +339,13 @@ dalo approve skill company.marketing:copywriting
 dalo approve skill company.marketing:launch
 dalo sync
 </code></pre>
-<p>Approvals are bound to exact content, so advancing a pin makes the changed
-skills pending again. That is the intended behavior: a commit you push cannot
-silently put new third-party code into a teammate&#39;s agent. If your team prefers
-a broader policy, <code>dalo approve list</code> and the <code>source</code>, <code>author</code>, and <code>org</code>
-approval scopes exist — they are still granted per machine.</p>
+<p>Skill approvals match source-qualified identities and remain valid when those
+skills change. New identities need a matching local approval, while every
+selected skill still passes security audits. Accepted audit risks are bound to
+the exact reviewed content and scope. Use reviewed commit pins when changes
+must pass team review before reaching consumer machines. Broader <code>source</code>,
+<code>author</code>, and <code>org</code> approvals are also local choices; inspect them with
+<code>dalo approve list</code>.</p>
 <h2 id="8-keeping-machines-current"><a class="doc-anchor" href="#8-keeping-machines-current">8. Keeping machines current</a></h2>
 <p>After publishing a team change, teammates run <code>dalo sync</code> to refresh their
 tracking team source and reconcile the declared catalogs. For recurring updates,
@@ -307,8 +355,9 @@ each teammate can ask their agent or host to automate the chosen store:</p>
 <p>The automation chooses when to run, when to retry, and how to notify its owner.
 <code>sync --check</code> still applies eligible changes and returns a failure for an
 incomplete result. It refreshes tracking sources and follows the team&#39;s declared
-catalog pins, while personal catalog pins stay unchanged. It never grants an
-approval or bypasses dirty sources, blocking audits, or target conflicts.</p>
+catalog pins or explicitly tracked catalog branches, while personal catalog
+pins stay unchanged. It never grants an approval or bypasses dirty sources,
+blocking audits, or target conflicts.</p>
 <p>Read the JSON report even on a nonzero exit; safe work may have completed while
 other work remains blocked. The agent can explain changed skills or the exact
 approval needed and notify the teammate through its own host. See

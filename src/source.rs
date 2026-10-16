@@ -85,7 +85,7 @@ pub struct SourceConfig {
     /// Optional Git URL for team sources.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
-    /// Optional branch for team sources.
+    /// Optional requested ref for team sources and branch-tracking catalogs.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
     /// Update policy, such as `track`.
