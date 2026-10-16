@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.10.0](https://github.com/sebastian-software/dalo/compare/dalo-v1.9.0...dalo-v1.10.0) (2026-10-16)
+
+
+### Features
+
+* bootstrap the packaged assistant on first use ([d2416d0](https://github.com/sebastian-software/dalo/commit/d2416d0529948e2215926c868204af4a5d5061cd))
+* install the bundled assistant during normal setup ([cd1b83e](https://github.com/sebastian-software/dalo/commit/cd1b83e462fec660d52fcc01267e8a452c773050))
+* **team:** track opted-in catalog branches on sync ([9b52e36](https://github.com/sebastian-software/dalo/commit/9b52e36c54de598f1f2c01d4e5bd991272ec9151))
+
+
+### Bug Fixes
+
+* **deps:** update ci tooling ([5c6dc74](https://github.com/sebastian-software/dalo/commit/5c6dc74d1b6e63c4e7c24fcddc14a9dbf5f6dbfc))
+
 ## [1.9.0](https://github.com/sebastian-software/dalo/compare/dalo-v1.8.1...dalo-v1.9.0) (2026-10-15)
 
 
