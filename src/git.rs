@@ -634,6 +634,44 @@ pub fn fetch(path: &Path) -> DaloResult<()> {
     run_git_network(path, &["fetch", "--quiet", "origin", "HEAD"]).map(|_| ())
 }
 
+/// Validate a short branch name rather than a tag, commit, or revision expression.
+pub fn validate_tracking_branch(branch: &str) -> DaloResult<()> {
+    validate_manifest_revision(branch)?;
+    if branch == "HEAD"
+        || branch.starts_with("refs/")
+        || run_git(
+            Path::new("."),
+            &["check-ref-format", &format!("refs/heads/{branch}")],
+        )
+        .is_err()
+    {
+        return Err(DaloError::StateError {
+            reason: format!(
+                "invalid tracking branch `{branch}`; use a short branch name such as `main`"
+            ),
+        });
+    }
+    Ok(())
+}
+
+/// Fetch exactly the requested branch. A deleted branch must fail rather than
+/// resolve through a stale remote-tracking ref, local branch, or same-named tag.
+pub fn fetch_tracking_branch(path: &Path, branch: &str) -> DaloResult<String> {
+    validate_tracking_branch(branch)?;
+    print_network_progress(&format!("Checking catalog branch `{branch}`..."));
+    run_git_network(
+        path,
+        &[
+            "fetch",
+            "--quiet",
+            "--no-tags",
+            "origin",
+            &format!("refs/heads/{branch}"),
+        ],
+    )?;
+    rev_parse(path, "FETCH_HEAD^{commit}")
+}
+
 /// Fetch the configured upstream without moving the current checkout.
 pub fn fetch_upstream(path: &Path) -> DaloResult<()> {
     print_network_progress(&format!(

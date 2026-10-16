@@ -350,8 +350,8 @@ dalo --dry-run team init company
 </code></pre>
 <p>An existing manifest with the same source ID is left unchanged. A different ID
 is never overwritten. JSON output shape: <code>TeamManifestMutationReport</code>.</p>
-<h3 id="dalo-team-catalog-add-id-git-url-or-path---version-revision---path-directory"><a class="doc-anchor" href="#dalo-team-catalog-add-id-git-url-or-path---version-revision---path-directory"><code>dalo team catalog add &lt;id&gt; &lt;git-url-or-path&gt; --version &lt;revision&gt; [--path &lt;directory&gt;]</code></a></h3>
-<p>Add a pinned external skill set to the team manifest. Repeat <code>--skill</code> for
+<h3 id="dalo-team-catalog-add-id-git-url-or-path---version-revision---path-directory---track"><a class="doc-anchor" href="#dalo-team-catalog-add-id-git-url-or-path---version-revision---path-directory---track"><code>dalo team catalog add &lt;id&gt; &lt;git-url-or-path&gt; --version &lt;revision&gt; [--path &lt;directory&gt;] [--track]</code></a></h3>
+<p>Add an external skill set to the team manifest, pinned by default. Repeat <code>--skill</code> for
 include/exclude filters; omitting it means all skills.</p>
 <pre><code class="language-sh">dalo team catalog add marketing https://github.com/coreyhaines31/marketingskills.git \
   --version 0123456789abcdef0123456789abcdef01234567 \
@@ -365,6 +365,10 @@ include/exclude filters; omitting it means all skills.</p>
 This requires a full lowercase commit ID in <code>--version</code> and upgrades the team
 manifest to schema version 2. Sync uses a shallow, blob-filtered sparse checkout
 and fails if the Git server cannot provide the pinned commit and filtering.</p>
+<p>Use <code>--track --version &lt;branch&gt;</code> for explicit fast-forward branch tracking on
+every real sync. This upgrades the manifest to schema version 3 and conflicts
+with <code>--path</code>. Without <code>--track</code>, symbolic versions retain their resolved local
+pin until the declaration changes. See <a href="/docs/team.html#follow-a-first-party-branch-on-each-sync">branch tracking</a>.</p>
 <h3 id="dalo-team-catalog-skills-id-filter"><a class="doc-anchor" href="#dalo-team-catalog-skills-id-filter"><code>dalo team catalog skills &lt;id&gt; [filter]...</code></a></h3>
 <p>Replace the complete filter list. Calling the command without filters sets
 <code>skills = []</code>, which means all skills.</p>
@@ -372,12 +376,14 @@ and fails if the Git server cannot provide the pinned commit and filtering.</p>
 dalo team catalog skills marketing
 </code></pre>
 <p>JSON output shape: <code>TeamManifestMutationReport</code>.</p>
-<h3 id="dalo-team-catalog-version-id-revision"><a class="doc-anchor" href="#dalo-team-catalog-version-id-revision"><code>dalo team catalog version &lt;id&gt; &lt;revision&gt;</code></a></h3>
+<h3 id="dalo-team-catalog-version-id-revision---track"><a class="doc-anchor" href="#dalo-team-catalog-version-id-revision---track"><code>dalo team catalog version &lt;id&gt; &lt;revision&gt; [--track]</code></a></h3>
 <p>Change the requested commit, tag, or ref. The next <code>dalo sync</code> on each team
 member&#39;s machine stages, audits, and pins the resolved commit before publishing
 it.</p>
 <pre><code class="language-sh">dalo team catalog version marketing v2.0.0
 </code></pre>
+<p>Without <code>--track</code>, this disables any existing branch tracking. Add <code>--track</code>
+with a short branch name to opt the catalog into tracking instead.</p>
 <p>JSON output shape: <code>TeamManifestMutationReport</code>.</p>
 <h3 id="dalo-team-catalog-update-id---from-ref"><a class="doc-anchor" href="#dalo-team-catalog-update-id---from-ref"><code>dalo team catalog update &lt;id&gt; --from &lt;ref&gt;</code></a></h3>
 <p>Resolve an upstream branch, tag, or ref in a temporary clone, compare the
@@ -1844,7 +1850,7 @@ is preserved in output so drift remains visible.</p>
 </tr>
 </tbody></table></div>
 <p>The bundled assistant is prepared automatically or explicitly. Hook, plugin,
-and binary paths are created lazily:</p>
+and binary paths are created lazily, not by <code>dalo init</code>:</p>
 <div class="doc-table"><table>
 <thead>
 <tr>
@@ -2047,11 +2053,11 @@ selection = [&quot;review-helper&quot;]
 </tr>
 <tr>
 <td><code>sources[].branch</code></td>
-<td>Optional requested Git ref for a directly added pinned source.</td>
+<td>Optional requested Git ref for team/direct pinned sources or the branch of a generated tracking catalog.</td>
 </tr>
 <tr>
 <td><code>sources[].update_policy</code></td>
-<td>Usually <code>track</code> for team sources and <code>pin</code> for catalog sources.</td>
+<td>Usually <code>track</code> for team sources and <code>pin</code> for direct catalogs. Generated manifest catalogs use <code>manifest</code> for pins or <code>manifest-track</code> for explicit branch tracking.</td>
 </tr>
 <tr>
 <td><code>sources[].selection</code></td>
@@ -2068,8 +2074,9 @@ selection = [&quot;review-helper&quot;]
 </tbody></table></div>
 <p>Unknown fields are rejected.</p>
 <h2 id="team-repository-dalotoml"><a class="doc-anchor" href="#team-repository-dalotoml">Team repository <code>dalo.toml</code></a></h2>
-<p>Schema version: <code>schema_version = 1</code> or <code>schema_version = 2</code>. Version 2 is
-required when a catalog has <code>path</code>; version 1 remains valid for full checkouts.</p>
+<p>Schema version: <code>schema_version = 1</code>, <code>2</code>, or <code>3</code>. Version 2 or later is
+required when a catalog has <code>path</code>; version 3 adds explicit branch tracking.
+Versions 1 and 2 retain their existing meaning.</p>
 <p>Team repositories may compose their checked-in skills with pinned external
 catalogs. <code>sync</code> namespaces ordinary IDs as <code>&lt;team-id&gt;.&lt;catalog-id&gt;</code> and stores
 the resolved commit in <code>source-lock.toml</code>. If either component itself contains
@@ -2112,6 +2119,10 @@ namespace = &quot;marketing&quot;
 <td>Required Git commit, tag, or ref. <code>ref</code> is accepted as an alias. Immutable commits are recommended.</td>
 </tr>
 <tr>
+<td><code>update_policy</code></td>
+<td><code>pin</code> (default) or <code>track</code> (requires schema version 3). Tracking interprets <code>version</code> as a short branch name, fetches it on every real sync, and accepts fast-forwards only. Cannot be combined with <code>path</code>.</td>
+</tr>
+<tr>
 <td><code>path</code></td>
 <td>Optional repository-relative subdirectory containing the selected skills. Requires schema version 2 and a full lowercase 40- or 64-character commit ID. Dalo acquires only this directory with a shallow, blob-filtered sparse checkout.</td>
 </tr>
@@ -2149,6 +2160,12 @@ new one. Local tracked changes, untracked files, and ignored files block the
 replacement. Removing <code>path</code> requires removing the catalog declaration and
 syncing, then adding it again without <code>path</code> and syncing a second time. A dry
 run of sync cannot preview a scoped checkout that has not yet been acquired.</p>
+<p>Real sync reports expose <code>manifest_catalogs[]</code> with <code>source_id</code>, <code>update_policy</code>,
+<code>requested_ref</code>, <code>old_commit</code>, <code>commit</code>, and <code>upstream_checked</code>. Dry-run reports
+only existing local pins and sets <code>upstream_checked = false</code>. A failed branch
+fetch or validation aborts reconciliation and preserves previous catalog state.
+To disable tracking, run <code>team catalog version &lt;id&gt; &lt;exact-commit&gt;</code> without
+<code>--track</code>. Add <code>--track</code> with a branch to opt an existing catalog in.</p>
 <h2 id="dalo-projecttoml"><a class="doc-anchor" href="#dalo-projecttoml"><code>dalo-project.toml</code></a></h2>
 <p>Schema version: <code>schema_version = 1</code>, <code>schema_version = 2</code>, or
 <code>schema_version = 3</code>.</p>

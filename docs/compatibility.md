@@ -424,6 +424,16 @@ Concretely:
 This is recorded as
 [ADR 0008](adr/0008-compatibility-contract.md).
 
+### Team manifests
+
+Team `dalo.toml` supports schema versions 1, 2, and 3. Version 3 adds explicit
+per-catalog `update_policy = "track"`; omitted policies keep the existing pinned
+behavior, including symbolic versions. Tracking stores the requested branch in
+the generated source configuration and the exact commit in `source-lock.toml`,
+using the existing store schemas. Older Dalo versions reject team schema 3;
+upgrade consumers before publishing it. Full checkouts support tracking;
+shallow scoped `path` catalogs continue to require exact commit pins.
+
 ### Project declarations
 
 `dalo-project.toml` uses project schema version 1, 2, or 3, separate from team

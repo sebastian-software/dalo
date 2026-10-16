@@ -2138,6 +2138,21 @@ pub fn print_sync_report(report: &SyncReport) {
             println!("{prefix}  warning: {warning}");
         }
     }
+    for catalog in &report.manifest_catalogs {
+        println!(
+            "{prefix}catalog: {} policy={} requested={} {} -> {} (upstream {})",
+            catalog.source_id,
+            catalog.update_policy.as_str(),
+            catalog.requested_ref,
+            catalog.old_commit.as_deref().unwrap_or("none"),
+            catalog.commit,
+            if catalog.upstream_checked {
+                "checked"
+            } else {
+                "not checked"
+            }
+        );
+    }
     if !report.unrefreshed_tracking_sources.is_empty() {
         println!(
             "{prefix}note: --dry-run did not refresh tracking {}; upstream changes are not reflected; run `{}` to fetch {}",

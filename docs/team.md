@@ -213,6 +213,64 @@ after a PR creation failure to resume the pushed branch; an existing open PR is
 reused. Changed proposal branches and closed PRs require manual review. This
 mode supports GitHub.com origins.
 
+### Follow a first-party branch on each sync
+
+For a catalog you maintain and want to follow continuously, opt in explicitly:
+
+```sh
+dalo team catalog add internal https://github.com/acme/internal-skills.git \
+  --version main --track
+```
+
+For an existing catalog, use `dalo team catalog version internal main --track`.
+These commands upgrade the manifest to schema version 3:
+
+```toml
+schema_version = 3
+
+[source]
+id = "company"
+
+[[catalog]]
+id = "internal"
+url = "https://github.com/acme/internal-skills.git"
+version = "main"
+update_policy = "track"
+```
+
+Each real `dalo sync` fetches that exact branch and accepts only fast-forward
+updates after validating the selection and auditing its contents. The local
+source lock records the exact installed commit. Other catalogs keep their pins,
+including declarations that say `version = "main"` without the explicit policy.
+Consumers can resolve different commits at different times; use reviewed pins
+when every machine must resolve the same revision.
+
+Tracking does not grant trust or execution approvals. Existing skill approvals
+match the source-qualified skill identity and remain valid across content
+updates. An approved skill therefore receives audited updates automatically.
+New skill identities remain pending unless an existing broader local approval
+covers them. Agents, tools, and hooks retain their own approval gates; audit
+risk acceptances remain bound to their reviewed content and scope.
+
+A failed fetch, missing branch, non-fast-forward update, removed selected skill,
+blocking audit, or local checkout content blocks reconciliation and preserves
+the previous catalog pins and deliveries. Dalo does not silently proceed using
+stale upstream information. A later reconciliation failure also rolls back
+catalogs already advanced in that pass. As with pinned manifests, this is a
+rollback boundary within a running sync, not a crash-recovery journal.
+
+`sync --dry-run` does not fetch. It reports the existing local commit and marks
+upstream as not checked; it cannot predict the next remote commit. Sync's human
+and JSON reports include each catalog's policy, requested ref, previous commit,
+resulting commit, and whether upstream was checked.
+
+Branch tracking requires a full catalog checkout. It cannot be combined with
+`path`, whose shallow sparse checkout lacks the ancestry needed to verify a
+fast-forward. A branch rewrite requires explicit review: use
+`dalo team catalog version internal <exact-commit>` to return to a fixed pin.
+The same command without `--track` always disables tracking. Upgrade consumers
+to a Dalo version supporting team schema 3 before publishing the manifest.
+
 ## 5. Commit and push
 
 In the default manual flow, commit and push the reviewable manifest yourself:
@@ -275,11 +333,13 @@ dalo approve skill company.marketing:launch
 dalo sync
 ```
 
-Approvals are bound to exact content, so advancing a pin makes the changed
-skills pending again. That is the intended behavior: a commit you push cannot
-silently put new third-party code into a teammate's agent. If your team prefers
-a broader policy, `dalo approve list` and the `source`, `author`, and `org`
-approval scopes exist — they are still granted per machine.
+Skill approvals match source-qualified identities and remain valid when those
+skills change. New identities need a matching local approval, while every
+selected skill still passes security audits. Accepted audit risks are bound to
+the exact reviewed content and scope. Use reviewed commit pins when changes
+must pass team review before reaching consumer machines. Broader `source`,
+`author`, and `org` approvals are also local choices; inspect them with
+`dalo approve list`.
 
 ## 8. Keeping machines current
 
@@ -294,8 +354,9 @@ dalo --store <store-path> --json sync --check
 The automation chooses when to run, when to retry, and how to notify its owner.
 `sync --check` still applies eligible changes and returns a failure for an
 incomplete result. It refreshes tracking sources and follows the team's declared
-catalog pins, while personal catalog pins stay unchanged. It never grants an
-approval or bypasses dirty sources, blocking audits, or target conflicts.
+catalog pins or explicitly tracked catalog branches, while personal catalog
+pins stay unchanged. It never grants an approval or bypasses dirty sources,
+blocking audits, or target conflicts.
 
 Read the JSON report even on a nonzero exit; safe work may have completed while
 other work remains blocked. The agent can explain changed skills or the exact

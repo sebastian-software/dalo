@@ -4099,7 +4099,7 @@ fn team_manifest_should_explain_future_schema_before_unknown_fields() {
     std::fs::create_dir_all(&repo).expect("team repo should be created");
     std::fs::write(
         repo.join("dalo.toml"),
-        "schema_version = 3\nnew_field = true\n[source]\nid = \"team\"\n",
+        "schema_version = 4\nnew_field = true\n[source]\nid = \"team\"\n",
     )
     .expect("manifest should be writable");
 
@@ -4109,7 +4109,7 @@ fn team_manifest_should_explain_future_schema_before_unknown_fields() {
         .arg("show")
         .assert()
         .failure()
-        .stderr(predicate::str::contains("unsupported schema version 3"))
+        .stderr(predicate::str::contains("unsupported schema version 4"))
         .stderr(predicate::str::contains("upgrade dalo"));
 }
 

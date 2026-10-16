@@ -27,6 +27,34 @@ pub const TEAM_MANIFEST_FILE: &str = "dalo.toml";
 pub const TEAM_MANIFEST_SCHEMA_VERSION: u32 = 1;
 /// Schema version that adds scoped catalog checkouts.
 pub const SCOPED_CATALOG_SCHEMA_VERSION: u32 = 2;
+/// Schema version that adds explicit per-catalog branch tracking.
+pub const TRACKING_CATALOG_SCHEMA_VERSION: u32 = 3;
+
+/// How a team catalog resolves its declared version.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CatalogUpdatePolicy {
+    /// Resolve once and retain the local exact commit until the declaration changes.
+    #[default]
+    Pin,
+    /// Fetch the declared branch on every real sync, accepting only fast-forwards.
+    Track,
+}
+
+impl CatalogUpdatePolicy {
+    fn is_pin(&self) -> bool {
+        *self == Self::Pin
+    }
+
+    /// Stable human-readable policy label.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Pin => "pin",
+            Self::Track => "track",
+        }
+    }
+}
 /// Safety cap for reading a team `dalo.toml`. A tracked manifest is small even
 /// with many catalogs; a multi-megabyte file shipped in a team repo is treated
 /// as hostile rather than parsed, mirroring the skill-frontmatter read cap.
@@ -99,7 +127,7 @@ pub struct ManifestSource {
     pub kind: Option<String>,
 }
 
-/// One pinned external catalog declared by a team source.
+/// One external catalog declared by a team source.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ManifestCatalog {
@@ -112,6 +140,9 @@ pub struct ManifestCatalog {
     /// alias; `version` is the preferred user-facing spelling.
     #[serde(alias = "ref")]
     pub version: String,
+    /// Explicit branch tracking; omitted declarations retain their existing pin behavior.
+    #[serde(default, skip_serializing_if = "CatalogUpdatePolicy::is_pin")]
+    pub update_policy: CatalogUpdatePolicy,
     /// Repository-relative directory to materialize from a shallow, blob-filtered checkout.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
@@ -133,6 +164,8 @@ pub struct ManifestCatalog {
 pub struct AddTeamCatalogOptions<'a> {
     /// Git commit, tag, or ref to pin.
     pub version: &'a str,
+    /// Follow the version as a branch on every real sync.
+    pub track: bool,
     /// Optional repository-relative skill directory.
     pub path: Option<&'a str>,
     /// Include/exclude filters.
@@ -264,6 +297,53 @@ pub struct ManifestReconcileReport {
     pub configured: Vec<String>,
     /// Manifest-derived sources no longer declared.
     pub removed: Vec<String>,
+    /// Per-catalog policy and exact commit selected by this pass.
+    pub catalogs: Vec<ManifestCatalogSyncReport>,
+}
+
+/// Exact local result of resolving one manifest catalog.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ManifestCatalogSyncReport {
+    /// Namespaced source ID.
+    pub source_id: String,
+    /// Requested update policy.
+    pub update_policy: CatalogUpdatePolicy,
+    /// Requested branch, tag, or commit.
+    pub requested_ref: String,
+    /// Previous local pin, absent on first acquisition.
+    pub old_commit: Option<String>,
+    /// Exact commit used for resolution; on dry-run this is the existing local pin.
+    pub commit: String,
+    /// Whether this invocation checked upstream for this declaration.
+    pub upstream_checked: bool,
+}
+
+/// Describe existing local catalog pins without consulting upstream.
+pub fn preview_catalog_reports(
+    paths: &StorePaths,
+    config: &UserConfig,
+) -> DaloResult<Vec<ManifestCatalogSyncReport>> {
+    let lock = catalog::read_source_lock(paths)?;
+    Ok(config
+        .sources
+        .iter()
+        .filter_map(|source| {
+            source.declared_by.as_ref()?;
+            let locked = lock.catalog(&source.id)?;
+            Some(ManifestCatalogSyncReport {
+                source_id: source.id.clone(),
+                update_policy: if source.update_policy.as_deref() == Some("manifest-track") {
+                    CatalogUpdatePolicy::Track
+                } else {
+                    CatalogUpdatePolicy::Pin
+                },
+                requested_ref: source.declared_ref.clone().unwrap_or_default(),
+                old_commit: Some(locked.commit.clone()),
+                commit: locked.commit.clone(),
+                upstream_checked: false,
+            })
+        })
+        .collect())
 }
 
 /// Rollback state retained until the enclosing sync commits materialization and
@@ -466,13 +546,22 @@ pub fn add_team_catalog(
                 id: id.to_owned(),
                 url: url.to_owned(),
                 version: options.version.to_owned(),
+                update_policy: if options.track {
+                    CatalogUpdatePolicy::Track
+                } else {
+                    CatalogUpdatePolicy::Pin
+                },
                 path: options.path.map(str::to_owned),
                 skills: deduplicate_filters(options.skills),
                 priority: options.priority,
                 namespace,
             });
-            if options.path.is_some() {
-                manifest.schema_version = SCOPED_CATALOG_SCHEMA_VERSION;
+            if options.track {
+                manifest.schema_version =
+                    manifest.schema_version.max(TRACKING_CATALOG_SCHEMA_VERSION);
+            } else if options.path.is_some() {
+                manifest.schema_version =
+                    manifest.schema_version.max(SCOPED_CATALOG_SCHEMA_VERSION);
             }
             manifest
                 .catalogs
@@ -527,7 +616,32 @@ pub fn set_team_catalog_version(
         Some(id),
         dry_run,
         |manifest| {
-            manifest_catalog_mut(manifest, id)?.version = version.to_owned();
+            let catalog = manifest_catalog_mut(manifest, id)?;
+            catalog.version = version.to_owned();
+            catalog.update_policy = CatalogUpdatePolicy::Pin;
+            Ok(())
+        },
+    )
+}
+
+/// Opt an existing catalog into following a branch on every real sync.
+pub fn set_team_catalog_tracking(
+    repo: &Path,
+    id: &str,
+    branch: &str,
+    dry_run: bool,
+) -> DaloResult<TeamManifestMutationReport> {
+    git::validate_tracking_branch(branch)?;
+    mutate_team_manifest(
+        repo,
+        TeamManifestAction::CatalogVersionUpdated,
+        Some(id),
+        dry_run,
+        |manifest| {
+            let catalog = manifest_catalog_mut(manifest, id)?;
+            catalog.version = branch.to_owned();
+            catalog.update_policy = CatalogUpdatePolicy::Track;
+            manifest.schema_version = manifest.schema_version.max(TRACKING_CATALOG_SCHEMA_VERSION);
             Ok(())
         },
     )
@@ -560,6 +674,13 @@ pub fn update_team_catalog_pin(
         .find(|catalog| catalog.id == id)
         .cloned()
         .ok_or_else(|| manifest_catalog_not_found(id, &manifest.catalogs))?;
+    if declaration.update_policy == CatalogUpdatePolicy::Track {
+        return Err(DaloError::StateError {
+            reason: format!(
+                "catalog `{id}` tracks a branch; use `dalo team catalog version {id} <commit>` to return to a fixed pin before proposing a pin update"
+            ),
+        });
+    }
     let team_id = manifest
         .source
         .as_ref()
@@ -920,6 +1041,16 @@ pub fn preview_team_manifests(paths: &StorePaths) -> DaloResult<UserConfig> {
                 &declaration.skills,
             )?;
             let mut preview = existing;
+            preview.branch = (declaration.update_policy == CatalogUpdatePolicy::Track)
+                .then(|| declaration.version.clone());
+            preview.update_policy = Some(
+                if declaration.update_policy == CatalogUpdatePolicy::Track {
+                    "manifest-track"
+                } else {
+                    "manifest"
+                }
+                .to_owned(),
+            );
             preview.priority = declaration.priority.unwrap_or(team.priority + 1);
             preview.namespace = declaration.namespace.clone();
             preview.selection = selection;
@@ -1008,17 +1139,22 @@ pub fn reconcile_team_manifests(
         .collect::<Vec<_>>();
     let mut expected = BTreeSet::new();
     let mut configured = Vec::new();
+    let mut catalogs = Vec::new();
     let mut checkout_commits = Vec::new();
     let mut replaced_checkouts = Vec::new();
     let mut new_source_ids = Vec::new();
 
+    // Validate all declarations before any catalog checkout can move. A later
+    // team's malformed manifest must not strand an earlier tracking update.
+    let mut manifests = Vec::new();
     for team in &team_sources {
         let manifest_path = team.path.join(TEAM_MANIFEST_FILE);
-        let Some(manifest) = read_manifest(&manifest_path)? else {
-            continue;
-        };
-        validate_manifest(&team.id, &manifest_path, &manifest)?;
-
+        if let Some(manifest) = read_manifest(&manifest_path)? {
+            validate_manifest(&team.id, &manifest_path, &manifest)?;
+            manifests.push((team, manifest));
+        }
+    }
+    for (team, manifest) in manifests {
         for declaration in &manifest.catalogs {
             let source_id = derived_source_id(&team.id, &declaration.id);
             migrate_legacy_derived_state(
@@ -1065,6 +1201,7 @@ pub fn reconcile_team_manifests(
                 cleanup_removed_checkouts(paths, &new_source_ids);
                 return Err(error);
             }
+            catalogs.push(reconciled.report);
             configured.push(reconciled.source.id);
         }
     }
@@ -1111,6 +1248,7 @@ pub fn reconcile_team_manifests(
         ManifestReconcileReport {
             configured,
             removed,
+            catalogs,
         },
         ManifestRollback {
             original_config,
@@ -1188,12 +1326,14 @@ pub fn read_manifest(path: &Path) -> DaloResult<Option<TeamManifest>> {
         })?;
     if !matches!(
         probe.schema_version,
-        TEAM_MANIFEST_SCHEMA_VERSION | SCOPED_CATALOG_SCHEMA_VERSION
+        TEAM_MANIFEST_SCHEMA_VERSION
+            | SCOPED_CATALOG_SCHEMA_VERSION
+            | TRACKING_CATALOG_SCHEMA_VERSION
     ) {
         return Err(DaloError::UnsupportedSchema {
             path: path.to_path_buf(),
             version: probe.schema_version,
-            supported: SCOPED_CATALOG_SCHEMA_VERSION,
+            supported: TRACKING_CATALOG_SCHEMA_VERSION,
         });
     }
     toml::from_str(&content)
@@ -1207,12 +1347,14 @@ pub fn read_manifest(path: &Path) -> DaloResult<Option<TeamManifest>> {
 fn validate_manifest(team_id: &str, path: &Path, manifest: &TeamManifest) -> DaloResult<()> {
     if !matches!(
         manifest.schema_version,
-        TEAM_MANIFEST_SCHEMA_VERSION | SCOPED_CATALOG_SCHEMA_VERSION
+        TEAM_MANIFEST_SCHEMA_VERSION
+            | SCOPED_CATALOG_SCHEMA_VERSION
+            | TRACKING_CATALOG_SCHEMA_VERSION
     ) {
         return Err(DaloError::UnsupportedSchema {
             path: path.to_path_buf(),
             version: manifest.schema_version,
-            supported: SCOPED_CATALOG_SCHEMA_VERSION,
+            supported: TRACKING_CATALOG_SCHEMA_VERSION,
         });
     }
     if let Some(source) = &manifest.source
@@ -1279,6 +1421,26 @@ fn validate_manifest(team_id: &str, path: &Path, manifest: &TeamManifest) -> Dal
                     catalog.id, catalog.version
                 ),
             });
+        }
+        if catalog.update_policy == CatalogUpdatePolicy::Track {
+            if manifest.schema_version < TRACKING_CATALOG_SCHEMA_VERSION {
+                return Err(DaloError::FileParse {
+                    path: path.to_path_buf(),
+                    reason: format!(
+                        "team catalog `{}` needs schema_version = 3 for branch tracking",
+                        catalog.id
+                    ),
+                });
+            }
+            git::validate_tracking_branch(&catalog.version)?;
+            if catalog.path.is_some() {
+                return Err(DaloError::StateError {
+                    reason: format!(
+                        "team catalog `{}` cannot combine branch tracking with a scoped `path`; use an exact commit for shallow scoped checkouts",
+                        catalog.id
+                    ),
+                });
+            }
         }
         validate_filters(&catalog.skills)?;
         if let Some(scope) = &catalog.path {
@@ -1474,6 +1636,7 @@ fn existing_manifest_declaration(
 
 struct ReconciledCatalog {
     source: SourceConfig,
+    report: ManifestCatalogSyncReport,
     previous_commit: Option<String>,
     replaced_checkout: Option<CheckoutReplacement>,
     new_checkout: bool,
@@ -1513,11 +1676,22 @@ fn reconcile_catalog(
     }
 
     let new_checkout = !checkout.join(".git").exists();
+    let old_commit = lock.catalog(source_id).map(|entry| entry.commit.clone());
+    let tracking = declaration.update_policy == CatalogUpdatePolicy::Track;
+    if tracking && !new_checkout && git::has_checkout_local_content(&checkout)? {
+        return Err(DaloError::DirtySource {
+            source_id: source_id.to_owned(),
+            path: checkout,
+        });
+    }
+    let mut upstream_checked = new_checkout;
     let (desired_commit, selection, inventory, previous_commit, replaced_checkout) = if let Some(
         scope,
     ) =
         declaration.path.as_deref()
     {
+        upstream_checked = new_checkout
+            || !git::scoped_catalog_checkout_matches(&checkout, &declaration.version, scope)?;
         let (selection, inventory, replacement) = reconcile_scoped_catalog(
             paths,
             source_id,
@@ -1546,7 +1720,10 @@ fn reconcile_catalog(
             source::clone_source_checkout(&location, &checkout)?;
         }
         let locked = lock.catalog(source_id).cloned();
-        let desired_commit = if existing.is_some_and(|candidate| {
+        let desired_commit = if tracking {
+            upstream_checked = true;
+            git::fetch_tracking_branch(&checkout, &declaration.version)?
+        } else if existing.is_some_and(|candidate| {
             candidate.declared_ref.as_deref() == Some(declaration.version.as_str())
         }) {
             locked
@@ -1554,11 +1731,36 @@ fn reconcile_catalog(
                 .map(|entry| entry.commit.clone())
                 .unwrap_or_else(|| declaration.version.clone())
         } else {
+            upstream_checked = true;
             git::fetch_upstream(&checkout)?;
             declaration.version.clone()
         };
-        let desired_commit = git::resolve_manifest_revision(&checkout, &desired_commit)?;
+        let desired_commit = if tracking {
+            // This is already the exact FETCH_HEAD commit, not a symbolic ref.
+            desired_commit
+        } else {
+            git::resolve_manifest_revision(&checkout, &desired_commit)?
+        };
         let current_commit = git::rev_parse_head(&checkout)?;
+        if tracking && let Some(previous) = &old_commit {
+            if current_commit != *previous {
+                return Err(DaloError::StateError {
+                    reason: format!(
+                        "team catalog `{source_id}` checkout does not match its locked commit; restore {previous} before tracking updates"
+                    ),
+                });
+            }
+            if desired_commit != *previous
+                && git::revision_count(&checkout, &desired_commit, previous)? != 0
+            {
+                return Err(DaloError::StateError {
+                    reason: format!(
+                        "team catalog `{source_id}` branch `{}` is not a fast-forward from {previous} to {desired_commit}; the previous pin was preserved; review the rewrite and set an explicit catalog version",
+                        declaration.version
+                    ),
+                });
+            }
+        }
         let (scan_root, staging) = if current_commit == desired_commit {
             (checkout.clone(), None)
         } else {
@@ -1590,6 +1792,23 @@ fn reconcile_catalog(
             Ok(())
         };
         let (selection, inventory) = finish_candidate_after_cleanup(candidate, cleanup)?;
+        if tracking && let Some(previous) = lock.catalog(source_id) {
+            let drift = catalog::compare_catalog_inventory(
+                &previous.inventory,
+                &previous.selected,
+                &inventory,
+            );
+            if drift
+                .iter()
+                .any(|entry| entry.code == DriftCode::SelectedRemoved)
+            {
+                return Err(DaloError::StateError {
+                    reason: format!(
+                        "team catalog `{source_id}` removed a previously selected skill; review the deletion and set an explicit version before advancing"
+                    ),
+                });
+            }
+        }
         let previous_commit = if current_commit == desired_commit {
             None
         } else {
@@ -1601,7 +1820,7 @@ fn reconcile_catalog(
     lock.catalogs.retain(|entry| entry.source_id != source_id);
     lock.catalogs.push(CatalogLock {
         source_id: source_id.to_owned(),
-        commit: desired_commit,
+        commit: desired_commit.clone(),
         selected: selection.clone(),
         inventory,
     });
@@ -1609,6 +1828,14 @@ fn reconcile_catalog(
         .sort_by(|left, right| left.source_id.cmp(&right.source_id));
 
     Ok(ReconciledCatalog {
+        report: ManifestCatalogSyncReport {
+            source_id: source_id.to_owned(),
+            update_policy: declaration.update_policy,
+            requested_ref: declaration.version.clone(),
+            old_commit,
+            commit: desired_commit,
+            upstream_checked,
+        },
         source: SourceConfig {
             id: source_id.to_owned(),
             kind: SourceKind::Catalog,
@@ -1619,8 +1846,15 @@ fn reconcile_catalog(
             enabled: true,
             trusted: false,
             url: Some(location),
-            branch: None,
-            update_policy: Some("manifest".to_owned()),
+            branch: tracking.then(|| declaration.version.clone()),
+            update_policy: Some(
+                if tracking {
+                    "manifest-track"
+                } else {
+                    "manifest"
+                }
+                .to_owned(),
+            ),
             selection,
             declared_by: Some(team.id.clone()),
             declared_ref: Some(declaration.version.clone()),
@@ -2117,6 +2351,7 @@ mod tests {
             id: "x.y".to_owned(),
             url: "https://example.invalid/catalog.git".to_owned(),
             version: "main".to_owned(),
+            update_policy: CatalogUpdatePolicy::Pin,
             path: None,
             skills: Vec::new(),
             priority: None,
@@ -2217,6 +2452,7 @@ mod tests {
                 id: "x.y".to_owned(),
                 url: "https://example.invalid/existing.git".to_owned(),
                 version: "main".to_owned(),
+                update_policy: CatalogUpdatePolicy::Pin,
                 path: None,
                 skills: Vec::new(),
                 priority: None,
@@ -2267,6 +2503,7 @@ mod tests {
             id: "y".to_owned(),
             url: "https://example.invalid/incoming.git".to_owned(),
             version: "main".to_owned(),
+            update_policy: CatalogUpdatePolicy::Pin,
             path: None,
             skills: Vec::new(),
             priority: None,

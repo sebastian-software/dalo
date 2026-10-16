@@ -1212,6 +1212,10 @@ pub struct TeamCatalogAddArgs {
     #[arg(long)]
     pub version: String,
 
+    /// Follow --version as a branch on every sync (fast-forwards only).
+    #[arg(long, conflicts_with = "path")]
+    pub track: bool,
+
     /// Repository-relative skill directory to acquire without unrelated blobs or history.
     #[arg(long)]
     pub path: Option<String>,
@@ -1248,6 +1252,9 @@ pub struct TeamCatalogVersionArgs {
 
     /// New Git commit, tag, or ref.
     pub version: String,
+    /// Follow this version as a branch on every sync (fast-forwards only).
+    #[arg(long)]
+    pub track: bool,
 }
 
 /// Arguments for `team catalog update`.
@@ -3923,6 +3930,11 @@ where
         report.instruction_removal_operations = instruction_sync.removal_operations;
         report.unselected_catalogs = unselected_catalogs(&live);
         report.unrefreshed_tracking_sources = unrefreshed_tracking_sources;
+        report.manifest_catalogs = if let Some(manifest_report) = &manifest_report {
+            manifest_report.catalogs.clone()
+        } else {
+            team_manifest::preview_catalog_reports(&paths, &config)?
+        };
         if options.dry_run && !live.plugins.plugins.is_empty() {
             let state = store::read_state(&paths)?;
             let installation_plan = plan::build_from_facts_with_active_skills(
@@ -4614,6 +4626,7 @@ fn run_team(options: &GlobalOptions, command: TeamCommand) -> DaloResult<()> {
                     &args.url,
                     team_manifest::AddTeamCatalogOptions {
                         version: &args.version,
+                        track: args.track,
                         path: args.path.as_deref(),
                         skills: &args.skills,
                         priority: args.priority,
@@ -4627,12 +4640,23 @@ fn run_team(options: &GlobalOptions, command: TeamCommand) -> DaloResult<()> {
                     &args.skills,
                     options.dry_run,
                 )?,
-                TeamCatalogSubcommand::Version(args) => team_manifest::set_team_catalog_version(
-                    &repo,
-                    &args.id,
-                    &args.version,
-                    options.dry_run,
-                )?,
+                TeamCatalogSubcommand::Version(args) => {
+                    if args.track {
+                        team_manifest::set_team_catalog_tracking(
+                            &repo,
+                            &args.id,
+                            &args.version,
+                            options.dry_run,
+                        )?
+                    } else {
+                        team_manifest::set_team_catalog_version(
+                            &repo,
+                            &args.id,
+                            &args.version,
+                            options.dry_run,
+                        )?
+                    }
+                }
                 TeamCatalogSubcommand::Remove(args) => {
                     team_manifest::remove_team_catalog(&repo, &args.id, options.dry_run)?
                 }
