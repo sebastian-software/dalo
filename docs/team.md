@@ -235,7 +235,7 @@ id = "company"
 id = "internal"
 url = "https://github.com/acme/internal-skills.git"
 version = "main"
-update_policy = "track"
+update = "track"
 ```
 
 Each real `dalo sync` fetches that exact branch and accepts only fast-forward

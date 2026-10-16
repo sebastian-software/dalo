@@ -714,7 +714,7 @@ something that happens by accident because a module was public.</li>
 <a href="https://github.com/sebastian-software/dalo/blob/main/docs/adr/0008-compatibility-contract.md" rel="noopener">ADR 0008</a>.</p>
 <h3 id="team-manifests"><a class="doc-anchor" href="#team-manifests">Team manifests</a></h3>
 <p>Team <code>dalo.toml</code> supports schema versions 1, 2, and 3. Version 3 adds explicit
-per-catalog <code>update_policy = &quot;track&quot;</code>; omitted policies keep the existing pinned
+per-catalog <code>update = &quot;track&quot;</code>; omitted policies keep the existing pinned
 behavior, including symbolic versions. Tracking stores the requested branch in
 the generated source configuration and the exact commit in <code>source-lock.toml</code>,
 using the existing store schemas. Older Dalo versions reject team schema 3;
