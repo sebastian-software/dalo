@@ -21,12 +21,13 @@ Read [inventory.md](references/inventory.md) for the first assessment. Reuse tha
 assessment during this conversation and refresh affected facts after changes.
 On each new invocation, when supported, run
 `dalo --store "$store" --json assistant status` to check the assistant against
-the installed binary. For `missing_store`, `missing`, or `update_available`,
-offer the installation or update and wait for the user's answer before applying
-it, unless they already explicitly requested that same setup or update. Ask in
-the conversation; the CLI deliberately does not prompt under `--json`. A decline
-leaves the setup unchanged and does not prevent other requested work. Do not
-repeat the question for each CLI command within the same invocation.
+the installed binary. Current releases prepare the bundle during `init` and
+`sync`, and deliver it during `target link` or project `install`, including JSON
+calls. Continue an already requested setup without a separate assistant question.
+On an inspection-only request, report missing or outdated setup without changing
+it. Respect `DALO_ASSISTANT_CHECK=never`; explicit assistant installation remains
+a separate, available recovery route. Check older binaries' help and reports
+before assuming they perform automatic setup.
 Treat `external` or `blocked` as a preservation/diagnosis case. `current` means
 the local bundle matches; inspect `undelivered_targets` and `next_command`
 before claiming availability in an agent. Older binaries without this command

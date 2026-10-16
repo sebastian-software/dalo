@@ -180,7 +180,20 @@ it; ask only when the agent or installation scope is ambiguous.
    not repoint an existing target or turn project-only skills into global skills
    by accident.
 
-7. Install the assistant supplied by this Dalo binary and preview delivery:
+7. Verify the bundled assistant after setup:
+
+   ```sh
+   dalo --json assistant status
+   ```
+
+   Current releases prepare the bundle during `init` and deliver only the Dalo
+   skill during `target link`, including JSON calls. No additional assistant
+   installation or whole-store sync is needed for a fresh setup. A binary-only
+   installer completes this step on first initialization and target linking.
+   `DALO_ASSISTANT_CHECK=never` disables automatic setup. A blocked or external
+   assistant is a preservation case; inspect the report before changing it.
+
+   For an older supporting release or explicit recovery, preview and run:
 
    ```sh
    dalo --dry-run --json assistant install
@@ -189,24 +202,17 @@ it; ask only when the agent or installation scope is ambiguous.
    dalo --json sync --check
    ```
 
-   Ordinary terminal commands offer a missing or outdated assistant with a
-   `[y/N]` question. Agent calls using `--json` do not wait for terminal input:
-   inspect `dalo assistant status --json` and ask in the conversation if setup
-   or updating has not already been requested. If a terminal offer already
-   installed the bundle, reuse it; a `current` bundle may still need delivery.
-
-   Run the real sync only after checking the preview. On an existing store,
+   Run a whole-store sync only after checking the preview. On an existing store,
    sync can affect every linked agent and fetch tracking team sources; its dry
-   run does not fetch. Resolve any effects outside the requested setup before
+   run does not fetch. Resolve effects outside the requested setup before
    applying them. An unmanaged `dalo` folder or foreign symlink is a conflict,
-   not permission to overwrite it. Keep the working installation and explain
-   the handover needed. Installing the local bundle does not itself touch targets;
-   an update is immediately visible through existing links to that bundle.
+   not permission to overwrite it. Preserve customized bundles and keep the
+   working installation while explaining any handover needed.
 
-   Inspect the resulting `dalo/SKILL.md` and its references in the intended
-   agent's folder. The agent can read that file to continue this conversation
-   immediately. Confirm native skill discovery on the next turn, reloading the
-   skill list or starting a new session only if the host requires it.
+   Inspect the resulting `dalo/SKILL.md` and references in the intended agent's
+   folder. The agent can read that file to continue this conversation immediately.
+   Confirm native discovery on the next turn, reloading the skill list or
+   starting a new session only if the host requires it.
 
 8. Only if the user also asks to try a catalog, select one skill from
    [Sebastian's skill catalog](https://github.com/sebastian-software/skills.sebastian-software.com),

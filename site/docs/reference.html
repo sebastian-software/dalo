@@ -148,7 +148,7 @@ interactive initialization, and the versioned definition.</p>
 </tr>
 <tr>
 <td><code>DALO_ASSISTANT_CHECK</code></td>
-<td>Set to <code>never</code> to disable the automatic interactive assistant installation/update offer. Explicit assistant commands still work.</td>
+<td>Set to <code>never</code> to disable automatic bundled assistant preparation and target delivery during setup/sync. Explicit assistant commands still work; an installed bundle remains eligible for ordinary sync.</td>
 </tr>
 <tr>
 <td><code>DALO_INSTALL_CHANNEL</code></td>
@@ -275,20 +275,21 @@ configured/default target folders, agent configuration overrides, the Codex skil
 project&#39;s <code>.agents</code>, <code>.claude</code>, and <code>.codex</code> skill folders. Their freshness is
 not inferred from the name. The report is also the additive <code>assistant</code> field
 in <code>status --json</code>; it does not change <code>status --check</code> health rules.</p>
-<p>Successful ordinary terminal commands and bare <code>dalo</code> use this check to offer
-missing or outdated bundles with a <code>[y/N]</code> question. Only <code>y</code> or <code>yes</code> proceeds.
-The first-run offer explicitly includes initializing a missing store. No answer,
-Enter, or any other response changes nothing; the next invocation checks again.
-A current bundle remains quiet unless delivery still needs setup. A modified
-or external installation receives a diagnostic, never an overwrite offer.</p>
-<p>Automatic offers are suppressed for <code>--json</code>, <code>--dry-run</code>, redirected streams,
-an environment with <code>CI</code> set, <code>DALO_ASSISTANT_CHECK=never</code>, and failed commands.
-Help/version, completions, man pages, explicit assistant commands, team commands,
-package validation, tool/hook/scheduler commands, target unlinking, and health
-checks (<code>status</code>, <code>doctor</code>, <code>sync</code>, or <code>agent list</code> with <code>--check</code>) do not offer
-setup. The offer holds no store lock while waiting, rechecks before writing,
-and does not change the original command&#39;s exit status on setup failure.
-Agents should use the JSON report and ask in their own UI.</p>
+<p><code>init</code> automatically prepares a missing or unmodified outdated bundle in the
+selected store. <code>target link</code> prepares it and delivers only the bundled skill
+to the chosen target, preserving all unrelated links and lock entries. <code>sync</code>
+and project <code>install</code> prepare it before ordinary resolution, audits, and
+delivery. These write operations work without prompts in terminal, JSON, and CI
+runs. Their JSON reports include an additive <code>assistant</code> status field when
+automatic setup is enabled. A blocked assistant is reported without failing an
+otherwise successful setup operation.</p>
+<p>Bare <code>dalo</code>, read-only commands, and <code>--dry-run</code> never prepare or deliver the
+bundle. Binary-only installation channels complete setup on first store
+initialization and target linking; they do not select an agent automatically.
+<code>DALO_ASSISTANT_CHECK=never</code> disables automatic setup. It does not remove a
+bundle or keep an installed one out of ordinary sync. Explicit assistant
+commands remain available. Preserve custom or externally installed assistants
+and inspect the reported reason before switching ownership.</p>
 <h3 id="dalo-assistant-install"><a class="doc-anchor" href="#dalo-assistant-install"><code>dalo assistant install</code></a></h3>
 <p>Prepare the complete assistant bundled with this executable in the initialized
 store&#39;s <code>local/skills/dalo</code> directory. It works offline and does not fetch
@@ -1354,7 +1355,7 @@ dalo completions fish &gt; dalo.fish
 <tbody><tr>
 <td><code>init</code></td>
 <td><code>InitReport</code></td>
-<td><code>store</code>, <code>dry_run</code>, <code>operations[]</code> with <code>action</code>, <code>path</code>, <code>status</code></td>
+<td><code>store</code>, <code>dry_run</code>, <code>operations[]</code> with <code>action</code>, <code>path</code>, <code>status</code>, optional <code>assistant</code></td>
 </tr>
 <tr>
 <td><code>assistant status</code></td>
@@ -1374,7 +1375,7 @@ dalo completions fish &gt; dalo.fish
 <tr>
 <td><code>target link</code></td>
 <td><code>TargetLinkReport</code></td>
-<td><code>target_id</code>, <code>path</code>, <code>canonical_path</code>, <code>status</code>, <code>created_dir</code></td>
+<td><code>target_id</code>, <code>path</code>, <code>canonical_path</code>, <code>status</code>, <code>created_dir</code>, optional <code>assistant</code></td>
 </tr>
 <tr>
 <td><code>target unlink</code></td>
@@ -1564,7 +1565,7 @@ dalo completions fish &gt; dalo.fish
 <tr>
 <td><code>sync</code></td>
 <td><code>SyncReport</code></td>
-<td><code>store</code>, <code>dry_run</code>, <code>linked_targets</code>, skill <code>operations[]</code>, optional <code>instruction_operations[]</code> (<code>source_id</code>, <code>pack_id</code>, <code>target</code>, <code>action</code>, <code>previous_commit</code>, <code>commit</code>), <code>resolution</code>, <code>degraded_sources[]</code> (<code>id</code>, <code>path</code>, <code>reason</code>), optional <code>inventory_warnings[]</code> (<code>code</code>, <code>path</code>, <code>message</code>), optional <code>missing_commands[]</code> (<code>source_ref</code>, <code>command</code>, optional <code>compatibility</code>), optional <code>unrefreshed_tracking_sources[]</code>, <code>unselected_catalogs[]</code> (<code>source_id</code>, <code>available_skills</code>)</td>
+<td><code>store</code>, optional <code>assistant</code>, <code>dry_run</code>, <code>linked_targets</code>, skill <code>operations[]</code>, optional <code>instruction_operations[]</code> (<code>source_id</code>, <code>pack_id</code>, <code>target</code>, <code>action</code>, <code>previous_commit</code>, <code>commit</code>), <code>resolution</code>, <code>degraded_sources[]</code> (<code>id</code>, <code>path</code>, <code>reason</code>), optional <code>inventory_warnings[]</code> (<code>code</code>, <code>path</code>, <code>message</code>), optional <code>missing_commands[]</code> (<code>source_ref</code>, <code>command</code>, optional <code>compatibility</code>), optional <code>unrefreshed_tracking_sources[]</code>, <code>unselected_catalogs[]</code> (<code>source_id</code>, <code>available_skills</code>)</td>
 </tr>
 <tr>
 <td><code>audit</code></td>
@@ -1847,7 +1848,7 @@ is preserved in output so drift remains visible.</p>
 </thead>
 <tbody><tr>
 <td><code>local/skills/dalo/</code>, including <code>.dalo-bundle.toml</code></td>
-<td><code>assistant install</code> prepares the embedded skill and its versioned receipt.</td>
+<td>Automatic setup or <code>assistant install</code> prepares the embedded skill and its versioned receipt.</td>
 </tr>
 <tr>
 <td><code>.assistant-installing/</code></td>

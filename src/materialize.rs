@@ -246,6 +246,122 @@ struct DesiredLink {
     withdraw_on_block: bool,
 }
 
+/// Deliver only the verified bundled assistant to one explicitly linked target.
+/// The caller holds the store lock. Reuse normal ownership checks and rollback,
+/// while leaving every other skill, lock entry, and target unchanged.
+pub(crate) fn materialize_assistant(
+    paths: &StorePaths,
+    target: &str,
+) -> DaloResult<Vec<MaterializeOperation>> {
+    materialize_assistant_using(paths, target, store::write_user_lock)
+}
+
+fn materialize_assistant_using(
+    paths: &StorePaths,
+    target: &str,
+    write_lock: impl FnOnce(&StorePaths, &crate::lockfile::UserLock) -> DaloResult<()>,
+) -> DaloResult<Vec<MaterializeOperation>> {
+    let mut state = store::read_state(paths)?;
+    let mut lock = store::read_user_lock(paths)?;
+    let links = state
+        .materialization_dirs
+        .iter()
+        .filter(|dir| dir.logical_targets.iter().any(|id| id == target))
+        .map(|dir| DesiredLink {
+            target_id: dir.logical_targets[0].clone(),
+            target_ids: dir.logical_targets.clone(),
+            source_ref: "local:dalo".to_owned(),
+            slot_name: "dalo".to_owned(),
+            link_path: dir.path.join("dalo"),
+            store_path: paths.local_skills_dir.join("dalo"),
+            delivery_mode: SkillDeliveryMode::Direct,
+            provider: None,
+            fingerprint: None,
+            cache_state: None,
+            derivation_hash: None,
+            planned_output: None,
+            blocked_reason: None,
+            withdraw_on_block: false,
+        })
+        .collect::<Vec<_>>();
+    let mut scoped_state = state.clone();
+    scoped_state
+        .owned_skills
+        .retain(|owned| links.iter().any(|link| link.link_path == owned.link_path));
+    let mut operations = build_plan(paths, &scoped_state, &links, &[])?;
+    let rollback = Some(MaterializationRollback {
+        state: state.clone(),
+        links: snapshot_links(&operations)?,
+    });
+    if let Err(error) = apply_plan(paths, &mut scoped_state, &mut operations, &links) {
+        return Err(rollback_materialization_failure(paths, rollback, error));
+    }
+    state
+        .owned_skills
+        .retain(|owned| !links.iter().any(|link| link.link_path == owned.link_path));
+    state.owned_skills.extend(scoped_state.owned_skills);
+    if let Err(error) = store::write_state(paths, &state) {
+        return Err(rollback_materialization_failure(paths, rollback, error));
+    }
+    if operations.iter().any(|operation| {
+        matches!(
+            operation.kind,
+            MaterializeOperationKind::Create | MaterializeOperationKind::NoOp
+        ) && operation.status != MaterializeOperationStatus::Blocked
+    }) {
+        // Record only this delivered skill. Rebuilding the whole lock here
+        // would acknowledge unrelated source or selection changes without sync.
+        if !lock
+            .active_skills
+            .iter()
+            .any(|skill| skill.source_ref == "local:dalo")
+        {
+            lock.active_skills.push(crate::lockfile::LockedSkill {
+                source_ref: "local:dalo".to_owned(),
+                slot_name: "dalo".to_owned(),
+                id: None,
+                source_id: "local".to_owned(),
+                source_kind: crate::source::SourceKind::Local,
+                delivery: None,
+                reason: None,
+            });
+            lock.active_skills
+                .sort_by(|left, right| left.source_ref.cmp(&right.source_ref));
+        }
+        if !lock.sources.iter().any(|source| source.id == "local") {
+            lock.sources.push(crate::lockfile::LockedSource {
+                id: "local".to_owned(),
+                kind: crate::source::SourceKind::Local,
+                path: paths.local_dir.clone(),
+                subpath: None,
+                commit: crate::git::rev_parse_head(&paths.local_dir).ok(),
+            });
+            lock.sources.sort_by(|left, right| left.id.cmp(&right.id));
+        }
+        lock.target_materializations.retain(|entry| {
+            !operations
+                .iter()
+                .any(|operation| operation.link_path == entry.link_path)
+        });
+        lock.target_materializations
+            .extend(operations.iter().map(|operation| {
+                crate::lockfile::LockedTargetMaterialization {
+                    link_path: operation.link_path.clone(),
+                    desired_path: operation.desired_path.clone(),
+                    kind: operation.kind.as_str().to_owned(),
+                    status: operation.status.as_str().to_owned(),
+                    reason: operation.reason.clone(),
+                }
+            }));
+        lock.target_materializations
+            .sort_by(|left, right| left.link_path.cmp(&right.link_path));
+        if let Err(error) = write_lock(paths, &lock) {
+            return Err(rollback_materialization_failure(paths, rollback, error));
+        }
+    }
+    Ok(operations)
+}
+
 /// Materialize resolved skills into configured target directories.
 pub fn materialize(
     paths: &StorePaths,
@@ -1582,6 +1698,29 @@ mod tests {
     use crate::resolver::{Resolution, ResolvedSkill};
     use crate::source::SourceKind;
     use crate::store::{MaterializationDirState, TargetState};
+
+    #[test]
+    fn assistant_delivery_rolls_back_links_and_ownership_when_lock_commit_fails() {
+        let temporary = tempfile::tempdir().unwrap();
+        let store_root = temporary.path().join("store");
+        let target = temporary.path().join("target");
+        store::init_store(store_root.clone(), false).unwrap();
+        fs::create_dir_all(&target).unwrap();
+        fs::create_dir_all(store_root.join("local/skills/dalo")).unwrap();
+        write_state_with_target_id(&store_root, &target, "generic");
+        let paths = StorePaths::new(store_root);
+        let before = store::read_state(&paths).unwrap();
+        let lock = fs::read(&paths.lock_file).unwrap();
+        let error = materialize_assistant_using(&paths, "generic", |_, _| {
+            assert!(target.join("dalo").is_symlink());
+            Err(std::io::Error::other("injected lock commit failure").into())
+        })
+        .unwrap_err();
+        assert!(error.to_string().contains("changes were rolled back"));
+        assert!(!target.join("dalo").exists());
+        assert_eq!(store::read_state(&paths).unwrap(), before);
+        assert_eq!(fs::read(&paths.lock_file).unwrap(), lock);
+    }
 
     #[test]
     fn materialize_should_create_directory_symlink() {

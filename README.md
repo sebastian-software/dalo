@@ -39,6 +39,10 @@ The agent installs Dalo, connects its skill folder, and makes the bundled Dalo
 assistant available. No preinstalled Dalo skill is needed. Use an agent with
 local file and command access on macOS or Linux.
 
+Terminal setup includes the same skill: `dalo init` prepares the bundled
+assistant, and `dalo target link <agent>` delivers it to the chosen agent. No
+separate skill installation is needed.
+
 ## Keep using it through conversation
 
 Once set up, select the Dalo skill in your agent (for example, `$dalo` in Codex)

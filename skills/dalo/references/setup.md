@@ -5,7 +5,8 @@ migration; do not recreate it as a shortcut.
 
 ## Binary missing or too old
 
-An assistant skill and the Dalo executable are separate installations. If the
+A binary-only installation completes bundled skill setup on first `init` and
+`target link`; project `install` keeps it project-local. If the
 task calls for setup, use an installation channel appropriate to the machine,
 preferring an existing package manager or the user's choice. Check the official
 [installation instructions](https://dalo.sh/docs/getting-started.html) and
@@ -33,7 +34,8 @@ dalo --store "$store" --json target link codex
 
 Here `codex` is an example; use the agent and path established by the inventory.
 An installed agent is not automatically a request to manage it. Linking records
-the target; it does not adopt existing content. Continue with migration if that
+the target and delivers only the bundled assistant on current releases; it does
+not adopt other existing content. Continue with migration if that
 directory is populated.
 
 One target ID currently holds one path. Reusing it with another path changes
@@ -56,21 +58,21 @@ to keep that scope explicit. See
 
 ## Sources and first sync
 
-For a new conversational setup, check `dalo assistant install --help`. A
-supporting binary carries the complete assistant; no second skill manager or
-source download is needed:
+For a new conversational setup, inspect `dalo assistant status --json` after
+initialization and target linking. Current releases deliver the embedded skill
+without a separate install command, source download, or whole-store sync.
+Respect `DALO_ASSISTANT_CHECK=never` if automatic setup was disabled. Older
+supporting releases and explicitly requested recovery can use:
 
 ```sh
 dalo --store "$store" --dry-run --json assistant install
 dalo --store "$store" --json assistant install
 ```
 
-This prepares `local/skills/dalo` for the ordinary sync below. If an assistant
-already comes from another installer or source, keep that ownership intact;
-do not install a competing copy or overwrite its target. Updating an existing
-bundled assistant changes what its current target symlinks read immediately.
-The command blocks on local modifications. An older binary can keep using the
-standalone skill; follow the official assistant guide if an upgrade is needed.
+Explicit installation only prepares `local/skills/dalo`; preview ordinary sync
+before delivering it. Keep externally installed or customized assistants intact.
+Updating an unmodified bundle changes existing target symlinks immediately;
+never remove a receipt to bypass local-change protection.
 
 Use `source add` for an explicitly trusted team repository. It tracks the
 repository by default and activates eligible skills. Supported `--ref` and
