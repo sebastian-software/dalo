@@ -105,7 +105,7 @@ The internal layout *around* those files is not covered — see
 | `DALO_GIT_TIMEOUT_SECS` | CLI | Positive timeout in seconds for every Git subprocess. |
 | `DALO_OFFLINE` | CLI | Disable passive update checks when truthy. |
 | `DALO_UPDATE_CHECK` | CLI | `never` disables passive update checks. |
-| `DALO_ASSISTANT_CHECK` | CLI | `never` disables automatic interactive assistant setup offers; explicit commands still work. |
+| `DALO_ASSISTANT_CHECK` | CLI | `never` disables automatic bundled assistant setup; explicit commands and delivery of an installed bundle through ordinary sync still work. |
 | `DALO_INSTALL_CHANNEL` | CLI | Launcher-provided installation context used for the upgrade hint. |
 | `NO_COLOR` | CLI | Disable ANSI color output when set. |
 | `DALO_TARGET` | `install.sh` | Release target override; see [installer variables](../site/install.md#installer-environment-variables). |

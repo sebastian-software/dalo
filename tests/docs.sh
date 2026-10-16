@@ -977,6 +977,9 @@ refute 'the site targets section still carries an experimental badge' \
 refute 'the site targets section still advertises an unverified target path' \
   grep -q 'target-path">unverified' "$root/site/index.html"
 
+# Keep existing command examples focused on their declared skills. The bundled
+# assistant's automatic setup is exercised explicitly below.
+export DALO_ASSISTANT_CHECK=never
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/dalo-docs-test.XXXXXX")"
 
 cleanup() {
@@ -1138,22 +1141,26 @@ git -C "$catalog" -c commit.gpgSign=false -c user.email=test@example.com -c user
 cargo build --quiet
 dalo="$root/target/debug/dalo"
 
-# Exercise the install guide's cold start with the embedded assistant and
-# verify that delivery retains every reference and provider metadata file.
+# Ordinary JSON setup delivers the embedded assistant without an explicit
+# assistant install or a whole-store sync, including in automation.
 assistant_store="$test_root/assistant-store"
 assistant_target="$test_root/assistant-target"
-"$dalo" --store "$assistant_store" init > /dev/null
-"$dalo" --store "$assistant_store" target link generic "$assistant_target" > /dev/null
-"$dalo" --store "$assistant_store" --dry-run --json assistant install > /dev/null
-test ! -e "$assistant_store/local/skills/dalo"
-"$dalo" --store "$assistant_store" --json assistant install > /dev/null
-"$dalo" --store "$assistant_store" --dry-run sync > /dev/null
-test ! -e "$assistant_target/dalo"
-"$dalo" --store "$assistant_store" sync --check > /dev/null
+assistant_home="$test_root/assistant-home"
+mkdir -p "$assistant_home"
+assistant_cli() {
+  env HOME="$assistant_home" CODEX_HOME="$assistant_home/.codex" \
+    CLAUDE_CONFIG_DIR="$assistant_home/.claude" \
+    OPENCODE_CONFIG_DIR="$assistant_home/.config/opencode" \
+    XDG_CONFIG_HOME="$assistant_home/.config" \
+    DALO_ASSISTANT_CHECK=auto "$dalo" --store "$assistant_store" "$@"
+}
+assistant_cli --json init > /dev/null
+test -f "$assistant_store/local/skills/dalo/SKILL.md"
+assistant_cli --json target link generic "$assistant_target" > /dev/null
 test -L "$assistant_target/dalo"
 diff -r -x .dalo-bundle.toml "$root/skills/dalo" "$assistant_target/dalo"
-"$dalo" --store "$assistant_store" --json status --check > /dev/null
-"$dalo" --store "$assistant_store" --json doctor --check > /dev/null
+assistant_cli --json status --check > /dev/null
+assistant_cli --json doctor --check > /dev/null
 
 "$dalo" --store "$store" init
 "$dalo" --store "$store" target link generic "$target"

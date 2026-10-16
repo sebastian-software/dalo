@@ -1464,7 +1464,6 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         if !json && io::stdout().is_terminal() {
             let options = GlobalOptions::resolve(store.as_deref(), false, dry_run)?;
             run_next(&options)?;
-            offer_assistant(&options);
             return Ok(());
         }
         Cli::command().print_help()?;
@@ -1504,25 +1503,6 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         GlobalOptions::resolve(store.as_deref(), json, dry_run)?
     };
     let ignores_dry_run = command_ignores_dry_run(&command);
-    let check_assistant = !package_validation
-        && !matches!(
-            &command,
-            Command::Assistant(_)
-                | Command::Team(_)
-                | Command::Tool(_)
-                | Command::Hook(_)
-                | Command::Binary(_)
-                | Command::Autosync(_)
-                | Command::Status(CheckArgs { check: true })
-                | Command::Doctor(CheckArgs { check: true })
-                | Command::Sync(CheckArgs { check: true })
-                | Command::Agent(AgentCommand {
-                    command: AgentSubcommand::List(CheckArgs { check: true })
-                })
-                | Command::Target(TargetCommand {
-                    command: TargetSubcommand::Unlink(_)
-                })
-        );
     if ignores_dry_run && !options.json {
         warn_noop_dry_run(options.dry_run);
     }
@@ -1566,9 +1546,6 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
 
     if result.is_ok() {
         update::print_notice_if_ready(pending_update_notice);
-        if check_assistant {
-            offer_assistant(&options);
-        }
         if options.json && ignores_dry_run {
             warn_noop_dry_run(options.dry_run);
         }
@@ -3275,106 +3252,62 @@ fn run_assistant(options: &GlobalOptions, command: AssistantCommand) -> DaloResu
     }
 }
 
-fn offer_assistant(options: &GlobalOptions) {
-    // Never consume a pipe, alter JSON, or interrupt a check/automation with a
-    // question. Agents use `assistant status --json` and ask in their own UI.
-    if options.json
-        || options.dry_run
-        || !io::stdin().is_terminal()
-        || !io::stdout().is_terminal()
-        || !io::stderr().is_terminal()
-        || std::env::var_os("CI").is_some()
-        || std::env::var("DALO_ASSISTANT_CHECK")
-            .is_ok_and(|value| value.eq_ignore_ascii_case("never"))
-    {
-        return;
+fn automatic_assistant_report(
+    options: &GlobalOptions,
+    target: Option<&str>,
+) -> Option<assistant::AssistantStatusReport> {
+    if options.dry_run || !assistant::automatic_setup_enabled() {
+        return None;
     }
-    if let Err(error) = offer_assistant_interactive(options) {
-        eprintln!("assistant setup was not completed: {error}");
-    }
+    let paths = store::StorePaths::new(options.store.clone());
+    let report = match target {
+        Some(target) => assistant::setup_target(&paths, target),
+        None => assistant::prepare_automatic(&paths),
+    };
+    Some(report)
 }
 
-fn offer_assistant_interactive(options: &GlobalOptions) -> DaloResult<()> {
-    use assistant::AssistantState;
-    use std::io::Write;
-
-    let paths = store::StorePaths::new(options.store.clone());
-    let report = assistant::status(&paths);
-    let action = match report.state {
-        AssistantState::MissingStore => "Create this store and install the bundled Dalo assistant",
-        AssistantState::Missing => "Install the bundled Dalo assistant",
-        AssistantState::UpdateAvailable => "Update the bundled Dalo assistant",
-        AssistantState::Current => {
-            if let Some(next) = report.next_command {
-                eprintln!("assistant: current locally; delivery still needs setup. Next: {next}");
-            }
-            return Ok(());
-        }
-        AssistantState::External | AssistantState::Blocked => {
+fn print_assistant_setup(report: &assistant::AssistantStatusReport) {
+    match report.state {
+        assistant::AssistantState::Current => {
             eprintln!(
-                "assistant: {}",
+                "assistant: current ({})",
+                term::terminal_safe_text(&report.skill_path.display().to_string())
+            );
+            if !report.undelivered_targets.is_empty() {
+                eprintln!(
+                    "assistant: delivery pending for {}",
+                    term::terminal_safe_text(&report.undelivered_targets.join(", "))
+                );
+            } else if let Some(next) = &report.next_command {
+                eprintln!("assistant: next: {}", term::terminal_safe_text(next));
+            } else {
+                eprintln!(
+                    "assistant: delivered; reload your agent's skills if needed, then select dalo"
+                );
+            }
+        }
+        _ => eprintln!(
+            "assistant: {}",
+            term::terminal_safe_text(
                 report
                     .reason
                     .as_deref()
-                    .unwrap_or("inspect the existing installation")
-            );
-            eprintln!(
-                "details: {}",
-                store::dalo_command(&paths.root, "assistant status")
-            );
-            return Ok(());
-        }
-    };
-    eprintln!("\nDalo can manage your skills through a conversational assistant.");
-    eprintln!(
-        "Local skill: {} (Dalo {})",
-        report.skill_path.display(),
-        report.version
-    );
-    if report.state == AssistantState::UpdateAvailable {
-        eprintln!(
-            "Installed bundle: {}. Existing links will read the update immediately.",
-            report.installed_version.as_deref().unwrap_or("unknown")
-        );
+                    .unwrap_or("setup needs attention; run dalo assistant status")
+            )
+        ),
     }
-    eprintln!("This prepares the local skill; target delivery uses your normal sync.");
-    eprint!("{action}? [y/N] ");
-    io::stderr().flush()?;
-    let mut answer = String::new();
-    if io::stdin().read_line(&mut answer)? == 0
-        || !matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes")
-    {
-        eprintln!("Assistant unchanged. You can install it later with `dalo assistant install`.");
-        return Ok(());
+}
+
+fn print_json_with_assistant<T: serde::Serialize>(
+    report: &T,
+    assistant: Option<&assistant::AssistantStatusReport>,
+) -> DaloResult<()> {
+    let mut value = serde_json::to_value(report)?;
+    if let Some(assistant) = assistant {
+        value["assistant"] = serde_json::to_value(assistant)?;
     }
-    // The question holds no store lock. Recheck external entries and local
-    // modifications before acting on the answer.
-    let latest = assistant::status(&paths);
-    if latest.state != report.state || latest.installed_version != report.installed_version {
-        return Err(DaloError::StateError {
-            reason: "the assistant changed while awaiting confirmation; inspect it and retry"
-                .to_owned(),
-        });
-    }
-    if report.state == AssistantState::MissingStore {
-        fs::create_dir_all(&paths.root)?;
-        let _lock = store::StoreLock::acquire(&paths)?;
-        for entry in fs::read_dir(&paths.root)? {
-            if entry?.path() != paths.lock_guard_file {
-                return Err(DaloError::StateError {
-                    reason: "the store changed during setup; inspect it before initializing"
-                        .to_owned(),
-                });
-            }
-        }
-        store::init_store(paths.root, false)?;
-    }
-    run_assistant(
-        options,
-        AssistantCommand {
-            command: AssistantSubcommand::Install,
-        },
-    )
+    print_json(&value)
 }
 
 fn run_init(options: &GlobalOptions) -> DaloResult<()> {
@@ -3386,10 +3319,18 @@ fn run_init(options: &GlobalOptions) -> DaloResult<()> {
         Some(store::StoreLock::acquire(&paths)?)
     };
     let report = store::init_store(options.store.clone(), options.dry_run)?;
+    let assistant = if report.validation_warnings.is_empty() {
+        automatic_assistant_report(options, None)
+    } else {
+        None
+    };
 
     if options.json {
-        print_json(&report)?;
+        print_json_with_assistant(&report, assistant.as_ref())?;
     } else {
+        if let Some(assistant) = &assistant {
+            print_assistant_setup(assistant);
+        }
         let next = if report.validation_warnings.is_empty() {
             Some(status::build_next_action_report(&options.store)?)
         } else {
@@ -3780,6 +3721,7 @@ where
     } else {
         Some(store::read_user_lock(&paths)?)
     };
+    let assistant_setup = automatic_assistant_report(options, None);
     let config_before_manifests = store::read_config(&paths)?;
     let unrefreshed_tracking_sources = if options.dry_run {
         tracking_team_source_ids(&config_before_manifests)
@@ -4080,10 +4022,20 @@ where
         team_manifest::cleanup_removed_checkouts(&paths, &manifest_report.removed);
     }
 
+    let assistant = assistant_setup.map(|prepared| {
+        if prepared.state == assistant::AssistantState::Current {
+            assistant::status(&paths)
+        } else {
+            prepared
+        }
+    });
     if options.json {
-        print_json(&report)?;
+        print_json_with_assistant(&report, assistant.as_ref())?;
     } else {
         status::print_sync_report(&report);
+        if let Some(assistant) = &assistant {
+            print_assistant_setup(assistant);
+        }
     }
 
     if args.check
@@ -5818,10 +5770,14 @@ fn run_target(options: &GlobalOptions, command: TargetCommand) -> DaloResult<()>
                 args.path.as_deref(),
                 options.dry_run,
             )?;
+            let assistant = automatic_assistant_report(options, Some(&report.target_id));
             if options.json {
-                print_json(&report)?;
+                print_json_with_assistant(&report, assistant.as_ref())?;
             } else {
                 status::print_target_link_report(&report);
+                if let Some(assistant) = &assistant {
+                    print_assistant_setup(assistant);
+                }
             }
             Ok(())
         }

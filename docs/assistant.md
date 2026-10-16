@@ -128,53 +128,48 @@ the assistant is not a sandbox for everything your agent can do.
 
 ## Bundled installation
 
-On an ordinary interactive invocation, including bare `dalo` and after `dalo
-init`, Dalo checks the assistant locally. If it is missing or differs from the
-running binary's bundle, Dalo offers to install or update it with a `[y/N]`
-question. Only `y` or `yes` applies the change; Enter, no, and end of input keep
-it unchanged. With no store yet, the question explicitly includes creating the
-store. Declining leaves the offer available on the next invocation. A current
-bundle needs no question.
-
-The check uses the installed binary's contents, not the latest internet release.
-Modified bundles and discovered external installations receive a diagnostic
-instead of an overwrite offer. The check also distinguishes local installation
-from delivery: a current local skill can still need a target link or sync.
-Accepting an offer prepares the local skill; it never silently syncs the whole
-store or selects an agent for you. Existing links to an updated bundle see it
-immediately.
-
-JSON, redirected input/output, dry runs, CI, automation checks, and background
-hook/tool/scheduler commands never ask questions. Set `DALO_ASSISTANT_CHECK=never`
-to disable the automatic terminal offer. Agents can read
-`dalo assistant status --json` (also included as `assistant` in `status --json`)
-and ask in their own conversation. The skill checks this on each new invocation
-and does not repeat a declined offer for every command in the same task.
-
-Every binary built with assistant support includes the complete skill. After
-installing Dalo, a fresh setup follows these steps (Codex is an example):
+Every supported binary includes the complete skill. `dalo init` prepares it in
+`local/skills/dalo` automatically. `dalo target link` delivers just that skill
+to the target you chose, without fetching sources, syncing other skills, or
+adding approvals. A fresh setup needs only:
 
 ```sh
 dalo init
 dalo target detect
 dalo target link codex
-dalo assistant install
-dalo --dry-run sync
-dalo sync --check
 ```
 
-For an existing setup, keep its store and target paths and inspect it first.
-`assistant install` installs the bundled skill into `local/skills/dalo` without
-network access, a Git commit, target changes, or a full sync. The subsequent
-sync uses ordinary Dalo audits and ownership checks. Review its whole-store
-preview: existing team sources may refresh, and all configured targets receive
-active skills. Other skills are not adopted as part of installation.
+The same setup works with `--json`, redirected streams, and CI. The binary
+installation itself does not guess which agent or store to use; channels that
+only install the executable complete skill setup on first initialization and
+target linking. A project installation prepares and delivers the bundle inside
+that project's own store and declared target folders.
 
-Run `dalo assistant install` again after upgrading the binary to update an
-unmodified bundle. Its versioned receipt protects local changes, additional
-files, and foreign symlinks from replacement. Existing target links expose an
-updated bundle immediately. A different or customized local `dalo` skill must
-be preserved and deliberately moved before that slot can hold a bundle.
+Normal `sync` (and project `install`) also prepares a missing bundle or updates
+an unmodified one to match the running binary before ordinary resolution and
+audits. Existing owned symlinks see bundle updates immediately. Automatic setup
+uses the local executable's embedded files and works offline. It does not look
+for a newer internet release or replace the executable.
+
+Bare `dalo`, inventory/status commands, help, and dry runs never install or
+update the assistant. Set `DALO_ASSISTANT_CHECK=never` to disable automatic
+preparation and target delivery. Explicit `dalo assistant install` remains
+available for manual setup and recovery; it prepares the local bundle only,
+with delivery through an explicitly requested sync. The setting does not remove
+an installed bundle or exclude it from ordinary sync.
+
+Automatic setup preserves modified bundles and external installations. A
+blocked assistant does not roll back an otherwise successful initialization or
+target link: inspect the `assistant` field in its JSON report or the diagnostic
+in terminal output. `dalo assistant status --json` and `status --json` also
+report local freshness and delivery. A current bundle can still have
+`undelivered_targets`; check those before claiming agent availability.
+
+For an existing setup, keep its store and target paths and inspect it first.
+Review a whole-store sync preview before applying it: existing team sources may
+refresh, and all configured targets receive active skills. Other skills are not
+adopted as part of assistant setup. A customized local `dalo` skill must be
+preserved and deliberately moved before that slot can hold a bundle.
 
 A foreign assistant in an agent folder also remains untouched. The assistant
 can help plan a handover, but the installer does not take ownership of it. Once

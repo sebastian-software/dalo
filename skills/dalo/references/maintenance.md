@@ -182,9 +182,11 @@ Use the [upgrade guide](https://dalo.sh/docs/upgrading.html) and
 and destination versions; documentation for a newer release is not proof that
 an older binary supports its flags.
 
-After upgrading the binary, check `assistant install --help`. For an existing
-bundled assistant, preview and run `assistant install` to match the skill to the
-installed release. Existing target symlinks read that update immediately.
+After upgrading the binary, check `assistant install --help`. Current releases update an
+unmodified bundled assistant during the next requested `sync`, initialization,
+or target linking. Respect `DALO_ASSISTANT_CHECK=never`. For an older release or
+explicit recovery, preview and run `assistant install` to match the installed
+release. Existing target symlinks read that update immediately.
 Preserve a blocked or customized bundle; do not delete its receipt to force an
 update. If the skill is owned by another installer or Dalo source, keep using
 that source's update route instead of creating a competing bundled copy.

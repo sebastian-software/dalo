@@ -268,7 +268,161 @@ fn install_bundle(
     version: &str,
     files: &[(&str, &str)],
 ) -> DaloResult<AssistantInstallReport> {
+    store::read_config(paths)?;
+    let _lock = if dry_run {
+        None
+    } else {
+        Some(store::StoreLock::acquire(paths)?)
+    };
     install_bundle_using(paths, dry_run, version, files, publish)
+}
+
+/// Whether ordinary setup should prepare the bundled skill. Explicit assistant
+/// installation remains available when automatic setup is disabled.
+pub(crate) fn automatic_setup_enabled() -> bool {
+    !std::env::var("DALO_ASSISTANT_CHECK").is_ok_and(|value| value.eq_ignore_ascii_case("never"))
+}
+
+/// Prepare the bundle during a write operation, under the caller's store lock.
+/// A blocked assistant is advisory: the requested store operation can still
+/// succeed, and its report explains why conversational setup needs attention.
+pub(crate) fn prepare_automatic(paths: &StorePaths) -> AssistantStatusReport {
+    let mut report = status(paths);
+    if matches!(
+        report.state,
+        AssistantState::Current
+            | AssistantState::External
+            | AssistantState::Blocked
+            | AssistantState::MissingStore
+    ) {
+        return report;
+    }
+    let previous = match store::read_user_lock(paths) {
+        Ok(lock) => lock,
+        Err(error) => {
+            report.state = AssistantState::Blocked;
+            report.next_command = None;
+            report.reason = Some(error.to_string());
+            return report;
+        }
+    };
+    if report.state == AssistantState::Missing {
+        let owns_other_assistant = previous
+            .active_skills
+            .iter()
+            .chain(&previous.pending_approval_skills)
+            .chain(&previous.unlinked_skills)
+            .any(|skill| skill.slot_name == "dalo" && skill.source_ref != "local:dalo");
+        let other_source = (|| -> DaloResult<bool> {
+            let config = store::read_config(paths)?;
+            if !config
+                .sources
+                .iter()
+                .any(|source| source.enabled && source.id != "local")
+            {
+                return Ok(false);
+            }
+            let approvals = store::read_approvals(paths)?;
+            let live = crate::resolver::resolve_from_config(&config, approvals.approvals);
+            if live.scans.iter().any(|scan| scan.inventory.is_none()) {
+                return Err(blocked(
+                    "a source could not be inspected for an existing dalo skill; resolve its inventory before automatic assistant setup",
+                ));
+            }
+            Ok(live
+                .resolution
+                .active_skills
+                .iter()
+                .chain(&live.resolution.pending_approval_skills)
+                .chain(
+                    live.resolution
+                        .unlinked_skills
+                        .iter()
+                        .map(|skill| &skill.skill),
+                )
+                .any(|skill| skill.slot_name == "dalo" && skill.source_id != "local"))
+        })();
+        match other_source {
+            Ok(other) if owns_other_assistant || other => {
+                report.state = AssistantState::External;
+                report.next_command = None;
+                report.reason = Some("another source already supplies a dalo skill; keep its source ownership and inspect it before switching".to_owned());
+                return report;
+            }
+            Err(error) => {
+                report.state = AssistantState::Blocked;
+                report.next_command = None;
+                report.reason = Some(error.to_string());
+                return report;
+            }
+            Ok(_) => {}
+        }
+    }
+    if matches!(
+        report.state,
+        AssistantState::Missing | AssistantState::UpdateAvailable
+    ) && let Err(error) =
+        install_bundle_using(paths, false, env!("CARGO_PKG_VERSION"), FILES, publish)
+    {
+        report.state = AssistantState::Blocked;
+        report.next_command = None;
+        report.reason = Some(error.to_string());
+        return report;
+    }
+    status(paths)
+}
+
+/// Complete only assistant delivery to a newly linked target. The caller holds
+/// the store lock; no source refresh, general sync, or approval changes occur.
+pub(crate) fn setup_target(paths: &StorePaths, target: &str) -> AssistantStatusReport {
+    let mut report = prepare_automatic(paths);
+    if report.state != AssistantState::Current {
+        return report;
+    }
+    // Even a symlink to this bundle can belong to a different installer. Do
+    // not adopt it, or replace a different Dalo-managed skill in this slot.
+    let result = store::read_state(paths).map(|state| {
+        state.targets.iter().any(|entry| {
+            entry.id == target
+                && report.external_paths.iter().any(|external| {
+                    comparable_entry(external) == comparable_entry(&entry.path.join("dalo"))
+                })
+        })
+    });
+    match result {
+        Ok(true) => {
+            report.state = AssistantState::Blocked;
+            report.next_command = None;
+            report.reason = Some("the target's dalo slot belongs to another installation; preserve it and inspect `dalo assistant status` before switching".to_owned());
+            return report;
+        }
+        Err(error) => {
+            report.state = AssistantState::Blocked;
+            report.next_command = None;
+            report.reason = Some(error.to_string());
+            return report;
+        }
+        Ok(false) => {}
+    }
+    match crate::materialize::materialize_assistant(paths, target) {
+        Ok(operations) => {
+            report = status(paths);
+            if let Some(blocked) = operations.iter().find(|operation| {
+                operation.status == crate::materialize::MaterializeOperationStatus::Blocked
+                    || operation.kind == crate::materialize::MaterializeOperationKind::Keep
+            }) {
+                report.state = AssistantState::Blocked;
+                report.next_command = None;
+                report.reason = blocked.reason.clone();
+            }
+        }
+        Err(error) => {
+            report.state = AssistantState::Blocked;
+            report.next_command = None;
+            report.reason = Some(error.to_string());
+        }
+    }
+    report
 }
 
 fn install_bundle_using(
@@ -279,11 +433,6 @@ fn install_bundle_using(
     mut publish: impl FnMut(&Path, &Path) -> DaloResult<()>,
 ) -> DaloResult<AssistantInstallReport> {
     store::read_config(paths)?;
-    let _lock = if dry_run {
-        None
-    } else {
-        Some(store::StoreLock::acquire(paths)?)
-    };
     let config = store::read_config(paths)?;
     if !config.sources.iter().any(|source| {
         source.id == "local"

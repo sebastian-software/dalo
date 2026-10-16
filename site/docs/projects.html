@@ -191,6 +191,13 @@ the declared sources at their exact commits, and links approved skills into the
 selected agents&#39; project folders. Each fresh clone or worktree gets its own
 store. The global store and global agent folders are not part of this
 installation.</p>
+<p><code>install</code> also prepares Dalo&#39;s embedded assistant in <code>.dalo/local/skills/dalo</code>
+and delivers it to these same project targets. This companion skill follows the
+installed CLI version, while declared source skills retain their exact commit
+pins and approval policy. Customized or externally supplied assistants are
+preserved. <code>DALO_ASSISTANT_CHECK=never</code> disables automatic assistant setup;
+see <a href="/docs/assistant.html#bundled-installation">bundled installation</a>. It never installs
+a global companion as a side effect of project use.</p>
 <p>New project source checkouts fetch the declared commit with depth 1 and no
 tags. Older pins are fetched directly, even when the upstream default branch
 has advanced. Dalo keeps the commit and tree metadata, then uses sparse checkout
