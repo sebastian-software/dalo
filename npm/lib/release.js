@@ -7,6 +7,9 @@ const os = require('node:os');
 const path = require('node:path');
 const { promisify } = require('node:util');
 const { ProxyAgent } = require('undici');
+const { Transform, Readable } = require('node:stream');
+const { pipeline } = require('node:stream/promises');
+const { createWriteStream } = require('node:fs');
 const { version: PACKAGE_VERSION } = require('../package.json');
 
 const execFileAsync = promisify(execFile);
@@ -15,6 +18,8 @@ const FETCH_TIMEOUT_MS = 30_000;
 const DOWNLOAD_HEADERS_TIMEOUT_MS = 10_000;
 const DOWNLOAD_BODY_TIMEOUT_MS = 120_000;
 const DOWNLOAD_ATTEMPTS = 3;
+const MAX_RELEASE_ARCHIVE_BYTES = 100 * 1024 * 1024;
+const MAX_RELEASE_CHECKSUM_BYTES = 1024;
 const proxyAgents = new Map();
 const VERSION_PATTERN = /^(?:dalo-v|v)?(\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$/;
 
@@ -181,7 +186,7 @@ function abortAfter(controller, milliseconds) {
   return timer;
 }
 
-async function fetchFileOnce(url) {
+async function fetchFileOnce(url, destination, { maxBytes, label, hash = false }) {
   const controller = new AbortController();
   let timer = abortAfter(controller, DOWNLOAD_HEADERS_TIMEOUT_MS);
   try {
@@ -194,7 +199,33 @@ async function fetchFileOnce(url) {
       throw error;
     }
     timer = abortAfter(controller, DOWNLOAD_BODY_TIMEOUT_MS);
-    return Buffer.from(await response.arrayBuffer());
+    let downloadedBytes = 0;
+    const digest = hash ? createHash('sha256') : undefined;
+    const limit = new Transform({
+      transform(chunk, encoding, callback) {
+        downloadedBytes += chunk.byteLength;
+        if (downloadedBytes > maxBytes) {
+          callback(new Error(`${label} download exceeded the ${maxBytes}-byte limit`));
+          return;
+        }
+        digest?.update(chunk);
+        callback(null, chunk);
+      }
+    });
+
+    try {
+      await pipeline(
+        response.body ? Readable.fromWeb(response.body) : Readable.from([]),
+        limit,
+        createWriteStream(destination, { flags: 'w', mode: 0o600 })
+      );
+    } catch (error) {
+      // pipeline destroys its streams on failure; remove any partial file before
+      // retrying so a failed attempt cannot be mistaken for a complete download.
+      await fs.rm(destination, { force: true }).catch(() => {});
+      throw error;
+    }
+    return digest?.digest('hex');
   } finally {
     clearTimeout(timer);
   }
@@ -205,17 +236,15 @@ function isRetryableDownloadError(error) {
   return error.status === 408 || error.status === 429 || error.status >= 500;
 }
 
-async function fetchFile(url, destination) {
-  let contents;
+async function fetchFile(url, destination, options) {
   for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt += 1) {
     try {
-      contents = await fetchFileOnce(url);
-      break;
+      return await fetchFileOnce(url, destination, options);
     } catch (error) {
+      await fs.rm(destination, { force: true }).catch(() => {});
       if (attempt === DOWNLOAD_ATTEMPTS || !isRetryableDownloadError(error)) throw error;
     }
   }
-  await fs.writeFile(destination, contents, { mode: 0o600 });
 }
 
 function expectedChecksum(contents, expectedFilename) {
@@ -231,10 +260,9 @@ function expectedChecksum(contents, expectedFilename) {
   throw new Error(`release checksum file has no entry for ${expectedFilename}`);
 }
 
-async function verifyChecksum(archive, checksumFile) {
+async function verifyChecksum(archiveDigest, archive, checksumFile) {
   const expected = expectedChecksum(await fs.readFile(checksumFile, 'utf8'), path.basename(archive));
-  const actual = createHash('sha256').update(await fs.readFile(archive)).digest('hex');
-  if (actual !== expected) {
+  if (archiveDigest !== expected) {
     throw new Error('release checksum did not match; refusing to run the downloaded binary');
   }
 }
@@ -336,7 +364,14 @@ function formatLauncherError(error) {
   return `${errorMessageWithCauses(error)}\ndalo: hint: check network/proxy access or set DALO_VERSION to X.Y.Z; use DALO_VERSION=latest only for explicit update checks`;
 }
 
-async function ensureBinary({ tag, target, cacheRoot } = {}) {
+async function ensureBinary({
+  tag,
+  target,
+  cacheRoot,
+  // Optional byte limits keep the streaming boundary small and deterministic in tests.
+  archiveMaxBytes = MAX_RELEASE_ARCHIVE_BYTES,
+  checksumMaxBytes = MAX_RELEASE_CHECKSUM_BYTES
+} = {}) {
   const resolvedTarget = target || await targetForCurrentRuntime();
   const resolvedCacheRoot = cacheRoot || process.env.DALO_CACHE_DIR || path.join(os.homedir(), '.cache', 'dalo');
   const requestedVersion = tag ?? process.env.DALO_VERSION ?? PACKAGE_VERSION;
@@ -371,9 +406,16 @@ async function ensureBinary({ tag, target, cacheRoot } = {}) {
   try {
     const archivePath = path.join(temporary, archive);
     const checksumPath = `${archivePath}.sha256`;
-    await fetchFile(`${releaseBaseUrl()}/${resolvedTag}/${archive}`, archivePath);
-    await fetchFile(`${releaseBaseUrl()}/${resolvedTag}/${archive}.sha256`, checksumPath);
-    await verifyChecksum(archivePath, checksumPath);
+    const archiveDigest = await fetchFile(`${releaseBaseUrl()}/${resolvedTag}/${archive}`, archivePath, {
+      maxBytes: archiveMaxBytes,
+      label: 'release archive',
+      hash: true
+    });
+    await fetchFile(`${releaseBaseUrl()}/${resolvedTag}/${archive}.sha256`, checksumPath, {
+      maxBytes: checksumMaxBytes,
+      label: 'release checksum'
+    });
+    await verifyChecksum(archiveDigest, archivePath, checksumPath);
     await execFileAsync('tar', ['-xzf', archivePath], { cwd: temporary });
     await fs.mkdir(cacheDir, { recursive: true, mode: 0o700 });
     await fs.copyFile(path.join(temporary, packageName, 'dalo'), stagedBinary);

@@ -379,16 +379,48 @@ requirement = "required"
 
     // Seven approvable decisions: skill, three agents, tool, and two hooks,
     // followed by one explicit transaction confirmation.
-    dalo_command()
+    let interaction = dalo_command()
         .args(["--store"])
         .arg(&store)
         .args(["plugin", "review", "team:review-suite"])
         .write_stdin("y\ny\ny\ny\ny\ny\ny\ny\n")
         .assert()
         .success()
-        .stdout(predicate::str::contains(
-            "committed 7 separately scoped approvals",
-        ));
+        .get_output()
+        .stdout
+        .clone();
+    let interaction = String::from_utf8(interaction).expect("review interaction should be UTF-8");
+    let agent_start = interaction
+        .find("decision: agent:team:reviewer")
+        .expect("agent decision should be prompted");
+    let tool_start = interaction
+        .find("decision: tool:team:review-suite#tool:inspect")
+        .expect("tool decision should be prompted");
+    let agent_interaction = &interaction[agent_start..tool_start];
+    assert!(agent_interaction.contains("reviewed hash: "));
+    assert!(agent_interaction.contains("review context only; not the approval key"));
+    assert!(agent_interaction.contains("identity approval: agent = team:reviewer"));
+    assert!(agent_interaction.contains(
+        "Approve the displayed source-qualified agent identity for ongoing activation? This grant may remain in effect after its content changes. [y/N/q] "
+    ));
+    assert!(!agent_interaction.contains("exact approval:"));
+    assert!(!agent_interaction.contains("Approve only this displayed component contract?"));
+
+    let hook_start = interaction
+        .find("decision: hook:team:review-suite#hook:before-shell")
+        .expect("hook decision should be prompted");
+    let tool_interaction = &interaction[tool_start..hook_start];
+    assert!(
+        tool_interaction.contains("exact approval: tool = team:review-suite#tool:inspect@sha256:")
+    );
+    assert!(tool_interaction.contains("Approve only this displayed component contract? [y/N/q] "));
+    let hook_interaction = &interaction[hook_start..];
+    assert!(
+        hook_interaction
+            .contains("exact approval: hook = team:review-suite#hook:before-shell@sha256:")
+    );
+    assert!(hook_interaction.contains("Approve only this displayed component contract? [y/N/q] "));
+    assert!(interaction.contains("committed 7 separately scoped approvals"));
     let approvals = store::read_approvals(&store::StorePaths::new(store)).unwrap();
     assert_eq!(
         approvals
@@ -10006,6 +10038,208 @@ fn fresh_status_should_not_report_local_source_lock_drift() {
         .stdout(predicate::str::contains("active skills:"))
         .stdout(predicate::str::contains("  none"))
         .stdout(predicate::str::contains("lock drift:").not());
+}
+
+#[test]
+fn status_check_should_accept_a_missing_source_lock() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    assert!(!store.join("source-lock.toml").exists());
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["status", "--check", "--json"])
+        .output()
+        .expect("JSON status check should run");
+
+    assert!(output.status.success());
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("status check should emit JSON");
+    assert!(report.get("source_lock_error").is_none());
+}
+
+#[test]
+fn status_should_report_malformed_source_lock_and_fail_check() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_skill_and_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    std::fs::write(store.join("source-lock.toml"), "schema_version = \n")
+        .expect("source lock should be corrupted");
+
+    let human = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("status")
+        .output()
+        .expect("human status should run");
+    assert!(human.status.success());
+    let human = String::from_utf8(human.stdout).expect("human status should be utf-8");
+    assert!(
+        human.contains("source lock error:"),
+        "status output: {human}"
+    );
+    assert!(human.contains("source-lock.toml"), "status output: {human}");
+    assert!(human.contains("could not parse"), "status output: {human}");
+
+    let json = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["status", "--check", "--json"])
+        .output()
+        .expect("JSON status check should run");
+    assert_eq!(json.status.code(), Some(1));
+    let report: serde_json::Value =
+        serde_json::from_slice(&json.stdout).expect("status check should emit JSON");
+    let diagnostic = report["source_lock_error"]
+        .as_str()
+        .expect("status JSON should include the source lock error");
+    for detail in [
+        "source-lock.toml",
+        "could not parse",
+        "repair or restore",
+        "dalo status --check",
+    ] {
+        assert!(
+            diagnostic.contains(detail),
+            "diagnostic {diagnostic:?} lacks {detail:?}"
+        );
+    }
+    assert!(
+        String::from_utf8_lossy(&json.stderr).contains("check failed"),
+        "status check should explain its nonzero exit"
+    );
+}
+
+#[test]
+fn status_check_should_fail_on_unsupported_source_lock_schema() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::write(
+        store.join("source-lock.toml"),
+        "schema_version = 999\ncatalogs = []\n",
+    )
+    .expect("source lock should have an unsupported schema");
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["status", "--check", "--json"])
+        .output()
+        .expect("JSON status check should run");
+    assert_eq!(output.status.code(), Some(1));
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("status check should emit JSON");
+    let diagnostic = report["source_lock_error"]
+        .as_str()
+        .expect("status JSON should include the source lock error");
+    assert!(diagnostic.contains("unsupported schema version 999"));
+    assert!(diagnostic.contains("upgrade dalo"));
+}
+
+#[test]
+fn status_check_should_fail_when_source_lock_cannot_be_read() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::fs::create_dir(store.join("source-lock.toml"))
+        .expect("source lock path should be unreadable as a file");
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["status", "--check", "--json"])
+        .output()
+        .expect("JSON status check should run");
+    assert_eq!(output.status.code(), Some(1));
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("status check should emit JSON");
+    let diagnostic = report["source_lock_error"]
+        .as_str()
+        .expect("status JSON should include the source lock error");
+    assert!(diagnostic.contains("source-lock.toml"));
+    assert!(diagnostic.contains("repair or restore"));
+}
+
+#[test]
+fn status_check_should_fail_when_source_lock_is_a_dangling_symlink() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    std::os::unix::fs::symlink(
+        store.join("missing-source-lock.toml"),
+        store.join("source-lock.toml"),
+    )
+    .expect("dangling source lock symlink should be created");
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["status", "--check", "--json"])
+        .output()
+        .expect("JSON status check should run");
+
+    assert_eq!(output.status.code(), Some(1));
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("status check should emit JSON");
+    let diagnostic = report["source_lock_error"]
+        .as_str()
+        .expect("status JSON should include the source lock error");
+    assert!(diagnostic.contains("source-lock.toml"));
+    assert!(diagnostic.contains("repair or restore"));
+}
+
+#[test]
+fn status_check_should_accept_a_valid_empty_source_lock() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    write_source_lock(&store, &dalo::catalog::SourceLock::empty());
+
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["status", "--check", "--json"])
+        .output()
+        .expect("JSON status check should run");
+    assert!(output.status.success());
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("status check should emit JSON");
+    assert!(report.get("source_lock_error").is_none());
 }
 
 #[test]

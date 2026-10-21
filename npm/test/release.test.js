@@ -46,6 +46,28 @@ async function writeCachedBinary(cacheRoot, version, target) {
   return binary;
 }
 
+function responseFromChunks(chunks, headers = {}) {
+  let index = 0;
+  const body = new ReadableStream({
+    pull(controller) {
+      if (index === chunks.length) {
+        controller.close();
+        return;
+      }
+      controller.enqueue(chunks[index]);
+      index += 1;
+    }
+  });
+  return new Response(body, { status: 200, headers });
+}
+
+function rejectArrayBuffer(response) {
+  response.arrayBuffer = async () => {
+    throw new Error('release downloads must stream their response bodies');
+  };
+  return response;
+}
+
 test('maps supported Node platforms to release targets', () => {
   assert.equal(targetFor('darwin', 'arm64'), 'aarch64-apple-darwin');
   assert.equal(targetFor('linux', 'x64'), 'x86_64-unknown-linux-gnu');
@@ -507,10 +529,10 @@ test('downloads, verifies, extracts, and caches a matching release archive', asy
     global.fetch = async (url, options) => {
       assert.ok(options.signal instanceof AbortSignal);
       if (url.endsWith('.sha256')) {
-        return new Response(`${checksum}  ${path.basename(archive)}\n`, { status: 200 });
+        return rejectArrayBuffer(new Response(`${checksum}  ${path.basename(archive)}\n`, { status: 200 }));
       }
       if (url.endsWith(path.basename(archive))) {
-        return new Response(archiveBytes, { status: 200 });
+        return rejectArrayBuffer(new Response(archiveBytes, { status: 200 }));
       }
       return new Response('', { status: 404 });
     };
@@ -522,6 +544,98 @@ test('downloads, verifies, extracts, and caches a matching release archive', asy
     global.fetch = originalFetch;
     if (originalBaseUrl === undefined) delete process.env.DALO_RELEASE_BASE_URL;
     else process.env.DALO_RELEASE_BASE_URL = originalBaseUrl;
+    await fs.rm(temp, { recursive: true, force: true });
+  }
+});
+
+test('rejects an oversized chunked archive without trusting a missing content length', async () => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'dalo-npm-test-'));
+  const downloadRoot = path.join(temp, 'downloads');
+  const cacheRoot = path.join(temp, 'cache');
+  const target = 'x86_64-unknown-linux-gnu';
+  const version = '0.6.0';
+  const binary = path.join(cacheRoot, version, target, 'dalo');
+  const originalFetch = global.fetch;
+  const originalBaseUrl = process.env.DALO_RELEASE_BASE_URL;
+  const originalTmpdir = process.env.TMPDIR;
+  const requests = [];
+  try {
+    await fs.mkdir(downloadRoot);
+    process.env.DALO_RELEASE_BASE_URL = 'https://releases.example.test';
+    process.env.TMPDIR = downloadRoot;
+    global.fetch = async (url) => {
+      requests.push(url);
+      return responseFromChunks([
+        Buffer.alloc(16, 'a'),
+        Buffer.alloc(16, 'b'),
+        Buffer.alloc(16, 'c')
+      ]);
+    };
+
+    await assert.rejects(
+      ensureBinary({ tag: version, target, cacheRoot, archiveMaxBytes: 32 }),
+      /release archive download exceeded the 32-byte limit/
+    );
+    assert.equal(requests.length, 1);
+    await assert.rejects(fs.access(binary), { code: 'ENOENT' });
+    assert.deepEqual(await fs.readdir(downloadRoot), []);
+  } finally {
+    global.fetch = originalFetch;
+    if (originalBaseUrl === undefined) delete process.env.DALO_RELEASE_BASE_URL;
+    else process.env.DALO_RELEASE_BASE_URL = originalBaseUrl;
+    if (originalTmpdir === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = originalTmpdir;
+    await fs.rm(temp, { recursive: true, force: true });
+  }
+});
+
+test('rejects an oversized chunked checksum despite a misleading content length', async () => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'dalo-npm-test-'));
+  const downloadRoot = path.join(temp, 'downloads');
+  const target = 'x86_64-unknown-linux-gnu';
+  const version = '0.6.0';
+  const packageName = `dalo-${version}-${target}`;
+  const packageDir = path.join(temp, packageName);
+  const archive = path.join(temp, `${packageName}.tar.gz`);
+  const cacheRoot = path.join(temp, 'cache');
+  const binary = path.join(cacheRoot, version, target, 'dalo');
+  const originalFetch = global.fetch;
+  const originalBaseUrl = process.env.DALO_RELEASE_BASE_URL;
+  const originalTmpdir = process.env.TMPDIR;
+  const requests = [];
+  try {
+    await fs.mkdir(packageDir);
+    await fs.mkdir(downloadRoot);
+    await fs.writeFile(path.join(packageDir, 'dalo'), Buffer.alloc(2048, 'x'), { mode: 0o755 });
+    await execFileAsync('tar', ['-C', temp, '-czf', archive, packageName]);
+    const archiveBytes = await fs.readFile(archive);
+    process.env.DALO_RELEASE_BASE_URL = 'https://releases.example.test';
+    process.env.TMPDIR = downloadRoot;
+    global.fetch = async (url) => {
+      requests.push(url);
+      if (url.endsWith('.sha256')) {
+        return responseFromChunks([
+          Buffer.alloc(16, 'a'),
+          Buffer.alloc(16, 'b'),
+          Buffer.alloc(16, 'c')
+        ], { 'content-length': '1' });
+      }
+      return new Response(archiveBytes, { status: 200 });
+    };
+
+    await assert.rejects(
+      ensureBinary({ tag: version, target, cacheRoot, checksumMaxBytes: 32 }),
+      /release checksum download exceeded the 32-byte limit/
+    );
+    assert.equal(requests.length, 2);
+    await assert.rejects(fs.access(binary), { code: 'ENOENT' });
+    assert.deepEqual(await fs.readdir(downloadRoot), []);
+  } finally {
+    global.fetch = originalFetch;
+    if (originalBaseUrl === undefined) delete process.env.DALO_RELEASE_BASE_URL;
+    else process.env.DALO_RELEASE_BASE_URL = originalBaseUrl;
+    if (originalTmpdir === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = originalTmpdir;
     await fs.rm(temp, { recursive: true, force: true });
   }
 });

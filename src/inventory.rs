@@ -28,6 +28,20 @@ const MAX_FRONTMATTER_BYTES: usize = 64 * 1024;
 pub(crate) const MAX_SKILL_METADATA_BYTES: usize = MAX_FRONTMATTER_BYTES + 16;
 const MAX_FRONTMATTER_FLOW_DEPTH: usize = 64;
 const MAX_FRONTMATTER_ANCHOR_OR_ALIAS_REFERENCES: usize = 16;
+// The published design scenario has 10 sources and 200 skills. These generous
+// per-source bounds keep broad or malformed checkouts from making inventory
+// work and its path/warning collections grow without limit.
+const MAX_SOURCE_SCAN_DEPTH: usize = 64;
+const MAX_SOURCE_SCAN_DIRECTORIES: usize = 100_000;
+const MAX_SOURCE_SCAN_ENTRIES: usize = 250_000;
+const MAX_SOURCE_SCAN_ENTRIES_PER_DIRECTORY: usize = 25_000;
+// Skill directories are typically small. Keep hashing bounded by entry count,
+// depth, and bytes while streaming each file through a fixed-size buffer.
+const MAX_FINGERPRINT_DEPTH: usize = 64;
+const MAX_FINGERPRINT_ENTRIES: usize = 25_000;
+const MAX_FINGERPRINT_FILE_BYTES: u64 = 1024 * 1024 * 1024;
+const MAX_FINGERPRINT_TOTAL_BYTES: u64 = 8 * 1024 * 1024 * 1024;
+const FINGERPRINT_READ_BUFFER_BYTES: usize = 64 * 1024;
 /// Frontmatter `metadata` key that lists the commands a skill needs on `PATH`.
 ///
 /// The value is a space-separated list of command names. Dalo looks each name
@@ -551,12 +565,39 @@ fn find_skill_dirs(
     source_root: &Path,
     warnings: &mut Vec<InventoryWarning>,
 ) -> DaloResult<Vec<PathBuf>> {
+    find_skill_dirs_with_limits(
+        source_root,
+        warnings,
+        SourceTraversalLimits {
+            max_depth: MAX_SOURCE_SCAN_DEPTH,
+            max_directories: MAX_SOURCE_SCAN_DIRECTORIES,
+            max_entries: MAX_SOURCE_SCAN_ENTRIES,
+            max_entries_per_directory: MAX_SOURCE_SCAN_ENTRIES_PER_DIRECTORY,
+        },
+    )
+}
+
+#[derive(Clone, Copy)]
+struct SourceTraversalLimits {
+    max_depth: usize,
+    max_directories: usize,
+    max_entries: usize,
+    max_entries_per_directory: usize,
+}
+
+fn find_skill_dirs_with_limits(
+    source_root: &Path,
+    warnings: &mut Vec<InventoryWarning>,
+    limits: SourceTraversalLimits,
+) -> DaloResult<Vec<PathBuf>> {
     let mut found = Vec::new();
-    let mut pending = vec![source_root.to_path_buf()];
+    let mut pending = vec![(source_root.to_path_buf(), 0_usize)];
     let plugins_root = source_root.join("plugins");
     let canonical_source_root = fs::canonicalize(source_root).ok();
+    let mut inspected_directories = 0_usize;
+    let mut inspected_entries = 0_usize;
 
-    while let Some(dir) = pending.pop() {
+    while let Some((dir, depth)) = pending.pop() {
         if dir == plugins_root {
             // Plugin-owned support files are inert inventory and must never be
             // rediscovered as standalone managed skills.
@@ -565,6 +606,19 @@ fn find_skill_dirs(
         if dir.file_name().is_some_and(|name| name == ".git") {
             continue;
         }
+        if inspected_directories >= limits.max_directories {
+            source_traversal_limit_warning(
+                source_root,
+                &dir,
+                warnings,
+                format!(
+                    "the {}-directory source scan limit was reached",
+                    limits.max_directories
+                ),
+            );
+            break;
+        }
+        inspected_directories += 1;
 
         let skill_file = dir.join(SKILL_FILE);
         match fs::symlink_metadata(&skill_file) {
@@ -624,18 +678,50 @@ fn find_skill_dirs(
             }
         };
 
+        // Sorting each bounded directory makes the subset scanned before a
+        // global limit deterministic. Stop the whole traversal on overflow so
+        // callers receive one degraded inventory instead of an apparently
+        // complete arbitrary subset.
+        let mut children = Vec::new();
+        let mut directory_entry_count = 0;
+        let mut entry_limit_reason = None;
         for entry in entries {
-            let entry = match entry {
-                Ok(entry) => entry,
+            if directory_entry_count >= limits.max_entries_per_directory {
+                entry_limit_reason = Some(format!(
+                    "a directory exceeded its {}-entry limit",
+                    limits.max_entries_per_directory
+                ));
+                break;
+            }
+            if inspected_entries.saturating_add(directory_entry_count) >= limits.max_entries {
+                entry_limit_reason = Some(format!(
+                    "the source scan exceeded its {}-entry total limit",
+                    limits.max_entries
+                ));
+                break;
+            }
+            directory_entry_count += 1;
+            match entry {
+                Ok(entry) => children.push(entry),
                 Err(error) => {
                     warnings.push(InventoryWarning {
                         code: InventoryWarningCode::UnreadablePath,
                         path: dir.clone(),
                         message: error.to_string(),
                     });
-                    continue;
                 }
-            };
+            }
+        }
+        if let Some(reason) = entry_limit_reason {
+            source_traversal_limit_warning(source_root, &dir, warnings, reason);
+            break;
+        }
+        inspected_entries = inspected_entries.saturating_add(directory_entry_count);
+        children.sort_by_key(fs::DirEntry::file_name);
+        let mut child_directories = Vec::new();
+        let mut depth_limit_reached = false;
+
+        for entry in children {
             let file_type = match entry.file_type() {
                 Ok(file_type) => file_type,
                 Err(error) => {
@@ -662,13 +748,55 @@ fn find_skill_dirs(
                     message: "skipped symlink to keep the source scan bounded".to_owned(),
                 });
             } else if file_type.is_dir() && !is_adoption_staging_dir_name(&entry.file_name()) {
-                pending.push(entry.path());
+                if depth >= limits.max_depth {
+                    depth_limit_reached = true;
+                } else {
+                    child_directories.push(entry.path());
+                }
             }
         }
+        if depth_limit_reached {
+            source_traversal_limit_warning(
+                source_root,
+                &dir,
+                warnings,
+                format!(
+                    "the {}-level source scan depth limit was reached",
+                    limits.max_depth
+                ),
+            );
+            break;
+        }
+
+        child_directories.sort();
+        pending.extend(
+            child_directories
+                .into_iter()
+                .rev()
+                .map(|child| (child, depth + 1)),
+        );
     }
 
     found.sort();
     Ok(found)
+}
+
+fn source_traversal_limit_warning(
+    source_root: &Path,
+    stopped_at: &Path,
+    warnings: &mut Vec<InventoryWarning>,
+    reason: String,
+) {
+    warnings.push(InventoryWarning {
+        code: InventoryWarningCode::UnreadablePath,
+        // Keep the warning at the source root so the provider-artifact cleanup
+        // below cannot hide a source-wide truncation warning.
+        path: source_root.to_path_buf(),
+        message: format!(
+            "source inventory is incomplete: {reason} at `{}`; skills later in this source may be omitted. Reduce or split the source tree, then run `dalo sync`",
+            stopped_at.display()
+        ),
+    });
 }
 
 fn is_adoption_staging_dir_name(name: &std::ffi::OsStr) -> bool {
@@ -1078,8 +1206,9 @@ fn scan_prebuilt_delivery(
                 relative_path.display()
             ));
         }
-        let fingerprint = fingerprint_directory(&artifact_path)
-            .map_err(|error| format!("provider `{provider}` artifact is unsafe: {error}"))?;
+        let fingerprint = fingerprint_directory(&artifact_path).map_err(|error| {
+            format!("provider `{provider}` artifact cannot be fingerprinted: {error}")
+        })?;
         providers.insert(
             provider,
             PrebuiltSkillArtifact {
@@ -1091,7 +1220,10 @@ fn scan_prebuilt_delivery(
 
     let fallback_fingerprint = manifest
         .universal_fallback
-        .then(|| fingerprint_directory(skill_dir))
+        .then(|| {
+            fingerprint_directory(skill_dir)
+                .map_err(|error| format!("universal fallback cannot be fingerprinted: {error}"))
+        })
         .transpose()?;
     Ok(SkillDelivery::Prebuilt {
         providers,
@@ -1318,16 +1450,51 @@ pub(crate) fn fingerprint_directory(root: &Path) -> Result<String, String> {
 
 pub(crate) fn fingerprint_directory_snapshot(root: &Path) -> Result<DirectoryFingerprint, String> {
     fingerprint_directory_snapshot_with(root, |path| {
-        fs::read(path).map_err(|error| format!("cannot read `{}`: {error}", path.display()))
+        fs::File::open(path)
+            .map(|file| Box::new(file) as Box<dyn Read>)
+            .map_err(|error| format!("cannot read `{}`: {error}", path.display()))
     })
+}
+
+#[derive(Clone, Copy)]
+struct FingerprintLimits {
+    max_depth: usize,
+    max_entries: usize,
+    max_file_bytes: u64,
+    max_total_bytes: u64,
+}
+
+const DEFAULT_FINGERPRINT_LIMITS: FingerprintLimits = FingerprintLimits {
+    max_depth: MAX_FINGERPRINT_DEPTH,
+    max_entries: MAX_FINGERPRINT_ENTRIES,
+    max_file_bytes: MAX_FINGERPRINT_FILE_BYTES,
+    max_total_bytes: MAX_FINGERPRINT_TOTAL_BYTES,
+};
+
+struct FingerprintEntry {
+    relative: PathBuf,
+    kind: u8,
+    mode: u32,
+    content_len: u64,
 }
 
 fn fingerprint_directory_snapshot_with<R>(
     root: &Path,
-    mut read_file: R,
+    open_file: R,
 ) -> Result<DirectoryFingerprint, String>
 where
-    R: FnMut(&Path) -> Result<Vec<u8>, String>,
+    R: FnMut(&Path) -> Result<Box<dyn Read>, String>,
+{
+    fingerprint_directory_snapshot_with_limits(root, open_file, DEFAULT_FINGERPRINT_LIMITS)
+}
+
+fn fingerprint_directory_snapshot_with_limits<R>(
+    root: &Path,
+    mut open_file: R,
+    limits: FingerprintLimits,
+) -> Result<DirectoryFingerprint, String>
+where
+    R: FnMut(&Path) -> Result<Box<dyn Read>, String>,
 {
     let metadata = fs::symlink_metadata(root)
         .map_err(|error| format!("cannot inspect `{}`: {error}", root.display()))?;
@@ -1336,25 +1503,87 @@ where
     }
 
     let mut entries = Vec::new();
-    collect_fingerprint_entries(root, root, &mut entries, &mut read_file)?;
-    entries.sort_by(|left, right| left.0.cmp(&right.0));
+    collect_fingerprint_entries(root, root, 0, &mut entries, limits)?;
+    entries.sort_by(|left, right| left.relative.cmp(&right.relative));
+
+    let mut expected_total_bytes = 0_u64;
+    for entry in &entries {
+        if entry.kind != b'f' {
+            continue;
+        }
+        if entry.content_len > limits.max_file_bytes {
+            return Err(format!(
+                "file `{}` exceeds the {}-byte per-file fingerprint limit; remove large generated content or split the skill",
+                entry.relative.display(),
+                limits.max_file_bytes
+            ));
+        }
+        expected_total_bytes = expected_total_bytes
+            .checked_add(entry.content_len)
+            .ok_or_else(|| "directory fingerprint byte total overflowed".to_owned())?;
+        if expected_total_bytes > limits.max_total_bytes {
+            return Err(format!(
+                "directory fingerprint exceeds the {}-byte total content limit; remove large generated content or split the skill",
+                limits.max_total_bytes
+            ));
+        }
+    }
+
     let mut hash = Sha256::new();
     let mut catalog_hash = Sha256::new();
-    for (relative, kind, mode, content) in entries {
-        let relative = relative.as_os_str().as_encoded_bytes();
+    let mut total_bytes_read = 0_u64;
+    for entry in entries {
+        let relative = entry.relative.as_os_str().as_encoded_bytes();
         hash.update(relative);
         hash.update([0]);
-        hash.update([kind]);
-        hash.update(mode.to_be_bytes());
-        hash.update((content.len() as u64).to_be_bytes());
-        hash.update(&content);
-        if kind == b'f' {
+        hash.update([entry.kind]);
+        hash.update(entry.mode.to_be_bytes());
+        hash.update(entry.content_len.to_be_bytes());
+        if entry.kind == b'f' {
             catalog_hash.update((relative.len() as u64).to_le_bytes());
             catalog_hash.update(relative);
             catalog_hash.update(*b"F");
-            catalog_hash.update(mode.to_le_bytes());
-            catalog_hash.update((content.len() as u64).to_le_bytes());
-            catalog_hash.update(&content);
+            catalog_hash.update(entry.mode.to_le_bytes());
+            catalog_hash.update(entry.content_len.to_le_bytes());
+
+            let path = root.join(&entry.relative);
+            let mut file = open_file(&path)?;
+            let mut file_bytes_read = 0_u64;
+            let mut buffer = [0_u8; FINGERPRINT_READ_BUFFER_BYTES];
+            loop {
+                let bytes_read = file
+                    .read(&mut buffer)
+                    .map_err(|error| format!("cannot read `{}`: {error}", path.display()))?;
+                if bytes_read == 0 {
+                    break;
+                }
+                let bytes_read = bytes_read as u64;
+                if file_bytes_read.saturating_add(bytes_read) > entry.content_len {
+                    return Err(format!(
+                        "file `{}` changed while fingerprinting; it grew beyond its recorded {}-byte size",
+                        entry.relative.display(),
+                        entry.content_len
+                    ));
+                }
+                if total_bytes_read.saturating_add(bytes_read) > limits.max_total_bytes {
+                    return Err(format!(
+                        "directory fingerprint exceeds the {}-byte total content limit while reading `{}`",
+                        limits.max_total_bytes,
+                        entry.relative.display()
+                    ));
+                }
+                hash.update(&buffer[..bytes_read as usize]);
+                catalog_hash.update(&buffer[..bytes_read as usize]);
+                file_bytes_read += bytes_read;
+                total_bytes_read += bytes_read;
+            }
+            if file_bytes_read != entry.content_len {
+                return Err(format!(
+                    "file `{}` changed while fingerprinting; expected {} bytes but read {file_bytes_read}",
+                    entry.relative.display(),
+                    entry.content_len
+                ));
+            }
         }
     }
     let digest = hash.finalize();
@@ -1373,15 +1602,13 @@ where
     })
 }
 
-fn collect_fingerprint_entries<R>(
+fn collect_fingerprint_entries(
     root: &Path,
     directory: &Path,
-    entries: &mut Vec<(PathBuf, u8, u32, Vec<u8>)>,
-    read_file: &mut R,
-) -> Result<(), String>
-where
-    R: FnMut(&Path) -> Result<Vec<u8>, String>,
-{
+    depth: usize,
+    entries: &mut Vec<FingerprintEntry>,
+    limits: FingerprintLimits,
+) -> Result<(), String> {
     let children = fs::read_dir(directory)
         .map_err(|error| format!("cannot read `{}`: {error}", directory.display()))?;
     for child in children {
@@ -1393,22 +1620,41 @@ where
             .strip_prefix(root)
             .expect("descendant must stay below fingerprint root")
             .to_path_buf();
+        let child_depth = depth + 1;
+        if child_depth > limits.max_depth {
+            return Err(format!(
+                "directory fingerprint exceeds the {}-level depth limit; flatten the skill directory structure",
+                limits.max_depth
+            ));
+        }
         let metadata = fs::symlink_metadata(&path)
             .map_err(|error| format!("cannot inspect `{}`: {error}", path.display()))?;
         if metadata.file_type().is_symlink() {
             return Err(format!("symlink `{}` is not allowed", relative.display()));
         }
         if metadata.is_dir() {
-            entries.push((relative, b'd', 0, Vec::new()));
-            collect_fingerprint_entries(root, &path, entries, read_file)?;
+            push_fingerprint_entry(
+                entries,
+                limits,
+                FingerprintEntry {
+                    relative,
+                    kind: b'd',
+                    mode: 0,
+                    content_len: 0,
+                },
+            )?;
+            collect_fingerprint_entries(root, &path, child_depth, entries, limits)?;
         } else if metadata.is_file() {
-            let content = read_file(&path)?;
-            entries.push((
-                relative,
-                b'f',
-                metadata.permissions().mode() & 0o111,
-                content,
-            ));
+            push_fingerprint_entry(
+                entries,
+                limits,
+                FingerprintEntry {
+                    relative,
+                    kind: b'f',
+                    mode: metadata.permissions().mode() & 0o111,
+                    content_len: metadata.len(),
+                },
+            )?;
         } else {
             return Err(format!(
                 "special filesystem entry `{}` is not allowed",
@@ -1416,6 +1662,21 @@ where
             ));
         }
     }
+    Ok(())
+}
+
+fn push_fingerprint_entry(
+    entries: &mut Vec<FingerprintEntry>,
+    limits: FingerprintLimits,
+    entry: FingerprintEntry,
+) -> Result<(), String> {
+    if entries.len() >= limits.max_entries {
+        return Err(format!(
+            "directory fingerprint exceeds the {}-entry limit; remove large generated trees or split the skill",
+            limits.max_entries
+        ));
+    }
+    entries.push(entry);
     Ok(())
 }
 
@@ -2150,6 +2411,10 @@ impl std::fmt::Display for InventoryWarningCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
+    use std::io::Read as IoRead;
+    use std::rc::Rc;
+
     use proptest::prelude::*;
 
     fn write_generator_plugin(root: &Path) {
@@ -2196,7 +2461,9 @@ required = true
 
         let snapshot = fingerprint_directory_snapshot_with(&root, |path| {
             *reads.entry(path.to_path_buf()).or_insert(0_usize) += 1;
-            fs::read(path).map_err(|error| error.to_string())
+            fs::File::open(path)
+                .map(|file| Box::new(file) as Box<dyn Read>)
+                .map_err(|error| error.to_string())
         })
         .expect("snapshot should succeed");
 
@@ -2207,9 +2474,136 @@ required = true
             fingerprint_directory(&root).expect("legacy fingerprint should remain stable")
         );
         assert_eq!(
+            snapshot.fingerprint,
+            "sha256:70b233d5939b9f8189a4dd4b8789dcf07f87f77788b73c98bce6006ef73cd132"
+        );
+        assert_eq!(
             snapshot.catalog_hash,
             crate::catalog::hash_directory(&root).expect("audit hash input should remain stable")
         );
+    }
+
+    #[test]
+    fn directory_fingerprint_should_stream_large_files_in_bounded_chunks() {
+        struct ZeroReader {
+            remaining: u64,
+            largest_buffer: Rc<Cell<usize>>,
+        }
+
+        impl IoRead for ZeroReader {
+            fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+                self.largest_buffer
+                    .set(self.largest_buffer.get().max(buffer.len()));
+                let count = self.remaining.min(buffer.len() as u64) as usize;
+                buffer[..count].fill(0);
+                self.remaining -= count as u64;
+                Ok(count)
+            }
+        }
+
+        let temporary = tempfile::tempdir().expect("tempdir should be created");
+        let root = temporary.path().join("large-skill");
+        fs::create_dir_all(root.join("nested")).expect("skill directories should be created");
+        let large_file = root.join("nested/large.dat");
+        let file_size = 32 * 1024 * 1024_u64;
+        fs::File::create(&large_file)
+            .expect("large file should be created")
+            .set_len(file_size)
+            .expect("large file should be sparse");
+        let largest_buffer = Rc::new(Cell::new(0));
+        let opened_files = Rc::new(Cell::new(0));
+
+        let snapshot = fingerprint_directory_snapshot_with(&root, {
+            let largest_buffer = Rc::clone(&largest_buffer);
+            let opened_files = Rc::clone(&opened_files);
+            move |_| {
+                opened_files.set(opened_files.get() + 1);
+                Ok(Box::new(ZeroReader {
+                    remaining: file_size,
+                    largest_buffer: Rc::clone(&largest_buffer),
+                }) as Box<dyn Read>)
+            }
+        })
+        .expect("large file should be fingerprinted through bounded reads");
+
+        assert_eq!(opened_files.get(), 1);
+        assert_eq!(largest_buffer.get(), FINGERPRINT_READ_BUFFER_BYTES);
+        assert_eq!(
+            snapshot.fingerprint,
+            fingerprint_directory(&root).expect("production reader should stream the large file")
+        );
+    }
+
+    #[test]
+    fn directory_fingerprint_should_reject_entry_overflow_before_opening_files() {
+        let temporary = tempfile::tempdir().expect("tempdir should be created");
+        let root = temporary.path().join("many-files");
+        fs::create_dir_all(&root).expect("skill directory should be created");
+        fs::write(root.join("one.txt"), "one").expect("file should be written");
+        fs::write(root.join("two.txt"), "two").expect("file should be written");
+
+        let error = fingerprint_directory_snapshot_with_limits(
+            &root,
+            |_| panic!("entry overflow must be detected before opening file content"),
+            FingerprintLimits {
+                max_depth: 4,
+                max_entries: 1,
+                max_file_bytes: u64::MAX,
+                max_total_bytes: u64::MAX,
+            },
+        )
+        .err()
+        .expect("more entries than the configured limit should be rejected");
+
+        assert!(error.contains("1-entry limit"), "{error}");
+        assert!(error.contains("split the skill"), "{error}");
+    }
+
+    #[test]
+    fn source_traversal_should_report_a_degraded_partial_inventory_at_its_limit() {
+        let temporary = tempfile::tempdir().expect("tempdir should be created");
+        let root = temporary.path();
+        for name in ["a-first", "z-later"] {
+            let skill = root.join(name);
+            fs::create_dir_all(&skill).expect("skill directory should be created");
+            fs::write(skill.join(SKILL_FILE), "# Skill\n").expect("skill file should be written");
+        }
+        let mut warnings = Vec::new();
+
+        let found = find_skill_dirs_with_limits(
+            root,
+            &mut warnings,
+            SourceTraversalLimits {
+                max_depth: 4,
+                max_directories: 2,
+                max_entries: 20,
+                max_entries_per_directory: 20,
+            },
+        )
+        .expect("bounded traversal should return its discovered paths");
+
+        assert_eq!(found, vec![root.join("a-first")]);
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert_eq!(warnings[0].code, InventoryWarningCode::UnreadablePath);
+        assert!(warnings[0].message.contains("inventory is incomplete"));
+        assert!(
+            warnings[0]
+                .message
+                .contains("skills later in this source may be omitted")
+        );
+
+        let inventory = SourceInventory {
+            source_id: "test".to_owned(),
+            skills: Vec::new(),
+            agents: Vec::new(),
+            plugins: Vec::new(),
+            warnings,
+            agent_warnings: Vec::new(),
+            plugin_warnings: Vec::new(),
+        };
+        assert!(crate::resolver::inventory_degrades_source_for_removal(
+            &inventory
+        ));
     }
 
     const BINARY_DIGEST: &str = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
@@ -2512,6 +2906,37 @@ required = true
         assert_eq!(providers["claude"].path, claude);
         assert!(providers["codex"].fingerprint.starts_with("sha256:"));
         assert!(inventory.warnings.is_empty());
+    }
+
+    #[test]
+    fn prebuilt_fingerprint_limit_should_produce_an_actionable_inventory_warning() {
+        let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+        let logical = temp_dir.path().join("skills/review");
+        let provider = temp_dir.path().join("builds/codex/review");
+        for directory in [&logical, &provider] {
+            fs::create_dir_all(directory).expect("skill directory should be created");
+            fs::write(directory.join(SKILL_FILE), "# Review\n")
+                .expect("skill file should be written");
+        }
+        fs::write(
+            logical.join(DELIVERY_FILE),
+            "schema_version = 1\nkind = \"prebuilt\"\n\n[providers]\ncodex = \"builds/codex/review\"\n",
+        )
+        .expect("delivery manifest should be written");
+        fs::File::create(provider.join("large-generated-data.bin"))
+            .expect("large sparse file should be created")
+            .set_len(MAX_FINGERPRINT_FILE_BYTES + 1)
+            .expect("large sparse file length should be set");
+
+        let (skill, warnings) = scan_skill("team", temp_dir.path(), &logical, &[])
+            .expect("skill scan should return a diagnostic");
+
+        assert!(skill.is_none());
+        assert!(warnings.iter().any(|warning| {
+            warning.code == InventoryWarningCode::InvalidDelivery
+                && warning.message.contains("per-file fingerprint limit")
+                && warning.message.contains("remove large generated content")
+        }));
     }
 
     #[test]

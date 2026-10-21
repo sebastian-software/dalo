@@ -194,14 +194,18 @@ pub struct SourceProvenance {
 /// Per-command cache for checkout HEADs shared by provenance and lock building.
 #[derive(Debug, Default)]
 pub(crate) struct SourceHeadCache {
-    commits: BTreeMap<PathBuf, Option<String>>,
+    commits: BTreeMap<PathBuf, Result<String, String>>,
 }
 
 impl SourceHeadCache {
     pub(crate) fn resolve(&mut self, source: &SourceConfig) -> Option<String> {
+        self.resolve_result(source).ok()
+    }
+
+    pub(crate) fn resolve_result(&mut self, source: &SourceConfig) -> Result<String, String> {
         self.commits
             .entry(source.path.clone())
-            .or_insert_with(|| git::rev_parse_head(&source.path).ok())
+            .or_insert_with(|| git::rev_parse_head(&source.path).map_err(|error| error.to_string()))
             .clone()
     }
 }

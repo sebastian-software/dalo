@@ -2317,12 +2317,26 @@ fn run_plugin_review(
             "  component: {}",
             term::terminal_safe_text(&decision.component)
         );
+        let agent_activation = decision.kind == plugin_review::ReviewDecisionKind::AgentActivation;
         if let Some(hash) = &decision.content_hash {
-            println!("  reviewed hash: {}", term::terminal_safe_text(hash));
+            let context = if agent_activation {
+                " (review context only; not the approval key)"
+            } else {
+                ""
+            };
+            println!(
+                "  reviewed hash: {}{context}",
+                term::terminal_safe_text(hash)
+            );
         }
         if let Some(value) = &decision.approval_value {
             println!(
-                "  exact approval: {} = {}",
+                "  {}: {} = {}",
+                if agent_activation {
+                    "identity approval"
+                } else {
+                    "exact approval"
+                },
                 decision.approval_scope.as_deref().unwrap_or(""),
                 term::terminal_safe_text(value)
             );
@@ -2343,7 +2357,12 @@ fn run_plugin_review(
                 term::terminal_safe_text(&target.mapping)
             );
         }
-        match read_review_answer("Approve only this displayed component contract? [y/N/q] ")? {
+        let prompt = if agent_activation {
+            "Approve the displayed source-qualified agent identity for ongoing activation? This grant may remain in effect after its content changes. [y/N/q] "
+        } else {
+            "Approve only this displayed component contract? [y/N/q] "
+        };
+        match read_review_answer(prompt)? {
             ReviewAnswer::Yes => {
                 selected.insert(decision.id.clone());
             }
@@ -3506,6 +3525,10 @@ fn status_review_reason(report: &status::StatusReport) -> Option<String> {
                 .collect::<Vec<_>>()
                 .join(", ")
         ));
+    }
+
+    if let Some(error) = &report.source_lock_error {
+        reasons.push(format!("source lock error ({error})"));
     }
 
     let pending = &report.resolution.pending_approval_skills;

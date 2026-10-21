@@ -302,6 +302,7 @@ struct ProjectUpdateJournal {
     original_approvals: store::ApprovalsFile,
 }
 
+#[derive(Clone, Copy)]
 struct ProjectPersistedSnapshot<'a> {
     config: &'a UserConfig,
     source_lock: &'a SourceLock,
@@ -1576,6 +1577,12 @@ impl Project {
             ));
         }
         let config = store::read_config(&paths)?;
+        let source_lock = config
+            .sources
+            .iter()
+            .any(|source| source.id != "local")
+            .then(|| catalog::read_source_lock(&paths))
+            .transpose()?;
         for configured in &config.sources {
             if configured.id == "local" {
                 if configured.path != paths.local_dir || configured.kind != SourceKind::Local {
@@ -1643,11 +1650,37 @@ impl Project {
                 .strip_prefix(&self.root)
                 .map_err(|_| invalid("project source checkout is outside the project store"))?;
             check_path(&self.root, configured_relative)?;
-            let lock = catalog::read_source_lock(&paths)?;
+            let lock = source_lock
+                .as_ref()
+                .expect("a configured project catalog has a source lock");
             let locked = lock
                 .catalogs
                 .iter()
                 .find(|catalog| catalog.source_id == configured.id);
+            let selection_mismatch =
+                locked.is_some_and(|catalog| catalog.selected != configured.selection);
+            // An interrupted `select_skills` write can leave the source lock
+            // ahead of config, or write an empty selection while clearing the
+            // previous config selection. During install, recover only states
+            // that agree with the declaration on one side (or that clear step);
+            // other mismatches remain blocked as potentially unmanaged state.
+            let recoverable_selection_mismatch = if selection_mismatch && allow_pin_updates {
+                if let (Some(declared), Some(locked)) = (declared, locked) {
+                    let desired = canonical_project_selection(
+                        &paths,
+                        &declared.id,
+                        &configured.path,
+                        declared.path.as_deref(),
+                        &declared.skills,
+                    )?;
+                    locked.selected == desired
+                        || (locked.selected.is_empty() && !configured.selection.is_empty())
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
             let checkout_commit = git::rev_parse_head(&configured.path)?;
             let versioned_name_matches_head = configured.path == expected_path
                 || configured.path.file_name().and_then(|name| name.to_str())
@@ -1655,7 +1688,7 @@ impl Project {
             // An absent source only stops delivery: its checkout is never written
             // or deleted, even when it contains local edits.
             if locked.map(|catalog| catalog.commit.as_str()) != Some(checkout_commit.as_str())
-                || locked.is_some_and(|catalog| catalog.selected != configured.selection)
+                || (selection_mismatch && !recoverable_selection_mismatch)
                 || !versioned_name_matches_head
                 || (declared.is_some() && git::is_dirty(&configured.path)?)
             {
@@ -2006,10 +2039,7 @@ impl Project {
             )?;
             if configured.selection != desired {
                 let old_selection = configured.selection.clone();
-                if !old_selection.is_empty() {
-                    catalog::select_skills(&paths, &declared.id, &old_selection, true, false)?;
-                }
-                catalog::select_skills(&paths, &declared.id, &desired, false, false)?;
+                self.persist_selection_update(&paths, &declared.id, &old_selection, &desired)?;
                 config = store::read_config(&paths)?;
             }
         }
@@ -2134,6 +2164,52 @@ impl Project {
         original: ProjectPersistedSnapshot<'_>,
         next: ProjectPersistedSnapshot<'_>,
     ) -> DaloResult<()> {
+        self.run_journaled_update(paths, original, || {
+            catalog::write_source_lock(paths, next.source_lock)?;
+            store::write_config(paths, next.config)?;
+            if next.approvals != original.approvals {
+                store::write_approvals(paths, next.approvals)?;
+            }
+            Ok(())
+        })
+    }
+
+    fn persist_selection_update(
+        &self,
+        paths: &store::StorePaths,
+        source_id: &str,
+        old_selection: &[String],
+        desired_selection: &[String],
+    ) -> DaloResult<()> {
+        let original_config = store::read_config(paths)?;
+        let original_source_lock = catalog::read_source_lock(paths)?;
+        let original_approvals = store::read_approvals(paths)?;
+        self.run_journaled_update(
+            paths,
+            ProjectPersistedSnapshot {
+                config: &original_config,
+                source_lock: &original_source_lock,
+                approvals: &original_approvals,
+            },
+            || {
+                if !old_selection.is_empty() {
+                    catalog::select_skills(paths, source_id, old_selection, true, false)?;
+                }
+                catalog::select_skills(paths, source_id, desired_selection, false, false)?;
+                Ok(())
+            },
+        )
+    }
+
+    fn run_journaled_update<F>(
+        &self,
+        paths: &store::StorePaths,
+        original: ProjectPersistedSnapshot<'_>,
+        update: F,
+    ) -> DaloResult<()>
+    where
+        F: FnOnce() -> DaloResult<()>,
+    {
         let journal_path = paths.root.join("project-update.toml");
         check_path(&self.root, Path::new(".dalo/project-update.toml"))?;
         if journal_path.exists() {
@@ -2156,15 +2232,7 @@ impl Project {
             .map_err(|error| error.error)?;
         fs::File::open(&paths.root)?.sync_all()?;
 
-        let update = (|| -> DaloResult<()> {
-            catalog::write_source_lock(paths, next.source_lock)?;
-            store::write_config(paths, next.config)?;
-            if next.approvals != original.approvals {
-                store::write_approvals(paths, next.approvals)?;
-            }
-            Ok(())
-        })();
-        if let Err(error) = update {
+        if let Err(error) = update() {
             let rollback = store::write_config(paths, original.config)
                 .and_then(|()| catalog::write_source_lock(paths, original.source_lock))
                 .and_then(|()| store::write_approvals(paths, original.approvals));
@@ -2185,6 +2253,316 @@ impl Project {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Command;
+
+    fn run_git(root: &Path, args: &[&str]) -> String {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(args)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .expect("run git fixture command");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout)
+            .expect("git output is UTF-8")
+            .trim()
+            .to_owned()
+    }
+
+    fn test_catalog(root: &Path, skills: &[&str]) -> String {
+        for skill in skills {
+            let directory = root.join("skills").join(skill);
+            fs::create_dir_all(&directory).expect("create catalog skill");
+            fs::write(
+                directory.join("SKILL.md"),
+                format!(
+                    "---\nname: {skill}\ndescription: Test project skill.\n---\n\nUse this test skill.\n"
+                ),
+            )
+            .expect("write catalog skill");
+        }
+        run_git(root, &["init"]);
+        run_git(root, &["add", "."]);
+        run_git(
+            root,
+            &[
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.com",
+                "commit",
+                "-m",
+                "fixture",
+            ],
+        );
+        run_git(root, &["config", "uploadpack.allowFilter", "true"]);
+        run_git(root, &["rev-parse", "HEAD"])
+    }
+
+    fn test_project_source(
+        id: &str,
+        repository: &Path,
+        commit: String,
+        skills: &[&str],
+    ) -> ProjectSource {
+        ProjectSource {
+            id: id.to_owned(),
+            url: repository.to_string_lossy().into_owned(),
+            commit,
+            path: None,
+            skills: skills.iter().map(|skill| (*skill).to_owned()).collect(),
+        }
+    }
+
+    fn test_manifest(sources: Vec<ProjectSource>) -> Manifest {
+        Manifest {
+            schema_version: 2,
+            approval: Some(ProjectApproval::Declaration),
+            targets: vec!["claude".to_owned()],
+            sources,
+        }
+    }
+
+    fn initialized_project(root: &Path) -> Project {
+        fs::create_dir_all(root).expect("create project directory");
+        let project = Project::new(root).expect("project");
+        store::init_store(project.store.clone(), false).expect("initialize project store");
+        fs::write(project.store.join("project-owner"), "dalo-project-v1\n")
+            .expect("mark project store");
+        project
+    }
+
+    fn two_source_manifest(root: &Path) -> Manifest {
+        let shared_repo = root.join("shared-upstream");
+        let shared_commit = test_catalog(&shared_repo, &["review", "helper"]);
+        let other_repo = root.join("other-upstream");
+        let other_commit = test_catalog(&other_repo, &["review"]);
+        test_manifest(vec![
+            test_project_source("shared", &shared_repo, shared_commit, &["review"]),
+            test_project_source("other", &other_repo, other_commit, &["review"]),
+        ])
+    }
+
+    #[test]
+    fn interrupted_project_selection_write_recovers_and_reapplies_declaration() {
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let project_root = temp.path().join("project");
+        let project = initialized_project(&project_root);
+        let shared_repo = temp.path().join("shared-upstream");
+        let shared_commit = test_catalog(&shared_repo, &["review", "helper"]);
+        let other_repo = temp.path().join("other-upstream");
+        let other_commit = test_catalog(&other_repo, &["review"]);
+        let original_manifest = test_manifest(vec![
+            test_project_source("shared", &shared_repo, shared_commit.clone(), &["review"]),
+            test_project_source("other", &other_repo, other_commit.clone(), &["review"]),
+        ]);
+        let updated_manifest = test_manifest(vec![
+            test_project_source("shared", &shared_repo, shared_commit.clone(), &["helper"]),
+            test_project_source("other", &other_repo, other_commit.clone(), &["review"]),
+        ]);
+        project
+            .prepare(&original_manifest)
+            .expect("prepare original selection");
+
+        let paths = store::StorePaths::new(project.store.clone());
+        let mut unrelated_approvals = store::read_approvals(&paths).expect("read approvals");
+        unrelated_approvals
+            .approvals
+            .push(store::ApprovalRecord::granted(
+                "skill".to_owned(),
+                "other:review".to_owned(),
+            ));
+        store::write_approvals(&paths, &unrelated_approvals).expect("write unrelated approval");
+        let original_config = store::read_config(&paths).expect("read original config");
+        let original_source_lock = catalog::read_source_lock(&paths).expect("read original lock");
+        let original_approvals = store::read_approvals(&paths).expect("read original approvals");
+
+        catalog::interrupt_next_selection_after_lock_for_test();
+        let interrupted = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            project.prepare(&updated_manifest)
+        }));
+        assert!(
+            interrupted.is_err(),
+            "the write boundary should interrupt install"
+        );
+
+        let partial_config = store::read_config(&paths).expect("read partial config");
+        let partial_lock = catalog::read_source_lock(&paths).expect("read partial source lock");
+        assert!(paths.root.join("project-update.toml").exists());
+        assert_eq!(
+            partial_config
+                .sources
+                .iter()
+                .find(|source| source.id == "shared")
+                .expect("shared source")
+                .selection,
+            vec!["skills/review"]
+        );
+        assert!(partial_lock.catalog("shared").unwrap().selected.is_empty());
+        assert_eq!(
+            partial_config
+                .sources
+                .iter()
+                .find(|source| source.id == "other")
+                .expect("other source"),
+            original_config
+                .sources
+                .iter()
+                .find(|source| source.id == "other")
+                .expect("original other source")
+        );
+        assert_eq!(
+            partial_lock.catalog("other"),
+            original_source_lock.catalog("other")
+        );
+
+        project
+            .recover_interrupted_update()
+            .expect("restore selection transaction baseline");
+        project
+            .validate_store_for_install(&updated_manifest)
+            .expect("validate restored baseline before retry");
+        project
+            .prepare(&updated_manifest)
+            .expect("retry and apply declared selection");
+
+        let final_config = store::read_config(&paths).expect("read final config");
+        let final_source_lock = catalog::read_source_lock(&paths).expect("read final source lock");
+        assert_eq!(
+            final_config
+                .sources
+                .iter()
+                .find(|source| source.id == "shared")
+                .expect("shared source")
+                .selection,
+            vec!["skills/helper"]
+        );
+        assert_eq!(
+            final_source_lock.catalog("shared").unwrap().selected,
+            vec!["skills/helper"]
+        );
+        assert_eq!(
+            final_config
+                .sources
+                .iter()
+                .find(|source| source.id == "other")
+                .expect("other source"),
+            original_config
+                .sources
+                .iter()
+                .find(|source| source.id == "other")
+                .expect("original other source")
+        );
+        assert_eq!(
+            final_source_lock.catalog("other"),
+            original_source_lock.catalog("other")
+        );
+        assert_eq!(
+            store::read_approvals(&paths).expect("read final approvals"),
+            original_approvals
+        );
+        assert!(!paths.root.join("project-update.toml").exists());
+
+        // Before the selection journal existed, the same lock-first interruption
+        // could leave no recovery record. Model its clear step and verify install
+        // can still restore the manifest selection without touching other sources.
+        catalog::select_skills(&paths, "shared", &["skills/helper".to_owned()], true, false)
+            .expect("write the legacy partial clear state");
+        store::write_config(&paths, &final_config)
+            .expect("restore config to the pre-interruption selection");
+        assert!(!paths.root.join("project-update.toml").exists());
+
+        let legacy_retry_manifest = test_manifest(vec![
+            test_project_source("shared", &shared_repo, shared_commit, &["review"]),
+            test_project_source("other", &other_repo, other_commit, &["review"]),
+        ]);
+        project
+            .validate_store_for_install(&legacy_retry_manifest)
+            .expect("recognize the lock-first legacy partial state");
+        project
+            .prepare(&legacy_retry_manifest)
+            .expect("repair the legacy partial state");
+        let recovered_config = store::read_config(&paths).expect("read recovered config");
+        let recovered_source_lock =
+            catalog::read_source_lock(&paths).expect("read recovered source lock");
+        assert_eq!(
+            recovered_config
+                .sources
+                .iter()
+                .find(|source| source.id == "shared")
+                .expect("shared source")
+                .selection,
+            vec!["skills/review"]
+        );
+        assert_eq!(
+            recovered_source_lock.catalog("shared").unwrap().selected,
+            vec!["skills/review"]
+        );
+        assert_eq!(
+            recovered_config
+                .sources
+                .iter()
+                .find(|source| source.id == "other")
+                .expect("other source"),
+            original_config
+                .sources
+                .iter()
+                .find(|source| source.id == "other")
+                .expect("original other source")
+        );
+        assert_eq!(
+            recovered_source_lock.catalog("other"),
+            original_source_lock.catalog("other")
+        );
+        assert_eq!(
+            store::read_approvals(&paths).expect("read recovered approvals"),
+            original_approvals
+        );
+
+        // A legacy interruption can also leave config already equal to the
+        // declaration while the source lock is empty. The same-commit prepare
+        // step must repair the lock even when selection reconciliation is a no-op.
+        let mut empty_lock = recovered_source_lock;
+        empty_lock
+            .catalogs
+            .iter_mut()
+            .find(|catalog| catalog.source_id == "shared")
+            .expect("shared lock")
+            .selected
+            .clear();
+        catalog::write_source_lock(&paths, &empty_lock).expect("write legacy empty lock");
+        project
+            .validate_store_for_install(&legacy_retry_manifest)
+            .expect("recognize config-matching legacy partial state");
+        project
+            .prepare(&legacy_retry_manifest)
+            .expect("repair config-matching legacy partial state");
+        let repaired_lock = catalog::read_source_lock(&paths).expect("read repaired source lock");
+        assert_eq!(
+            repaired_lock.catalog("shared").unwrap().selected,
+            vec!["skills/review"]
+        );
+    }
+
+    #[test]
+    fn install_validation_reads_source_lock_once_for_multiple_sources() {
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let project = initialized_project(&temp.path().join("project"));
+        let manifest = two_source_manifest(temp.path());
+        project.prepare(&manifest).expect("prepare project sources");
+
+        catalog::reset_source_lock_read_count_for_test();
+        project
+            .validate_store_for_install(&manifest)
+            .expect("validate project sources");
+        assert_eq!(catalog::source_lock_read_count_for_test(), 1);
+    }
 
     #[test]
     fn manifest_rejects_unsupported_and_unsafe_declarations() {
