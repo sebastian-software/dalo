@@ -485,6 +485,63 @@ pub fn scan_source_with_plugin_inventory(
     source_root: &Path,
     plugin_inventory: PluginInventory,
 ) -> DaloResult<SourceInventory> {
+    let mut inventory =
+        scan_source_candidates_with_plugin_inventory(source_id, source_root, plugin_inventory)?;
+    inventory
+        .skills
+        .dedup_by(|left, right| left.slot_name == right.slot_name);
+    Ok(inventory)
+}
+
+/// Keep every catalog path available for inspection and explicit selection.
+pub(crate) fn scan_catalog_source(
+    source_id: &str,
+    source_root: &Path,
+) -> DaloResult<SourceInventory> {
+    let plugins = plugin::scan_source_plugins(source_id, source_root);
+    scan_source_candidates_with_plugin_inventory(source_id, source_root, plugins)
+}
+
+/// Scan effective records, preferring a catalog's selected path within a slot.
+pub(crate) fn scan_configured_source(
+    source: &crate::source::SourceConfig,
+    source_root: &Path,
+) -> DaloResult<SourceInventory> {
+    let plugins = plugin::scan_source_plugins(&source.id, source_root);
+    scan_configured_source_with_plugin_inventory(source, source_root, plugins)
+}
+
+pub(crate) fn scan_configured_source_with_plugin_inventory(
+    source: &crate::source::SourceConfig,
+    source_root: &Path,
+    plugins: PluginInventory,
+) -> DaloResult<SourceInventory> {
+    let mut inventory =
+        scan_source_candidates_with_plugin_inventory(&source.id, source_root, plugins)?;
+    if source.kind == crate::source::SourceKind::Catalog {
+        inventory.skills.sort_by(|left, right| {
+            left.slot_name
+                .cmp(&right.slot_name)
+                .then_with(|| {
+                    let selected = |skill: &SkillRecord| {
+                        crate::catalog::skill_is_selected(skill, &source.selection, source_root)
+                    };
+                    selected(right).cmp(&selected(left))
+                })
+                .then_with(|| left.path.cmp(&right.path))
+        });
+    }
+    inventory
+        .skills
+        .dedup_by(|left, right| left.slot_name == right.slot_name);
+    Ok(inventory)
+}
+
+fn scan_source_candidates_with_plugin_inventory(
+    source_id: &str,
+    source_root: &Path,
+    plugin_inventory: PluginInventory,
+) -> DaloResult<SourceInventory> {
     let agent_inventory = agent::scan_source_agents(source_id, source_root);
     let mut warnings = Vec::new();
     let skill_dirs = find_skill_dirs(source_root, &mut warnings)?;
@@ -539,11 +596,6 @@ pub fn scan_source_with_plugin_inventory(
             .then_with(|| left.path.cmp(&right.path))
     });
     warnings.extend(duplicate_slot_warnings(source_id, &skills));
-    // A source-qualified reference identifies a slot, so multiple records with
-    // the same slot from one source cannot remain distinct downstream. Keep the
-    // first path after the deterministic sort while retaining warnings for every
-    // conflicting path above.
-    skills.dedup_by(|left, right| left.slot_name == right.slot_name);
     warnings.sort_by(|left, right| {
         left.path
             .cmp(&right.path)

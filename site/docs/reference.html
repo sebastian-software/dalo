@@ -599,7 +599,8 @@ dalo source namespace company --clear
 </code></pre>
 <p>JSON output shape: <code>SourceNamespaceReport</code>.</p>
 <h3 id="dalo-source-inspect-id"><a class="doc-anchor" href="#dalo-source-inspect-id"><code>dalo source inspect &lt;id&gt;</code></a></h3>
-<p>Inspect a catalog source and list available candidate skills, including ID, slot name, path, description, compatibility, dependencies, and selection status.</p>
+<p>Inspect a catalog source and list available candidate skills, including ID, slot name, path, description, compatibility, dependencies, and selection status.
+Candidates with the same slot name remain listed separately by path.</p>
 <p>Examples:</p>
 <pre><code class="language-sh">dalo source inspect public
 dalo --json source inspect public
@@ -609,6 +610,13 @@ dalo --json source inspect public
 <p>Select catalog skills by stable frontmatter ID, slot name, catalog-relative path,
 or a source-qualified <code>&lt;source-id&gt;:&lt;slot-or-stable-id&gt;</code> reference. The source ID
 must match the catalog being selected.
+A bare slot name selects the first catalog-relative path in lexical order when
+several candidates share that slot. Use an explicit path to choose another
+candidate. Selecting a different path for an already selected slot replaces
+that slot&#39;s previous selection; selecting multiple paths for one slot in the
+same command is rejected. Only one skill per source and slot is resolved.
+Selections use a stable ID when it is unique in the catalog, otherwise the
+catalog-relative path preserves the chosen candidate.
 Selection runs the deterministic security preflight, writes
 <code>config.toml</code>, and updates <code>source-lock.toml</code> with the pinned commit and
 inventory snapshot. Human-readable output names the skills added or removed,
@@ -625,7 +633,9 @@ dalo --dry-run source select public review-helper
 <p>Unselect catalog skills by stable frontmatter ID, slot name, catalog-relative
 path, or a source-qualified <code>&lt;source-id&gt;:&lt;slot-or-stable-id&gt;</code> reference. The
 source ID must match the catalog being changed. This is the explicit negation
-counterpart to <code>source select</code>.</p>
+counterpart to <code>source select</code>.
+A slot name removes that slot&#39;s current selection, including an explicitly
+selected alternative path. An explicit path removes only that candidate.</p>
 <p>Unselecting also cleans up release binaries. A staged binary whose declaring
 skill is no longer selected, and that no other approved declaration pins, is
 removed with its exposure link. The removed paths appear as <code>removed:</code> lines in

@@ -16916,6 +16916,240 @@ fn catalog_select_should_choose_the_first_path_for_duplicate_slots() {
 }
 
 #[test]
+fn catalog_select_should_preserve_explicit_duplicate_slot_paths() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo_with_duplicate_slots(&repo);
+    setup_store_with_target(&store, &target);
+    dalo_command()
+        .arg("--store")
+        .arg(&store)
+        .args(["source", "add-catalog", "catalog"])
+        .arg(&repo)
+        .assert()
+        .success();
+
+    let inspect = dalo_command()
+        .arg("--store")
+        .arg(&store)
+        .args(["--json", "source", "inspect", "catalog"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value = serde_json::from_slice(&inspect).unwrap();
+    assert_eq!(report["candidates"].as_array().unwrap().len(), 2);
+    assert_eq!(report["candidates"][0]["path"], "skills/a");
+    assert_eq!(report["candidates"][1]["path"], "skills/b");
+
+    // Simulate an existing lock written by the old deduplicating scanner.
+    let paths = store::StorePaths::new(store.clone());
+    let mut legacy = read_source_lock(&store);
+    legacy.catalogs[0]
+        .inventory
+        .retain(|entry| entry.path == "skills/a");
+    dalo::catalog::write_source_lock(&paths, &legacy).unwrap();
+    let config_before = std::fs::read(&paths.config_file).unwrap();
+    let lock_before = std::fs::read(&paths.source_lock_file).unwrap();
+    dalo_command()
+        .arg("--store")
+        .arg(&store)
+        .args([
+            "--dry-run",
+            "--json",
+            "source",
+            "select",
+            "catalog",
+            "skills/b",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("skills/b"));
+    dalo_command()
+        .arg("--store")
+        .arg(&store)
+        .args(["source", "select", "catalog", "skills/a", "skills/b"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("multiple paths"));
+    assert_eq!(std::fs::read(&paths.config_file).unwrap(), config_before);
+    assert_eq!(std::fs::read(&paths.source_lock_file).unwrap(), lock_before);
+
+    approve_source(&store, "catalog");
+    for selected_path in ["skills/b", "skills/a", "skills/b"] {
+        dalo_command()
+            .arg("--store")
+            .arg(&store)
+            .args(["source", "select", "catalog", selected_path])
+            .assert()
+            .success();
+        dalo_command()
+            .arg("--store")
+            .arg(&store)
+            .arg("sync")
+            .assert()
+            .success();
+        assert!(
+            std::fs::read_link(target.join("shared"))
+                .unwrap()
+                .ends_with(selected_path)
+        );
+        let lock = read_user_lock(&store);
+        assert_eq!(lock.active_skills.len(), 1);
+        assert_eq!(lock.active_skills[0].source_ref, "catalog:shared");
+        assert!(lock.unlinked_skills.is_empty());
+        let source_lock = read_source_lock(&store);
+        let catalog = source_lock.catalog("catalog").unwrap();
+        assert_eq!(catalog.selected, [selected_path]);
+        assert_eq!(catalog.inventory.len(), 2);
+        assert!(
+            !catalog
+                .inventory
+                .iter()
+                .find(|entry| entry.path == selected_path)
+                .unwrap()
+                .content_hash
+                .is_empty()
+        );
+        let inspect = dalo::catalog::inspect_catalog(&paths, "catalog").unwrap();
+        let selected: Vec<_> = inspect
+            .candidates
+            .iter()
+            .filter(|candidate| candidate.selected)
+            .collect();
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].path, selected_path);
+        let audit = dalo_command()
+            .arg("--store")
+            .arg(&store)
+            .args(["--json", "audit", "catalog:shared"])
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+        let audit: serde_json::Value = serde_json::from_slice(&audit).unwrap();
+        assert!(
+            audit["skill_path"]
+                .as_str()
+                .unwrap()
+                .ends_with(selected_path)
+        );
+    }
+    dalo_command()
+        .arg("--store")
+        .arg(&store)
+        .arg("status")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("shadowed catalog:shared").not())
+        .stdout(predicate::str::contains("lock drift:").not());
+    dalo_command()
+        .arg("--store")
+        .arg(&store)
+        .args(["source", "unselect", "catalog", "skills/a"])
+        .assert()
+        .success();
+    assert_eq!(
+        read_source_lock(&store)
+            .catalog("catalog")
+            .unwrap()
+            .selected,
+        ["skills/b"]
+    );
+    dalo_command()
+        .arg("--store")
+        .arg(&store)
+        .args(["source", "unselect", "catalog", "catalog:shared"])
+        .assert()
+        .success();
+    dalo_command()
+        .arg("--store")
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    assert!(!target.join("shared").exists());
+}
+
+#[test]
+fn catalog_select_should_pin_a_path_when_stable_ids_are_duplicated() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = temp.path().join("store");
+    let repo = temp.path().join("repo");
+    create_git_catalog_repo_with_duplicate_slots(&repo);
+    for folder in ["a", "b"] {
+        std::fs::write(
+            repo.join("skills").join(folder).join("SKILL.md"),
+            "---\nname: shared\nid: shared-id\n---\n# Shared\n",
+        )
+        .unwrap();
+    }
+    run_git(&repo, &["add", "."]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-qm",
+            "Add duplicate IDs",
+        ],
+    );
+    setup_store_with_target(&store, &temp.path().join("target"));
+    dalo_command()
+        .arg("--store")
+        .arg(&store)
+        .args(["source", "add-catalog", "catalog"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .arg("--store")
+        .arg(&store)
+        .args(["source", "select", "catalog", "skills/b"])
+        .assert()
+        .success();
+    assert_eq!(
+        read_source_lock(&store)
+            .catalog("catalog")
+            .unwrap()
+            .selected,
+        ["skills/b"]
+    );
+    approve_source(&store, "catalog");
+    dalo_command()
+        .arg("--store")
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    assert!(
+        std::fs::read_link(temp.path().join("target/shared"))
+            .unwrap()
+            .ends_with("skills/b")
+    );
+    let refresh = dalo_command()
+        .arg("--store")
+        .arg(&store)
+        .args(["--json", "source", "refresh", "catalog", "--check"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let refresh: serde_json::Value = serde_json::from_slice(&refresh).unwrap();
+    assert_eq!(refresh["outcomes"], serde_json::json!([]));
+}
+
+#[test]
 fn catalog_refresh_check_should_not_require_store_lock() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
