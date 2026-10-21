@@ -552,6 +552,7 @@ JSON output shape: `SourceNamespaceReport`.
 ### `dalo source inspect <id>`
 
 Inspect a catalog source and list available candidate skills, including ID, slot name, path, description, compatibility, dependencies, and selection status.
+Candidates with the same slot name remain listed separately by path.
 
 Examples:
 
@@ -567,6 +568,13 @@ JSON output shape: `CatalogInspectReport`.
 Select catalog skills by stable frontmatter ID, slot name, catalog-relative path,
 or a source-qualified `<source-id>:<slot-or-stable-id>` reference. The source ID
 must match the catalog being selected.
+A bare slot name selects the first catalog-relative path in lexical order when
+several candidates share that slot. Use an explicit path to choose another
+candidate. Selecting a different path for an already selected slot replaces
+that slot's previous selection; selecting multiple paths for one slot in the
+same command is rejected. Only one skill per source and slot is resolved.
+Selections use a stable ID when it is unique in the catalog, otherwise the
+catalog-relative path preserves the chosen candidate.
 Selection runs the deterministic security preflight, writes
 `config.toml`, and updates `source-lock.toml` with the pinned commit and
 inventory snapshot. Human-readable output names the skills added or removed,
@@ -590,6 +598,8 @@ Unselect catalog skills by stable frontmatter ID, slot name, catalog-relative
 path, or a source-qualified `<source-id>:<slot-or-stable-id>` reference. The
 source ID must match the catalog being changed. This is the explicit negation
 counterpart to `source select`.
+A slot name removes that slot's current selection, including an explicitly
+selected alternative path. An explicit path removes only that candidate.
 
 Unselecting also cleans up release binaries. A staged binary whose declaring
 skill is no longer selected, and that no other approved declaration pins, is

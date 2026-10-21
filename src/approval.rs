@@ -233,7 +233,7 @@ pub fn canonical_skill_record(
                     .collect(),
             )
         })?;
-    let inventory = inventory::scan_source(source_id, &source.path)?;
+    let inventory = inventory::scan_configured_source(source, &source.path)?;
     let skill = inventory
         .skills
         .iter()

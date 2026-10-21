@@ -1164,7 +1164,7 @@ fn current_identity(paths: &StorePaths, value: &str) -> Option<(String, String)>
         .sources
         .iter()
         .find(|source| source.id == source_id)?;
-    let inventory = crate::inventory::scan_source(source_id, &source.path).ok()?;
+    let inventory = crate::inventory::scan_configured_source(source, &source.path).ok()?;
     let skill = inventory
         .skills
         .iter()
@@ -1267,7 +1267,7 @@ fn inspect_canonical(paths: &StorePaths, canonical: &str) -> DaloResult<Delivery
             ),
         });
     }
-    let mut inventory = crate::inventory::scan_source(source_id, &source.path)?;
+    let mut inventory = crate::inventory::scan_configured_source(source, &source.path)?;
     let (generator, generator_contract_hash, providers, manifest_path, approval_value) = {
         let skill = inventory
             .skills

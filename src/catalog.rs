@@ -411,9 +411,11 @@ pub(crate) fn canonical_skill_selection(
     refs: &[String],
 ) -> DaloResult<Vec<String>> {
     let source = catalog_source(paths, id)?;
-    let mut selected = resolve_catalog_skill_references(id, &source.path, refs)?
+    let scan = scan_catalog(&source.path)?;
+    let candidates = catalog_candidates_from_scan(&source.path, &scan);
+    let mut selected = resolve_candidate_references(id, &candidates, refs)?
         .iter()
-        .map(canonical_selection)
+        .map(|candidate| canonical_selection(candidate, &candidates))
         .collect::<Vec<_>>();
     selected.sort();
     selected.dedup();
@@ -430,25 +432,42 @@ pub(crate) fn resolve_catalog_skill_references(
 ) -> DaloResult<Vec<CatalogCandidate>> {
     let scan = scan_catalog(checkout)?;
     let candidates = catalog_candidates_from_scan(checkout, &scan);
-    let mut selected = Vec::with_capacity(refs.len());
-    for reference in refs {
-        let candidate = resolve_candidate_reference(source_id, &candidates, reference)?;
-        if !selected
-            .iter()
-            .any(|existing| canonical_selection(existing) == canonical_selection(&candidate))
-        {
-            selected.push(candidate);
-        }
-    }
+    let mut selected = resolve_candidate_references(source_id, &candidates, refs)?;
     selected.sort_by(|left, right| {
         left.slot_name
             .cmp(&right.slot_name)
             .then(left.path.cmp(&right.path))
     });
+    selected.dedup();
     for candidate in &mut selected {
         candidate.selected = true;
     }
     Ok(selected)
+}
+
+fn resolve_candidate_references(
+    source_id: &str,
+    candidates: &[CatalogCandidate],
+    refs: &[String],
+) -> DaloResult<Vec<CatalogCandidate>> {
+    let resolved = refs
+        .iter()
+        .map(|reference| resolve_candidate_reference(source_id, candidates, reference))
+        .collect::<DaloResult<Vec<_>>>()?;
+    for candidate in &resolved {
+        if resolved
+            .iter()
+            .any(|other| other.slot_name == candidate.slot_name && other.path != candidate.path)
+        {
+            return Err(DaloError::StateError {
+                reason: format!(
+                    "catalog `{source_id}` cannot select multiple paths for slot `{}`",
+                    candidate.slot_name
+                ),
+            });
+        }
+    }
+    Ok(resolved)
 }
 
 /// Inspect a catalog source read-only: list its candidate skills and which are
@@ -513,10 +532,7 @@ pub fn select_skills(
     }
     let scan = scan_catalog(&source_path)?;
     let candidates = catalog_candidates_from_scan(&source_path, &scan);
-    let mut resolved = Vec::with_capacity(refs.len());
-    for reference in refs {
-        resolved.push(resolve_candidate_reference(id, &candidates, reference)?);
-    }
+    let resolved = resolve_candidate_references(id, &candidates, refs)?;
     let audits = if unselect {
         Vec::new()
     } else {
@@ -554,15 +570,27 @@ pub fn select_skills(
     let mut added = Vec::new();
     let mut removed = Vec::new();
     for (reference, candidate) in refs.iter().zip(&resolved) {
-        let was_selected = source
-            .selection
-            .iter()
-            .any(|existing| selection_matches_candidate(existing, candidate));
-        source
-            .selection
-            .retain(|existing| !selection_matches_candidate(existing, candidate));
+        let unselect_slot = unselect
+            && (reference == &candidate.slot_name
+                || reference == &format!("{id}:{}", candidate.slot_name));
+        let matches_slot = |existing: &str| {
+            candidates.iter().any(|other| {
+                other.slot_name == candidate.slot_name
+                    && selection_matches_candidate(existing, other)
+            })
+        };
+        let was_selected = source.selection.iter().any(|existing| {
+            selection_matches_candidate(existing, candidate)
+                || (unselect_slot && matches_slot(existing))
+        });
+        source.selection.retain(|existing| {
+            !selection_matches_candidate(existing, candidate)
+                && (unselect && !unselect_slot || !matches_slot(existing))
+        });
         if !unselect {
-            source.selection.push(canonical_selection(candidate));
+            source
+                .selection
+                .push(canonical_selection(candidate, &candidates));
         }
         match (unselect, was_selected) {
             (true, true) => removed.push(reference.clone()),
@@ -590,6 +618,26 @@ pub fn select_skills(
                 && lock.catalogs[index].commit == commit
             {
                 let mut inventory = lock.catalogs[index].inventory.clone();
+                // Older releases omitted same-slot alternatives. Add missing
+                // paths without rehashing the existing pinned snapshot.
+                let missing = scan
+                    .skills
+                    .iter()
+                    .filter(|skill| {
+                        !inventory
+                            .iter()
+                            .any(|entry| entry.path == relative_path(&source_path, &skill.path))
+                    })
+                    .cloned()
+                    .collect();
+                let mut missing_scan = scan.clone();
+                missing_scan.skills = missing;
+                inventory.extend(catalog_inventory_from_scan(
+                    &source_path,
+                    &missing_scan,
+                    &selected,
+                )?);
+                inventory.sort_by(|a, b| a.slot_name.cmp(&b.slot_name).then(a.path.cmp(&b.path)));
                 hydrate_selected_content_hashes(&mut inventory, &source_path, &scan, &selected)?;
                 inventory
             } else {
@@ -696,7 +744,7 @@ pub fn catalog_inventory(checkout: &Path, selection: &[String]) -> DaloResult<Ve
 }
 
 fn scan_catalog(checkout: &Path) -> DaloResult<SourceInventory> {
-    let inventory = inventory::scan_source("catalog", checkout)?;
+    let inventory = inventory::scan_catalog_source("catalog", checkout)?;
     ensure_catalog_inventory_complete(&inventory)?;
     Ok(inventory)
 }
@@ -838,6 +886,14 @@ fn resolve_candidate_reference(
             format!("dalo source inspect {source_id}"),
         )),
         [candidate] => Ok(candidate.clone()),
+        // Preserve the historical default for a bare slot, while keeping all
+        // paths available to an explicit selector.
+        [first, rest @ ..]
+            if first.slot_name == lookup
+                && rest.iter().all(|candidate| candidate.slot_name == lookup) =>
+        {
+            Ok(first.clone())
+        }
         _ => Err(DaloError::AmbiguousSkillReference {
             reference: reference.to_owned(),
             matches: matches
@@ -849,14 +905,24 @@ fn resolve_candidate_reference(
     }
 }
 
-fn canonical_selection(candidate: &CatalogCandidate) -> String {
-    candidate.id.clone().unwrap_or_else(|| {
-        if candidate.path.is_empty() || candidate.path == "." {
-            candidate.slot_name.clone()
-        } else {
-            candidate.path.clone()
-        }
-    })
+fn canonical_selection(candidate: &CatalogCandidate, candidates: &[CatalogCandidate]) -> String {
+    candidate
+        .id
+        .clone()
+        .filter(|id| {
+            candidates
+                .iter()
+                .filter(|other| other.id.as_ref() == Some(id))
+                .count()
+                <= 1
+        })
+        .unwrap_or_else(|| {
+            if candidate.path.is_empty() || candidate.path == "." {
+                candidate.slot_name.clone()
+            } else {
+                candidate.path.clone()
+            }
+        })
 }
 
 fn selection_matches_candidate(selection: &str, candidate: &CatalogCandidate) -> bool {
@@ -998,7 +1064,8 @@ pub fn compare_catalog_inventory(
         let by_id = locked_entry
             .id
             .as_deref()
-            .and_then(|id| fresh.iter().find(|f| f.id.as_deref() == Some(id)));
+            .filter(|id| unique_entry_with_id(locked, id).is_some())
+            .and_then(|id| unique_entry_with_id(fresh, id));
         let by_path = fresh.iter().find(|f| f.path == locked_entry.path);
         let skill = locked_entry
             .id
@@ -1576,7 +1643,8 @@ fn reconciled_selection(
             .find(|entry| entry_matches_ref(entry, reference));
         let resolved = if let Some(old) = old
             && let Some(id) = old.id.as_deref()
-            && let Some(candidate) = fresh.iter().find(|entry| entry.id.as_deref() == Some(id))
+            && unique_entry_with_id(locked, id).is_some()
+            && let Some(candidate) = unique_entry_with_id(fresh, id)
             && candidate.path != old.path
         {
             id.to_owned()
@@ -1891,6 +1959,14 @@ fn same_entry(a: &CatalogEntry, b: &CatalogEntry) -> bool {
         (Some(left), Some(right)) => left == right,
         _ => a.path == b.path,
     }
+}
+
+fn unique_entry_with_id<'a>(entries: &'a [CatalogEntry], id: &str) -> Option<&'a CatalogEntry> {
+    let mut matches = entries
+        .iter()
+        .filter(|entry| entry.id.as_deref() == Some(id));
+    let first = matches.next()?;
+    matches.next().is_none().then_some(first)
 }
 
 fn relative_path(root: &Path, path: &Path) -> String {

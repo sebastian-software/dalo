@@ -1018,7 +1018,7 @@ fn resolve_target(paths: &StorePaths, target: &str) -> DaloResult<(String, PathB
         }
         let source_root =
             crate::source::scoped_source_root(&source.path, source.subpath.as_deref())?;
-        let inventory = inventory::scan_source(source_id, &source_root)?;
+        let inventory = inventory::scan_configured_source(source, &source_root)?;
         let known_skills = inventory
             .skills
             .iter()

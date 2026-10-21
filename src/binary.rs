@@ -436,7 +436,7 @@ fn scan_enabled_sources(sources: &[SourceConfig]) -> (Vec<SourceInventory>, Vec<
     let mut unscanned = Vec::new();
     for source in sources.iter().filter(|source| source.enabled) {
         let scanned = crate::source::scoped_source_root(&source.path, source.subpath.as_deref())
-            .and_then(|root| crate::inventory::scan_source(&source.id, &root));
+            .and_then(|root| crate::inventory::scan_configured_source(source, &root));
         match scanned {
             Ok(inventory) => inventories.push(inventory),
             Err(_) => unscanned.push(source.id.clone()),

@@ -801,8 +801,8 @@ fn scan_enabled_source(
             Err(error) => return (PluginInventory::default(), Err(error.to_string())),
         };
     let plugin_inventory = plugin::scan_source_plugins(&source.id, &source_root);
-    let inventory = inventory::scan_source_with_plugin_inventory(
-        &source.id,
+    let inventory = inventory::scan_configured_source_with_plugin_inventory(
+        source,
         &source_root,
         plugin_inventory.clone(),
     )
