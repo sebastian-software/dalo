@@ -2302,6 +2302,12 @@ mod tests {
             ],
         );
         run_git(root, &["config", "uploadpack.allowFilter", "true"]);
+        // Git 2.25 needs reachable-object wants enabled for checkout's lazy
+        // fetch of blobs omitted by the initial filtered fetch.
+        run_git(
+            root,
+            &["config", "uploadpack.allowReachableSHA1InWant", "true"],
+        );
         run_git(root, &["rev-parse", "HEAD"])
     }
 
