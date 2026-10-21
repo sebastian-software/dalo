@@ -318,9 +318,10 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
                 .collect::<BTreeSet<_>>()
         })
         .unwrap_or_default();
+    let mut source_head_cache = source::SourceHeadCache::default();
 
     if let Some(config) = config.as_ref() {
-        check_sources(config, &source_lock, &mut findings);
+        check_sources(config, &source_lock, &mut source_head_cache, &mut findings);
         check_source_inventories(live_resolution.as_ref(), &mut findings);
         check_skill_commands(live_resolution.as_ref(), &mut findings);
         check_source_store_debris(&paths, config, &mut findings);
@@ -331,11 +332,12 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
         plugin_inventories.as_ref(),
     ) {
         (Some(config), Some(approvals), Some(inventories)) => {
-            Some(crate::tool::list_from_inventories(
+            Some(crate::tool::list_from_inventories_with_head_cache(
                 &paths,
                 &config.sources,
                 &approvals.approvals,
                 inventories,
+                &mut source_head_cache,
             ))
         }
         _ => None,
@@ -347,12 +349,13 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
         tool_report.as_ref(),
     ) {
         (Some(config), Some(approvals), Some(inventories), Some(tools)) => {
-            crate::hook::list_from_inventories(
+            crate::hook::list_from_inventories_with_head_cache(
                 &paths,
                 &config.sources,
                 &approvals.approvals,
                 inventories,
                 &tools.tools,
+                &mut source_head_cache,
             )
             .ok()
         }
@@ -364,6 +367,7 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
         config.as_ref(),
         approvals.as_ref(),
         reconciliation_inventories.as_deref(),
+        &mut source_head_cache,
         &mut findings,
     );
     check_generated_delivery_staging(&paths, &mut findings);
@@ -687,16 +691,18 @@ fn check_binaries(
     config: Option<&UserConfig>,
     approvals: Option<&ApprovalsFile>,
     inventories: Option<&[SourceInventory]>,
+    source_head_cache: &mut source::SourceHeadCache,
     findings: &mut Vec<DoctorFinding>,
 ) {
     use crate::binary::BinaryState;
 
     if let (Some(config), Some(approvals), Some(inventories)) = (config, approvals, inventories) {
-        let report = crate::binary::list_from_inventories(
+        let report = crate::binary::list_from_inventories_with_head_cache(
             paths,
             &config.sources,
             &approvals.approvals,
             inventories,
+            source_head_cache,
         );
         for item in &report.binaries {
             let identity = &item.binary.source_ref;
@@ -1423,6 +1429,7 @@ fn owned_selector(owned: &OwnedSkillState) -> String {
 fn check_sources(
     config: &UserConfig,
     source_lock: &SourceLockRead,
+    source_head_cache: &mut source::SourceHeadCache,
     findings: &mut Vec<DoctorFinding>,
 ) {
     for source in config.sources.iter().filter(|source| source.enabled) {
@@ -1504,7 +1511,13 @@ fn check_sources(
             )),
         }
         if source.kind == SourceKind::Catalog && source_lock.can_check_provenance() {
-            check_catalog_source_provenance(source, config, source_lock.lock(), findings);
+            check_catalog_source_provenance(
+                source,
+                config,
+                source_lock.lock(),
+                source_head_cache,
+                findings,
+            );
         }
     }
 }
@@ -1611,6 +1624,14 @@ fn check_skill_commands(
 }
 
 fn source_inventory_fix_hint(source: &SourceConfig, warnings: &[InventoryWarning]) -> String {
+    if warnings.iter().any(|warning| {
+        warning.code == InventoryWarningCode::UnreadablePath
+            && warning
+                .message
+                .starts_with("source inventory is incomplete:")
+    }) {
+        return "reduce or split the source tree, then run `dalo sync`".to_owned();
+    }
     if let Some(warning) = warnings
         .iter()
         .find(|warning| warning.code == InventoryWarningCode::UnreadablePath)
@@ -1700,6 +1721,7 @@ fn check_catalog_source_provenance(
     source: &SourceConfig,
     config: &UserConfig,
     source_lock: Option<&SourceLock>,
+    source_head_cache: &mut source::SourceHeadCache,
     findings: &mut Vec<DoctorFinding>,
 ) {
     let mut mismatches = Vec::new();
@@ -1710,7 +1732,13 @@ fn check_catalog_source_provenance(
                     .to_owned(),
             )
         },
-        |source_lock| catalog::catalog_checkout_pin_mismatch(source, source_lock),
+        |source_lock| {
+            catalog::catalog_checkout_pin_mismatch_with_head_cache(
+                source,
+                source_lock,
+                source_head_cache,
+            )
+        },
     );
     if let Some(reason) = pin_mismatch {
         mismatches.push(reason);
@@ -1755,7 +1783,8 @@ fn check_catalog_source_provenance(
     }
 
     if mismatches.is_empty() {
-        let provenance = source::source_provenance(source, source_lock);
+        let provenance =
+            source::source_provenance_with_head_cache(source, source_lock, source_head_cache);
         let origin = provenance.origin_url.as_deref().unwrap_or("<unknown>");
         let requested = provenance.requested_ref.as_deref().unwrap_or("<unknown>");
         let resolved = provenance
@@ -2399,6 +2428,40 @@ mod tests {
         assert!(hint.contains("restore read access to '/store/local/skills/restricted'"));
         assert!(
             hint.contains("change the frontmatter `name` in '/store/local/skills/bad/SKILL.md'")
+        );
+    }
+
+    #[test]
+    fn inventory_bounds_warning_should_suggest_splitting_the_source_tree() {
+        let source = SourceConfig {
+            id: "team".to_owned(),
+            kind: SourceKind::Team,
+            path: PathBuf::from("/store/sources/team/checkout"),
+            subpath: None,
+            priority: 10,
+            namespace: None,
+            enabled: true,
+            trusted: true,
+            url: Some("https://example.com/team.git".to_owned()),
+            branch: None,
+            update_policy: Some("track".to_owned()),
+            selection: Vec::new(),
+            declared_by: None,
+            declared_ref: None,
+        };
+
+        let hint = source_inventory_fix_hint(
+            &source,
+            &[InventoryWarning {
+                code: InventoryWarningCode::UnreadablePath,
+                path: source.path.clone(),
+                message: "source inventory is incomplete: traversal entry limit reached; skills later in this source may be omitted. Reduce or split the source tree, then run `dalo sync`".to_owned(),
+            }],
+        );
+
+        assert_eq!(
+            hint,
+            "reduce or split the source tree, then run `dalo sync`"
         );
     }
 

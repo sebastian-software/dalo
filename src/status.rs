@@ -90,6 +90,9 @@ pub struct StatusReport {
     pub audit_failures: Vec<ActiveAuditFailure>,
     /// Previous-lock comparison against the live resolution.
     pub lock: LockStatus,
+    /// Catalog source lock read or schema error, if present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_lock_error: Option<String>,
     /// Unmanaged skills found in linked targets.
     pub unmanaged_skills: Vec<UnmanagedSkill>,
     /// Non-fatal target directory scan warnings.
@@ -208,7 +211,16 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
     let approvals = store::read_approvals(&paths)?;
     let previous_lock = store::read_user_lock(&paths)?;
     let state = store::read_state(&paths)?;
-    let source_lock = catalog::read_source_lock(&paths).ok();
+    let (source_lock, source_lock_error) = match catalog::read_source_lock(&paths) {
+        Ok(source_lock) => (Some(source_lock), None),
+        Err(error) => (
+            None,
+            Some(format!(
+                "catalog source lock `{}` could not be read: {error}; repair or restore it, then rerun `dalo status --check`",
+                paths.source_lock_file.display()
+            )),
+        ),
+    };
 
     // The shared pipeline scans every enabled source once and resolves it; we
     // reuse its per-source scan outcomes here for the status detail instead of
@@ -494,6 +506,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         blocking_audits: audits.blocking,
         audit_failures: audits.failures,
         lock,
+        source_lock_error,
         unmanaged_skills: unmanaged_scan.unmanaged_skills,
         target_warnings: unmanaged_scan.warnings,
         instruction_packs,
@@ -1741,6 +1754,10 @@ pub fn print_status_report(report: &StatusReport) {
         for drift in &report.lock.drift {
             println!("  {} {}: {}", drift.code, drift.subject, drift.message);
         }
+    }
+
+    if let Some(error) = &report.source_lock_error {
+        println!("source lock error: {}", term::terminal_safe_text(error));
     }
 
     if !report.unmanaged_skills.is_empty() {

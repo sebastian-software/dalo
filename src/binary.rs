@@ -519,8 +519,23 @@ pub fn list_from_inventories(
     approvals: &[ApprovalRecord],
     inventories: &[SourceInventory],
 ) -> BinaryListReport {
+    list_from_inventories_with_head_cache(
+        paths,
+        sources,
+        approvals,
+        inventories,
+        &mut SourceHeadCache::default(),
+    )
+}
+
+pub(crate) fn list_from_inventories_with_head_cache(
+    paths: &StorePaths,
+    sources: &[SourceConfig],
+    approvals: &[ApprovalRecord],
+    inventories: &[SourceInventory],
+    head_cache: &mut SourceHeadCache,
+) -> BinaryListReport {
     let source_lock = crate::catalog::read_source_lock(paths).ok();
-    let mut head_cache = SourceHeadCache::default();
     let host_platform = host_platform();
     let enabled_sources = sources
         .iter()
@@ -580,7 +595,7 @@ pub fn list_from_inventories(
                 crate::source::source_provenance_with_head_cache(
                     source,
                     source_lock.as_ref(),
-                    &mut head_cache,
+                    head_cache,
                 )
             })
             .clone();

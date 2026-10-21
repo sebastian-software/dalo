@@ -8,6 +8,9 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
+#[cfg(test)]
+use std::cell::Cell;
+
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -15,7 +18,7 @@ use crate::audit::{self, AuditOptions, AuditReport};
 use crate::config::UserConfig;
 use crate::error::{DaloError, DaloResult};
 use crate::git;
-use crate::inventory::{self, SkillRecord, SourceInventory};
+use crate::inventory::{self, InventoryWarningCode, SkillRecord, SourceInventory};
 use crate::lockfile::{self, UserLock};
 use crate::materialize::{self, MaterializationRollback, MaterializeOperationKind, SyncReport};
 use crate::resolver::{self, Resolution, ResolvedSkill};
@@ -26,6 +29,34 @@ use crate::store::{self, StorePaths};
 pub const SOURCE_LOCK_SCHEMA_VERSION: u32 = 3;
 const MIN_SUPPORTED_SOURCE_LOCK_SCHEMA_VERSION: u32 = 1;
 const CATALOG_ADVANCE_SCHEMA_VERSION: u32 = 1;
+
+#[cfg(test)]
+thread_local! {
+    static SOURCE_LOCK_READ_COUNT: Cell<usize> = const { Cell::new(0) };
+    static INTERRUPT_AFTER_SELECTION_LOCK: Cell<bool> = const { Cell::new(false) };
+}
+
+#[cfg(test)]
+pub(crate) fn reset_source_lock_read_count_for_test() {
+    SOURCE_LOCK_READ_COUNT.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+pub(crate) fn source_lock_read_count_for_test() -> usize {
+    SOURCE_LOCK_READ_COUNT.with(Cell::get)
+}
+
+#[cfg(test)]
+pub(crate) fn interrupt_next_selection_after_lock_for_test() {
+    INTERRUPT_AFTER_SELECTION_LOCK.with(|interrupt| interrupt.set(true));
+}
+
+#[cfg(test)]
+fn interrupt_after_selection_lock_if_armed() {
+    if INTERRUPT_AFTER_SELECTION_LOCK.with(|interrupt| interrupt.replace(false)) {
+        panic!("simulated interruption after writing source-lock.toml");
+    }
+}
 
 /// Durable recovery data for an in-progress catalog advance.
 ///
@@ -156,13 +187,25 @@ pub fn catalog_checkout_pin_mismatch(
     source: &SourceConfig,
     source_lock: &SourceLock,
 ) -> Option<String> {
+    catalog_checkout_pin_mismatch_with_head_cache(
+        source,
+        source_lock,
+        &mut source::SourceHeadCache::default(),
+    )
+}
+
+pub(crate) fn catalog_checkout_pin_mismatch_with_head_cache(
+    source: &SourceConfig,
+    source_lock: &SourceLock,
+    head_cache: &mut source::SourceHeadCache,
+) -> Option<String> {
     let Some(catalog_lock) = source_lock.catalog(&source.id) else {
         return Some(
             "source-lock.toml has no catalog pin; restore the catalog lock before syncing"
                 .to_owned(),
         );
     };
-    match git::rev_parse_head(&source.path) {
+    match head_cache.resolve_result(source) {
         Ok(checkout) if checkout == catalog_lock.commit => None,
         Ok(checkout) => Some(format!(
             "checkout {} does not match source-lock pin {}; {}",
@@ -425,6 +468,20 @@ pub fn inspect_catalog(paths: &StorePaths, id: &str) -> DaloResult<CatalogInspec
     })
 }
 
+fn ensure_catalog_inventory_complete(inventory: &SourceInventory) -> DaloResult<()> {
+    if inventory.warnings.iter().any(|warning| {
+        warning.code == InventoryWarningCode::UnreadablePath
+            && warning
+                .message
+                .starts_with("source inventory is incomplete:")
+    }) {
+        return Err(DaloError::StateError {
+            reason: "catalog inventory is incomplete because a source scan safety limit was reached; skills later in the tree may be missing. Reduce or split the source tree, then retry the command".to_owned(),
+        });
+    }
+    Ok(())
+}
+
 /// Select skills from a catalog. Each ref must match an inventory entry by stable
 /// ID, slot name, catalog-relative path, or a source-qualified
 /// `<source-id>:<slot-or-stable-id>` reference; unknown refs are rejected.
@@ -559,6 +616,8 @@ pub fn select_skills(
             lock.catalogs.sort_by(|a, b| a.source_id.cmp(&b.source_id));
         }
         write_source_lock(paths, &lock)?;
+        #[cfg(test)]
+        interrupt_after_selection_lock_if_armed();
         if let Err(error) = store::write_config(paths, &config) {
             if let Err(rollback) = write_source_lock(paths, &original_lock) {
                 return Err(DaloError::Io(std::io::Error::other(format!(
@@ -598,8 +657,15 @@ pub fn skill_is_selected(skill: &SkillRecord, selection: &[String], source_root:
 
 /// Read the source lock, or an empty lock when it does not exist yet.
 pub fn read_source_lock(paths: &StorePaths) -> DaloResult<SourceLock> {
-    if !paths.source_lock_file.exists() {
-        return Ok(SourceLock::empty());
+    #[cfg(test)]
+    SOURCE_LOCK_READ_COUNT.with(|count| count.set(count.get() + 1));
+
+    match fs::symlink_metadata(&paths.source_lock_file) {
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(SourceLock::empty());
+        }
+        Err(error) => return Err(error.into()),
     }
     let content = fs::read_to_string(&paths.source_lock_file)?;
     let lock: SourceLock = toml::from_str(&content).map_err(|error| DaloError::FileParse {
@@ -630,7 +696,9 @@ pub fn catalog_inventory(checkout: &Path, selection: &[String]) -> DaloResult<Ve
 }
 
 fn scan_catalog(checkout: &Path) -> DaloResult<SourceInventory> {
-    inventory::scan_source("catalog", checkout)
+    let inventory = inventory::scan_source("catalog", checkout)?;
+    ensure_catalog_inventory_complete(&inventory)?;
+    Ok(inventory)
 }
 
 fn catalog_inventory_from_scan(
@@ -1947,6 +2015,7 @@ fn hex_digest(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::inventory::{InventoryWarning, InventoryWarningCode};
     use std::os::unix::fs::symlink;
 
     fn entry(id: Option<&str>, slot: &str, path: &str, content: &str) -> CatalogEntry {
@@ -1970,6 +2039,47 @@ mod tests {
             requires: Vec::new(),
             selected: false,
         }
+    }
+
+    #[test]
+    fn catalog_inspect_rejects_a_traversal_truncated_inventory() {
+        let mut inventory = SourceInventory {
+            source_id: "marketing".to_owned(),
+            skills: Vec::new(),
+            agents: Vec::new(),
+            plugins: Vec::new(),
+            warnings: vec![InventoryWarning {
+                code: InventoryWarningCode::UnreadablePath,
+                path: PathBuf::from("."),
+                message: "source inventory is incomplete: the 250000-entry source scan limit was reached at `later`; skills later in this source may be omitted. Reduce or split the source tree, then run `dalo sync`".to_owned(),
+            }],
+            agent_warnings: Vec::new(),
+            plugin_warnings: Vec::new(),
+        };
+
+        let error = ensure_catalog_inventory_complete(&inventory)
+            .expect_err("incomplete scan must not be presented as a full candidate list");
+
+        assert!(matches!(error, DaloError::StateError { .. }));
+        for detail in [
+            "catalog inventory is incomplete",
+            "source scan safety limit was reached",
+            "skills later in the tree may be missing",
+            "Reduce or split the source tree",
+        ] {
+            assert!(
+                error.to_string().contains(detail),
+                "inspection error {error:?} lacks {detail:?}"
+            );
+        }
+        assert!(!error.to_string().contains("`later`"));
+
+        inventory.warnings[0].code = InventoryWarningCode::SkippedSymlink;
+        assert!(ensure_catalog_inventory_complete(&inventory).is_ok());
+
+        inventory.warnings[0].code = InventoryWarningCode::UnreadablePath;
+        inventory.warnings[0].message = "a skill path could not be read".to_owned();
+        assert!(ensure_catalog_inventory_complete(&inventory).is_ok());
     }
 
     #[test]

@@ -70,9 +70,12 @@ When invoked by npm, the launcher also honors `npm_config_proxy`,
 ## Security
 
 The launcher downloads the archive and its `.sha256` file from the matching
-GitHub Release, verifies the checksum, then installs the cached executable with
-owner-only cache permissions. For Sigstore provenance verification or a
-non-Node installation, use the [official installer](https://dalo.sh/install.sh).
+GitHub Release. It streams the archive with a 100 MiB limit and applies a
+separate 1 KiB limit to the checksum file, computes the SHA-256 digest during
+the download, and verifies it before promoting the binary into the cache. The
+cached executable uses owner-only permissions. For Sigstore provenance
+verification or a non-Node installation, use the
+[official installer](https://dalo.sh/install.sh).
 
 For Dalo documentation, agent setup, and uninstall guidance, see
 [dalo.sh](https://dalo.sh) and the [project repository](https://github.com/sebastian-software/dalo).

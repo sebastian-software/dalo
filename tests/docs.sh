@@ -690,6 +690,8 @@ grep -q 'DALO_LINUX_LIBC' "$root/npm/README.md"
 grep -Fq 'Release-metadata lookups time out after 30 seconds; archive downloads use a' "$root/npm/README.md"
 grep -Fq '10-second response-header timeout and a 120-second body timeout and may be' "$root/npm/README.md"
 grep -Fq 'retried up to twice on transient failures (three total attempts)' "$root/npm/README.md"
+grep -Fq '100 MiB limit and applies a' "$root/npm/README.md"
+grep -Fq 'separate 1 KiB limit to the checksum file' "$root/npm/README.md"
 refute 'npm/README.md still claims archive downloads time out after 30 seconds' \
   grep -Fq 'Release metadata and archive downloads time out after 30 seconds' "$root/npm/README.md"
 grep -q 'DALO_UPDATE_CHECK=never' "$root/README.md"
