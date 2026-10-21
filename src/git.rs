@@ -120,6 +120,7 @@ pub(crate) fn acquire_pinned_project_commit(
     fs::create_dir(destination)?;
     init_pinned_repository(destination, commit)?;
     run_git(destination, &["remote", "add", "--", "origin", url])?;
+    configure_partial_clone_remote(destination)?;
     print_network_progress(&format!(
         "Fetching scoped project commit `{commit}` from `{}`...",
         display_git_value(url)
@@ -229,6 +230,28 @@ fn init_pinned_repository(destination: &Path, commit: &str) -> DaloResult<()> {
             &["-c", "init.defaultObjectFormat=sha1", "init", "-q"],
         )?;
     }
+    Ok(())
+}
+
+/// Configure the promisor remote before a filtered fetch.
+///
+/// Some supported Git versions require `extensions.partialClone` to be set
+/// before accepting `fetch --filter`; successful fetches also need the promisor
+/// metadata to support missing-object handling and later lazy fetches.
+fn configure_partial_clone_remote(destination: &Path) -> DaloResult<()> {
+    run_git(
+        destination,
+        &["config", "core.repositoryformatversion", "1"],
+    )?;
+    run_git(
+        destination,
+        &["config", "extensions.partialClone", "origin"],
+    )?;
+    run_git(destination, &["config", "remote.origin.promisor", "true"])?;
+    run_git(
+        destination,
+        &["config", "remote.origin.partialclonefilter", "blob:none"],
+    )?;
     Ok(())
 }
 
@@ -1852,6 +1875,62 @@ mod tests {
             Err(DaloError::UnsafeRemoteUrl)
         ));
         assert!(!destination.exists());
+    }
+
+    #[test]
+    fn pinned_project_fetch_configures_partial_clone_before_fetch() {
+        let temp = tempfile::tempdir().expect("tempdir should be created");
+        let destination = temp.path().join("checkout");
+        fs::create_dir(&destination).expect("checkout should be created");
+        run_git(&destination, &["init", "-q"]).expect("repository should initialize");
+        run_git(
+            &destination,
+            &[
+                "remote",
+                "add",
+                "--",
+                "origin",
+                "https://example.invalid/repo.git",
+            ],
+        )
+        .expect("origin should be configured");
+
+        configure_partial_clone_remote(&destination)
+            .expect("partial-clone configuration should succeed before fetching");
+
+        assert_eq!(
+            run_git(
+                &destination,
+                &["config", "--get", "core.repositoryformatversion"]
+            )
+            .expect("repository format version should be configured")
+            .trim(),
+            "1"
+        );
+        assert_eq!(
+            run_git(
+                &destination,
+                &["config", "--get", "extensions.partialClone"]
+            )
+            .expect("partial-clone extension should be configured")
+            .trim(),
+            "origin"
+        );
+        assert_eq!(
+            run_git(&destination, &["config", "--get", "remote.origin.promisor"])
+                .expect("origin should be marked as a promisor remote")
+                .trim(),
+            "true"
+        );
+        assert_eq!(
+            run_git(
+                &destination,
+                &["config", "--get", "remote.origin.partialclonefilter"],
+            )
+            .expect("origin's partial-clone filter should be configured")
+            .trim(),
+            "blob:none"
+        );
     }
 
     #[test]
