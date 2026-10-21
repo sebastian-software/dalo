@@ -16,7 +16,7 @@ if [ "${ID:-}" != ubuntu ] || [ -z "${VERSION_ID:-}" ]; then
   echo "Debian package lifecycle test requires an Ubuntu CI runner" >&2
   exit 1
 fi
-# Docker's official ECR mirror avoids Docker Hub's anonymous pull limits.
+# Docker's official ECR mirror normally avoids Docker Hub's anonymous pull limits.
 ubuntu_image="public.ecr.aws/docker/library/ubuntu:${VERSION_ID}"
 test_root=$(mktemp -d "${TMPDIR:-/tmp}/dalo-deb-ci.XXXXXX")
 cleanup() {
@@ -39,4 +39,10 @@ case "$target" in
   aarch64-unknown-linux-gnu) architecture=arm64 ;;
   *) echo "unsupported Debian lifecycle target: $target" >&2; exit 2 ;;
 esac
+if ! docker image inspect "$ubuntu_image" >/dev/null 2>&1 && ! docker pull "$ubuntu_image"; then
+  # Public ECR can also rate-limit CI runners; keep the lifecycle test running
+  # against the same official Ubuntu image from Docker Hub when that happens.
+  ubuntu_image="docker.io/library/ubuntu:${VERSION_ID}"
+  docker pull "$ubuntu_image"
+fi
 sh "$root/tests/deb-package-lifecycle.sh" "$test_root/dist/dalo_${version}_${architecture}.deb" "$version" "$architecture" "$ubuntu_image"
