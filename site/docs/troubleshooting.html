@@ -115,9 +115,9 @@ dalo --json doctor
 </tr>
 </thead>
 <tbody><tr>
-<td><code>unmanaged_same_name_blocker</code>, sync <code>blocked</code> with <code>real unmanaged entry exists at target slot</code></td>
+<td><code>unmanaged_same_name_blocker</code>, sync <code>blocked</code> with <code>a folder you own is already there</code> (JSON reason <code>real unmanaged entry exists at target slot</code>)</td>
 <td>A real folder already occupies the target slot Dalo wanted to link.</td>
-<td>Keep it intentionally with <code>dalo resolve keep &lt;id&gt;</code> (undo with <code>dalo resolve unkeep &lt;target&gt;:&lt;slot&gt;</code>), adopt it with <code>dalo adopt &lt;id&gt;</code>, or adopt and replace it with <code>dalo adopt &lt;id&gt; --replace</code>.</td>
+<td>Keep it intentionally with <code>dalo resolve keep &lt;id&gt;</code> (undo with <code>dalo resolve unkeep &lt;target&gt;:&lt;slot&gt;</code>), adopt it with <code>dalo adopt &lt;id&gt;</code>, or adopt and replace it with <code>dalo adopt &lt;id&gt; --replace</code>. <code>status</code> and <code>sync</code> print the keep and replace commands for the exact slot.</td>
 </tr>
 <tr>
 <td><code>pending_approval</code></td>
@@ -140,8 +140,13 @@ dalo --json doctor
 <td>Restore or re-clone the source checkout, or remove the source with <code>dalo source remove &lt;id&gt;</code>. Do not adopt or delete the preserved target link as an unmanaged blocker.</td>
 </tr>
 <tr>
+<td><code>waiting for sync</code></td>
+<td>A source, skill, approval, or plugin was added or removed since the last sync.</td>
+<td>Run <code>dalo sync</code> to record it.</td>
+</tr>
+<tr>
 <td><code>lock drift</code></td>
-<td>Live resolution differs from the last <code>lock.toml</code>.</td>
+<td>Something recorded in the last <code>lock.toml</code> moved, such as a source commit or a delivered artifact.</td>
 <td>Run <code>dalo status</code> to inspect the drift, then <code>dalo sync</code> when the change is expected.</td>
 </tr>
 <tr>
@@ -201,6 +206,12 @@ dalo --json doctor
 </tr>
 </tbody></table></div>
 <h2 id="status-codes"><a class="doc-anchor" href="#status-codes">Status Codes</a></h2>
+<p>Human <code>status</code> output opens with <code>needs you</code>: every pending approval, occupied
+target slot, security block, unreadable or dirty tracking source, and change
+waiting for sync, each with the command that clears it. A dirty tracking source
+appears there because the next <code>sync</code> stops on it; <code>status --check</code> does not
+count it, while <code>doctor --check</code> reports it as <code>dirty_source</code>. The codes below
+are the ones JSON reports and the detail sections name.</p>
 <h3 id="resolver-diagnostics"><a class="doc-anchor" href="#resolver-diagnostics">Resolver Diagnostics</a></h3>
 <p>These appear in <code>status.resolution.diagnostics</code> and in related text output.</p>
 <div class="doc-table"><table>
@@ -314,87 +325,118 @@ dalo --json doctor
 </tr>
 </tbody></table></div>
 <h3 id="lock-drift"><a class="doc-anchor" href="#lock-drift">Lock Drift</a></h3>
-<p>Lock drift compares the previous <code>lock.toml</code> with the current live resolution.</p>
+<p>Lock drift compares the previous <code>lock.toml</code> with the current live resolution.
+JSON reports every item in <code>lock.drift[]</code>, and <code>status --check</code> fails on any of
+them. Human output separates two kinds:</p>
+<ul>
+<li><strong>Waiting for sync.</strong> A source, active or shadowed skill, pending approval, or
+plugin appeared or disappeared since the last sync. That is what adding,
+selecting, approving, or removing content produces, and the next <code>sync</code> simply
+records it. When every item is of this kind, <code>status</code> prints a
+<code>waiting for sync:</code> section that names each subject and what changes, and
+<code>status --check</code> reports, for example,
+<code>check failed: 1 skill waiting for sync (run: dalo sync)</code>.</li>
+<li><strong>Lock drift.</strong> Something the lock recorded moved underneath it: a source
+commit or inventory directory, a delivered artifact, a target slot, or a
+plugin&#39;s state. When any item is of this kind, <code>status</code> keeps the
+<code>lock drift:</code> section with every item&#39;s code, subject, and message.</li>
+</ul>
 <div class="doc-table"><table>
 <thead>
 <tr>
 <th>Code</th>
+<th>Status shows</th>
 <th>What it means</th>
 <th>Recovery</th>
 </tr>
 </thead>
 <tbody><tr>
 <td><code>source_commit_changed</code></td>
+<td>lock drift</td>
 <td>A source commit changed since the lock was written.</td>
 <td>Review source changes, then run <code>dalo sync</code> to write a fresh lock.</td>
 </tr>
 <tr>
 <td><code>source_subpath_changed</code></td>
+<td>lock drift</td>
 <td>A source&#39;s configured inventory directory differs from the lock.</td>
 <td>Review the directory change and its skills, then run <code>dalo sync</code> to write a fresh lock.</td>
 </tr>
 <tr>
 <td><code>source_removed</code></td>
+<td>waiting for sync</td>
 <td>A source from the lock is no longer configured.</td>
 <td>Run <code>dalo sync</code> to reconcile, or restore the source config.</td>
 </tr>
 <tr>
 <td><code>source_added</code></td>
+<td>waiting for sync</td>
 <td>A new source is configured but absent from the lock.</td>
 <td>Run <code>dalo sync</code> after reviewing the source.</td>
 </tr>
 <tr>
 <td><code>active_removed</code></td>
+<td>waiting for sync</td>
 <td>A previously active skill is no longer active.</td>
 <td>Review why it disappeared, then run <code>dalo sync</code> if expected.</td>
 </tr>
 <tr>
 <td><code>active_added</code></td>
+<td>waiting for sync</td>
 <td>A skill is now active but was not active in the lock.</td>
 <td>Review the skill and approvals, then run <code>dalo sync</code>.</td>
 </tr>
 <tr>
 <td><code>unlinked_removed</code></td>
+<td>waiting for sync</td>
 <td>A previously unlinked skill is no longer unlinked.</td>
 <td>Usually no action; run <code>dalo sync</code> if the new resolution is expected.</td>
 </tr>
 <tr>
 <td><code>unlinked_added</code></td>
+<td>waiting for sync</td>
 <td>A skill is now unlinked.</td>
 <td>Inspect the reason, usually shadowing, then adjust priority/selection/name if needed.</td>
 </tr>
 <tr>
 <td><code>pending_approval_removed</code></td>
+<td>waiting for sync</td>
 <td>A previously pending skill is no longer pending.</td>
 <td>Usually no action; run <code>dalo sync</code> if the new resolution is expected.</td>
 </tr>
 <tr>
 <td><code>pending_approval_added</code></td>
+<td>waiting for sync</td>
 <td>A skill now needs approval.</td>
 <td>Approve it or leave it pending.</td>
 </tr>
 <tr>
 <td><code>skill_delivery_changed</code></td>
+<td>lock drift</td>
 <td>A provider mapping, manifest provenance, or delivered-artifact fingerprint changed.</td>
 <td>Review the source and delivery change, then run <code>dalo sync</code> if it is expected.</td>
 </tr>
 <tr>
 <td><code>skill_materialization_changed</code></td>
+<td>lock drift</td>
 <td>A skill&#39;s materialized target slot changed without changing its source identity.</td>
 <td>Review the skill name and target mapping, then run <code>dalo sync</code> if the new slot is expected.</td>
 </tr>
 <tr>
 <td><code>plugin_added</code></td>
+<td>waiting for sync</td>
 <td>A selected plugin appeared in the live canonical graph.</td>
 <td>Review the plugin and its source, then run <code>dalo sync</code> if it is expected.</td>
 </tr>
 <tr>
 <td><code>plugin_removed</code></td>
+<td>waiting for sync</td>
 <td>A previously selected plugin left the live canonical graph.</td>
 <td>Review the plugin selection and source configuration, then run <code>dalo sync</code> if the removal is expected.</td>
 </tr>
 <tr>
 <td><code>plugin_changed</code></td>
+<td>lock drift</td>
 <td>A plugin package, closure, state, origin, or member outcome changed.</td>
 <td>Review the plugin source and dependencies, then run <code>dalo sync</code> if the change is expected.</td>
 </tr>
@@ -601,7 +643,7 @@ repository, push the change, then run <code>dalo sync</code>.</p>
 </tr>
 </tbody></table></div>
 <h2 id="doctor-findings"><a class="doc-anchor" href="#doctor-findings">Doctor Findings</a></h2>
-<p>Doctor includes <code>ok</code> and <code>info</code> codes as well as warnings/errors. Codes not listed as requiring action are informational.</p>
+<p>Doctor includes <code>ok</code> and <code>info</code> codes as well as warnings/errors. Codes not listed as requiring action are informational. Text output prints every error, warning, and info finding; <code>ok</code> findings are counted in the summary line and listed in full with <code>--json</code>.</p>
 <div class="doc-table"><table>
 <thead>
 <tr>
@@ -941,6 +983,11 @@ repository, push the change, then run <code>dalo sync</code>.</p>
 <td>The unmanaged slot was intentionally kept; no recovery is required.</td>
 </tr>
 <tr>
+<td><code>assistant_external</code></td>
+<td>info</td>
+<td>A Dalo skill that another installer or another store owns occupies a known agent slot, so this store keeps its own bundle out of the way. In a custom or project store this is usually the global store&#39;s companion, and normal commands do not repeat it. Inspect it with <code>dalo assistant status</code>; no recovery is required unless you want this store to deliver its own copy.</td>
+</tr>
+<tr>
 <td><code>schema_migration_pending</code></td>
 <td>info</td>
 <td>A file written by an older Dalo is read at the current schema and is rewritten the next time that file is written. No recovery is required; see <a href="/docs/compatibility.html#upgrade-and-downgrade">Upgrade and downgrade</a>.</td>
@@ -1069,7 +1116,7 @@ line pointing at this recipe.</p>
 <code>dalo target link claude</code> with no path argument, or drop it with
 <code>dalo target unlink generic</code>.</p>
 <h3 id="how-do-i-recover-from-a-dirty-team-source"><a class="doc-anchor" href="#how-do-i-recover-from-a-dirty-team-source">How do I recover from a dirty team source?</a></h3>
-<p>Go to the checkout shown by <code>dalo doctor</code>, then commit, stash, or discard the edits with normal Git commands. Dalo does not decide this for you because the edits may be user or agent work.</p>
+<p>Go to the checkout shown by <code>dalo doctor</code>, or by the <code>inspect:</code> line under <code>needs you</code> in <code>dalo status</code>, then commit, stash, or discard the edits with normal Git commands. Dalo does not decide this for you because the edits may be user or agent work.</p>
 <h3 id="i-upgraded-and-doctor-reports-schema_migration_pending"><a class="doc-anchor" href="#i-upgraded-and-doctor-reports-schema_migration_pending">I upgraded and doctor reports <code>schema_migration_pending</code></a></h3>
 <p>Nothing is wrong. Dalo migrates a persisted file the next time it writes that
 file, so a store carried over from 0.x keeps the old version on disk until
