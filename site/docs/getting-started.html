@@ -186,7 +186,13 @@ default, so its skills do not need per-skill approval:</p>
 <pre><code class="language-sh">dalo source add company git@github.com:acme/agent-skills.git
 </code></pre>
 <p>Dalo clones it, discovers the skills under <code>skills/</code>, and runs a deterministic
-security preflight over every one of them before anything is linked.</p>
+security preflight over every one of them before anything is linked. A clean
+result takes one line:</p>
+<pre><code class="language-text">added source company (2 skills checked, no findings)
+next: dalo sync
+</code></pre>
+<p>A finding, partial coverage, or a declared release binary prints the full audit
+for that skill instead.</p>
 <p>If your team repository also pins public catalogs in a <code>dalo.toml</code> manifest,
 those arrive automatically as <code>company.&lt;catalog-id&gt;</code> sources. They are
 untrusted, so their skills wait for your approval — see
@@ -211,6 +217,8 @@ applied  create     target[claude]:/release-notes -&gt; store:/sources/company/c
 synced: 2 skills across 1 target (2 created)
 security preflight: deterministic checks only
 </code></pre>
+<p>The last line qualifies the preflight that just ran on these new skills. A sync
+that finds nothing new or changed leaves it out.</p>
 <p>Dalo creates symlinks it owns. It never overwrites an unmanaged directory or a
 symlink it did not create; anything it cannot do safely is reported instead.</p>
 <p>Your agent now reads those skills from the folder it already uses.</p>
@@ -219,10 +227,14 @@ symlink it did not create; anything it cannot do safely is reported instead.</p>
 <pre><code class="language-sh">dalo status
 dalo next
 </code></pre>
-<p><code>status</code> is the full picture: sources, targets, active skills, pending
-approvals, unlinked skills, materialization blocks, resolution diagnostics, and
-lock drift. <code>dalo status --check</code> exits non-zero when anything needs attention,
-which is what you want in a script or a pipeline.</p>
+<p><code>status</code> is the full picture, and it opens with what needs you. The <code>needs you</code>
+section lists every item that blocks or waits, each with the command that clears
+it, and is absent when nothing does. Sources, targets, and active skills follow,
+then the detail: pending approvals, unlinked skills, materialization blocks,
+resolution diagnostics, and changes that are waiting for sync.
+<code>dalo status --all</code> adds where each source comes from and the counts that are
+zero. <code>dalo status --check</code> exits non-zero when anything needs attention, which
+is what you want in a script or a pipeline.</p>
 <p><code>next</code> is the opposite: one summary and exactly one copyable command.</p>
 <pre><code class="language-text">Dalo
   store: …
@@ -244,18 +256,24 @@ target.</p>
 <h3 id="pending-approval"><a class="doc-anchor" href="#pending-approval">Pending approval</a></h3>
 <p>A skill is available but untrusted, so Dalo will not link it. Catalog sources
 and catalogs pinned by a team manifest start here by design.</p>
-<pre><code class="language-text">pending approval:
-  review-helper -&gt; public:review-helper (run: dalo approve skill public:review-helper)
+<pre><code class="language-text">needs you:
+  review-helper (public): waiting for approval
+    run: dalo approve skill public:review-helper
 </code></pre>
-<p><code>sync</code> still does all the other work and repeats the same line at the end:</p>
+<p>Further down, <code>pending approval:</code> lists the same skill with any compatibility
+note it declares. <code>sync</code> still does all the other work and repeats the command
+at the end:</p>
 <pre><code class="language-text">synced: 2 skills across 1 target (2 unchanged)
 pending approval: public:review-helper (run: dalo approve skill public:review-helper)
-security preflight: deterministic checks only
 </code></pre>
 <p>Read the skill first — <code>dalo audit public:review-helper</code> prints the deterministic
 findings and the exact content hash — then run the command status gave you:</p>
 <pre><code class="language-sh">dalo approve skill public:review-helper
 dalo sync
+</code></pre>
+<p>A clean approval is one line:</p>
+<pre><code class="language-text">approved public:review-helper (checked, no findings)
+next: dalo sync to link it
 </code></pre>
 <p>Approvals are per skill, per machine, and bound to exact content. They are
 never inherited from a teammate and never granted by a sync.</p>
@@ -267,6 +285,9 @@ the other visible instead of discarding it:</p>
 resolution diagnostics:
   shadowed: skill `company:release-notes` is unlinked because `personal:release-notes` wins the same slot
 </code></pre>
+<p><code>sync</code> prints the <code>shadowed</code> diagnostic once, on the sync that records the new
+winner. After that the outcome is a steady state you chose, so only <code>status</code>
+keeps showing it.</p>
 <p>The lower priority number wins. If you want to change the winner, first inspect
 the source authority with <code>dalo source list --json</code>, then preview the
 source-wide priority change:</p>
@@ -291,13 +312,17 @@ changes through their usual refresh and sync.</p>
 <h3 id="conflict"><a class="doc-anchor" href="#conflict">Conflict</a></h3>
 <p>Dalo wants a slot that is already occupied by a real, unmanaged directory —
 usually a skill an agent wrote directly into its own folder.</p>
-<pre><code class="language-text">materialization blocks:
-  target[claude]:/standup-notes: real unmanaged entry exists at target slot
-unmanaged skills:
-  standup-notes -&gt; target[claude]:/standup-notes (adopt: run `dalo adopt &#39;standup-notes&#39;` to copy it into the local source; use `dalo adopt &#39;standup-notes&#39; --replace` to replace the original)
+<pre><code class="language-text">needs you:
+  target[claude]:/standup-notes: a folder you own is already there
+    keep yours:   dalo resolve keep standup-notes
+    bring it in:  dalo adopt standup-notes --replace
 </code></pre>
-<p><code>sync</code> reports the block and leaves your file alone:</p>
-<pre><code class="language-text">blocked  conflict   target[claude]:/standup-notes -&gt; store:/sources/company/checkout/skills/standup-notes (real unmanaged entry exists at target slot) …
+<p>The slot appears once more, without the commands, under <code>unmanaged skills:</code>.
+<code>sync</code> reports the block with the same two ways out and leaves your folder
+alone:</p>
+<pre><code class="language-text">blocked  conflict   target[claude]:/standup-notes: a folder you own is already there
+                    keep yours:   dalo resolve keep standup-notes
+                    bring it in:  dalo adopt standup-notes --replace
 synced: 4 skills across 1 target (3 unchanged, 1 blocked)
 </code></pre>
 <p>For a real unmanaged directory, first inspect exact IDs and paths with
@@ -337,7 +362,10 @@ remain supported in Dalo 1.x.</p>
 </code></pre>
 <h2 id="explore-without-touching-your-agent-folders"><a class="doc-anchor" href="#explore-without-touching-your-agent-folders">Explore without touching your agent folders</a></h2>
 <p>Everything above also works in a throwaway store with a temporary folder as the
-target. Nothing in this section writes to a real agent directory.</p>
+target. Nothing in this section writes to a real agent directory. A sandbox
+store stays quiet about the Dalo skill that your global store already delivered
+to your agent folders; <code>dalo assistant status</code> and <code>dalo doctor</code>
+(<code>assistant_external</code>) still report it on request.</p>
 <h3 id="a-sandbox-store"><a class="doc-anchor" href="#a-sandbox-store">A sandbox store</a></h3>
 <pre><code class="language-sh">export DALO_STORE=&quot;$(mktemp -d)/store&quot;
 target_dir=&quot;$(mktemp -d)/skills&quot;
@@ -358,8 +386,13 @@ dalo sync
 ls -la &quot;$target_dir&quot;
 </code></pre>
 <p>The local source is private to your machine: experiments and overrides live
-there. <code>status</code> may show a <code>lock drift</code> block until the next <code>sync</code> records the
-new skill; see <a href="/docs/troubleshooting.html#lock-drift">Lock Drift</a>.</p>
+there. Until the next <code>sync</code> records the new skill, <code>status</code> lists it as waiting:</p>
+<pre><code class="language-text">needs you:
+  review (local): waiting for sync
+    run: dalo sync
+</code></pre>
+<p>See <a href="/docs/troubleshooting.html#lock-drift">Lock Drift</a> for what else status reports
+before a sync.</p>
 <h3 id="a-local-team-source"><a class="doc-anchor" href="#a-local-team-source">A local team source</a></h3>
 <p>A local Git repository works as a source, so this needs no network access:</p>
 <pre><code class="language-sh">TEAM_REPO=&quot;$(mktemp -d)/team-skills&quot;
@@ -405,7 +438,10 @@ dalo approve skill public:review-helper
 dalo sync
 </code></pre>
 <p><code>source add</code>, <code>source select</code>, and <code>approve skill</code> run deterministic local
-preflight checks. <code>sync</code> repeats them against the exact content about to be
+preflight checks and report a clean result in one line, such as
+<code>selected review-helper from public (checked, no findings)</code>; <code>dalo audit</code>
+always prints the full report. <code>sync</code> repeats the checks against the exact
+content about to be
 linked and blocks unaccepted <code>high</code> or <code>critical</code> findings from those checks or
 a compatible cached review. <code>sync</code> does not start an agent reviewer, and a
 passing preflight is not a safety guarantee.</p>
@@ -431,8 +467,11 @@ policy.</p>
 it under <code>unmanaged skills</code>. Copy it into the private local source:</p>
 <pre><code class="language-sh">dalo adopt release-notes
 </code></pre>
-<p>Adoption prints a local security preflight before it copies anything. Replacing
-the original folder with a Dalo-owned symlink is a separate explicit step:</p>
+<p>Adoption runs a local security preflight before it copies anything. A clean
+result shows as <code>(checked, no findings)</code> on the copy line. A finding prints the
+full audit, and a high or critical one stops the adoption until you accept the
+risk. Replacing the original folder with a Dalo-owned symlink is a separate
+explicit step:</p>
 <pre><code class="language-sh">dalo adopt --replace release-notes
 </code></pre>
 <p>Dalo does not commit adopted work automatically. You decide when an experiment

@@ -219,6 +219,15 @@ content; existing owned links see the update immediately. Extra files, edited
 content, foreign links, and assistants supplied by another source remain
 preserved. This is an offline package consistency check, not an independent
 internet update of the skill.</p>
+<p>Normal invocations print an <code>assistant:</code> line on stderr only when that
+invocation changed something: the bundle was prepared for the first time or
+updated, or a new agent folder received the companion link. A blocked setup, or
+an assistant that another installer owns, is reported once per store and then
+stays quiet; the store keeps a small <code>.assistant-notice</code> marker so it
+remembers. A custom or project store never announces an assistant it finds
+outside its own bundle, because from a sandbox the global store&#39;s companion
+links look exactly like that. The state stays visible in <code>dalo assistant status</code>, in <code>assistant.state</code> of <code>dalo --json status</code>, and as the <code>info</code>
+finding <code>assistant_external</code> in <code>dalo doctor</code>.</p>
 <p>JSON and noninteractive calls use the same first-use setup. <code>--help</code>,
 <code>--version</code>, dry runs, <code>plan</code>, explicit assistant inspection, and independent
 team/tool/hook/scheduler commands do not trigger it. Set

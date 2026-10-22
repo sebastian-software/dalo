@@ -145,10 +145,12 @@ produces, so the run behind this transcript recreates them first.</p>
 <h3 id="before-the-first-sync"><a class="doc-anchor" href="#before-the-first-sync">Before the first sync</a></h3>
 <pre><code class="language-text">$ dalo doctor
 summary: errors=0 warnings=0 info=5 ok=23
+info    autosync_not_installed: scheduled synchronization is not installed
+info    protected_skill_kept: protected slot `generic:keep-mine` is kept at `target[generic]:/keep-mine`
 info    schema_migration_pending: `config.toml` is at schema version 1 and is read as 2; the next config write persists the migration
 info    schema_migration_pending: `lock.toml` is at schema version 1 and is read as 6; the next `dalo sync` persists the migration
 info    schema_migration_pending: instruction pack `local:house-style` renders a legacy managed block in `…/AGENTS.md`; the next `dalo sync` rewrites it without pack metadata
-details: 25 info/ok findings omitted; use --json for the full report
+details: 23 ok findings omitted; use --json for the full report
 </code></pre>
 <p><code>doctor</code> exits <code>0</code>. These are <code>info</code> findings, not problems: nothing is broken
 and nothing is waiting for you.</p>
@@ -165,8 +167,10 @@ agent folder did not move.</p>
 <h3 id="after-the-first-sync"><a class="doc-anchor" href="#after-the-first-sync">After the first sync</a></h3>
 <pre><code class="language-text">$ dalo doctor
 summary: errors=0 warnings=0 info=3 ok=23
+info    autosync_not_installed: scheduled synchronization is not installed
+info    protected_skill_kept: protected slot `generic:keep-mine` is kept at `target[generic]:/keep-mine`
 info    schema_migration_pending: `config.toml` is at schema version 1 and is read as 2; the next config write persists the migration
-details: 25 info/ok findings omitted; use --json for the full report
+details: 23 ok findings omitted; use --json for the full report
 </code></pre>
 <p><code>lock.toml</code> and the instruction block are done. <code>config.toml</code> is still on
 version 1 because <strong><code>sync</code> does not write <code>config.toml</code></strong> — it migrates the
@@ -314,9 +318,9 @@ instruction-file mapping.</p>
 <p>Only behavior confirmed against this tree is listed here.</p>
 <ul>
 <li><strong><code>doctor</code> prints migration lines in text mode.</strong> <code>schema_migration_pending</code>
-is exempt from the usual &quot;info findings omitted&quot; summary, because it
-describes a change Dalo is going to make to your own files. It is an <code>info</code>
-finding, so it does not affect <code>doctor --check</code>.</li>
+is an <code>info</code> finding, and text mode prints every info finding; only <code>ok</code>
+findings are summarized. It describes a change Dalo is going to make to your
+own files, and it does not affect <code>doctor --check</code>.</li>
 <li><strong>Instruction managed blocks lose their pack metadata.</strong> The next <code>sync</code>
 re-renders the block without it — but only when the block still matches
 Dalo&#39;s exact older rendering byte for byte. A block you edited by hand is

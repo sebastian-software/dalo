@@ -316,8 +316,11 @@ dalo source add company git@github.com:acme/agent-skills.git
 dalo sync
 </code></pre>
 <p>Your team skills link immediately. The catalogs you pinned show up as their own
-source, namespaced with the team ID:</p>
-<pre><code class="language-text">sources:
+source, namespaced with the team ID, and <code>dalo status --all</code> adds where each
+one comes from:</p>
+<pre><code class="language-text">$ dalo status --all
+…
+sources:
   company      team priority=10   skills=1   agents=0   plugins=0   enabled
   company.marketing catalog priority=11   skills=3   agents=0   plugins=0   enabled
     provenance management=team_manifest origin=… requested=28a2eec94f0e… resolved=28a2eec94f0e
