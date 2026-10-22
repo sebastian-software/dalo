@@ -70,6 +70,9 @@
   --mesh-glow: 1;
   --team-demo-bg: linear-gradient(140deg, #fffaf6 0%, #fff 40%, #f7f7ff 100%);
   --preview-shadow: 0 16px 48px rgba(68, 38, 49, .1);
+  /* Brand assets read these; the dark palette sets them. */
+  --logo-plate: transparent;
+  --logo-plate-pad: 0;
   /* Shadows */
   --shadow-card:
     0 0 0 1px rgba(11, 23, 51, .06),
@@ -87,8 +90,150 @@
   --r-lg: 20px;
   --wrap: 1180px;
   --gutter: 32px;
-  color-scheme: light;
+  color-scheme: light dark;
 }
+
+/* Dark palette. It is written twice so it follows the OS preference and an
+   explicit data-theme="dark" on <html> (screenshots, a later toggle);
+   data-theme="light" pins the light palette. Keep the two copies identical:
+   tests/docs.sh compares them. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    /* Text */
+    --ink: #eaf0fb;
+    --ink-2: #c3cce0;
+    --muted: #9ba8c3;
+    --faint: #95a2bd;
+    /* Surfaces: navy from the brand ink, lighter as they rise */
+    --bg: #0a1330;
+    --surface: #0f1a3b;
+    --surface-2: #121e42;
+    --card: #142148;
+    --line: #2a3862;
+    --line-2: #1e2b54;
+    --bg-rgb: 10, 19, 48;
+    --card-rgb: 20, 33, 72;
+    --ring-rgb: 190, 205, 240;
+    --shadow-rgb: 0, 0, 0;
+    /* Brand: coral, pink, violet, and the gradient stay; rust text lifts to
+       the logo's light coral, filled badges use the deeper coral. */
+    --rust: #ff8a5c;
+    --rust-fill: #c24b22;
+    /* Status */
+    --green: #5ed39a;
+    --green-bg: #0f3a2c;
+    /* Buttons invert: light fill, navy text */
+    --btn: #eaf0fb;
+    --btn-hover: #fff;
+    --on-btn: #0b1733;
+    --pill: rgba(234, 240, 251, .94);
+    --btn-shadow: 0 1px 0 rgba(255, 255, 255, .4) inset, 0 8px 20px -8px rgba(0, 0, 0, .6);
+    /* Brand assets: the logo's dark variant, a light wordmark, and a light
+       plate behind the company logos, which keep their own colors. */
+    --logo-src: url("/assets/img/logo-dark.svg");
+    --wordmark-filter: brightness(0) invert(.94);
+    --logo-plate: #dde3ee;
+    --logo-plate-pad: 6px 12px;
+    /* Homepage only */
+    --green-2: #3cc383;
+    --coral-soft: #3b2024;
+    --coral-line: #5c3129;
+    --coral-line-soft: #4a2d2e;
+    --violet-soft: #2a2559;
+    --violet-ink: #b9a9ff;
+    --green-line: #23674b;
+    --quiet: #8e9bb8;
+    --surface-cool: #111d44;
+    --line-strong: #4d5d88;
+    --dot: #2c3a64;
+    --warn: #f2a94e;
+    --warn-bg: #3a2b14;
+    --danger: #ff7c67;
+    --mesh-bg: #1a1640;
+    --mesh-glow: .55;
+    --team-demo-bg: linear-gradient(140deg, #171f47 0%, #142148 40%, #13214e 100%);
+    --preview-shadow: 0 16px 48px rgba(0, 0, 0, .35);
+    /* Shadows: a light hairline for the edge, black for depth */
+    --shadow-card:
+      0 0 0 1px rgba(190, 205, 240, .1),
+      0 2px 4px rgba(0, 0, 0, .25),
+      0 18px 36px -12px rgba(0, 0, 0, .45),
+      0 48px 96px -32px rgba(0, 0, 0, .55);
+    --shadow-soft:
+      0 0 0 1px rgba(190, 205, 240, .1),
+      0 1px 2px rgba(0, 0, 0, .25),
+      0 12px 32px -16px rgba(0, 0, 0, .5);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  /* Text */
+  --ink: #eaf0fb;
+  --ink-2: #c3cce0;
+  --muted: #9ba8c3;
+  --faint: #95a2bd;
+  /* Surfaces: navy from the brand ink, lighter as they rise */
+  --bg: #0a1330;
+  --surface: #0f1a3b;
+  --surface-2: #121e42;
+  --card: #142148;
+  --line: #2a3862;
+  --line-2: #1e2b54;
+  --bg-rgb: 10, 19, 48;
+  --card-rgb: 20, 33, 72;
+  --ring-rgb: 190, 205, 240;
+  --shadow-rgb: 0, 0, 0;
+  /* Brand: coral, pink, violet, and the gradient stay; rust text lifts to
+     the logo's light coral, filled badges use the deeper coral. */
+  --rust: #ff8a5c;
+  --rust-fill: #c24b22;
+  /* Status */
+  --green: #5ed39a;
+  --green-bg: #0f3a2c;
+  /* Buttons invert: light fill, navy text */
+  --btn: #eaf0fb;
+  --btn-hover: #fff;
+  --on-btn: #0b1733;
+  --pill: rgba(234, 240, 251, .94);
+  --btn-shadow: 0 1px 0 rgba(255, 255, 255, .4) inset, 0 8px 20px -8px rgba(0, 0, 0, .6);
+  /* Brand assets: the logo's dark variant, a light wordmark, and a light
+     plate behind the company logos, which keep their own colors. */
+  --logo-src: url("/assets/img/logo-dark.svg");
+  --wordmark-filter: brightness(0) invert(.94);
+  --logo-plate: #dde3ee;
+  --logo-plate-pad: 6px 12px;
+  /* Homepage only */
+  --green-2: #3cc383;
+  --coral-soft: #3b2024;
+  --coral-line: #5c3129;
+  --coral-line-soft: #4a2d2e;
+  --violet-soft: #2a2559;
+  --violet-ink: #b9a9ff;
+  --green-line: #23674b;
+  --quiet: #8e9bb8;
+  --surface-cool: #111d44;
+  --line-strong: #4d5d88;
+  --dot: #2c3a64;
+  --warn: #f2a94e;
+  --warn-bg: #3a2b14;
+  --danger: #ff7c67;
+  --mesh-bg: #1a1640;
+  --mesh-glow: .55;
+  --team-demo-bg: linear-gradient(140deg, #171f47 0%, #142148 40%, #13214e 100%);
+  --preview-shadow: 0 16px 48px rgba(0, 0, 0, .35);
+  /* Shadows: a light hairline for the edge, black for depth */
+  --shadow-card:
+    0 0 0 1px rgba(190, 205, 240, .1),
+    0 2px 4px rgba(0, 0, 0, .25),
+    0 18px 36px -12px rgba(0, 0, 0, .45),
+    0 48px 96px -32px rgba(0, 0, 0, .55);
+  --shadow-soft:
+    0 0 0 1px rgba(190, 205, 240, .1),
+    0 1px 2px rgba(0, 0, 0, .25),
+    0 12px 32px -16px rgba(0, 0, 0, .5);
+  color-scheme: dark;
+}
+:root[data-theme="light"] { color-scheme: light; }
 
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; scroll-behavior: smooth; overflow-x: clip; }
@@ -152,6 +297,10 @@ svg { display: block; }
 .site-header .wrap { display: flex; align-items: center; height: 76px; gap: 40px; }
 .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 20px; letter-spacing: -.03em; color: var(--ink); }
 .brand-mark, .brand-word { display: block; flex: none; }
+/* Brand assets in the dark palette: the logo swaps to its dark variant, the
+   single-color wordmark turns light, the company logos sit on a light plate. */
+img[src="/assets/img/logo.svg"] { content: var(--logo-src, normal); }
+.brand-word { filter: var(--wordmark-filter, none); }
 .nav { display: flex; gap: 30px; font-size: 14.5px; font-weight: 500; color: var(--ink-2); }
 .nav a { transition: color .15s; }
 .nav a:hover, .nav a[aria-current="true"] { color: var(--ink); }
@@ -666,7 +815,7 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
 .footer-base { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 24px; margin-top: 48px; padding-top: 22px; border-top: 1px solid var(--line-2); font-size: 13px; color: var(--faint); }
 .footer-base a { color: var(--muted); }
 .footer-company { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); gap: 48px; margin-top: 48px; padding-top: 28px; border-top: 1px solid var(--line-2); }
-.company-brand { display: flex; align-items: center; width: fit-content; max-width: 100%; min-height: 44px; }
+.company-brand { display: flex; align-items: center; width: fit-content; max-width: 100%; min-height: 44px; padding: var(--logo-plate-pad); border-radius: var(--r-sm); background: var(--logo-plate); }
 .company-brand img { display: block; width: 212px; height: auto; max-width: 100%; }
 .footer-workshop { margin-top: 16px; max-width: 24em; font-size: 13px; }
 .footer-workshop a { color: var(--ink-2); text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }

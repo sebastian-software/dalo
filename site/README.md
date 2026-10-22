@@ -21,6 +21,22 @@ in `build.mjs`, with matching styles in `home.css` and `styles.css`. Its local
 `assets/img/sebastian-consulting.svg` is the transparent consulting logo from
 the [brand assets](https://github.com/sebastian-software/sebastian-brand/blob/main/sebastian-consulting/logo-consulting-transparent.svg).
 
+## Color and theme
+
+Every color is a token on `:root` in `home.css` and `styles.css`; the rules,
+`docs.css`, `feature-stories.css`, and the inline accents in `index.html` use
+tokens only. The site follows the OS color scheme. Each of the two base
+stylesheets writes its dark palette twice: under
+`@media (prefers-color-scheme: dark)` for `:root:not([data-theme="light"])`,
+and under `:root[data-theme="dark"]` for screenshots and a later toggle.
+`data-theme="light"` pins the light palette. Keep the two copies identical;
+`tests/docs.sh` compares them.
+
+In the dark palette the Dalo logo switches to `assets/img/logo-dark.svg`, the
+single-color wordmark is lightened with a CSS filter, and the company logos
+keep their own colors on a light plate. The film poster and the persona
+avatars are images and look the same in both schemes.
+
 ## Build
 
 ```sh

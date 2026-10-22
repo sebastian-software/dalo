@@ -605,6 +605,27 @@ grep -Fq '<meta property="og:image:height" content="630" />' "$root/site/index.h
 # The logo has one source: the repository root copy that the README shows. The
 # site serves the same bytes in its header and footer.
 cmp "$root/logo.svg" "$root/site/assets/img/logo.svg"
+# Each base stylesheet writes its dark palette twice, once for the OS
+# preference and once for an explicit data-theme="dark"; the copies must match.
+for stylesheet in "$root/site/home.css" "$root/site/styles.css"; do
+  os_dark="$(awk '
+    /^  :root:not\(\[data-theme="light"\]\) \{$/ { on = 1; next }
+    on && /^  \}$/ { exit }
+    on { sub(/^  /, ""); print }
+  ' "$stylesheet")"
+  attribute_dark="$(awk '
+    /^:root\[data-theme="dark"\] \{$/ { on = 1; next }
+    on && /^\}$/ { exit }
+    on { print }
+  ' "$stylesheet")"
+  test -n "$os_dark" && test "$os_dark" = "$attribute_dark" \
+    || { echo "$stylesheet: the two dark palettes differ" >&2; exit 1; }
+  grep -Fq 'color-scheme: light dark;' "$stylesheet"
+done
+for page in "$root/site/index.html" "$root/site/docs/index.html"; do
+  grep -Fq '<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />' "$page"
+  grep -Fq '<meta name="theme-color" content="#0a1330" media="(prefers-color-scheme: dark)" />' "$page"
+done
 og_image_header="$(od -An -tx1 -j16 -N8 "$root/site/assets/img/og.png" | tr -d ' \n')"
 test "$og_image_header" = "000004b000000276" \
   || { echo 'site/assets/img/og.png is no longer the declared 1200x630' >&2; exit 1; }
