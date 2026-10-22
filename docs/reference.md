@@ -852,6 +852,11 @@ blocked  conflict   target[claude]:/standup-notes: a folder you own is already t
                     bring it in:  dalo adopt standup-notes --replace
 ```
 
+`status` lists the same two commands under `needs you`, including for a skill
+folder that replaced a link Dalo recorded as its own. A folder without
+`SKILL.md` or a file is not a skill Dalo can keep or adopt, so `sync` and
+`status` say `move it aside, then run: dalo sync` instead.
+
 The JSON `operations[].reason` keeps `real unmanaged entry exists at target slot`.
 
 `dalo --dry-run sync` does not fetch tracking team sources, so it prints a

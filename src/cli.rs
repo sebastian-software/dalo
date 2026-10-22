@@ -6438,7 +6438,6 @@ mod tests {
         ));
     }
 
-
     fn assistant_report(
         state: assistant::AssistantState,
         delivered: &[&str],

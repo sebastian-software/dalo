@@ -21475,3 +21475,153 @@ fn status_should_list_a_pending_catalog_skill_once_as_waiting_for_approval() {
         "{recorded}"
     );
 }
+
+#[test]
+fn status_should_offer_keep_and_adopt_for_a_folder_that_replaced_an_owned_link() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let store_root = store::comparable_path(&store);
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo_with_skill(&repo, "standup-notes", "# Standup notes\n");
+    setup_store_with_target(&store, &target);
+    add_source(&store, "company", &repo);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    // The user replaces Dalo's link with a folder of their own. The owned
+    // record stays in state until something settles the slot.
+    std::fs::remove_file(target.join("standup-notes")).expect("owned link should be removed");
+    create_unmanaged_skill_with_body(&target, "standup-notes", "# My standup notes\n");
+
+    let keep = store::dalo_command(&store_root, "resolve keep standup-notes");
+    let adopt = store::dalo_command(&store_root, "adopt standup-notes --replace");
+    let status = status_text(&store, &[]);
+    assert!(
+        status.contains(&format!(
+            "needs you:\n  target[generic]:/standup-notes: a folder you own is already there\n    keep yours:   {keep}\n    bring it in:  {adopt}\n"
+        )),
+        "{status}"
+    );
+    assert!(!status.contains("resolve list"), "{status}");
+
+    // Both commands accept the slot right away, and the stale record goes.
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--dry-run", "resolve", "keep", "standup-notes"])
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["adopt", "standup-notes", "--replace"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("replacement: replaced"));
+    let state =
+        std::fs::read_to_string(store.join("state.toml")).expect("state should be readable");
+    assert_eq!(
+        state.matches("slot_name = \"standup-notes\"").count(),
+        1,
+        "one owned record should remain for the slot:\n{state}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(store.join("local/skills/standup-notes/SKILL.md"))
+            .expect("adopted copy should exist"),
+        "# My standup notes\n"
+    );
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["sync", "--check"])
+        .assert()
+        .success();
+}
+
+#[test]
+fn keep_should_drop_the_stale_record_of_a_folder_that_replaced_an_owned_link() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo_with_skill(&repo, "standup-notes", "# Standup notes\n");
+    setup_store_with_target(&store, &target);
+    add_source(&store, "company", &repo);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    std::fs::remove_file(target.join("standup-notes")).expect("owned link should be removed");
+    create_unmanaged_skill_with_body(&target, "standup-notes", "# My standup notes\n");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["resolve", "keep", "standup-notes"])
+        .assert()
+        .success();
+    let state =
+        std::fs::read_to_string(store.join("state.toml")).expect("state should be readable");
+    assert!(!state.contains("[[owned_skills]]"), "{state}");
+    assert!(target.join("standup-notes").is_dir());
+    assert_eq!(
+        std::fs::read_to_string(target.join("standup-notes/SKILL.md"))
+            .expect("kept folder should be untouched"),
+        "# My standup notes\n"
+    );
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["doctor", "--check"])
+        .assert()
+        .success();
+}
+
+#[test]
+fn sync_and_status_should_ask_to_move_an_occupant_that_is_not_a_skill() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let store_root = store::comparable_path(&store);
+    let target = temp_dir.path().join("skills");
+    setup_store_with_skill_and_target(&store, &target);
+    std::fs::create_dir_all(&target).expect("target should be created");
+    std::fs::write(target.join("review"), "not a skill\n").expect("file should be written");
+
+    let sync_command = store::dalo_command(&store_root, "sync");
+    let move_line = format!("move it aside, then run: {sync_command}\n");
+    let sync = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let sync = String::from_utf8(sync).expect("sync output should be utf8");
+    assert!(
+        sync.contains("target[generic]:/review: a file you own is already there\n"),
+        "{sync}"
+    );
+    assert!(sync.contains(&move_line), "{sync}");
+    assert!(!sync.contains("resolve keep"), "{sync}");
+
+    let status = status_text(&store, &[]);
+    assert!(
+        status.contains(&format!(
+            "needs you:\n  target[generic]:/review: a file you own is already there\n    {move_line}"
+        )),
+        "{status}"
+    );
+    assert!(!status.contains("resolve keep"), "{status}");
+    assert_eq!(
+        std::fs::read_to_string(target.join("review")).expect("file should remain"),
+        "not a skill\n"
+    );
+}

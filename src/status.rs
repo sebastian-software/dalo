@@ -580,7 +580,7 @@ pub fn build_next_action_report(store_root: &Path) -> DaloResult<NextActionRepor
             if !report.assistant.delivered_paths.is_empty() {
                 "The Dalo skill is available in your agent. Link a target to manage additional skills.".to_owned()
             } else {
-                "Link a target so Dalo knows where to materialize skills.".to_owned()
+                "Link a target so Dalo knows where to link skills.".to_owned()
             },
             Some(store::dalo_command(store_root, "target detect")),
         )
@@ -619,7 +619,7 @@ pub fn build_next_action_report(store_root: &Path) -> DaloResult<NextActionRepor
     {
         (
             NextActionState::SyncNeeded,
-            "Materialized links need synchronization.".to_owned(),
+            "Skill links in your agent folders need a sync.".to_owned(),
             Some(store::dalo_command(store_root, "sync")),
         )
     } else if !report.lock.drift.is_empty() {
@@ -1015,7 +1015,10 @@ impl HumanPathContext {
                 return labeled_path(&root.label, relative);
             }
         }
-        let comparable = store::comparable_path(path);
+        // Resolve symlinked ancestors such as a macOS `/var` home, but never
+        // the path itself: a target link must not render as the store path it
+        // points at.
+        let comparable = comparable_location(path);
         for root in &self.roots {
             if let Ok(relative) = comparable.strip_prefix(store::comparable_path(&root.path)) {
                 return labeled_path(&root.label, relative);
@@ -1035,7 +1038,7 @@ impl HumanPathContext {
         }
         if let Some(home) = &self.home
             && let Ok(relative) =
-                store::comparable_path(path).strip_prefix(store::comparable_path(home))
+                comparable_location(path).strip_prefix(store::comparable_path(home))
         {
             if relative.as_os_str().is_empty() {
                 return "~".to_owned();
@@ -1092,6 +1095,17 @@ pub fn compact_store_text(store: &Path, value: &str) -> String {
 #[must_use]
 pub fn compact_store_path(store: &Path, path: &Path) -> String {
     HumanPathContext::store_only(store).path(path)
+}
+
+/// A comparable form of `path` that resolves its ancestors but not its last
+/// component, so a link is rendered where it lives rather than where it points.
+fn comparable_location(path: &Path) -> PathBuf {
+    match (path.parent(), path.file_name()) {
+        (Some(parent), Some(name)) if !parent.as_os_str().is_empty() => {
+            store::comparable_path(parent).join(name)
+        }
+        _ => store::comparable_path(path),
+    }
 }
 
 fn labeled_path(label: &str, relative: &Path) -> String {
@@ -1755,10 +1769,7 @@ fn needs_you_items(report: &StatusReport, paths: &HumanPathContext) -> Vec<Needs
         let summary = if conflicts.contains(&store::comparable_path(&skill.path)) {
             occupant.description().to_owned()
         } else {
-            match occupant {
-                UnmanagedOccupant::Folder => "a folder Dalo does not manage".to_owned(),
-                UnmanagedOccupant::Entry => "an entry Dalo does not manage".to_owned(),
-            }
+            "a folder Dalo does not manage".to_owned()
         };
         items.push(NeedsYouItem {
             summary: format!("{}: {summary}", paths.path(&skill.path)),
@@ -1778,18 +1789,31 @@ fn needs_you_items(report: &StatusReport, paths: &HumanPathContext) -> Vec<Needs
                 .as_deref()
                 .is_some_and(|reason| reason.starts_with("required closure blocked"))
     }) {
-        // An occupied slot that the unmanaged scan does not list, such as one
-        // still recorded as owned, gets the same words but the inspection
-        // command, because its ID is not one `resolve keep` accepts.
-        let reason = if is_unmanaged_entry_conflict(operation) {
-            unmanaged_occupant(&operation.link_path)
-                .description()
-                .to_owned()
-        } else {
-            paths.text(operation.reason.as_deref().unwrap_or("blocked"))
-        };
+        let location = paths.path(&operation.link_path);
+        if is_unmanaged_entry_conflict(operation) {
+            // A folder or file that is not an unmanaged skill gets the same
+            // way out `sync` prints. A skill folder the scan does not list has
+            // no ID `resolve keep` accepts, so the inspection command remains.
+            let occupant = unmanaged_occupant(&operation.link_path);
+            let commands = if occupant == UnmanagedOccupant::Skill {
+                vec![format!(
+                    "run: {}",
+                    store::dalo_command(store, "resolve list")
+                )]
+            } else {
+                unmanaged_fix_lines(store, "", occupant)
+            };
+            items.push(NeedsYouItem {
+                summary: format!("{location}: {}", occupant.description()),
+                commands,
+            });
+            continue;
+        }
         items.push(NeedsYouItem::run(
-            format!("{}: {reason}", paths.path(&operation.link_path)),
+            format!(
+                "{location}: {}",
+                paths.text(operation.reason.as_deref().unwrap_or("blocked"))
+            ),
             store::dalo_command(store, "resolve list"),
         ));
     }
@@ -3881,56 +3905,67 @@ fn unmanaged_repair_hint(store_root: &Path, selector: &Path) -> String {
 /// What occupies a target slot that Dalo wanted to link.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum UnmanagedOccupant {
-    /// A real directory, usually a skill an agent or person wrote there.
+    /// A real skill folder (with `SKILL.md`) that `resolve keep` and `adopt`
+    /// accept, usually one an agent or person wrote there.
+    Skill,
+    /// A real folder without `SKILL.md`, which is not an unmanaged skill.
     Folder,
-    /// Some other real entry, which cannot be adopted as a skill.
+    /// Some other real entry, such as a file.
     Entry,
 }
 
 impl UnmanagedOccupant {
     fn description(self) -> &'static str {
         match self {
-            Self::Folder => "a folder you own is already there",
+            Self::Skill | Self::Folder => "a folder you own is already there",
             Self::Entry => "a file you own is already there",
         }
     }
 }
 
 fn unmanaged_occupant(path: &Path) -> UnmanagedOccupant {
-    if std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_dir()) {
-        UnmanagedOccupant::Folder
-    } else {
+    if !std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_dir()) {
         UnmanagedOccupant::Entry
+    } else if path.join("SKILL.md").is_file() {
+        UnmanagedOccupant::Skill
+    } else {
+        UnmanagedOccupant::Folder
     }
 }
 
-/// The two ways out of an occupied slot, as copyable commands.
+/// The ways out of an occupied slot, as copyable commands.
+///
+/// A skill folder can be kept or brought in under the selector the unmanaged
+/// scan reports. Anything else is not a skill Dalo can keep or adopt, so the
+/// only way out is to move it.
 fn unmanaged_fix_lines(
     store_root: &Path,
     selector: &str,
     occupant: UnmanagedOccupant,
 ) -> Vec<String> {
+    if occupant != UnmanagedOccupant::Skill {
+        return vec![format!(
+            "move it aside, then run: {}",
+            store::dalo_command(store_root, "sync")
+        )];
+    }
     let end_of_options = if selector.starts_with('-') { "-- " } else { "" };
     let quoted = crate::error::shell_quote_argument(selector);
-    let mut lines = vec![format!(
-        "keep yours:   {}",
-        store::dalo_command(
-            store_root,
-            &format!("resolve keep {end_of_options}{quoted}")
-        )
-    )];
-    if occupant == UnmanagedOccupant::Folder {
-        let adopt = if end_of_options.is_empty() {
-            format!("adopt {quoted} --replace")
-        } else {
-            format!("adopt --replace -- {quoted}")
-        };
-        lines.push(format!(
-            "bring it in:  {}",
-            store::dalo_command(store_root, &adopt)
-        ));
-    }
-    lines
+    let adopt = if end_of_options.is_empty() {
+        format!("adopt {quoted} --replace")
+    } else {
+        format!("adopt --replace -- {quoted}")
+    };
+    vec![
+        format!(
+            "keep yours:   {}",
+            store::dalo_command(
+                store_root,
+                &format!("resolve keep {end_of_options}{quoted}")
+            )
+        ),
+        format!("bring it in:  {}", store::dalo_command(store_root, &adopt)),
+    ]
 }
 
 fn is_unmanaged_entry_conflict(operation: &MaterializeOperation) -> bool {
@@ -4570,6 +4605,46 @@ mod tests {
                 store.with_file_name("storehouse").display(),
                 store.join("config.toml").display()
             )
+        );
+    }
+
+    #[test]
+    fn human_path_context_should_render_links_under_a_symlinked_home_as_target_paths() {
+        let temporary = tempfile::tempdir().expect("tempdir should be created");
+        let real_home = temporary.path().join("real-home");
+        let home = temporary.path().join("home");
+        fs::create_dir_all(real_home.join(".dalo/sources/company/skills/review"))
+            .expect("store skill should be created");
+        std::os::unix::fs::symlink(&real_home, &home).expect("home link should be created");
+        // The target was registered through the symlinked home before its
+        // directory existed, so links carry the unresolved spelling while the
+        // target root is canonical once the directory exists.
+        let store = home.join(".dalo");
+        let target = home.join(".claude/skills");
+        fs::create_dir_all(&target).expect("target should be created");
+        let link = target.join("review");
+        std::os::unix::fs::symlink(store.join("sources/company/skills/review"), &link)
+            .expect("owned link should be created");
+        let context = HumanPathContext::from_targets_and_home(
+            &store,
+            [(store::comparable_path(&target), vec!["claude".to_owned()])],
+            Some(home.clone()),
+        );
+
+        assert_eq!(context.path(&link), "target[claude]:/review");
+        assert_eq!(
+            context.path(&store.join("sources/company/skills/review")),
+            "store:/sources/company/skills/review"
+        );
+        assert_eq!(context.root(&target), "~/.claude/skills");
+        assert_eq!(
+            HumanPathContext::from_targets_and_home(
+                &store,
+                std::iter::empty::<(PathBuf, Vec<String>)>(),
+                Some(home)
+            )
+            .root(&link),
+            "~/.claude/skills/review"
         );
     }
 

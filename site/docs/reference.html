@@ -830,6 +830,10 @@ target slot is reported with both ways out:</p>
                     keep yours:   dalo resolve keep standup-notes
                     bring it in:  dalo adopt standup-notes --replace
 </code></pre>
+<p><code>status</code> lists the same two commands under <code>needs you</code>, including for a skill
+folder that replaced a link Dalo recorded as its own. A folder without
+<code>SKILL.md</code> or a file is not a skill Dalo can keep or adopt, so <code>sync</code> and
+<code>status</code> say <code>move it aside, then run: dalo sync</code> instead.</p>
 <p>The JSON <code>operations[].reason</code> keeps <code>real unmanaged entry exists at target slot</code>.</p>
 <p><code>dalo --dry-run sync</code> does not fetch tracking team sources, so it prints a
 note when upstream changes are not reflected in its plan. Run a real
