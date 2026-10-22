@@ -1,6 +1,9 @@
 //! Terminal styling helpers.
 
 use std::io::IsTerminal;
+use std::sync::OnceLock;
+
+use crate::cli::ColorChoice;
 
 /// Output stream used for color decisions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -11,6 +14,16 @@ pub enum Stream {
     Stderr,
 }
 
+/// Process-wide `--color` choice; unset behaves as `auto`.
+static COLOR_CHOICE: OnceLock<ColorChoice> = OnceLock::new();
+
+/// Record the `--color` choice for every styling decision that follows.
+///
+/// Call it once, right after argument parsing. Later calls are ignored.
+pub fn set_color_choice(choice: ColorChoice) {
+    let _ = COLOR_CHOICE.set(choice);
+}
+
 /// Return whether ANSI color should be emitted for the given stream.
 #[must_use]
 pub fn color_enabled(stream: Stream) -> bool {
@@ -18,15 +31,42 @@ pub fn color_enabled(stream: Stream) -> bool {
         Stream::Stdout => std::io::stdout().is_terminal(),
         Stream::Stderr => std::io::stderr().is_terminal(),
     };
-    color_enabled_for(
+    color_enabled_for_choice(
+        COLOR_CHOICE.get().copied().unwrap_or(ColorChoice::Auto),
         std::env::var_os("NO_COLOR").is_some(),
         std::env::var_os("TERM").as_deref() == Some(std::ffi::OsStr::new("dumb")),
         is_tty,
     )
 }
 
+fn color_enabled_for_choice(
+    choice: ColorChoice,
+    no_color: bool,
+    term_dumb: bool,
+    is_tty: bool,
+) -> bool {
+    match choice {
+        ColorChoice::Always => true,
+        ColorChoice::Never => false,
+        ColorChoice::Auto => color_enabled_for(no_color, term_dumb, is_tty),
+    }
+}
+
 fn color_enabled_for(no_color: bool, term_dumb: bool, is_tty: bool) -> bool {
     !no_color && !term_dumb && is_tty
+}
+
+/// Style the lead label of the next action (`Next`) for stdout in bold.
+#[must_use]
+pub fn next_label(label: &str) -> String {
+    bold_for(color_enabled(Stream::Stdout), label)
+}
+
+fn bold_for(enabled: bool, label: &str) -> String {
+    if !enabled || label.is_empty() || !label.bytes().all(is_safe_label_byte) {
+        return label.to_owned();
+    }
+    format!("\x1b[1m{label}\x1b[0m")
 }
 
 /// Style an error label for stderr.
@@ -94,6 +134,38 @@ mod tests {
         assert!(!color_enabled_for(true, false, true));
         assert!(!color_enabled_for(false, true, true));
         assert!(!color_enabled_for(false, false, false));
+    }
+
+    #[test]
+    fn color_choice_should_override_the_environment_only_when_explicit() {
+        assert!(color_enabled_for_choice(
+            ColorChoice::Always,
+            true,
+            true,
+            false
+        ));
+        assert!(!color_enabled_for_choice(
+            ColorChoice::Never,
+            false,
+            false,
+            true
+        ));
+        assert_eq!(
+            color_enabled_for_choice(ColorChoice::Auto, true, false, true),
+            color_enabled_for(true, false, true)
+        );
+        assert_eq!(
+            color_enabled_for_choice(ColorChoice::Auto, false, false, true),
+            color_enabled_for(false, false, true)
+        );
+    }
+
+    #[test]
+    fn bold_should_style_only_safe_labels_when_enabled() {
+        assert_eq!(bold_for(true, "Next"), "\x1b[1mNext\x1b[0m");
+        assert_eq!(bold_for(false, "Next"), "Next");
+        assert_eq!(bold_for(true, "\x1b[31mNext"), "\x1b[31mNext");
+        assert_eq!(bold_for(true, ""), "");
     }
 
     #[test]
