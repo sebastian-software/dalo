@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.10.0](https://github.com/sebastian-software/dalo/compare/dalo-v1.9.0...dalo-v1.10.0) (2026-10-22)
+
+
+### Features
+
+* bootstrap the packaged assistant on first use ([d2416d0](https://github.com/sebastian-software/dalo/commit/d2416d0529948e2215926c868204af4a5d5061cd))
+* install the bundled assistant during normal setup ([cd1b83e](https://github.com/sebastian-software/dalo/commit/cd1b83e462fec660d52fcc01267e8a452c773050))
+* **team:** track opted-in catalog branches on sync ([9b52e36](https://github.com/sebastian-software/dalo/commit/9b52e36c54de598f1f2c01d4e5bd991272ec9151))
+
+
+### Bug Fixes
+
+* **catalog:** preserve explicit paths for duplicate slots ([f2e3f81](https://github.com/sebastian-software/dalo/commit/f2e3f81b1d609ee4700864f2c2a6b6f1f5cd94fa))
+* **catalog:** reject ambiguous slots and clean replacements ([3ee8173](https://github.com/sebastian-software/dalo/commit/3ee817372fae02b7a0be64a6aa39d6709c90b856))
+* **deps:** patch TLS trust validation advisories ([808f528](https://github.com/sebastian-software/dalo/commit/808f528b1c713f6cc8a07413a538c8dab628802c))
+* **deps:** update ci tooling ([5c6dc74](https://github.com/sebastian-software/dalo/commit/5c6dc74d1b6e63c4e7c24fcddc14a9dbf5f6dbfc))
+* **git:** configure promisor remote before filtered fetch ([50f2c42](https://github.com/sebastian-software/dalo/commit/50f2c42ecaa4fe9f6d846a8576ef404bd517aafb))
+* resolve repository audit findings ([702f0cd](https://github.com/sebastian-software/dalo/commit/702f0cd5af78650631a5b0e61f68e17aba48e545))
+
 ## [1.9.0](https://github.com/sebastian-software/dalo/compare/dalo-v1.8.1...dalo-v1.9.0) (2026-10-15)
 
 
