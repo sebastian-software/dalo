@@ -59,10 +59,12 @@ produces, so the run behind this transcript recreates them first.
 ```text
 $ dalo doctor
 summary: errors=0 warnings=0 info=5 ok=23
+info    autosync_not_installed: scheduled synchronization is not installed
+info    protected_skill_kept: protected slot `generic:keep-mine` is kept at `target[generic]:/keep-mine`
 info    schema_migration_pending: `config.toml` is at schema version 1 and is read as 2; the next config write persists the migration
 info    schema_migration_pending: `lock.toml` is at schema version 1 and is read as 6; the next `dalo sync` persists the migration
 info    schema_migration_pending: instruction pack `local:house-style` renders a legacy managed block in `…/AGENTS.md`; the next `dalo sync` rewrites it without pack metadata
-details: 25 info/ok findings omitted; use --json for the full report
+details: 23 ok findings omitted; use --json for the full report
 ```
 
 `doctor` exits `0`. These are `info` findings, not problems: nothing is broken
@@ -87,8 +89,10 @@ agent folder did not move.
 ```text
 $ dalo doctor
 summary: errors=0 warnings=0 info=3 ok=23
+info    autosync_not_installed: scheduled synchronization is not installed
+info    protected_skill_kept: protected slot `generic:keep-mine` is kept at `target[generic]:/keep-mine`
 info    schema_migration_pending: `config.toml` is at schema version 1 and is read as 2; the next config write persists the migration
-details: 25 info/ok findings omitted; use --json for the full report
+details: 23 ok findings omitted; use --json for the full report
 ```
 
 `lock.toml` and the instruction block are done. `config.toml` is still on
@@ -196,9 +200,9 @@ instruction-file mapping.
 Only behavior confirmed against this tree is listed here.
 
 - **`doctor` prints migration lines in text mode.** `schema_migration_pending`
-  is exempt from the usual "info findings omitted" summary, because it
-  describes a change Dalo is going to make to your own files. It is an `info`
-  finding, so it does not affect `doctor --check`.
+  is an `info` finding, and text mode prints every info finding; only `ok`
+  findings are summarized. It describes a change Dalo is going to make to your
+  own files, and it does not affect `doctor --check`.
 - **Instruction managed blocks lose their pack metadata.** The next `sync`
   re-renders the block without it — but only when the block still matches
   Dalo's exact older rendering byte for byte. A block you edited by hand is
