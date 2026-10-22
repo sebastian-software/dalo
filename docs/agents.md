@@ -12,7 +12,6 @@ agent therefore only works with Dalo if it follows a symlinked skill directory.
 Run this first:
 
 ```sh
-dalo init
 dalo target detect
 ```
 

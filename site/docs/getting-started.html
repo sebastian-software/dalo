@@ -157,15 +157,30 @@ that matches your situation:</p>
 <td><a href="/docs/projects.html">Project installations</a></td>
 </tr>
 </tbody></table></div>
-<h2 id="1-initialize-the-store"><a class="doc-anchor" href="#1-initialize-the-store">1. Initialize the store</a></h2>
-<pre><code class="language-sh">dalo init
+<h2 id="1-let-dalo-create-the-store"><a class="doc-anchor" href="#1-let-dalo-create-the-store">1. Let Dalo create the store</a></h2>
+<pre><code class="language-sh">dalo
+</code></pre>
+<p>The first run creates <code>~/.dalo</code> and prints the summary with the next step:</p>
+<pre><code class="language-text">assistant: prepared the bundled Dalo skill in ~/.dalo/local/skills/dalo
+assistant: next: dalo target detect
+Dalo
+  store: ~/.dalo
+  initialized: yes
+  linked targets: 0
+  sources: 1
+  active skills: 1
+  pending approvals: 0
+
+Next: dalo target detect
+  Link a target so Dalo knows where to materialize skills.
 </code></pre>
 <p>The store is Dalo&#39;s local database: source checkouts, the private local source,
 lockfiles, approvals, and target state. It lives in <code>~/.dalo</code> unless <code>--store</code>
 or <code>DALO_STORE</code> says otherwise. Your agent folders are output, never input;
 nothing in them is read back into the store by accident.</p>
-<p><code>init</code> finishes by printing the next three steps, which are the next three
-sections of this page.</p>
+<p><code>dalo init</code> is the explicit form. Use it for a
+<a href="#explore-without-touching-your-agent-folders">sandbox</a> with its own store, or
+to set up a <a href="/docs/projects.html">project</a>.</p>
 <h2 id="2-connect-an-agent"><a class="doc-anchor" href="#2-connect-an-agent">2. Connect an agent</a></h2>
 <p>Ask Dalo what it can see:</p>
 <pre><code class="language-sh">dalo target detect
@@ -510,7 +525,7 @@ do not protect against</li>
     <p class="doc-toc-h">On this page</p>
     <ul>
       <li><a href="#pick-your-starting-point">Pick your starting point</a></li>
-      <li><a href="#1-initialize-the-store">1. Initialize the store</a></li>
+      <li><a href="#1-let-dalo-create-the-store">1. Let Dalo create the store</a></li>
       <li><a href="#2-connect-an-agent">2. Connect an agent</a></li>
       <li><a href="#3-add-your-teams-skill-repository">3. Add your team&#39;s skill repository</a></li>
       <li><a href="#4-sync">4. Sync</a></li>

@@ -39,10 +39,27 @@ that matches your situation:
 | Your project installed skills with skills.sh | [Migrate a skills.sh project](projects.md#migrate-a-skillssh-project) |
 | The skills belong to one repository, not your whole machine | [Project installations](projects.md) |
 
-## 1. Initialize the store
+## 1. Let Dalo create the store
 
 ```sh
-dalo init
+dalo
+```
+
+The first run creates `~/.dalo` and prints the summary with the next step:
+
+```text
+assistant: prepared the bundled Dalo skill in ~/.dalo/local/skills/dalo
+assistant: next: dalo target detect
+Dalo
+  store: ~/.dalo
+  initialized: yes
+  linked targets: 0
+  sources: 1
+  active skills: 1
+  pending approvals: 0
+
+Next: dalo target detect
+  Link a target so Dalo knows where to materialize skills.
 ```
 
 The store is Dalo's local database: source checkouts, the private local source,
@@ -50,8 +67,9 @@ lockfiles, approvals, and target state. It lives in `~/.dalo` unless `--store`
 or `DALO_STORE` says otherwise. Your agent folders are output, never input;
 nothing in them is read back into the store by accident.
 
-`init` finishes by printing the next three steps, which are the next three
-sections of this page.
+`dalo init` is the explicit form. Use it for a
+[sandbox](#explore-without-touching-your-agent-folders) with its own store, or
+to set up a [project](projects.md).
 
 ## 2. Connect an agent
 
