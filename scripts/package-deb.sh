@@ -155,7 +155,7 @@ Architecture: $architecture
 Maintainer: Sebastian Werner <s.werner@sebastian-software.de>
 Depends: $depends
 Homepage: https://dalo.sh
-Description: AI agent skill manager
+Description: Your team's agent skills, versioned like code
  Dalo versions, reviews, and syncs AI agent skills through Git.
 EOF
 
