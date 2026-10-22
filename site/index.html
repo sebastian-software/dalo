@@ -201,8 +201,8 @@
                 <div><h4>acme/agent-skills</h4><p>Team repository</p></div>
               </div>
               <ul class="team-skill-set" role="list">
-                <li data-team-input data-team-skill="incident-review" data-team-color="#e8623a"><span class="team-skill-icon" aria-hidden="true">✦</span>incident-review</li>
-                <li data-team-input data-team-skill="release-notes" data-team-color="#7b5cf5"><span class="team-skill-icon" aria-hidden="true">✦</span>release-notes</li>
+                <li data-team-input data-team-skill="incident-review" data-team-color="var(--coral)"><span class="team-skill-icon" aria-hidden="true">✦</span>incident-review</li>
+                <li data-team-input data-team-skill="release-notes" data-team-color="var(--violet)"><span class="team-skill-icon" aria-hidden="true">✦</span>release-notes</li>
               </ul>
               <p class="team-repo-foot">Your team's skills, kept in Git.</p>
             </div>
@@ -328,19 +328,19 @@
       <h3 id="start-title">Not starting from zero?</h3>
       <p class="starts-sub">Dalo leaves existing folders alone until you decide.</p>
       <ul class="starts-grid" aria-labelledby="start-title">
-        <li class="start" style="--c:#e8623a">
+        <li class="start" style="--c: var(--coral)">
           <h4>Skills already in an agent folder</h4>
           <p>Ask: “Move my existing skills to Dalo and keep my changes.” <a href="/docs/getting-started.html#adopt-a-skill-an-agent-wrote">Adopt a skill</a></p>
         </li>
-        <li class="start" style="--c:#7b5cf5">
+        <li class="start" style="--c: var(--violet)">
           <h4>A project that uses skills.sh</h4>
           <p>Ask: “Move this project from skills.sh to Dalo.” <a href="/docs/projects.html#migrate-a-skillssh-project">Migration guide</a></p>
         </li>
-        <li class="start" style="--c:#2b8fd6">
+        <li class="start" style="--c: var(--blue)">
           <h4>Skills for one repository</h4>
           <p>Ask: “Give every clone of this repo the same skills.” <a href="/docs/projects.html">Project installations</a></p>
         </li>
-        <li class="start" style="--c:#16925b">
+        <li class="start" style="--c: var(--green-2)">
           <h4>A team sharing skills</h4>
           <p>Ask: “Connect our team's skill repository.” Catalog approvals stay on each machine. <a href="/docs/team.html">Team repository guide</a></p>
         </li>
@@ -352,7 +352,7 @@
   <section class="features" id="feature-stories" aria-label="Why Dalo">
     <div class="wrap">
 
-      <article class="row reveal" id="pinned-versions" style="--accent:#2b8fd6; --accent-2:#7b5cf5">
+      <article class="row reveal" id="pinned-versions" style="--accent: var(--blue); --accent-2: var(--violet)">
         <div class="copy-col">
           <span class="kicker"><span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="3.5" cy="3.5" r="1.8" fill="currentColor"/><circle cx="3.5" cy="12.5" r="1.8" fill="currentColor"/><circle cx="12.5" cy="8" r="2.2" fill="currentColor"/><path d="M3.5 3.5C8 3.5 8 8 12.5 8M3.5 12.5C8 12.5 8 8 12.5 8" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></span>One source of truth</span>
           <h2>One pinned set. Every machine.</h2>
@@ -378,7 +378,7 @@
         </figure>
       </article>
 
-      <article class="row flip reveal" id="catalog-approval" style="--accent:#7b5cf5; --accent-2:#e8623a">
+      <article class="row flip reveal" id="catalog-approval" style="--accent: var(--violet); --accent-2: var(--coral)">
         <div class="copy-col">
           <span class="kicker"><span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 1.8 13 3.8v3.7c0 3.1-2.1 5.6-5 6.7-2.9-1.1-5-3.6-5-6.7V3.8z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="m5.6 8 1.7 1.7 3.2-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Reviewed first</span>
           <h2>Review skills before they reach an agent.</h2>
@@ -394,7 +394,7 @@
             <div class="approval-route">
               <div class="approval-skill" data-review-source><span class="feature-star coral" aria-hidden="true">✦</span><strong>effective-web</strong><span>Public catalog skill</span></div>
               <div class="approval-gate" data-review-gate><svg viewBox="0 0 32 32" width="32" height="32" aria-hidden="true"><rect x="7" y="14" width="18" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path class="approval-shackle" d="M11 14V9a5 5 0 0 1 10 0v5" fill="none" stroke="currentColor" stroke-width="2"/><path class="approval-shackle-open" d="M21 14V9a5 5 0 0 0-10 0v1" fill="none" stroke="currentColor" stroke-width="2"/><path class="approval-unlocked" d="m11 21 3 3 7-7" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>Approval</span></div>
-              <div class="approval-agent" data-review-target><svg width="40" height="34" viewBox="0 0 40 34" aria-hidden="true"><rect x="6" y="3" width="28" height="22" rx="3" fill="#f6f8fb" stroke="currentColor" stroke-width="1.5"/><path d="M2 28h36l-3 3H5Z" fill="#fff" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg><strong>Codex</strong><span data-review-target-label>Not linked yet</span><i class="feature-delivered-skill coral" aria-hidden="true">✦</i></div>
+              <div class="approval-agent" data-review-target><svg width="40" height="34" viewBox="0 0 40 34" aria-hidden="true"><rect class="approval-screen" x="6" y="3" width="28" height="22" rx="3" stroke="currentColor" stroke-width="1.5"/><path class="approval-base" d="M2 28h36l-3 3H5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg><strong>Codex</strong><span data-review-target-label>Not linked yet</span><i class="feature-delivered-skill coral" aria-hidden="true">✦</i></div>
             </div>
             <div class="approval-check"><span class="approval-check-icon" aria-hidden="true">✓</span><p>Local preflight supports your review.</p></div>
             <div class="approval-person"><img src="/assets/img/personas/alex.png" width="36" height="36" alt=""/><div><strong>Your decision</strong><span>Alex reviews the skill before approving it.</span></div><span class="status pending">review first</span></div>
@@ -406,7 +406,7 @@
         </figure>
       </article>
 
-      <article class="row reveal" id="file-ownership" style="--accent:#c24b22; --accent-2:#ffb58c">
+      <article class="row reveal" id="file-ownership" style="--accent: var(--coral-deep); --accent-2: var(--peach)">
         <div class="copy-col">
           <span class="kicker"><span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="2.5" y="2.5" width="11" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5.5 8h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span>Safe by default</span>
           <h2>Only touches what it owns.</h2>
@@ -421,7 +421,7 @@
               <div class="owned-skill" data-owned-skill data-result="updated"><i class="feature-star coral" aria-hidden="true">✦</i><strong>incident-review</strong><span class="owned-result" data-owned-result>Updated</span></div>
               <div class="owned-skill" data-owned-skill data-result="updated"><i class="feature-star violet" aria-hidden="true">✦</i><strong>release-notes</strong><span class="owned-result" data-owned-result>Updated</span></div>
             </div>
-            <div class="personal-folder" data-personal-folder><svg width="48" height="44" viewBox="0 0 48 44" aria-hidden="true"><path d="M4 12a4 4 0 0 1 4-4h10l5 5h17a4 4 0 0 1 4 4v20a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3Z" fill="#fff" stroke="currentColor" stroke-width="1.8"/><path d="m25 23 6-6 4 4-6 6-6 2Z" fill="#fff" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg><div><strong>my-draft/</strong><span>Your own files</span></div><b>Unchanged</b></div>
+            <div class="personal-folder" data-personal-folder><svg width="48" height="44" viewBox="0 0 48 44" aria-hidden="true"><path class="folder-fill" d="M4 12a4 4 0 0 1 4-4h10l5 5h17a4 4 0 0 1 4 4v20a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3Z" stroke="currentColor" stroke-width="1.8"/><path class="folder-fill" d="m25 23 6-6 4 4-6 6-6 2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg><div><strong>my-draft/</strong><span>Your own files</span></div><b>Unchanged</b></div>
             <span class="feature-packet coral" data-feature-packet aria-hidden="true">✦</span><span class="feature-packet violet" data-feature-packet aria-hidden="true">✦</span>
           </div>
           <div class="feature-explanation"><p id="ownership-caption">Managed skills change. Your own folder stays put.</p><p class="feature-status" data-feature-status role="status">Two managed links updated. Your files are unchanged.</p></div>
