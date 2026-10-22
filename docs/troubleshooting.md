@@ -137,13 +137,11 @@ usually a skill an agent wrote directly into its own folder.
 ```text
 needs you:
   target[claude]:/standup-notes: a folder you own is already there
-    keep yours:   dalo resolve keep standup-notes
-    bring it in:  dalo adopt standup-notes --replace
+    run: dalo resolve list
 ```
 
-The slot appears once more, without the commands, under `unmanaged skills:`.
-`sync` reports the block with the same two ways out and leaves your folder
-alone:
+`status` names the slot and the command that lists it. `sync` also gives the two
+ways out and leaves your folder alone:
 
 ```text
 blocked  conflict   target[claude]:/standup-notes: a folder you own is already there

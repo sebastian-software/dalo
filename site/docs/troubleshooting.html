@@ -275,12 +275,10 @@ changes through their usual refresh and sync.</p>
 usually a skill an agent wrote directly into its own folder.</p>
 <pre><code class="language-text">needs you:
   target[claude]:/standup-notes: a folder you own is already there
-    keep yours:   dalo resolve keep standup-notes
-    bring it in:  dalo adopt standup-notes --replace
+    run: dalo resolve list
 </code></pre>
-<p>The slot appears once more, without the commands, under <code>unmanaged skills:</code>.
-<code>sync</code> reports the block with the same two ways out and leaves your folder
-alone:</p>
+<p><code>status</code> names the slot and the command that lists it. <code>sync</code> also gives the two
+ways out and leaves your folder alone:</p>
 <pre><code class="language-text">blocked  conflict   target[claude]:/standup-notes: a folder you own is already there
                     keep yours:   dalo resolve keep standup-notes
                     bring it in:  dalo adopt standup-notes --replace
