@@ -37,6 +37,143 @@ dalo --json doctor
 | `autosync_run_stale` | A scheduled run is still marked `running` well past its schedule interval, so it was likely interrupted (crash or power loss) before recording an outcome. | Run `dalo autosync status` to confirm, then trigger a fresh run (`dalo sync`) or wait for the next schedule to overwrite the state. |
 | autosync `skipped` | Another interactive Dalo process held the store lock. | No action is normally required. The next scheduled run retries without contention. |
 
+## The three words status uses
+
+The first time `status` says something surprising, it is almost always one of
+these three. The transcripts below are real output from a linked `claude`
+target.
+
+### Pending approval
+
+A skill is available but untrusted, so Dalo will not link it. Catalog sources
+and catalogs pinned by a team manifest start here by design.
+
+```text
+needs you:
+  review-helper (public): waiting for approval
+    run: dalo approve skill public:review-helper
+  public (source): waiting for sync
+    run: dalo sync
+```
+
+The skill waits for your approval, not for a sync, so it appears there once.
+The new catalog itself is recorded by the next sync. Further down,
+`pending approval:` lists the skill with any compatibility note it declares. `sync` still does all the other work and repeats the command
+at the end:
+
+```text
+synced: 2 skills across 1 target (2 unchanged)
+pending approval: public:review-helper (run: dalo approve skill public:review-helper)
+```
+
+Read the skill first — `dalo audit public:review-helper` prints the deterministic
+findings and the exact content hash — then run the command status gave you:
+
+```sh
+dalo approve skill public:review-helper
+dalo sync
+```
+
+A clean approval is one line:
+
+```text
+approved public:review-helper (checked, no findings)
+next: dalo sync to link it
+```
+
+Approvals are per skill, per machine, and bound to exact content. They are
+never inherited from a teammate and never granted by a sync.
+
+### Shadowed
+
+Two sources offer the same skill name. Dalo links exactly one of them and keeps
+the other visible instead of discarding it:
+
+```text
+unlinked skills:
+  release-notes -> company:release-notes reason=shadowed by=personal:release-notes
+resolution diagnostics:
+  shadowed: skill `company:release-notes` is unlinked because `personal:release-notes` wins the same slot
+```
+
+`sync` prints the `shadowed` diagnostic once, on the sync that records the new
+winner. After that the outcome is a steady state you chose, so only `status`
+keeps showing it.
+
+The lower priority number wins. If you want to change the winner, first inspect
+the source authority with `dalo source list --json`, then preview the
+source-wide priority change:
+
+```sh
+dalo --dry-run source priority company 1
+```
+
+The built-in local source priority is fixed. If `declared_by` in the source list
+names a team source, that source's catalog settings belong to its `dalo.toml`
+and must be changed through the team's workflow.
+
+If you choose that change, apply it and then preview the full store sync under
+the new priority before changing target links:
+
+```sh
+dalo source priority company 1
+dalo --dry-run sync
+```
+
+The two dry-runs alone do not compose: the sync preview still uses the current
+priority. If both variants should stay installed side by side, namespace one
+source only if changing the installed name of every skill from that source is
+acceptable. Preview the namespace change, apply it if you choose it, then
+preview the full store sync under the new namespace. A namespace produces
+names such as `acme__release-notes`; it does not rename just the colliding
+skill or edit references. Team skills with a namespace still receive upstream
+changes through their usual refresh and sync.
+
+### Conflict
+
+Dalo wants a slot that is already occupied by a real, unmanaged directory —
+usually a skill an agent wrote directly into its own folder.
+
+```text
+needs you:
+  target[claude]:/standup-notes: a folder you own is already there
+    keep yours:   dalo resolve keep standup-notes
+    bring it in:  dalo adopt standup-notes --replace
+```
+
+The slot appears once more, without the commands, under `unmanaged skills:`.
+`sync` reports the block with the same two ways out and leaves your folder
+alone:
+
+```text
+blocked  conflict   target[claude]:/standup-notes: a folder you own is already there
+                    keep yours:   dalo resolve keep standup-notes
+                    bring it in:  dalo adopt standup-notes --replace
+synced: 4 skills across 1 target (3 unchanged, 1 blocked)
+```
+
+For a real unmanaged directory, first inspect exact IDs and paths with
+`dalo --json resolve list`. Then choose the option that matches what you want:
+
+```sh
+dalo resolve adopt <id>              # copy it to the local source; leave original in place
+dalo resolve adopt <id> --replace    # also replace this directory with a Dalo link
+dalo resolve keep <id>               # retain it unmanaged at this target slot
+```
+
+Adoption is audited and makes a local snapshot, so it no longer follows the old
+installer or upstream. Its dry-run does not create that local skill for a
+following sync preview. Applying adoption can make the local copy win over a
+same-named managed source across other linked agents. Review the adoption audit
+and exact copy or replacement effect, apply only the choice you intended, then
+inspect status and preview the full store sync before any further target
+changes. Without `--replace`, the original stays in place and may continue
+blocking that target slot. `keep` records the unmanaged choice; the managed
+skill remains unavailable at that occupied slot. A foreign symlink is not an
+adoptable directory: preserve it and use the migration guidance for foreign
+entries only when that handover is explicitly requested. Sync has no per-target
+filter.
+
 ## Status Codes
 
 Human `status` output opens with `needs you`: every pending approval, occupied
