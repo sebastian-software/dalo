@@ -304,6 +304,11 @@ dalo target link generic &quot;$target_dir&quot;
 <h3 id="a-local-skill"><a class="doc-anchor" href="#a-local-skill">A local skill</a></h3>
 <pre><code class="language-sh">mkdir -p &quot;$DALO_STORE/local/skills/review&quot;
 cat &gt; &quot;$DALO_STORE/local/skills/review/SKILL.md&quot; &lt;&lt;&#39;EOF&#39;
+---
+name: review
+description: Check behavioral regressions before style nits.
+---
+
 # Review
 
 Check behavioral regressions before style nits.
@@ -326,6 +331,11 @@ before a sync.</p>
 <pre><code class="language-sh">TEAM_REPO=&quot;$(mktemp -d)/team-skills&quot;
 mkdir -p &quot;$TEAM_REPO/skills/release-notes&quot;
 cat &gt; &quot;$TEAM_REPO/skills/release-notes/SKILL.md&quot; &lt;&lt;&#39;EOF&#39;
+---
+name: release-notes
+description: Summarize user-visible changes first.
+---
+
 # Release Notes
 
 Summarize user-visible changes first.
@@ -346,6 +356,11 @@ dalo sync
 <pre><code class="language-sh">CATALOG_REPO=&quot;$(mktemp -d)/catalog-skills&quot;
 mkdir -p &quot;$CATALOG_REPO/skills/review-helper&quot;
 cat &gt; &quot;$CATALOG_REPO/skills/review-helper/SKILL.md&quot; &lt;&lt;&#39;EOF&#39;
+---
+name: review-helper
+description: Check behavioral regressions before style nits.
+---
+
 # Review Helper
 
 Check behavioral regressions before style nits.
