@@ -52,6 +52,11 @@ Nothing special is required. Each skill is a directory under `skills/` with a
 ```sh
 mkdir -p skills/release-notes
 cat > skills/release-notes/SKILL.md <<'EOF'
+---
+name: release-notes
+description: Summarize user-visible changes first.
+---
+
 # Release Notes
 
 Summarize user-visible changes first.
