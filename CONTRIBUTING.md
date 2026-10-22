@@ -56,6 +56,11 @@ cargo test --release --locked --test performance -- --ignored noop_sync_should_n
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
 ```
 
+**Quick checks.** `mise run check` runs the fast set: formatting, clippy, and
+`cargo test --locked`. `mise run check:full` runs every command in the list
+above, in the same order. After a documentation change, `mise run docs`
+rebuilds the site and checks that the committed render matches `docs/`.
+
 The MSRV, dependency-audit, coverage, and site-render jobs additionally run:
 
 ```sh
@@ -189,6 +194,11 @@ A good PR includes:
 - Validation commands that were actually run.
 - Screenshots or command output only when they clarify a user-facing behavior.
 - Updates to `README.md`, [docs/reference.md](docs/reference.md), milestones, or release notes when behavior changes what users should know.
+
+**Fixing a typo in the README.** Edit `README.md.src`, the source, then run
+`mise run readme:write` when mdtheme is installed. Without mdtheme, mirror the
+same edit into `README.md` by hand: the CI job named Generated README compares
+the two files. The header of `README.md` names the source to edit.
 
 Keep PRs focused. If a fix uncovers unrelated cleanup, open a follow-up issue or separate PR unless the cleanup is required to make the change safe.
 
