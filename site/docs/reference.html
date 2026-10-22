@@ -756,7 +756,9 @@ under <code>unmanaged skills</code>; it is not repeated under <code>skill delive
 <code>materialization blocks</code>. When every lock drift item is an addition or removal
 the next sync records, status prints <code>waiting for sync:</code> with each subject and
 what changes instead of <code>lock drift:</code>; see
-<a href="/docs/troubleshooting.html#lock-drift">Lock Drift</a>. Source lines show <code>agents=</code> and
+<a href="/docs/troubleshooting.html#lock-drift">Lock Drift</a>. A skill that waits for approval
+is listed once under <code>needs you</code> with its approve command and under
+<code>pending approval</code>, not as waiting for sync. Source lines show <code>agents=</code> and
 <code>plugins=</code> only when they are not zero and mark only disabled sources.
 <code>--all</code> adds each source&#39;s provenance line, the zero counts, the <code>enabled</code>
 state, and the scheduler line while autosync is neither configured nor

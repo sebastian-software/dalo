@@ -259,9 +259,12 @@ and catalogs pinned by a team manifest start here by design.</p>
 <pre><code class="language-text">needs you:
   review-helper (public): waiting for approval
     run: dalo approve skill public:review-helper
+  public (source): waiting for sync
+    run: dalo sync
 </code></pre>
-<p>Further down, <code>pending approval:</code> lists the same skill with any compatibility
-note it declares. <code>sync</code> still does all the other work and repeats the command
+<p>The skill waits for your approval, not for a sync, so it appears there once.
+The new catalog itself is recorded by the next sync. Further down,
+<code>pending approval:</code> lists the skill with any compatibility note it declares. <code>sync</code> still does all the other work and repeats the command
 at the end:</p>
 <pre><code class="language-text">synced: 2 skills across 1 target (2 unchanged)
 pending approval: public:review-helper (run: dalo approve skill public:review-helper)
