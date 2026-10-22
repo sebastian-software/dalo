@@ -29,7 +29,7 @@ const GROUPS = [
   {
     id: "start",
     title: "Start here",
-    intro: "Install and manage Dalo through your agent, or follow the command-line walkthrough.",
+    intro: "Start with the five-minute page, install and manage Dalo through your agent, or follow the command-line walkthrough.",
   },
   {
     id: "look-up",
@@ -47,6 +47,12 @@ const GROUPS = [
 // from each document's own first heading; only navigation label, index group,
 // and summary live here.
 const PAGES = [
+  {
+    slug: "five-minutes",
+    group: "start",
+    label: "Five minutes",
+    summary: "Install Dalo, link one agent, add one team source, and sync, in about five minutes.",
+  },
   {
     slug: "assistant",
     group: "start",

@@ -466,7 +466,7 @@ grep -q '__DALO_LASTMOD__' "$root/site/sitemap.xml"
 # The documentation published on dalo.sh is rendered from docs/*.md by
 # site/build.mjs and committed, so it must exist, carry the site styles, and be
 # reachable from the sitemap, the documentation index, and the footer.
-for document in getting-started assistant projects team reference compatibility upgrading plugins agents ci troubleshooting security uninstall comparison; do
+for document in five-minutes getting-started assistant projects team reference compatibility upgrading plugins agents ci troubleshooting security uninstall comparison; do
   page="$root/site/docs/$document.html"
   test -f "$page"
   title="$(sed -n 's/^# //p' "$root/docs/$document.md" | head -n 1)"
