@@ -545,6 +545,17 @@ dalo source add platform git@github.com:example/monorepo.git --ref v1.2.0 --subp
 dalo --dry-run source add team https://github.com/example/team-skills.git
 </code></pre>
 <p>JSON output shape: <code>SourceAddReport</code>.</p>
+<p>When every discovered skill passes a clean, complete preflight, the human output
+is one line plus the next step:</p>
+<pre><code class="language-text">added source company (2 skills checked, no findings)
+next: dalo sync
+</code></pre>
+<p>Informational specification findings add one short line per skill, such as
+<code>company:notes: 1 spec note: ... (dalo audit company:notes shows it)</code>. A
+finding, partial coverage, an agent review, a risk acceptance, or declared
+release binaries print the full audit block for that skill, and the clean rest
+is summarized as <code>N more skills checked, no findings</code>. <code>dalo audit</code> always
+prints the full report.</p>
 <p>When discovery skips or degrades a skill, <code>source add</code> prints each inventory
 warning with its path and actionable reason before continuing to audit the
 valid skills. Skipped skills are not audited or materialized. JSON consumers
@@ -624,9 +635,12 @@ replacement also removes staged binaries and exposure links that no selected
 declaration still needs.
 Selection runs the deterministic security preflight, writes
 <code>config.toml</code>, and updates <code>source-lock.toml</code> with the pinned commit and
-inventory snapshot. Human-readable output names the skills added or removed,
-reports no-op requests explicitly, and shows the complete resulting selection
-as secondary detail.</p>
+inventory snapshot. A selection whose preflight is clean is one line, such as
+<code>selected review-helper from public (checked, no findings)</code>, followed by any
+short specification note and the next step. Otherwise the human output names
+the skills added or removed, reports no-op requests explicitly, shows the
+complete resulting selection as secondary detail, and prints the full audit for
+each result that needs a look.</p>
 <p>Examples:</p>
 <pre><code class="language-sh">dalo source select public review-helper
 dalo source select public review-helper public:formatter
@@ -704,16 +718,43 @@ user-lock drift, unmanaged target skills, instruction packs, topic overlaps, and
 instruction block drift.</p>
 <p>Examples:</p>
 <pre><code class="language-sh">dalo status
+dalo status --all
 dalo status --check
 dalo --json status
 </code></pre>
 <p>JSON output shape: <code>StatusReport</code>.</p>
+<p>The human report opens with <code>needs you</code> when anything blocks or waits: pending
+approvals, occupied target slots, security-audit blocks or failures, skills
+held back by their required closure, sources that could not be inspected,
+tracking sources with local changes, a missing target link, and changes waiting
+for sync. Each item names the command that clears it, and the section is absent
+when nothing needs attention:</p>
+<pre><code class="language-text">needs you:
+  review-helper (public): waiting for approval
+    run: dalo approve skill public:review-helper
+  target[claude]:/standup-notes: a folder you own is already there
+    keep yours:   dalo resolve keep standup-notes
+    bring it in:  dalo adopt standup-notes --replace
+</code></pre>
+<p>An occupied slot appears there with its commands and once more, without them,
+under <code>unmanaged skills</code>; it is not repeated under <code>skill delivery</code> or
+<code>materialization blocks</code>. When every lock drift item is an addition or removal
+the next sync records, status prints <code>waiting for sync:</code> with each subject and
+what changes instead of <code>lock drift:</code>; see
+<a href="/docs/troubleshooting.html#lock-drift">Lock Drift</a>. Source lines show <code>agents=</code> and
+<code>plugins=</code> only when they are not zero and mark only disabled sources.
+<code>--all</code> adds each source&#39;s provenance line, the zero counts, the <code>enabled</code>
+state, and the scheduler line while autosync is neither configured nor
+installed. A dirty tracking source is listed under <code>needs you</code> because the next
+<code>sync</code> stops on it, but it does not change the <code>--check</code> result.</p>
 <p><code>--check</code> exits with code 1 for unresolved source scans, skill or agent inventory warnings,
 pending approvals, blocked required closure, blocking or failed security audits,
 blocked materialization operations, missing targets for active skills, actionable
 resolution diagnostics, lock drift, unmanaged blockers, instruction-block drift,
 or unhealthy autosync state. It keeps the full report on stdout for JSON
-consumers.</p>
+consumers. When the only lock drift is additions or removals the next sync
+records, the failure reads, for example,
+<code>check failed: 1 skill waiting for sync (run: dalo sync)</code>.</p>
 <h3 id="dalo-plan"><a class="doc-anchor" href="#dalo-plan"><code>dalo plan</code></a></h3>
 <p>Show the effective plugin setup for every linked target without changing source,
 approval, or target files. Use it before <code>sync</code> to review selected plugins,
@@ -760,6 +801,19 @@ dalo --json sync
 <p>JSON output shape: <code>SyncReport</code>. <code>deliveries[]</code> records each logical skill and
 physical target slot with <code>target_ids</code>, <code>mode</code>, optional <code>provider</code>, selected
 <code>artifact_path</code>, content <code>fingerprint</code>, and any fail-closed <code>reason</code>.</p>
+<p>The human report ends with <code>security preflight: deterministic checks only</code> when
+this run checked new or changed content: a skill that is new to the lock, one
+from a source whose recorded commit moved, or one without a cached result at its
+exact content hash. A sync with nothing new or changed leaves that line out.
+<code>local_override</code> and <code>shadowed</code> diagnostics are printed on the sync that changes
+the slot&#39;s resolution; once the lock records it, the outcome is a steady state
+and only <code>status</code> lists it under <code>resolution diagnostics</code>. A real entry in a
+target slot is reported with both ways out:</p>
+<pre><code class="language-text">blocked  conflict   target[claude]:/standup-notes: a folder you own is already there
+                    keep yours:   dalo resolve keep standup-notes
+                    bring it in:  dalo adopt standup-notes --replace
+</code></pre>
+<p>The JSON <code>operations[].reason</code> keeps <code>real unmanaged entry exists at target slot</code>.</p>
 <p><code>dalo --dry-run sync</code> does not fetch tracking team sources, so it prints a
 note when upstream changes are not reflected in its plan. Run a real
 <code>dalo sync</code> to fetch those sources first; JSON consumers can inspect
@@ -847,7 +901,9 @@ truncation line. Both files are removed on <code>autosync uninstall</code>.</p>
 <p>Copy an unmanaged target skill into <code>local/skills/&lt;slot&gt;</code>. With <code>--replace</code>, Dalo replaces the original unmanaged directory with an owned symlink after copying. Without <code>--replace</code>, the original directory remains untouched.</p>
 <p>Adoption runs the same deterministic security preflight before copying or
 replacing anything. <code>--reviewer</code>, <code>--refresh-audit</code>, and <code>--accept-risk &lt;reason&gt;</code>
-have the same meaning as on <code>dalo approve skill</code>.</p>
+have the same meaning as on <code>dalo approve skill</code>. A clean, complete result is
+reported as <code>(checked, no findings)</code> on the copy line, with at most one short
+specification note; any other result prints the full audit block first.</p>
 <p>The <code>&lt;skill&gt;</code> argument can be a slot name, a disambiguating path, or an ID reported by <code>status</code> or <code>resolve list</code>. If the slot name exists in more than one target, Dalo refuses the ambiguous selector and lists the paths to choose from.</p>
 <p>Before it audits or copies anything, adoption rejects a folder name or
 <code>SKILL.md</code> frontmatter <code>name</code> that is not a portable lowercase slot name.
@@ -913,6 +969,10 @@ dalo doctor --check
 dalo --json doctor
 </code></pre>
 <p>JSON output shape: <code>DoctorReport</code>.</p>
+<p>The human report prints every error, warning, and info finding, and summarizes
+the <code>ok</code> ones as <code>details: N ok findings omitted; use --json for the full report</code>. <code>assistant_external</code> is the info finding for a Dalo skill that another
+installer or store owns at a known agent slot; normal commands in a custom or
+project store do not repeat it.</p>
 <p><code>--check</code> exits with code 1 when the report contains an error finding. Warnings
 remain report-only so CI can choose its own warning policy. A declared skill
 command that is missing from <code>PATH</code> is a <code>skill_command_missing</code> warning, so it
@@ -932,6 +992,11 @@ dalo audit public:review-helper --reviewer claude --refresh-audit
 </code></pre>
 <p>Use <code>--refresh-audit</code> to ignore a compatible cached semantic review and run the
 selected provider again.</p>
+<p><code>dalo audit</code> always prints the full report: content hash, coverage, result,
+every finding, and the reminder that no findings is not a safety guarantee.
+<code>source add</code>, <code>source select</code>, <code>approve skill</code>, and <code>adopt</code> print the same block
+only when a result needs a look and otherwise summarize a clean preflight in one
+line.</p>
 <p>The report lists each release binary the skill declares under <code>binaries[]</code>:
 identity, repository, tag, platforms, and <code>contract_hash</code>. The listing is
 informational. Approving the skill does not approve its binaries, and neither
@@ -1215,7 +1280,10 @@ output on the next sync. The revoke scope is one of <code>skill</code>, <code>ag
 value and exposes the choices to shell completion.
 Skill approval always runs the deterministic preflight first and refuses a
 blocking result unless a reason is supplied with <code>--accept-risk</code>. <code>--reviewer</code>
-adds the same isolated semantic review as <code>dalo audit</code>.</p>
+adds the same isolated semantic review as <code>dalo audit</code>. When the preflight is
+clean and complete, the human output is
+<code>approved public:review-helper (checked, no findings)</code> followed by the next
+step; other results print the full audit block before the approval line.</p>
 <p><code>approve list</code> preserves each approval record and adds its recorded grant time
 when available (older ledgers are explicitly labeled as lacking it). It also
 surfaces every persisted accepted-risk audit, marking whether its exact content
@@ -1880,6 +1948,10 @@ and binary paths are created lazily, not by <code>dalo init</code>:</p>
 <tr>
 <td><code>assistant-links.toml</code></td>
 <td>Schema version 1 records canonical owned companion link paths in <code>links[]</code>. Only the Dalo skill is delivered; these folders are not registered as general targets.</td>
+</tr>
+<tr>
+<td><code>.assistant-notice</code></td>
+<td>A normal command showed a blocked or external assistant notice. The plain-text marker holds that one notice, so it is shown once per store; it is removed when the assistant no longer needs a notice, and deleting it shows the notice again. It is not a versioned file.</td>
 </tr>
 <tr>
 <td><code>.assistant-installing/</code></td>
