@@ -1,4 +1,4 @@
-# Dalo — AI agent skill manager
+# Dalo — Your team's agent skills, versioned like code
 
 > Dalo is a Rust CLI that keeps a team's AI-agent skills in Git: every skill is
 > versioned in a local store, one approved set is resolved deterministically,

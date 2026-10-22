@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Dalo · AI agent setup manager</title>
-  <meta name="description" content="Manage your agent's skills, instructions, and hooks through conversation. Dalo checks approvals and preserves your own files during sync." />
+  <title>Dalo · Your team's agent skills, versioned like code</title>
+  <meta name="description" content="One reviewed set of skills, instructions, and hooks, synced into every agent on every machine. Ask your agent, or use the CLI." />
   <link rel="canonical" href="https://dalo.sh/" />
   <meta name="theme-color" content="#ffffff" />
 
@@ -12,14 +12,14 @@
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Dalo" />
   <meta property="og:url" content="https://dalo.sh/" />
-  <meta property="og:title" content="Dalo · Manage your agent's setup. Just ask." />
-  <meta property="og:description" content="Manage your agent's skills, instructions, and hooks through conversation. Dalo checks approvals and preserves your own files during sync." />
+  <meta property="og:title" content="Dalo · Your team's agent skills, versioned like code" />
+  <meta property="og:description" content="One reviewed set of skills, instructions, and hooks, synced into every agent on every machine. Ask your agent, or use the CLI." />
   <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Dalo · Manage your agent's setup. Just ask." />
-  <meta name="twitter:description" content="Manage your agent's skills, instructions, and hooks through conversation. Dalo checks approvals and preserves your own files during sync." />
+  <meta name="twitter:title" content="Dalo · Your team's agent skills, versioned like code" />
+  <meta name="twitter:description" content="One reviewed set of skills, instructions, and hooks, synced into every agent on every machine. Ask your agent, or use the CLI." />
   <meta name="twitter:image" content="https://dalo.sh/assets/img/og.png" />
 
   <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
@@ -39,7 +39,7 @@
     "@type": "SoftwareApplication",
     "name": "Dalo",
     "url": "https://dalo.sh/",
-    "description": "Manage your agent's skills, instructions, and hooks through conversation. Dalo checks approvals and preserves your own files during sync.",
+    "description": "One reviewed set of skills, instructions, and hooks, synced into every agent on every machine. Ask your agent, or use the CLI.",
     "sameAs": "https://github.com/sebastian-software/dalo",
     "softwareVersion": "1.10.0",
     "applicationCategory": "DeveloperApplication",
@@ -100,7 +100,7 @@
       <div class="hero-copy">
         <span class="eyebrow"><b>Open source</b><span>Rust CLI · v<span data-dalo-version>1.10.0</span></span></span> <!-- x-release-please-version -->
         <h1 id="hero-title">Manage your agent's setup. <span class="grad-text">Just ask.</span></h1>
-        <p class="lede">Keep one reviewed setup in Git across your team's agents and machines. Ask your agent to add or update skills, instructions, and hooks. Dalo checks approvals and preserves your own files during sync.</p>
+        <p class="lede">One reviewed set of skills, instructions, and hooks, synced into every agent on every machine. Ask your agent to add or update them. Dalo checks approvals and never overwrites what it doesn't own.</p>
         <div class="hero-actions">
           <a class="btn" href="#quickstart">Set up with your agent
             <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3 8h9.5M8.5 3.5 13 8l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -119,7 +119,7 @@
               <span class="sr-only">Copy</span>
             </button>
           </div>
-          <p class="install-note">Recommended for local coding agents on macOS and Linux. The agent sets up Dalo and its bundled assistant. Then keep using it in conversation. <a href="/docs/assistant.html">How it works</a></p>
+          <p class="install-note">For local coding agents on macOS and Linux.</p>
           <details class="manual-setup prompt-help">
             <summary>Agent can't find Dalo?</summary>
             <div class="install prompt-box">
@@ -181,7 +181,6 @@
           <span class="kicker">One shared setup</span>
           <h2 id="how-title">Your team chooses the skills.<br>Everyone can use the same set.</h2>
         </div>
-        <p>Keep your team's skills in one Git repository. Connect it on your machine, then sync the set into the agents you use.</p>
       </div>
       <figure class="team-demo" data-team-demo aria-labelledby="team-demo-title">
         <figcaption class="team-toolbar">
@@ -255,32 +254,7 @@
           <span class="team-packet" data-team-packet aria-hidden="true">✦</span>
         </div>
       </figure>
-      <div class="team-story-links"><a class="link-arrow" href="/docs/team.html">Set up a team repository <span aria-hidden="true">↗</span></a><a href="/docs/agents.html">6 verified agents + any skill folder <span aria-hidden="true">↗</span></a></div>
-    </div>
-  </section>
-
-  <!-- ───────────────────────── WHAT DALO MANAGES ───────────────────────── -->
-  <section class="capabilities" aria-labelledby="capabilities-title">
-    <div class="wrap">
-      <h2 id="capabilities-title">Skills, instructions, and hooks. One shared setup.</h2>
-      <p class="capabilities-intro">A skill is a folder with a <code class="inl">SKILL.md</code> that teaches an agent one job. Dalo manages the setup around it, too.</p>
-      <div class="capability-grid">
-        <article class="capability" style="--c:#7b5cf5">
-          <h3>Skills</h3>
-          <p>Select and review skills from Git sources, then sync the same pinned set into supported agent folders.</p>
-          <a href="/docs/getting-started.html">Manage skills <span aria-hidden="true">→</span></a>
-        </article>
-        <article class="capability" style="--c:#2b8fd6">
-          <h3>Instruction packs</h3>
-          <p>Share the rules that are not skills as managed blocks in Codex <code>AGENTS.md</code> and Claude <code>CLAUDE.md</code>. Dalo updates only its own block; the rest of the file stays yours.</p>
-          <a href="/docs/reference.html#dalo-instructions-enable-pack-ref-file--target-agent">Share instructions <span aria-hidden="true">→</span></a>
-        </article>
-        <article class="capability" style="--c:#c24b22">
-          <h3>Hooks and tools</h3>
-          <p>Package hooks together with the tools they run. Each one waits for its own approval before Dalo projects it into Codex or Claude.</p>
-          <a href="/docs/plugins.html#hooks">Explore plugins <span aria-hidden="true">→</span></a>
-        </article>
-      </div>
+      <div class="team-story-links"><a class="link-arrow" href="/docs/team.html">Set up a team repository <span aria-hidden="true">↗</span></a><a href="/docs/agents.html">6 built-in agents + any skill folder <span aria-hidden="true">↗</span></a></div>
     </div>
   </section>
 
@@ -289,7 +263,7 @@
     <div class="wrap quick-grid">
       <div class="quick-copy reveal">
         <h2 id="quickstart-title">Your first step is a message.</h2>
-        <p>Use the coding agent you already have. It handles installation and everyday skill management, with no separate model, API key, or server.</p>
+        <p>Your agent does the work. No separate model, API key, or server.</p>
         <ol class="quick-steps">
           <li>
             <span class="step-label">Ask your agent to set it up</span>
@@ -301,15 +275,10 @@
               <span class="sr-only">Copy</span>
             </button>
             </div>
-            <p class="step-note">Your agent needs local file and command access and installs the Dalo skill as part of setup.</p>
           </li>
           <li>
             <span class="step-label">Tell it what you want to do</span>
-            <p>In Codex, type <code>$dalo</code>. In other agents, select Dalo from the skill picker or use the agent's skill command. Then ask: “Add my team's skill repository,” or “Check my existing skills and explain what needs attention.” Use your own language.</p>
-          </li>
-          <li>
-            <span class="step-label">Use it for the next change, too</span>
-            <p>Keep the Dalo skill selected when you ask for updates or changes. If your host caches its skills, reload them or start a new session after setup.</p>
+            <p>Type <code>$dalo</code> in Codex or pick Dalo in your agent's skill picker, then ask in your own words.</p>
             <a class="link-arrow" href="/docs/assistant.html">Read the conversation guide
               <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </a>
@@ -321,20 +290,9 @@
       </div>
 
       <div class="quick-demo reveal">
-        <div class="everyday-requests">
-          <h3>What you can ask after setup</h3>
-          <p>Try these requests in your agent with the Dalo skill selected:</p>
-          <ul>
-            <li>“What skills do I have, and what needs attention?”</li>
-            <li>“Update my skills and show me what changed.”</li>
-            <li>“Make the same skills available in Claude Code.”</li>
-            <li>“Move my skills.sh setup to Dalo and keep my changes.”</li>
-          </ul>
-          <a class="link-arrow" href="/docs/assistant.html">More things you can ask <span aria-hidden="true">→</span></a>
-        </div>
-        <details class="manual-setup">
-          <summary>Try the CLI in a throwaway sandbox</summary>
-          <p class="install-note">Install the binary first with the terminal instructions above. <code class="inl">npx getdalo</code> also runs it without a global install. These commands use temporary folders. Afterwards, <code class="inl">unset DALO_STORE SKILLS_DIR</code> returns your shell to your real setup.</p>
+        <details class="manual-setup" open>
+          <summary>Or try the CLI in a throwaway sandbox</summary>
+          <p class="install-note">No CLI yet? Use <code class="inl">npx getdalo</code> in place of <code class="inl">dalo</code>, and <code class="inl">unset DALO_STORE SKILLS_DIR</code> when you're done.</p>
         <div class="lterm">
           <div class="term-bar">
             <div class="dots" aria-hidden="true"><span></span><span></span><span></span></div>
@@ -368,23 +326,23 @@
 
     <div class="wrap starts reveal" id="start">
       <h3 id="start-title">Not starting from zero?</h3>
-      <p class="starts-sub">Pick the situation that matches yours. Dalo leaves existing folders alone until you decide.</p>
+      <p class="starts-sub">Dalo leaves existing folders alone until you decide.</p>
       <ul class="starts-grid" aria-labelledby="start-title">
         <li class="start" style="--c:#e8623a">
           <h4>Skills already in an agent folder</h4>
-          <p>Ask: “Check my existing skills and bring them under Dalo. Keep my changes.” Your agent inspects them first and explains the adoption plan. <a href="/docs/getting-started.html#adopt-a-skill-an-agent-wrote">Adopt a skill</a></p>
+          <p>Ask: “Move my existing skills to Dalo and keep my changes.” <a href="/docs/getting-started.html#adopt-a-skill-an-agent-wrote">Adopt a skill</a></p>
         </li>
         <li class="start" style="--c:#7b5cf5">
           <h4>A project that uses skills.sh</h4>
-          <p>Ask: “Move this project's skills.sh setup to Dalo.” Dalo checks installed copies against their sources; your agent explains any differences that need a decision. <a href="/docs/projects.html#migrate-a-skillssh-project">Migration guide</a></p>
+          <p>Ask: “Move this project from skills.sh to Dalo.” <a href="/docs/projects.html#migrate-a-skillssh-project">Migration guide</a></p>
         </li>
         <li class="start" style="--c:#2b8fd6">
           <h4>Skills for one repository</h4>
-          <p>Ask: “Set up Dalo for this repository so every clone gets the same skills.” A committed project definition pins the set, with a separate store in each clone. <a href="/docs/projects.html">Project installations</a></p>
+          <p>Ask: “Give every clone of this repo the same skills.” <a href="/docs/projects.html">Project installations</a></p>
         </li>
         <li class="start" style="--c:#16925b">
           <h4>A team sharing skills</h4>
-          <p>Ask your agent to connect your team's skill repository. Everyone draws from the same Git source; catalog approvals stay on each machine. <a href="/docs/team.html">Team repository guide</a></p>
+          <p>Ask: “Connect our team's skill repository.” Catalog approvals stay on each machine. <a href="/docs/team.html">Team repository guide</a></p>
         </li>
       </ul>
     </div>
@@ -398,11 +356,7 @@
         <div class="copy-col">
           <span class="kicker"><span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="3.5" cy="3.5" r="1.8" fill="currentColor"/><circle cx="3.5" cy="12.5" r="1.8" fill="currentColor"/><circle cx="12.5" cy="8" r="2.2" fill="currentColor"/><path d="M3.5 3.5C8 3.5 8 8 12.5 8M3.5 12.5C8 12.5 8 8 12.5 8" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></span>One source of truth</span>
           <h2>One pinned set. Every machine.</h2>
-          <p class="body">Keep your team's skills at a chosen Git revision. A new source commit does not silently change that set. Advance the pin when you're ready, then sync the same version on every machine.</p>
-          <p class="feature-copy-note">In a global team setup, catalog approvals stay local. Project installations can use a reviewed declaration. <a href="/docs/projects.html#approval-modes">Compare approval modes.</a></p>
-          <a class="link-arrow" href="#how">See how it works
-            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </a>
+          <p class="body">Skills sit at an exact Git commit until you advance the pin. Then every machine gets the same version.</p>
         </div>
         <figure class="panel feature-demo pin-demo" data-feature-demo="pins" aria-labelledby="pin-caption">
           <figcaption class="feature-toolbar"><span>Interactive example · pinned versions</span><button class="feature-control" data-feature-control type="button" hidden aria-label="Replay pinned versions example"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 5a5 5 0 1 1-1 5M3 1v4h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Replay</span></button></figcaption>
@@ -428,7 +382,7 @@
         <div class="copy-col">
           <span class="kicker"><span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 1.8 13 3.8v3.7c0 3.1-2.1 5.6-5 6.7-2.9-1.1-5-3.6-5-6.7V3.8z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="m5.6 8 1.7 1.7 3.2-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Reviewed first</span>
           <h2>Review skills before they reach an agent.</h2>
-          <p class="body">Your agent helps you understand what a skill does before you decide to trust it. Dalo checks every skill with fifteen local security rules and requires approval for catalog skills before linking them.</p>
+          <p class="body">Your agent explains a skill before you trust it. Dalo checks every skill against fifteen local security rules, and catalog skills, tools, and hooks wait for your approval.</p>
           <a class="link-arrow" href="/docs/security.html">Read the security model
             <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </a>
@@ -456,8 +410,7 @@
         <div class="copy-col">
           <span class="kicker"><span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="2.5" y="2.5" width="11" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5.5 8h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span>Safe by default</span>
           <h2>Only touches what it owns.</h2>
-          <p class="body">During sync, Dalo leaves your own files and folders in place. It updates only the links and managed content it owns, and reports conflicts that need your decision. Ask your agent to preview changes with <code class="inl">--dry-run</code>.</p>
-          <p class="rule">Dalo may manage what it owns. It does not take ownership by surprise.</p>
+          <p class="body">Sync updates only the links and managed blocks Dalo owns. Your own files stay put, and conflicts wait for your call. Want a preview? Ask for a <code class="inl">--dry-run</code>.</p>
         </div>
         <figure class="panel feature-demo ownership-demo" data-feature-demo="ownership" aria-labelledby="ownership-caption">
           <figcaption class="feature-toolbar"><span>Illustrative workflow · file ownership</span><button class="feature-control" data-feature-control type="button" hidden aria-label="Replay file ownership example"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 5a5 5 0 1 1-1 5M3 1v4h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Replay</span></button></figcaption>
@@ -483,7 +436,6 @@
     <div class="wrap compare-grid">
       <div class="reveal">
         <h2 id="compare-title">When your agent setup becomes team infrastructure.</h2>
-        <p>Dalo pins and reviews skills, shares standing instructions, and gates tools and hooks through exact approvals.</p>
       </div>
       <div class="reveal">
         <div class="table-wrap">
@@ -530,7 +482,7 @@
             </tbody>
           </table>
         </div>
-        <p class="compare-note">Snapshot from September 2026. Find skills on skills.sh, then let Dalo pin and deliver the ones your team selects. <a href="/docs/comparison.html">Read the full comparison</a></p>
+        <p class="compare-note">Snapshot from September 2026 for the skills CLI (v1.6.0) and agentfiles (0.9.1); the Dalo column reflects Dalo 1.10 (October 2026). <a href="/docs/comparison.html">Read the full comparison</a></p>
       </div>
     </div>
   </section>
@@ -538,38 +490,29 @@
   <!-- ───────────────────────── STABILITY ───────────────────────── -->
   <section class="stability" id="stability" aria-labelledby="stability-title">
     <div class="wrap">
-      <h2 id="stability-title" class="reveal">Built to rely on.</h2>
+      <h2 id="stability-title" class="reveal">Early, and used every day.</h2>
       <p class="sub reveal">
-        Dalo is v<span data-dalo-version>1.10.0</span>. <!-- x-release-please-version -->
-        Sources, deterministic resolution, security audits and review gates, safe sync, and diagnostics have all shipped, under the 1.x compatibility contract.
+        Dalo is v<span data-dalo-version>1.10.0</span>, and we run it on our own machines every day. <!-- x-release-please-version -->
+        Sources, deterministic resolution, security audits and review gates, safe sync, and diagnostics have shipped under the 1.x <a href="/docs/compatibility.html">compatibility contract</a>. That contract and the <a href="/docs/security.html">security model</a> also say what Dalo doesn't promise.
       </p>
-      <ul class="stats reveal" aria-label="Checkable facts about this project">
-        <li>
-          <a href="https://github.com/sebastian-software/dalo/releases" rel="noopener">
-            <strong data-dalo-releases>36</strong>
-            <span>releases, every one public</span>
-          </a>
-        </li>
-        <li>
-          <a href="https://github.com/sebastian-software/dalo/blob/main/coverage-threshold" rel="noopener">
-            <strong>86.9%</strong>
-            <span>minimum line coverage, enforced in CI</span>
-          </a>
-        </li>
-        <li>
-          <a href="/docs/compatibility.html#supported-platforms">
-            <strong>5</strong>
-            <span>signed release targets with Sigstore provenance</span>
-          </a>
-        </li>
-        <li>
-          <a href="https://github.com/sebastian-software/dalo/issues?q=is%3Aissue+label%3Asecurity+is%3Aclosed" rel="noopener">
-            <strong class="stat-outcome">All findings resolved</strong>
-            <span>4 findings from the September 2026 audit, all closed</span>
-          </a>
-        </li>
-      </ul>
-      <p class="stab-foot reveal">Remaining proposals are tracked in <a href="https://github.com/sebastian-software/dalo/issues?q=is%3Aissue+is%3Aopen+label%3Atype%3Afeature" rel="noopener">open feature issues</a>.</p>
+      <div class="fit reveal">
+        <div>
+          <h3>Who it's for</h3>
+          <ul>
+            <li>Teams sharing skills across people and machines</li>
+            <li>Anyone who wants exact pins and a review step before a skill reaches an agent</li>
+            <li>People who'd rather talk to their agent than learn a CLI</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Not (yet) for</h3>
+          <ul>
+            <li><a href="https://github.com/sebastian-software/dalo/issues/830" rel="noopener">Native Windows</a> (WSL works)</li>
+            <li>Finding skills: browse <a href="https://skills.sh" rel="noopener">skills.sh</a>, then pin your picks with Dalo</li>
+            <li>A one-off try: <code class="inl">npx skills</code> is quicker</li>
+          </ul>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -578,7 +521,7 @@
     <div class="wrap recovery-grid">
       <div class="sec-head reveal">
         <h2 id="recovery-title">Get it wrong. Dalo gets you back.</h2>
-        <p>Typos get a suggestion, unknown skills get the list of known ones, and a blocked sync prints the exact command that unblocks it.</p>
+        <p>Typos get a suggestion, and a blocked sync names the command that unblocks it.</p>
       </div>
 
       <div class="lterm reveal" role="group" aria-label="Examples of Dalo recovery guidance">
@@ -607,8 +550,7 @@
     <div class="veil" aria-hidden="true"></div>
     <div class="wrap cta-inner">
       <img class="cta-logo" src="/assets/img/logo.svg" width="160" height="140" alt="" />
-      <h2 id="cta-title">Use your agent to manage your setup.</h2>
-      <p>Ask your agent to add skills, review updates, or fix a problem in your setup. Dalo's approval and ownership checks still apply when your agent runs the sync.</p>
+      <h2 id="cta-title">Just ask.<br>You keep the final say.</h2>
       <div class="install prompt-box">
         <p id="cta-install-prompt">Install Dalo, the agent skill manager.</p>
         <button class="copy" type="button" data-copy-target="cta-install-prompt" aria-label="Copy agent setup prompt">
@@ -617,7 +559,7 @@
           <span class="sr-only">Copy</span>
         </button>
       </div>
-      <p class="install-note">Open source under MIT or Apache-2.0. Uses your existing local coding agent on macOS or Linux. <a href="/install.md">Agent setup guide</a></p>
+      <p class="install-note">Open source under MIT or Apache-2.0, for macOS and Linux. <a href="/install.md">Agent setup guide</a></p>
       <div class="hero-actions">
         <a class="btn" href="/docs/assistant.html">Use Dalo through your agent
           <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3 8h9.5M8.5 3.5 13 8l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -639,7 +581,7 @@
           <img class="brand-mark" src="/assets/img/logo.svg" width="34" height="30" alt="" />
           <img class="brand-word" src="/assets/img/wordmark.svg" width="55" height="14" alt="" />
         </a>
-        <p>Git-backed skills, instructions, and hooks for AI agents. Built in Rust.</p>
+        <p>Your team's agent skills, versioned like code. Built in Rust.</p>
       </div>
       <nav class="footer-cols" aria-label="Footer">
         <div class="footer-col">
