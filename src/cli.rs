@@ -6586,7 +6586,14 @@ mod tests {
         let prepared = assistant_transition_lines(&assistant_report(Missing, &[]), &current);
         assert_eq!(prepared.len(), 2, "{prepared:?}");
         assert!(prepared[0].starts_with("prepared the bundled Dalo skill in "));
-        assert!(prepared[1].starts_with("delivered to /tmp/agent/skills/dalo;"));
+        // The delivered path is compacted against the current home directory,
+        // which differs between hosts and containers, so compare against the
+        // same compaction instead of a literal.
+        let delivered = compact_link_path(std::path::Path::new("/tmp/agent/skills/dalo"));
+        assert!(
+            prepared[1].starts_with(&format!("delivered to {delivered};")),
+            "{prepared:?}"
+        );
 
         let mut pending = assistant_report(Current, &[]);
         pending.undelivered_targets = vec!["generic".to_owned()];
