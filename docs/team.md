@@ -291,7 +291,6 @@ and changes only the reviewed version value.
 On their own machine, once:
 
 ```sh
-dalo init
 dalo target detect
 dalo target link claude
 dalo source add company git@github.com:acme/agent-skills.git
@@ -373,7 +372,6 @@ supported in Dalo 1.x.
 Same team, new laptop. Nothing is copied from the old machine:
 
 ```sh
-dalo init
 dalo target detect
 dalo target link claude
 dalo source add company git@github.com:acme/agent-skills.git
