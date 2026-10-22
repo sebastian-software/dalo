@@ -4797,6 +4797,7 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
                 status::print_catalog_add_report(
                     &outcome.source,
                     outcome.available_skills,
+                    &outcome.inventory_warnings,
                     options.dry_run,
                     &options.store,
                 );
@@ -4828,8 +4829,19 @@ fn run_source(options: &GlobalOptions, command: SourceCommand) -> DaloResult<()>
             } else {
                 Some(store::StoreLock::acquire(&paths)?)
             };
-            let report =
+            let mut report =
                 catalog::select_skills(&paths, &args.id, &args.skills, false, options.dry_run)?;
+            if !options.dry_run {
+                // Replacing a selected path can orphan its previously staged binary.
+                let config = store::read_config(&paths)?;
+                let approvals = store::read_approvals(&paths)?;
+                let cleanup = binary::collect_unreferenced(
+                    &paths,
+                    &binary::snapshot(&paths, &config.sources, &approvals.approvals),
+                );
+                report.removed_binary_paths = cleanup.removed_paths;
+                report.binary_cleanup_warnings = cleanup.warnings;
+            }
             if options.json {
                 print_json(&report)?;
             } else {

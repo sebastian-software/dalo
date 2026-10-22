@@ -16856,7 +16856,7 @@ fn catalog_select_should_accept_a_source_qualified_slot_reference() {
 }
 
 #[test]
-fn catalog_select_should_choose_the_first_path_for_duplicate_slots() {
+fn catalog_select_should_reject_ambiguous_slots_without_changing_state() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
@@ -16864,55 +16864,36 @@ fn catalog_select_should_choose_the_first_path_for_duplicate_slots() {
     create_git_catalog_repo_with_duplicate_slots(&repo);
     setup_store_with_target(&store, &target);
 
-    dalo_command()
+    let add = dalo_command()
         .args(["--store"])
         .arg(&store)
-        .args(["source", "add-catalog", "catalog"])
+        .args(["source", "add-catalog", "library"])
         .arg(&repo)
         .assert()
-        .success();
-    dalo_command()
-        .args(["--store"])
-        .arg(&store)
-        .args(["source", "select", "catalog", "shared"])
-        .assert()
-        .success();
-    approve_source(&store, "catalog");
-    dalo_command()
-        .args(["--store"])
-        .arg(&store)
-        .arg("sync")
-        .assert()
-        .success();
-
-    let linked = std::fs::read_link(target.join("shared")).expect("selected skill should link");
-    assert!(linked.ends_with("sources/catalog/checkout/skills/a"));
-    let user_lock = read_user_lock(&store);
-    assert_eq!(
-        user_lock
-            .active_skills
-            .iter()
-            .filter(|skill| skill.source_ref == "catalog:shared")
-            .count(),
-        1
-    );
-    assert!(user_lock.unlinked_skills.is_empty());
-    let source_lock = read_source_lock(&store);
-    assert_eq!(
-        source_lock
-            .catalog("catalog")
-            .expect("catalog source should be locked")
-            .selected,
-        ["skills/a".to_owned()]
-    );
-    dalo_command()
-        .args(["--store"])
-        .arg(&store)
-        .arg("status")
-        .assert()
         .success()
-        .stdout(predicate::str::contains("shadowed catalog:shared").not())
-        .stdout(predicate::str::contains("lock drift:").not());
+        .get_output()
+        .stdout
+        .clone();
+    let add = String::from_utf8(add).unwrap();
+    assert!(add.contains("duplicate_slot_name"), "{add}");
+    assert!(add.contains("source `library`"), "{add}");
+    assert!(add.contains("skills/a"), "{add}");
+    assert!(add.contains("skills/b"), "{add}");
+    let paths = store::StorePaths::new(store.clone());
+    let config_before = std::fs::read(&paths.config_file).unwrap();
+    let lock_before = std::fs::read(&paths.source_lock_file).unwrap();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "library", "shared"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("select by catalog-relative path"))
+        .stderr(predicate::str::contains("skills/a"))
+        .stderr(predicate::str::contains("skills/b"));
+    assert_eq!(std::fs::read(&paths.config_file).unwrap(), config_before);
+    assert_eq!(std::fs::read(&paths.source_lock_file).unwrap(), lock_before);
+    assert!(!target.join("shared").exists());
 }
 
 #[test]
@@ -17147,6 +17128,147 @@ fn catalog_select_should_pin_a_path_when_stable_ids_are_duplicated() {
         .clone();
     let refresh: serde_json::Value = serde_json::from_slice(&refresh).unwrap();
     assert_eq!(refresh["outcomes"], serde_json::json!([]));
+}
+
+#[test]
+fn catalog_select_should_keep_an_explicit_path_when_its_id_equals_the_slot() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = temp.path().join("store");
+    let target = temp.path().join("target");
+    let repo = temp.path().join("repo");
+    create_git_catalog_repo_with_duplicate_slots(&repo);
+    std::fs::write(
+        repo.join("skills/b/SKILL.md"),
+        "---\nname: shared\nid: shared\n---\n# Shared B\n",
+    )
+    .unwrap();
+    run_git(&repo, &["add", "."]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-qm",
+            "Add colliding ID",
+        ],
+    );
+    setup_store_with_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "catalog"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "catalog", "skills/b"])
+        .assert()
+        .success();
+    assert_eq!(
+        read_source_lock(&store)
+            .catalog("catalog")
+            .unwrap()
+            .selected,
+        ["skills/b"]
+    );
+    let inspect =
+        dalo::catalog::inspect_catalog(&store::StorePaths::new(store.clone()), "catalog").unwrap();
+    let selected: Vec<_> = inspect
+        .candidates
+        .iter()
+        .filter(|candidate| candidate.selected)
+        .collect();
+    assert_eq!(selected.len(), 1);
+    assert_eq!(selected[0].path, "skills/b");
+    approve_source(&store, "catalog");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    assert!(
+        std::fs::read_link(target.join("shared"))
+            .unwrap()
+            .ends_with("skills/b")
+    );
+}
+
+#[test]
+fn catalog_path_replacement_should_clean_the_previous_binary() {
+    let bytes = b"verified catalog binary";
+    let digest = sha256_hex(bytes);
+    let temp = tempfile::tempdir().unwrap();
+    let store = store::comparable_path(&temp.path().join("store"));
+    let repo = temp.path().join("repo");
+    create_git_catalog_repo_with_duplicate_slots(&repo);
+    std::fs::write(
+        repo.join("skills/a/SKILL.md"),
+        page_engine_skill(&host_asset(&digest)).replace("name: page-engine", "name: shared"),
+    )
+    .unwrap();
+    run_git(&repo, &["add", "."]);
+    run_git(
+        &repo,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-qm",
+            "Add binary declaration",
+        ],
+    );
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("init")
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "catalog"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "catalog", "skills/a"])
+        .assert()
+        .success();
+    stage_host_bytes(&store, &digest, bytes);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["approve", "binary", "catalog:shared#binary:impeccino"])
+        .assert()
+        .success();
+    assert!(std::fs::symlink_metadata(store.join("bin/impeccino")).is_ok());
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "catalog", "skills/b"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "removed: store:/binaries/{digest}"
+        )))
+        .stdout(predicate::str::contains("removed: store:/bin/impeccino"));
+    assert!(!store.join("binaries").join(&digest).exists());
+    assert!(std::fs::symlink_metadata(store.join("bin/impeccino")).is_err());
 }
 
 #[test]

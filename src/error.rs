@@ -317,7 +317,9 @@ pub enum DaloError {
     },
 
     /// A catalog skill selector matches more than one candidate.
-    #[error("catalog skill reference `{reference}` is ambiguous; matches: {matches}")]
+    #[error(
+        "catalog skill reference `{reference}` is ambiguous; select by catalog-relative path; matches: {matches}"
+    )]
     AmbiguousSkillReference {
         /// User-provided selector.
         reference: String,

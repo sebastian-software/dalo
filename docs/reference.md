@@ -483,6 +483,8 @@ configure it with `update_policy = "pin"`. Catalog skills are offers; nothing
 from a catalog becomes active until selected and approved.
 After adding a catalog, the CLI reports how many skills are available and prints
 the exact `source inspect` and `source select` commands for the next step.
+Discovery warnings identify duplicate slots and show both paths. The catalog
+can still be added because its skills are not active until selected.
 Local paths are supported; relative paths resolve against the current working
 directory.
 
@@ -495,7 +497,8 @@ dalo source inspect public
 dalo source select public review-helper
 ```
 
-JSON output shape: `CatalogAddOutcome` (`source`, `available_skills`, `dry_run`).
+JSON output shape: `CatalogAddOutcome` (`source`, `available_skills`, optional
+`inventory_warnings[]`, `dry_run`).
 `available_skills` is `null` during a dry run because no catalog checkout is
 created or inspected.
 
@@ -568,13 +571,15 @@ JSON output shape: `CatalogInspectReport`.
 Select catalog skills by stable frontmatter ID, slot name, catalog-relative path,
 or a source-qualified `<source-id>:<slot-or-stable-id>` reference. The source ID
 must match the catalog being selected.
-A bare slot name selects the first catalog-relative path in lexical order when
-several candidates share that slot. Use an explicit path to choose another
-candidate. Selecting a different path for an already selected slot replaces
-that slot's previous selection; selecting multiple paths for one slot in the
-same command is rejected. Only one skill per source and slot is resolved.
-Selections use a stable ID when it is unique in the catalog, otherwise the
-catalog-relative path preserves the chosen candidate.
+A slot name shared by several candidates is ambiguous and fails with their
+paths; use a catalog-relative path to select one. Selecting a different path for
+an already selected slot replaces that slot's previous selection; selecting
+multiple paths for one slot in the same command is rejected. Only one skill per
+source and slot is resolved.
+Selections use a stable ID when it uniquely identifies a candidate and its slot,
+otherwise the catalog-relative path preserves the chosen candidate. A path
+replacement also removes staged binaries and exposure links that no selected
+declaration still needs.
 Selection runs the deterministic security preflight, writes
 `config.toml`, and updates `source-lock.toml` with the pinned commit and
 inventory snapshot. Human-readable output names the skills added or removed,
@@ -1535,7 +1540,7 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `team catalog remove` | `TeamManifestMutationReport` | `path`, `action`, `catalog_id`, `dry_run`, optional `warnings[]`, resulting `manifest` |
 | `team show` | `TeamManifestView` | `path`, `manifest` |
 | `source add` | `SourceAddReport` | `source`, `dry_run`, `audits[]` with one `AuditReport` per discovered skill, optional `inventory_warnings[]` (`code`, `path`, `message`) |
-| `source add-catalog` | `CatalogAddOutcome` | resulting `source`, nullable `available_skills`, `dry_run` |
+| `source add-catalog` | `CatalogAddOutcome` | resulting `source`, nullable `available_skills`, optional `inventory_warnings[]` (`code`, `path`, `message`), `dry_run` |
 | `source list` | `SourceListReport` | `sources[]`, each with existing `SourceConfig` fields plus `provenance` |
 | `source priority` | `SourcePriorityReport` | `source`, `dry_run` |
 | `source namespace <id> [<prefix>] [--clear]` | `SourceNamespaceReport` | `source`, `changed`, `dry_run` |
