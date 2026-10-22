@@ -90,7 +90,16 @@ dalo source add company git@github.com:acme/agent-skills.git
 ```
 
 Dalo clones it, discovers the skills under `skills/`, and runs a deterministic
-security preflight over every one of them before anything is linked.
+security preflight over every one of them before anything is linked. A clean
+result takes one line:
+
+```text
+added source company (2 skills checked, no findings)
+next: dalo sync
+```
+
+A finding, partial coverage, or a declared release binary prints the full audit
+for that skill instead.
 
 If your team repository also pins public catalogs in a `dalo.toml` manifest,
 those arrive automatically as `company.<catalog-id>` sources. They are
@@ -127,6 +136,9 @@ synced: 2 skills across 1 target (2 created)
 security preflight: deterministic checks only
 ```
 
+The last line qualifies the preflight that just ran on these new skills. A sync
+that finds nothing new or changed leaves it out.
+
 Dalo creates symlinks it owns. It never overwrites an unmanaged directory or a
 symlink it did not create; anything it cannot do safely is reported instead.
 
@@ -141,10 +153,14 @@ dalo status
 dalo next
 ```
 
-`status` is the full picture: sources, targets, active skills, pending
-approvals, unlinked skills, materialization blocks, resolution diagnostics, and
-lock drift. `dalo status --check` exits non-zero when anything needs attention,
-which is what you want in a script or a pipeline.
+`status` is the full picture, and it opens with what needs you. The `needs you`
+section lists every item that blocks or waits, each with the command that clears
+it, and is absent when nothing does. Sources, targets, and active skills follow,
+then the detail: pending approvals, unlinked skills, materialization blocks,
+resolution diagnostics, and changes that are waiting for sync.
+`dalo status --all` adds where each source comes from and the counts that are
+zero. `dalo status --check` exits non-zero when anything needs attention, which
+is what you want in a script or a pipeline.
 
 `next` is the opposite: one summary and exactly one copyable command.
 
@@ -176,16 +192,18 @@ A skill is available but untrusted, so Dalo will not link it. Catalog sources
 and catalogs pinned by a team manifest start here by design.
 
 ```text
-pending approval:
-  review-helper -> public:review-helper (run: dalo approve skill public:review-helper)
+needs you:
+  review-helper (public): waiting for approval
+    run: dalo approve skill public:review-helper
 ```
 
-`sync` still does all the other work and repeats the same line at the end:
+Further down, `pending approval:` lists the same skill with any compatibility
+note it declares. `sync` still does all the other work and repeats the command
+at the end:
 
 ```text
 synced: 2 skills across 1 target (2 unchanged)
 pending approval: public:review-helper (run: dalo approve skill public:review-helper)
-security preflight: deterministic checks only
 ```
 
 Read the skill first — `dalo audit public:review-helper` prints the deterministic
@@ -194,6 +212,13 @@ findings and the exact content hash — then run the command status gave you:
 ```sh
 dalo approve skill public:review-helper
 dalo sync
+```
+
+A clean approval is one line:
+
+```text
+approved public:review-helper (checked, no findings)
+next: dalo sync to link it
 ```
 
 Approvals are per skill, per machine, and bound to exact content. They are
@@ -210,6 +235,10 @@ unlinked skills:
 resolution diagnostics:
   shadowed: skill `company:release-notes` is unlinked because `personal:release-notes` wins the same slot
 ```
+
+`sync` prints the `shadowed` diagnostic once, on the sync that records the new
+winner. After that the outcome is a steady state you chose, so only `status`
+keeps showing it.
 
 The lower priority number wins. If you want to change the winner, first inspect
 the source authority with `dalo source list --json`, then preview the
@@ -246,16 +275,20 @@ Dalo wants a slot that is already occupied by a real, unmanaged directory —
 usually a skill an agent wrote directly into its own folder.
 
 ```text
-materialization blocks:
-  target[claude]:/standup-notes: real unmanaged entry exists at target slot
-unmanaged skills:
-  standup-notes -> target[claude]:/standup-notes (adopt: run `dalo adopt 'standup-notes'` to copy it into the local source; use `dalo adopt 'standup-notes' --replace` to replace the original)
+needs you:
+  target[claude]:/standup-notes: a folder you own is already there
+    keep yours:   dalo resolve keep standup-notes
+    bring it in:  dalo adopt standup-notes --replace
 ```
 
-`sync` reports the block and leaves your file alone:
+The slot appears once more, without the commands, under `unmanaged skills:`.
+`sync` reports the block with the same two ways out and leaves your folder
+alone:
 
 ```text
-blocked  conflict   target[claude]:/standup-notes -> store:/sources/company/checkout/skills/standup-notes (real unmanaged entry exists at target slot) …
+blocked  conflict   target[claude]:/standup-notes: a folder you own is already there
+                    keep yours:   dalo resolve keep standup-notes
+                    bring it in:  dalo adopt standup-notes --replace
 synced: 4 skills across 1 target (3 unchanged, 1 blocked)
 ```
 
@@ -310,7 +343,10 @@ dalo doctor
 ## Explore without touching your agent folders
 
 Everything above also works in a throwaway store with a temporary folder as the
-target. Nothing in this section writes to a real agent directory.
+target. Nothing in this section writes to a real agent directory. A sandbox
+store stays quiet about the Dalo skill that your global store already delivered
+to your agent folders; `dalo assistant status` and `dalo doctor`
+(`assistant_external`) still report it on request.
 
 ### A sandbox store
 
@@ -338,8 +374,16 @@ ls -la "$target_dir"
 ```
 
 The local source is private to your machine: experiments and overrides live
-there. `status` may show a `lock drift` block until the next `sync` records the
-new skill; see [Lock Drift](troubleshooting.md#lock-drift).
+there. Until the next `sync` records the new skill, `status` lists it as waiting:
+
+```text
+needs you:
+  review (local): waiting for sync
+    run: dalo sync
+```
+
+See [Lock Drift](troubleshooting.md#lock-drift) for what else status reports
+before a sync.
 
 ### A local team source
 
@@ -398,7 +442,10 @@ dalo sync
 ```
 
 `source add`, `source select`, and `approve skill` run deterministic local
-preflight checks. `sync` repeats them against the exact content about to be
+preflight checks and report a clean result in one line, such as
+`selected review-helper from public (checked, no findings)`; `dalo audit`
+always prints the full report. `sync` repeats the checks against the exact
+content about to be
 linked and blocks unaccepted `high` or `critical` findings from those checks or
 a compatible cached review. `sync` does not start an agent reviewer, and a
 passing preflight is not a safety guarantee.
@@ -440,8 +487,11 @@ it under `unmanaged skills`. Copy it into the private local source:
 dalo adopt release-notes
 ```
 
-Adoption prints a local security preflight before it copies anything. Replacing
-the original folder with a Dalo-owned symlink is a separate explicit step:
+Adoption runs a local security preflight before it copies anything. A clean
+result shows as `(checked, no findings)` on the copy line. A finding prints the
+full audit, and a high or critical one stops the adoption until you accept the
+risk. Replacing the original folder with a Dalo-owned symlink is a separate
+explicit step:
 
 ```sh
 dalo adopt --replace release-notes

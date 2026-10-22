@@ -299,9 +299,12 @@ dalo sync
 ```
 
 Your team skills link immediately. The catalogs you pinned show up as their own
-source, namespaced with the team ID:
+source, namespaced with the team ID, and `dalo status --all` adds where each
+one comes from:
 
 ```text
+$ dalo status --all
+…
 sources:
   company      team priority=10   skills=1   agents=0   plugins=0   enabled
   company.marketing catalog priority=11   skills=3   agents=0   plugins=0   enabled
