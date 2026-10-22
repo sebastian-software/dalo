@@ -1,7 +1,9 @@
 # Getting Started
 
 The recommended way to install and use Dalo is through your local coding
-agent. Paste this into the agent you want to set up:
+agent. For the terminal path in four commands, read the
+[five-minute start](five-minutes.md). Paste this into the agent you want to set
+up:
 
 > Install Dalo, the agent skill manager.
 

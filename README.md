@@ -336,6 +336,7 @@ For manual archives, upgrades, shell completions, and removal, see the
 
 ## Documentation
 
+- [Five minutes to the first skill](docs/five-minutes.md)
 - [Getting started](docs/getting-started.md)
 - [Dalo assistant](docs/assistant.md)
 - [Project installations](docs/projects.md)

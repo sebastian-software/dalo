@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Five Minutes to the First Skill · Dalo documentation</title>
+  <meta name="description" content="Install Dalo, link one agent, add one team source, and sync, in about five minutes." />
+  <link rel="canonical" href="https://dalo.sh/docs/five-minutes.html" />
+  <meta name="theme-color" content="#ffffff" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Dalo" />
+  <meta property="og:url" content="https://dalo.sh/docs/five-minutes.html" />
+  <meta property="og:title" content="Five Minutes to the First Skill · Dalo documentation" />
+  <meta property="og:description" content="Install Dalo, link one agent, add one team source, and sync, in about five minutes." />
+  <meta property="og:image" content="https://dalo.sh/assets/img/og.png" />
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/assets/img/favicon.ico" sizes="any" />
+  <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png" />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/docs.css" />
+  <link rel="describedby" type="text/plain" href="/llms.txt" title="Dalo agent documentation" />
+</head>
+<body class="doc-page">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="Dalo home">
+      <img class="brand-mark" src="/assets/img/logo.svg" width="39" height="34" alt="" />
+      <img class="brand-word" src="/assets/img/wordmark.svg" width="63" height="16" alt="" />
+      <span class="brand-section">docs</span>
+    </a>
+    <nav class="nav site-nav" aria-label="Primary">
+      <a href="/">Product</a>
+      <a href="/docs/" aria-current="true">Docs</a>
+      <a href="/spec/">Spec</a>
+      <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+    </nav>
+    <div class="header-cta">
+      <a class="pill-btn" href="/docs/assistant.html">Use your agent
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+      <details class="mobile-menu">
+        <summary aria-label="Open navigation">
+          <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>
+          <span class="sr-only">Menu</span>
+        </summary>
+        <nav class="mobile-nav" aria-label="Mobile">
+          <a href="/">Product</a>
+          <a href="/docs/" aria-current="true">Docs</a>
+          <a href="/spec/">Spec</a>
+          <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+        </nav>
+      </details>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="doc-shell wrap has-toc">
+  <nav class="doc-nav" aria-label="Documentation">
+    <p class="doc-nav-h">Documentation</p>
+    <a href="/docs/">Overview</a>
+    <a href="/docs/five-minutes.html" aria-current="page">Five minutes</a>
+    <a href="/docs/assistant.html">Dalo assistant</a>
+    <a href="/docs/getting-started.html">Getting started</a>
+    <a href="/docs/projects.html">Project installations</a>
+    <a href="/docs/team.html">Team repository</a>
+    <a href="/docs/reference.html">Command reference</a>
+    <a href="/docs/agents.html">Agent integration</a>
+    <a href="/docs/plugins.html">Plugins</a>
+    <a href="/docs/troubleshooting.html">Troubleshooting</a>
+    <a href="/docs/ci.html">Dalo in CI</a>
+    <a href="/docs/security.html">Security overview</a>
+    <a href="/docs/compatibility.html">Compatibility</a>
+    <a href="/docs/comparison.html">Comparison</a>
+    <a href="/docs/upgrading.html">Upgrading to 1.0</a>
+    <a href="/docs/uninstall.html">Uninstall</a>
+  </nav>
+  <details class="doc-menu">
+    <summary><span class="doc-menu-label">Documentation</span> <span class="doc-menu-current">Five minutes</span></summary>
+    <nav class="doc-menu-nav" aria-label="Documentation">
+      <a href="/docs/">Overview</a>
+      <a href="/docs/five-minutes.html" aria-current="page">Five minutes</a>
+      <a href="/docs/assistant.html">Dalo assistant</a>
+      <a href="/docs/getting-started.html">Getting started</a>
+      <a href="/docs/projects.html">Project installations</a>
+      <a href="/docs/team.html">Team repository</a>
+      <a href="/docs/reference.html">Command reference</a>
+      <a href="/docs/agents.html">Agent integration</a>
+      <a href="/docs/plugins.html">Plugins</a>
+      <a href="/docs/troubleshooting.html">Troubleshooting</a>
+      <a href="/docs/ci.html">Dalo in CI</a>
+      <a href="/docs/security.html">Security overview</a>
+      <a href="/docs/compatibility.html">Compatibility</a>
+      <a href="/docs/comparison.html">Comparison</a>
+      <a href="/docs/upgrading.html">Upgrading to 1.0</a>
+      <a href="/docs/uninstall.html">Uninstall</a>
+    </nav>
+  </details>
+  <article class="doc-body">
+<h1 id="five-minutes-to-the-first-skill">Five Minutes to the First Skill</h1>
+<p>At the end you have one team skill, linked into the agent you use.</p>
+<h2 id="through-your-agent"><a class="doc-anchor" href="#through-your-agent">Through your agent</a></h2>
+<blockquote>
+<p>Install Dalo, the agent skill manager.</p>
+</blockquote>
+<p>The agent installs the binary, connects its skill folder, and delivers the
+bundled assistant. Ask it &quot;Add my team&#39;s skill repository,&quot; and you are done.
+<a href="/docs/assistant.html">Use Dalo through your agent</a> covers what comes next.</p>
+<h2 id="in-the-terminal"><a class="doc-anchor" href="#in-the-terminal">In the terminal</a></h2>
+<p>The output below is real. The repository in step 3 is a placeholder for yours.</p>
+<p><strong>1. Run <code>dalo</code>.</strong> The first run creates <code>~/.dalo</code> and prints the summary with
+the next step.</p>
+<pre><code class="language-sh">dalo
+</code></pre>
+<pre><code class="language-text">assistant: prepared the bundled Dalo skill in ~/.dalo/local/skills/dalo
+assistant: next: dalo target detect
+Dalo
+  store: ~/.dalo
+  initialized: yes
+  linked targets: 0
+  sources: 1
+  active skills: 1
+  pending approvals: 0
+
+Next: dalo target detect
+  Link a target so Dalo knows where to materialize skills.
+</code></pre>
+<p><strong>2. Link the agent you use.</strong> This example uses Claude Code.</p>
+<pre><code class="language-sh">dalo target link claude
+</code></pre>
+<pre><code class="language-text">linked target claude -&gt; ~/.claude/skills
+canonical: ~/.claude/skills
+assistant: delivered to ~/.claude/skills/dalo; reload your agent&#39;s skills if needed, then select dalo
+</code></pre>
+<p><strong>3. Add your team&#39;s skill repository.</strong></p>
+<pre><code class="language-sh">dalo source add company git@github.com:acme/agent-skills.git
+</code></pre>
+<pre><code class="language-text">added source company (2 skills checked, no findings)
+next: dalo sync
+</code></pre>
+<p><strong>4. Sync.</strong> Dalo resolves the approved skills and links them into every target.</p>
+<pre><code class="language-sh">dalo sync
+</code></pre>
+<pre><code class="language-text">dalo store: ~/.dalo
+target[claude]: ~/.claude/skills
+existing noop       store:/local/skills/dalo -&gt; store:/local/skills/dalo
+applied  create     store:/sources/company/checkout/skills/incident-review -&gt; store:/sources/company/checkout/skills/incident-review
+applied  create     store:/sources/company/checkout/skills/release-notes -&gt; store:/sources/company/checkout/skills/release-notes
+synced: 3 skills across 1 target (2 created, 1 unchanged)
+security preflight: deterministic checks only
+</code></pre>
+<p>Check the result once:</p>
+<pre><code class="language-sh">dalo status
+</code></pre>
+<pre><code class="language-text">dalo store: ~/.dalo
+sources:
+  local        local priority=0    skills=1
+  company      team priority=10   skills=2
+targets:
+  claude       linked  ~/.claude/skills
+active skills:
+  dalo -&gt; local:dalo
+  incident-review -&gt; company:incident-review
+  release-notes -&gt; company:release-notes
+</code></pre>
+<p>Your agent now reads those skills from the folder it already uses.</p>
+<h2 id="eight-words-youll-meet"><a class="doc-anchor" href="#eight-words-youll-meet">Eight words you&#39;ll meet</a></h2>
+<ul>
+<li><strong>Skill</strong>: a folder with a <code>SKILL.md</code> file that tells an agent how to do a task.</li>
+<li><strong>Source</strong>: a Git repository or local folder that Dalo reads skills from.</li>
+<li><strong>Catalog</strong>: a public source with many skills. You select the ones you want.</li>
+<li><strong>Target</strong>: an agent&#39;s skill folder, such as <code>~/.claude/skills</code>.</li>
+<li><strong>Approve</strong>: trust one catalog skill, so that sync may link it.</li>
+<li><strong>Sync</strong>: fetch updates, check them, and link the approved set into each target.</li>
+<li><strong>Adopt</strong>: copy a skill an agent wrote into its own folder into your local source.</li>
+<li><strong>Conflict</strong>: a folder you own already sits where Dalo wants a link.</li>
+</ul>
+<h2 id="where-next"><a class="doc-anchor" href="#where-next">Where next</a></h2>
+<ul>
+<li><a href="/docs/getting-started.html">Getting started</a>: the full command-line walkthrough.</li>
+<li><a href="/docs/team.html">Team repository guide</a>: publish the source your teammates add.</li>
+<li><a href="/docs/projects.html">Project installations</a>: pin skills per repository.</li>
+<li><a href="/docs/troubleshooting.html">Troubleshooting</a>: each status word and diagnostic, with the command that clears it.</li>
+</ul>
+<p class="doc-source">Source: <a href="https://github.com/sebastian-software/dalo/blob/main/docs/five-minutes.md" rel="noopener">docs/five-minutes.md</a></p>
+  </article>
+  <nav class="doc-toc" aria-label="On this page">
+    <p class="doc-toc-h">On this page</p>
+    <ul>
+      <li><a href="#through-your-agent">Through your agent</a></li>
+      <li><a href="#in-the-terminal">In the terminal</a></li>
+      <li><a href="#eight-words-youll-meet">Eight words you&#39;ll meet</a></li>
+      <li><a href="#where-next">Where next</a></li>
+    </ul>
+  </nav>
+</main>
+
+<footer class="site-footer" id="footer">
+  <div class="wrap">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <a class="brand" href="/" aria-label="Dalo home">
+          <img class="brand-mark" src="/assets/img/logo.svg" width="34" height="30" alt="" />
+          <img class="brand-word" src="/assets/img/wordmark.svg" width="55" height="14" alt="" />
+        </a>
+        <p>Git-backed skills, instructions, and hooks for AI agents. Built in Rust.</p>
+      </div>
+      <nav class="footer-cols" aria-label="Footer">
+        <div class="footer-col">
+          <p class="footer-h">Product</p>
+          <a href="/#how">How it works</a>
+          <a href="/#quickstart">Quickstart</a>
+          <a href="/#compare">Compare</a>
+          <a href="/#stability">Stability</a>
+        </div>
+        <div class="footer-col">
+          <p class="footer-h">Docs</p>
+          <a href="/docs/">All documentation</a>
+          <a href="/docs/assistant.html">Use Dalo through your agent</a>
+          <a href="/docs/getting-started.html">Getting started</a>
+          <a href="/docs/reference.html">Reference</a>
+          <a href="/docs/troubleshooting.html">Troubleshooting</a>
+          <a href="/spec/">Spec</a>
+          <a href="/docs/security.html">Security</a>
+          <a href="/install.md">Install guide</a>
+          <a href="https://github.com/sebastian-software/dalo/releases" rel="noopener">Releases</a>
+        </div>
+        <div class="footer-col">
+          <p class="footer-h">Project</p>
+          <a href="https://github.com/sebastian-software/dalo" rel="noopener">GitHub</a>
+          <a href="https://github.com/sebastian-software/dalo/blob/main/CHANGELOG.md" rel="noopener">Changelog</a>
+          <a href="https://github.com/sebastian-software/dalo/security/policy" rel="noopener">Security policy</a>
+          <a href="https://github.com/sebastian-software/dalo/blob/main/LICENSE-MIT" rel="noopener">MIT license</a>
+          <a href="https://github.com/sebastian-software/dalo/blob/main/LICENSE-APACHE" rel="noopener">Apache-2.0 license</a>
+          <a href="https://github.com/sebastian-software/dalo/issues" rel="noopener">Issues</a>
+        </div>
+      </nav>
+    </div>
+    <div class="footer-company">
+      <div>
+        <a class="company-brand" href="https://sebastian-software.com" rel="noopener">
+          <img src="/assets/img/sebastian-software.svg" width="212" height="41" alt="Sebastian Software GmbH" loading="lazy" />
+        </a>
+        <p class="footer-workshop"><a href="https://oss.sebastian-software.com" rel="noopener">Open-source projects</a></p>
+      </div>
+      <div class="footer-consulting">
+        <h2>
+          <a class="company-brand" href="https://sebastian-consulting.com/en/" rel="noopener">
+            <img src="/assets/img/sebastian-consulting.svg" width="212" height="40" alt="Sebastian Consulting" loading="lazy" />
+          </a>
+        </h2>
+        <p>TypeScript, React, Rust, and agentic software development.</p>
+        <a class="link-arrow" href="https://sebastian-consulting.com/en/" rel="noopener">Work with us
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3 8h9.5M8.5 3.5 13 8l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+      </div>
+    </div>
+    <div class="footer-base">
+      <span>© 2026 <a href="https://sebastian-software.com" rel="noopener">Sebastian Software GmbH</a></span>
+      <nav class="footer-legal" aria-label="Legal">
+        <a href="https://sebastian-software.com/privacy-policy" rel="noopener">Privacy Protection</a>
+        <a href="https://sebastian-software.com/imprint" rel="noopener">Imprint</a>
+      </nav>
+    </div>
+  </div>
+</footer>
+</body>
+</html>
