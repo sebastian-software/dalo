@@ -9,7 +9,7 @@
 
 # Dalo
 
-**Manage your agent's setup. Just ask.**
+**Your team's agent skills, versioned like code.**
 
 [![Powered by Sebastian Software](https://img.shields.io/badge/Powered_by-Sebastian_Software-005164?style=flat)](https://oss.sebastian-software.com) [![Crates.io](https://img.shields.io/crates/v/dalo.svg)](https://crates.io/crates/dalo)
 [![npm](https://img.shields.io/npm/v/getdalo.svg)](https://www.npmjs.com/package/getdalo)
@@ -17,15 +17,14 @@
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
 [![MSRV](https://img.shields.io/badge/rust-1.94%2B-orange.svg)](Cargo.toml)
 
-For engineers and team leads who run Claude Code, Codex, Cursor, or another
-agent: tell your agent what to install, what to update, or what needs
-fixing. It handles the commands and explains the result. Dalo enforces approval
-and ownership checks during sync, so you can manage your setup through conversation
-while keeping control of what you trust.
+One reviewed set of skills, instructions, and hooks, synced into every agent on
+every machine. Ask your agent, or use the CLI. Dalo keeps it all in Git,
+resolves one approved set, and delivers it to the folders Claude Code, Codex,
+Cursor, and other agents already read.
 
-Dalo keeps skills, standing instructions, and hooks in Git, resolves one
-approved set, and delivers it to the folders your agents already read. Your
-team's setup stays versioned like code across people and machines.
+Just ask: tell your agent what to install, update, or fix. It handles the
+commands and explains the result, while Dalo enforces its approval and
+ownership checks during sync.
 
 **[Visit dalo.sh](https://dalo.sh)** · **[Set up with your agent](https://dalo.sh/#quickstart)** · **[Use Dalo through your agent](docs/assistant.md)**
 

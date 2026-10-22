@@ -420,16 +420,6 @@ svg { display: block; }
 }
 
 /* ── What Dalo manages ───────────────────────────────────── */
-.capabilities { padding: 84px 0 72px; border-bottom: 1px solid var(--line-2); }
-.capabilities h2 { font-size: clamp(30px, 3.3vw, 42px); line-height: 1.1; letter-spacing: -.035em; }
-.capabilities-intro { margin-top: 14px; max-width: 60ch; font-size: 17.5px; color: var(--ink-2); }
-.capability-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 48px; margin-top: 44px; }
-.capability { border-top: 2px solid var(--c); padding-top: 22px; }
-.capability h3 { font-size: 22px; line-height: 1.2; letter-spacing: -.025em; }
-.capability p { margin-top: 12px; color: var(--ink-2); }
-.capability code { font-size: .88em; }
-.capability a { display: inline-block; margin-top: 18px; font-weight: 600; color: var(--rust); text-decoration: underline; text-underline-offset: 3px; }
-.capability a:hover { color: var(--ink); }
 
 /* ── Feature rows ────────────────────────────────────────── */
 .features { padding: 72px 0 24px; }
@@ -441,10 +431,6 @@ svg { display: block; }
 .row h2, .sec-head h2 { margin-top: 18px; font-size: clamp(30px, 3.3vw, 42px); line-height: 1.1; letter-spacing: -.035em; font-weight: 700; }
 .row p.body { margin-top: 16px; font-size: 17.5px; line-height: 1.6; color: var(--muted); max-width: 27em; }
 .row .link-arrow { margin-top: 24px; font-size: 15px; }
-.rule {
-  margin: 26px 0 0; padding: 2px 0 2px 18px; border-left: 1px solid var(--peach);
-  font-size: 15.5px; line-height: 1.55; color: var(--ink-2); font-weight: 500; max-width: 26em;
-}
 code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radius: 6px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); }
 
 .panel {
@@ -541,7 +527,6 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
 .quick-steps p { font-size: 15px; line-height: 1.55; color: var(--muted); padding-left: 34px; }
 .quick-steps p code { font-size: 13px; color: var(--ink-2); }
 .quick-steps .prompt-box p { padding-left: 0; font-size: 16px; color: var(--ink); }
-.quick-steps .step-note { margin-top: 10px; font-size: 14px; }
 .quick-steps .link-arrow { margin: 12px 0 0 34px; font-size: 14.5px; }
 /* Touch screens get 44px targets for the header CTA, picker, copy buttons, and menu. */
 @media (pointer: coarse) {
@@ -551,15 +536,10 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
   .lterm .term-bar { height: 48px; }
   .mobile-menu summary { width: 44px; height: 44px; }
 }
-.quick-steps p a, .start a, .row p.body a, .compare-note a, .stab-foot a { color: var(--ink); font-weight: 600; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--coral) 55%, transparent); text-underline-offset: 3px; text-decoration-thickness: 1.5px; }
-.quick-steps p a:hover, .start a:hover, .row p.body a:hover, .compare-note a:hover, .stab-foot a:hover { color: var(--rust); }
+.quick-steps p a, .start a, .row p.body a, .compare-note a, .stability .sub a, .fit a { color: var(--ink); font-weight: 600; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--coral) 55%, transparent); text-underline-offset: 3px; text-decoration-thickness: 1.5px; }
+.quick-steps p a:hover, .start a:hover, .row p.body a:hover, .compare-note a:hover, .stability .sub a:hover, .fit a:hover { color: var(--rust); }
 .quick-copy > .link-arrow { margin-top: 24px; font-size: 15px; }
 .quick-demo { display: grid; gap: 20px; min-width: 0; }
-.everyday-requests { padding: 28px; border-radius: var(--r); background: #fff; box-shadow: var(--shadow-soft); }
-.everyday-requests h3 { font-size: 24px; line-height: 1.2; letter-spacing: -.025em; }
-.everyday-requests > p { margin-top: 12px; font-size: 15px; line-height: 1.55; color: var(--muted); }
-.everyday-requests ul { margin: 20px 0; padding-left: 20px; display: grid; gap: 14px; font-size: 16px; line-height: 1.55; color: var(--ink-2); }
-.everyday-requests .link-arrow { font-size: 15px; }
 .quick-demo > .manual-setup { margin-top: 0; }
 
 /* Alternative starting points, inside the quickstart. */
@@ -598,15 +578,10 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
 .stability { padding: 72px 0 88px; }
 .stability h2 { font-size: clamp(26px, 2.6vw, 32px); line-height: 1.15; letter-spacing: -.03em; font-weight: 700; }
 .stability .sub { margin-top: 12px; max-width: 44em; font-size: 15.5px; color: var(--muted); }
-.stats { list-style: none; margin: 32px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-radius: 16px; background: #fff; box-shadow: var(--shadow-soft); overflow: hidden; }
-.stats li + li { border-left: 1px solid var(--line-2); }
-.stats a { display: block; height: 100%; padding: 22px 24px 20px; transition: background .15s; }
-.stats a:hover { background: #fbfcfd; }
-.stats strong { display: block; font-size: 34px; line-height: 1; font-weight: 700; letter-spacing: -.035em; color: var(--ink); }
-.stats strong small { font-size: 15px; font-weight: 600; letter-spacing: -.01em; color: var(--muted); margin-left: 6px; }
-.stats strong.stat-outcome { font-size: 22px; line-height: 1.2; letter-spacing: -.025em; }
-.stats span { display: block; margin-top: 10px; font-size: 13.5px; line-height: 1.45; color: var(--muted); }
-.stab-foot { margin-top: 18px; font-size: 14px; color: var(--muted); }
+.fit { margin: 32px 0 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.fit > div { padding: 22px 24px; border-radius: 16px; background: #fff; box-shadow: var(--shadow-soft); }
+.fit h3 { font-size: 16px; line-height: 1.3; font-weight: 600; letter-spacing: -.01em; color: var(--ink); }
+.fit ul { margin: 12px 0 0; padding-left: 18px; display: grid; gap: 8px; font-size: 15px; line-height: 1.5; color: var(--muted); }
 
 /* ── Final CTA ───────────────────────────────────────────── */
 .cta { position: relative; padding: 200px 0 136px; overflow: hidden; }
@@ -672,13 +647,9 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
   .approve { top: 360px; }
   .agents-card { display: block; right: 0; }
   .term-body { font-size: 12px; }
-  .capability-grid { gap: 26px; }
   .row, .row.flip { grid-template-columns: minmax(0, 1fr); gap: 36px; padding: 48px 0; }
   .row.flip .copy-col { order: 0; }
   .quick-grid, .recovery-grid, .compare-grid { grid-template-columns: minmax(0, 1fr); gap: 36px; }
-  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .stats li:nth-child(3) { border-left: 0; }
-  .stats li:nth-child(n+3) { border-top: 1px solid var(--line-2); }
   .footer-top, .footer-company { grid-template-columns: minmax(0, 1fr); gap: 36px; }
 }
 @media (max-width: 640px) {
@@ -705,10 +676,6 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
   .message p, .message-result { font-size: 14px; }
   .approve { top: auto; width: 88%; margin: -18px 0 0 auto; }
   .agents-card { display: none; }
-  .capabilities { padding: 48px 0; }
-  .capabilities-intro { font-size: 16.5px; }
-  .capability-grid { grid-template-columns: minmax(0, 1fr); gap: 28px; margin-top: 32px; }
-  .capability { padding-top: 18px; }
   .features { padding: 40px 0 8px; }
   .row { padding: 40px 0; gap: 28px; }
   .row p.body { font-size: 16.5px; }
@@ -748,8 +715,8 @@ code.inl { white-space: nowrap; font-size: .86em; padding: 1px 6px; border-radiu
   .compare .col-dalo { background: none; }
   .compare td.col-dalo::before { color: var(--ink); }
   .stability { padding: 48px 0 88px; }
-  .stats a { padding: 18px 16px; }
-  .stats strong { font-size: 28px; }
+  .fit { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .fit > div { padding: 18px 20px; }
   .cta { padding: 140px 0 96px; }
   .cta .mesh { clip-path: polygon(0 16%, 100% 0, 100% 100%, 0 100%); }
   .cta .veil { background: radial-gradient(90% 50% at 50% 58%, rgba(255, 255, 255, .8), rgba(255, 255, 255, 0) 100%); }
