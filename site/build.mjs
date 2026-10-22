@@ -240,9 +240,10 @@ const renderMarkdown = (markdown, sourcePath) => {
 }
 
 // The brand is the homepage's logo and wordmark files, so the header reads the
-// same on every page of the site.
+// same on every page of the site. The logo follows the OS color scheme through
+// <picture>, like the README.
 const BRAND_MARK = (height) =>
-  `<img class="brand-mark" src="/assets/img/logo.svg" width="${Math.round((height * 274) / 240)}" height="${height}" alt="" />`
+  `<picture><source srcset="/assets/img/logo-dark.svg" media="(prefers-color-scheme: dark)" /><img class="brand-mark" src="/assets/img/logo.svg" width="${Math.round((height * 274) / 240)}" height="${height}" alt="" /></picture>`
 const BRAND_WORD = (height) =>
   `<img class="brand-word" src="/assets/img/wordmark.svg" width="${Math.round((height * 2873) / 735)}" height="${height}" alt="" />`
 

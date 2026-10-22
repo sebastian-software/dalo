@@ -110,9 +110,8 @@
     --on-btn: #0b1733;
     --pill: rgba(234, 240, 251, .94);
     --btn-shadow: 0 1px 0 rgba(255, 255, 255, .4) inset, 0 8px 20px -8px rgba(0, 0, 0, .6);
-    /* Brand assets: the logo's dark variant, a light wordmark, and a light
-       plate behind the company logos, which keep their own colors. */
-    --logo-src: url("/assets/img/logo-dark.svg");
+    /* Brand assets: a light wordmark, and a light plate behind the company
+       logos, which keep their own colors. */
     --wordmark-filter: brightness(0) invert(.94);
     --logo-plate: #dde3ee;
     --logo-plate-pad: 6px 12px;
@@ -162,9 +161,8 @@
   --on-btn: #0b1733;
   --pill: rgba(234, 240, 251, .94);
   --btn-shadow: 0 1px 0 rgba(255, 255, 255, .4) inset, 0 8px 20px -8px rgba(0, 0, 0, .6);
-  /* Brand assets: the logo's dark variant, a light wordmark, and a light
-     plate behind the company logos, which keep their own colors. */
-  --logo-src: url("/assets/img/logo-dark.svg");
+  /* Brand assets: a light wordmark, and a light plate behind the company
+     logos, which keep their own colors. */
   --wordmark-filter: brightness(0) invert(.94);
   --logo-plate: #dde3ee;
   --logo-plate-pad: 6px 12px;
@@ -233,9 +231,12 @@ img, svg { display: block; max-width: 100%; }
 .site-header .wrap { display: flex; align-items: center; height: var(--header-h); gap: 40px; }
 .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 20px; letter-spacing: -.03em; color: var(--ink); white-space: nowrap; }
 .brand-mark, .brand-word { display: block; flex: none; }
-/* Brand assets in the dark palette: the logo swaps to its dark variant, the
-   single-color wordmark turns light, the company logos sit on a light plate. */
-img[src="/assets/img/logo.svg"] { content: var(--logo-src, normal); }
+/* The logo's <picture> follows the OS color scheme on its own; it only wraps
+   the img, so neither it nor its source takes a box (source selection does
+   not depend on display). The single-color wordmark turns light in the
+   dark palette, and the company logos sit on a light plate. */
+picture { display: contents; }
+picture > source { display: none; }
 .brand-word { filter: var(--wordmark-filter, none); }
 .brand-section {
   margin-left: 2px; padding-left: 11px; border-left: 1px solid var(--line);
