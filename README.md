@@ -84,10 +84,10 @@ curl -fsSL https://dalo.sh/install.sh | sh
 npx getdalo --version
 ```
 
-Then create a store, link the agents you use, and add your team's repository:
+Then link the agents you use and add your team's repository:
 
 ```sh
-dalo init
+# dalo creates ~/.dalo on first use; run `dalo init` for a sandbox or a project
 dalo target detect
 dalo target link codex
 dalo target link claude
