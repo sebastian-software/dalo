@@ -32,9 +32,11 @@ and under `:root[data-theme="dark"]` for screenshots and a later toggle.
 `data-theme="light"` pins the light palette. Keep the two copies identical;
 `tests/docs.sh` compares them.
 
-In the dark palette the Dalo logo switches to `assets/img/logo-dark.svg`, the
-single-color wordmark is lightened with a CSS filter, and the company logos
-keep their own colors on a light plate. The film poster and the persona
+The Dalo logo is a `<picture>` that switches to `assets/img/logo-dark.svg`
+under `prefers-color-scheme: dark`, like the README; it follows the OS only, so
+`data-theme` leaves it alone. In the dark palette the single-color wordmark is
+lightened with a CSS filter, and the company logos keep their own colors on a
+light plate. The film poster and the persona
 avatars are images and look the same in both schemes.
 
 ## Build
