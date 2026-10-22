@@ -253,6 +253,11 @@ dalo target link generic "$target_dir"
 ```sh
 mkdir -p "$DALO_STORE/local/skills/review"
 cat > "$DALO_STORE/local/skills/review/SKILL.md" <<'EOF'
+---
+name: review
+description: Check behavioral regressions before style nits.
+---
+
 # Review
 
 Check behavioral regressions before style nits.
@@ -283,6 +288,11 @@ A local Git repository works as a source, so this needs no network access:
 TEAM_REPO="$(mktemp -d)/team-skills"
 mkdir -p "$TEAM_REPO/skills/release-notes"
 cat > "$TEAM_REPO/skills/release-notes/SKILL.md" <<'EOF'
+---
+name: release-notes
+description: Summarize user-visible changes first.
+---
+
 # Release Notes
 
 Summarize user-visible changes first.
@@ -308,6 +318,11 @@ A catalog offers many skills and installs only what you select. This is where
 CATALOG_REPO="$(mktemp -d)/catalog-skills"
 mkdir -p "$CATALOG_REPO/skills/review-helper"
 cat > "$CATALOG_REPO/skills/review-helper/SKILL.md" <<'EOF'
+---
+name: review-helper
+description: Check behavioral regressions before style nits.
+---
+
 # Review Helper
 
 Check behavioral regressions before style nits.
