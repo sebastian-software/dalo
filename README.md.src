@@ -133,7 +133,6 @@ dalo sync
 ```text
 synced: 2 skills across 1 target (2 unchanged)
 pending approval: sebastian:effective-web (run: dalo approve skill sebastian:effective-web)
-security preflight: deterministic checks only
 ```
 
 Review the exact skill, approve it, and sync again:

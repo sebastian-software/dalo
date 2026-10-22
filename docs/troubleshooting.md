@@ -18,12 +18,13 @@ dalo --json doctor
 
 | Symptom or code | What happened | Recovery |
 | --- | --- | --- |
-| `unmanaged_same_name_blocker`, sync `blocked` with `real unmanaged entry exists at target slot` | A real folder already occupies the target slot Dalo wanted to link. | Keep it intentionally with `dalo resolve keep <id>` (undo with `dalo resolve unkeep <target>:<slot>`), adopt it with `dalo adopt <id>`, or adopt and replace it with `dalo adopt <id> --replace`. |
+| `unmanaged_same_name_blocker`, sync `blocked` with `a folder you own is already there` (JSON reason `real unmanaged entry exists at target slot`) | A real folder already occupies the target slot Dalo wanted to link. | Keep it intentionally with `dalo resolve keep <id>` (undo with `dalo resolve unkeep <target>:<slot>`), adopt it with `dalo adopt <id>`, or adopt and replace it with `dalo adopt <id> --replace`. `status` and `sync` print the keep and replace commands for the exact slot. |
 | `pending_approval` | A skill would become active, but no approval rule covers it. | Review the skill, then run `dalo approve skill <source-id>:<skill>` (or grant a reviewed source/author/org scope), or set the source `trusted = true` if the whole source is trusted. Run `dalo status` again. |
 | error `security audit blocked ...` | A selected or trusted skill has an unaccepted high or critical finding. Trust skips per-skill approval; it does not bypass the security gate. | Inspect it with `dalo audit <source-id>:<skill>`. If the risk is understood, record a reason with `dalo audit <source-id>:<skill> --accept-risk "<reason>"`, or use `dalo approve skill <source-id>:<skill> --accept-risk "<reason>"` for a catalog skill. Then rerun `dalo sync`. |
 | `dirty_source` | A Git-backed source has local edits. Team sources block refresh when dirty. | Commit, stash, discard, or promote the edits outside Dalo. Then run `dalo sync`. |
 | sync reason `scan degraded`, output `degraded source:` | Dalo could not safely scan an enabled source. Recorded owned links are preserved so an incomplete scan cannot delete them. | Restore or re-clone the source checkout, or remove the source with `dalo source remove <id>`. Do not adopt or delete the preserved target link as an unmanaged blocker. |
-| `lock drift` | Live resolution differs from the last `lock.toml`. | Run `dalo status` to inspect the drift, then `dalo sync` when the change is expected. |
+| `waiting for sync` | A source, skill, approval, or plugin was added or removed since the last sync. | Run `dalo sync` to record it. |
+| `lock drift` | Something recorded in the last `lock.toml` moved, such as a source commit or a delivered artifact. | Run `dalo status` to inspect the drift, then `dalo sync` when the change is expected. |
 | `source_provenance_mismatch` | A catalog's checkout HEAD and `source-lock.toml` pin disagree; a manifest-derived catalog can also disagree with its declaration or generated config. | Restore the expected checkout first. For an intentional direct-catalog update, review `dalo --dry-run source refresh <id> --advance`, then apply it without `--dry-run`. For a manifest catalog, review the declaring team's `dalo.toml` and run `dalo sync`. |
 | `StoreLocked`, error text `another dalo operation is running` | Another Dalo command currently holds the store lock. | Wait for the other command and retry. The lock is an advisory lock the operating system releases when that process exits, so the `.lock` file staying behind is normal and never the cause; do not delete it. |
 | `owned_path_real_entry` | Dalo has an ownership record, but a real file or directory now exists at that path. | Run `dalo resolve remove-owned <id>`. It drops the ownership record and leaves the real entry intact, and it reports `blocked_real_entry` and exits `1` to say the link itself was not removed — that is the expected outcome here, not a failure. The slot then shows up as an ordinary unmanaged entry, so adopt, keep, rename, or remove it next. |
@@ -37,6 +38,13 @@ dalo --json doctor
 | autosync `skipped` | Another interactive Dalo process held the store lock. | No action is normally required. The next scheduled run retries without contention. |
 
 ## Status Codes
+
+Human `status` output opens with `needs you`: every pending approval, occupied
+target slot, security block, unreadable or dirty tracking source, and change
+waiting for sync, each with the command that clears it. A dirty tracking source
+appears there because the next `sync` stops on it; `status --check` does not
+count it, while `doctor --check` reports it as `dirty_source`. The codes below
+are the ones JSON reports and the detail sections name.
 
 ### Resolver Diagnostics
 
@@ -76,24 +84,38 @@ These appear in `status` under `blocked skills`.
 ### Lock Drift
 
 Lock drift compares the previous `lock.toml` with the current live resolution.
+JSON reports every item in `lock.drift[]`, and `status --check` fails on any of
+them. Human output separates two kinds:
 
-| Code | What it means | Recovery |
-| --- | --- | --- |
-| `source_commit_changed` | A source commit changed since the lock was written. | Review source changes, then run `dalo sync` to write a fresh lock. |
-| `source_subpath_changed` | A source's configured inventory directory differs from the lock. | Review the directory change and its skills, then run `dalo sync` to write a fresh lock. |
-| `source_removed` | A source from the lock is no longer configured. | Run `dalo sync` to reconcile, or restore the source config. |
-| `source_added` | A new source is configured but absent from the lock. | Run `dalo sync` after reviewing the source. |
-| `active_removed` | A previously active skill is no longer active. | Review why it disappeared, then run `dalo sync` if expected. |
-| `active_added` | A skill is now active but was not active in the lock. | Review the skill and approvals, then run `dalo sync`. |
-| `unlinked_removed` | A previously unlinked skill is no longer unlinked. | Usually no action; run `dalo sync` if the new resolution is expected. |
-| `unlinked_added` | A skill is now unlinked. | Inspect the reason, usually shadowing, then adjust priority/selection/name if needed. |
-| `pending_approval_removed` | A previously pending skill is no longer pending. | Usually no action; run `dalo sync` if the new resolution is expected. |
-| `pending_approval_added` | A skill now needs approval. | Approve it or leave it pending. |
-| `skill_delivery_changed` | A provider mapping, manifest provenance, or delivered-artifact fingerprint changed. | Review the source and delivery change, then run `dalo sync` if it is expected. |
-| `skill_materialization_changed` | A skill's materialized target slot changed without changing its source identity. | Review the skill name and target mapping, then run `dalo sync` if the new slot is expected. |
-| `plugin_added` | A selected plugin appeared in the live canonical graph. | Review the plugin and its source, then run `dalo sync` if it is expected. |
-| `plugin_removed` | A previously selected plugin left the live canonical graph. | Review the plugin selection and source configuration, then run `dalo sync` if the removal is expected. |
-| `plugin_changed` | A plugin package, closure, state, origin, or member outcome changed. | Review the plugin source and dependencies, then run `dalo sync` if the change is expected. |
+- **Waiting for sync.** A source, active or shadowed skill, pending approval, or
+  plugin appeared or disappeared since the last sync. That is what adding,
+  selecting, approving, or removing content produces, and the next `sync` simply
+  records it. When every item is of this kind, `status` prints a
+  `waiting for sync:` section that names each subject and what changes, and
+  `status --check` reports, for example,
+  `check failed: 1 skill waiting for sync (run: dalo sync)`.
+- **Lock drift.** Something the lock recorded moved underneath it: a source
+  commit or inventory directory, a delivered artifact, a target slot, or a
+  plugin's state. When any item is of this kind, `status` keeps the
+  `lock drift:` section with every item's code, subject, and message.
+
+| Code | Status shows | What it means | Recovery |
+| --- | --- | --- | --- |
+| `source_commit_changed` | lock drift | A source commit changed since the lock was written. | Review source changes, then run `dalo sync` to write a fresh lock. |
+| `source_subpath_changed` | lock drift | A source's configured inventory directory differs from the lock. | Review the directory change and its skills, then run `dalo sync` to write a fresh lock. |
+| `source_removed` | waiting for sync | A source from the lock is no longer configured. | Run `dalo sync` to reconcile, or restore the source config. |
+| `source_added` | waiting for sync | A new source is configured but absent from the lock. | Run `dalo sync` after reviewing the source. |
+| `active_removed` | waiting for sync | A previously active skill is no longer active. | Review why it disappeared, then run `dalo sync` if expected. |
+| `active_added` | waiting for sync | A skill is now active but was not active in the lock. | Review the skill and approvals, then run `dalo sync`. |
+| `unlinked_removed` | waiting for sync | A previously unlinked skill is no longer unlinked. | Usually no action; run `dalo sync` if the new resolution is expected. |
+| `unlinked_added` | waiting for sync | A skill is now unlinked. | Inspect the reason, usually shadowing, then adjust priority/selection/name if needed. |
+| `pending_approval_removed` | waiting for sync | A previously pending skill is no longer pending. | Usually no action; run `dalo sync` if the new resolution is expected. |
+| `pending_approval_added` | waiting for sync | A skill now needs approval. | Approve it or leave it pending. |
+| `skill_delivery_changed` | lock drift | A provider mapping, manifest provenance, or delivered-artifact fingerprint changed. | Review the source and delivery change, then run `dalo sync` if it is expected. |
+| `skill_materialization_changed` | lock drift | A skill's materialized target slot changed without changing its source identity. | Review the skill name and target mapping, then run `dalo sync` if the new slot is expected. |
+| `plugin_added` | waiting for sync | A selected plugin appeared in the live canonical graph. | Review the plugin and its source, then run `dalo sync` if it is expected. |
+| `plugin_removed` | waiting for sync | A previously selected plugin left the live canonical graph. | Review the plugin selection and source configuration, then run `dalo sync` if the removal is expected. |
+| `plugin_changed` | lock drift | A plugin package, closure, state, origin, or member outcome changed. | Review the plugin source and dependencies, then run `dalo sync` if the change is expected. |
 
 ### Inventory Warnings
 
@@ -163,7 +185,7 @@ These appear in `status.agent_inventory_warnings`, `dalo agent list`, and make
 
 ## Doctor Findings
 
-Doctor includes `ok` and `info` codes as well as warnings/errors. Codes not listed as requiring action are informational.
+Doctor includes `ok` and `info` codes as well as warnings/errors. Codes not listed as requiring action are informational. Text output prints every error, warning, and info finding; `ok` findings are counted in the summary line and listed in full with `--json`.
 
 | Code | Severity | Recovery |
 | --- | --- | --- |
@@ -233,6 +255,7 @@ Doctor includes `ok` and `info` codes as well as warnings/errors. Codes not list
 | `unmanaged_same_name_blocker` | error | Adopt, keep, rename, or remove the unmanaged blocker. |
 | `stale_protected_skill` | warning | Relink the target if it moved, or remove the stale marker with the suggested `dalo resolve unkeep` command. |
 | `protected_skill_kept` | info | The unmanaged slot was intentionally kept; no recovery is required. |
+| `assistant_external` | info | A Dalo skill that another installer or another store owns occupies a known agent slot, so this store keeps its own bundle out of the way. In a custom or project store this is usually the global store's companion, and normal commands do not repeat it. Inspect it with `dalo assistant status`; no recovery is required unless you want this store to deliver its own copy. |
 | `schema_migration_pending` | info | A file written by an older Dalo is read at the current schema and is rewritten the next time that file is written. No recovery is required; see [Upgrade and downgrade](compatibility.md#upgrade-and-downgrade). |
 | `legacy_approval_record` | warning | An approval record predates source-qualified approvals, so it cannot prove which source was approved and is not honored. Review the skill, then run the reported `dalo approve skill <source-id>:<skill>` command. |
 | `store_exists`, `store_layout_ok`, `config_ok`, `state_ok`, `lock_ok`, `source_lock_ok`, `approvals_ok`, `git_available`, `local_git_ok`, `target_exists`, `duplicate_target_directory`, `owned_symlink_ok`, `source_clean`, `source_provenance_ok` | ok/info | No recovery required. |
@@ -390,7 +413,7 @@ Undo the redirection by linking the target back to its default path, for example
 
 ### How do I recover from a dirty team source?
 
-Go to the checkout shown by `dalo doctor`, then commit, stash, or discard the edits with normal Git commands. Dalo does not decide this for you because the edits may be user or agent work.
+Go to the checkout shown by `dalo doctor`, or by the `inspect:` line under `needs you` in `dalo status`, then commit, stash, or discard the edits with normal Git commands. Dalo does not decide this for you because the edits may be user or agent work.
 
 ### I upgraded and doctor reports `schema_migration_pending`
 
