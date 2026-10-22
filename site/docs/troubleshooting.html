@@ -162,7 +162,7 @@ dalo --json doctor
 <tr>
 <td><code>owned_path_real_entry</code></td>
 <td>Dalo has an ownership record, but a real file or directory now exists at that path.</td>
-<td>Run <code>dalo resolve remove-owned &lt;id&gt;</code>. It drops the ownership record and leaves the real entry intact, and it reports <code>blocked_real_entry</code> and exits <code>1</code> to say the link itself was not removed — that is the expected outcome here, not a failure. The slot then shows up as an ordinary unmanaged entry, so adopt, keep, rename, or remove it next.</td>
+<td>A real skill folder there already shows up as an ordinary unmanaged skill, and <code>dalo resolve keep &lt;id&gt;</code> or <code>dalo adopt &lt;id&gt; --replace</code> settles it and drops the stale record; so does the next <code>dalo sync</code>. To drop only the record, run <code>dalo resolve remove-owned &lt;id&gt;</code>. It leaves the real entry intact, and it reports <code>blocked_real_entry</code> and exits <code>1</code> to say the link itself was not removed — that is the expected outcome here, not a failure. Rename or remove anything that is not a skill folder.</td>
 </tr>
 <tr>
 <td><code>missing_owned_symlink</code>, <code>broken_owned_symlink</code>, <code>foreign_owned_symlink</code></td>

@@ -1,6 +1,6 @@
 //! Adoption and minimal repair operations for unmanaged target skills.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::os::unix::fs as unix_fs;
@@ -251,11 +251,6 @@ pub fn discover_unmanaged_skills(paths: &StorePaths) -> DaloResult<Vec<Unmanaged
 /// Discover unmanaged skills and non-fatal target scan warnings.
 pub fn discover_unmanaged_skill_scan(paths: &StorePaths) -> DaloResult<UnmanagedSkillScan> {
     let state = store::read_state(paths)?;
-    let owned_paths = state
-        .owned_skills
-        .iter()
-        .map(|skill| skill.link_path.clone())
-        .collect::<BTreeSet<_>>();
     let mut found = Vec::new();
     let mut warnings = Vec::new();
 
@@ -288,7 +283,12 @@ pub fn discover_unmanaged_skill_scan(paths: &StorePaths) -> DaloResult<Unmanaged
                     continue;
                 }
             };
-            if owned_paths.contains(&path) || file_type.is_symlink() {
+            // Dalo only ever owns symlinks. A real folder in a slot that is
+            // still recorded as owned replaced Dalo's link, so it is user
+            // content like any other unmanaged skill; sync already treats it
+            // that way, and the stale record is dropped once it is kept,
+            // adopted with `--replace`, or synced.
+            if file_type.is_symlink() {
                 continue;
             }
             if !path.join(SKILL_FILE).is_file() {
@@ -450,6 +450,20 @@ pub fn keep_unmanaged_skill(
             protected.target_id == *target_id && protected.slot_name == skill.slot_name
         })
     });
+    let stale_record = state
+        .owned_skills
+        .iter()
+        .any(|owned| owned.link_path == skill.path);
+    if stale_record && !dry_run {
+        // The slot holds a real folder, so a record that it is a Dalo link is
+        // stale; keeping the folder settles that.
+        state
+            .owned_skills
+            .retain(|owned| owned.link_path != skill.path);
+        if existing {
+            store::write_state(paths, &state)?;
+        }
+    }
     if !existing && !dry_run {
         for target_id in &skill.target_ids {
             if state.protected_skills.iter().any(|protected| {
@@ -717,6 +731,11 @@ where
         Ok(state) => state,
         Err(error) => return Err(rollback_replacement(&skill.path, &backup_path, error)),
     };
+    // A record for this slot is stale: the slot held a real folder, not the
+    // link the record describes.
+    state
+        .owned_skills
+        .retain(|owned| owned.link_path != skill.path);
     state.owned_skills.push(OwnedSkillState {
         target_id: skill
             .target_ids
