@@ -57,7 +57,7 @@ and ask in your own language:
 
 The agent works from your actual installation, previews changes, and explains
 conflicts or approvals that need your decision. Dalo keeps unapproved catalog
-skills out of the sync, preserves unmanaged files, and blocks source refresh
+skills out of the sync and blocks source refresh
 when a checkout has local changes. These checks apply when your agent runs Dalo,
 just as they do in the terminal. The assistant uses the agent you already have,
 with no separate model, API key, or server.
@@ -174,17 +174,10 @@ The store is the source of truth; agent folders are output targets. Git
 repositories stay clean inputs, local work has a private home, and agent
 directories contain only the resolved links Dalo owns:
 
-- unmanaged files and real directories are never overwritten during sync
-- Dalo removes or repairs only the links and managed blocks it owns
-- dirty team checkouts block refresh instead of losing local changes
-- catalog skills require an explicit selection and approval
-- source additions and catalog selections show deterministic security preflights
-- `sync` blocks high and critical findings from deterministic checks and compatible cached reviews before a skill reaches an agent folder
-- optional sandboxed reviews can reuse an installed Codex, Claude, or OpenCode CLI
-- `sync` does not start an agent reviewer, and a passing preflight is not a safety guarantee
-- newly active skills are not silently trusted during non-interactive sync
-- `--dry-run` shows planned changes without writing them
-- conflicts stay visible in `status` until you resolve or intentionally keep them
+- Dalo never overwrites unmanaged files or foreign symlinks.
+- Catalog skills need an explicit selection and approval.
+- High and critical preflight findings block sync.
+- `--dry-run` previews everything before anything is written.
 
 The core rule is simple:
 
@@ -196,32 +189,29 @@ list of things Dalo deliberately does not protect against — read the
 
 ## What else Dalo does
 
-- **Public catalogs.** Add a catalog, inspect it, and select only the skills you
-  want; selections are pinned and `source refresh` reports upstream movement
-  instead of silently advancing the lock.
+- **Public catalogs.** Select only the skills you want; `source refresh` reports
+  upstream movement instead of silently advancing the pin.
   [Getting started](docs/getting-started.md)
-- **Team manifests.** A team repository can pin external catalogs to exact
-  commits and define the subset every member resolves, while approval stays
-  personal. [Team repository guide](docs/team.md)
-- **Project installations.** Commit a `dalo-project.toml` and every clone
-  restores the same pinned skills with `dalo install`, in its own store. A
-  project that used skills.sh moves over with `dalo migrate skills-sh`.
+- **Team manifests.** A team repository pins external catalogs to exact commits
+  and defines the subset every member resolves, while approval stays personal.
+  [Team repository guide](docs/team.md)
+- **Project installations.** Commit a `dalo-project.toml`, and every clone
+  restores the same pinned skills with `dalo install`.
   [Project installations](docs/projects.md)
-- **Instruction packs.** Share conventions that are not skills as managed blocks
-  inside agent instruction files; everything else in the file stays yours.
+- **Instruction packs.** Share conventions as managed blocks in agent
+  instruction files, leaving the rest of each file yours.
   [Agent integration](docs/agents.md)
-- **Updates through your agent.** Refresh tracking team sources and review
-  catalog or project pin changes through the CLI. Your agent or host chooses
-  when to run updates and how to report them.
+- **Updates through your agent.** Refresh tracking sources and review catalog or
+  project pin changes; your agent or host chooses when.
   [Automate updates](docs/assistant.md#automate-updates)
-- **Portable plugins.** Group skills, agents, and instructions in an inert
-  package, with narrowly typed tools and hooks behind separate exact approvals.
+- **Portable plugins.** Group skills, agents, and instructions in one package,
+  with tools and hooks behind separate approvals.
   [Plugins, tools, and hooks](docs/plugins.md)
-- **Adopt and promote.** Copy a skill an agent wrote in its own folder into
-  your private local source, then send it to the team repository as a pull
-  request with `dalo promote`. [Getting started](docs/getting-started.md#adopt-a-skill-an-agent-wrote)
+- **Adopt and promote.** Copy a skill an agent wrote into your local source,
+  then open a team pull request with `dalo promote`.
+  [Getting started](docs/getting-started.md#adopt-a-skill-an-agent-wrote)
 - **Doctor.** `dalo doctor` turns store, target, lock, and approval health into
-  findings with a recovery command each.
+  findings, each with its recovery command.
   [Troubleshooting and FAQ](docs/troubleshooting.md)
 
 ## Agent support
@@ -246,9 +236,8 @@ repository's `.cursor/skills` folder.
 [skills.sh](https://skills.sh) is great for discovering public skills and
 installing them into almost any agent. [agentfiles](https://github.com/Railly/agentfiles)
 puts your agents' files into an Obsidian UI. Dalo covers the team side: exact
-commit pins, explicit approval, and sync that never overwrites unmanaged
-folders. Find a skill on skills.sh, then let Dalo pin and deliver it. See the
-[full comparison](https://dalo.sh/docs/comparison.html).
+commit pins and explicit approval. Find a skill on skills.sh, then let Dalo pin
+and deliver it. See the [full comparison](https://dalo.sh/docs/comparison.html).
 
 ## Installation
 
