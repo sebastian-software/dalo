@@ -11,8 +11,7 @@ The agent installs the binary and bundled assistant, connects its skill folder,
 and checks the result. Then keep talking to it: “Add my team's skill repository,”
 “Update my skills and show me what changed,” or “Check what needs attention.”
 You do not need to learn Dalo's commands. Its approval, audit, and ownership
-checks apply when your agent uses Dalo, keeping catalog approvals and conflicts
-visible while sync preserves your own files. See [Use Dalo through your agent](assistant.md)
+checks apply when your agent uses Dalo. See [Use Dalo through your agent](assistant.md)
 for everyday requests, existing setups, and how those protections work.
 
 The rest of this guide is the command-line walkthrough from a fresh install to
