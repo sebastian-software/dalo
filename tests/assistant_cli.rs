@@ -1011,3 +1011,128 @@ fn first_use_of_an_explicit_custom_store_does_not_install_global_companions() {
     assert!(!target.join("dalo").exists());
     assert!(!store.join("assistant-links.toml").exists());
 }
+
+/// The global store's own companion links look like another installer's
+/// assistant from a sandbox store. That standing state must not be narrated on
+/// every command there; it stays visible on request.
+#[test]
+fn custom_stores_keep_an_external_assistant_out_of_normal_output() {
+    let temporary = tempfile::tempdir().unwrap();
+    let store = temporary.path().join("store");
+    let target = temporary.path().join("skills");
+    let seed = dalo_command();
+    let environment = seed.test_environment();
+    let foreign = environment.home.join(".agents/skills/dalo");
+    fs::create_dir_all(&foreign).unwrap();
+    fs::write(foreign.join("SKILL.md"), "# Installed by another manager\n").unwrap();
+    let run = |arguments: &[&str]| {
+        let output = environment
+            .command()
+            .env_remove("DALO_ASSISTANT_CHECK")
+            .env("DALO_OFFLINE", "1")
+            .arg("--store")
+            .arg(&store)
+            .args(arguments)
+            .assert()
+            .success()
+            .get_output()
+            .clone();
+        (
+            String::from_utf8(output.stdout).unwrap(),
+            String::from_utf8(output.stderr).unwrap(),
+        )
+    };
+    let target_argument = target.to_str().unwrap();
+    for arguments in [
+        &["init"][..],
+        &["target", "link", "generic", target_argument],
+        &["status"],
+        &["sync"],
+        &["sync"],
+        &["next"],
+        &["doctor"],
+    ] {
+        let (stdout, stderr) = run(arguments);
+        assert!(
+            !stderr.contains("assistant:") && !stdout.contains("assistant:"),
+            "{arguments:?} narrated the assistant:\n{stdout}\n{stderr}"
+        );
+    }
+
+    let (status, _) = run(&["--json", "status"]);
+    let status: Value = serde_json::from_str(&status).unwrap();
+    assert_eq!(status["assistant"]["state"], "external");
+    let (doctor, _) = run(&["--json", "doctor"]);
+    let doctor: Value = serde_json::from_str(&doctor).unwrap();
+    let findings = doctor["findings"].as_array().unwrap();
+    let external = findings
+        .iter()
+        .filter(|finding| finding["code"] == "assistant_external")
+        .collect::<Vec<_>>();
+    assert_eq!(external.len(), 1, "{findings:?}");
+    assert_eq!(external[0]["severity"], "info");
+    let (doctor_text, _) = run(&["doctor"]);
+    assert!(
+        doctor_text.contains("info    assistant_external: "),
+        "{doctor_text}"
+    );
+    assert!(!store.join(".assistant-notice").exists());
+}
+
+/// In the global store the same state is real news, so it is said once and
+/// remembered, and resolving it clears the record for the next occurrence.
+#[test]
+fn the_global_store_reports_an_external_assistant_once() {
+    let seed = dalo_command();
+    let environment = seed.test_environment();
+    let foreign = environment.home.join(".agents/skills/dalo");
+    fs::create_dir_all(&foreign).unwrap();
+    fs::write(foreign.join("SKILL.md"), "# Installed by another manager\n").unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let run = |arguments: &[&str]| {
+        let output = environment
+            .command()
+            .current_dir(workspace.path())
+            .env_remove("DALO_ASSISTANT_CHECK")
+            .env("DALO_OFFLINE", "1")
+            .arg("--global")
+            .args(arguments)
+            .assert()
+            .success()
+            .get_output()
+            .clone();
+        String::from_utf8(output.stderr).unwrap()
+    };
+
+    let first = run(&["init"]);
+    assert_eq!(
+        first
+            .matches(
+                "assistant: An assistant already exists outside this store's bundled installation"
+            )
+            .count(),
+        1,
+        "{first}"
+    );
+    let marker = environment.home.join(".dalo/.assistant-notice");
+    assert!(marker.is_file());
+    for arguments in [&["status"][..], &["sync"], &["next"], &["sync"]] {
+        let stderr = run(arguments);
+        assert!(!stderr.contains("assistant:"), "{arguments:?}: {stderr}");
+    }
+
+    fs::remove_dir_all(&foreign).unwrap();
+    let resolved = run(&["status"]);
+    assert!(
+        resolved
+            .contains("assistant: prepared the bundled Dalo skill in ~/.dalo/local/skills/dalo"),
+        "{resolved}"
+    );
+    assert!(
+        resolved.contains("assistant: delivered to ~/.agents/skills/dalo;"),
+        "{resolved}"
+    );
+    assert!(!marker.exists());
+    let settled = run(&["status"]);
+    assert!(!settled.contains("assistant:"), "{settled}");
+}

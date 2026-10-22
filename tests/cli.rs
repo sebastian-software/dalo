@@ -9514,23 +9514,56 @@ fn sync_should_not_replace_unmanaged_real_directory() {
         .assert()
         .failure()
         .code(1)
-        .stdout(predicate::str::contains("conflict"))
-        .stdout(predicate::str::contains("adopt: run"))
-        .stdout(predicate::str::contains(store::dalo_command(
-            &store_root,
-            "",
+        .stdout(predicate::str::contains(
+            "conflict   target[generic]:/review: a folder you own is already there\n",
+        ))
+        .stdout(predicate::str::contains(format!(
+            "keep yours:   {}\n",
+            store::dalo_command(&store_root, "resolve keep review")
+        )))
+        .stdout(predicate::str::contains(format!(
+            "bring it in:  {}\n",
+            store::dalo_command(&store_root, "adopt review --replace")
         )))
         .stderr(predicate::str::contains("1 blocked operation ("));
 
-    dalo_command()
+    // One occupied slot is one item: the block and its fix lead the report,
+    // and the inventory line below does not repeat them.
+    let status = dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("status")
         .assert()
         .success()
-        .stdout(predicate::str::contains("unmanaged skills:"))
-        .stdout(predicate::str::contains("adopt: run"))
-        .stdout(predicate::str::contains("adopt 'review'"));
+        .get_output()
+        .stdout
+        .clone();
+    let status = String::from_utf8(status).expect("status output should be utf8");
+    let needs_you = status
+        .find("needs you:\n  target[generic]:/review: a folder you own is already there\n")
+        .unwrap_or_else(|| panic!("needs you should lead with the occupied slot:\n{status}"));
+    assert!(needs_you < status.find("sources:").unwrap(), "{status}");
+    assert_eq!(
+        status.matches("a folder you own is already there").count(),
+        1,
+        "{status}"
+    );
+    assert_eq!(status.matches("resolve keep review").count(), 1, "{status}");
+    for repeated in [
+        "materialization blocks:",
+        "skill delivery:",
+        "real unmanaged entry",
+        "adopt: run",
+    ] {
+        assert!(!status.contains(repeated), "{repeated}:\n{status}");
+    }
+    assert!(
+        status.contains(&format!(
+            "unmanaged skills:\n  review -> {}\n",
+            "target[generic]:/review"
+        )),
+        "{status}"
+    );
 
     let mut command = dalo_command();
 
@@ -9780,8 +9813,11 @@ fn human_sync_status_and_doctor_paths_should_be_compact_but_commands_and_json_ab
         .arg("status")
         .assert()
         .success()
-        .stdout(predicate::str::contains("materialization blocks:"))
-        .stdout(predicate::str::contains("target[generic]:/review"))
+        .stdout(predicate::str::contains("needs you:"))
+        .stdout(predicate::str::contains(
+            "target[generic]:/review: a folder you own is already there",
+        ))
+        .stdout(predicate::str::contains("materialization blocks:").not())
         .stdout(predicate::str::contains(format!(
             "generic      linked  {}",
             target.display()
@@ -10092,34 +10128,53 @@ fn sync_should_report_empty_noop_after_init() {
 }
 
 #[test]
-fn sync_should_keep_security_preflight_concise_during_active_skill_noop() {
+fn sync_should_print_the_security_preflight_only_for_new_or_changed_content() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
     setup_store_with_skill_and_target(&store, &target);
+    let sync = || {
+        let output = dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .arg("sync")
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+        String::from_utf8(output).expect("sync output should be utf8")
+    };
 
-    dalo_command()
-        .args(["--store"])
-        .arg(&store)
-        .arg("sync")
-        .assert()
-        .success();
+    let first = sync();
+    assert!(first.contains("applied  create"), "{first}");
+    assert!(
+        first.ends_with("security preflight: deterministic checks only\n"),
+        "{first}"
+    );
+    assert!(
+        !first.contains("sync did not run an agent reviewer; passing is not a safety guarantee"),
+        "{first}"
+    );
 
-    dalo_command()
-        .args(["--store"])
-        .arg(&store)
-        .arg("sync")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(
-            "security preflight: deterministic checks only",
-        ))
-        .stdout(
-            predicate::str::contains(
-                "sync did not run an agent reviewer; passing is not a safety guarantee",
-            )
-            .not(),
-        );
+    let unchanged = sync();
+    assert!(
+        unchanged.contains("synced: 1 skill across 1 target (1 unchanged)"),
+        "{unchanged}"
+    );
+    assert!(!unchanged.contains("security preflight:"), "{unchanged}");
+
+    std::fs::write(
+        store.join("local/skills/review/SKILL.md"),
+        "# Review\n\nCheck behavioral regressions first.\n",
+    )
+    .expect("local skill should be edited");
+    let edited = sync();
+    assert!(
+        edited.contains("security preflight: deterministic checks only"),
+        "an edit is new content for the preflight:\n{edited}"
+    );
+    assert!(!sync().contains("security preflight:"));
 }
 
 #[test]
@@ -11075,11 +11130,12 @@ fn sync_conflict_repair_hint_should_name_the_slot_status_names() {
     // the slot name `status` and `doctor` already print — not the absolute link
     // path this code path happens to hold.
     assert!(
-        sync.contains("adopt 'review'"),
+        sync.contains("adopt review --replace") && sync.contains("resolve keep review"),
         "sync should name the bare slot in its repair hint:\n{sync}"
     );
     assert!(
-        !sync.contains(&format!("adopt '{}", target.display())),
+        !sync.contains(&format!("adopt {}", target.display()))
+            && !sync.contains(&format!("adopt '{}", target.display())),
         "sync should not name the absolute link path in its repair hint:\n{sync}"
     );
 
@@ -11094,7 +11150,7 @@ fn sync_conflict_repair_hint_should_name_the_slot_status_names() {
         .clone();
     let status = String::from_utf8(status).expect("status output should be utf8");
     assert!(
-        status.contains("adopt 'review'"),
+        status.contains("adopt review --replace") && status.contains("resolve keep review"),
         "status should name the same slot:\n{status}"
     );
 }
@@ -11125,12 +11181,10 @@ fn sync_conflict_should_suggest_replace_after_copy_only_adoption_once() {
         .clone();
     let stdout = String::from_utf8(output).expect("sync output should be utf8");
 
-    assert!(stdout.contains("--replace"));
+    assert!(stdout.contains("adopt review --replace"));
     assert!(!stdout.contains("to copy it into the local source"));
     assert_eq!(
-        stdout
-            .matches("real unmanaged entry exists at target slot")
-            .count(),
+        stdout.matches("a folder you own is already there").count(),
         1,
         "one conflict should be rendered once"
     );
@@ -11836,7 +11890,7 @@ fn doctor_should_report_stale_protection_records() {
 }
 
 #[test]
-fn doctor_should_collapse_info_and_ok_findings_in_human_output() {
+fn doctor_should_print_info_findings_and_collapse_only_ok_findings() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");
     let target = temp_dir.path().join("skills");
@@ -11850,8 +11904,13 @@ fn doctor_should_collapse_info_and_ok_findings_in_human_output() {
         .success()
         .stdout(predicate::str::contains("summary:"))
         .stdout(predicate::str::contains(
-            "info/ok findings omitted; use --json for the full report",
-        ));
+            "info    autosync_not_installed: scheduled synchronization is not installed\n",
+        ))
+        .stdout(predicate::str::contains(
+            " ok findings omitted; use --json for the full report",
+        ))
+        .stdout(predicate::str::contains("info/ok").not())
+        .stdout(predicate::str::contains("ok      ").not());
 }
 
 #[cfg(unix)]
@@ -12973,10 +13032,15 @@ fn source_add_should_clone_team_source_into_store() {
         .arg(&repo)
         .assert()
         .success()
-        .stdout(predicate::str::contains("added source company"))
-        .stdout(predicate::str::contains("found 1 skill"))
-        .stdout(predicate::str::contains("security audit: company:team"))
-        .stdout(predicate::str::contains("result: clean"))
+        .stdout(predicate::str::contains(
+            "added source company (1 skill checked, no findings)\n",
+        ))
+        .stdout(predicate::str::contains(format!(
+            "  company:team: 1 spec note: SKILL.md is missing, unreadable, or does not start with a `---` frontmatter block ({} shows it)",
+            store::dalo_command(&store::comparable_path(&store), "audit company:team")
+        )))
+        .stdout(predicate::str::contains("security audit:").not())
+        .stdout(predicate::str::contains("content hash:").not())
         .stdout(predicate::str::contains(format!(
             "next: {}",
             store::dalo_command(&store::comparable_path(&store), "sync")
@@ -13021,7 +13085,9 @@ fn source_add_scoped_should_pin_ref_and_resolve_only_subpath_skills() {
         .args(["--ref", "main", "--subpath", "tools"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("found 1 skill"));
+        .stdout(predicate::str::contains(
+            "added source external (1 skill checked, no findings)",
+        ));
     dalo_command()
         .args(["--store"])
         .arg(&store)
@@ -13196,11 +13262,10 @@ fn source_add_and_sync_should_report_team_inventory_warnings_without_auditing_sk
         .stdout(predicate::str::contains("frontmatter name `weird name`"))
         .stdout(predicate::str::contains("folder name `über-skill`"))
         .stdout(predicate::str::contains("fix: rename the skill folder"))
-        .stdout(predicate::str::contains("security audit: team:review"))
-        .stdout(predicate::str::contains(
-            "security audit: team:frontmatter-slot",
-        ))
-        .stdout(predicate::str::contains("security audit: team:über-skill").not());
+        .stdout(predicate::str::contains("found 2 skills"))
+        .stdout(predicate::str::contains("2 skills checked, no findings"))
+        .stdout(predicate::str::contains("security audit:").not())
+        .stdout(predicate::str::contains("team:über-skill").not());
 
     dalo_command()
         .args(["--store"])
@@ -14653,9 +14718,8 @@ fn source_remove_should_remove_catalog_lock_and_qualified_approvals() {
         .assert()
         .success()
         .stdout(predicate::str::contains(
-            "security audit: marketing:copy-editing",
-        ))
-        .stdout(predicate::str::contains("result: clean"));
+            "selected copy-editing from marketing (checked, no findings)",
+        ));
     dalo_command()
         .args(["--store"])
         .arg(&store)
@@ -16312,9 +16376,10 @@ fn catalog_select_should_report_mutations_and_no_ops() {
         .assert()
         .success()
         .stdout(predicate::str::contains(
-            "catalog marketing: selected copy-editing (1 total selected)",
+            "selected copy-editing from marketing (checked, no findings)\n",
         ))
-        .stdout(predicate::str::contains("selection: skills/copy-editing"))
+        .stdout(predicate::str::contains("security audit:").not())
+        .stdout(predicate::str::contains("not a safety guarantee").not())
         .stdout(predicate::str::contains(format!(
             "next: {} to update linked targets",
             store::dalo_command(&store_root, "sync")
@@ -16326,10 +16391,7 @@ fn catalog_select_should_report_mutations_and_no_ops() {
         .assert()
         .success()
         .stdout(predicate::str::contains(
-            "catalog marketing: selected launch-copy (2 total selected)",
-        ))
-        .stdout(predicate::str::contains(
-            "selection: skills/copy-editing, skills/launch-copy",
+            "selected launch-copy from marketing (checked, no findings)\n",
         ))
         .stdout(predicate::str::contains(format!(
             "next: {} to update linked targets",
@@ -16440,8 +16502,13 @@ fn catalog_selection_should_stay_pending_until_explicitly_approved() {
         .assert()
         .success()
         .stdout(predicate::str::contains(
-            "granted skill marketing:copy-editing",
+            "approved marketing:copy-editing (checked, no findings)\n",
         ))
+        .stdout(predicate::str::contains(format!(
+            "1 spec note: SKILL.md is missing, unreadable, or does not start with a `---` frontmatter block ({} shows it)",
+            store::dalo_command(&store_root, "audit marketing:copy-editing")
+        )))
+        .stdout(predicate::str::contains("security audit:").not())
         .stdout(predicate::str::contains(format!(
             "next: {} to link it",
             store::dalo_command(&store_root, "sync")
@@ -16583,9 +16650,7 @@ fn sync_should_keep_pending_approval_actionable_during_noop_with_active_skills()
             "pending approval: marketing:copy-editing",
         ))
         .stdout(predicate::str::contains("diagnostic: pending_approval").not())
-        .stdout(predicate::str::contains(
-            "security preflight: deterministic checks only",
-        ));
+        .stdout(predicate::str::contains("security preflight:").not());
 
     dalo_command()
         .args(["--store"])
@@ -21138,4 +21203,301 @@ fn source_namespace_should_replace_existing_links_when_set() {
         .success();
     assert!(target.join("company__review").is_symlink());
     assert!(!target.join("review").exists());
+}
+
+fn status_text(store: &std::path::Path, arguments: &[&str]) -> String {
+    let output = dalo_command()
+        .args(["--store"])
+        .arg(store)
+        .arg("status")
+        .args(arguments)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    String::from_utf8(output).expect("status output should be utf8")
+}
+
+#[test]
+fn status_should_report_unsynced_additions_as_waiting_for_sync() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let store_root = store::comparable_path(&store);
+    let target = temp_dir.path().join("skills");
+    setup_store_with_skill_and_target(&store, &target);
+
+    let status = status_text(&store, &[]);
+    let sync_command = store::dalo_command(&store_root, "sync");
+    assert!(
+        status.contains(&format!(
+            "needs you:\n  review (local): waiting for sync\n    run: {sync_command}\n"
+        )),
+        "{status}"
+    );
+    assert!(
+        status.contains("waiting for sync:\n  review (local)  new\n"),
+        "{status}"
+    );
+    assert!(!status.contains("lock drift"), "{status}");
+    assert!(!status.contains("active_added"), "{status}");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["status", "--check"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains(format!(
+            "check failed: 1 skill waiting for sync (run: {sync_command})"
+        )));
+    // The JSON contract keeps the drift codes the human report rephrases.
+    let json = dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["--json", "status"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let json: serde_json::Value = serde_json::from_slice(&json).expect("status JSON");
+    assert_eq!(json["lock"]["drift"][0]["code"], "active_added");
+    assert_eq!(json["lock"]["drift"][0]["subject"], "local:review");
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    let synced = status_text(&store, &[]);
+    assert!(!synced.contains("needs you:"), "{synced}");
+    assert!(!synced.contains("waiting for sync"), "{synced}");
+}
+
+#[test]
+fn status_should_keep_lock_drift_for_content_that_moved_under_the_lock() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo(&repo);
+    setup_store_with_target(&store, &target);
+    add_source(&store, "company", &repo);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    let checkout = store.join("sources/company/checkout");
+    std::fs::write(checkout.join("skills/team/SKILL.md"), "# Team\n\nMoved.\n")
+        .expect("checkout skill should be edited");
+    run_git(&checkout, &["add", "."]);
+    run_git(
+        &checkout,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test User",
+            "commit",
+            "-m",
+            "moved underneath the lock",
+            "-q",
+        ],
+    );
+
+    let status = status_text(&store, &[]);
+    assert!(
+        status.contains("lock drift:\n  source_commit_changed company: "),
+        "{status}"
+    );
+    assert!(!status.contains("waiting for sync"), "{status}");
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["status", "--check"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("1 lock drift item (company)"));
+}
+
+#[test]
+fn status_all_should_add_provenance_empty_counts_and_the_idle_scheduler() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo(&repo);
+    setup_store_with_target(&store, &target);
+    add_source(&store, "company", &repo);
+
+    let default = status_text(&store, &[]);
+    assert!(
+        default.contains("  company      team priority=10   skills=1\n"),
+        "{default}"
+    );
+    for detail in [
+        "agents=0",
+        "plugins=0",
+        " enabled",
+        "provenance ",
+        "autosync: not installed",
+    ] {
+        assert!(!default.contains(detail), "{detail}:\n{default}");
+    }
+
+    let all = status_text(&store, &["--all"]);
+    for detail in [
+        "agents=0",
+        "plugins=0",
+        " enabled",
+        "provenance management=direct origin=",
+        "autosync: not installed",
+    ] {
+        assert!(all.contains(detail), "{detail}:\n{all}");
+    }
+}
+
+#[test]
+fn sync_should_announce_a_local_override_only_when_it_changes() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo_with_skill(&repo, "review", "# Team review\n");
+    setup_store_with_skill_and_target(&store, &target);
+    add_source(&store, "company", &repo);
+    let sync = || {
+        let output = dalo_command()
+            .args(["--store"])
+            .arg(&store)
+            .arg("sync")
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+        String::from_utf8(output).expect("sync output should be utf8")
+    };
+
+    let first = sync();
+    assert!(first.contains("diagnostic: local_override: "), "{first}");
+    assert!(first.contains("diagnostic: shadowed: "), "{first}");
+
+    let unchanged = sync();
+    assert!(!unchanged.contains("diagnostic:"), "{unchanged}");
+    let status = status_text(&store, &[]);
+    assert!(
+        status.contains("resolution diagnostics:\n  local_override: "),
+        "{status}"
+    );
+    assert!(status.contains("  shadowed: "), "{status}");
+
+    std::fs::remove_dir_all(store.join("local/skills/review")).expect("override removed");
+    let restored = sync();
+    assert!(!restored.contains("diagnostic:"), "{restored}");
+    create_local_review(&store);
+    let overridden_again = sync();
+    assert!(
+        overridden_again.contains("diagnostic: local_override: "),
+        "{overridden_again}"
+    );
+}
+
+fn create_local_review(store: &std::path::Path) {
+    let skill = store.join("local/skills/review");
+    std::fs::create_dir_all(&skill).expect("local skill dir should be created");
+    std::fs::write(skill.join("SKILL.md"), "# Review\n").expect("local skill should be written");
+}
+
+#[test]
+fn adopt_should_report_a_clean_preflight_in_one_line_and_audit_keeps_the_full_report() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    setup_store_with_target(&store, &target);
+    create_unmanaged_skill_with_body(
+        &target,
+        "notes",
+        "---\nname: notes\ndescription: Take notes.\n---\n# Notes\n",
+    );
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["adopt", "notes"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "copied {} -> {} (checked, no findings)\n",
+            store::comparable_path(&target.join("notes")).display(),
+            store::comparable_path(&store.join("local/skills/notes")).display()
+        )))
+        .stdout(predicate::str::contains("replacement: skipped"))
+        .stdout(predicate::str::contains("security audit:").not())
+        .stdout(predicate::str::contains("spec note").not());
+
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["audit", "local:notes"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("security audit: local:notes\n"))
+        .stdout(predicate::str::contains("  content hash: "))
+        .stdout(predicate::str::contains("  result: clean"))
+        .stdout(predicate::str::contains(
+            "  note: no findings means no known issue was detected; it is not a safety guarantee",
+        ));
+}
+
+#[test]
+fn status_should_name_a_dirty_tracking_source_without_changing_check() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("team-repo");
+    create_git_skill_repo(&repo);
+    setup_store_with_target(&store, &target);
+    add_source(&store, "company", &repo);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    let checkout = store.join("sources/company/checkout");
+    std::fs::write(
+        checkout.join("skills/team/SKILL.md"),
+        "# Team\n\nLocal edit.\n",
+    )
+    .expect("checkout skill should be edited");
+
+    let status = status_text(&store, &[]);
+    assert!(
+        status.contains(
+            "needs you:\n  company (source): has local changes, which stop the next sync\n    inspect: git -C "
+        ),
+        "{status}"
+    );
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["status", "--check"])
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .failure()
+        .code(3);
 }
