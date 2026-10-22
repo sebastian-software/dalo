@@ -24,3 +24,26 @@ description = "Guard pushes with the project's installed mdtheme version"
 shell = "bash -c"
 env = { MISE_OFFLINE = "true" }
 run = 'binary=$(mise which mdtheme) && "$binary" pre-push'
+
+[tasks.check]
+description = "Fast local checks: formatting, clippy, and the unit and integration tests"
+run = "cargo fmt --check && cargo clippy --locked --all-targets --all-features -- -D warnings && cargo test --locked"
+
+[tasks."check:full"]
+description = "Every command in the CONTRIBUTING Development Setup list, in order"
+run = [
+  "cargo fmt --check",
+  "cargo test --locked",
+  "sh tests/install.sh",
+  "sh tests/docs.sh",
+  "sh tests/workflows.sh",
+  "(cd npm && npm ci && npm run check-version && npm test)",
+  "cargo clippy --locked --all-targets --all-features -- -D warnings",
+  "cargo build --release --locked --target \"$(rustc -vV | sed -n 's/^host: //p')\"",
+  "cargo test --release --locked --test performance -- --ignored noop_sync_should_not_regress_against_a_minimal_store --nocapture",
+  "RUSTDOCFLAGS=\"-D warnings\" cargo doc --no-deps --all-features",
+]
+
+[tasks.docs]
+description = "Rebuild the documentation site and check that the committed render matches docs/"
+run = "corepack pnpm --dir site install --frozen-lockfile && node site/build.mjs && node site/build.mjs --check"
