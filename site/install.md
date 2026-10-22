@@ -1,6 +1,6 @@
 # Install Dalo With an Agent
 
-You are helping a user who asked to install Dalo, the AI agent skill manager
+You are helping a user who asked to install Dalo, the agent skill manager
 from Sebastian Software. The official website is https://dalo.sh and the source
 repository is https://github.com/sebastian-software/dalo. The npm launcher is
 named `getdalo`; it runs the same Dalo binary.

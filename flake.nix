@@ -1,5 +1,5 @@
 {
-  description = "Dalo, a Git-backed skill manager for AI agents";
+  description = "Dalo: your team's agent skills, versioned like code";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
