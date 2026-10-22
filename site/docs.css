@@ -7,9 +7,9 @@
    gradient at a whisper. */
 .doc-page {
   background:
-    radial-gradient(640px 360px at 88% -120px, rgba(123, 92, 245, .10), rgba(123, 92, 245, 0) 70%),
-    radial-gradient(720px 380px at 8% -160px, rgba(232, 98, 58, .09), rgba(232, 98, 58, 0) 70%),
-    var(--white);
+    radial-gradient(640px 360px at 88% -120px, color-mix(in srgb, var(--violet) 10%, transparent), transparent 70%),
+    radial-gradient(720px 380px at 8% -160px, color-mix(in srgb, var(--coral) 9%, transparent), transparent 70%),
+    var(--bg);
   background-repeat: no-repeat;
 }
 
@@ -46,7 +46,7 @@
 .doc-nav a:hover { color: var(--ink); background: var(--surface); }
 .doc-nav a[aria-current="page"] {
   color: var(--ink); font-weight: 600;
-  background: linear-gradient(95deg, rgba(232, 98, 58, .08), rgba(123, 92, 245, .08));
+  background: var(--nav-current);
 }
 .doc-nav a[aria-current="page"]::before {
   content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px; border-radius: 2px;
@@ -148,7 +148,7 @@
   max-width: 100%; margin-top: 20px; padding: 16px 20px;
   overflow-x: auto;
   border-radius: var(--r); background: var(--surface-2);
-  box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgba(11, 23, 51, .04), 0 10px 24px -18px rgba(11, 23, 51, .22);
+  box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgba(var(--shadow-rgb), .04), 0 10px 24px -18px rgba(var(--shadow-rgb), .22);
   font-size: 13.5px; line-height: 1.7; color: var(--ink);
   tab-size: 2; scrollbar-width: thin;
 }
@@ -161,24 +161,24 @@
   border-radius: var(--r);
   /* edge shadows appear only while more of the table is scrolled off-side */
   background:
-    linear-gradient(90deg, #fff 30%, rgba(255, 255, 255, 0)) left / 32px 100% no-repeat local,
-    linear-gradient(270deg, #fff 30%, rgba(255, 255, 255, 0)) right / 32px 100% no-repeat local,
-    radial-gradient(farthest-side at 0 50%, rgba(11, 23, 51, .14), rgba(11, 23, 51, 0)) left / 12px 100% no-repeat scroll,
-    radial-gradient(farthest-side at 100% 50%, rgba(11, 23, 51, .14), rgba(11, 23, 51, 0)) right / 12px 100% no-repeat scroll,
-    #fff;
-  box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgba(11, 23, 51, .04), 0 10px 24px -18px rgba(11, 23, 51, .2);
+    linear-gradient(90deg, var(--card) 30%, rgba(var(--card-rgb), 0)) left / 32px 100% no-repeat local,
+    linear-gradient(270deg, var(--card) 30%, rgba(var(--card-rgb), 0)) right / 32px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgba(var(--shadow-rgb), .14), rgba(var(--shadow-rgb), 0)) left / 12px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgba(var(--shadow-rgb), .14), rgba(var(--shadow-rgb), 0)) right / 12px 100% no-repeat scroll,
+    var(--card);
+  box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgba(var(--shadow-rgb), .04), 0 10px 24px -18px rgba(var(--shadow-rgb), .2);
   scrollbar-width: thin;
 }
 .doc-body table { width: 100%; border-collapse: collapse; font-size: 14px; line-height: 1.55; overflow-wrap: normal; }
 .doc-body th, .doc-body td { padding: 11px 16px; text-align: left; vertical-align: top; border-top: 1px solid var(--line-2); }
 .doc-body thead th {
-  border-top: 0; background: rgba(246, 248, 251, .7); white-space: nowrap;
+  border-top: 0; background: rgba(var(--surface-rgb), .7); white-space: nowrap;
   font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--faint);
 }
 .doc-body td { color: var(--ink-2); min-width: 9em; }
 .doc-body td:last-child { min-width: 16em; }
 .doc-body td:first-child { color: var(--ink); }
-.doc-body tbody tr:hover { background: rgba(246, 248, 251, .6); }
+.doc-body tbody tr:hover { background: rgba(var(--surface-rgb), .6); }
 
 /* Pair a task with its example request, without requiring sideways reading. */
 .doc-body .agent-requests { margin: 24px 0 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
@@ -204,7 +204,7 @@
 .doc-card {
   position: relative; display: grid; align-content: start; gap: 6px; height: 100%;
   padding: 18px 44px 18px 20px; border-radius: var(--r);
-  background: #fff; box-shadow: var(--shadow-soft);
+  background: var(--card); box-shadow: var(--shadow-soft);
   transition: box-shadow .2s, transform .2s;
 }
 .doc-card::after {
@@ -212,7 +212,7 @@
   border-top: 1.8px solid var(--faint); border-right: 1.8px solid var(--faint);
   transform: rotate(45deg); transition: transform .2s, border-color .2s;
 }
-.doc-card:hover { transform: translateY(-1px); box-shadow: 0 0 0 1px rgba(11, 23, 51, .08), 0 2px 4px rgba(11, 23, 51, .04), 0 18px 36px -14px rgba(11, 23, 51, .22); }
+.doc-card:hover { transform: translateY(-1px); box-shadow: 0 0 0 1px rgba(var(--ring-rgb), .08), 0 2px 4px rgba(var(--shadow-rgb), .04), 0 18px 36px -14px rgba(var(--shadow-rgb), .22); }
 .doc-card:hover::after { border-color: var(--rust); transform: translateX(2px) rotate(45deg); }
 .doc-card-title {
   display: flex; align-items: center; gap: 9px;
@@ -238,7 +238,7 @@
   .doc-menu summary {
     display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 14px;
     list-style: none; cursor: pointer;
-    border-radius: var(--r); background: rgba(255, 255, 255, .8); box-shadow: var(--shadow-soft);
+    border-radius: var(--r); background: rgba(var(--card-rgb), .8); box-shadow: var(--shadow-soft);
     font-size: 14.5px; line-height: 1.3;
   }
   .doc-menu summary::-webkit-details-marker { display: none; }
@@ -253,11 +253,11 @@
   .doc-menu-nav {
     position: absolute; z-index: 5; left: 0; right: 0; top: calc(100% + 8px);
     display: grid; gap: 1px; padding: 6px; border-radius: var(--r);
-    background: #fff; box-shadow: var(--shadow-card);
+    background: var(--card); box-shadow: var(--shadow-card);
   }
   .doc-menu-nav a { padding: 9px 12px; border-radius: var(--r-sm); font-size: 15px; font-weight: 500; color: var(--ink-2); }
   .doc-menu-nav a:hover { background: var(--surface); color: var(--ink); }
-  .doc-menu-nav a[aria-current="page"] { font-weight: 600; color: var(--ink); background: linear-gradient(95deg, rgba(232, 98, 58, .08), rgba(123, 92, 245, .08)); }
+  .doc-menu-nav a[aria-current="page"] { font-weight: 600; color: var(--ink); background: var(--nav-current); }
 }
 @media (max-width: 640px) {
   .doc-body .agent-requests { grid-template-columns: minmax(0, 1fr); }

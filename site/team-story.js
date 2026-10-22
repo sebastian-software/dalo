@@ -71,18 +71,18 @@
       var edge = scene.clientWidth + 3;
       return { a: a, b: b, c: { x: edge, y: a.y }, d: { x: edge, y: b.y } };
     }
-    function drawPath(path, color) {
+    function drawPath(path, className) {
       var element = document.createElementNS(namespace, "path");
       element.setAttribute("d", "M" + path.a.x + " " + path.a.y + " C" + path.c.x + " " + path.c.y + " " + path.d.x + " " + path.d.y + " " + path.b.x + " " + path.b.y);
-      element.setAttribute("stroke", color);
+      element.setAttribute("class", className);
       svg.appendChild(element);
     }
     function drawPaths() {
       svg.replaceChildren();
       svg.setAttribute("viewBox", "0 0 " + scene.clientWidth + " " + scene.clientHeight);
-      drawPath(route(repository, sync), "rgba(232,98,58,.3)");
+      drawPath(route(repository, sync), "team-path-source");
       machines.forEach(function (machine) {
-        drawPath(route(sync, machine), "rgba(11,23,51,.2)");
+        drawPath(route(sync, machine), "team-path-sync");
       });
     }
     function paused() { return manualPause || !visible || document.hidden; }
