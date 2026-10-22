@@ -21397,3 +21397,81 @@ fn status_should_name_a_dirty_tracking_source_without_changing_check() {
         .failure()
         .code(3);
 }
+
+#[test]
+fn status_should_list_a_pending_catalog_skill_once_as_waiting_for_approval() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let store_root = store::comparable_path(&store);
+    let target = temp_dir.path().join("skills");
+    let repo = temp_dir.path().join("catalog-repo");
+    create_git_catalog_repo(&repo);
+    setup_store_with_target(&store, &target);
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "add-catalog", "marketing"])
+        .arg(&repo)
+        .assert()
+        .success();
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["source", "select", "marketing", "copy-editing"])
+        .assert()
+        .success();
+
+    let status = status_text(&store, &[]);
+    let approve = store::dalo_command(&store_root, "approve skill marketing:copy-editing");
+    let sync = store::dalo_command(&store_root, "sync");
+    assert!(
+        status.contains(&format!(
+            "needs you:\n  copy-editing (marketing): waiting for approval\n    run: {approve}\n  marketing (source): waiting for sync\n    run: {sync}\n"
+        )),
+        "{status}"
+    );
+    assert!(
+        status.contains("pending approval:\n  copy-editing -> marketing:copy-editing\n"),
+        "{status}"
+    );
+    assert!(
+        status.contains("waiting for sync:\n  marketing (source)  new source\n"),
+        "{status}"
+    );
+    assert_eq!(
+        status.matches("copy-editing (marketing)").count(),
+        1,
+        "{status}"
+    );
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["status", "--check"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains(format!(
+            "check failed: 1 pending approval (marketing:copy-editing), 1 change waiting for sync (run: {sync})"
+        )));
+
+    // Once sync records the source, only the approval is left.
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .arg("sync")
+        .assert()
+        .success();
+    let recorded = status_text(&store, &[]);
+    assert!(!recorded.contains("waiting for sync"), "{recorded}");
+    assert_eq!(
+        recorded.matches("copy-editing (marketing)").count(),
+        1,
+        "{recorded}"
+    );
+}

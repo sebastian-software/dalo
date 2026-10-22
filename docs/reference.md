@@ -738,7 +738,9 @@ under `unmanaged skills`; it is not repeated under `skill delivery` or
 `materialization blocks`. When every lock drift item is an addition or removal
 the next sync records, status prints `waiting for sync:` with each subject and
 what changes instead of `lock drift:`; see
-[Lock Drift](troubleshooting.md#lock-drift). Source lines show `agents=` and
+[Lock Drift](troubleshooting.md#lock-drift). A skill that waits for approval
+is listed once under `needs you` with its approve command and under
+`pending approval`, not as waiting for sync. Source lines show `agents=` and
 `plugins=` only when they are not zero and mark only disabled sources.
 `--all` adds each source's provenance line, the zero counts, the `enabled`
 state, and the scheduler line while autosync is neither configured nor

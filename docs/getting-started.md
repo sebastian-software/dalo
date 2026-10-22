@@ -195,10 +195,13 @@ and catalogs pinned by a team manifest start here by design.
 needs you:
   review-helper (public): waiting for approval
     run: dalo approve skill public:review-helper
+  public (source): waiting for sync
+    run: dalo sync
 ```
 
-Further down, `pending approval:` lists the same skill with any compatibility
-note it declares. `sync` still does all the other work and repeats the command
+The skill waits for your approval, not for a sync, so it appears there once.
+The new catalog itself is recorded by the next sync. Further down,
+`pending approval:` lists the skill with any compatibility note it declares. `sync` still does all the other work and repeats the command
 at the end:
 
 ```text

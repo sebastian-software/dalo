@@ -93,7 +93,10 @@ them. Human output separates two kinds:
   records it. When every item is of this kind, `status` prints a
   `waiting for sync:` section that names each subject and what changes, and
   `status --check` reports, for example,
-  `check failed: 1 skill waiting for sync (run: dalo sync)`.
+  `check failed: 1 skill waiting for sync (run: dalo sync)`. A skill that now
+  waits for approval is waiting for approval, not for sync: it is listed once
+  under `needs you` with its `dalo approve skill` command and under
+  `pending approval`, and it is left out of the waiting-for-sync count.
 - **Lock drift.** Something the lock recorded moved underneath it: a source
   commit or inventory directory, a delivered artifact, a target slot, or a
   plugin's state. When any item is of this kind, `status` keeps the
@@ -110,7 +113,7 @@ them. Human output separates two kinds:
 | `unlinked_removed` | waiting for sync | A previously unlinked skill is no longer unlinked. | Usually no action; run `dalo sync` if the new resolution is expected. |
 | `unlinked_added` | waiting for sync | A skill is now unlinked. | Inspect the reason, usually shadowing, then adjust priority/selection/name if needed. |
 | `pending_approval_removed` | waiting for sync | A previously pending skill is no longer pending. | Usually no action; run `dalo sync` if the new resolution is expected. |
-| `pending_approval_added` | waiting for sync | A skill now needs approval. | Approve it or leave it pending. |
+| `pending_approval_added` | pending approval | A skill now needs approval. | Approve it or leave it pending. |
 | `skill_delivery_changed` | lock drift | A provider mapping, manifest provenance, or delivered-artifact fingerprint changed. | Review the source and delivery change, then run `dalo sync` if it is expected. |
 | `skill_materialization_changed` | lock drift | A skill's materialized target slot changed without changing its source identity. | Review the skill name and target mapping, then run `dalo sync` if the new slot is expected. |
 | `plugin_added` | waiting for sync | A selected plugin appeared in the live canonical graph. | Review the plugin and its source, then run `dalo sync` if it is expected. |
