@@ -4425,6 +4425,110 @@ fn help_should_render_implemented_command_groups() {
 }
 
 #[test]
+fn help_should_group_commands_and_share_one_tagline_and_start_story() {
+    for args in [vec!["-h"], vec!["--help"]] {
+        let output = dalo_command()
+            .args(&args)
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+        let help = String::from_utf8(output).expect("help should be UTF-8");
+
+        assert!(
+            help.starts_with("Your team's agent skills, versioned like code.\n"),
+            "{args:?} should open with the one tagline:\n{help}"
+        );
+        assert!(
+            help.contains("\nEveryday:\n  status "),
+            "{args:?} should group commands:\n{help}"
+        );
+        assert!(
+            !help.contains("\nCommands:\n"),
+            "{args:?} should replace clap's flat Commands block:\n{help}"
+        );
+        assert!(
+            !help.contains("Optional: dalo init"),
+            "{args:?} should not describe init as optional:\n{help}"
+        );
+    }
+
+    let short_help = dalo_command()
+        .arg("-h")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let short_help = String::from_utf8(short_help).expect("help should be UTF-8");
+    assert!(
+        short_help.contains("\nStart:    dalo "),
+        "`-h` should open the footer with the start path:\n{short_help}"
+    );
+
+    let long_help = dalo_command()
+        .arg("--help")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let long_help = String::from_utf8(long_help).expect("help should be UTF-8");
+    assert!(
+        long_help.contains(
+            "  1. dalo   (creates the store on first use; run dalo init for a sandbox or a project)"
+        ),
+        "the quickstart should describe first-use store creation:\n{long_help}"
+    );
+}
+
+#[test]
+fn color_flag_should_choose_color_independently_of_the_environment() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let store = temp_dir.path().join("store");
+    let next_with = |choice: &str, no_color: bool| {
+        let mut command = dalo_command();
+        if no_color {
+            command.env("NO_COLOR", "1");
+        }
+        command
+            .args(["--color", choice, "--store"])
+            .arg(&store)
+            .arg("next")
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone()
+    };
+
+    let always = String::from_utf8(next_with("always", true)).expect("output should be UTF-8");
+    assert!(
+        always.contains("\x1b[1mNext\x1b[0m: "),
+        "`--color always` should color and bold the next step even with NO_COLOR:\n{always}"
+    );
+
+    let never = String::from_utf8(next_with("never", false)).expect("output should be UTF-8");
+    assert!(
+        !never.contains('\x1b'),
+        "`--color never` should emit no ANSI controls:\n{never}"
+    );
+
+    let auto = String::from_utf8(next_with("auto", false)).expect("output should be UTF-8");
+    assert!(
+        !auto.contains('\x1b'),
+        "`--color auto` should not color piped output:\n{auto}"
+    );
+
+    dalo_command()
+        .args(["--color", "sometimes", "next"])
+        .assert()
+        .failure()
+        .code(2);
+}
+
+#[test]
 fn autosync_status_should_report_not_installed_after_init() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let store = temp_dir.path().join("store");

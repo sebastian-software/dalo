@@ -5,7 +5,7 @@ use std::io::{self, IsTerminal, Read};
 use std::path::PathBuf;
 
 use clap::error::ErrorKind;
-use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
+use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use clap_complete::{Shell, generate};
 use clap_mangen::Man;
 
@@ -45,16 +45,113 @@ use crate::update;
 ///
 /// It is a named constant so `target::link_hint_should_name_every_builtin`
 /// can assert that its quickstart names every built-in target.
-pub const AFTER_LONG_HELP: &str = "Mental model:\n  store   local database under ~/.dalo, or --store PATH\n  source  Git-backed skill collection, including the built-in local source\n  sync    refreshes clean tracking sources, resolves approved skills, and links them into targets\n\nQuickstart:\n  1. dalo init\n  2. dalo target link <codex|claude|cursor|openclaw|hermes|opencode|generic> [path]\n  3. Choose a skill path:\n     team:     dalo source add <id> <git-url-or-path>\n     local:    create <store>/local/skills/<name>/SKILL.md\n     existing: dalo adopt <skill>\n  4. dalo sync\n\nSafe sandbox:\n  export DALO_STORE=\"$(mktemp -d)/store\"\n  dalo init\n  dalo target link generic \"$(mktemp -d)/skills\"";
+pub const AFTER_LONG_HELP: &str = "Mental model:\n  store   local database under ~/.dalo, or --store PATH\n  source  Git-backed skill collection, including the built-in local source\n  sync    refreshes clean tracking sources, resolves approved skills, and links them into targets\n\nQuickstart:\n  1. dalo   (creates the store on first use; run dalo init for a sandbox or a project)\n  2. dalo target link <codex|claude|cursor|openclaw|hermes|opencode|generic> [path]\n  3. Choose a skill path:\n     team:     dalo source add <id> <git-url-or-path>\n     local:    create <store>/local/skills/<name>/SKILL.md\n     existing: dalo adopt <skill>\n  4. dalo sync\n\nSafe sandbox:\n  export DALO_STORE=\"$(mktemp -d)/store\"\n  dalo init\n  dalo target link generic \"$(mktemp -d)/skills\"";
+
+/// Top-level commands in the order `dalo --help` lists them, grouped by purpose.
+///
+/// Every visible command belongs to exactly one group. The unit test
+/// `help_groups_should_place_every_visible_command_once` fails the build when a
+/// new command is left out.
+const COMMAND_GROUPS: &[(&str, &[&str])] = &[
+    ("Everyday", &["status", "sync", "next", "doctor"]),
+    ("Trust", &["approve", "audit", "adopt", "resolve"]),
+    ("Setup", &["init", "target", "source", "assistant"]),
+    (
+        "Team and projects",
+        &["team", "promote", "project", "install", "migrate"],
+    ),
+    (
+        "Packages",
+        &[
+            "plugin",
+            "tool",
+            "hook",
+            "binary",
+            "agent",
+            "plan",
+            "instructions",
+        ],
+    ),
+    ("Automation", &["autosync", "completions"]),
+];
+
+/// Render the top-level command list from the live subcommands, grouped by `COMMAND_GROUPS`.
+///
+/// A visible command that no group names is listed under `Other`, so it stays
+/// discoverable at runtime even before the unit test flags it.
+fn grouped_commands_help(command: &clap::Command) -> String {
+    let visible: Vec<(&str, String)> = command
+        .get_subcommands()
+        .filter(|subcommand| !subcommand.is_hide_set())
+        .map(|subcommand| (subcommand.get_name(), one_line_about(subcommand)))
+        .collect();
+    let width = visible
+        .iter()
+        .map(|(name, _)| name.len())
+        .max()
+        .unwrap_or(0);
+    let line =
+        |(name, about): &(&str, String)| format!("  {name:<width$}  {about}").trim_end().to_owned();
+
+    let mut sections = Vec::new();
+    let mut placed = Vec::new();
+    for (heading, names) in COMMAND_GROUPS {
+        let entries: Vec<String> = names
+            .iter()
+            .filter_map(|wanted| visible.iter().find(|(name, _)| name == wanted))
+            .map(|entry| {
+                placed.push(entry.0);
+                line(entry)
+            })
+            .collect();
+        if !entries.is_empty() {
+            sections.push(format!("{heading}:\n{}", entries.join("\n")));
+        }
+    }
+    let other: Vec<String> = visible
+        .iter()
+        .filter(|(name, _)| !placed.contains(name))
+        .map(line)
+        .collect();
+    if !other.is_empty() {
+        sections.push(format!("Other:\n{}", other.join("\n")));
+    }
+    sections.join("\n\n")
+}
+
+/// The one-line description clap would show for a subcommand.
+fn one_line_about(command: &clap::Command) -> String {
+    command
+        .get_about()
+        .map(|about| {
+            about
+                .to_string()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .unwrap_or_default()
+}
+
+/// Help template that keeps clap's usage and option layout but replaces its `Commands:` block.
+///
+/// `{all-args}` would print clap's own `Commands:` block too, so options are
+/// rendered by their own tag under a heading written here. Clap reads braces in
+/// `commands` as template tags, so the grouped text must not contain any.
+fn help_template(commands: &str) -> String {
+    format!(
+        "{{before-help}}{{about-with-newline}}\n{{usage-heading}} {{usage}}\n\n{commands}\n\nOptions:\n{{options}}{{after-help}}"
+    )
+}
 
 /// Parsed command-line arguments.
 #[derive(Debug, Parser)]
 #[command(name = "dalo")]
 #[command(
     version,
-    about = "One source of truth for the skills your AI agents run.",
-    long_about = "One source of truth for the skills your AI agents run.\n\nGit-backed skill management for AI agents: Dalo keeps a local store of skill sources, resolves one approved skill set, and links that set into the folders your agents already read.",
-    after_help = "The packaged Dalo skill is set up on first use.\nTo manage additional skills: dalo target link <agent> -> add a team source, local skill, or adopted skill -> dalo sync\nOptional: dalo init.\nUse `dalo next` for one state-aware next action.\nTry safely: use --store with a temporary directory and target link generic <path>.",
+    about = "Your team's agent skills, versioned like code.",
+    long_about = "Your team's agent skills, versioned like code.\n\nDalo keeps skills, standing instructions, and hooks in Git, resolves one approved set, and links it into the folders your agents already read.",
+    after_help = "Start:    dalo                      creates ~/.dalo on first use and shows the next step\n          dalo target link <agent>  ->  dalo source add <id> <git-url>  ->  dalo sync\nSandbox:  export DALO_STORE=\"$(mktemp -d)/store\"; dalo init; dalo target link generic <path>\nMore:     dalo --help, dalo next, dalo doctor",
     after_long_help = AFTER_LONG_HELP
 )]
 pub struct Cli {
@@ -78,9 +175,24 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub dry_run: bool,
 
+    /// When to emit ANSI color.
+    #[arg(long, global = true, value_enum, default_value_t = ColorChoice::Auto, value_name = "WHEN")]
+    pub color: ColorChoice,
+
     /// Command to execute.
     #[command(subcommand)]
     pub command: Option<Command>,
+}
+
+/// ANSI color policy for human-readable output.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum ColorChoice {
+    /// Color only terminals, honoring `NO_COLOR` and `TERM=dumb`.
+    Auto,
+    /// Color even when output is piped, and even when `NO_COLOR` is set.
+    Always,
+    /// Never emit color.
+    Never,
 }
 
 /// Project migration arguments.
@@ -211,7 +323,11 @@ impl Cli {
     /// Parse command-line arguments from the current process.
     #[must_use]
     pub fn parse_args() -> Self {
-        let cli = Self::parse();
+        let mut command = Self::command();
+        let commands = grouped_commands_help(&command);
+        command = command.help_template(help_template(&commands));
+        let matches = command.get_matches();
+        let cli = Self::from_arg_matches(&matches).unwrap_or_else(|error| error.exit());
         cli.reject_json_for_plain_text_command();
         cli
     }
@@ -1467,6 +1583,7 @@ fn run_cli_inner(cli: Cli) -> DaloResult<()> {
         global: _,
         json,
         dry_run,
+        color: _,
         command,
     } = cli;
 
@@ -5976,6 +6093,7 @@ mod tests {
             global: false,
             json: false,
             dry_run: false,
+            color: ColorChoice::Auto,
             command: None,
         };
 
@@ -6257,5 +6375,77 @@ mod tests {
         assert!(allows_update_notice(
             &Cli::try_parse_from(["dalo", "--project", ".", "status"]).unwrap()
         ));
+    }
+}
+
+#[cfg(test)]
+mod help_tests {
+    use std::collections::BTreeSet;
+
+    use clap::CommandFactory;
+
+    use super::{COMMAND_GROUPS, Cli, grouped_commands_help, one_line_about};
+
+    fn visible_commands() -> BTreeSet<String> {
+        Cli::command()
+            .get_subcommands()
+            .filter(|subcommand| !subcommand.is_hide_set())
+            .map(|subcommand| subcommand.get_name().to_owned())
+            .collect()
+    }
+
+    #[test]
+    fn help_groups_should_place_every_visible_command_once() {
+        let visible = visible_commands();
+        let grouped: Vec<&str> = COMMAND_GROUPS
+            .iter()
+            .flat_map(|(_, names)| names.iter().copied())
+            .collect();
+
+        for name in &visible {
+            let count = grouped.iter().filter(|entry| **entry == name).count();
+            assert_eq!(
+                count, 1,
+                "`{name}` must appear in exactly one help group in COMMAND_GROUPS"
+            );
+        }
+        for name in &grouped {
+            assert!(
+                visible.contains(*name),
+                "COMMAND_GROUPS names `{name}`, which is not a visible command"
+            );
+        }
+        assert!(
+            !grouped.contains(&"help"),
+            "the help subcommand must not be listed in COMMAND_GROUPS"
+        );
+    }
+
+    #[test]
+    fn grouped_help_should_list_every_command_and_no_other_bucket() {
+        let command = Cli::command();
+        let help = grouped_commands_help(&command);
+
+        for subcommand in command
+            .get_subcommands()
+            .filter(|subcommand| !subcommand.is_hide_set())
+        {
+            let name = subcommand.get_name();
+            let about = one_line_about(subcommand);
+            assert!(
+                help.lines().any(|line| {
+                    line.trim_start().starts_with(name) && line.ends_with(about.as_str())
+                }),
+                "grouped help should list `{name}` with its description:\n{help}"
+            );
+        }
+        assert!(
+            !help.contains("Other:"),
+            "every visible command should have a group:\n{help}"
+        );
+        assert!(
+            !help.contains('{') && !help.contains('}'),
+            "grouped help must not contain template braces:\n{help}"
+        );
     }
 }

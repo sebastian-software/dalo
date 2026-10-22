@@ -1197,7 +1197,7 @@ pub fn print_next_action_report(report: &NextActionReport) {
     println!("  pending approvals: {}", report.pending_approvals);
     println!();
     if let Some(command) = &report.command {
-        println!("Next: {command}");
+        println!("{}: {command}", term::next_label("Next"));
         println!("  {}", paths.text(&report.message));
     } else {
         println!("All synced ✓");

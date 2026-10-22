@@ -207,6 +207,10 @@ another value fails when its release archive cannot be fetched.</p>
 <td>Plan supported mutating operations without changing persistent state. <code>migrate skills-sh</code> still clones into temporary directories to verify content. Read-only commands ignore it.</td>
 </tr>
 <tr>
+<td><code>--color &lt;auto|always|never&gt;</code></td>
+<td>When to add ANSI color to human-readable output; default <code>auto</code>. <code>auto</code> colors only terminals and honors <code>NO_COLOR</code> and <code>TERM=dumb</code>. <code>always</code> colors even when output is piped, and wins over <code>NO_COLOR</code> and <code>TERM=dumb</code>. <code>never</code> turns color off. It does not change <code>--help</code> text, which the help renderer styles on its own. The flag is additive in 1.x.</td>
+</tr>
+<tr>
 <td><code>-h</code>, <code>--help</code></td>
 <td>Print command help.</td>
 </tr>

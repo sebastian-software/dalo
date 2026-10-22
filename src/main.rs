@@ -21,6 +21,7 @@ fn main() -> ExitCode {
         };
     }
     let cli = Cli::parse_args();
+    term::set_color_choice(cli.color);
     let json = cli.json;
     let store_root = cli.resolved_store().ok();
     match run_cli(cli) {

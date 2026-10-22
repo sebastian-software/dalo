@@ -24,7 +24,7 @@ under "Command Reference" and "Global Flags", with the meaning documented
 there. New commands, new subcommands, and new optional flags are additive and
 may arrive in any minor release.
 
-The global flags are `--store <PATH>`, `--json`, `--dry-run`,
+The global flags are `--store <PATH>`, `--json`, `--dry-run`, `--color <WHEN>`,
 `-h`/`--help`, and `-V`/`--version`.
 
 ### Exit codes

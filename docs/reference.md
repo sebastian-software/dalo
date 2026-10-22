@@ -73,6 +73,7 @@ Global flags can be placed before or after the command.
 | `--store <PATH>` | Use a store other than the resolved default. |
 | `--json` | Emit machine-readable JSON for commands that support structured output. It requires a command; bare `dalo --json` returns the standard JSON error on stderr. `manpage` and `completions` reject this flag with a plain-text usage error because they generate plain text only. |
 | `--dry-run` | Plan supported mutating operations without changing persistent state. `migrate skills-sh` still clones into temporary directories to verify content. Read-only commands ignore it. |
+| `--color <auto\|always\|never>` | When to add ANSI color to human-readable output; default `auto`. `auto` colors only terminals and honors `NO_COLOR` and `TERM=dumb`. `always` colors even when output is piped, and wins over `NO_COLOR` and `TERM=dumb`. `never` turns color off. It does not change `--help` text, which the help renderer styles on its own. The flag is additive in 1.x. |
 | `-h`, `--help` | Print command help. |
 | `-V`, `--version` | Print the installed version. |
 
