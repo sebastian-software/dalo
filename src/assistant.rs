@@ -201,6 +201,66 @@ fn comparable_entry(path: &Path) -> PathBuf {
 const RECEIPT: &str = ".dalo-bundle.toml";
 const RECEIPT_VERSION: u32 = 1;
 const COMPANION_LINKS: &str = "assistant-links.toml";
+const NOTICE_MARKER: &str = ".assistant-notice";
+
+/// Whether this store is the default global store under `~/.dalo`.
+///
+/// Its companion links are the ones other stores see as an assistant installed
+/// outside their own bundle, so only this store reports that state unprompted.
+pub(crate) fn is_global_store(paths: &StorePaths) -> bool {
+    store::expand_user_path(Path::new("~/.dalo"))
+        .is_ok_and(|global| store::comparable_path(&global) == store::comparable_path(&paths.root))
+}
+
+/// Whether a normal invocation should print a standing blocked or external
+/// assistant notice, recording that it did.
+///
+/// The notice is shown once per initialized store: `.assistant-notice` holds
+/// the text last shown, so a different reason is shown again and the same one
+/// stays quiet. An uninitialized store cannot remember anything, so a store
+/// that does not exist yet stays quiet until `init` creates it, while an
+/// existing directory without config keeps reporting why setup is blocked.
+/// A marker that is not a regular file is preserved and never followed.
+pub(crate) fn take_standing_notice(paths: &StorePaths, notice: &str) -> bool {
+    match fs::symlink_metadata(&paths.config_file) {
+        Ok(metadata) if metadata.is_file() => {}
+        _ => return entry_exists(&paths.root).unwrap_or(true),
+    }
+    let marker = paths.root.join(NOTICE_MARKER);
+    match fs::symlink_metadata(&marker) {
+        Ok(metadata) if metadata.is_file() => {
+            if fs::read_to_string(&marker).is_ok_and(|shown| shown.trim_end() == notice) {
+                return false;
+            }
+        }
+        Ok(_) => return true,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => return true,
+    }
+    // Remembering is a convenience; a read-only or busy store still shows the
+    // notice and simply shows it again next time.
+    let _ = write_notice_marker(&marker, notice);
+    true
+}
+
+/// Forget a recorded standing notice once the assistant no longer needs one,
+/// so a later blocked or external state is reported again.
+pub(crate) fn clear_standing_notice(paths: &StorePaths) {
+    let marker = paths.root.join(NOTICE_MARKER);
+    if fs::symlink_metadata(&marker).is_ok_and(|metadata| metadata.is_file()) {
+        let _ = fs::remove_file(marker);
+    }
+}
+
+fn write_notice_marker(marker: &Path, notice: &str) -> DaloResult<()> {
+    use std::io::Write;
+    let parent = marker.parent().unwrap_or(marker);
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    temporary.write_all(format!("{notice}\n").as_bytes())?;
+    temporary.as_file().sync_all()?;
+    temporary.persist(marker).map_err(|error| error.error)?;
+    Ok(())
+}
 
 #[derive(Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -235,13 +295,27 @@ fn read_companion_links(paths: &StorePaths) -> DaloResult<CompanionLinks> {
 
 /// Bootstrap only the packaged companion on ordinary use. Detected folders
 /// receive this skill without becoming targets for any other managed content.
-pub(crate) fn on_use(paths: &StorePaths, discover: bool) -> DaloResult<AssistantStatusReport> {
+///
+/// Returns the state before and after setup, so callers can report only what
+/// this invocation changed.
+pub(crate) fn on_use(
+    paths: &StorePaths,
+    discover: bool,
+) -> DaloResult<(AssistantStatusReport, AssistantStatusReport)> {
     let before = status(paths);
+    on_use_from(paths, discover, &before).map(|after| (before, after))
+}
+
+fn on_use_from(
+    paths: &StorePaths,
+    discover: bool,
+    before: &AssistantStatusReport,
+) -> DaloResult<AssistantStatusReport> {
     if matches!(
         before.state,
         AssistantState::External | AssistantState::Blocked
     ) {
-        return Ok(before);
+        return Ok(before.clone());
     }
     if before.state == AssistantState::MissingStore {
         fs::create_dir_all(&paths.root)?;

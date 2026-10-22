@@ -387,6 +387,9 @@ pub struct ActiveAuditOutcome {
     pub blocking: Vec<String>,
     /// Skills whose audit could not be completed.
     pub failures: Vec<ActiveAuditFailure>,
+    /// Skills whose deterministic checks ran because no reusable result existed
+    /// for their exact content hash, as opposed to reusing a cached report.
+    pub fresh: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -488,7 +491,7 @@ fn audit_active_skills_with_source_roots(
                 || skill.source_ref.clone(),
                 |provider| format!("{}@{provider}", skill.source_ref),
             );
-            match audit_skill_with_source_roots(
+            match audit_snapshot_with_source_roots(
                 paths,
                 &audit_ref,
                 &artifact_path,
@@ -498,10 +501,14 @@ fn audit_active_skills_with_source_roots(
                 },
                 configured_source_roots,
             ) {
-                Ok(report) if report.is_blocking() => {
-                    outcome.blocking.push(audit_ref);
+                Ok((report, reused)) => {
+                    if !reused {
+                        outcome.fresh.push(audit_ref.clone());
+                    }
+                    if report.is_blocking() {
+                        outcome.blocking.push(audit_ref);
+                    }
                 }
-                Ok(_) => {}
                 Err(error) => outcome.failures.push(ActiveAuditFailure {
                     source_ref: audit_ref,
                     source_id: skill.source_id.clone(),
@@ -565,10 +572,29 @@ fn audit_skill_with_source_roots(
     options: &AuditOptions,
     configured_source_roots: &ConfiguredSourceRoots,
 ) -> DaloResult<AuditReport> {
+    audit_snapshot_with_source_roots(
+        paths,
+        source_ref,
+        skill_path,
+        options,
+        configured_source_roots,
+    )
+    .map(|(report, _)| report)
+}
+
+/// Audit one skill and say whether its static findings came from a cached
+/// report for the exact same content hash and engine.
+fn audit_snapshot_with_source_roots(
+    paths: &StorePaths,
+    source_ref: &str,
+    skill_path: &Path,
+    options: &AuditOptions,
+    configured_source_roots: &ConfiguredSourceRoots,
+) -> DaloResult<(AuditReport, bool)> {
     let exclude_root_source_metadata = options.exclude_root_source_metadata
         || configured_source_roots.contains(source_ref, skill_path);
     let content_hash = audit_content_hash(skill_path, exclude_root_source_metadata)?;
-    audit_skill_with_verified_content_hash(
+    audit_snapshot(
         paths,
         source_ref,
         skill_path,
@@ -591,6 +617,25 @@ pub(crate) fn audit_skill_with_verified_content_hash(
     exclude_root_source_metadata: bool,
     content_hash: String,
 ) -> DaloResult<AuditReport> {
+    audit_snapshot(
+        paths,
+        source_ref,
+        skill_path,
+        options,
+        exclude_root_source_metadata,
+        content_hash,
+    )
+    .map(|(report, _)| report)
+}
+
+fn audit_snapshot(
+    paths: &StorePaths,
+    source_ref: &str,
+    skill_path: &Path,
+    options: &AuditOptions,
+    exclude_root_source_metadata: bool,
+    content_hash: String,
+) -> DaloResult<(AuditReport, bool)> {
     let existing = match read_report(paths, source_ref, &content_hash) {
         Ok(report) => Some(report),
         Err(error) if unusable_cached_report(&error) => None,
@@ -604,8 +649,10 @@ pub(crate) fn audit_skill_with_verified_content_hash(
             exclude_root_source_metadata,
         )
     });
-    let (static_findings, coverage) = matching_snapshot
-        .filter(|report| report.static_engine_version == STATIC_ENGINE_VERSION)
+    let cached_static_scan =
+        matching_snapshot.filter(|report| report.static_engine_version == STATIC_ENGINE_VERSION);
+    let reused_static_scan = cached_static_scan.is_some();
+    let (static_findings, coverage) = cached_static_scan
         .map(|report| (report.static_findings.clone(), report.coverage))
         .map_or_else(
             || static_scan_with_options(skill_path, exclude_root_source_metadata),
@@ -705,7 +752,7 @@ pub(crate) fn audit_skill_with_verified_content_hash(
         risk_acceptance,
     };
     persist_report_if_changed(paths, &mut report, existing.as_ref(), options.persist)?;
-    Ok(report)
+    Ok((report, reused_static_scan))
 }
 
 /// Whether a failed report read proves that its cache entry cannot be reused.

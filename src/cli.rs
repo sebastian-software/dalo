@@ -318,7 +318,7 @@ pub enum Command {
     )]
     Team(TeamCommand),
     /// Show managed, unmanaged, and conflicted skill state.
-    Status(CheckArgs),
+    Status(StatusArgs),
     /// Show one state-aware next action for this store.
     Next,
     /// Refresh clean sources, resolve approved skills, and link them into targets.
@@ -629,6 +629,18 @@ pub struct CheckArgs {
     /// Exit non-zero when the report contains a state requiring review.
     #[arg(long)]
     pub check: bool,
+}
+
+/// Arguments for `status`.
+#[derive(Debug, Args)]
+pub struct StatusArgs {
+    /// Exit non-zero when the report contains a state requiring review.
+    #[arg(long)]
+    pub check: bool,
+
+    /// Also show source provenance, empty counts, and an idle scheduler.
+    #[arg(long)]
+    pub all: bool,
 }
 
 /// `autosync` command group.
@@ -1650,7 +1662,10 @@ fn run_project(
     };
     let command = match command {
         Some(command) => command,
-        None if !json => Command::Status(CheckArgs { check: false }),
+        None if !json => Command::Status(StatusArgs {
+            check: false,
+            all: false,
+        }),
         None => {
             return Err(DaloError::InvalidArgument {
                 reason:
@@ -3329,12 +3344,45 @@ fn assistant_on_use(options: &GlobalOptions, discover: bool) {
     }
     let paths = store::StorePaths::new(options.store.clone());
     match assistant::on_use(&paths, discover) {
-        Ok(report) if !options.json => print_assistant_setup(&report),
+        Ok((before, after)) if !options.json => {
+            observe_assistant(&before);
+            print_assistant_setup(&paths, &after);
+        }
+        // A setup error in an initialized store is a standing state like a
+        // blocked bundle; before the store exists there is nothing to remember
+        // it in, so it is reported every time.
+        Err(error) if !options.json && paths.config_file.is_file() => {
+            print_standing_assistant_notice(&paths, &error.to_string());
+        }
         Err(error) if !options.json => eprintln!(
             "assistant: {}",
             term::terminal_safe_text(&error.to_string())
         ),
         _ => {}
+    }
+}
+
+/// Assistant notices of this process: the last observed state, so each check
+/// reports only what changed since the previous one, and the standing notices
+/// already printed, so a command that checks twice still says each thing once.
+struct AssistantNoticeLog {
+    last: Option<assistant::AssistantStatusReport>,
+    printed: std::collections::BTreeSet<String>,
+}
+
+static ASSISTANT_NOTICES: std::sync::Mutex<AssistantNoticeLog> =
+    std::sync::Mutex::new(AssistantNoticeLog {
+        last: None,
+        printed: std::collections::BTreeSet::new(),
+    });
+
+/// Record the assistant state before a command changes it.
+fn observe_assistant(report: &assistant::AssistantStatusReport) {
+    let mut log = ASSISTANT_NOTICES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if log.last.is_none() {
+        log.last = Some(report.clone());
     }
 }
 
@@ -3353,36 +3401,123 @@ fn automatic_assistant_report(
     Some(report)
 }
 
-fn print_assistant_setup(report: &assistant::AssistantStatusReport) {
+/// Report what this invocation changed about the bundled assistant.
+///
+/// A first preparation, a bundle update, and new delivery links are announced
+/// once, when they happen. A blocked or external installation is a standing
+/// state: it is shown once per store and stays visible in `assistant status`,
+/// `status --json`, and `doctor`. Custom stores never announce an external
+/// assistant, because the global store's own companion links look external
+/// from a sandbox.
+fn print_assistant_setup(paths: &store::StorePaths, report: &assistant::AssistantStatusReport) {
+    let before = {
+        let mut log = ASSISTANT_NOTICES
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        log.last.replace(report.clone())
+    };
     match report.state {
-        assistant::AssistantState::Current => {
-            eprintln!(
-                "assistant: current ({})",
-                term::terminal_safe_text(&report.skill_path.display().to_string())
-            );
-            if !report.undelivered_targets.is_empty() {
-                eprintln!(
-                    "assistant: delivery pending for {}",
-                    term::terminal_safe_text(&report.undelivered_targets.join(", "))
-                );
-            } else if let Some(next) = &report.next_command {
-                eprintln!("assistant: next: {}", term::terminal_safe_text(next));
-            } else {
-                eprintln!(
-                    "assistant: delivered; reload your agent's skills if needed, then select dalo"
-                );
+        assistant::AssistantState::External | assistant::AssistantState::Blocked => {
+            if report.state == assistant::AssistantState::External
+                && !assistant::is_global_store(paths)
+            {
+                return;
             }
-        }
-        _ => eprintln!(
-            "assistant: {}",
-            term::terminal_safe_text(
+            print_standing_assistant_notice(
+                paths,
                 report
                     .reason
                     .as_deref()
-                    .unwrap_or("setup needs attention; run dalo assistant status")
-            )
-        ),
+                    .unwrap_or("setup needs attention; run dalo assistant status"),
+            );
+        }
+        _ => {
+            assistant::clear_standing_notice(paths);
+            if let Some(before) = before {
+                for line in assistant_transition_lines(&before, report) {
+                    eprintln!("assistant: {}", term::terminal_safe_text(&line));
+                }
+            }
+        }
     }
+}
+
+fn print_standing_assistant_notice(paths: &store::StorePaths, notice: &str) {
+    let mut log = ASSISTANT_NOTICES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if log.printed.contains(notice) || !assistant::take_standing_notice(paths, notice) {
+        return;
+    }
+    log.printed.insert(notice.to_owned());
+    eprintln!("assistant: {}", term::terminal_safe_text(notice));
+}
+
+/// Render a link path with the home directory compacted, comparing only its
+/// parent so the link is never resolved to the bundle it points at.
+fn compact_link_path(path: &std::path::Path) -> String {
+    match (path.parent(), path.file_name()) {
+        (Some(parent), Some(name)) => format!(
+            "{}/{}",
+            status::compact_human_path(parent).trim_end_matches('/'),
+            term::terminal_safe_text(&name.to_string_lossy())
+        ),
+        _ => status::compact_human_path(path),
+    }
+}
+
+/// Describe the assistant changes between two observations of one invocation.
+fn assistant_transition_lines(
+    before: &assistant::AssistantStatusReport,
+    after: &assistant::AssistantStatusReport,
+) -> Vec<String> {
+    if after.state != assistant::AssistantState::Current {
+        return Vec::new();
+    }
+    let mut lines = Vec::new();
+    match before.state {
+        assistant::AssistantState::MissingStore | assistant::AssistantState::Missing => {
+            lines.push(format!(
+                "prepared the bundled Dalo skill in {}",
+                status::compact_human_path(&after.skill_path)
+            ));
+        }
+        assistant::AssistantState::UpdateAvailable => {
+            lines.push(format!(
+                "updated the bundled Dalo skill to {}",
+                after.version
+            ));
+        }
+        _ => {}
+    }
+    let known = before
+        .delivered_paths
+        .iter()
+        .map(|path| store::comparable_path(path))
+        .collect::<std::collections::BTreeSet<_>>();
+    let delivered = after
+        .delivered_paths
+        .iter()
+        .filter(|path| !known.contains(&store::comparable_path(path)))
+        .map(|path| compact_link_path(path))
+        .collect::<Vec<_>>();
+    if !delivered.is_empty() {
+        lines.push(format!(
+            "delivered to {}; reload your agent's skills if needed, then select dalo",
+            delivered.join(", ")
+        ));
+    }
+    if !lines.is_empty() {
+        if !after.undelivered_targets.is_empty() {
+            lines.push(format!(
+                "delivery pending for {}",
+                after.undelivered_targets.join(", ")
+            ));
+        } else if let Some(next) = &after.next_command {
+            lines.push(format!("next: {next}"));
+        }
+    }
+    lines
 }
 
 fn print_json_with_assistant<T: serde::Serialize>(
@@ -3398,6 +3533,11 @@ fn print_json_with_assistant<T: serde::Serialize>(
 
 fn run_init(options: &GlobalOptions) -> DaloResult<()> {
     let paths = store::StorePaths::new(options.store.clone());
+    // Observe before the lock file exists, so a new store reads as missing
+    // rather than as a directory with unexpected content.
+    if !options.json && !options.dry_run && assistant::automatic_setup_enabled() {
+        observe_assistant(&assistant::status(&paths));
+    }
     let _lock = if options.dry_run {
         None
     } else {
@@ -3415,7 +3555,7 @@ fn run_init(options: &GlobalOptions) -> DaloResult<()> {
         print_json_with_assistant(&report, assistant.as_ref())?;
     } else {
         if let Some(assistant) = &assistant {
-            print_assistant_setup(assistant);
+            print_assistant_setup(&paths, assistant);
         }
         let next = if report.validation_warnings.is_empty() {
             Some(status::build_next_action_report(&options.store)?)
@@ -3440,19 +3580,20 @@ fn run_next(options: &GlobalOptions) -> DaloResult<()> {
     Ok(())
 }
 
-fn run_status(options: &GlobalOptions, args: CheckArgs) -> DaloResult<()> {
+fn run_status(options: &GlobalOptions, args: StatusArgs) -> DaloResult<()> {
     let paths = store::StorePaths::new(options.store.clone());
     let _lock = if args.check && paths.config_file.exists() {
         Some(store::StoreLock::acquire(&paths)?)
     } else {
         None
     };
-    let report = status::build_status_report(&options.store)?;
+    let mut report = status::build_status_report(&options.store)?;
 
     if options.json {
         print_json(&report)?;
     } else {
-        status::print_status_report(&report);
+        report.dirty_sources = status::dirty_tracking_sources(&options.store)?;
+        status::print_status_report(&report, status::StatusView { all: args.all });
     }
 
     if args.check
@@ -3667,7 +3808,13 @@ fn status_review_reason(report: &status::StatusReport) -> Option<String> {
         ));
     }
 
-    if !report.lock.drift.is_empty() {
+    if status::drift_awaits_sync(&report.lock.drift) {
+        reasons.push(format!(
+            "{} (run: {})",
+            status::waiting_for_sync_phrase(&report.lock.drift),
+            store::dalo_command(&report.store, "sync")
+        ));
+    } else if !report.lock.drift.is_empty() {
         reasons.push(format!(
             "{} lock drift item{} ({})",
             report.lock.drift.len(),
@@ -3878,7 +4025,7 @@ where
             after_lock(phase)
         }
     };
-    let sync_result = (|| -> DaloResult<materialize::SyncReport> {
+    let sync_result = (|| -> DaloResult<(materialize::SyncReport, status::SyncOutputContext)> {
         let approvals = store::read_approvals(&paths)?;
         let resolved = resolver::resolve_from_config_with_plugin_inventories_with_source_errors(
             &config,
@@ -3989,6 +4136,7 @@ where
             );
             report.installation_plan = Some(installation_plan);
         }
+        let mut output_context = None;
         if !options.dry_run {
             let previous = previous
                 .as_ref()
@@ -4022,6 +4170,12 @@ where
                 &approvals.approvals,
                 &scanned,
             ));
+            output_context = Some(status::SyncOutputContext::new(
+                previous,
+                Some(&lock.sources),
+                &report.resolution,
+                &audits.fresh,
+            ));
             write_sync_lock_with_rollback(
                 &paths,
                 previous,
@@ -4038,6 +4192,15 @@ where
                 rollback.commit();
             }
         }
+        // A dry run builds no lock, so it compares with the lock it read.
+        let output_context = output_context.unwrap_or_else(|| {
+            status::SyncOutputContext::new(
+                lock_for_instructions,
+                None,
+                &report.resolution,
+                &audits.fresh,
+            )
+        });
         let selected_plugins = live
             .plugins
             .plugins
@@ -4108,10 +4271,10 @@ where
             options.dry_run,
         )?;
         run_post_lock_phase(PostLockSyncPhase::HookProjection)?;
-        Ok(report)
+        Ok((report, output_context))
     })();
-    let report = match sync_result {
-        Ok(report) => report,
+    let (report, output_context) = match sync_result {
+        Ok(outcome) => outcome,
         Err(error) => {
             if let Some(rollback) = manifest_rollback
                 && let Err(rollback_error) = rollback.rollback(&paths)
@@ -4137,9 +4300,9 @@ where
     if options.json {
         print_json_with_assistant(&report, assistant.as_ref())?;
     } else {
-        status::print_sync_report(&report);
+        status::print_sync_report(&report, &output_context);
         if let Some(assistant) = &assistant {
-            print_assistant_setup(assistant);
+            print_assistant_setup(&paths, assistant);
         }
     }
 
@@ -5598,7 +5761,16 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
                     binaries,
                 })?;
             } else {
-                status::print_audit_report(&audit_report);
+                let quiet = status::audit_is_quiet(&audit_report);
+                if quiet {
+                    status::print_clean_skill_approval(
+                        &approval_report,
+                        &audit_report,
+                        &options.store,
+                    );
+                } else {
+                    status::print_audit_report(&audit_report);
+                }
                 if let Some(compatibility) = &skill.compatibility {
                     println!(
                         "compatibility: {}",
@@ -5616,7 +5788,11 @@ fn run_approve(options: &GlobalOptions, command: ApproveCommand) -> DaloResult<(
                         );
                     }
                 }
-                status::print_approval_report(&approval_report, &options.store);
+                if quiet {
+                    status::print_approval_next_step(&approval_report, &options.store);
+                } else {
+                    status::print_approval_report(&approval_report, &options.store);
+                }
             }
         }
         ApproveSubcommand::Agent(args) => print_approval_result(
@@ -5865,8 +6041,7 @@ fn run_adopt_with_audit(
             adoption,
         })?;
     } else {
-        status::print_audit_report(&audit_report);
-        status::print_adopt_report(&adoption, &options.store);
+        status::print_adopt_outcome(&audit_report, &adoption, &options.store);
     }
     Ok(())
 }
@@ -5918,7 +6093,7 @@ fn run_target(options: &GlobalOptions, command: TargetCommand) -> DaloResult<()>
             } else {
                 status::print_target_link_report(&report);
                 if let Some(assistant) = &assistant {
-                    print_assistant_setup(assistant);
+                    print_assistant_setup(&paths, assistant);
                 }
             }
             Ok(())
@@ -6257,5 +6432,57 @@ mod tests {
         assert!(allows_update_notice(
             &Cli::try_parse_from(["dalo", "--project", ".", "status"]).unwrap()
         ));
+    }
+
+
+    fn assistant_report(
+        state: assistant::AssistantState,
+        delivered: &[&str],
+    ) -> assistant::AssistantStatusReport {
+        assistant::AssistantStatusReport {
+            store: PathBuf::from("/tmp/store"),
+            skill_path: PathBuf::from("/tmp/store/local/skills/dalo"),
+            version: "1.10.0".to_owned(),
+            installed_version: None,
+            state,
+            reason: None,
+            external_paths: Vec::new(),
+            undelivered_targets: Vec::new(),
+            delivered_paths: delivered.iter().map(PathBuf::from).collect(),
+            next_command: None,
+        }
+    }
+
+    #[test]
+    fn assistant_notices_should_describe_only_changes_of_this_invocation() {
+        use assistant::AssistantState::{Current, External, Missing, UpdateAvailable};
+        let current = assistant_report(Current, &["/tmp/agent/skills/dalo"]);
+
+        assert!(assistant_transition_lines(&current, &current).is_empty());
+        assert!(assistant_transition_lines(&current, &assistant_report(External, &[])).is_empty());
+
+        let prepared = assistant_transition_lines(&assistant_report(Missing, &[]), &current);
+        assert_eq!(prepared.len(), 2, "{prepared:?}");
+        assert!(prepared[0].starts_with("prepared the bundled Dalo skill in "));
+        assert!(prepared[1].starts_with("delivered to /tmp/agent/skills/dalo;"));
+
+        let mut pending = assistant_report(Current, &[]);
+        pending.undelivered_targets = vec!["generic".to_owned()];
+        let updated = assistant_transition_lines(&assistant_report(UpdateAvailable, &[]), &pending);
+        assert_eq!(
+            updated,
+            vec![
+                "updated the bundled Dalo skill to 1.10.0".to_owned(),
+                "delivery pending for generic".to_owned()
+            ]
+        );
+
+        let mut next = assistant_report(Current, &[]);
+        next.next_command = Some("dalo target detect".to_owned());
+        assert_eq!(
+            assistant_transition_lines(&assistant_report(Missing, &[]), &next)[1],
+            "next: dalo target detect"
+        );
+        assert!(assistant_transition_lines(&next, &next).is_empty());
     }
 }

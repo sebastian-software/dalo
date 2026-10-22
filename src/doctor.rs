@@ -257,6 +257,8 @@ pub enum DoctorCode {
     SkillCommandMissing,
     /// Every command an active skill declares is on PATH.
     SkillCommandsAvailable,
+    /// An assistant installed outside this store's bundle occupies a known slot.
+    AssistantExternal,
 }
 
 /// Run read-only diagnostics.
@@ -416,6 +418,7 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
         );
     }
     check_autosync(&paths, &mut findings);
+    check_assistant(&paths, &mut findings);
 
     let materialization = live_resolution.as_ref().and_then(|live| {
         match crate::materialize::materialize_with_degraded_sources(
@@ -849,6 +852,22 @@ fn finish_report(
         summary,
         deliveries,
         installation_plan,
+    }
+}
+
+/// Report an assistant that another installer owns. Normal commands do not
+/// repeat this notice in a custom store, so doctor is where it stays visible.
+fn check_assistant(paths: &StorePaths, findings: &mut Vec<DoctorFinding>) {
+    let assistant = crate::assistant::status(paths);
+    if assistant.state == crate::assistant::AssistantState::External {
+        let mut finding = info(
+            DoctorCode::AssistantExternal,
+            assistant.reason.unwrap_or_else(|| {
+                "an assistant already exists outside this store's bundled installation".to_owned()
+            }),
+        );
+        finding.next_command = Some("dalo assistant status".to_owned());
+        findings.push(finding);
     }
 }
 
@@ -2244,6 +2263,7 @@ fn code_name(code: DoctorCode) -> &'static str {
         DoctorCode::LegacyApprovalRecord => "legacy_approval_record",
         DoctorCode::SkillCommandMissing => "skill_command_missing",
         DoctorCode::SkillCommandsAvailable => "skill_commands_available",
+        DoctorCode::AssistantExternal => "assistant_external",
     }
 }
 

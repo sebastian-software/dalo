@@ -604,10 +604,20 @@ fn e2e_manifest_source_provenance_is_visible_and_doctor_detects_pin_mismatch() {
         .stdout(predicate::str::contains("management=team_manifest"))
         .stdout(predicate::str::contains(format!("requested={v1}")))
         .stdout(predicate::str::contains(format!("resolved={short_v1}")));
+    // Provenance is detail: the default status keeps the source line short,
+    // and `--all` adds where the catalog comes from.
     dalo_command()
         .args(["--store"])
         .arg(&store)
         .arg("status")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("company.marketing"))
+        .stdout(predicate::str::contains("management=team_manifest").not());
+    dalo_command()
+        .args(["--store"])
+        .arg(&store)
+        .args(["status", "--all"])
         .assert()
         .success()
         .stdout(predicate::str::contains("company.marketing"))

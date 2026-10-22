@@ -731,6 +731,33 @@ fn drift_code_name(code: LockDriftCode) -> &'static str {
     }
 }
 
+impl LockDriftCode {
+    /// Whether the next `sync` simply records this drift.
+    ///
+    /// These codes describe a resolution that gained or lost a source, an active
+    /// or shadowed skill, a pending approval, or a plugin since the last sync,
+    /// which is what adding, selecting, approving, or removing content produces.
+    /// The other codes mean something recorded in the lock moved underneath it,
+    /// such as a source commit, inventory directory, delivery artifact, target
+    /// slot, or plugin state, and deserve a look before syncing.
+    #[must_use]
+    pub const fn awaits_sync(self) -> bool {
+        matches!(
+            self,
+            Self::SourceAdded
+                | Self::SourceRemoved
+                | Self::ActiveAdded
+                | Self::ActiveRemoved
+                | Self::UnlinkedAdded
+                | Self::UnlinkedRemoved
+                | Self::PendingApprovalAdded
+                | Self::PendingApprovalRemoved
+                | Self::PluginAdded
+                | Self::PluginRemoved
+        )
+    }
+}
+
 impl std::fmt::Display for LockDriftCode {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(drift_code_name(*self))
@@ -1139,6 +1166,33 @@ mod tests {
             path: PathBuf::from(format!("/store/sources/{id}")),
             subpath: None,
             commit: commit.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn awaits_sync_should_separate_recorded_changes_from_moved_content() {
+        for code in [
+            LockDriftCode::SourceAdded,
+            LockDriftCode::SourceRemoved,
+            LockDriftCode::ActiveAdded,
+            LockDriftCode::ActiveRemoved,
+            LockDriftCode::UnlinkedAdded,
+            LockDriftCode::UnlinkedRemoved,
+            LockDriftCode::PendingApprovalAdded,
+            LockDriftCode::PendingApprovalRemoved,
+            LockDriftCode::PluginAdded,
+            LockDriftCode::PluginRemoved,
+        ] {
+            assert!(code.awaits_sync(), "{code} should wait for sync");
+        }
+        for code in [
+            LockDriftCode::SourceCommitChanged,
+            LockDriftCode::SourceSubpathChanged,
+            LockDriftCode::SkillDeliveryChanged,
+            LockDriftCode::SkillMaterializationChanged,
+            LockDriftCode::PluginChanged,
+        ] {
+            assert!(!code.awaits_sync(), "{code} should stay lock drift");
         }
     }
 }
