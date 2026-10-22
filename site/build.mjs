@@ -323,7 +323,8 @@ const shell = ({
   <title>${escapeHtml(title)} · Dalo ${sectionName.toLowerCase()}</title>
   <meta name="description" content="${escapeHtml(description)}" />
   <link rel="canonical" href="${canonical}" />
-  <meta name="theme-color" content="#ffffff" />
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#0a1330" media="(prefers-color-scheme: dark)" />
   <meta property="og:type" content="article" />
   <meta property="og:site_name" content="Dalo" />
   <meta property="og:url" content="${canonical}" />
