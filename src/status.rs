@@ -105,6 +105,14 @@ pub struct StatusReport {
     pub instruction_block_drifts: Vec<InstructionBlockDrift>,
     /// Native scheduler installation and latest durable run state.
     pub autosync: AutosyncStatusReport,
+    /// Enabled tracking team sources whose checkout has local changes, which
+    /// makes the next `sync` refuse to refresh them.
+    ///
+    /// Only the human report lists them, so [`build_status_report`] leaves this
+    /// empty and the caller that prints fills it from
+    /// [`dirty_tracking_sources`]; `doctor` reports `dirty_source`.
+    #[serde(skip)]
+    pub dirty_sources: Vec<String>,
 }
 
 /// Compact state-aware guidance for an entry point or repeated initialization.
@@ -513,7 +521,29 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
         instruction_pack_overlaps,
         instruction_block_drifts,
         autosync,
+        dirty_sources: Vec::new(),
     })
+}
+
+/// Enabled tracking team sources whose checkout has local changes.
+///
+/// The next `sync` stops on such a source before it refreshes anything, so the
+/// human status report names it. This costs one Git call per tracking source,
+/// which JSON and `next` callers do not need to pay.
+pub fn dirty_tracking_sources(store_root: &Path) -> DaloResult<Vec<String>> {
+    let config = store::read_config(&StorePaths::new(store_root.to_path_buf()))?;
+    Ok(config
+        .sources
+        .iter()
+        .filter(|source| {
+            source.enabled
+                && source.kind == SourceKind::Team
+                && source.update_policy.as_deref() == Some("track")
+                && source.path.is_dir()
+                && crate::git::is_dirty(&source.path).unwrap_or(false)
+        })
+        .map(|source| source.id.clone())
+        .collect())
 }
 
 /// Build compact onboarding guidance from the current store state.
@@ -1286,6 +1316,28 @@ pub fn print_approval_report(report: &ApprovalReport, store_root: &Path) {
         report.action.as_str()
     };
     println!("{verb} {} {}", report.scope, report.value);
+    print_approval_next_step(report, store_root);
+}
+
+/// Print a skill approval whose preflight was clean as one line, followed by
+/// any short specification note. The full audit stays in `dalo audit`.
+pub fn print_clean_skill_approval(report: &ApprovalReport, audit: &AuditReport, store_root: &Path) {
+    let verb = match (report.dry_run, report.action.as_str()) {
+        (_, "unchanged") => "already approved",
+        (true, _) => "would approve",
+        _ => "approved",
+    };
+    println!(
+        "{verb} {} (checked, no findings)",
+        terminal_safe_text(&report.value)
+    );
+    if let Some(note) = spec_note_line(store_root, audit) {
+        println!("{note}");
+    }
+}
+
+/// Print the sync hint that follows a skill approval change.
+pub fn print_approval_next_step(report: &ApprovalReport, store_root: &Path) {
     if report.scope == "skill" && !report.dry_run && report.action != "unchanged" {
         let reason = if report.action == "revoked" {
             "to remove its links"
@@ -1298,6 +1350,84 @@ pub fn print_approval_report(report: &ApprovalReport, store_root: &Path) {
 
 fn print_sync_next_step(store_root: &Path, reason: &str) {
     println!("next: {} {reason}", store::dalo_command(store_root, "sync"));
+}
+
+/// Whether a preflight result can be reported as one line instead of the full
+/// audit block.
+///
+/// That holds for a clean, complete deterministic result without findings, an
+/// agent review, a risk acceptance, or declared release binaries. Specification
+/// notes are informational, outside the verdict, and summarized separately.
+#[must_use]
+pub fn audit_is_quiet(report: &AuditReport) -> bool {
+    report.status == AuditStatus::Clean
+        && report.coverage == AuditCoverage::Complete
+        && report.static_findings.is_empty()
+        && report.agent_review.is_none()
+        && report.risk_acceptance.is_none()
+        && report.binaries.is_empty()
+}
+
+/// One short line for a report's informational specification findings.
+fn spec_note_line(store_root: &Path, report: &AuditReport) -> Option<String> {
+    let first = report.spec_findings.first()?;
+    let count = report.spec_findings.len();
+    let command = store::dalo_command(
+        store_root,
+        &format!(
+            "audit {}",
+            crate::error::shell_quote_argument(&report.source_ref)
+        ),
+    );
+    Some(format!(
+        "{count} spec {}: {}{} ({} shows {})",
+        if count == 1 { "note" } else { "notes" },
+        terminal_safe_text(&first.message),
+        if count > 1 {
+            format!("; {} more", count - 1)
+        } else {
+            String::new()
+        },
+        terminal_safe_text(&command),
+        if count == 1 { "it" } else { "them" }
+    ))
+}
+
+/// Print full audit blocks for results that need a look, and one line for
+/// the clean rest, as `source add` and `source select` report their preflight.
+fn print_preflight_results(audits: &[AuditReport], store_root: &Path) {
+    for audit in audits.iter().filter(|audit| !audit_is_quiet(audit)) {
+        print_audit_report(audit);
+    }
+    let quiet = audits
+        .iter()
+        .filter(|audit| audit_is_quiet(audit))
+        .collect::<Vec<_>>();
+    if quiet.is_empty() {
+        return;
+    }
+    if quiet.len() == audits.len() {
+        println!("{} checked, no findings", skill_count_phrase(quiet.len()));
+    } else {
+        println!(
+            "{} more {} checked, no findings",
+            quiet.len(),
+            if quiet.len() == 1 { "skill" } else { "skills" }
+        );
+    }
+    print_spec_notes(&quiet, store_root);
+}
+
+fn print_spec_notes(audits: &[&AuditReport], store_root: &Path) {
+    for audit in audits {
+        if let Some(note) = spec_note_line(store_root, audit) {
+            println!("  {}: {note}", terminal_safe_text(&audit.source_ref));
+        }
+    }
+}
+
+fn skill_count_phrase(count: usize) -> String {
+    format!("{count} {}", if count == 1 { "skill" } else { "skills" })
 }
 
 /// Print a human-readable layered skill security audit.
@@ -1455,11 +1585,318 @@ fn should_print_resolution_diagnostic(
         || diagnostic.code != resolver::ResolutionDiagnosticCode::PendingApproval
 }
 
+/// How much detail `dalo status` prints.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct StatusView {
+    /// Include source provenance, empty counts, and an idle scheduler.
+    pub all: bool,
+}
+
+/// One item that blocks or waits for the person running `status`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NeedsYouItem {
+    /// What it is and why it needs attention.
+    summary: String,
+    /// Labeled, copyable commands that resolve it.
+    commands: Vec<String>,
+}
+
+impl NeedsYouItem {
+    fn run(summary: String, command: String) -> Self {
+        Self {
+            summary,
+            commands: vec![format!("run: {command}")],
+        }
+    }
+}
+
+/// `review (local)` for a source-qualified skill or plugin reference.
+fn source_ref_label(source_ref: &str) -> String {
+    match source_ref.split_once(':') {
+        Some((source, name)) => format!(
+            "{} ({})",
+            terminal_safe_text(name),
+            terminal_safe_text(source)
+        ),
+        None => terminal_safe_text(source_ref),
+    }
+}
+
+/// Drift the next sync simply records, grouped per subject with what changes.
+fn waiting_for_sync_lines(drift: &[LockDrift]) -> Vec<(String, String)> {
+    let mut lines: Vec<(String, String)> = Vec::new();
+    for item in drift {
+        let (subject, change) = match item.code {
+            LockDriftCode::SourceAdded => (
+                format!("{} (source)", terminal_safe_text(&item.subject)),
+                "new source",
+            ),
+            LockDriftCode::SourceRemoved => (
+                format!("{} (source)", terminal_safe_text(&item.subject)),
+                "source removed",
+            ),
+            LockDriftCode::ActiveAdded => (source_ref_label(&item.subject), "new"),
+            LockDriftCode::ActiveRemoved => (source_ref_label(&item.subject), "no longer active"),
+            LockDriftCode::UnlinkedAdded => (source_ref_label(&item.subject), "now shadowed"),
+            LockDriftCode::UnlinkedRemoved => {
+                (source_ref_label(&item.subject), "no longer shadowed")
+            }
+            LockDriftCode::PendingApprovalAdded => {
+                (source_ref_label(&item.subject), "waiting for approval")
+            }
+            LockDriftCode::PendingApprovalRemoved => (
+                source_ref_label(&item.subject),
+                "no longer waiting for approval",
+            ),
+            LockDriftCode::PluginAdded => {
+                (format!("{} plugin", source_ref_label(&item.subject)), "new")
+            }
+            LockDriftCode::PluginRemoved => (
+                format!("{} plugin", source_ref_label(&item.subject)),
+                "removed",
+            ),
+            _ => (terminal_safe_text(&item.subject), "changed"),
+        };
+        if let Some((_, changes)) = lines.iter_mut().find(|(known, _)| *known == subject) {
+            changes.push_str(", ");
+            changes.push_str(change);
+        } else {
+            lines.push((subject, change.to_owned()));
+        }
+    }
+    lines
+}
+
+/// Whether every drift item is one the next sync simply records.
+#[must_use]
+pub fn drift_awaits_sync(drift: &[LockDrift]) -> bool {
+    !drift.is_empty() && drift.iter().all(|item| item.code.awaits_sync())
+}
+
+/// `1 skill`, `2 skills`, or `3 changes` waiting for the next sync.
+#[must_use]
+pub fn waiting_for_sync_phrase(drift: &[LockDrift]) -> String {
+    let subjects = waiting_for_sync_lines(drift).len();
+    let skills_only = drift.iter().all(|item| {
+        matches!(
+            item.code,
+            LockDriftCode::ActiveAdded
+                | LockDriftCode::ActiveRemoved
+                | LockDriftCode::UnlinkedAdded
+                | LockDriftCode::UnlinkedRemoved
+                | LockDriftCode::PendingApprovalAdded
+                | LockDriftCode::PendingApprovalRemoved
+        )
+    });
+    let noun = match (skills_only, subjects == 1) {
+        (true, true) => "skill",
+        (true, false) => "skills",
+        (false, true) => "change",
+        (false, false) => "changes",
+    };
+    format!("{subjects} {noun} waiting for sync")
+}
+
+/// Everything that blocks or waits, in the order a person would handle it.
+fn needs_you_items(report: &StatusReport, paths: &HumanPathContext) -> Vec<NeedsYouItem> {
+    let store = &report.store;
+    let mut items = Vec::new();
+
+    // The same condition makes `status --check` report active skills without
+    // linked targets; a companion already delivered to agent folders counts.
+    let undelivered = report.resolution.active_skills.iter().any(|skill| {
+        !(skill.source_ref == "local:dalo"
+            && report.assistant.state == crate::assistant::AssistantState::Current
+            && !report.assistant.delivered_paths.is_empty())
+    });
+    if undelivered && !report.targets.iter().any(|target| target.linked) {
+        items.push(NeedsYouItem::run(
+            "no agent folder is linked yet, so active skills reach no agent".to_owned(),
+            store::dalo_command(store, "target detect"),
+        ));
+    }
+
+    for skill in &report.resolution.pending_approval_skills {
+        items.push(NeedsYouItem::run(
+            format!(
+                "{}: waiting for approval",
+                source_ref_label(&skill.source_ref)
+            ),
+            store::dalo_command(store, &format!("approve skill {}", skill.source_ref)),
+        ));
+    }
+
+    let conflicts = report
+        .materialization
+        .iter()
+        .filter(|operation| is_unmanaged_entry_conflict(operation))
+        .map(|operation| store::comparable_path(&operation.link_path))
+        .collect::<BTreeSet<_>>();
+    for skill in report
+        .unmanaged_skills
+        .iter()
+        .filter(|skill| !skill.protected)
+    {
+        let occupant = unmanaged_occupant(&skill.path);
+        let summary = if conflicts.contains(&store::comparable_path(&skill.path)) {
+            occupant.description().to_owned()
+        } else {
+            match occupant {
+                UnmanagedOccupant::Folder => "a folder Dalo does not manage".to_owned(),
+                UnmanagedOccupant::Entry => "an entry Dalo does not manage".to_owned(),
+            }
+        };
+        items.push(NeedsYouItem {
+            summary: format!("{}: {summary}", paths.path(&skill.path)),
+            commands: unmanaged_fix_lines(store, &skill.id, occupant),
+        });
+    }
+    let listed_unmanaged = report
+        .unmanaged_skills
+        .iter()
+        .map(|skill| store::comparable_path(&skill.path))
+        .collect::<BTreeSet<_>>();
+    for operation in report.materialization.iter().filter(|operation| {
+        operation.status == MaterializeOperationStatus::Blocked
+            && !listed_unmanaged.contains(&store::comparable_path(&operation.link_path))
+            && !operation
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.starts_with("required closure blocked"))
+    }) {
+        // An occupied slot that the unmanaged scan does not list, such as one
+        // still recorded as owned, gets the same words but the inspection
+        // command, because its ID is not one `resolve keep` accepts.
+        let reason = if is_unmanaged_entry_conflict(operation) {
+            unmanaged_occupant(&operation.link_path)
+                .description()
+                .to_owned()
+        } else {
+            paths.text(operation.reason.as_deref().unwrap_or("blocked"))
+        };
+        items.push(NeedsYouItem::run(
+            format!("{}: {reason}", paths.path(&operation.link_path)),
+            store::dalo_command(store, "resolve list"),
+        ));
+    }
+
+    for blocked in &report.resolution.blocked_skills {
+        items.push(NeedsYouItem {
+            summary: format!(
+                "{}: waits for `{}` ({})",
+                source_ref_label(&blocked.skill.source_ref),
+                terminal_safe_text(&blocked.requirement),
+                resolver::closure_block_reason_name(blocked.reason)
+            ),
+            commands: Vec::new(),
+        });
+    }
+
+    for source_ref in &report.blocking_audits {
+        items.push(NeedsYouItem::run(
+            format!(
+                "{}: blocked by a security finding",
+                source_ref_label(source_ref)
+            ),
+            store::dalo_command(store, &format!("audit {source_ref}")),
+        ));
+    }
+    for failure in &report.audit_failures {
+        items.push(NeedsYouItem::run(
+            format!(
+                "{}: security audit could not finish",
+                source_ref_label(&failure.source_ref)
+            ),
+            store::dalo_command(store, &format!("audit {}", failure.source_ref)),
+        ));
+    }
+
+    for source in report.sources.iter().filter(|source| {
+        source.error.is_some()
+            && !report
+                .audit_failures
+                .iter()
+                .any(|failure| failure.source_id == source.id)
+    }) {
+        items.push(NeedsYouItem::run(
+            format!(
+                "{} (source): could not be inspected",
+                terminal_safe_text(&source.id)
+            ),
+            store::dalo_command(store, "doctor"),
+        ));
+    }
+    for source_id in &report.dirty_sources {
+        if let Some(source) = report.sources.iter().find(|source| &source.id == source_id) {
+            items.push(NeedsYouItem {
+                summary: format!(
+                    "{} (source): has local changes, which stop the next sync",
+                    terminal_safe_text(source_id)
+                ),
+                commands: vec![format!(
+                    "inspect: git -C {} status",
+                    terminal_safe_text(&crate::error::shell_quote_path(&source.path))
+                )],
+            });
+        }
+    }
+
+    if drift_awaits_sync(&report.lock.drift) {
+        let subjects = waiting_for_sync_lines(&report.lock.drift);
+        let summary = match subjects.as_slice() {
+            [(subject, _)] => format!("{subject}: waiting for sync"),
+            _ => {
+                const NAMED: usize = 3;
+                let mut names = subjects
+                    .iter()
+                    .take(NAMED)
+                    .map(|(subject, _)| subject.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                if subjects.len() > NAMED {
+                    names.push_str(&format!(", and {} more", subjects.len() - NAMED));
+                }
+                format!("{}: {names}", waiting_for_sync_phrase(&report.lock.drift))
+            }
+        };
+        items.push(NeedsYouItem::run(
+            summary,
+            store::dalo_command(store, "sync"),
+        ));
+    }
+    items
+}
+
+fn print_needs_you(items: &[NeedsYouItem]) {
+    if items.is_empty() {
+        return;
+    }
+    println!("needs you:");
+    for item in items {
+        println!("  {}", item.summary);
+        for command in &item.commands {
+            println!("    {}", terminal_safe_text(command));
+        }
+    }
+}
+
 /// Print a human-readable status report.
-pub fn print_status_report(report: &StatusReport) {
+///
+/// `needs you` leads with every item that blocks or waits and its command, so
+/// the first lines answer what needs attention. The sections below keep the
+/// detail; `view.all` adds source provenance, empty counts, and an idle
+/// scheduler. JSON output is unaffected.
+pub fn print_status_report(report: &StatusReport, view: StatusView) {
     let paths = HumanPathContext::for_status(report);
     println!("dalo store: {}", paths.root(&report.store));
-    print_delivery_reports(&report.deliveries, &paths, &BTreeSet::new());
+    print_needs_you(&needs_you_items(report, &paths));
+    let unmanaged_conflicts = report
+        .materialization
+        .iter()
+        .filter(|operation| is_unmanaged_entry_conflict(operation))
+        .map(|operation| operation.link_path.as_path())
+        .collect::<BTreeSet<_>>();
+    print_delivery_reports(&report.deliveries, &paths, &unmanaged_conflicts);
     if !report.tools.tools.is_empty() {
         println!("local tools (inert inventory):");
         for tool in &report.tools.tools {
@@ -1527,17 +1964,21 @@ pub fn print_status_report(report: &StatusReport) {
             paths.text(&target.diagnostic)
         );
     }
-    print_autosync_status_report(&report.autosync);
+    // An unconfigured, uninstalled scheduler with no run history is the
+    // default, not news; doctor still reports it as `autosync_not_installed`.
+    if view.all
+        || report.autosync.configured
+        || report.autosync.installed
+        || report.autosync.scheduler_error.is_some()
+        || report.autosync.last_run.is_some()
+    {
+        print_autosync_status_report(&report.autosync);
+    }
     println!("sources:");
     if report.sources.is_empty() {
         println!("  none");
     } else {
         for source in &report.sources {
-            let state = if source.enabled {
-                "enabled"
-            } else {
-                "disabled"
-            };
             let error = source
                 .error
                 .as_ref()
@@ -1546,19 +1987,44 @@ pub fn print_status_report(report: &StatusReport) {
                 .namespace
                 .as_deref()
                 .map_or(String::new(), |namespace| format!(" namespace={namespace}"));
+            if view.all {
+                let state = if source.enabled {
+                    "enabled"
+                } else {
+                    "disabled"
+                };
+                println!(
+                    "  {:<12} {:<5} priority={:<4} skills={:<3} agents={:<3} plugins={:<3} {}{}{}",
+                    source.id,
+                    source.kind,
+                    source.priority,
+                    source.skill_count,
+                    source.agent_count,
+                    source.plugin_count,
+                    state,
+                    error,
+                    namespace,
+                );
+                print_source_provenance(&source.provenance, "    ");
+                continue;
+            }
+            let mut counts = format!("skills={}", source.skill_count);
+            if source.agent_count > 0 {
+                counts.push_str(&format!(" agents={}", source.agent_count));
+            }
+            if source.plugin_count > 0 {
+                counts.push_str(&format!(" plugins={}", source.plugin_count));
+            }
             println!(
-                "  {:<12} {:<5} priority={:<4} skills={:<3} agents={:<3} plugins={:<3} {}{}{}",
+                "  {:<12} {:<5} priority={:<4} {}{}{}{}",
                 source.id,
                 source.kind,
                 source.priority,
-                source.skill_count,
-                source.agent_count,
-                source.plugin_count,
-                state,
+                counts,
+                if source.enabled { "" } else { " disabled" },
                 error,
                 namespace,
             );
-            print_source_provenance(&source.provenance, "    ");
         }
     }
 
@@ -1654,18 +2120,11 @@ pub fn print_status_report(report: &StatusReport) {
         }
     }
 
+    // `needs you` already carries each approval command.
     if !report.resolution.pending_approval_skills.is_empty() {
         println!("pending approval:");
         for skill in &report.resolution.pending_approval_skills {
-            println!(
-                "  {} -> {} (run: {})",
-                skill.slot_name,
-                skill.source_ref,
-                store::dalo_command(
-                    &report.store,
-                    &format!("approve skill {}", skill.source_ref)
-                )
-            );
+            println!("  {} -> {}", skill.slot_name, skill.source_ref);
             if let Some(compatibility) = &skill.compatibility {
                 println!("    compatibility: {}", terminal_safe_text(compatibility));
             }
@@ -1712,10 +2171,15 @@ pub fn print_status_report(report: &StatusReport) {
         }
     }
 
+    // A real entry in a slot is reported once under `needs you`, with both
+    // ways out; this section keeps the other blocked operations.
     let blocked_operations = report
         .materialization
         .iter()
-        .filter(|operation| operation.status == MaterializeOperationStatus::Blocked)
+        .filter(|operation| {
+            operation.status == MaterializeOperationStatus::Blocked
+                && !unmanaged_conflicts.contains(operation.link_path.as_path())
+        })
         .collect::<Vec<_>>();
     if !blocked_operations.is_empty() {
         println!("materialization blocks:");
@@ -1749,7 +2213,21 @@ pub fn print_status_report(report: &StatusReport) {
         }
     }
 
-    if !report.lock.drift.is_empty() {
+    if drift_awaits_sync(&report.lock.drift) {
+        // Additions and removals the next sync records are not drift in the
+        // sense of something moving underneath the lock.
+        println!("waiting for sync:");
+        let lines = waiting_for_sync_lines(&report.lock.drift);
+        let width = lines
+            .iter()
+            .map(|(subject, _)| subject.chars().count())
+            .max()
+            .unwrap_or(0);
+        for (subject, change) in lines {
+            let padding = " ".repeat(width.saturating_sub(subject.chars().count()));
+            println!("  {subject}{padding}  {change}");
+        }
+    } else if !report.lock.drift.is_empty() {
         println!("lock drift:");
         for drift in &report.lock.drift {
             println!("  {} {}: {}", drift.code, drift.subject, drift.message);
@@ -1763,7 +2241,16 @@ pub fn print_status_report(report: &StatusReport) {
     if !report.unmanaged_skills.is_empty() {
         println!("unmanaged skills:");
         for skill in &report.unmanaged_skills {
-            print_unmanaged_skill_with_repair_hint(skill, &report.store, Some(&paths));
+            if skill.protected {
+                print_unmanaged_skill_with_repair_hint(skill, &report.store, Some(&paths));
+            } else {
+                // `needs you` carries the commands for every unprotected entry.
+                println!(
+                    "  {} -> {}",
+                    terminal_safe_text(&skill.id),
+                    paths.path(&skill.path)
+                );
+            }
         }
     }
 
@@ -1983,8 +2470,123 @@ pub fn print_autosync_mutation_report(report: &AutosyncMutationReport) {
     print_autosync_status_report(&report.status);
 }
 
+/// Facts about one sync run that only its human-readable report uses.
+///
+/// The JSON report is unchanged; this only decides which steady-state lines a
+/// person needs to see again.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SyncOutputContext {
+    /// The security preflight covered at least one active skill that is new to
+    /// the lock, comes from a source whose recorded commit moved, or had no
+    /// cached result at its exact content hash.
+    pub preflight_covered_changes: bool,
+    /// `local_override` and `shadowed` diagnostics whose slot resolution the
+    /// previous lock already recorded, as `(code, source_ref)` pairs.
+    pub settled_diagnostics: BTreeSet<(String, String)>,
+}
+
+impl SyncOutputContext {
+    /// Compare a sync's resolution with the lock it started from.
+    ///
+    /// `current_sources` are the sources of the lock this sync writes; a dry run
+    /// that builds no lock passes `None` and only compares skills and audits.
+    #[must_use]
+    pub fn new(
+        previous: &lockfile::UserLock,
+        current_sources: Option<&[lockfile::LockedSource]>,
+        resolution: &Resolution,
+        fresh_audits: &[String],
+    ) -> Self {
+        let previous_active = previous
+            .active_skills
+            .iter()
+            .map(|skill| (skill.slot_name.as_str(), skill.source_ref.as_str()))
+            .collect::<BTreeSet<_>>();
+        let previous_active_refs = previous
+            .active_skills
+            .iter()
+            .map(|skill| skill.source_ref.as_str())
+            .collect::<BTreeSet<_>>();
+        let previous_unlinked = previous
+            .unlinked_skills
+            .iter()
+            .map(|skill| skill.source_ref.as_str())
+            .collect::<BTreeSet<_>>();
+        let moved_sources = current_sources.map_or_else(BTreeSet::new, |current| {
+            current
+                .iter()
+                .filter(|source| {
+                    previous
+                        .sources
+                        .iter()
+                        .find(|recorded| recorded.id == source.id)
+                        .is_none_or(|recorded| recorded.commit != source.commit)
+                })
+                .map(|source| source.id.as_str())
+                .collect::<BTreeSet<_>>()
+        });
+        let preflight_covered_changes = !fresh_audits.is_empty()
+            || resolution.active_skills.iter().any(|skill| {
+                !previous_active_refs.contains(skill.source_ref.as_str())
+                    || moved_sources.contains(skill.source_id.as_str())
+            });
+
+        let mut settled_diagnostics = BTreeSet::new();
+        for diagnostic in &resolution.diagnostics {
+            let Some(source_ref) = diagnostic.source_ref.as_deref() else {
+                continue;
+            };
+            let settled = match diagnostic.code {
+                resolver::ResolutionDiagnosticCode::Shadowed => {
+                    previous_unlinked.contains(source_ref)
+                        && resolution
+                            .unlinked_skills
+                            .iter()
+                            .filter(|unlinked| unlinked.skill.source_ref == source_ref)
+                            .all(|unlinked| {
+                                previous_active.contains(&(
+                                    unlinked.skill.slot_name.as_str(),
+                                    unlinked.shadowed_by.as_str(),
+                                ))
+                            })
+                }
+                resolver::ResolutionDiagnosticCode::LocalOverride => {
+                    previous_active_refs.contains(source_ref)
+                        && resolution
+                            .unlinked_skills
+                            .iter()
+                            .filter(|unlinked| unlinked.shadowed_by == source_ref)
+                            .all(|unlinked| {
+                                previous_unlinked.contains(unlinked.skill.source_ref.as_str())
+                            })
+                }
+                _ => false,
+            };
+            if settled {
+                settled_diagnostics.insert((
+                    resolver::diagnostic_code_name(diagnostic.code).to_owned(),
+                    source_ref.to_owned(),
+                ));
+            }
+        }
+        Self {
+            preflight_covered_changes,
+            settled_diagnostics,
+        }
+    }
+
+    fn is_settled(&self, diagnostic: &resolver::ResolutionDiagnostic) -> bool {
+        diagnostic.source_ref.as_deref().is_some_and(|source_ref| {
+            self.settled_diagnostics.contains(&(
+                resolver::diagnostic_code_name(diagnostic.code).to_owned(),
+                source_ref.to_owned(),
+            ))
+        })
+    }
+}
+
 /// Print a human-readable sync report.
-pub fn print_sync_report(report: &SyncReport) {
+pub fn print_sync_report(report: &SyncReport, context: &SyncOutputContext) {
     let paths = HumanPathContext::for_sync(report);
     println!("dalo store: {}", paths.root(&report.store));
     for target in paths.target_roots() {
@@ -2044,6 +2646,24 @@ pub fn print_sync_report(report: &SyncReport) {
         for operation in &report.operations {
             let status = format!("{:<8}", operation.status.as_str());
             let kind = format!("{:<10}", operation.kind.as_str());
+            if is_unmanaged_entry_conflict(operation) {
+                let occupant = unmanaged_occupant(&operation.link_path);
+                println!(
+                    "{} {} {}: {}",
+                    term::operation_status(&status),
+                    term::operation_status(&kind),
+                    paths.path(&operation.link_path),
+                    occupant.description()
+                );
+                for line in unmanaged_fix_lines(
+                    &report.store,
+                    &unmanaged_selector(&operation.link_path).to_string_lossy(),
+                    occupant,
+                ) {
+                    println!("{:20}{}", "", terminal_safe_text(&line));
+                }
+                continue;
+            }
             let desired = operation
                 .desired_path
                 .as_ref()
@@ -2052,22 +2672,13 @@ pub fn print_sync_report(report: &SyncReport) {
                 .reason
                 .as_ref()
                 .map_or(String::new(), |reason| format!(" ({})", paths.text(reason)));
-            let repair_hint = if is_unmanaged_entry_conflict(operation) {
-                format!(
-                    " ({})",
-                    unmanaged_repair_hint(&report.store, unmanaged_selector(&operation.link_path))
-                )
-            } else {
-                String::new()
-            };
             println!(
-                "{} {} {}{}{}{}",
+                "{} {} {}{}{}",
                 term::operation_status(&status),
                 term::operation_status(&kind),
                 paths.path(&operation.link_path),
                 desired,
-                reason,
-                repair_hint
+                reason
             );
         }
         print_sync_summary(report);
@@ -2182,19 +2793,21 @@ pub fn print_sync_report(report: &SyncReport) {
             }
         );
     }
-    for diagnostic in report
-        .resolution
-        .diagnostics
-        .iter()
-        .filter(|diagnostic| should_print_resolution_diagnostic(&report.resolution, diagnostic))
-    {
+    // A local override or shadowing the previous sync already recorded is a
+    // steady state the user chose; it stays visible in `status`.
+    for diagnostic in report.resolution.diagnostics.iter().filter(|diagnostic| {
+        should_print_resolution_diagnostic(&report.resolution, diagnostic)
+            && !context.is_settled(diagnostic)
+    }) {
         println!(
             "{prefix}diagnostic: {}: {}",
             resolver::diagnostic_code_name(diagnostic.code),
             store::contextualize_dalo_commands(&report.store, &diagnostic.message)
         );
     }
-    if !report.resolution.active_skills.is_empty() {
+    // The trailer qualifies a preflight this run performed on new or changed
+    // content; an unchanged sync has nothing new to qualify.
+    if context.preflight_covered_changes && !report.resolution.active_skills.is_empty() {
         println!("{prefix}security preflight: deterministic checks only");
     }
 }
@@ -2516,24 +3129,41 @@ pub(crate) fn print_source_add_report_with_store(report: &SourceAddReport, store
 }
 
 fn print_source_add_report_inner(report: &SourceAddReport, store_root: Option<&Path>) {
-    let verb = if report.dry_run { "would add" } else { "added" };
-    println!(
-        "{verb} source {} -> {}",
-        report.source.id,
-        report.source.path.display()
+    let command_root = store_root.map_or_else(
+        || store::resolve_store_path(None).unwrap_or_default(),
+        Path::to_path_buf,
     );
-    if !report.dry_run {
-        match report.audits.len() {
-            0 => println!("warning: no usable skills found; expected each skill at <dir>/SKILL.md"),
-            1 => println!("found 1 skill"),
-            count => println!("found {count} skills"),
+    let verb = if report.dry_run { "would add" } else { "added" };
+    if !report.dry_run
+        && !report.audits.is_empty()
+        && report.inventory_warnings.is_empty()
+        && report.audits.iter().all(audit_is_quiet)
+    {
+        println!(
+            "{verb} source {} ({} checked, no findings)",
+            report.source.id,
+            skill_count_phrase(report.audits.len())
+        );
+        print_spec_notes(&report.audits.iter().collect::<Vec<_>>(), &command_root);
+    } else {
+        println!(
+            "{verb} source {} -> {}",
+            report.source.id,
+            report.source.path.display()
+        );
+        if !report.dry_run {
+            match report.audits.len() {
+                0 => println!(
+                    "warning: no usable skills found; expected each skill at <dir>/SKILL.md"
+                ),
+                1 => println!("found 1 skill"),
+                count => println!("found {count} skills"),
+            }
         }
-    }
-    if !report.inventory_warnings.is_empty() {
-        print_inventory_warnings(&report.inventory_warnings, None, None);
-    }
-    for audit in &report.audits {
-        print_audit_report(audit);
+        if !report.inventory_warnings.is_empty() {
+            print_inventory_warnings(&report.inventory_warnings, None, None);
+        }
+        print_preflight_results(&report.audits, &command_root);
     }
     if !report.dry_run {
         let command = store_root.map_or_else(
@@ -2856,6 +3486,46 @@ pub fn print_catalog_inspect_report(report: &CatalogInspectReport, store_root: &
 
 /// Print a human-readable catalog select report.
 pub fn print_catalog_select_report(report: &CatalogSelectReport, store_root: &Path) {
+    if !report.added.is_empty()
+        && report.removed.is_empty()
+        && !report.audits.is_empty()
+        && report.audits.iter().all(audit_is_quiet)
+        && report.migration_warnings.is_empty()
+        && report.binary_cleanup_warnings.is_empty()
+        && report.removed_binary_paths.is_empty()
+    {
+        let checked = if report.audits.len() == 1 {
+            "checked".to_owned()
+        } else {
+            format!("{} checked", skill_count_phrase(report.audits.len()))
+        };
+        println!(
+            "{} {} from {} ({checked}, no findings)",
+            if report.dry_run {
+                "would select"
+            } else {
+                "selected"
+            },
+            report
+                .added
+                .iter()
+                .map(|skill| terminal_safe_text(skill))
+                .collect::<Vec<_>>()
+                .join(", "),
+            report.source_id
+        );
+        if report.audits.len() == 1 {
+            if let Some(note) = spec_note_line(store_root, &report.audits[0]) {
+                println!("{note}");
+            }
+        } else {
+            print_spec_notes(&report.audits.iter().collect::<Vec<_>>(), store_root);
+        }
+        if !report.dry_run {
+            print_sync_next_step(store_root, "to update linked targets");
+        }
+        return;
+    }
     let mutation = if !report.added.is_empty() {
         Some((
             if report.dry_run {
@@ -2895,9 +3565,7 @@ pub fn print_catalog_select_report(report: &CatalogSelectReport, store_root: &Pa
     for warning in &report.binary_cleanup_warnings {
         println!("warning: {}", terminal_safe_text(warning));
     }
-    for audit in &report.audits {
-        print_audit_report(audit);
-    }
+    print_preflight_results(&report.audits, store_root);
     for warning in &report.migration_warnings {
         println!("warning: {warning}");
     }
@@ -3055,6 +3723,26 @@ fn short_commit(commit: &str) -> &str {
     commit.get(..12).unwrap_or(commit)
 }
 
+/// Print an adoption with its preflight: the full audit block when it needs a
+/// look, otherwise one clean note on the copy line.
+pub fn print_adopt_outcome(audit: &AuditReport, report: &AdoptReport, store_root: &Path) {
+    if !audit_is_quiet(audit) {
+        print_audit_report(audit);
+        print_adopt_report(report, store_root);
+        return;
+    }
+    println!(
+        "{} {} -> {} (checked, no findings)",
+        report.copy.as_str(),
+        report.source_path.display(),
+        report.local_path.display()
+    );
+    if let Some(note) = spec_note_line(store_root, audit) {
+        println!("{note}");
+    }
+    print_adopt_details(report, store_root);
+}
+
 /// Print a human-readable adopt report.
 pub fn print_adopt_report(report: &AdoptReport, store_root: &Path) {
     println!(
@@ -3063,6 +3751,10 @@ pub fn print_adopt_report(report: &AdoptReport, store_root: &Path) {
         report.source_path.display(),
         report.local_path.display()
     );
+    print_adopt_details(report, store_root);
+}
+
+fn print_adopt_details(report: &AdoptReport, store_root: &Path) {
     println!("replacement: {}", report.replacement.as_str());
     if let Some(next_step) = report.next_step.as_deref() {
         println!(
@@ -3168,6 +3860,61 @@ fn unmanaged_repair_hint(store_root: &Path, selector: &Path) -> String {
     )
 }
 
+/// What occupies a target slot that Dalo wanted to link.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UnmanagedOccupant {
+    /// A real directory, usually a skill an agent or person wrote there.
+    Folder,
+    /// Some other real entry, which cannot be adopted as a skill.
+    Entry,
+}
+
+impl UnmanagedOccupant {
+    fn description(self) -> &'static str {
+        match self {
+            Self::Folder => "a folder you own is already there",
+            Self::Entry => "a file you own is already there",
+        }
+    }
+}
+
+fn unmanaged_occupant(path: &Path) -> UnmanagedOccupant {
+    if std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_dir()) {
+        UnmanagedOccupant::Folder
+    } else {
+        UnmanagedOccupant::Entry
+    }
+}
+
+/// The two ways out of an occupied slot, as copyable commands.
+fn unmanaged_fix_lines(
+    store_root: &Path,
+    selector: &str,
+    occupant: UnmanagedOccupant,
+) -> Vec<String> {
+    let end_of_options = if selector.starts_with('-') { "-- " } else { "" };
+    let quoted = crate::error::shell_quote_argument(selector);
+    let mut lines = vec![format!(
+        "keep yours:   {}",
+        store::dalo_command(
+            store_root,
+            &format!("resolve keep {end_of_options}{quoted}")
+        )
+    )];
+    if occupant == UnmanagedOccupant::Folder {
+        let adopt = if end_of_options.is_empty() {
+            format!("adopt {quoted} --replace")
+        } else {
+            format!("adopt --replace -- {quoted}")
+        };
+        lines.push(format!(
+            "bring it in:  {}",
+            store::dalo_command(store_root, &adopt)
+        ));
+    }
+    lines
+}
+
 fn is_unmanaged_entry_conflict(operation: &MaterializeOperation) -> bool {
     operation.kind == crate::materialize::MaterializeOperationKind::Conflict
         && operation.reason.as_deref().is_some_and(|reason| {
@@ -3239,7 +3986,10 @@ pub fn print_doctor_report(report: &DoctorReport) {
         .filter(|finding| !doctor_finding_is_printed(finding))
         .count();
     if omitted > 0 {
-        println!("details: {omitted} info/ok findings omitted; use --json for the full report");
+        println!(
+            "details: {omitted} ok {} omitted; use --json for the full report",
+            if omitted == 1 { "finding" } else { "findings" }
+        );
     }
     if report.summary.errors > 0 {
         println!(
@@ -3251,15 +4001,11 @@ pub fn print_doctor_report(report: &DoctorReport) {
 
 /// Whether a finding is shown in text mode.
 ///
-/// Info and ok findings are normally summarized away to keep doctor readable.
-/// Pending schema migrations are the exception: they announce a change Dalo
-/// will make to the user's own files on the next write, and a team upgrading
-/// across several minors should see that without reaching for `--json`.
+/// Errors, warnings, and info findings are printed; there are never many info
+/// findings, and each one says something about this store. Only the `ok`
+/// confirmations are summarized away to keep doctor readable.
 fn doctor_finding_is_printed(finding: &DoctorFinding) -> bool {
-    matches!(
-        finding.severity,
-        DoctorSeverity::Error | DoctorSeverity::Warning
-    ) || finding.code == DoctorCode::SchemaMigrationPending
+    finding.severity != DoctorSeverity::Ok
 }
 
 /// Render one actionable finding without allowing finding content to control
@@ -4118,5 +4864,219 @@ matcher = { tool_names = ["Write"] }
         instructions::enable_pack(&paths, "house-style", &target, false)
             .expect("pack should be enabled");
         (store_root, target)
+    }
+
+    fn resolved_skill(source_ref: &str, slot_name: &str) -> resolver::ResolvedSkill {
+        let (source_id, _) = source_ref.split_once(':').expect("ref has a source");
+        resolver::ResolvedSkill {
+            source_ref: source_ref.to_owned(),
+            slot_name: slot_name.to_owned(),
+            source_namespace: None,
+            id: None,
+            source_id: source_id.to_owned(),
+            source_kind: SourceKind::Team,
+            source_priority: 10,
+            path: PathBuf::from(format!("/store/{slot_name}")),
+            delivery: crate::inventory::SkillDelivery::Direct,
+            compatibility: None,
+            binaries: Vec::new(),
+            local_override: false,
+            requires: Vec::new(),
+        }
+    }
+
+    fn override_resolution() -> Resolution {
+        let mut winner = resolved_skill("local:review", "review");
+        winner.local_override = true;
+        Resolution {
+            active_skills: vec![winner],
+            pending_approval_skills: Vec::new(),
+            unlinked_skills: vec![resolver::UnlinkedSkill {
+                skill: resolved_skill("company:review", "review"),
+                status: resolver::UnlinkedStatus::Unlinked,
+                reason: resolver::UnlinkedReason::Shadowed,
+                shadowed_by: "local:review".to_owned(),
+            }],
+            blocked_skills: Vec::new(),
+            diagnostics: vec![
+                resolver::ResolutionDiagnostic {
+                    code: resolver::ResolutionDiagnosticCode::LocalOverride,
+                    message: "local skill `local:review` overrides another source".to_owned(),
+                    source_ref: Some("local:review".to_owned()),
+                },
+                resolver::ResolutionDiagnostic {
+                    code: resolver::ResolutionDiagnosticCode::Shadowed,
+                    message: "skill `company:review` is unlinked".to_owned(),
+                    source_ref: Some("company:review".to_owned()),
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn sync_output_context_should_qualify_only_new_or_changed_preflights() {
+        let resolution = override_resolution();
+        let first = SyncOutputContext::new(&lockfile::UserLock::empty(), None, &resolution, &[]);
+        assert!(first.preflight_covered_changes);
+        assert!(first.settled_diagnostics.is_empty());
+
+        let previous = lockfile::build_user_lock(&[], &resolution, None, None);
+        let unchanged = SyncOutputContext::new(&previous, None, &resolution, &[]);
+        assert!(!unchanged.preflight_covered_changes);
+        assert_eq!(unchanged.settled_diagnostics.len(), 2);
+
+        let edited =
+            SyncOutputContext::new(&previous, None, &resolution, &["local:review".to_owned()]);
+        assert!(edited.preflight_covered_changes);
+
+        let mut moved_lock = previous;
+        moved_lock.sources.push(lockfile::LockedSource {
+            id: "local".to_owned(),
+            kind: SourceKind::Local,
+            path: PathBuf::from("/store/local"),
+            subpath: None,
+            commit: Some("a".repeat(40)),
+        });
+        let mut current_sources = moved_lock.sources.clone();
+        current_sources[0].commit = Some("b".repeat(40));
+        let moved = SyncOutputContext::new(&moved_lock, Some(&current_sources), &resolution, &[]);
+        assert!(moved.preflight_covered_changes);
+        let same = SyncOutputContext::new(&moved_lock, Some(&moved_lock.sources), &resolution, &[]);
+        assert!(!same.preflight_covered_changes);
+    }
+
+    #[test]
+    fn sync_output_context_should_announce_an_override_until_the_lock_records_it() {
+        let resolution = override_resolution();
+        let mut before_override = resolution.clone();
+        before_override.active_skills = vec![resolved_skill("company:review", "review")];
+        before_override.unlinked_skills.clear();
+        before_override.diagnostics.clear();
+        let previous = lockfile::build_user_lock(&[], &before_override, None, None);
+
+        let context = SyncOutputContext::new(&previous, None, &resolution, &[]);
+
+        assert!(context.settled_diagnostics.is_empty());
+        assert!(
+            resolution
+                .diagnostics
+                .iter()
+                .all(|diagnostic| !context.is_settled(diagnostic))
+        );
+    }
+
+    #[test]
+    fn waiting_for_sync_should_group_subjects_and_name_the_change() {
+        let drift = vec![
+            LockDrift {
+                code: LockDriftCode::SourceAdded,
+                subject: "company".to_owned(),
+                message: String::new(),
+            },
+            LockDrift {
+                code: LockDriftCode::ActiveRemoved,
+                subject: "company:review".to_owned(),
+                message: String::new(),
+            },
+            LockDrift {
+                code: LockDriftCode::UnlinkedAdded,
+                subject: "company:review".to_owned(),
+                message: String::new(),
+            },
+        ];
+
+        assert!(drift_awaits_sync(&drift));
+        assert_eq!(
+            waiting_for_sync_phrase(&drift),
+            "2 changes waiting for sync"
+        );
+        assert_eq!(
+            waiting_for_sync_lines(&drift),
+            vec![
+                ("company (source)".to_owned(), "new source".to_owned()),
+                (
+                    "review (company)".to_owned(),
+                    "no longer active, now shadowed".to_owned()
+                ),
+            ]
+        );
+
+        let skills_only = &drift[1..];
+        assert_eq!(
+            waiting_for_sync_phrase(skills_only),
+            "1 skill waiting for sync"
+        );
+        let mut moved = drift.clone();
+        moved.push(LockDrift {
+            code: LockDriftCode::SourceCommitChanged,
+            subject: "company".to_owned(),
+            message: String::new(),
+        });
+        assert!(!drift_awaits_sync(&moved));
+        assert!(!drift_awaits_sync(&[]));
+    }
+
+    fn clean_audit(source_ref: &str) -> AuditReport {
+        AuditReport {
+            schema_version: 1,
+            source_ref: source_ref.to_owned(),
+            skill_path: PathBuf::from("/tmp/skill"),
+            content_hash: "0".repeat(64),
+            static_engine_version: "5".to_owned(),
+            static_scan_excludes_root_source_metadata: Some(false),
+            scanned_at_unix: 0,
+            coverage: AuditCoverage::Complete,
+            status: AuditStatus::Clean,
+            max_severity: None,
+            static_findings: Vec::new(),
+            spec_findings: Vec::new(),
+            binaries: Vec::new(),
+            agent_review: None,
+            risk_acceptance: None,
+        }
+    }
+
+    #[test]
+    fn audit_summary_should_stay_one_line_only_for_clean_complete_results() {
+        let clean = clean_audit("public:review-helper");
+        assert!(audit_is_quiet(&clean));
+
+        let mut partial = clean.clone();
+        partial.coverage = AuditCoverage::Partial;
+        assert!(!audit_is_quiet(&partial));
+
+        let finding = audit::AuditFinding {
+            id: "static.test".to_owned(),
+            severity: audit::Severity::Low,
+            category: "category".to_owned(),
+            path: "SKILL.md".to_owned(),
+            line: None,
+            message: "SKILL.md has no frontmatter\u{1b}[2J".to_owned(),
+            evidence: None,
+        };
+        let mut low = clean.clone();
+        low.static_findings.push(finding.clone());
+        assert!(!audit_is_quiet(&low));
+
+        let mut review = clean.clone();
+        review.status = AuditStatus::Review;
+        assert!(!audit_is_quiet(&review));
+
+        let mut noted = clean.clone();
+        noted.spec_findings = vec![finding.clone(), finding];
+        assert!(audit_is_quiet(&noted));
+        let store_root = PathBuf::from("/tmp/dalo-status-test-store");
+        assert_eq!(spec_note_line(&store_root, &clean), None);
+        let note = spec_note_line(&store_root, &noted).expect("spec notes are summarized");
+        assert!(
+            note.starts_with("2 spec notes: SKILL.md has no frontmatter"),
+            "{note}"
+        );
+        assert!(note.contains("; 1 more ("), "{note}");
+        assert!(
+            note.contains("audit public:review-helper shows them)"),
+            "{note}"
+        );
+        assert!(!note.contains('\u{1b}'), "{note}");
     }
 }
