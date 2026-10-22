@@ -335,7 +335,10 @@ selecting, approving, or removing content produces, and the next <code>sync</cod
 records it. When every item is of this kind, <code>status</code> prints a
 <code>waiting for sync:</code> section that names each subject and what changes, and
 <code>status --check</code> reports, for example,
-<code>check failed: 1 skill waiting for sync (run: dalo sync)</code>.</li>
+<code>check failed: 1 skill waiting for sync (run: dalo sync)</code>. A skill that now
+waits for approval is waiting for approval, not for sync: it is listed once
+under <code>needs you</code> with its <code>dalo approve skill</code> command and under
+<code>pending approval</code>, and it is left out of the waiting-for-sync count.</li>
 <li><strong>Lock drift.</strong> Something the lock recorded moved underneath it: a source
 commit or inventory directory, a delivered artifact, a target slot, or a
 plugin&#39;s state. When any item is of this kind, <code>status</code> keeps the
@@ -406,7 +409,7 @@ plugin&#39;s state. When any item is of this kind, <code>status</code> keeps the
 </tr>
 <tr>
 <td><code>pending_approval_added</code></td>
-<td>waiting for sync</td>
+<td>pending approval</td>
 <td>A skill now needs approval.</td>
 <td>Approve it or leave it pending.</td>
 </tr>

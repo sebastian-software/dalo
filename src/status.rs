@@ -1673,6 +1673,20 @@ pub fn drift_awaits_sync(drift: &[LockDrift]) -> bool {
     !drift.is_empty() && drift.iter().all(|item| item.code.awaits_sync())
 }
 
+/// The drift items a person actually waits on a sync for.
+///
+/// A skill that newly waits for approval is waiting for approval, not for
+/// sync: `needs you` and `pending approval` already list it with its approve
+/// command, so it is left out of the waiting-for-sync count and section.
+#[must_use]
+pub fn waiting_for_sync_drift(drift: &[LockDrift]) -> Vec<LockDrift> {
+    drift
+        .iter()
+        .filter(|item| item.code != LockDriftCode::PendingApprovalAdded)
+        .cloned()
+        .collect()
+}
+
 /// `1 skill`, `2 skills`, or `3 changes` waiting for the next sync.
 #[must_use]
 pub fn waiting_for_sync_phrase(drift: &[LockDrift]) -> String {
@@ -1841,8 +1855,9 @@ fn needs_you_items(report: &StatusReport, paths: &HumanPathContext) -> Vec<Needs
         }
     }
 
-    if drift_awaits_sync(&report.lock.drift) {
-        let subjects = waiting_for_sync_lines(&report.lock.drift);
+    let waiting = waiting_for_sync_drift(&report.lock.drift);
+    if drift_awaits_sync(&report.lock.drift) && !waiting.is_empty() {
+        let subjects = waiting_for_sync_lines(&waiting);
         let summary = match subjects.as_slice() {
             [(subject, _)] => format!("{subject}: waiting for sync"),
             _ => {
@@ -1856,7 +1871,7 @@ fn needs_you_items(report: &StatusReport, paths: &HumanPathContext) -> Vec<Needs
                 if subjects.len() > NAMED {
                     names.push_str(&format!(", and {} more", subjects.len() - NAMED));
                 }
-                format!("{}: {names}", waiting_for_sync_phrase(&report.lock.drift))
+                format!("{}: {names}", waiting_for_sync_phrase(&waiting))
             }
         };
         items.push(NeedsYouItem::run(
@@ -2215,9 +2230,12 @@ pub fn print_status_report(report: &StatusReport, view: StatusView) {
 
     if drift_awaits_sync(&report.lock.drift) {
         // Additions and removals the next sync records are not drift in the
-        // sense of something moving underneath the lock.
-        println!("waiting for sync:");
-        let lines = waiting_for_sync_lines(&report.lock.drift);
+        // sense of something moving underneath the lock. A skill waiting for
+        // approval is listed under `pending approval` instead.
+        let lines = waiting_for_sync_lines(&waiting_for_sync_drift(&report.lock.drift));
+        if !lines.is_empty() {
+            println!("waiting for sync:");
+        }
         let width = lines
             .iter()
             .map(|(subject, _)| subject.chars().count())
@@ -5014,6 +5032,30 @@ matcher = { tool_names = ["Write"] }
         });
         assert!(!drift_awaits_sync(&moved));
         assert!(!drift_awaits_sync(&[]));
+
+        let selected = vec![
+            LockDrift {
+                code: LockDriftCode::SourceAdded,
+                subject: "public".to_owned(),
+                message: String::new(),
+            },
+            LockDrift {
+                code: LockDriftCode::PendingApprovalAdded,
+                subject: "public:helper".to_owned(),
+                message: String::new(),
+            },
+        ];
+        assert!(drift_awaits_sync(&selected));
+        let waiting = waiting_for_sync_drift(&selected);
+        assert_eq!(
+            waiting_for_sync_lines(&waiting),
+            vec![("public (source)".to_owned(), "new source".to_owned())]
+        );
+        assert_eq!(
+            waiting_for_sync_phrase(&waiting),
+            "1 change waiting for sync"
+        );
+        assert!(waiting_for_sync_drift(&selected[1..]).is_empty());
     }
 
     fn clean_audit(source_ref: &str) -> AuditReport {

@@ -3925,12 +3925,16 @@ fn status_review_reason(report: &status::StatusReport) -> Option<String> {
         ));
     }
 
-    if status::drift_awaits_sync(&report.lock.drift) {
+    let waiting = status::waiting_for_sync_drift(&report.lock.drift);
+    if status::drift_awaits_sync(&report.lock.drift) && !waiting.is_empty() {
         reasons.push(format!(
             "{} (run: {})",
-            status::waiting_for_sync_phrase(&report.lock.drift),
+            status::waiting_for_sync_phrase(&waiting),
             store::dalo_command(&report.store, "sync")
         ));
+    } else if status::drift_awaits_sync(&report.lock.drift) && !pending.is_empty() {
+        // Only newly pending skills differ from the lock; the pending-approval
+        // reason above already names them.
     } else if !report.lock.drift.is_empty() {
         reasons.push(format!(
             "{} lock drift item{} ({})",
