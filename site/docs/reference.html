@@ -555,6 +555,8 @@ configure it with <code>update_policy = &quot;pin&quot;</code>. Catalog skills a
 from a catalog becomes active until selected and approved.
 After adding a catalog, the CLI reports how many skills are available and prints
 the exact <code>source inspect</code> and <code>source select</code> commands for the next step.
+Discovery warnings identify duplicate slots and show both paths. The catalog
+can still be added because its skills are not active until selected.
 Local paths are supported; relative paths resolve against the current working
 directory.</p>
 <p>Examples:</p>
@@ -563,7 +565,8 @@ dalo source add-catalog editorial https://github.com/example/editorial-skills.gi
 dalo source inspect public
 dalo source select public review-helper
 </code></pre>
-<p>JSON output shape: <code>CatalogAddOutcome</code> (<code>source</code>, <code>available_skills</code>, <code>dry_run</code>).
+<p>JSON output shape: <code>CatalogAddOutcome</code> (<code>source</code>, <code>available_skills</code>, optional
+<code>inventory_warnings[]</code>, <code>dry_run</code>).
 <code>available_skills</code> is <code>null</code> during a dry run because no catalog checkout is
 created or inspected.</p>
 <h3 id="dalo-source-list"><a class="doc-anchor" href="#dalo-source-list"><code>dalo source list</code></a></h3>
@@ -610,13 +613,15 @@ dalo --json source inspect public
 <p>Select catalog skills by stable frontmatter ID, slot name, catalog-relative path,
 or a source-qualified <code>&lt;source-id&gt;:&lt;slot-or-stable-id&gt;</code> reference. The source ID
 must match the catalog being selected.
-A bare slot name selects the first catalog-relative path in lexical order when
-several candidates share that slot. Use an explicit path to choose another
-candidate. Selecting a different path for an already selected slot replaces
-that slot&#39;s previous selection; selecting multiple paths for one slot in the
-same command is rejected. Only one skill per source and slot is resolved.
-Selections use a stable ID when it is unique in the catalog, otherwise the
-catalog-relative path preserves the chosen candidate.
+A slot name shared by several candidates is ambiguous and fails with their
+paths; use a catalog-relative path to select one. Selecting a different path for
+an already selected slot replaces that slot&#39;s previous selection; selecting
+multiple paths for one slot in the same command is rejected. Only one skill per
+source and slot is resolved.
+Selections use a stable ID when it uniquely identifies a candidate and its slot,
+otherwise the catalog-relative path preserves the chosen candidate. A path
+replacement also removes staged binaries and exposure links that no selected
+declaration still needs.
 Selection runs the deterministic security preflight, writes
 <code>config.toml</code>, and updates <code>source-lock.toml</code> with the pinned commit and
 inventory snapshot. Human-readable output names the skills added or removed,
@@ -1446,7 +1451,7 @@ dalo completions fish &gt; dalo.fish
 <tr>
 <td><code>source add-catalog</code></td>
 <td><code>CatalogAddOutcome</code></td>
-<td>resulting <code>source</code>, nullable <code>available_skills</code>, <code>dry_run</code></td>
+<td>resulting <code>source</code>, nullable <code>available_skills</code>, optional <code>inventory_warnings[]</code> (<code>code</code>, <code>path</code>, <code>message</code>), <code>dry_run</code></td>
 </tr>
 <tr>
 <td><code>source list</code></td>

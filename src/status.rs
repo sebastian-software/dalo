@@ -2762,6 +2762,7 @@ pub fn print_source_namespace_report(report: &SourceNamespaceReport, store_root:
 pub fn print_catalog_add_report(
     source: &SourceConfig,
     available_skills: Option<usize>,
+    inventory_warnings: &[InventoryWarning],
     dry_run: bool,
     store_root: &Path,
 ) {
@@ -2789,6 +2790,17 @@ pub fn print_catalog_add_report(
             store::dalo_command(store_root, &format!("source inspect {}", source.id)),
             store::dalo_command(store_root, &format!("source select {} <skill>", source.id))
         );
+    }
+    if !inventory_warnings.is_empty() {
+        print_inventory_warnings(inventory_warnings, Some(store_root), None);
+        if inventory_warnings
+            .iter()
+            .any(|warning| warning.code == InventoryWarningCode::DuplicateSlotName)
+        {
+            println!(
+                "select duplicate slots by catalog-relative path; a bare slot name is ambiguous"
+            );
+        }
     }
 }
 

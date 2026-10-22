@@ -18,7 +18,9 @@ use crate::audit::{self, AuditOptions, AuditReport};
 use crate::config::UserConfig;
 use crate::error::{DaloError, DaloResult};
 use crate::git;
-use crate::inventory::{self, InventoryWarningCode, SkillRecord, SourceInventory};
+use crate::inventory::{
+    self, InventoryWarning, InventoryWarningCode, SkillRecord, SourceInventory,
+};
 use crate::lockfile::{self, UserLock};
 use crate::materialize::{self, MaterializationRollback, MaterializeOperationKind, SyncReport};
 use crate::resolver::{self, Resolution, ResolvedSkill};
@@ -295,6 +297,9 @@ pub struct CatalogAddOutcome {
     pub source: SourceConfig,
     /// Available skill count when a real checkout was created.
     pub available_skills: Option<usize>,
+    /// Discovery warnings, including duplicate slots that need an explicit path.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inventory_warnings: Vec<InventoryWarning>,
     /// Whether the command ran as dry-run.
     pub dry_run: bool,
 }
@@ -357,6 +362,7 @@ pub fn add_catalog_source(
         return Ok(CatalogAddOutcome {
             source,
             available_skills: None,
+            inventory_warnings: Vec::new(),
             dry_run,
         });
     }
@@ -366,9 +372,10 @@ pub fn add_catalog_source(
     // Pin the catalog commit and capture its inventory snapshot, then register the
     // source. On a later failure, remove the clone and the lock entry so config
     // never references a missing checkout.
-    let available_skills = (|| -> DaloResult<usize> {
+    let discovered = (|| -> DaloResult<(usize, Vec<InventoryWarning>)> {
         let commit = git::rev_parse_head(&checkout)?;
-        let inventory = catalog_inventory(&checkout, &[])?;
+        let scan = scan_catalog(id, &checkout)?;
+        let inventory = catalog_inventory_from_scan(&checkout, &scan, &[])?;
         let available_skills = inventory.len();
         let mut lock = read_source_lock(paths)?;
         lock.catalogs.retain(|c| c.source_id != id);
@@ -384,9 +391,9 @@ pub fn add_catalog_source(
         config.sources.push(source.clone());
         source::sort_sources(&mut config.sources);
         store::write_config(paths, &config)?;
-        Ok(available_skills)
+        Ok((available_skills, scan.warnings))
     })();
-    let available_skills = available_skills.inspect_err(|_| {
+    let (available_skills, inventory_warnings) = discovered.inspect_err(|_| {
         let _ = fs::remove_dir_all(&checkout);
         if let Some(parent) = checkout.parent() {
             let _ = fs::remove_dir(parent);
@@ -400,6 +407,7 @@ pub fn add_catalog_source(
     Ok(CatalogAddOutcome {
         source,
         available_skills: Some(available_skills),
+        inventory_warnings,
         dry_run,
     })
 }
@@ -411,7 +419,7 @@ pub(crate) fn canonical_skill_selection(
     refs: &[String],
 ) -> DaloResult<Vec<String>> {
     let source = catalog_source(paths, id)?;
-    let scan = scan_catalog(&source.path)?;
+    let scan = scan_catalog(id, &source.path)?;
     let candidates = catalog_candidates_from_scan(&source.path, &scan);
     let mut selected = resolve_candidate_references(id, &candidates, refs)?
         .iter()
@@ -430,7 +438,7 @@ pub(crate) fn resolve_catalog_skill_references(
     checkout: &Path,
     refs: &[String],
 ) -> DaloResult<Vec<CatalogCandidate>> {
-    let scan = scan_catalog(checkout)?;
+    let scan = scan_catalog(source_id, checkout)?;
     let candidates = catalog_candidates_from_scan(checkout, &scan);
     let mut selected = resolve_candidate_references(source_id, &candidates, refs)?;
     selected.sort_by(|left, right| {
@@ -476,7 +484,7 @@ fn resolve_candidate_references(
 pub fn inspect_catalog(paths: &StorePaths, id: &str) -> DaloResult<CatalogInspectReport> {
     let source = catalog_source(paths, id)?;
     let selected = selection_set(&source.selection);
-    let scan = scan_catalog(&source.path)?;
+    let scan = scan_catalog(id, &source.path)?;
     let mut candidates = catalog_candidates_from_scan(&source.path, &scan);
     for candidate in &mut candidates {
         candidate.selected = candidate_is_selected(candidate, &selected);
@@ -530,9 +538,15 @@ pub fn select_skills(
     if let Some(catalog_lock) = original_lock.catalog(id) {
         ensure_catalog_checkout_matches_pin(id, &source_path, catalog_lock)?;
     }
-    let scan = scan_catalog(&source_path)?;
+    let scan = scan_catalog(id, &source_path)?;
     let candidates = catalog_candidates_from_scan(&source_path, &scan);
-    let resolved = resolve_candidate_references(id, &candidates, refs)?;
+    let resolved = if unselect {
+        refs.iter()
+            .map(|reference| resolve_unselect_reference(id, &candidates, reference))
+            .collect::<DaloResult<Vec<_>>>()?
+    } else {
+        resolve_candidate_references(id, &candidates, refs)?
+    };
     let audits = if unselect {
         Vec::new()
     } else {
@@ -739,12 +753,12 @@ pub fn write_source_lock(paths: &StorePaths, lock: &SourceLock) -> DaloResult<()
 
 /// Build the inventory snapshot for a catalog checkout (used for the lock).
 pub fn catalog_inventory(checkout: &Path, selection: &[String]) -> DaloResult<Vec<CatalogEntry>> {
-    let inventory = scan_catalog(checkout)?;
+    let inventory = scan_catalog("catalog", checkout)?;
     catalog_inventory_from_scan(checkout, &inventory, selection)
 }
 
-fn scan_catalog(checkout: &Path) -> DaloResult<SourceInventory> {
-    let inventory = inventory::scan_catalog_source("catalog", checkout)?;
+fn scan_catalog(source_id: &str, checkout: &Path) -> DaloResult<SourceInventory> {
+    let inventory = inventory::scan_catalog_source(source_id, checkout)?;
     ensure_catalog_inventory_complete(&inventory)?;
     Ok(inventory)
 }
@@ -886,14 +900,6 @@ fn resolve_candidate_reference(
             format!("dalo source inspect {source_id}"),
         )),
         [candidate] => Ok(candidate.clone()),
-        // Preserve the historical default for a bare slot, while keeping all
-        // paths available to an explicit selector.
-        [first, rest @ ..]
-            if first.slot_name == lookup
-                && rest.iter().all(|candidate| candidate.slot_name == lookup) =>
-        {
-            Ok(first.clone())
-        }
         _ => Err(DaloError::AmbiguousSkillReference {
             reference: reference.to_owned(),
             matches: matches
@@ -905,16 +911,34 @@ fn resolve_candidate_reference(
     }
 }
 
+fn resolve_unselect_reference(
+    source_id: &str,
+    candidates: &[CatalogCandidate],
+    reference: &str,
+) -> DaloResult<CatalogCandidate> {
+    let source_prefix = format!("{source_id}:");
+    let lookup = reference.strip_prefix(&source_prefix).unwrap_or(reference);
+    if let Some(candidate) = candidates
+        .iter()
+        .find(|candidate| candidate.slot_name == lookup)
+    {
+        return Ok(candidate.clone());
+    }
+    resolve_candidate_reference(source_id, candidates, reference)
+}
+
 fn canonical_selection(candidate: &CatalogCandidate, candidates: &[CatalogCandidate]) -> String {
     candidate
         .id
         .clone()
         .filter(|id| {
-            candidates
-                .iter()
-                .filter(|other| other.id.as_ref() == Some(id))
-                .count()
-                <= 1
+            candidates.iter().all(|other| {
+                other.path == candidate.path
+                    || (other.id.as_ref() != Some(id)
+                        && other.slot_name != *id
+                        && other.path != *id
+                        && other.slot_name != candidate.slot_name)
+            })
         })
         .unwrap_or_else(|| {
             if candidate.path.is_empty() || candidate.path == "." {
