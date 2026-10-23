@@ -160,11 +160,13 @@ it; ask only when the agent or installation scope is ambiguous.
    channel or follow the standalone skill route linked above. Do not report the
    assistant as installed just because the binary works.
 
-5. Initialize only a missing store. For an existing store, read `status --json`
-   and `doctor --json` instead and resolve incompatible or malformed state first.
+5. Let Dalo create a missing store. The first normal run creates `~/.dalo`, so a
+   bare `dalo` is enough; `dalo init` is the explicit form for a sandbox or a
+   project. For an existing store, read `status --json` and `doctor --json`
+   instead and resolve incompatible or malformed state first.
 
    ```sh
-   dalo init
+   dalo
    ```
 
 6. Detect available agent targets and link the intended one:
