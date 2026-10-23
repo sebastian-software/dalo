@@ -19,11 +19,13 @@ backoff, and notice throttling. Dalo owns eligibility, installation detection,
 and upgrade guidance. It performs a bounded synchronous check after successful
 commands; no update worker depends on surviving CLI exit.
 
-Each installation selects its actual distribution. npm/npx use npm metadata;
-the hosted installer and GitHub/ubi mise use standalone releases. Independently
-published package channels and unknown installations skip passive checks until
-they have service mappings. Dalo does not fall back to a different release feed.
-The [reference](../reference.md#update-notices) owns exact limits and cache layout.
+Every installation uses `dalo/github/stable`. app-tracking reads the existing
+CDN-cached oss-metrics document; oss-metrics owns GitHub release discovery.
+Releases become eligible after one hour to allow downstream publication to
+catch up. This is a shared release version, not a guarantee of package-manager
+availability. Installation detection only selects upgrade guidance and does not
+partition checks or cache state. The
+[reference](../reference.md#update-notices) owns exact limits and cache layout.
 
 Existing disabled/offline/CI/JSON policies remain effective. The update-only
 client creates no telemetry identity, project hash, invocation count, or
@@ -36,8 +38,9 @@ reporting queue. Future telemetry remains a separate opt-in integration.
   or exit status. There is no parallel legacy GitHub check.
 - The old advisory cache is left untouched and ignored; the new cache uses a
   versioned subdirectory and atomic process-safe state.
-- Additional distribution mappings require evidence that the corresponding
-  installation channel is published, rather than a GitHub tag alone.
+- Homebrew, Cargo, Nix, Debian, and unknown installations retain passive checks.
+- The one-hour release delay reduces publication races; downstream outages can
+  still require retrying an upgrade later.
 
 Tracked in [app-tracking issue #4](https://github.com/sebastian-software/app-tracking/issues/4)
 and [Dalo issue #1001](https://github.com/sebastian-software/dalo/issues/1001).

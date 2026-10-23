@@ -218,10 +218,13 @@ another value fails when its release archive cannot be fetched.</p>
 <h2 id="update-notices"><a class="doc-anchor" href="#update-notices">Update Notices</a></h2>
 <p>After a successful interactive command, Dalo uses the shared <code>app-tracking</code>
 client to query the public version service. The installed version is compared
-locally. npm/npx select <code>dalo/npm/stable</code>; the hosted installer and GitHub/ubi
-mise select <code>dalo/standalone/stable</code>. Homebrew, Cargo, Nix, Debian, and unknown
-installations skip passive checks until their own distribution mappings exist.
-No installation or upgrade command is disabled by that limitation.</p>
+locally. All installation channels select <code>dalo/github/stable</code>. app-tracking
+reads the CDN-cached oss-metrics document, which derives release metadata from
+GitHub&#39;s latest published release. A release must be at least one hour old;
+this reduces package publication lag without maintaining separate registry feeds.
+It does not guarantee that every downstream package is available. Homebrew,
+npm/npx, Cargo, Nix, Debian, mise, hosted-installer, and unknown installations
+remain eligible and keep installation-specific or generic upgrade guidance.</p>
 <p>Checks are skipped for <code>--json</code>, CI, noninteractive stderr, <code>DALO_OFFLINE=1</code>,
 and <code>DALO_UPDATE_CHECK=never</code> (also <code>off</code>, <code>false</code>, and <code>0</code>, case-insensitively).
 <code>assistant</code>, <code>plugin validate</code>, migration, completion, and manpage commands also

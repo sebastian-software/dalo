@@ -56,8 +56,9 @@ To force a fresh download, remove the selected version from `~/.cache/dalo` or
 set `DALO_CACHE_DIR` to an empty directory.
 
 The launcher tells the Rust binary whether it was invoked through npm or npx so
-the native CLI's shared app-tracking client selects npm version metadata and
-recommends the matching upgrade command. The wrapper does not perform a second
+the native CLI recommends the matching upgrade command. Every installation
+uses GitHub release metadata through app-tracking and oss-metrics; releases
+become eligible after one hour. The wrapper does not perform a second
 passive check. Disabled/offline/JSON policy belongs to the native CLI; explicit
 `DALO_VERSION=latest` lookups remain installer operations. The launcher never
 updates itself or a cached executable behind npm's back.

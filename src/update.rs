@@ -30,7 +30,6 @@ pub fn print_notice() {
         VERSION_ORIGIN,
         &cache_dir,
         env!("CARGO_PKG_VERSION"),
-        channel,
         Mode::Enabled,
     ) {
         let _ = writeln!(
@@ -46,15 +45,8 @@ pub fn print_notice() {
     }
 }
 
-fn check_notice_in(
-    origin: &str,
-    cache_dir: &Path,
-    installed: &str,
-    channel: InstallChannel,
-    mode: Mode,
-) -> Option<String> {
-    let distribution = channel.distribution()?;
-    let tool = Tool::new("dalo", installed, distribution, "stable").ok()?;
+fn check_notice_in(origin: &str, cache_dir: &Path, installed: &str, mode: Mode) -> Option<String> {
+    let tool = Tool::new("dalo", installed, "github", "stable").ok()?;
     UpdateClient::new(origin, cache_dir, tool)
         .ok()?
         .check(mode)
@@ -144,15 +136,6 @@ enum InstallChannel {
 }
 
 impl InstallChannel {
-    fn distribution(self) -> Option<&'static str> {
-        match self {
-            Self::Npm | Self::Npx => Some("npm"),
-            Self::Standalone | Self::Mise | Self::MiseUbi => Some("standalone"),
-            // Independently published package channels need their own service mapping.
-            Self::Homebrew | Self::Cargo | Self::Nix | Self::DebianPackage | Self::Unknown => None,
-        }
-    }
-
     fn label(self) -> &'static str {
         match self {
             Self::DebianPackage => "Debian package",
@@ -415,80 +398,51 @@ mod tests {
     }
 
     #[test]
-    fn launcher_channels_use_their_own_distribution_and_host_guidance() {
-        for (channel, distribution, guidance) in [
-            (
-                InstallChannel::Npm,
-                "npm",
-                "npm install --global getdalo@latest",
-            ),
-            (InstallChannel::Npx, "npm", "npx getdalo@latest"),
+    fn all_installations_share_the_release_feed_and_keep_host_guidance() {
+        for (channel, guidance) in [
+            (InstallChannel::Npm, "npm install --global getdalo@latest"),
+            (InstallChannel::Npx, "npx getdalo@latest"),
             (
                 InstallChannel::Mise,
-                "standalone",
                 "mise upgrade github:sebastian-software/dalo",
             ),
             (
                 InstallChannel::MiseUbi,
-                "standalone",
                 "mise upgrade ubi:sebastian-software/dalo",
             ),
+            (
+                InstallChannel::Homebrew,
+                "brew upgrade sebastian-software/tap/dalo",
+            ),
+            (InstallChannel::Cargo, "cargo install dalo --locked"),
+            (InstallChannel::Nix, "nix profile upgrade"),
+            (InstallChannel::DebianPackage, "https://dalo.sh/install.md"),
+            (InstallChannel::Standalone, "https://dalo.sh/install.md"),
+            (InstallChannel::Unknown, "https://dalo.sh/install.md"),
         ] {
             let temp = tempdir().unwrap();
             let (origin, request, task) =
-                endpoint(200, payload(distribution, 0, false), Duration::ZERO);
-            let latest =
-                check_notice_in(&origin, temp.path(), "1.0.0", channel, Mode::Enabled).unwrap();
+                endpoint(200, payload("github", 0, false), Duration::ZERO);
+            let latest = check_notice_in(&origin, temp.path(), "1.0.0", Mode::Enabled).unwrap();
             assert_eq!(latest, "99.0.0");
             assert!(render_notice(&latest, "1.0.0", channel, None).contains(guidance));
             let request = request.recv().unwrap();
-            assert!(request.starts_with(&format!(
-                "GET /v1/versions/dalo/{distribution}/stable HTTP/1.1\r\n"
-            )));
+            assert!(request.starts_with("GET /v1/versions/dalo/github/stable HTTP/1.1\r\n"));
             assert!(!request.contains("1.0.0"));
             assert!(!request.to_ascii_lowercase().contains("authorization:"));
             task.join().unwrap();
-            // The now-closed endpoint cannot receive a second request; the shared
-            // cache and notice throttle must answer this invocation locally.
-            assert!(
-                check_notice_in(&origin, temp.path(), "1.0.0", channel, Mode::Enabled).is_none()
-            );
+            // The now-closed endpoint cannot receive a second request; installation
+            // detection does not partition the shared cache or notice throttle.
+            assert!(check_notice_in(&origin, temp.path(), "1.0.0", Mode::Enabled).is_none());
         }
     }
 
     #[test]
-    fn disabled_offline_and_unmapped_channels_create_no_update_state() {
+    fn disabled_and_offline_checks_create_no_update_state() {
         let temp = tempdir().unwrap();
         let absent = temp.path().join("absent");
         for mode in [Mode::Disabled, Mode::Offline] {
-            assert!(
-                check_notice_in(
-                    "http://127.0.0.1:1",
-                    &absent,
-                    "1.0.0",
-                    InstallChannel::Npm,
-                    mode
-                )
-                .is_none()
-            );
-        }
-        for channel in [
-            InstallChannel::Homebrew,
-            InstallChannel::Cargo,
-            InstallChannel::Nix,
-            InstallChannel::DebianPackage,
-            InstallChannel::Unknown,
-        ] {
-            assert!(
-                check_notice_in(
-                    "http://127.0.0.1:1",
-                    &absent,
-                    "1.0.0",
-                    channel,
-                    Mode::Enabled
-                )
-                .is_none()
-            );
+            assert!(check_notice_in("http://127.0.0.1:1", &absent, "1.0.0", mode).is_none());
         }
         assert!(!absent.exists());
     }
@@ -496,53 +450,28 @@ mod tests {
     #[test]
     fn stale_data_and_network_failures_remain_advisory_and_bounded() {
         let temp = tempdir().unwrap();
-        let (origin, _, task) = endpoint(200, payload("npm", 7200, true), Duration::ZERO);
+        let (origin, _, task) = endpoint(200, payload("github", 7200, true), Duration::ZERO);
         assert_eq!(
-            check_notice_in(
-                &origin,
-                temp.path(),
-                "1.0.0",
-                InstallChannel::Npm,
-                Mode::Enabled
-            )
-            .as_deref(),
+            check_notice_in(&origin, temp.path(), "1.0.0", Mode::Enabled).as_deref(),
             Some("99.0.0")
         );
         task.join().unwrap();
         let state: serde_json::Value =
-            serde_json::from_slice(&fs::read(temp.path().join("dalo.npm.stable.json")).unwrap())
+            serde_json::from_slice(&fs::read(temp.path().join("dalo.github.stable.json")).unwrap())
                 .unwrap();
         assert_eq!(state["failures"], 1);
         for (status, body, delay) in [
             (503, "not JSON".to_owned(), Duration::ZERO),
-            (200, payload("npm", 86400, true), Duration::ZERO),
-            (200, payload("npm", 0, false), Duration::from_millis(400)),
+            (200, payload("github", 86400, true), Duration::ZERO),
+            (200, payload("github", 0, false), Duration::from_millis(400)),
         ] {
             let temp = tempdir().unwrap();
             let (origin, _, task) = endpoint(status, body, delay);
             let start = Instant::now();
-            assert!(
-                check_notice_in(
-                    &origin,
-                    temp.path(),
-                    "1.0.0",
-                    InstallChannel::Npm,
-                    Mode::Enabled
-                )
-                .is_none()
-            );
+            assert!(check_notice_in(&origin, temp.path(), "1.0.0", Mode::Enabled).is_none());
             assert!(start.elapsed() < Duration::from_secs(2));
             task.join().unwrap();
-            assert!(
-                check_notice_in(
-                    &origin,
-                    temp.path(),
-                    "1.0.0",
-                    InstallChannel::Npm,
-                    Mode::Enabled
-                )
-                .is_none()
-            );
+            assert!(check_notice_in(&origin, temp.path(), "1.0.0", Mode::Enabled).is_none());
         }
     }
 
@@ -555,13 +484,12 @@ mod tests {
             "schema=1\nstate=complete\ninstalled=1.0.0\nlatest=100.0.0\n",
         )
         .unwrap();
-        let (origin, _, task) = endpoint(200, payload("npm", 0, false), Duration::ZERO);
+        let (origin, _, task) = endpoint(200, payload("github", 0, false), Duration::ZERO);
         assert_eq!(
             check_notice_in(
                 &origin,
                 &temp.path().join("app-tracking-v1"),
                 "1.0.0",
-                InstallChannel::Npm,
                 Mode::Enabled
             )
             .as_deref(),
@@ -578,10 +506,12 @@ mod tests {
     #[test]
     #[ignore = "opt-in read-only smoke against the public Bunny version service"]
     fn live_bunny_version_client_smoke() {
-        for (channel, distribution) in [
-            (InstallChannel::Npm, "npm"),
-            (InstallChannel::Standalone, "standalone"),
+        for channel in [
+            InstallChannel::Npm,
+            InstallChannel::Homebrew,
+            InstallChannel::Standalone,
         ] {
+            let distribution = "github";
             // Warm public metadata before exercising the CLI's stricter deadline.
             // No service state is changed and no fake release is published.
             let preflight: ureq::Agent = ureq::Agent::config_builder()
@@ -600,7 +530,6 @@ mod tests {
                 VERSION_ORIGIN,
                 temp.path(),
                 "0.0.0",
-                channel,
                 Mode::Enabled,
             )
             .expect(

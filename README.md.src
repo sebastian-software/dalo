@@ -325,12 +325,13 @@ throttled to once per release per day. Network and cache failures remain
 advisory. JSON output, CI, noninteractive stderr, `DALO_OFFLINE=1`, and
 `DALO_UPDATE_CHECK=never` disable checks.
 
-npm/npx use npm release metadata; the hosted installer and GitHub/ubi mise
-installs use verified standalone releases. Homebrew, Cargo, Nix, Debian, and
-unknown installations currently skip passive checks until their independently
-published channels have service mappings. Install and upgrade commands continue
-to work. These update-only requests send no installed version, installation ID,
-repository hash, or usage counter. Dalo never replaces its own executable.
+All installation channels use the same GitHub release version, delivered through
+app-tracking from the CDN-cached oss-metrics feed. Releases must be at least one
+hour old before they become eligible; CDN and client caching can add delay.
+Upgrade instructions still match Homebrew, npm/npx, Cargo, Nix, Debian, mise, or
+the hosted installer. These update-only requests send no installed version,
+installation ID, repository hash, or usage counter. Dalo never replaces its own
+executable.
 
 You can also ask your agent to install Dalo: dalo.sh publishes an
 [`llms.txt`](https://dalo.sh/llms.txt) index and an agent-oriented
