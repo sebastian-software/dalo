@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.11.0](https://github.com/sebastian-software/dalo/compare/dalo-v1.10.0...dalo-v1.11.0) (2026-10-23)
+
+
+### Features
+
+* **cli:** group top-level help, unify the tagline, and add --color ([da1932f](https://github.com/sebastian-software/dalo/commit/da1932f5fb75cfbe04b1e9485cd29d675c387203))
+* **cli:** quieter human output ([369a30d](https://github.com/sebastian-software/dalo/commit/369a30d19d94a76518d6e2a60e8145de6fd0db6f))
+* **site:** follow the OS color scheme with a dark palette ([bef0030](https://github.com/sebastian-software/dalo/commit/bef0030c78d43823aa3f27c0af5c4dcac23f1047))
+* **site:** one message and a lighter landing page ([e7c849c](https://github.com/sebastian-software/dalo/commit/e7c849c27aa895734b7528ee4fbd24ad2672eb42))
+
+
+### Bug Fixes
+
+* **cli:** offer the same slot fixes in status and sync ([7570a6a](https://github.com/sebastian-software/dalo/commit/7570a6a4f7f0e33c01d18bb97cce2de7cd07f160))
+* share GitHub release feed across installations ([adf65e9](https://github.com/sebastian-software/dalo/commit/adf65e9df9d27b29fd0dc8cf75f0ca7b1d2f5ebf))
+* **site:** swap the dark logo through picture, not CSS content ([c2c2475](https://github.com/sebastian-software/dalo/commit/c2c24751d0baff24c33d7fe72da2483809f66661))
+* **status:** list a pending skill once, as waiting for approval ([00de9da](https://github.com/sebastian-software/dalo/commit/00de9da064def0a1a94acfaf95220329d2921386))
+* use shared distribution-aware update checks ([763d659](https://github.com/sebastian-software/dalo/commit/763d659132278dc7cc5b2a8c4d3bba4a2bf2f767))
+
 ## [1.10.0](https://github.com/sebastian-software/dalo/compare/dalo-v1.9.0...dalo-v1.10.0) (2026-10-22)
 
 
