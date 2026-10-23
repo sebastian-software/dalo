@@ -78,35 +78,49 @@ Global flags can be placed before or after the command.
 
 ## Update Notices
 
-After a successful interactive command, Dalo checks for a newer GitHub release
-at most once per 24 hours. The check uses a one-second network timeout and
-never changes the command's exit status. Checks are skipped for `--json`, CI,
-`DALO_OFFLINE=1`, and `DALO_UPDATE_CHECK=never`. Offline commands such as
-`assistant install` and `plugin validate` skip these notices as well.
+After a successful interactive command, Dalo uses the shared `app-tracking`
+client to query the public version service. The installed version is compared
+locally. npm/npx select `dalo/npm/stable`; the hosted installer and GitHub/ubi
+mise select `dalo/standalone/stable`. Homebrew, Cargo, Nix, Debian, and unknown
+installations skip passive checks until their own distribution mappings exist.
+No installation or upgrade command is disabled by that limitation.
 
-The check runs beside the command on its own thread. A command that finishes
-first waits up to 150 milliseconds for the answer, so even a command that takes
-ten milliseconds prints the notice in the same run. When the release API is
-slower than that, the command exits without waiting further and the answer is
-recorded instead, so the next interactive command prints the notice with no
-network access at all. A check that never reported back leaves a pending record
-and is retried after five minutes rather than counting as the day's check; the
-24-hour interval starts from a check that actually reached the release API.
+Checks are skipped for `--json`, CI, noninteractive stderr, `DALO_OFFLINE=1`,
+and `DALO_UPDATE_CHECK=never` (also `off`, `false`, and `0`, case-insensitively).
+`assistant`, `plugin validate`, migration, completion, and manpage commands also
+skip checks. Global and project commands follow the same eligibility policy.
+The native CLI owns the check; npm wrappers pass installation context and do
+not perform a second passive check. Explicit `DALO_VERSION=latest` installer
+lookups remain a separate installation operation.
 
-The result lives in `last-check` inside `${XDG_CACHE_HOME:-~/.cache}/dalo/update-notices`,
-a versioned `key=value` record holding the schema version, whether the check
-completed, the version that ran it, and the newer release it found. A record
-written by an unrecognized schema or by a different installed version is
-ignored, which makes the next command check again. Deleting the directory only
-costs one extra check. A fresh install has no record, so its first interactive
-command checks immediately instead of staying silent for the first day.
+The check runs synchronously at the end of a successful command. One request
+has a total 200 ms network deadline, including DNS waiting, connection, TLS,
+headers, and body. Filesystem and scheduling overhead are additional; this is
+not an absolute process-time guarantee. No update worker must survive command
+exit. Network/cache failures leave stdout and exit status unchanged.
 
-Dalo never modifies its own executable. If the installed version is outdated,
-the notice recommends an upgrade command for Homebrew, npm/npx, mise, Cargo, or
-the hosted installer. Launchers may set `DALO_INSTALL_CHANNEL` so the Rust binary
-can preserve their installation context. Unknown installation methods receive a
-link to the installation guide instead of a guessed command. Each newer version
-is announced only once per user cache.
+A fresh result suppresses requests for at least one hour. Failed requests and
+stale results back off for 5, 10, 20, 40, then 60 minutes. Notices are offered
+at most once per release per 24 hours; a higher release may be offered sooner.
+Retained results expire 24 hours after source validation. CDN freshness and the
+client's interval add delay, so this does not promise notification within one
+hour of publication. Dalo renders installation-aware guidance and never
+executes a command supplied by the service or replaces its own executable.
+
+The versioned update-only cache lives under
+`${XDG_CACHE_HOME:-~/.cache}/dalo/update-notices/app-tracking-v1`, with one JSON
+file and a stable lock file per tool/distribution/channel. The shared client's
+schema 1 stores release metadata, its resource URL and opaque ETag, next-check
+and retry state, and the last offered notice. Writes use atomic replacement;
+a nonblocking process lock coordinates checks and notices. A busy invocation
+returns immediately. Old `last-check` and `notified-*` files remain untouched
+and are no longer read. Deleting this advisory cache costs another check.
+
+No telemetry identity, repository URL/hash, invocation counter, or reporting
+queue is created or transmitted. The request contains only the public route,
+fixed client user agent, and an optional ETag. The service may process ordinary
+transport metadata; update delivery is independent of future opt-in telemetry.
+See [ADR 0013](adr/0013-shared-version-update-client.md).
 
 ## Command Reference
 

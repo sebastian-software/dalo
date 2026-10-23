@@ -1370,6 +1370,31 @@ pub struct ResolveTargetSlotArgs {
 
 /// Execute a parsed CLI command.
 pub fn run_cli(cli: Cli) -> DaloResult<()> {
+    let check_updates = allows_update_notice(&cli);
+    let result = run_cli_inner(cli);
+    if result.is_ok() && check_updates {
+        update::print_notice();
+    }
+    result
+}
+
+fn allows_update_notice(cli: &Cli) -> bool {
+    !cli.json
+        && cli.command.as_ref().is_some_and(|command| {
+            !matches!(
+                command,
+                Command::Assistant(_)
+                    | Command::Completions(_)
+                    | Command::Manpage
+                    | Command::Migrate(_)
+                    | Command::Plugin(PluginCommand {
+                        command: PluginSubcommand::Validate(_)
+                    })
+            )
+        })
+}
+
+fn run_cli_inner(cli: Cli) -> DaloResult<()> {
     if let Some(Command::Migrate(args)) = &cli.command {
         if cli.global || cli.store.is_some() || std::env::var_os(store::STORE_ENV_VAR).is_some() {
             return Err(DaloError::InvalidArgument {
@@ -1499,10 +1524,6 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
             command: PluginSubcommand::Validate(_)
         })
     );
-    let pending_update_notice =
-        (!json && !package_validation && !matches!(&command, Command::Assistant(_)))
-            .then(update::start_notice_check)
-            .flatten();
     let options = if matches!(command, Command::Team(_)) || package_validation {
         GlobalOptions {
             store: PathBuf::new(),
@@ -1575,11 +1596,8 @@ pub fn run_cli(cli: Cli) -> DaloResult<()> {
         }
     };
 
-    if result.is_ok() {
-        update::print_notice_if_ready(pending_update_notice);
-        if options.json && ignores_dry_run {
-            warn_noop_dry_run(options.dry_run);
-        }
+    if result.is_ok() && options.json && ignores_dry_run {
+        warn_noop_dry_run(options.dry_run);
     }
 
     result
@@ -6219,5 +6237,25 @@ mod tests {
             "git {} should succeed",
             arguments.join(" ")
         );
+    }
+    #[test]
+    fn update_notice_policy_excludes_machine_and_offline_commands() {
+        for args in [
+            vec!["dalo"],
+            vec!["dalo", "--json", "status"],
+            vec!["dalo", "manpage"],
+            vec!["dalo", "completions", "bash"],
+            vec!["dalo", "assistant", "install"],
+            vec!["dalo", "plugin", "validate", "."],
+        ] {
+            let cli = Cli::try_parse_from(args).unwrap();
+            assert!(!allows_update_notice(&cli));
+        }
+        assert!(allows_update_notice(
+            &Cli::try_parse_from(["dalo", "status"]).unwrap()
+        ));
+        assert!(allows_update_notice(
+            &Cli::try_parse_from(["dalo", "--project", ".", "status"]).unwrap()
+        ));
     }
 }

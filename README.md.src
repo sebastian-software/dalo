@@ -317,14 +317,20 @@ cargo install dalo
 
 ### Update notices
 
-Successful interactive commands check for a newer GitHub release at most once
-per day. The check is advisory: Dalo never replaces its own executable. When an
-update is available, it prints the upgrade command for the detected installation
-method once for that version — in the same run when the release API answers
-within 150 milliseconds, otherwise on the next command, which reads the
-recorded answer without any network access. Network and cache failures are
-ignored, and checks are disabled for JSON output, CI, and `DALO_OFFLINE=1`. Set
-`DALO_UPDATE_CHECK=never` to opt out.
+Successful interactive commands use the shared `app-tracking` client to check
+for updates at most once per hour after a fresh response. A due check completes
+at the end of the command with a 200 ms network budget; a cached check makes no
+request. Notices include installation-specific upgrade instructions and are
+throttled to once per release per day. Network and cache failures remain
+advisory. JSON output, CI, noninteractive stderr, `DALO_OFFLINE=1`, and
+`DALO_UPDATE_CHECK=never` disable checks.
+
+npm/npx use npm release metadata; the hosted installer and GitHub/ubi mise
+installs use verified standalone releases. Homebrew, Cargo, Nix, Debian, and
+unknown installations currently skip passive checks until their independently
+published channels have service mappings. Install and upgrade commands continue
+to work. These update-only requests send no installed version, installation ID,
+repository hash, or usage counter. Dalo never replaces its own executable.
 
 You can also ask your agent to install Dalo: dalo.sh publishes an
 [`llms.txt`](https://dalo.sh/llms.txt) index and an agent-oriented

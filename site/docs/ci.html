@@ -109,7 +109,14 @@ a change reaches anyone&#39;s agent.</p>
 </ul>
 <p>Passive release checks are disabled automatically when the conventional <code>CI</code>
 environment variable is set. <code>DALO_OFFLINE=1</code> or <code>DALO_UPDATE_CHECK=never</code> can
-also disable them explicitly in other managed environments.</p>
+also disable them explicitly in other managed environments. Update-only checks
+use the shared app-tracking client and create no telemetry state. The opt-in
+read-only Bunny probe is separate from the ordinary offline test suite:</p>
+<pre><code class="language-sh">cargo test --locked --lib update::tests::live_bunny_version_client_smoke -- --ignored --nocapture
+</code></pre>
+<p>It uses a synthetic older installed version against real public metadata to
+verify the shared client and Dalo&#39;s guidance. It publishes no fake release and
+changes no service configuration.</p>
 <h2 id="example-github-actions-job"><a class="doc-anchor" href="#example-github-actions-job">Example GitHub Actions job</a></h2>
 <pre><code class="language-yaml">name: dalo
 

@@ -13,7 +13,17 @@ Useful checks:
 
 Passive release checks are disabled automatically when the conventional `CI`
 environment variable is set. `DALO_OFFLINE=1` or `DALO_UPDATE_CHECK=never` can
-also disable them explicitly in other managed environments.
+also disable them explicitly in other managed environments. Update-only checks
+use the shared app-tracking client and create no telemetry state. The opt-in
+read-only Bunny probe is separate from the ordinary offline test suite:
+
+```sh
+cargo test --locked --lib update::tests::live_bunny_version_client_smoke -- --ignored --nocapture
+```
+
+It uses a synthetic older installed version against real public metadata to
+verify the shared client and Dalo's guidance. It publishes no fake release and
+changes no service configuration.
 
 ## Example GitHub Actions job
 
