@@ -636,7 +636,7 @@ The audit went straight into five pull requests on the same day:
 | [#1023](https://github.com/sebastian-software/dalo/pull/1023) | One message everywhere (site, Cargo, npm, Nix, Debian, `llms.txt`), hero leads with the why, honest proof block and "who it's for", landing page from 1,695 to 1,247 words, comparison re-stamped | M1, M2, M3, M5 |
 | [#1024](https://github.com/sebastian-software/dalo/pull/1024) | Assistant notice only on change and once per store, `waiting for sync` instead of lock drift, one-line clean audits, preflight trailer only when something was checked, `needs you` first in `status`, `status --all`, info findings in `doctor`, one conflict in one place with both ways out | U2, U3, U4, U5, U6, U8 |
 | [#1025](https://github.com/sebastian-software/dalo/pull/1025) | Every color a token, dark palette following the OS, `data-theme` hook for a later toggle, logos swapped through `<picture>` | T1, T2 (site side) |
-| [#1026](https://github.com/sebastian-software/dalo/pull/1026) | Five-minute start page with real transcripts, eight-word glossary, one `init` story in the docs, three status words moved to troubleshooting, frontmatter in every example, README trimmed, `mise run check`, `check:full`, `docs`, contributor notes | D1, D2, D3, D4, D6, M6, X1, X3, T3 |
+| [#1028](https://github.com/sebastian-software/dalo/pull/1028) | Five-minute start page with real transcripts, eight-word glossary, one `init` story in the docs, three status words moved to troubleshooting, frontmatter in every example, README trimmed, `mise run check`, `check:full`, `docs`, contributor notes | D1, D2, D3, D4, D6, M6, X1, X3, T3 |
 
 Deviations from the plan above, on purpose:
 
