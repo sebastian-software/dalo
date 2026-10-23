@@ -44,8 +44,9 @@ Sigstore provenance when `cosign` is on the PATH):
 
     curl -fsSL https://dalo.sh/install.sh | sh
 
-The complete setup continues with `dalo init` for a missing store,
-`dalo assistant install`, the intended `dalo target link`, a dry-run sync,
+The complete setup continues with a bare `dalo`, which creates a missing store
+(`dalo init` is for sandboxes and projects), `dalo assistant install`, the
+intended `dalo target link`, a dry-run sync,
 and a checked sync. Use install.md for the ordered procedure and existing-store
 handling. The assistant is embedded in the binary; no extra download is needed.
 Check `dalo assistant install --help` on older versions before using it.
