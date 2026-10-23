@@ -312,7 +312,7 @@ $ dalo status --all
 sources:
   company      team priority=10   skills=1   agents=0   plugins=0   enabled
   company.marketing catalog priority=11   skills=3   agents=0   plugins=0   enabled
-    provenance management=team_manifest origin=… requested=28a2eec94f0e… resolved=28a2eec94f0e
+    provenance management=team_manifest origin=… requested=1f2a994cff06746624a97ce073d3e15e859a45bb resolved=1f2a994cff06
 ```
 
 Their URL, version, priority, and selection are owned by your manifest.
@@ -326,9 +326,13 @@ Manifest-derived catalogs are untrusted, so the first sync links your team's own
 skills and leaves the catalog skills pending:
 
 ```text
-synced: 1 skill across 1 target (1 created)
+existing noop       target[claude]:/dalo -> store:/local/skills/dalo
+applied  create     target[claude]:/release-notes -> store:/sources/company/checkout/skills/release-notes
+synced: 2 skills across 1 target (1 created, 1 unchanged)
 pending approval: company.marketing:copywriting (run: dalo approve skill company.marketing:copywriting)
 pending approval: company.marketing:launch (run: dalo approve skill company.marketing:launch)
+catalog: company.marketing policy=pin requested=1f2a994cff06746624a97ce073d3e15e859a45bb none -> 1f2a994cff06746624a97ce073d3e15e859a45bb (upstream checked)
+security preflight: deterministic checks only
 ```
 
 Each teammate reviews and approves on their own machine:

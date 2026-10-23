@@ -58,7 +58,7 @@ Dalo
   pending approvals: 0
 
 Next: dalo target detect
-  Link a target so Dalo knows where to materialize skills.
+  Link a target so Dalo knows where to link skills.
 ```
 
 The store is Dalo's local database: source checkouts, the private local source,
@@ -148,10 +148,12 @@ dalo sync
 links that set into every linked target:
 
 ```text
-target[claude]: …/skills
+dalo store: ~/.dalo
+target[claude]: ~/.claude/skills
+existing noop       target[claude]:/dalo -> store:/local/skills/dalo
 applied  create     target[claude]:/incident-review -> store:/sources/company/checkout/skills/incident-review
 applied  create     target[claude]:/release-notes -> store:/sources/company/checkout/skills/release-notes
-synced: 2 skills across 1 target (2 created)
+synced: 3 skills across 1 target (2 created, 1 unchanged)
 security preflight: deterministic checks only
 ```
 
