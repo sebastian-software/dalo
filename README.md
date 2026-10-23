@@ -105,9 +105,12 @@ install methods and verification are in [Installation](#installation).
 One sync resolves the approved set and links it into every configured target:
 
 ```text
+dalo store: ~/.dalo
+target[codex]: ~/.agents/skills
+existing noop       target[codex]:/dalo -> store:/local/skills/dalo
 applied  create     target[codex]:/incident-review -> store:/sources/company/checkout/skills/incident-review
 applied  create     target[codex]:/release-notes -> store:/sources/company/checkout/skills/release-notes
-synced: 2 skills across 1 target (2 created)
+synced: 3 skills across 1 target (2 created, 1 unchanged)
 security preflight: deterministic checks only
 ```
 
@@ -131,8 +134,12 @@ dalo sync
 ```
 
 ```text
-synced: 2 skills across 1 target (2 unchanged)
+dalo store: ~/.dalo
+target[claude]: ~/.claude/skills
+existing noop       target[claude]:/dalo -> store:/local/skills/dalo
+synced: 1 skill across 1 target (1 unchanged)
 pending approval: sebastian:effective-web (run: dalo approve skill sebastian:effective-web)
+security preflight: deterministic checks only
 ```
 
 Review the exact skill, approve it, and sync again:

@@ -62,7 +62,10 @@ The new catalog itself is recorded by the next sync. Further down,
 at the end:
 
 ```text
-synced: 2 skills across 1 target (2 unchanged)
+existing noop       target[claude]:/dalo -> store:/local/skills/dalo
+existing noop       target[claude]:/incident-review -> store:/sources/company/checkout/skills/incident-review
+existing noop       target[claude]:/release-notes -> store:/sources/company/checkout/skills/release-notes
+synced: 3 skills across 1 target (3 unchanged)
 pending approval: public:review-helper (run: dalo approve skill public:review-helper)
 ```
 
@@ -137,17 +140,20 @@ usually a skill an agent wrote directly into its own folder.
 ```text
 needs you:
   target[claude]:/standup-notes: a folder you own is already there
-    run: dalo resolve list
+    keep yours:   dalo resolve keep standup-notes
+    bring it in:  dalo adopt standup-notes --replace
 ```
 
-`status` names the slot and the command that lists it. `sync` also gives the two
-ways out and leaves your folder alone:
+The slot appears once more, without the commands, under `unmanaged skills:`.
+`sync` reports the block with the same two ways out and leaves your folder
+alone:
 
 ```text
+existing noop       target[claude]:/dalo -> store:/local/skills/dalo
 blocked  conflict   target[claude]:/standup-notes: a folder you own is already there
                     keep yours:   dalo resolve keep standup-notes
                     bring it in:  dalo adopt standup-notes --replace
-synced: 4 skills across 1 target (3 unchanged, 1 blocked)
+synced: 2 skills across 1 target (1 unchanged, 1 blocked)
 ```
 
 For a real unmanaged directory, first inspect exact IDs and paths with

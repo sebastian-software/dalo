@@ -224,7 +224,10 @@ and catalogs pinned by a team manifest start here by design.</p>
 The new catalog itself is recorded by the next sync. Further down,
 <code>pending approval:</code> lists the skill with any compatibility note it declares. <code>sync</code> still does all the other work and repeats the command
 at the end:</p>
-<pre><code class="language-text">synced: 2 skills across 1 target (2 unchanged)
+<pre><code class="language-text">existing noop       target[claude]:/dalo -&gt; store:/local/skills/dalo
+existing noop       target[claude]:/incident-review -&gt; store:/sources/company/checkout/skills/incident-review
+existing noop       target[claude]:/release-notes -&gt; store:/sources/company/checkout/skills/release-notes
+synced: 3 skills across 1 target (3 unchanged)
 pending approval: public:review-helper (run: dalo approve skill public:review-helper)
 </code></pre>
 <p>Read the skill first — <code>dalo audit public:review-helper</code> prints the deterministic
@@ -275,14 +278,17 @@ changes through their usual refresh and sync.</p>
 usually a skill an agent wrote directly into its own folder.</p>
 <pre><code class="language-text">needs you:
   target[claude]:/standup-notes: a folder you own is already there
-    run: dalo resolve list
+    keep yours:   dalo resolve keep standup-notes
+    bring it in:  dalo adopt standup-notes --replace
 </code></pre>
-<p><code>status</code> names the slot and the command that lists it. <code>sync</code> also gives the two
-ways out and leaves your folder alone:</p>
-<pre><code class="language-text">blocked  conflict   target[claude]:/standup-notes: a folder you own is already there
+<p>The slot appears once more, without the commands, under <code>unmanaged skills:</code>.
+<code>sync</code> reports the block with the same two ways out and leaves your folder
+alone:</p>
+<pre><code class="language-text">existing noop       target[claude]:/dalo -&gt; store:/local/skills/dalo
+blocked  conflict   target[claude]:/standup-notes: a folder you own is already there
                     keep yours:   dalo resolve keep standup-notes
                     bring it in:  dalo adopt standup-notes --replace
-synced: 4 skills across 1 target (3 unchanged, 1 blocked)
+synced: 2 skills across 1 target (1 unchanged, 1 blocked)
 </code></pre>
 <p>For a real unmanaged directory, first inspect exact IDs and paths with
 <code>dalo --json resolve list</code>. Then choose the option that matches what you want:</p>
