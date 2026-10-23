@@ -80,10 +80,13 @@ Global flags can be placed before or after the command.
 
 After a successful interactive command, Dalo uses the shared `app-tracking`
 client to query the public version service. The installed version is compared
-locally. npm/npx select `dalo/npm/stable`; the hosted installer and GitHub/ubi
-mise select `dalo/standalone/stable`. Homebrew, Cargo, Nix, Debian, and unknown
-installations skip passive checks until their own distribution mappings exist.
-No installation or upgrade command is disabled by that limitation.
+locally. All installation channels select `dalo/github/stable`. app-tracking
+reads the CDN-cached oss-metrics document, which derives release metadata from
+GitHub's latest published release. A release must be at least one hour old;
+this reduces package publication lag without maintaining separate registry feeds.
+It does not guarantee that every downstream package is available. Homebrew,
+npm/npx, Cargo, Nix, Debian, mise, hosted-installer, and unknown installations
+remain eligible and keep installation-specific or generic upgrade guidance.
 
 Checks are skipped for `--json`, CI, noninteractive stderr, `DALO_OFFLINE=1`,
 and `DALO_UPDATE_CHECK=never` (also `off`, `false`, and `0`, case-insensitively).
