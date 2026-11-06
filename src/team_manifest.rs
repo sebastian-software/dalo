@@ -1156,6 +1156,9 @@ pub fn reconcile_team_manifests(
         let manifest_path = team.path.join(TEAM_MANIFEST_FILE);
         if let Some(manifest) = read_manifest(&manifest_path)? {
             validate_manifest(&team.id, &manifest_path, &manifest)?;
+            for declaration in &manifest.catalogs {
+                managed_catalog_checkout(paths, &derived_source_id(&team.id, &declaration.id))?;
+            }
             manifests.push((team, manifest));
         }
     }
@@ -1639,6 +1642,376 @@ fn existing_manifest_declaration(
     Some((manifest_path, declaration.id.clone()))
 }
 
+fn consumer_declaration(
+    config: &UserConfig,
+    source_id: &str,
+) -> DaloResult<(SourceConfig, ManifestCatalog)> {
+    let existing = config.sources.iter().find(|source| source.id == source_id);
+    let mut matches = Vec::new();
+    for team in config.sources.iter().filter(|source| {
+        source.enabled && source.kind == SourceKind::Team && source.subpath.is_none()
+    }) {
+        let path = team.path.join(TEAM_MANIFEST_FILE);
+        let Some(manifest) = read_manifest(&path)? else {
+            continue;
+        };
+        validate_manifest(&team.id, &path, &manifest)?;
+        for declaration in manifest.catalogs {
+            let owned_match = existing.is_some_and(|source| {
+                source.declared_by.as_deref() == Some(team.id.as_str())
+                    && source_matches_owned_declaration(source, &declaration.id)
+            });
+            if derived_source_id(&team.id, &declaration.id) == source_id || owned_match {
+                matches.push((team.clone(), declaration));
+            }
+        }
+    }
+    let [(team, declaration)] = matches.as_slice() else {
+        return Err(DaloError::InvalidArgument {
+            reason: format!(
+                "candidate audit requires exactly one configured team declaration for derived catalog `{source_id}`; found {}",
+                matches.len()
+            ),
+        });
+    };
+    if let Some(existing) = existing {
+        if existing.kind != SourceKind::Catalog
+            || existing.declared_by.as_deref() != Some(team.id.as_str())
+        {
+            return Err(derived_source_conflict(
+                config,
+                existing,
+                team,
+                declaration,
+                source_id,
+            ));
+        }
+        let location = source::resolve_source_location(&declaration.url, &team.path);
+        if existing.url.as_deref() != Some(location.as_str()) {
+            return Err(DaloError::StateError {
+                reason: format!(
+                    "team manifest changed the URL for `{source_id}`; reconcile the declaration before candidate review"
+                ),
+            });
+        }
+    }
+    Ok((team.clone(), declaration.clone()))
+}
+
+fn candidate_provenance(
+    team: &SourceConfig,
+    source_id: &str,
+    location: &str,
+    commit: &str,
+    scope: Option<String>,
+    selection: &[String],
+) -> DaloResult<audit::CandidateProvenance> {
+    git::validate_full_pinned_commit(commit)?;
+    Ok(audit::CandidateProvenance {
+        team_source_id: team.id.clone(),
+        team_location: team
+            .url
+            .as_deref()
+            .map(git::display_remote_url)
+            .unwrap_or_else(|| {
+                store::comparable_path(&team.path)
+                    .to_string_lossy()
+                    .into_owned()
+            }),
+        derived_source_id: source_id.to_owned(),
+        catalog_location: git::display_remote_url(location),
+        commit: commit.to_owned(),
+        scope,
+        selected_set_hash: audit::CandidateProvenance::selection_hash(selection)?,
+    })
+}
+
+pub(crate) fn installed_audit_provenance(
+    paths: &StorePaths,
+    source: &SourceConfig,
+) -> DaloResult<audit::CandidateProvenance> {
+    let checkout = managed_catalog_checkout(paths, &source.id)?;
+    let config = store::read_config(paths)?;
+    let (team, _) = consumer_declaration(&config, &source.id)?;
+    let lock = catalog::read_source_lock(paths)?;
+    let locked = lock
+        .catalog(&source.id)
+        .ok_or_else(|| DaloError::StateError {
+            reason: format!(
+                "derived catalog `{}` has no installed source lock",
+                source.id
+            ),
+        })?;
+    if source.kind != SourceKind::Catalog
+        || source.declared_by.as_deref() != Some(team.id.as_str())
+        || source.selection.iter().collect::<BTreeSet<_>>()
+            != locked.selected.iter().collect::<BTreeSet<_>>()
+        || store::comparable_path(&source.path) != store::comparable_path(&checkout)
+        || git::rev_parse_head(&source.path)? != locked.commit
+    {
+        return Err(DaloError::StateError {
+            reason: format!(
+                "derived catalog `{}` does not match its installed source lock",
+                source.id
+            ),
+        });
+    }
+    if git::has_checkout_local_content(&source.path)? {
+        return Err(DaloError::DirtySource {
+            source_id: source.id.clone(),
+            path: source.path.clone(),
+        });
+    }
+    let scope = git::scoped_catalog_checkout_path(&source.path)?;
+    if let Some(scope) = scope.as_deref()
+        && !git::scoped_catalog_checkout_matches(&source.path, &locked.commit, scope)?
+    {
+        return Err(DaloError::StateError {
+            reason: format!(
+                "derived catalog `{}` has invalid scoped checkout state",
+                source.id
+            ),
+        });
+    }
+    let location = source.url.as_deref().ok_or_else(|| DaloError::StateError {
+        reason: format!("derived catalog `{}` has no repository location", source.id),
+    })?;
+    candidate_provenance(
+        &team,
+        &source.id,
+        location,
+        &locked.commit,
+        scope,
+        &locked.selected,
+    )
+}
+
+fn managed_catalog_checkout(paths: &StorePaths, source_id: &str) -> DaloResult<PathBuf> {
+    let source_dir = paths.sources_dir.join(source_id);
+    let checkout = source_dir.join("checkout");
+    for directory in [&source_dir, &checkout] {
+        match fs::symlink_metadata(directory) {
+            Ok(metadata) if !metadata.file_type().is_dir() => {
+                return Err(DaloError::StateError {
+                    reason: format!(
+                        "derived catalog `{source_id}` has a non-directory or symlink at its managed checkout path"
+                    ),
+                });
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+            _ => {}
+        }
+    }
+    Ok(checkout)
+}
+
+fn resolve_consumer_revision(
+    checkout: &Path,
+    declaration: &ManifestCatalog,
+    existing: Option<&SourceConfig>,
+    locked: Option<&CatalogLock>,
+) -> DaloResult<(String, bool)> {
+    if declaration.update_policy == CatalogUpdatePolicy::Track {
+        return git::fetch_tracking_branch(checkout, &declaration.version)
+            .map(|commit| (commit, true));
+    }
+    let retain_pin = existing
+        .is_some_and(|source| source.declared_ref.as_deref() == Some(declaration.version.as_str()));
+    let revision = if retain_pin {
+        locked.map_or(declaration.version.as_str(), |entry| entry.commit.as_str())
+    } else {
+        git::fetch_upstream(checkout)?;
+        &declaration.version
+    };
+    git::resolve_manifest_revision(checkout, revision).map(|commit| (commit, !retain_pin))
+}
+
+pub(crate) fn audit_consumer_candidate(
+    paths: &StorePaths,
+    target: &str,
+    commit: &str,
+    options: &AuditOptions,
+) -> DaloResult<audit::CandidateAuditReport> {
+    git::validate_full_pinned_commit(commit)?;
+    if options
+        .accept_risk
+        .as_ref()
+        .is_some_and(|reason| reason.trim().is_empty())
+    {
+        return Err(DaloError::InvalidArgument {
+            reason: "risk acceptance reason must not be empty".to_owned(),
+        });
+    }
+    let (logical_target, provider) = target
+        .rsplit_once('@')
+        .map_or((target, None), |(logical, provider)| {
+            (logical, Some(provider))
+        });
+    let (source_id, selector) = logical_target
+        .split_once(':')
+        .filter(|(source, skill)| source::is_valid_source_id(source) && !skill.is_empty())
+        .ok_or_else(|| DaloError::InvalidArgument {
+            reason: "--candidate requires a derived-source:skill selector".to_owned(),
+        })?;
+    let config = store::read_config(paths)?;
+    let (team, declaration) = consumer_declaration(&config, source_id)?;
+    let existing = config.sources.iter().find(|source| source.id == source_id);
+    let lock = catalog::read_source_lock(paths)?;
+    let locked = lock.catalog(source_id);
+    let live_checkout = managed_catalog_checkout(paths, source_id)?;
+    if existing.is_some_and(|source| {
+        source.subpath.is_some()
+            || store::comparable_path(&source.path) != store::comparable_path(&live_checkout)
+    }) {
+        return Err(DaloError::StateError {
+            reason: format!("derived catalog `{source_id}` does not use its managed checkout"),
+        });
+    }
+    if live_checkout.exists() {
+        if existing.is_none() || !live_checkout.join(".git").exists() {
+            return Err(DaloError::StateError {
+                reason: format!(
+                    "derived catalog `{source_id}` has ambiguous unmanaged checkout state"
+                ),
+            });
+        }
+        if git::has_checkout_local_content(&live_checkout)? {
+            return Err(DaloError::DirtySource {
+                source_id: source_id.to_owned(),
+                path: live_checkout,
+            });
+        }
+        let Some(locked) = locked else {
+            return Err(DaloError::StateError {
+                reason: format!("derived catalog `{source_id}` has no source lock"),
+            });
+        };
+        if git::rev_parse_head(&live_checkout)? != locked.commit {
+            return Err(DaloError::StateError {
+                reason: format!(
+                    "derived catalog `{source_id}` checkout does not match its source lock"
+                ),
+            });
+        }
+        if declaration.path.is_none()
+            && git::scoped_catalog_checkout_path(&live_checkout)?.is_some()
+        {
+            return Err(DaloError::StateError {
+                reason: format!(
+                    "derived catalog `{source_id}` removed its scoped path; reconcile before candidate review"
+                ),
+            });
+        }
+    } else if existing.is_some() || locked.is_some() {
+        return Err(DaloError::StateError {
+            reason: format!("derived catalog `{source_id}` is missing its managed checkout"),
+        });
+    }
+    let location = source::resolve_source_location(&declaration.url, &team.path);
+    let temporary_root = std::env::temp_dir();
+    if store::comparable_path(&temporary_root).starts_with(store::comparable_path(&paths.root)) {
+        return Err(DaloError::InvalidArgument {
+            reason:
+                "candidate reconstruction requires a temporary directory outside the consumer store"
+                    .to_owned(),
+        });
+    }
+    let temporary = tempfile::Builder::new()
+        .prefix("dalo-consumer-candidate-")
+        .tempdir_in(temporary_root)?;
+    let checkout = temporary.path().join("checkout");
+    let desired_commit = if let Some(scope) = declaration.path.as_deref() {
+        if declaration.version != commit {
+            return Err(DaloError::InvalidArgument {
+                reason: format!(
+                    "candidate `{commit}` does not match declared commit `{}`",
+                    declaration.version
+                ),
+            });
+        }
+        source::clone_scoped_catalog_checkout(&location, &checkout, commit, scope)?;
+        declaration.version.clone()
+    } else {
+        source::clone_source_checkout(&location, &checkout)?;
+        let (desired, _) = resolve_consumer_revision(&checkout, &declaration, existing, locked)?;
+        if desired != commit {
+            return Err(DaloError::InvalidArgument {
+                reason: format!("candidate `{commit}` does not match sync candidate `{desired}`"),
+            });
+        }
+        if declaration.update_policy == CatalogUpdatePolicy::Track
+            && let Some(locked) = locked
+            && desired != locked.commit
+            && git::revision_count(&checkout, &desired, &locked.commit)? != 0
+        {
+            return Err(DaloError::StateError {
+                reason: format!(
+                    "derived catalog `{source_id}` candidate is not a fast-forward from its locked commit"
+                ),
+            });
+        }
+        git::checkout_detached(&checkout, &desired)?;
+        desired
+    };
+    let scanned = inventory::scan_source(source_id, &checkout)?;
+    let selection =
+        apply_skill_filters(source_id, &checkout, &scanned.skills, &declaration.skills)?;
+    catalog::catalog_inventory(&checkout, &selection)?;
+    let matches = scanned
+        .skills
+        .iter()
+        .filter(|skill| skill.slot_name == selector || skill.id.as_deref() == Some(selector))
+        .collect::<Vec<_>>();
+    let [skill] = matches.as_slice() else {
+        return Err(DaloError::InvalidArgument {
+            reason: format!("candidate skill `{target}` is missing or ambiguous"),
+        });
+    };
+    let canonical = skill.id.clone().unwrap_or_else(|| {
+        skill
+            .path
+            .strip_prefix(&checkout)
+            .unwrap_or(&skill.path)
+            .to_string_lossy()
+            .into_owned()
+    });
+    if !selection.contains(&canonical) {
+        return Err(DaloError::InvalidArgument {
+            reason: format!("candidate skill `{target}` is not selected by its team declaration"),
+        });
+    }
+    let provenance = candidate_provenance(
+        &team,
+        source_id,
+        &location,
+        &desired_commit,
+        declaration.path,
+        &selection,
+    )?;
+    let (audit_ref, artifact_path) = if let Some(provider) = provider {
+        audit::skill_audit_artifacts(skill).into_iter().find(|(reference, _)| reference.rsplit_once('@').is_some_and(|(_, qualifier)| qualifier == provider))
+            .ok_or_else(|| DaloError::InvalidArgument { reason: format!("candidate skill `{target}` has no auditable delivery artifact for provider `{provider}`") })?
+    } else {
+        (skill.source_ref.clone(), skill.path.clone())
+    };
+    let report = audit::audit_candidate_skill(
+        paths,
+        &audit_ref,
+        &artifact_path,
+        &AuditOptions {
+            exclude_root_source_metadata: store::comparable_path(&artifact_path)
+                == store::comparable_path(&checkout),
+            ..options.clone()
+        },
+        &provenance,
+    )?;
+    Ok(audit::CandidateAuditReport {
+        report,
+        candidate: provenance,
+    })
+}
+
 struct ReconciledCatalog {
     source: SourceConfig,
     report: ManifestCatalogSyncReport,
@@ -1656,7 +2029,7 @@ fn reconcile_catalog(
     lock: &mut catalog::SourceLock,
 ) -> DaloResult<ReconciledCatalog> {
     let location = source::resolve_source_location(&declaration.url, &team.path);
-    let checkout = paths.sources_dir.join(source_id).join("checkout");
+    let checkout = managed_catalog_checkout(paths, source_id)?;
     let existing = config
         .sources
         .iter()
@@ -1699,6 +2072,7 @@ fn reconcile_catalog(
             || !git::scoped_catalog_checkout_matches(&checkout, &declaration.version, scope)?;
         let (selection, inventory, replacement) = reconcile_scoped_catalog(
             paths,
+            team,
             source_id,
             &location,
             &checkout,
@@ -1724,28 +2098,9 @@ fn reconcile_catalog(
         if new_checkout {
             source::clone_source_checkout(&location, &checkout)?;
         }
-        let locked = lock.catalog(source_id).cloned();
-        let desired_commit = if tracking {
-            upstream_checked = true;
-            git::fetch_tracking_branch(&checkout, &declaration.version)?
-        } else if existing.is_some_and(|candidate| {
-            candidate.declared_ref.as_deref() == Some(declaration.version.as_str())
-        }) {
-            locked
-                .as_ref()
-                .map(|entry| entry.commit.clone())
-                .unwrap_or_else(|| declaration.version.clone())
-        } else {
-            upstream_checked = true;
-            git::fetch_upstream(&checkout)?;
-            declaration.version.clone()
-        };
-        let desired_commit = if tracking {
-            // This is already the exact FETCH_HEAD commit, not a symbolic ref.
-            desired_commit
-        } else {
-            git::resolve_manifest_revision(&checkout, &desired_commit)?
-        };
+        let (desired_commit, checked) =
+            resolve_consumer_revision(&checkout, declaration, existing, lock.catalog(source_id))?;
+        upstream_checked |= checked;
         let current_commit = git::rev_parse_head(&checkout)?;
         if tracking && let Some(previous) = &old_commit {
             if current_commit != *previous {
@@ -1786,7 +2141,14 @@ fn reconcile_catalog(
             git::add_detached_worktree(&checkout, &staging, &desired_commit)?;
             (staging.clone(), Some(staging))
         };
-        let candidate = scan_catalog_selection(paths, source_id, &scan_root, declaration);
+        let candidate = scan_catalog_selection(
+            paths,
+            team,
+            source_id,
+            &scan_root,
+            declaration,
+            &desired_commit,
+        );
         let cleanup = if let Some(staging) = &staging {
             let cleanup = git::remove_worktree(&checkout, staging);
             if let Some(staging_root) = staging.parent() {
@@ -1872,13 +2234,24 @@ fn reconcile_catalog(
 
 fn scan_catalog_selection(
     paths: &StorePaths,
+    team: &SourceConfig,
     source_id: &str,
     checkout: &Path,
     declaration: &ManifestCatalog,
+    commit: &str,
 ) -> DaloResult<(Vec<String>, Vec<catalog::CatalogEntry>)> {
     let scanned = inventory::scan_source(source_id, checkout)?;
     let selection = apply_skill_filters(source_id, checkout, &scanned.skills, &declaration.skills)?;
-    audit_selected(paths, source_id, checkout, &scanned.skills, &selection)?;
+    let location = source::resolve_source_location(&declaration.url, &team.path);
+    let provenance = candidate_provenance(
+        team,
+        source_id,
+        &location,
+        commit,
+        declaration.path.clone(),
+        &selection,
+    )?;
+    audit_selected(paths, checkout, &scanned.skills, &selection, &provenance)?;
     let inventory = catalog::catalog_inventory(checkout, &selection)?;
     Ok((selection, inventory))
 }
@@ -1886,6 +2259,7 @@ fn scan_catalog_selection(
 #[allow(clippy::too_many_arguments)]
 fn reconcile_scoped_catalog(
     paths: &StorePaths,
+    team: &SourceConfig,
     source_id: &str,
     location: &str,
     checkout: &Path,
@@ -1900,7 +2274,7 @@ fn reconcile_scoped_catalog(
     let commit = &declaration.version;
     if !new_checkout && git::scoped_catalog_checkout_matches(checkout, commit, scope)? {
         let (selection, inventory) =
-            scan_catalog_selection(paths, source_id, checkout, declaration)?;
+            scan_catalog_selection(paths, team, source_id, checkout, declaration, commit)?;
         return Ok((selection, inventory, None));
     }
     if !new_checkout && git::has_checkout_local_content(checkout)? {
@@ -1915,7 +2289,8 @@ fn reconcile_scoped_catalog(
     let staged_dir = tempfile::tempdir_in(parent)?;
     let staged = staged_dir.path().join("checkout");
     source::clone_scoped_catalog_checkout(location, &staged, commit, scope)?;
-    let (selection, inventory) = scan_catalog_selection(paths, source_id, &staged, declaration)?;
+    let (selection, inventory) =
+        scan_catalog_selection(paths, team, source_id, &staged, declaration, commit)?;
     if new_checkout {
         fs::rename(&staged, checkout)?;
         return Ok((selection, inventory, None));
@@ -2086,10 +2461,10 @@ fn short_commit(commit: &str) -> &str {
 
 fn audit_selected(
     paths: &StorePaths,
-    source_id: &str,
     checkout: &Path,
     skills: &[SkillRecord],
     selection: &[String],
+    provenance: &audit::CandidateProvenance,
 ) -> DaloResult<()> {
     let selected = selection.iter().cloned().collect::<BTreeSet<_>>();
     let by_canonical = skills
@@ -2109,18 +2484,32 @@ fn audit_selected(
         let Some(skill) = by_canonical.get(&reference) else {
             continue;
         };
-        let report = audit::audit_skill(
-            paths,
-            &format!("{source_id}:{}", skill.slot_name),
-            &skill.path,
-            &AuditOptions {
-                exclude_root_source_metadata: store::comparable_path(&skill.path)
-                    == store::comparable_path(checkout),
-                ..AuditOptions::default()
-            },
-        )?;
-        if report.is_blocking() {
-            blocked.push(format!("{source_id}:{}", skill.slot_name));
+        for (audit_ref, artifact_path) in audit::skill_audit_artifacts(skill) {
+            let report = audit::audit_candidate_skill(
+                paths,
+                &audit_ref,
+                &artifact_path,
+                &AuditOptions {
+                    exclude_root_source_metadata: store::comparable_path(&artifact_path)
+                        == store::comparable_path(checkout),
+                    ..AuditOptions::default()
+                },
+                provenance,
+            )?;
+            if report.is_blocking() {
+                blocked.push(format!(
+                    "{audit_ref} (candidate {}; inspect with {})",
+                    provenance.commit,
+                    store::dalo_command(
+                        &paths.root,
+                        &format!(
+                            "audit {} --candidate {}",
+                            crate::error::shell_quote_path(Path::new(&audit_ref)),
+                            provenance.commit
+                        )
+                    )
+                ));
+            }
         }
     }
     if blocked.is_empty() {

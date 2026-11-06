@@ -105,6 +105,19 @@ fetches into a detached worktree below `sources/.audit-staging/` and is audited
 there. The live checkout fast-forwards only after the audit passes, so target
 links keep exposing the last accepted commit while an update is blocked.
 
+For a team-derived catalog whose pending pin is blocked, a consumer can review
+and accept only the exact pending commit without changing the team manifest:
+`dalo audit <derived-source>:<skill> --candidate <full-commit> --check`, then a
+second explicit call with `--accept-risk "<reason>"`, followed by `dalo sync`.
+The candidate audit reconstructs the declaration-selected checkout on demand;
+it is available for installed and first-sync recovery, keeps the live checkout
+and user lock unchanged until the normal sync transaction succeeds, and never
+transfers trust to the team or activates the candidate early. Candidate reports
+and acceptance are consumer-local and isolated from ordinary installed-target
+audits. If the commit, declaration, checkout, scope, or cached schema is
+ambiguous or unsupported, the command fails closed rather than accepting a
+different artifact.
+
 ## The deterministic preflight
 
 The preflight is local, reads files, and never executes skill code. It runs on

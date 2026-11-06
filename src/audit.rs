@@ -27,6 +27,57 @@ use crate::store::{self, StorePaths};
 /// Persisted audit report schema version.
 pub const AUDIT_SCHEMA_VERSION: u32 = 1;
 
+/// Verified identity of one consumer-local team catalog audit snapshot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CandidateProvenance {
+    /// Configured parent team identity.
+    pub team_source_id: String,
+    /// Parent repository location, with credentials redacted.
+    pub team_location: String,
+    /// Manifest-derived catalog identity.
+    pub derived_source_id: String,
+    /// Resolved catalog repository location, with credentials redacted.
+    pub catalog_location: String,
+    /// Exact immutable commit.
+    pub commit: String,
+    /// Selected repository subtree, if any.
+    pub scope: Option<String>,
+    /// Fingerprint of sorted canonical selected entries.
+    pub selected_set_hash: String,
+}
+
+impl CandidateProvenance {
+    pub(crate) fn selection_hash(selection: &[String]) -> DaloResult<String> {
+        let entries = selection.iter().collect::<std::collections::BTreeSet<_>>();
+        Ok(hex_digest(&Sha256::digest(serde_json::to_vec(&entries)?)))
+    }
+
+    fn fingerprint(&self) -> DaloResult<String> {
+        Ok(hex_digest(&Sha256::digest(serde_json::to_vec(self)?)))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CandidateEnvelope {
+    schema_version: u32,
+    provenance: CandidateProvenance,
+    report: AuditReport,
+}
+
+pub(crate) struct StoredAuditReport {
+    pub report: AuditReport,
+    pub candidate: Option<CandidateProvenance>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct CandidateAuditReport {
+    #[serde(flatten)]
+    pub report: AuditReport,
+    pub candidate: CandidateProvenance,
+}
+
 const STATIC_ENGINE_VERSION: &str = "5";
 const AGENT_REVIEW_PROMPT_VERSION: &str = "2";
 const MAX_SCANNED_FILE_BYTES: u64 = 1024 * 1024;
@@ -395,6 +446,7 @@ pub struct ActiveAuditOutcome {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct ConfiguredSourceRoots {
     by_source_id: BTreeMap<String, PathBuf>,
+    derived_sources: BTreeMap<String, crate::source::SourceConfig>,
 }
 
 impl ConfiguredSourceRoots {
@@ -404,6 +456,12 @@ impl ConfiguredSourceRoots {
                 .sources
                 .iter()
                 .map(|source| (source.id.clone(), store::comparable_path(&source.path)))
+                .collect(),
+            derived_sources: config
+                .sources
+                .iter()
+                .filter(|source| source.declared_by.is_some())
+                .map(|source| (source.id.clone(), source.clone()))
                 .collect(),
         }
     }
@@ -418,6 +476,12 @@ impl ConfiguredSourceRoots {
                 .iter()
                 .filter(|source| source.id == source_id)
                 .map(|source| (source.id.clone(), store::comparable_path(&source.path)))
+                .collect(),
+            derived_sources: config
+                .sources
+                .iter()
+                .filter(|source| source.id == source_id && source.declared_by.is_some())
+                .map(|source| (source.id.clone(), source.clone()))
                 .collect(),
         }
     }
@@ -535,6 +599,36 @@ impl Default for AuditOptions {
     }
 }
 
+pub(crate) fn skill_audit_artifacts(skill: &inventory::SkillRecord) -> Vec<(String, PathBuf)> {
+    match &skill.delivery {
+        inventory::SkillDelivery::Prebuilt {
+            providers,
+            universal_fallback,
+            ..
+        } => {
+            let mut artifacts = providers
+                .iter()
+                .map(|(provider, artifact)| {
+                    (
+                        format!("{}@{provider}", skill.source_ref),
+                        artifact.path.clone(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            if *universal_fallback {
+                artifacts.push((
+                    format!("{}@universal", skill.source_ref),
+                    skill.path.clone(),
+                ));
+            }
+            artifacts
+        }
+        inventory::SkillDelivery::Direct | inventory::SkillDelivery::Generated { .. } => {
+            vec![(skill.source_ref.clone(), skill.path.clone())]
+        }
+    }
+}
+
 /// Resolve and audit a source-qualified skill, a unique active skill name, or a local skill path.
 pub fn audit_target(
     paths: &StorePaths,
@@ -594,13 +688,19 @@ fn audit_snapshot_with_source_roots(
     let exclude_root_source_metadata = options.exclude_root_source_metadata
         || configured_source_roots.contains(source_ref, skill_path);
     let content_hash = audit_content_hash(skill_path, exclude_root_source_metadata)?;
-    audit_snapshot(
+    let candidate = source_ref
+        .split_once(':')
+        .and_then(|(source_id, _)| configured_source_roots.derived_sources.get(source_id))
+        .map(|source| crate::team_manifest::installed_audit_provenance(paths, source))
+        .transpose()?;
+    audit_snapshot_with_candidate(
         paths,
         source_ref,
         skill_path,
         options,
         exclude_root_source_metadata,
         content_hash,
+        candidate.as_ref(),
     )
 }
 
@@ -617,73 +717,158 @@ pub(crate) fn audit_skill_with_verified_content_hash(
     exclude_root_source_metadata: bool,
     content_hash: String,
 ) -> DaloResult<AuditReport> {
-    audit_snapshot(
+    let config = store::read_config(paths)?;
+    let candidate = source_ref
+        .split_once(':')
+        .and_then(|(source_id, _)| {
+            config
+                .sources
+                .iter()
+                .find(|source| source.id == source_id && source.declared_by.is_some())
+        })
+        .map(|source| crate::team_manifest::installed_audit_provenance(paths, source))
+        .transpose()?;
+    audit_snapshot_with_candidate(
         paths,
         source_ref,
         skill_path,
         options,
         exclude_root_source_metadata,
         content_hash,
+        candidate.as_ref(),
     )
     .map(|(report, _)| report)
 }
 
-fn audit_snapshot(
+pub(crate) fn audit_candidate_skill(
+    paths: &StorePaths,
+    source_ref: &str,
+    skill_path: &Path,
+    options: &AuditOptions,
+    candidate: &CandidateProvenance,
+) -> DaloResult<AuditReport> {
+    let content_hash = audit_content_hash(skill_path, options.exclude_root_source_metadata)?;
+    audit_snapshot_with_candidate(
+        paths,
+        source_ref,
+        skill_path,
+        options,
+        options.exclude_root_source_metadata,
+        content_hash,
+        Some(candidate),
+    )
+    .map(|(report, _)| report)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn audit_snapshot_with_candidate(
     paths: &StorePaths,
     source_ref: &str,
     skill_path: &Path,
     options: &AuditOptions,
     exclude_root_source_metadata: bool,
     content_hash: String,
+    candidate: Option<&CandidateProvenance>,
 ) -> DaloResult<(AuditReport, bool)> {
-    let existing = match read_report(paths, source_ref, &content_hash) {
+    let existing = match candidate.map_or_else(
+        || read_report(paths, source_ref, &content_hash),
+        |candidate| read_candidate_report(paths, source_ref, &content_hash, candidate),
+    ) {
         Ok(report) => Some(report),
-        Err(error) if unusable_cached_report(&error) => None,
+        Err(error) if report_not_found(&error) => None,
+        Err(error) if candidate.is_none() && unusable_cached_report(&error) => None,
         Err(error) => return Err(error),
     };
-    let matching_snapshot = existing.as_ref().filter(|report| {
+    let legacy_analysis = if candidate.is_some() {
+        match read_report(paths, source_ref, &content_hash) {
+            Ok(mut report) => {
+                report.risk_acceptance = None;
+                Some(report)
+            }
+            Err(error) if unusable_cached_report(&error) => None,
+            Err(error) => return Err(error),
+        }
+    } else {
+        None
+    };
+    let matches_snapshot = |report: &&AuditReport| {
         report_matches_snapshot(
             report,
             source_ref,
             &content_hash,
             exclude_root_source_metadata,
         )
+    };
+    let matching_candidate = existing.as_ref().filter(matches_snapshot);
+    let matching_acceptance = matching_candidate.filter(|report| {
+        report.static_engine_version == STATIC_ENGINE_VERSION
+            && report
+                .agent_review
+                .as_ref()
+                .is_none_or(|review| review.prompt_version == AGENT_REVIEW_PROMPT_VERSION)
     });
+    let matching_legacy = legacy_analysis.as_ref().filter(matches_snapshot);
+    let review_provider = match options.agent {
+        AgentSelection::None => None,
+        AgentSelection::Auto => Some(detect_agent_provider()?),
+        AgentSelection::Provider(provider) => Some(provider),
+    };
+    let matches_semantic_review = |report: &&AuditReport| {
+        report.agent_review.as_ref().is_some_and(|review| {
+            review.prompt_version == AGENT_REVIEW_PROMPT_VERSION
+                && review_provider.is_none_or(|provider| review.provider == provider)
+        })
+    };
+    let exact_semantic = matching_candidate
+        .filter(matches_semantic_review)
+        .or(matching_legacy.filter(matches_semantic_review));
+    let candidate_analysis = if candidate.is_some() && exact_semantic.is_none() {
+        read_candidate_envelopes(paths)?
+            .into_iter()
+            .map(|envelope| envelope.report)
+            .filter(|report| matches_snapshot(&report) && matches_semantic_review(&report))
+            .max_by_key(|report| report.scanned_at_unix)
+            .map(|mut report| {
+                report.risk_acceptance = None;
+                report
+            })
+    } else {
+        None
+    };
+    let matching_snapshot = matching_candidate.or(matching_legacy);
+    let semantic_snapshot = exact_semantic
+        .or(candidate_analysis.as_ref())
+        .or(matching_snapshot);
     let cached_static_scan =
         matching_snapshot.filter(|report| report.static_engine_version == STATIC_ENGINE_VERSION);
     let reused_static_scan = cached_static_scan.is_some();
-    let (static_findings, coverage) = cached_static_scan
+    let (static_findings, mut coverage) = cached_static_scan
         .map(|report| (report.static_findings.clone(), report.coverage))
         .map_or_else(
             || static_scan_with_options(skill_path, exclude_root_source_metadata),
             Ok,
         )?;
 
-    let agent_review = match options.agent {
-        AgentSelection::None => matching_snapshot.and_then(|report| {
+    let agent_review = match review_provider {
+        None => semantic_snapshot.and_then(|report| {
             (!options.refresh)
                 .then(|| report.agent_review.clone())
                 .flatten()
                 .filter(|review| review.prompt_version == AGENT_REVIEW_PROMPT_VERSION)
         }),
-        AgentSelection::Auto => {
-            let provider = detect_agent_provider()?;
-            cached_or_run_review(
-                matching_snapshot,
-                provider,
-                options.refresh,
-                skill_path,
-                exclude_root_source_metadata,
-            )?
-        }
-        AgentSelection::Provider(provider) => cached_or_run_review(
-            matching_snapshot,
+        Some(provider) => cached_or_run_review(
+            semantic_snapshot,
             provider,
             options.refresh,
             skill_path,
             exclude_root_source_metadata,
         )?,
     };
+    if agent_review.is_some()
+        && semantic_snapshot.is_some_and(|report| report.coverage == AuditCoverage::Partial)
+    {
+        coverage = AuditCoverage::Partial;
+    }
 
     let max_severity = static_findings
         .iter()
@@ -699,11 +884,12 @@ fn audit_snapshot(
         Some(severity) if severity >= Severity::Medium => AuditStatus::Review,
         _ => AuditStatus::Clean,
     };
-    let acceptance_scope_hash = acceptance_scope_hash(
+    let acceptance_scope_hash = acceptance_scope_hash_for_candidate(
         source_ref,
         coverage,
         &static_findings,
         agent_review.as_ref(),
+        candidate,
     )?;
 
     let risk_acceptance = if let Some(reason) = options.accept_risk.as_deref() {
@@ -719,7 +905,7 @@ fn audit_snapshot(
             scope_hash: acceptance_scope_hash,
         })
     } else {
-        matching_snapshot.and_then(|report| {
+        matching_acceptance.and_then(|report| {
             report
                 .risk_acceptance
                 .clone()
@@ -751,7 +937,20 @@ fn audit_snapshot(
         agent_review,
         risk_acceptance,
     };
-    persist_report_if_changed(paths, &mut report, existing.as_ref(), options.persist)?;
+    if let Some(candidate) = candidate {
+        if options.persist {
+            let fresh_timestamp = report.scanned_at_unix;
+            if let Some(existing) = existing.as_ref() {
+                report.scanned_at_unix = existing.scanned_at_unix;
+            }
+            if existing.as_ref() != Some(&report) {
+                report.scanned_at_unix = fresh_timestamp;
+                write_candidate_report(paths, candidate, &report)?;
+            }
+        }
+    } else {
+        persist_report_if_changed(paths, &mut report, existing.as_ref(), options.persist)?;
+    }
     Ok((report, reused_static_scan))
 }
 
@@ -767,9 +966,13 @@ fn unusable_cached_report(error: &DaloError) -> bool {
                 | std::io::ErrorKind::PermissionDenied
                 | std::io::ErrorKind::InvalidData
         ),
-        DaloError::FileParse { .. } | DaloError::UnsupportedSchema { .. } => true,
+        DaloError::FileParse { .. } => true,
         _ => false,
     }
+}
+
+fn report_not_found(error: &DaloError) -> bool {
+    matches!(error, DaloError::Io(error) if error.kind() == std::io::ErrorKind::NotFound)
 }
 
 /// Retain a persisted report when all durable audit content is unchanged.
@@ -947,6 +1150,118 @@ fn acceptance_scope_hash(
         .collect())
 }
 
+fn acceptance_scope_hash_for_candidate(
+    source_ref: &str,
+    coverage: AuditCoverage,
+    static_findings: &[AuditFinding],
+    agent_review: Option<&AgentReview>,
+    candidate: Option<&CandidateProvenance>,
+) -> DaloResult<String> {
+    let analysis = acceptance_scope_hash(source_ref, coverage, static_findings, agent_review)?;
+    let Some(candidate) = candidate else {
+        return Ok(analysis);
+    };
+    Ok(hex_digest(&Sha256::digest(serde_json::to_vec(&(
+        analysis, candidate,
+    ))?)))
+}
+
+fn decode_report<T: serde::de::DeserializeOwned>(path: &Path) -> DaloResult<T> {
+    let content = fs::read(path)?;
+    let value: serde_json::Value =
+        serde_json::from_slice(&content).map_err(|error| DaloError::FileParse {
+            path: path.to_path_buf(),
+            reason: error.to_string(),
+        })?;
+    for version in [
+        value.get("schema_version"),
+        value
+            .get("report")
+            .and_then(|report| report.get("schema_version")),
+    ]
+    .into_iter()
+    .flatten()
+    .filter_map(serde_json::Value::as_u64)
+    {
+        if version != u64::from(AUDIT_SCHEMA_VERSION) {
+            return Err(DaloError::UnsupportedSchema {
+                path: path.to_path_buf(),
+                version: u32::try_from(version).unwrap_or(u32::MAX),
+                supported: AUDIT_SCHEMA_VERSION,
+            });
+        }
+    }
+    serde_json::from_value(value).map_err(|error| DaloError::FileParse {
+        path: path.to_path_buf(),
+        reason: error.to_string(),
+    })
+}
+
+fn read_candidate_report(
+    paths: &StorePaths,
+    source_ref: &str,
+    content_hash: &str,
+    candidate: &CandidateProvenance,
+) -> DaloResult<AuditReport> {
+    let path = candidate_report_path(paths, source_ref, content_hash, candidate)?;
+    let envelope = read_candidate_envelope(paths, &path)?;
+    if envelope.provenance != *candidate
+        || envelope.report.source_ref != source_ref
+        || envelope.report.content_hash != content_hash
+    {
+        return Err(DaloError::CheckFailed {
+            reason: "candidate audit provenance does not match its cache identity".to_owned(),
+        });
+    }
+    Ok(envelope.report)
+}
+
+fn read_candidate_envelope(paths: &StorePaths, path: &Path) -> DaloResult<CandidateEnvelope> {
+    if !fs::symlink_metadata(path)?.is_file() {
+        return Err(DaloError::InvalidStorePath {
+            path: path.to_path_buf(),
+            reason: "candidate audit must be a regular file".to_owned(),
+        });
+    }
+    let envelope: CandidateEnvelope = decode_report(path)?;
+    if envelope.report.schema_version != AUDIT_SCHEMA_VERSION {
+        return Err(DaloError::UnsupportedSchema {
+            path: path.to_path_buf(),
+            version: envelope.report.schema_version,
+            supported: AUDIT_SCHEMA_VERSION,
+        });
+    }
+    if candidate_report_path(
+        paths,
+        &envelope.report.source_ref,
+        &envelope.report.content_hash,
+        &envelope.provenance,
+    )? != path
+    {
+        return Err(DaloError::CheckFailed {
+            reason: "candidate audit provenance does not match its cache path".to_owned(),
+        });
+    }
+    Ok(envelope)
+}
+
+fn read_candidate_envelopes(paths: &StorePaths) -> DaloResult<Vec<CandidateEnvelope>> {
+    let entries = match fs::read_dir(paths.audits_dir.join("candidates/v1")) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error.into()),
+    };
+    let mut report_paths = entries
+        .map(|entry| entry.map(|entry| entry.path()))
+        .collect::<Result<Vec<_>, _>>()?;
+    report_paths.sort();
+    report_paths
+        .into_iter()
+        .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("json"))
+        .map(|path| read_candidate_envelope(paths, &path))
+        .collect()
+}
+
 /// Read a persisted report by source provenance and content hash.
 pub fn read_report(
     paths: &StorePaths,
@@ -954,12 +1269,7 @@ pub fn read_report(
     content_hash: &str,
 ) -> DaloResult<AuditReport> {
     let path = report_path(paths, source_ref, content_hash);
-    let content = fs::read_to_string(&path)?;
-    let report: AuditReport =
-        serde_json::from_str(&content).map_err(|error| DaloError::FileParse {
-            path: path.clone(),
-            reason: error.to_string(),
-        })?;
+    let report: AuditReport = decode_report(&path)?;
     if report.schema_version != AUDIT_SCHEMA_VERSION {
         return Err(DaloError::UnsupportedSchema {
             path,
@@ -972,7 +1282,7 @@ pub fn read_report(
 
 /// Read all persisted audit reports so inspection commands can surface trust
 /// decisions that are not represented by an approval record.
-pub(crate) fn read_persisted_reports(paths: &StorePaths) -> DaloResult<Vec<AuditReport>> {
+pub(crate) fn read_persisted_reports(paths: &StorePaths) -> DaloResult<Vec<StoredAuditReport>> {
     if !paths.audits_dir.is_dir() {
         return Ok(Vec::new());
     }
@@ -987,12 +1297,7 @@ pub(crate) fn read_persisted_reports(paths: &StorePaths) -> DaloResult<Vec<Audit
             continue;
         }
 
-        let content = fs::read_to_string(&path)?;
-        let report: AuditReport =
-            serde_json::from_str(&content).map_err(|error| DaloError::FileParse {
-                path: path.clone(),
-                reason: error.to_string(),
-            })?;
+        let report: AuditReport = decode_report(&path)?;
         if report.schema_version != AUDIT_SCHEMA_VERSION {
             return Err(DaloError::UnsupportedSchema {
                 path,
@@ -1000,13 +1305,30 @@ pub(crate) fn read_persisted_reports(paths: &StorePaths) -> DaloResult<Vec<Audit
                 supported: AUDIT_SCHEMA_VERSION,
             });
         }
-        reports.push(report);
+        reports.push(StoredAuditReport {
+            report,
+            candidate: None,
+        });
+    }
+
+    for envelope in read_candidate_envelopes(paths)? {
+        reports.push(StoredAuditReport {
+            report: envelope.report,
+            candidate: Some(envelope.provenance),
+        });
     }
 
     reports.sort_by(|left, right| {
-        left.source_ref
-            .cmp(&right.source_ref)
-            .then(left.content_hash.cmp(&right.content_hash))
+        left.report
+            .source_ref
+            .cmp(&right.report.source_ref)
+            .then(left.report.content_hash.cmp(&right.report.content_hash))
+            .then(
+                left.candidate
+                    .as_ref()
+                    .map(|candidate| &candidate.commit)
+                    .cmp(&right.candidate.as_ref().map(|candidate| &candidate.commit)),
+            )
     });
     Ok(reports)
 }
@@ -1017,7 +1339,8 @@ pub(crate) fn read_persisted_reports(paths: &StorePaths) -> DaloResult<Vec<Audit
 /// Inspection deliberately treats an unreadable path as inactive rather than
 /// failing the whole approval listing: an auditor can still see the persisted
 /// exception, but it must not be mistaken for current authority.
-pub(crate) fn risk_acceptance_is_active(report: &AuditReport) -> bool {
+pub(crate) fn risk_acceptance_is_active(paths: &StorePaths, stored: &StoredAuditReport) -> bool {
+    let report = &stored.report;
     let Some(acceptance) = &report.risk_acceptance else {
         return false;
     };
@@ -1028,11 +1351,20 @@ pub(crate) fn risk_acceptance_is_active(report: &AuditReport) -> bool {
     if report.status != AuditStatus::Blocked {
         return false;
     }
-    let Ok(scope_hash) = acceptance_scope_hash(
+    if report.static_engine_version != STATIC_ENGINE_VERSION
+        || report
+            .agent_review
+            .as_ref()
+            .is_some_and(|review| review.prompt_version != AGENT_REVIEW_PROMPT_VERSION)
+    {
+        return false;
+    }
+    let Ok(scope_hash) = acceptance_scope_hash_for_candidate(
         &report.source_ref,
         report.coverage,
         &report.static_findings,
         report.agent_review.as_ref(),
+        stored.candidate.as_ref(),
     ) else {
         return false;
     };
@@ -1040,7 +1372,43 @@ pub(crate) fn risk_acceptance_is_active(report: &AuditReport) -> bool {
         return false;
     }
 
-    audit_content_hash(&report.skill_path, exclude_root_source_metadata)
+    let skill_path = if let Some(candidate) = stored.candidate.as_ref() {
+        let Ok(config) = store::read_config(paths) else {
+            return false;
+        };
+        let Some(source) = config
+            .sources
+            .iter()
+            .find(|source| source.id == candidate.derived_source_id)
+        else {
+            return false;
+        };
+        if !crate::team_manifest::installed_audit_provenance(paths, source)
+            .is_ok_and(|installed| installed == *candidate)
+        {
+            return false;
+        }
+        let Ok((_, path)) = resolve_target(paths, &report.source_ref) else {
+            return false;
+        };
+        path
+    } else {
+        if let Ok(config) = store::read_config(paths)
+            && report
+                .source_ref
+                .split_once(':')
+                .is_some_and(|(source_id, _)| {
+                    config
+                        .sources
+                        .iter()
+                        .any(|source| source.id == source_id && source.declared_by.is_some())
+                })
+        {
+            return false;
+        }
+        report.skill_path.clone()
+    };
+    audit_content_hash(&skill_path, exclude_root_source_metadata)
         .is_ok_and(|content_hash| content_hash == report.content_hash)
 }
 
@@ -1058,7 +1426,8 @@ fn resolve_target(paths: &StorePaths, target: &str) -> DaloResult<(String, PathB
     if let Some((source_id, selector)) = parsed_selector
         && let Some(source) = config.sources.iter().find(|source| source.id == source_id)
     {
-        if provider.is_none()
+        if source.declared_by.is_none()
+            && provider.is_none()
             && let Some(staged_skill) = staged_skill_for_selector(paths, source, selector)?
         {
             return Ok(staged_skill);
@@ -1279,6 +1648,9 @@ fn staged_source_ref(
                 "staged audit checkout `{staging_dir_name}` does not match a configured source"
             )))
         })?;
+    if source.declared_by.is_some() {
+        return Ok(None);
+    }
     let staging_dir = staging_root.join(staging_dir_name.as_ref());
     let source_ref = inventory::scan_source(&source.id, &staging_dir)?
         .skills
@@ -2719,16 +3091,75 @@ fn write_report(paths: &StorePaths, report: &AuditReport) -> DaloResult<()> {
     fs::create_dir_all(&paths.audits_dir)?;
     fs::set_permissions(&paths.audits_dir, fs::Permissions::from_mode(0o700))?;
     let path = report_path(paths, &report.source_ref, &report.content_hash);
+    write_report_file(&path, report)
+}
+
+fn candidate_report_path(
+    paths: &StorePaths,
+    source_ref: &str,
+    content_hash: &str,
+    candidate: &CandidateProvenance,
+) -> DaloResult<PathBuf> {
+    let identity = hex_digest(&Sha256::digest(serde_json::to_vec(&(
+        source_ref,
+        content_hash,
+        candidate.fingerprint()?,
+    ))?));
+    Ok(paths
+        .audits_dir
+        .join("candidates/v1")
+        .join(format!("{identity}.json")))
+}
+
+fn write_candidate_report(
+    paths: &StorePaths,
+    candidate: &CandidateProvenance,
+    report: &AuditReport,
+) -> DaloResult<()> {
+    let path = candidate_report_path(paths, &report.source_ref, &report.content_hash, candidate)?;
+    match read_candidate_report(paths, &report.source_ref, &report.content_hash, candidate) {
+        Ok(_) => {}
+        Err(error) if report_not_found(&error) => {}
+        Err(error) => return Err(error),
+    }
     let parent = path.parent().ok_or_else(|| DaloError::InvalidStorePath {
         path: path.clone(),
+        reason: "candidate audit has no parent".to_owned(),
+    })?;
+    fs::create_dir_all(parent)?;
+    for directory in [
+        &paths.audits_dir,
+        &paths.audits_dir.join("candidates"),
+        parent,
+    ] {
+        fs::set_permissions(directory, fs::Permissions::from_mode(0o700))?;
+    }
+    write_report_file(
+        &path,
+        &CandidateEnvelope {
+            schema_version: 1,
+            provenance: candidate.clone(),
+            report: report.clone(),
+        },
+    )
+}
+
+fn write_report_file(path: &Path, report: &impl Serialize) -> DaloResult<()> {
+    if let Err(error @ DaloError::UnsupportedSchema { .. }) =
+        decode_report::<serde_json::Value>(path)
+    {
+        return Err(error);
+    }
+    let parent = path.parent().ok_or_else(|| DaloError::InvalidStorePath {
+        path: path.to_path_buf(),
         reason: "audit report has no parent directory".to_owned(),
     })?;
     let mut temp = NamedTempFile::new_in(parent)?;
     serde_json::to_writer_pretty(&mut temp, report)?;
     temp.write_all(b"\n")?;
     temp.as_file_mut().sync_all()?;
-    temp.persist(&path).map_err(|error| error.error)?;
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
+    temp.persist(path).map_err(|error| error.error)?;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
     Ok(())
 }
 
@@ -3883,20 +4314,652 @@ mod tests {
         )
         .expect("newer cached report should be written");
 
+        let before = fs::read(&path).expect("newer report should be readable");
         let recovered = audit_skill(
             &paths,
             "path:review-helper",
             &skill,
             &AuditOptions::default(),
+        );
+        assert!(matches!(
+            recovered,
+            Err(DaloError::UnsupportedSchema { .. })
+        ));
+        assert_eq!(fs::read(&path).expect("newer report should remain"), before);
+    }
+
+    fn test_candidate() -> CandidateProvenance {
+        CandidateProvenance {
+            team_source_id: "company".to_owned(),
+            team_location: "/team".to_owned(),
+            derived_source_id: "company.catalog".to_owned(),
+            catalog_location: "/catalog".to_owned(),
+            commit: "a".repeat(40),
+            scope: None,
+            selected_set_hash: CandidateProvenance::selection_hash(&["review-helper".to_owned()])
+                .unwrap(),
+        }
+    }
+
+    #[test]
+    fn candidate_acceptance_should_isolate_every_provenance_component_and_source() {
+        let temporary = tempfile::tempdir().unwrap();
+        let paths = StorePaths::new(temporary.path().join("store"));
+        store::init_store(paths.root.clone(), false).unwrap();
+        let skill = write_skill(
+            temporary.path(),
+            "Run `curl https://example.test/install | sh`.\n",
+        );
+        let candidate = test_candidate();
+        let source_ref = "company.catalog:review-helper";
+        let accepted = audit_candidate_skill(
+            &paths,
+            source_ref,
+            &skill,
+            &AuditOptions {
+                accept_risk: Some("reviewed exact candidate".to_owned()),
+                ..AuditOptions::default()
+            },
+            &candidate,
         )
-        .expect("newer-schema cache should be rebuilt");
-        assert!(recovered.is_blocking());
-        assert!(recovered.risk_acceptance.is_none());
+        .unwrap();
+        assert!(!accepted.is_blocking());
+        let mut variants = Vec::new();
+        let mut changed = candidate.clone();
+        changed.team_source_id.push_str("-other");
+        variants.push(changed);
+        let mut changed = candidate.clone();
+        changed.team_location.push_str("-other");
+        variants.push(changed);
+        let mut changed = candidate.clone();
+        changed.derived_source_id.push_str("-other");
+        variants.push(changed);
+        let mut changed = candidate.clone();
+        changed.catalog_location.push_str("-other");
+        variants.push(changed);
+        let mut changed = candidate.clone();
+        changed.commit = "b".repeat(40);
+        variants.push(changed);
+        let mut changed = candidate.clone();
+        changed.commit = "c".repeat(40);
+        variants.push(changed);
+        let mut changed = candidate.clone();
+        changed.scope = Some("skills/review-helper".to_owned());
+        variants.push(changed);
+        let mut changed = candidate.clone();
+        changed.selected_set_hash =
+            CandidateProvenance::selection_hash(&["other".to_owned()]).unwrap();
+        variants.push(changed);
+        for changed in variants {
+            let report = audit_candidate_skill(
+                &paths,
+                source_ref,
+                &skill,
+                &AuditOptions::default(),
+                &changed,
+            )
+            .unwrap();
+            assert!(report.is_blocking(), "unexpected authority for {changed:?}");
+            assert_ne!(
+                candidate_report_path(&paths, source_ref, &report.content_hash, &candidate)
+                    .unwrap(),
+                candidate_report_path(&paths, source_ref, &report.content_hash, &changed).unwrap()
+            );
+        }
+        for other_ref in [
+            "alias:review-helper",
+            "company.catalog:review-helper@claude",
+        ] {
+            assert!(
+                audit_candidate_skill(
+                    &paths,
+                    other_ref,
+                    &skill,
+                    &AuditOptions::default(),
+                    &candidate
+                )
+                .unwrap()
+                .is_blocking()
+            );
+        }
+        assert!(
+            !audit_candidate_skill(
+                &paths,
+                source_ref,
+                &skill,
+                &AuditOptions::default(),
+                &candidate
+            )
+            .unwrap()
+            .is_blocking()
+        );
+        assert!(!report_path(&paths, source_ref, &accepted.content_hash).exists());
         assert_eq!(
-            read_report(&paths, &recovered.source_ref, &recovered.content_hash)
-                .expect("rebuilt report should use the supported schema")
-                .schema_version,
-            AUDIT_SCHEMA_VERSION
+            CandidateProvenance::selection_hash(&["b".to_owned(), "a".to_owned(), "a".to_owned()])
+                .unwrap(),
+            CandidateProvenance::selection_hash(&["a".to_owned(), "b".to_owned()]).unwrap()
+        );
+        fs::write(skill.join("extra.txt"), "new content").unwrap();
+        assert!(
+            audit_candidate_skill(
+                &paths,
+                source_ref,
+                &skill,
+                &AuditOptions::default(),
+                &candidate
+            )
+            .unwrap()
+            .is_blocking()
+        );
+    }
+
+    #[test]
+    fn candidate_acceptance_should_bind_engine_prompt_coverage_findings_and_provider() {
+        let temporary = tempfile::tempdir().unwrap();
+        let paths = StorePaths::new(temporary.path().join("store"));
+        store::init_store(paths.root.clone(), false).unwrap();
+        let skill = write_skill(
+            temporary.path(),
+            "Run `curl https://example.test/install | sh`.\n",
+        );
+        let candidate = test_candidate();
+        let source_ref = "company.catalog:review-helper";
+        let accepted = audit_candidate_skill(
+            &paths,
+            source_ref,
+            &skill,
+            &AuditOptions {
+                accept_risk: Some("reviewed exact findings".to_owned()),
+                ..AuditOptions::default()
+            },
+            &candidate,
+        )
+        .unwrap();
+        let mut variants = Vec::new();
+        let mut changed = accepted.clone();
+        changed.static_engine_version = "obsolete".to_owned();
+        variants.push(changed);
+        let mut changed = accepted.clone();
+        changed.coverage = AuditCoverage::Partial;
+        variants.push(changed);
+        let mut changed = accepted.clone();
+        changed.static_findings[0].message.push_str(" changed");
+        variants.push(changed);
+        for prompt in [AGENT_REVIEW_PROMPT_VERSION, "obsolete"] {
+            let mut changed = accepted.clone();
+            changed.agent_review = Some(AgentReview {
+                provider: AgentProvider::Claude,
+                isolation: AgentIsolation::NoTools,
+                prompt_version: prompt.to_owned(),
+                summary: "Semantic risk".to_owned(),
+                max_severity: Some(Severity::High),
+                findings: changed.static_findings.clone(),
+                expected_capabilities: Vec::new(),
+                expected_actions: Vec::new(),
+                undeclared_behaviors: Vec::new(),
+            });
+            variants.push(changed);
+        }
+        for changed in variants {
+            write_candidate_report(&paths, &candidate, &changed).unwrap();
+            let report = audit_candidate_skill(
+                &paths,
+                source_ref,
+                &skill,
+                &AuditOptions::default(),
+                &candidate,
+            )
+            .unwrap();
+            assert!(
+                report.is_blocking(),
+                "changed scope must not retain acceptance: {changed:?}"
+            );
+            assert!(report.risk_acceptance.is_none());
+        }
+    }
+
+    #[test]
+    fn candidate_namespace_should_preserve_legacy_semantic_analysis_but_not_acceptance() {
+        let temporary = tempfile::tempdir().unwrap();
+        let paths = StorePaths::new(temporary.path().join("store"));
+        store::init_store(paths.root.clone(), false).unwrap();
+        let skill = write_skill(temporary.path(), "Summarize a pull request.\n");
+        let source_ref = "company.catalog:review-helper";
+        let mut legacy = audit_skill(&paths, source_ref, &skill, &AuditOptions::default()).unwrap();
+        assert!(legacy.static_findings.is_empty());
+        legacy.coverage = AuditCoverage::Partial;
+        legacy.status = AuditStatus::Blocked;
+        legacy.max_severity = Some(Severity::Critical);
+        legacy.agent_review = Some(AgentReview {
+            provider: AgentProvider::Claude,
+            isolation: AgentIsolation::NoTools,
+            prompt_version: AGENT_REVIEW_PROMPT_VERSION.to_owned(),
+            summary: "Semantic risk".to_owned(),
+            max_severity: Some(Severity::Critical),
+            findings: vec![finding(
+                "agent.semantic-risk",
+                Severity::Critical,
+                "semantic",
+                "SKILL.md",
+                Some(1),
+                "Semantic-only risk",
+                None,
+            )],
+            expected_capabilities: Vec::new(),
+            expected_actions: Vec::new(),
+            undeclared_behaviors: Vec::new(),
+        });
+        legacy.risk_acceptance = Some(RiskAcceptance {
+            reason: "legacy acceptance".to_owned(),
+            accepted_at_unix: 1,
+            scope_hash: acceptance_scope_hash(
+                source_ref,
+                legacy.coverage,
+                &legacy.static_findings,
+                legacy.agent_review.as_ref(),
+            )
+            .unwrap(),
+        });
+        write_report(&paths, &legacy).unwrap();
+        let legacy_bytes = fs::read(report_path(&paths, source_ref, &legacy.content_hash)).unwrap();
+        let candidate = test_candidate();
+        let inspected = audit_candidate_skill(
+            &paths,
+            source_ref,
+            &skill,
+            &AuditOptions::default(),
+            &candidate,
+        )
+        .unwrap();
+        assert!(inspected.is_blocking());
+        assert_eq!(inspected.coverage, AuditCoverage::Partial);
+        assert_eq!(inspected.agent_review, legacy.agent_review);
+        assert!(inspected.risk_acceptance.is_none());
+        let accepted = audit_candidate_skill(
+            &paths,
+            source_ref,
+            &skill,
+            &AuditOptions {
+                accept_risk: Some("reviewed semantic finding".to_owned()),
+                ..AuditOptions::default()
+            },
+            &candidate,
+        )
+        .unwrap();
+        assert!(!accepted.is_blocking());
+        assert_ne!(
+            accepted.risk_acceptance.unwrap().scope_hash,
+            legacy.risk_acceptance.unwrap().scope_hash
+        );
+        assert!(
+            !audit_candidate_skill(
+                &paths,
+                source_ref,
+                &skill,
+                &AuditOptions::default(),
+                &candidate
+            )
+            .unwrap()
+            .is_blocking()
+        );
+        let mut next = candidate;
+        next.commit = "b".repeat(40);
+        assert!(
+            audit_candidate_skill(&paths, source_ref, &skill, &AuditOptions::default(), &next)
+                .unwrap()
+                .is_blocking()
+        );
+        assert_eq!(
+            fs::read(report_path(&paths, source_ref, &legacy.content_hash)).unwrap(),
+            legacy_bytes
+        );
+        assert_eq!(read_persisted_reports(&paths).unwrap().len(), 3);
+    }
+
+    #[test]
+    fn candidate_only_analysis_should_survive_a_pin_change_without_acceptance() {
+        let temporary = tempfile::tempdir().unwrap();
+        let paths = StorePaths::new(temporary.path().join("store"));
+        store::init_store(paths.root.clone(), false).unwrap();
+        let skill = write_skill(temporary.path(), "Summarize a pull request.\n");
+        let source_ref = "company.catalog:review-helper";
+        let candidate = test_candidate();
+        let mut analysis = audit_candidate_skill(
+            &paths,
+            source_ref,
+            &skill,
+            &AuditOptions::default(),
+            &candidate,
+        )
+        .unwrap();
+        assert!(analysis.static_findings.is_empty());
+        analysis.coverage = AuditCoverage::Partial;
+        analysis.agent_review = Some(AgentReview {
+            provider: AgentProvider::Claude,
+            isolation: AgentIsolation::NoTools,
+            prompt_version: AGENT_REVIEW_PROMPT_VERSION.to_owned(),
+            summary: "Semantic-only risk".to_owned(),
+            max_severity: Some(Severity::High),
+            findings: vec![finding(
+                "agent.semantic-risk",
+                Severity::High,
+                "semantic",
+                "SKILL.md",
+                Some(1),
+                "Semantic-only risk",
+                None,
+            )],
+            expected_capabilities: Vec::new(),
+            expected_actions: Vec::new(),
+            undeclared_behaviors: Vec::new(),
+        });
+        write_candidate_report(&paths, &candidate, &analysis).unwrap();
+        let accepted = audit_candidate_skill(
+            &paths,
+            source_ref,
+            &skill,
+            &AuditOptions {
+                accept_risk: Some("reviewed A".to_owned()),
+                ..AuditOptions::default()
+            },
+            &candidate,
+        )
+        .unwrap();
+        assert!(!accepted.is_blocking());
+        assert!(!report_path(&paths, source_ref, &analysis.content_hash).exists());
+        let accepted_path =
+            candidate_report_path(&paths, source_ref, &analysis.content_hash, &candidate).unwrap();
+        let accepted_bytes = fs::read(&accepted_path).unwrap();
+        let mut next = candidate;
+        next.commit = "b".repeat(40);
+        let inspected =
+            audit_candidate_skill(&paths, source_ref, &skill, &AuditOptions::default(), &next)
+                .unwrap();
+        assert!(inspected.is_blocking());
+        assert_eq!(inspected.coverage, AuditCoverage::Partial);
+        assert_eq!(inspected.agent_review, accepted.agent_review);
+        assert!(inspected.risk_acceptance.is_none());
+        let accepted_next = audit_candidate_skill(
+            &paths,
+            source_ref,
+            &skill,
+            &AuditOptions {
+                accept_risk: Some("reviewed exact B".to_owned()),
+                ..AuditOptions::default()
+            },
+            &next,
+        )
+        .unwrap();
+        assert!(!accepted_next.is_blocking());
+        assert_ne!(
+            accepted.risk_acceptance.unwrap().scope_hash,
+            accepted_next.risk_acceptance.unwrap().scope_hash
+        );
+        assert_eq!(fs::read(accepted_path).unwrap(), accepted_bytes);
+        for (other_ref, exclude_metadata, prompt) in [
+            ("alias:review-helper", false, AGENT_REVIEW_PROMPT_VERSION),
+            (
+                "company.catalog:review-helper@codex",
+                false,
+                AGENT_REVIEW_PROMPT_VERSION,
+            ),
+            (source_ref, true, AGENT_REVIEW_PROMPT_VERSION),
+            (source_ref, false, "obsolete"),
+        ] {
+            analysis.agent_review.as_mut().unwrap().prompt_version = prompt.to_owned();
+            write_candidate_report(&paths, &next, &analysis).unwrap();
+            let mut other = next.clone();
+            other.commit = "c".repeat(40);
+            let report = audit_candidate_skill(
+                &paths,
+                other_ref,
+                &skill,
+                &AuditOptions {
+                    persist: false,
+                    exclude_root_source_metadata: exclude_metadata,
+                    ..AuditOptions::default()
+                },
+                &other,
+            )
+            .unwrap();
+            if prompt == "obsolete" {
+                assert_eq!(report.agent_review, accepted.agent_review);
+            } else {
+                assert!(report.agent_review.is_none());
+            }
+            assert!(report.risk_acceptance.is_none());
+        }
+        let mut other_provider = analysis.clone();
+        other_provider.agent_review.as_mut().unwrap().provider = AgentProvider::Codex;
+        other_provider.agent_review.as_mut().unwrap().prompt_version =
+            AGENT_REVIEW_PROMPT_VERSION.to_owned();
+        other_provider.scanned_at_unix = u64::MAX;
+        let mut other = test_candidate();
+        other.commit = "d".repeat(40);
+        write_candidate_report(&paths, &other, &other_provider).unwrap();
+        other.commit = "e".repeat(40);
+        let report = audit_candidate_skill(
+            &paths,
+            source_ref,
+            &skill,
+            &AuditOptions {
+                agent: AgentSelection::Provider(AgentProvider::Claude),
+                persist: false,
+                ..AuditOptions::default()
+            },
+            &other,
+        )
+        .unwrap();
+        assert_eq!(report.agent_review, accepted.agent_review);
+        assert!(report.risk_acceptance.is_none());
+        fs::write(skill.join("changed.txt"), "different skill bytes").unwrap();
+        let changed =
+            audit_candidate_skill(&paths, source_ref, &skill, &AuditOptions::default(), &other)
+                .unwrap();
+        assert!(changed.agent_review.is_none());
+        fs::remove_file(skill.join("changed.txt")).unwrap();
+        other.commit = "d".repeat(40);
+        other_provider.agent_review.as_mut().unwrap().prompt_version = "obsolete".to_owned();
+        write_candidate_report(&paths, &other, &other_provider).unwrap();
+        write_candidate_report(&paths, &test_candidate(), &analysis).unwrap();
+        write_candidate_report(&paths, &next, &analysis).unwrap();
+        other.commit = "f".repeat(40);
+        let obsolete =
+            audit_candidate_skill(&paths, source_ref, &skill, &AuditOptions::default(), &other)
+                .unwrap();
+        assert!(obsolete.agent_review.is_none());
+    }
+
+    #[test]
+    fn candidate_invalid_envelopes_should_fail_reads_and_writes_without_replacement() {
+        let temporary = tempfile::tempdir().unwrap();
+        let paths = StorePaths::new(temporary.path().join("store"));
+        store::init_store(paths.root.clone(), false).unwrap();
+        let skill = write_skill(temporary.path(), "Summarize a pull request.\n");
+        let source_ref = "company.catalog:review-helper";
+        let candidate = test_candidate();
+        let report = audit_candidate_skill(
+            &paths,
+            source_ref,
+            &skill,
+            &AuditOptions::default(),
+            &candidate,
+        )
+        .unwrap();
+        let path =
+            candidate_report_path(&paths, source_ref, &report.content_hash, &candidate).unwrap();
+        let original: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        let mut invalid_bytes = vec![b"{\"schema_version\":1,".to_vec(), vec![0xff]];
+        for field in [
+            "outer",
+            "provenance",
+            "commit",
+            "source",
+            "content",
+            "schema",
+        ] {
+            let mut invalid = original.clone();
+            match field {
+                "outer" => invalid["future_field"] = true.into(),
+                "provenance" => invalid["provenance"]["future_field"] = true.into(),
+                "commit" => invalid["provenance"]["commit"] = "b".repeat(40).into(),
+                "source" => invalid["report"]["source_ref"] = "alias:review-helper".into(),
+                "content" => invalid["report"]["content_hash"] = "different".into(),
+                "schema" => invalid["schema_version"] = "invalid".into(),
+                _ => unreachable!(),
+            }
+            invalid_bytes.push(serde_json::to_vec(&invalid).unwrap());
+        }
+        for bytes in invalid_bytes {
+            fs::write(&path, &bytes).unwrap();
+            for acceptance in [None, Some("must not replace invalid state".to_owned())] {
+                assert!(
+                    audit_candidate_skill(
+                        &paths,
+                        source_ref,
+                        &skill,
+                        &AuditOptions {
+                            accept_risk: acceptance,
+                            ..AuditOptions::default()
+                        },
+                        &candidate,
+                    )
+                    .is_err()
+                );
+                assert_eq!(fs::read(&path).unwrap(), bytes);
+            }
+            assert!(write_candidate_report(&paths, &candidate, &report).is_err());
+            assert_eq!(fs::read(&path).unwrap(), bytes);
+        }
+        let original_bytes = serde_json::to_vec(&original).unwrap();
+        fs::write(&path, &original_bytes).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+        if matches!(
+            fs::read(&path),
+            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied
+        ) {
+            assert!(
+                audit_candidate_skill(
+                    &paths,
+                    source_ref,
+                    &skill,
+                    &AuditOptions {
+                        accept_risk: Some("cannot replace unreadable state".to_owned()),
+                        ..AuditOptions::default()
+                    },
+                    &candidate,
+                )
+                .is_err()
+            );
+            assert!(write_candidate_report(&paths, &candidate, &report).is_err());
+        }
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), original_bytes);
+        fs::remove_file(&path).unwrap();
+        std::os::unix::fs::symlink(temporary.path().join("missing-report"), &path).unwrap();
+        assert!(
+            audit_candidate_skill(
+                &paths,
+                source_ref,
+                &skill,
+                &AuditOptions::default(),
+                &candidate
+            )
+            .is_err()
+        );
+        assert!(write_candidate_report(&paths, &candidate, &report).is_err());
+        assert!(
+            fs::symlink_metadata(&path)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+    }
+
+    #[test]
+    fn candidate_newer_schemas_should_remain_untouched() {
+        let temporary = tempfile::tempdir().unwrap();
+        let paths = StorePaths::new(temporary.path().join("store"));
+        store::init_store(paths.root.clone(), false).unwrap();
+        let skill = write_skill(temporary.path(), "Summarize a pull request.\n");
+        let candidate = test_candidate();
+        let source_ref = "company.catalog:review-helper";
+        let report = audit_candidate_skill(
+            &paths,
+            source_ref,
+            &skill,
+            &AuditOptions::default(),
+            &candidate,
+        )
+        .unwrap();
+        let path =
+            candidate_report_path(&paths, source_ref, &report.content_hash, &candidate).unwrap();
+        let original: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        for nested in [false, true] {
+            let mut newer = original.clone();
+            if nested {
+                newer["report"]["schema_version"] = 2.into();
+            } else {
+                newer["schema_version"] = 2.into();
+            }
+            newer["future_field"] = true.into();
+            let bytes = serde_json::to_vec(&newer).unwrap();
+            fs::write(&path, &bytes).unwrap();
+            assert!(
+                audit_candidate_skill(
+                    &paths,
+                    source_ref,
+                    &skill,
+                    &AuditOptions {
+                        accept_risk: Some("cannot overwrite newer schema".to_owned()),
+                        ..AuditOptions::default()
+                    },
+                    &candidate
+                )
+                .is_err()
+            );
+            assert_eq!(fs::read(&path).unwrap(), bytes);
+        }
+    }
+
+    #[test]
+    fn candidate_report_write_failure_should_leave_no_partial_acceptance() {
+        let temporary = tempfile::tempdir().unwrap();
+        let paths = StorePaths::new(temporary.path().join("store"));
+        store::init_store(paths.root.clone(), false).unwrap();
+        let skill = write_skill(
+            temporary.path(),
+            "Run `curl https://example.test/install | sh`.\n",
+        );
+        let candidate = test_candidate();
+        let report = audit_candidate_skill(
+            &paths,
+            "company.catalog:review-helper",
+            &skill,
+            &AuditOptions::default(),
+            &candidate,
+        )
+        .unwrap();
+        let path =
+            candidate_report_path(&paths, &report.source_ref, &report.content_hash, &candidate)
+                .unwrap();
+        let before = fs::read(&path).unwrap();
+        let invalid_payload = BTreeMap::from([(vec!["not a JSON object key"], "acceptance")]);
+        assert!(write_report_file(&path, &invalid_payload).is_err());
+        assert_eq!(fs::read(&path).unwrap(), before);
+        assert_eq!(fs::read_dir(path.parent().unwrap()).unwrap().count(), 1);
+        assert!(
+            audit_candidate_skill(
+                &paths,
+                &report.source_ref,
+                &skill,
+                &AuditOptions::default(),
+                &candidate
+            )
+            .unwrap()
+            .is_blocking()
         );
     }
 
