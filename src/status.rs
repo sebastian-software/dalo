@@ -1307,6 +1307,12 @@ fn print_accepted_risk_summary(acceptance: &AcceptedRiskSummary) {
         "    content hash: {}",
         term::terminal_safe_text(&acceptance.content_hash)
     );
+    if let Some(candidate) = acceptance.candidate.as_ref() {
+        println!(
+            "    candidate: {}",
+            term::terminal_safe_text(&candidate.commit)
+        );
+    }
     println!(
         "    accepted at: {}: {}",
         format_unix_utc(acceptance.accepted_at_unix),

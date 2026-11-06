@@ -39,6 +39,9 @@ pub struct AcceptedRiskSummary {
     pub active: bool,
     /// Copyable command for inspecting the persisted audit again.
     pub audit_command: String,
+    /// Exact team catalog snapshot, absent for legacy or direct-source audits.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub candidate: Option<audit::CandidateProvenance>,
 }
 
 /// Read model for the approval inspection command.
@@ -140,9 +143,16 @@ pub fn list(paths: &StorePaths) -> DaloResult<ApprovalListReport> {
     };
     let accepted_risks = audit::read_persisted_reports(paths)?
         .into_iter()
-        .filter_map(|report| {
-            let active = audit::risk_acceptance_is_active(&report);
-            let audit_command = audit_command(paths, &report.source_ref, &report.skill_path);
+        .filter_map(|stored| {
+            let active = audit::risk_acceptance_is_active(paths, &stored);
+            let report = stored.report;
+            let mut audit_command = audit_command(paths, &report.source_ref, &report.skill_path);
+            if let Some(candidate) = stored.candidate.as_ref() {
+                audit_command.push_str(&format!(
+                    " --candidate {}",
+                    crate::error::shell_quote_path(std::path::Path::new(&candidate.commit))
+                ));
+            }
             let acceptance = report.risk_acceptance?;
             Some(AcceptedRiskSummary {
                 source_ref: report.source_ref,
@@ -152,6 +162,7 @@ pub fn list(paths: &StorePaths) -> DaloResult<ApprovalListReport> {
                 scope_hash: acceptance.scope_hash,
                 active,
                 audit_command,
+                candidate: stored.candidate,
             })
         })
         .collect();

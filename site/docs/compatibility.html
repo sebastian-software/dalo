@@ -273,6 +273,23 @@ version it does not support instead of guessing.</p>
 <p>The optional <code>sources[].subpath</code> in <code>config.toml</code> and <code>sources[].subpath</code> in
 <code>lock.toml</code> are additive 1.x fields. Older files without them continue to use
 the checkout root as the inventory root.</p>
+<p>Consumer-local audits of pending team catalog pins use an additive candidate
+envelope with <code>schema_version = 1</code> under the isolated <code>audits/candidates/v1/</code>
+namespace. Its identity binds the source reference, content hash, team and
+catalog provenance, exact commit, scope, and selected skill set. Candidate
+acceptance cannot be reused by an installed-target audit or by another
+candidate, and legacy audit analysis may inform a candidate scan without
+carrying legacy risk acceptance into the candidate authority. Unsupported,
+malformed, or mismatched candidate envelopes fail closed and are never
+overwritten. The candidate envelope is an implementation detail; use
+<code>dalo audit --candidate</code> and <code>dalo approve list</code> rather than reading it directly.</p>
+<p>The candidate selector is additive CLI behavior: existing <code>dalo audit &lt;skill&gt;</code> semantics and <code>AuditReport</code> fields remain unchanged, while candidate
+JSON adds the optional <code>candidate</code> provenance object. A candidate acceptance is
+not a team-manifest migration or a trust transfer; it becomes active only when
+the ordinary sync installs the exact commit. The pre-commit rollback boundary
+restores the prior derived checkout and locks before a failed user-lock write;
+after a successful user-lock commit, recovery retains the new commit and
+repairs only the affected projection.</p>
 <p>Two further author-facing files are versioned the same way and follow the same
 rule: <a href="/docs/reference.html#deliverytoml-provider-builds"><code>DELIVERY.toml</code></a> provider
 builds (<code>schema_version = 1</code>) and

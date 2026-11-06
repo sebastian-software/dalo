@@ -86,6 +86,26 @@ The optional `sources[].subpath` in `config.toml` and `sources[].subpath` in
 `lock.toml` are additive 1.x fields. Older files without them continue to use
 the checkout root as the inventory root.
 
+Consumer-local audits of pending team catalog pins use an additive candidate
+envelope with `schema_version = 1` under the isolated `audits/candidates/v1/`
+namespace. Its identity binds the source reference, content hash, team and
+catalog provenance, exact commit, scope, and selected skill set. Candidate
+acceptance cannot be reused by an installed-target audit or by another
+candidate, and legacy audit analysis may inform a candidate scan without
+carrying legacy risk acceptance into the candidate authority. Unsupported,
+malformed, or mismatched candidate envelopes fail closed and are never
+overwritten. The candidate envelope is an implementation detail; use
+`dalo audit --candidate` and `dalo approve list` rather than reading it directly.
+
+The candidate selector is additive CLI behavior: existing `dalo audit
+<skill>` semantics and `AuditReport` fields remain unchanged, while candidate
+JSON adds the optional `candidate` provenance object. A candidate acceptance is
+not a team-manifest migration or a trust transfer; it becomes active only when
+the ordinary sync installs the exact commit. The pre-commit rollback boundary
+restores the prior derived checkout and locks before a failed user-lock write;
+after a successful user-lock commit, recovery retains the new commit and
+repairs only the affected projection.
+
 Two further author-facing files are versioned the same way and follow the same
 rule: [`DELIVERY.toml`](reference.md#deliverytoml-provider-builds) provider
 builds (`schema_version = 1`) and
