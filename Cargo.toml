@@ -15,7 +15,7 @@ categories = ["command-line-utilities", "development-tools"]
 exclude = [".github/", "docs/", "npm/", "site/", "video/"]
 
 [dependencies]
-app-tracking = "0.1"
+app-tracking = "0.7.1"
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
 clap_mangen = "0.3"

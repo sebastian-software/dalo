@@ -122,8 +122,11 @@ and are no longer read. Deleting this advisory cache costs another check.
 
 No telemetry identity, repository URL/hash, invocation counter, or reporting
 queue is created or transmitted. The request contains only the public route,
-fixed client user agent, and an optional ETag. The service may process ordinary
-transport metadata; update delivery is independent of future opt-in telemetry.
+fixed client user agent, and an optional ETag. `DO_NOT_TRACK=1` additionally
+sends `DNT: 1` to opt out of aggregate service metrics while preserving update
+checks (empty, `0`, `false`, and `off` leave metrics enabled). The service may
+process ordinary transport metadata; update delivery is independent of future
+opt-in telemetry.
 See [ADR 0013](adr/0013-shared-version-update-client.md).
 
 ## Command Reference

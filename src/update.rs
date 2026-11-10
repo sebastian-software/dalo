@@ -26,11 +26,12 @@ pub fn print_notice() {
     };
     let executable = env::current_exe().ok();
     let channel = detect_install_channel(executable.as_deref());
-    if let Some(version) = check_notice_in(
+    if let Some(version) = check_notice_with_metrics(
         VERSION_ORIGIN,
         &cache_dir,
         env!("CARGO_PKG_VERSION"),
         Mode::Enabled,
+        !env_truthy("DO_NOT_TRACK"),
     ) {
         let _ = writeln!(
             std::io::stderr(),
@@ -45,10 +46,17 @@ pub fn print_notice() {
     }
 }
 
-fn check_notice_in(origin: &str, cache_dir: &Path, installed: &str, mode: Mode) -> Option<String> {
+fn check_notice_with_metrics(
+    origin: &str,
+    cache_dir: &Path,
+    installed: &str,
+    mode: Mode,
+    service_metrics: bool,
+) -> Option<String> {
     let tool = Tool::new("dalo", installed, "github", "stable").ok()?;
     UpdateClient::new(origin, cache_dir, tool)
         .ok()?
+        .with_service_metrics(service_metrics)
         .check(mode)
         .ok()
         .flatten()
@@ -339,6 +347,15 @@ mod tests {
     use std::time::{Duration, Instant};
     use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
+    fn check_notice_in(
+        origin: &str,
+        cache_dir: &Path,
+        installed: &str,
+        mode: Mode,
+    ) -> Option<String> {
+        check_notice_with_metrics(origin, cache_dir, installed, mode, true)
+    }
+
     fn payload(distribution: &str, age: i64, stale: bool) -> String {
         let checked = OffsetDateTime::now_utc() - time::Duration::seconds(age);
         serde_json::json!({
@@ -435,6 +452,57 @@ mod tests {
             // detection does not partition the shared cache or notice throttle.
             assert!(check_notice_in(&origin, temp.path(), "1.0.0", Mode::Enabled).is_none());
         }
+    }
+
+    #[test]
+    fn service_metrics_opt_out_preserves_update_checks_without_usage_state() {
+        for enabled in [true, false] {
+            let temp = tempdir().unwrap();
+            let (origin, request, task) =
+                endpoint(200, payload("github", 0, false), Duration::ZERO);
+            assert_eq!(
+                check_notice_with_metrics(&origin, temp.path(), "1.0.0", Mode::Enabled, enabled)
+                    .as_deref(),
+                Some("99.0.0")
+            );
+            let request = request.recv().unwrap().to_ascii_lowercase();
+            assert_eq!(request.contains("dnt: 1\r\n"), !enabled);
+            assert!(request.starts_with("get /v1/versions/dalo/github/stable http/1.1\r\n"));
+            assert!(!request.contains("1.0.0"));
+            assert!(!request.contains("authorization:"));
+            task.join().unwrap();
+            let mut files = fs::read_dir(temp.path())
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect::<Vec<_>>();
+            files.sort();
+            assert_eq!(
+                files,
+                ["dalo.github.stable.json", "dalo.github.stable.lock"]
+            );
+        }
+    }
+
+    #[test]
+    fn sdk_upgrade_preserves_the_v1_update_cache_and_notice_throttle() {
+        let temp = tempdir().unwrap();
+        let origin = "http://127.0.0.1:1";
+        let now = OffsetDateTime::now_utc().unix_timestamp();
+        // This is the serialized state schema emitted by app-tracking 0.1.0.
+        let state = serde_json::json!({
+            "schema_version": 1,
+            "resource": format!("{origin}/v1/versions/dalo/github/stable"),
+            "next_check": now + 3600, "failures": 0,
+            "release": serde_json::from_str::<serde_json::Value>(&payload("github", 0, false)).unwrap(),
+            "etag": "\"cached\"", "noticed_version": "99.0.0", "noticed_at": now,
+        });
+        let file = temp.path().join("dalo.github.stable.json");
+        fs::write(&file, serde_json::to_vec(&state).unwrap()).unwrap();
+        assert!(check_notice_in(origin, temp.path(), "1.0.0", Mode::Enabled).is_none());
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&fs::read(file).unwrap()).unwrap(),
+            state
+        );
     }
 
     #[test]
