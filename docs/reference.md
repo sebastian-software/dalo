@@ -1106,6 +1106,33 @@ dalo audit public:review-helper --reviewer claude --refresh-audit
 Use `--refresh-audit` to ignore a compatible cached semantic review and run the
 selected provider again.
 
+When a team catalog pin advances and the pending commit is blocked, inspect that
+exact consumer candidate with its full commit ID:
+
+```sh
+dalo audit company.catalog:review-helper --candidate <FULL-COMMIT> --check
+dalo audit company.catalog:review-helper --candidate <FULL-COMMIT> \
+  --accept-risk "reviewed the exact pending catalog commit"
+dalo sync
+```
+
+The selector must name a derived catalog skill and a full immutable commit. The
+candidate command resolves the same commit and selected skill that the team
+declaration's next sync would use; it does not change `dalo.toml`, the live
+derived checkout, source locks, approvals, or projected links. The first command
+only inspects the candidate. A non-empty `--accept-risk` reason on a later,
+explicit invocation records consumer-local acceptance for that exact candidate;
+the following ordinary `sync` then performs the normal activation. `--dry-run`
+previews the audit or acceptance without writing the audit store.
+
+This recovery works both when an installed derived catalog is still at the old
+commit and when the consumer has not completed its first sync. It preserves the
+declared fixed-pin or tracking resolution rules, including scoped catalogs and
+tracking fast-forward checks. It does not transfer trust to the team manifest,
+accept the candidate for another consumer, or make a pending candidate active.
+An unchanged `dalo audit <source:skill>` command continues to inspect the
+currently installed target; use `--candidate` to inspect the pending commit.
+
 `dalo audit` always prints the full report: content hash, coverage, result,
 every finding, and the reminder that no findings is not a safety guarantee.
 `source add`, `source select`, `approve skill`, and `adopt` print the same block
@@ -1188,12 +1215,17 @@ rather than read from the report cache, and they never change `status`,
 `--check`, or risk acceptance.
 
 Reports live below `audits/` and are keyed by both the source-qualified skill
-reference and the complete skill directory hash. After re-hashing the current
-directory, a report with the matching source, static-engine version, and scan
-mode reuses its deterministic findings and coverage instead of reading and
-scanning every file again. Missing, malformed, old-version, changed-content,
-unreadable, or incompatible-mode reports are rebuilt before they can affect the
-result.
+reference and the complete skill directory hash. Candidate reports are kept in
+the separate `audits/candidates/v1/` envelope namespace and add the exact
+candidate provenance to that identity. After re-hashing the current directory,
+a report with the matching source, static-engine version, and scan mode reuses
+its deterministic findings and coverage instead of reading and scanning every
+file again. Legacy reports that are missing, malformed, changed-content,
+unreadable, or incompatible with the supported schema or scan mode are rebuilt
+before they can affect the result; unsupported schema versions fail closed.
+Missing candidate reports can be created, and incompatible cached analysis is
+not reused. Existing malformed, unreadable, unknown-field, identity-mismatched,
+or unsupported candidate envelopes fail closed and are never overwritten.
 When a non-dry-run audit produces the same durable report content, Dalo retains
 the existing report (including its `scanned_at_unix` value) without rewriting
 it.
@@ -1210,7 +1242,12 @@ replace it. Protect the store like other security-sensitive user state and do
 not place it in a shared or untrusted writable directory. No-finding results
 are best-effort observations, not a security certification.
 
-JSON output shape: `AuditReport`.
+JSON output shape: `AuditReport`. With `--candidate`, the same report has an
+additive `candidate` object containing `team_source_id`, redacted
+`team_location`, `derived_source_id`, redacted `catalog_location`, exact
+`commit`, optional `scope`, and `selected_set_hash`. Candidate acceptance is
+also shown in `dalo approve list` with the candidate identity and a replayable
+`audit_command`; it is marked inactive until ordinary sync installs that commit.
 
 ### `dalo plugin validate <source-path>`
 
@@ -1677,8 +1714,8 @@ Scripts should treat `3` differently from `1`: it means Dalo intentionally stopp
 | `autosync run` | `SyncReport` or `AutosyncRunState` | `SyncReport` when synchronization starts; `AutosyncRunState` with `outcome: "skipped"` and `reason` when another process holds the store lock. Catalog-drift and blocked failures keep the JSON sync report on stdout and emit the standard JSON error on stderr. |
 | `status` | `StatusReport` | `store`, `assistant`, `sources[]` with `skill_count`, `agent_count`, and `provenance`, `targets[]`, `inventory_warnings[]`, `agent_inventory_warnings[]`, `resolution`, dry-run `materialization[]`, `blocking_audits[]`, `audit_failures[]`, `lock`, `unmanaged_skills[]`, `target_warnings[]`, `instruction_packs[]`, `instruction_pack_overlaps[]`, `instruction_block_drifts[]`, `autosync` |
 | `sync` | `SyncReport` | `store`, optional `assistant`, `dry_run`, `linked_targets`, skill `operations[]`, optional `instruction_operations[]` (`source_id`, `pack_id`, `target`, `action`, `previous_commit`, `commit`), `resolution`, `degraded_sources[]` (`id`, `path`, `reason`), optional `inventory_warnings[]` (`code`, `path`, `message`), optional `missing_commands[]` (`source_ref`, `command`, optional `compatibility`), optional `unrefreshed_tracking_sources[]`, `unselected_catalogs[]` (`source_id`, `available_skills`) |
-| `audit` | `AuditReport` | `schema_version`, `source_ref`, `skill_path`, `content_hash`, `static_engine_version`, `scanned_at_unix`, `coverage`, `status`, optional `max_severity`, `static_findings[]`, optional `spec_findings[]`, optional `binaries[]` (`identity`, `repo`, `tag`, `platforms[]`, `contract_hash`), optional `agent_review`, optional `risk_acceptance` |
-| `approve list` | `ApprovalListReport` | `schema_version`, `approvals[]` (optional `granted_at_unix`), `accepted_risks[]` (`source_ref`, `content_hash`, `reason`, `accepted_at_unix`, `scope_hash`, `active`, `audit_command`) |
+| `audit` | `AuditReport` | `schema_version`, `source_ref`, `skill_path`, `content_hash`, `static_engine_version`, `scanned_at_unix`, `coverage`, `status`, optional `max_severity`, `static_findings[]`, optional `spec_findings[]`, optional `binaries[]` (`identity`, `repo`, `tag`, `platforms[]`, `contract_hash`), optional `agent_review`, optional `risk_acceptance`; `--candidate` adds `candidate` provenance |
+| `approve list` | `ApprovalListReport` | `schema_version`, `approvals[]` (optional `granted_at_unix`), `accepted_risks[]` (`source_ref`, `content_hash`, `reason`, `accepted_at_unix`, `scope_hash`, `active`, `audit_command`, optional `candidate` provenance) |
 | `approve skill` | audited approval outcome | `audit` (`AuditReport`), `approval` (`ApprovalReport`), optional `compatibility`, optional `binaries[]` (`BinaryStatusReport`, omitted when the skill declares none) |
 | `approve agent` / `source` / `author` / `org` | `ApprovalReport` | `scope`, `value`, `action`, `dry_run` |
 | `approve tool` / `approve revoke tool` | `ToolApprovalReport` | `tool`, content-bound `approval_value`, `action`, optional immutable `staged_path`, `dry_run` |

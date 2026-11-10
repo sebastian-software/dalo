@@ -1020,6 +1020,28 @@ dalo audit public:review-helper --reviewer claude --refresh-audit
 </code></pre>
 <p>Use <code>--refresh-audit</code> to ignore a compatible cached semantic review and run the
 selected provider again.</p>
+<p>When a team catalog pin advances and the pending commit is blocked, inspect that
+exact consumer candidate with its full commit ID:</p>
+<pre><code class="language-sh">dalo audit company.catalog:review-helper --candidate &lt;FULL-COMMIT&gt; --check
+dalo audit company.catalog:review-helper --candidate &lt;FULL-COMMIT&gt; \
+  --accept-risk &quot;reviewed the exact pending catalog commit&quot;
+dalo sync
+</code></pre>
+<p>The selector must name a derived catalog skill and a full immutable commit. The
+candidate command resolves the same commit and selected skill that the team
+declaration&#39;s next sync would use; it does not change <code>dalo.toml</code>, the live
+derived checkout, source locks, approvals, or projected links. The first command
+only inspects the candidate. A non-empty <code>--accept-risk</code> reason on a later,
+explicit invocation records consumer-local acceptance for that exact candidate;
+the following ordinary <code>sync</code> then performs the normal activation. <code>--dry-run</code>
+previews the audit or acceptance without writing the audit store.</p>
+<p>This recovery works both when an installed derived catalog is still at the old
+commit and when the consumer has not completed its first sync. It preserves the
+declared fixed-pin or tracking resolution rules, including scoped catalogs and
+tracking fast-forward checks. It does not transfer trust to the team manifest,
+accept the candidate for another consumer, or make a pending candidate active.
+An unchanged <code>dalo audit &lt;source:skill&gt;</code> command continues to inspect the
+currently installed target; use <code>--candidate</code> to inspect the pending commit.</p>
 <p><code>dalo audit</code> always prints the full report: content hash, coverage, result,
 every finding, and the reminder that no findings is not a safety guarantee.
 <code>source add</code>, <code>source select</code>, <code>approve skill</code>, and <code>adopt</code> print the same block
@@ -1093,12 +1115,17 @@ more than 500 lines.</li>
 rather than read from the report cache, and they never change <code>status</code>,
 <code>--check</code>, or risk acceptance.</p>
 <p>Reports live below <code>audits/</code> and are keyed by both the source-qualified skill
-reference and the complete skill directory hash. After re-hashing the current
-directory, a report with the matching source, static-engine version, and scan
-mode reuses its deterministic findings and coverage instead of reading and
-scanning every file again. Missing, malformed, old-version, changed-content,
-unreadable, or incompatible-mode reports are rebuilt before they can affect the
-result.
+reference and the complete skill directory hash. Candidate reports are kept in
+the separate <code>audits/candidates/v1/</code> envelope namespace and add the exact
+candidate provenance to that identity. After re-hashing the current directory,
+a report with the matching source, static-engine version, and scan mode reuses
+its deterministic findings and coverage instead of reading and scanning every
+file again. Legacy reports that are missing, malformed, changed-content,
+unreadable, or incompatible with the supported schema or scan mode are rebuilt
+before they can affect the result; unsupported schema versions fail closed.
+Missing candidate reports can be created, and incompatible cached analysis is
+not reused. Existing malformed, unreadable, unknown-field, identity-mismatched,
+or unsupported candidate envelopes fail closed and are never overwritten.
 When a non-dry-run audit produces the same durable report content, Dalo retains
 the existing report (including its <code>scanned_at_unix</code> value) without rewriting
 it.
@@ -1113,7 +1140,12 @@ cryptographically authenticated log: a process running as the same user can
 replace it. Protect the store like other security-sensitive user state and do
 not place it in a shared or untrusted writable directory. No-finding results
 are best-effort observations, not a security certification.</p>
-<p>JSON output shape: <code>AuditReport</code>.</p>
+<p>JSON output shape: <code>AuditReport</code>. With <code>--candidate</code>, the same report has an
+additive <code>candidate</code> object containing <code>team_source_id</code>, redacted
+<code>team_location</code>, <code>derived_source_id</code>, redacted <code>catalog_location</code>, exact
+<code>commit</code>, optional <code>scope</code>, and <code>selected_set_hash</code>. Candidate acceptance is
+also shown in <code>dalo approve list</code> with the candidate identity and a replayable
+<code>audit_command</code>; it is marked inactive until ordinary sync installs that commit.</p>
 <h3 id="dalo-plugin-validate-source-path"><a class="doc-anchor" href="#dalo-plugin-validate-source-path"><code>dalo plugin validate &lt;source-path&gt;</code></a></h3>
 <p>Validate an author source without initializing or consulting a personal store.
 The source must contain <code>plugins/&lt;name&gt;/PLUGIN.toml</code> packages. Dalo uses its
@@ -1692,12 +1724,12 @@ dalo completions fish &gt; dalo.fish
 <tr>
 <td><code>audit</code></td>
 <td><code>AuditReport</code></td>
-<td><code>schema_version</code>, <code>source_ref</code>, <code>skill_path</code>, <code>content_hash</code>, <code>static_engine_version</code>, <code>scanned_at_unix</code>, <code>coverage</code>, <code>status</code>, optional <code>max_severity</code>, <code>static_findings[]</code>, optional <code>spec_findings[]</code>, optional <code>binaries[]</code> (<code>identity</code>, <code>repo</code>, <code>tag</code>, <code>platforms[]</code>, <code>contract_hash</code>), optional <code>agent_review</code>, optional <code>risk_acceptance</code></td>
+<td><code>schema_version</code>, <code>source_ref</code>, <code>skill_path</code>, <code>content_hash</code>, <code>static_engine_version</code>, <code>scanned_at_unix</code>, <code>coverage</code>, <code>status</code>, optional <code>max_severity</code>, <code>static_findings[]</code>, optional <code>spec_findings[]</code>, optional <code>binaries[]</code> (<code>identity</code>, <code>repo</code>, <code>tag</code>, <code>platforms[]</code>, <code>contract_hash</code>), optional <code>agent_review</code>, optional <code>risk_acceptance</code>; <code>--candidate</code> adds <code>candidate</code> provenance</td>
 </tr>
 <tr>
 <td><code>approve list</code></td>
 <td><code>ApprovalListReport</code></td>
-<td><code>schema_version</code>, <code>approvals[]</code> (optional <code>granted_at_unix</code>), <code>accepted_risks[]</code> (<code>source_ref</code>, <code>content_hash</code>, <code>reason</code>, <code>accepted_at_unix</code>, <code>scope_hash</code>, <code>active</code>, <code>audit_command</code>)</td>
+<td><code>schema_version</code>, <code>approvals[]</code> (optional <code>granted_at_unix</code>), <code>accepted_risks[]</code> (<code>source_ref</code>, <code>content_hash</code>, <code>reason</code>, <code>accepted_at_unix</code>, <code>scope_hash</code>, <code>active</code>, <code>audit_command</code>, optional <code>candidate</code> provenance)</td>
 </tr>
 <tr>
 <td><code>approve skill</code></td>
