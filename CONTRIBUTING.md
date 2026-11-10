@@ -86,15 +86,10 @@ msrv="$(sed -n 's/^rust-version = \"\(.*\)\"/\1/p' Cargo.toml | head -n 1)"
 cargo +"$msrv" check --locked --all-targets --all-features
 ```
 
-The standards-drift job runs `standards check` from
-[`@sebastian-software/standards`](https://github.com/sebastian-software/standards)
-at the version pinned in the job itself. This repository has no lockfile to
-hold that CLI, so the pin lives in `.github/workflows/ci.yml` and Renovate's
-custom manager in `renovate.json` moves it through a pull request instead of CI
-running whatever was published last. Copy the command from the job rather than
-restating the version here, and raise the pin in the same pull request that
-runs `standards apply`, so the stamp in `.repometa.json` and the CLI that
-checks it never disagree.
+The repository owns its formatter, lint, and dependency-policy configuration.
+Use the native checks above when changing it. Shared infrastructure guidance lives
+in [project-infra](https://github.com/sebastian-software/project-infra);
+alignment is reviewed in pull requests rather than asserted by a drift job.
 
 `coverage-threshold` holds the line-coverage gate, and both CI and the command
 above read it, so the number is never restated. Raise it deliberately when
