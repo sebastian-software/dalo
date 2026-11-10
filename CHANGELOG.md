@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.1](https://github.com/sebastian-software/dalo/compare/dalo-v1.11.0...dalo-v1.11.1) (2026-11-10)
+
+
+### Bug Fixes
+
+* **audit:** accept exact pending team catalog candidates ([e36bc32](https://github.com/sebastian-software/dalo/commit/e36bc32815ec8c807af3ea6d2b7b717d8d47e7e8)), closes [#1032](https://github.com/sebastian-software/dalo/issues/1032)
+* **deps:** update the passive version SDK ([6c705fd](https://github.com/sebastian-software/dalo/commit/6c705fd0981fe0f99f65e48f354b56f027de23d3))
+
 ## [1.11.0](https://github.com/sebastian-software/dalo/compare/dalo-v1.10.0...dalo-v1.11.0) (2026-10-23)
 
 
