@@ -1987,7 +1987,7 @@ impl Project {
                     // Selection starts empty, so a trusted catalog activates
                     // nothing until the declared selectors are applied below.
                     trusted: declaration_approves,
-                    url: Some(url.clone()),
+                    url: Some(url),
                     branch: None,
                     update_policy: Some("pin".into()),
                     selection: vec![],
