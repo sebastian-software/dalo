@@ -238,6 +238,9 @@ jobs:
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
+    env:
+      # Rust 1.100 changes the coverage line count; keep the threshold comparable.
+      RUSTUP_TOOLCHAIN: 1.99.1
 
     steps:
       - name: Checkout
@@ -246,7 +249,6 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
-          # Rust 1.100 changes the coverage line count; keep the threshold comparable.
           toolchain: 1.99.1
           components: llvm-tools-preview
 
