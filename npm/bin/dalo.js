@@ -4,6 +4,7 @@
 
 const { ensureBinary, formatLauncherError, launcherEnvironment } = require('../lib/release');
 const { spawn } = require('node:child_process');
+const { constants } = require('node:os');
 
 async function main() {
   const binary = await ensureBinary();
@@ -11,12 +12,27 @@ async function main() {
     stdio: 'inherit',
     env: launcherEnvironment(process.env, process.argv[1])
   });
+  let cancellationSignal;
+  let spawnFailed = false;
+  const forwardSignal = (signal) => {
+    cancellationSignal ||= signal;
+    if (child.exitCode === null && child.signalCode === null) child.kill(signal);
+  };
+  const onSigint = () => forwardSignal('SIGINT');
+  const onSigterm = () => forwardSignal('SIGTERM');
+  process.on('SIGINT', onSigint);
+  process.on('SIGTERM', onSigterm);
   child.on('error', (error) => {
+    spawnFailed = true;
     console.error(`dalo: could not start downloaded binary: ${error.message}`);
     process.exitCode = 1;
   });
-  child.on('exit', (code, signal) => {
-    process.exitCode = code ?? (signal ? 1 : 0);
+  child.on('close', (code, signal) => {
+    process.removeListener('SIGINT', onSigint);
+    process.removeListener('SIGTERM', onSigterm);
+    const terminationSignal = cancellationSignal || signal;
+    if (terminationSignal) process.exitCode = 128 + constants.signals[terminationSignal];
+    else if (!spawnFailed && code !== null) process.exitCode = code;
   });
 }
 
