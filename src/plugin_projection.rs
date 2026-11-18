@@ -279,7 +279,7 @@ pub fn reconcile(
             let ownership = ProjectionOwnership {
                 target: target.id.clone(),
                 plugin: plugin.source_ref.clone(),
-                native_name: native_name.clone(),
+                native_name,
                 link_path: link_path.clone(),
                 artifact_path: artifact_path.clone(),
                 projection_hash: rendered.hash.clone(),
