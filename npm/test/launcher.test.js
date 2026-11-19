@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
@@ -13,6 +13,15 @@ const { version } = require('../package.json');
 const launcher = path.join(__dirname, '..', 'bin', 'dalo.js');
 const supported = (process.platform === 'linux' && ['x64', 'arm64'].includes(process.arch))
   || (process.platform === 'darwin' && process.arch === 'arm64');
+
+test('rejects unsupported Node versions before loading the launcher', () => {
+  for (const version of ['20.19.0', '22.18.0']) {
+    const script = `Object.defineProperty(process.versions, 'node', { value: '${version}' }); require(${JSON.stringify(launcher)});`;
+    const result = spawnSync(process.execPath, ['-e', script], { encoding: 'utf8' });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Node\.js 22\.19 or newer is required/);
+  }
+});
 
 for (const signal of ['SIGTERM', 'SIGINT']) {
   test(`forwards ${signal} and waits for the cached binary to clean up`, { skip: !supported, timeout: 10000 }, async (t) => {

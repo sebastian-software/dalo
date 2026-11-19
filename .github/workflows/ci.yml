@@ -261,6 +261,22 @@ jobs:
       - name: Coverage summary
         run: cargo llvm-cov --workspace --all-features --summary-only --fail-under-lines "$(cat coverage-threshold)"
 
+  npm-compatibility:
+    name: npm launcher / Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['22.19.0', '24', '26']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Check npm launcher
+        run: cd npm && npm ci && npm run check-version && npm test
+
   site:
     name: Site render
     runs-on: ubuntu-latest
@@ -295,6 +311,7 @@ jobs:
       - audit
       - coverage
       - site
+      - npm-compatibility
     if: ${{ always() }}
     steps:
       - name: Verify CI lanes

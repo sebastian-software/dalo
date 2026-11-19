@@ -80,7 +80,7 @@ brew install sebastian-software/tap/dalo
 # macOS or Linux with the hosted installer
 curl -fsSL https://dalo.sh/install.sh | sh
 
-# Node.js 20 or newer, without a global install
+# Node.js 22.19 or newer, without a global install
 npx getdalo --version
 ```
 
@@ -276,7 +276,7 @@ libc detection.
 
 ### Node.js
 
-Use Node.js 20 or newer:
+Use Node.js 22.19 or newer:
 
 ```sh
 npx getdalo --version
