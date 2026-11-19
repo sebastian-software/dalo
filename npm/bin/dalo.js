@@ -2,6 +2,12 @@
 
 'use strict';
 
+const [major, minor] = process.versions.node.split('.').map(Number);
+if (major < 22 || (major === 22 && minor < 19)) {
+  console.error('dalo: Node.js 22.19 or newer is required');
+  process.exit(1);
+}
+
 const { ensureBinary, formatLauncherError, launcherEnvironment } = require('../lib/release');
 const { spawn } = require('node:child_process');
 const { constants } = require('node:os');

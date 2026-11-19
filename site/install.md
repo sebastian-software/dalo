@@ -115,7 +115,7 @@ it; ask only when the agent or installation scope is ambiguous.
    The Nix package includes Git, which Dalo uses for source operations.
    Upgrade that profile entry with `nix profile upgrade dalo`.
 
-   When the user manages CLI tools through Node.js 20 or newer, the npm launcher
+   When the user manages CLI tools through Node.js 22.19 or newer, the npm launcher
    is also supported. It verifies release checksums and caches the downloaded
    binary under `~/.cache/dalo`:
 

@@ -32,7 +32,7 @@ jobs.
 
 ## Requirements
 
-- Node.js 20 or newer
+- Node.js 22.19 or newer
 - macOS on Apple Silicon, or Linux on x86_64 or ARM64. Intel Macs are not
   supported: that build was discontinued with Dalo 1.0, and `cargo install dalo`
   compiles from source instead.

@@ -22,7 +22,7 @@
     "dalo": "bin/dalo.js"
   },
   "dependencies": {
-    "undici": "^8.0.0"
+    "undici": "^8.12.4"
   },
   "files": [
     "bin",
@@ -30,7 +30,7 @@
     "README.md"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22.19.0"
   },
   "os": [
     "darwin",
