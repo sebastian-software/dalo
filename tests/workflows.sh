@@ -177,6 +177,7 @@ printf '%s\n' "$release_targets_job" | grep -Fq 'tests/deb-package-ci.sh'
 printf '%s\n' "$release_targets_job" | grep -Fq '"$binary" init --store "$test_root/store"'
 printf '%s\n' "$release_targets_job" | grep -Fq '"$binary" sync --store "$test_root/store" --dry-run'
 sh "$root/scripts/check-workflow-pins.sh" "$root/.github/workflows" > /dev/null
+node --test "$root/tests/ci-supersession.mjs"
 
 # The macOS test entry and the comment above it kept contradicting each other.
 printf '%s\n' "$ci_test_job" | grep -Fq 'Keep macos-latest as the macOS test runner'

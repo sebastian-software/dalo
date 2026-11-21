@@ -1,0 +1,95 @@
+name: Supersede PR CI
+
+on:
+  pull_request_target:
+    types: [synchronize]
+
+permissions: {}
+
+jobs:
+  cancel:
+    # Rerunning a historical event must never schedule another cancellation.
+    if: ${{ github.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+      pull-requests: read
+    steps:
+      # This job uses GitHub's run metadata only. It never checks out PR code.
+      - name: Cancel superseded CI runs
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const repository = context.repo;
+            const pullNumber = context.payload.number;
+            const getPull = async () => (await github.rest.pulls.get({
+              ...repository, pull_number: pullNumber,
+            })).data;
+            const pull = await getPull();
+            if (pull.state !== 'open' || !pull.head.repo) return;
+
+            const sourceId = pull.head.repo.id;
+            const branch = pull.head.ref;
+            const sameSource = candidate =>
+              candidate.head.repo?.id === sourceId && candidate.head.ref === branch;
+            const competingPulls = (await github.paginate(github.rest.pulls.list, {
+              ...repository,
+              state: 'all',
+              head: `${pull.head.repo.owner.login}:${branch}`,
+              per_page: 100,
+            })).filter(candidate => candidate.number !== pullNumber && sameSource(candidate));
+
+            const belongsToPull = run => {
+              if (run.event !== 'pull_request' || run.head_repository?.id !== sourceId ||
+                  run.head_branch !== branch || run.created_at < pull.created_at) return false;
+              if (run.pull_requests.length) {
+                return run.pull_requests.length === 1 && run.pull_requests[0].number === pullNumber;
+              }
+              // GitHub can omit PR associations for obsolete heads and fork runs.
+              // Use the source branch only when it identifies one PR at run creation.
+              return !competingPulls.some(candidate => candidate.created_at <= run.created_at &&
+                (!candidate.closed_at || candidate.closed_at >= run.created_at));
+            };
+
+            const params = {
+              ...repository,
+              workflow_id: 'ci.yml',
+              event: 'pull_request',
+              branch,
+              created: `>=${pull.created_at}`,
+              per_page: 100,
+            };
+            let runs;
+            let latest;
+            // CI and this controller are scheduled independently. Wait briefly
+            // for GitHub to register a replacement before stopping any work.
+            for (let attempt = 0; attempt < 5 && !latest; attempt++) {
+              if (attempt) await new Promise(resolve => setTimeout(resolve, 2000));
+              runs = (await github.paginate(github.rest.actions.listWorkflowRuns, params))
+                .filter(belongsToPull)
+                .sort((left, right) => right.run_number - left.run_number);
+              latest = runs.find(run => run.head_sha === pull.head.sha);
+            }
+            if (!latest) {
+              core.info(`PR #${pullNumber}: no CI run found for current head ${pull.head.sha}`);
+              return;
+            }
+
+            const active = new Set(['queued', 'requested', 'waiting', 'pending', 'in_progress']);
+            for (const run of runs) {
+              if (run.run_number >= latest.run_number || run.head_sha === latest.head_sha ||
+                  !active.has(run.status)) continue;
+              // Recheck the live head before each cancellation. The run-number
+              // bound also keeps a later run safe if a PR returns to an old SHA.
+              const current = await getPull();
+              if (current.state !== 'open' || !sameSource(current) ||
+                  current.base.ref !== pull.base.ref || current.head.sha !== latest.head_sha) break;
+              try {
+                await github.rest.actions.cancelWorkflowRun({ ...repository, run_id: run.id });
+                core.info(`PR #${pullNumber}: cancelled CI ${run.id} (${run.head_sha}), keeping ${latest.id} (${latest.head_sha})`);
+              } catch (error) {
+                if (error.status !== 409) throw error;
+                core.info(`CI ${run.id} is no longer cancellable`);
+              }
+            }
