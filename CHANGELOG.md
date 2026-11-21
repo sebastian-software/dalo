@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.12.0](https://github.com/sebastian-software/dalo/compare/dalo-v1.11.1...dalo-v1.12.0) (2026-11-21)
+
+
+### Features
+
+* link named instances of agent providers ([62a6008](https://github.com/sebastian-software/dalo/commit/62a600875b5fd75e0bf31b5534b08e113db06527))
+
+
+### Bug Fixes
+
+* **deps:** update rustix to resolve advisory ([99a15ee](https://github.com/sebastian-software/dalo/commit/99a15eee0551f5c4528ae78e8c067f2711781765))
+* **npm:** forward cancellation to native binary ([6f09f20](https://github.com/sebastian-software/dalo/commit/6f09f20016e2d7bef29c5e57b2c0f6fb40bd6e52))
+* **npm:** update undici and align Node support ([2ac5e64](https://github.com/sebastian-software/dalo/commit/2ac5e64ced024520171e725296eb3f92ef119878))
+* remove redundant clones flagged by Clippy ([bc7e19b](https://github.com/sebastian-software/dalo/commit/bc7e19bb4e11eed0da3a277970229f671efd3519))
+
 ## [1.11.1](https://github.com/sebastian-software/dalo/compare/dalo-v1.11.0...dalo-v1.11.1) (2026-11-10)
 
 
