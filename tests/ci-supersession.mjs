@@ -9,7 +9,7 @@ const workflow = readFileSync(
 const script = workflow.split('          script: |\n')[1];
 assert.ok(script, 'the workflow must define a cancellation script');
 const runController = Object.getPrototypeOf(async function () {}).constructor(
-  'github', 'context', 'core', script,
+  'github', 'context', 'core', 'setTimeout', script,
 );
 const repository = { owner: 'owner', repo: 'repo' };
 const source = {
@@ -62,6 +62,7 @@ async function cancelRuns(runs, { otherPulls = [], recheck = pull } = {}) {
   };
   await runController(
     github, { repo: repository, payload: { number: pull.number } }, { info() {} },
+    callback => callback(),
   );
   return cancelled;
 }
@@ -85,6 +86,10 @@ test('cancels only queued or running CI superseded by a newer run for the same P
 test('leaves runs alone when the PR head changes during discovery', async () => {
   const recheck = { ...pull, head: { ...source, sha: 'new-head' } };
   assert.deepEqual(await cancelRuns([run(2, 'older'), run(3, 'current')], { recheck }), []);
+});
+
+test('leaves runs alone until GitHub registers a replacement', async () => {
+  assert.deepEqual(await cancelRuns([run(1, 'older'), run(2, 'previous')]), []);
 });
 
 test('skips ambiguous runs from multiple PRs on the same source branch', async () => {
