@@ -110,7 +110,7 @@ fn update_checks_enabled_for(
     !disabled && stderr_is_terminal && !ci && !offline
 }
 
-fn env_truthy(name: &str) -> bool {
+pub(crate) fn env_truthy(name: &str) -> bool {
     env::var(name)
         .map(|value| {
             !matches!(

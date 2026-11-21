@@ -66,6 +66,8 @@ pub mod target;
 pub mod team_manifest;
 // CLI plumbing: hidden from the rendered docs, not part of any contract.
 #[doc(hidden)]
+pub mod telemetry;
+#[doc(hidden)]
 pub mod term;
 pub mod tool;
 // CLI plumbing: hidden from the rendered docs, not part of any contract.

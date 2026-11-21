@@ -73,6 +73,7 @@ const COMMAND_GROUPS: &[(&str, &[&str])] = &[
         ],
     ),
     ("Automation", &["autosync", "completions"]),
+    ("Settings", &["telemetry"]),
 ];
 
 /// Render the top-level command list from the live subcommands, grouped by `COMMAND_GROUPS`.
@@ -337,7 +338,14 @@ impl Cli {
         if let Some(root) = &self.project {
             return Ok(Some(root.clone()));
         }
-        if self.global
+        if !self.discovers_project() {
+            return Ok(None);
+        }
+        crate::project::discover(&std::env::current_dir()?)
+    }
+
+    pub(crate) fn discovers_project(&self) -> bool {
+        !(self.global
             || self.store.is_some()
             || std::env::var_os(store::STORE_ENV_VAR).is_some()
             || matches!(
@@ -348,14 +356,11 @@ impl Cli {
                         | Command::Manpage
                         | Command::Migrate(_)
                         | Command::Promote(_)
+                        | Command::Telemetry(_)
                 ) | Some(Command::Plugin(PluginCommand {
                     command: PluginSubcommand::Validate(_)
                 }))
-            )
-        {
-            return Ok(None);
-        }
-        crate::project::discover(&std::env::current_dir()?)
+            ))
     }
 
     /// Store used for errors and explicit global selection, without changing env vars.
@@ -472,6 +477,8 @@ pub enum Command {
     Approve(ApproveCommand),
     /// Manage instruction packs rendered into instruction files.
     Instructions(InstructionsCommand),
+    /// Control optional usage reporting and inspect queued data.
+    Telemetry(crate::telemetry::TelemetryCommand),
     /// Generate shell completions.
     Completions(CompletionsCommand),
     /// Generate a man page.
@@ -1520,6 +1527,7 @@ fn allows_update_notice(cli: &Cli) -> bool {
             !matches!(
                 command,
                 Command::Assistant(_)
+                    | Command::Telemetry(_)
                     | Command::Completions(_)
                     | Command::Manpage
                     | Command::Migrate(_)
@@ -1531,6 +1539,9 @@ fn allows_update_notice(cli: &Cli) -> bool {
 }
 
 fn run_cli_inner(cli: Cli) -> DaloResult<()> {
+    if let Some(Command::Telemetry(command)) = &cli.command {
+        return crate::telemetry::settings(command.command, cli.json, cli.dry_run);
+    }
     if let Some(Command::Migrate(args)) = &cli.command {
         if cli.global || cli.store.is_some() || std::env::var_os(store::STORE_ENV_VAR).is_some() {
             return Err(DaloError::InvalidArgument {
@@ -1728,7 +1739,7 @@ fn run_cli_inner(cli: Cli) -> DaloResult<()> {
         Command::Audit(command) => run_audit(&options, command),
         Command::Approve(command) => run_approve(&options, command),
         Command::Instructions(command) => run_instructions(&options, command),
-        Command::Completions(_) | Command::Manpage => {
+        Command::Completions(_) | Command::Manpage | Command::Telemetry(_) => {
             unreachable!("handled before store resolution")
         }
     };

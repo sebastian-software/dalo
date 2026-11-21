@@ -44,11 +44,12 @@ export OPENCODE_CONFIG_DIR="$rehearsal_home/.config/opencode"
 export XDG_CONFIG_HOME="$rehearsal_home/.config"
 export XDG_DATA_HOME="$rehearsal_home/.local/share"
 export XDG_CACHE_HOME="$rehearsal_home/.cache"
+export XDG_STATE_HOME="$rehearsal_home/.local/state"
 export DALO_UPDATE_CHECK=never
 export DALO_ASSISTANT_CHECK=never
 export GIT_CONFIG_GLOBAL=/dev/null
 export GIT_CONFIG_NOSYSTEM=1
-unset GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS
+unset GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS DALO_TELEMETRY_CI_STATE
 
 run() {
   {
