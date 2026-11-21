@@ -86,6 +86,24 @@ struct HookSidecarState {
     owned_hooks: BTreeMap<String, Vec<Value>>,
 }
 
+pub(crate) fn same_sidecar(left: &Path, right: &Path) -> bool {
+    fn physical(path: &Path) -> PathBuf {
+        path.parent()
+            .and_then(|parent| fs::canonicalize(parent).ok())
+            .and_then(|parent| path.file_name().map(|name| parent.join(name)))
+            .unwrap_or_else(|| path.to_path_buf())
+    }
+    physical(left) == physical(right)
+}
+
+pub(crate) fn owned_sidecars(paths: &StorePaths) -> DaloResult<Vec<(HookProvider, PathBuf)>> {
+    Ok(read_state(paths)?
+        .entries
+        .into_iter()
+        .map(|entry| (entry.provider, entry.path))
+        .collect())
+}
+
 /// Build the exact reconcile plan without changing provider or store state.
 pub fn plan_sidecar(
     paths: &StorePaths,
@@ -102,7 +120,8 @@ pub fn plan_sidecar(
     let previous = state
         .entries
         .iter()
-        .find(|entry| entry.provider == provider && entry.path == path);
+        .find(|entry| entry.provider == provider && same_sidecar(&entry.path, path));
+    reject_sidecar_symlink(path)?;
     let observed_bytes = match fs::read(path) {
         Ok(bytes) => Some(bytes),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
@@ -202,6 +221,7 @@ pub fn apply_sidecar(
         manifest.push(b'\n');
         write_atomic(&manifest_path, &manifest)?;
     }
+    reject_sidecar_symlink(&plan.path)?;
     let current = match fs::read(&plan.path) {
         Ok(bytes) => Some(bytes),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
@@ -216,6 +236,7 @@ pub fn apply_sidecar(
         });
     }
     if plan.action != HookSidecarAction::Noop {
+        reject_sidecar_symlink(&plan.path)?;
         write_or_remove(&plan.path, plan.desired_bytes.as_deref())?;
     }
     let applied_hash = hash_optional(plan.desired_bytes.as_deref());
@@ -226,9 +247,9 @@ pub fn apply_sidecar(
             return Err(error);
         }
     };
-    state
-        .entries
-        .retain(|entry| !(entry.provider == plan.provider && entry.path == plan.path));
+    state.entries.retain(|entry| {
+        !(entry.provider == plan.provider && same_sidecar(&entry.path, &plan.path))
+    });
     if !plan.owned_hooks.is_empty() {
         state.entries.push(HookSidecarState {
             provider: plan.provider,
@@ -372,7 +393,22 @@ fn hash_optional(bytes: Option<&[u8]>) -> String {
     }
 }
 
+fn reject_sidecar_symlink(path: &Path) -> DaloResult<()> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => Err(DaloError::StateError {
+            reason: format!(
+                "native hook sidecar `{}` is a symlink; refusing to replace it",
+                path.display()
+            ),
+        }),
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
 fn write_or_remove(path: &Path, bytes: Option<&[u8]>) -> DaloResult<()> {
+    reject_sidecar_symlink(path)?;
     match bytes {
         Some(bytes) => write_atomic(path, bytes),
         None => match fs::remove_file(path) {
@@ -442,6 +478,61 @@ mod tests {
             hooks,
             dispatcher_manifest: json!({"schema_version": 1, "hooks": []}),
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn final_symlinks_are_rejected_before_plan_and_after_swap() {
+        let (temp, paths) = fixture();
+        let sidecar = temp.path().join("hooks.json");
+        let foreign = temp.path().join("foreign.json");
+        fs::write(&foreign, "{}").unwrap();
+        let desired = projection(HookProvider::Codex, &"11".repeat(32), "one");
+        std::os::unix::fs::symlink(&foreign, &sidecar).unwrap();
+        assert!(plan_sidecar(&paths, HookProvider::Codex, &sidecar, &desired).is_err());
+        fs::remove_file(&sidecar).unwrap();
+        fs::write(&sidecar, "{}").unwrap();
+        let plan = plan_sidecar(&paths, HookProvider::Codex, &sidecar, &desired).unwrap();
+        fs::remove_file(&sidecar).unwrap();
+        std::os::unix::fs::symlink(&foreign, &sidecar).unwrap();
+        assert!(apply_sidecar(&paths, &desired, plan, false).is_err());
+        assert!(
+            fs::symlink_metadata(&sidecar)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(fs::read_to_string(&foreign).unwrap(), "{}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn aliased_directories_share_ownership() {
+        let (temp, paths) = fixture();
+        let root = temp.path().join("real");
+        fs::create_dir(&root).unwrap();
+        let alias = temp.path().join("alias");
+        std::os::unix::fs::symlink(&root, &alias).unwrap();
+        let sidecar = root.join("hooks.json");
+        let aliased_sidecar = alias.join("hooks.json");
+        let first = projection(HookProvider::Codex, &"11".repeat(32), "one");
+        apply_sidecar(
+            &paths,
+            &first,
+            plan_sidecar(&paths, HookProvider::Codex, &sidecar, &first).unwrap(),
+            false,
+        )
+        .unwrap();
+        let second = projection(HookProvider::Codex, &"22".repeat(32), "two");
+        apply_sidecar(
+            &paths,
+            &second,
+            plan_sidecar(&paths, HookProvider::Codex, &aliased_sidecar, &second).unwrap(),
+            false,
+        )
+        .unwrap();
+        assert_eq!(owned_sidecars(&paths).unwrap().len(), 1);
+        assert!(same_sidecar(&sidecar, &aliased_sidecar));
     }
 
     #[test]

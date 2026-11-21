@@ -274,10 +274,28 @@ pub fn detect_targets(store_root: &Path) -> DaloResult<TargetDetectReport> {
     let paths = StorePaths::new(store_root.to_path_buf());
     let state = read_state_if_initialized(&paths)?;
 
-    let targets = registry()
+    let mut targets = registry()
         .iter()
         .map(|entry| detect_entry(entry, state.as_ref()))
         .collect::<DaloResult<Vec<_>>>()?;
+
+    if let Some(state) = &state {
+        for target in state
+            .targets
+            .iter()
+            .filter(|target| target.enabled && target.provider_id() != target.id)
+        {
+            let entry = registry_entry(target.provider_id())?;
+            targets.push(TargetDetection {
+                id: target.id.clone(),
+                name: entry.name.to_owned(),
+                support: entry.support,
+                path: Some(target.path.clone()),
+                exists: target.path.exists(),
+                linked: true,
+            });
+        }
+    }
 
     Ok(TargetDetectReport { targets })
 }
@@ -289,25 +307,107 @@ pub fn link_target(
     path_override: Option<&Path>,
     dry_run: bool,
 ) -> DaloResult<TargetLinkReport> {
+    link_named_target(store_root, target_id, path_override, None, dry_run)
+}
+
+/// Link a provider under an optional distinct logical name.
+pub fn link_named_target(
+    store_root: &Path,
+    target_id: &str,
+    path_override: Option<&Path>,
+    name: Option<&str>,
+    dry_run: bool,
+) -> DaloResult<TargetLinkReport> {
     let entry = registry_entry(target_id)?;
+    let id = name.unwrap_or(entry.id);
+    if let Some(name) = name {
+        if !valid_instance_name(name) {
+            return Err(DaloError::InvalidArgument {
+                reason: format!("invalid or reserved target name `{name}`"),
+            });
+        }
+        if path_override.is_none() {
+            return Err(DaloError::InvalidArgument {
+                reason: "named targets require an explicit path".to_owned(),
+            });
+        }
+        if matches!(entry.id, "claude" | "codex")
+            && path_override.and_then(Path::file_name) != Some(std::ffi::OsStr::new("skills"))
+        {
+            return Err(DaloError::InvalidArgument {
+                reason: "named Claude and Codex target paths must end in `skills`".to_owned(),
+            });
+        }
+    }
     let path = target_path(entry, path_override)?;
+    let path = if name.is_some() {
+        store::absolute_path(&path)?
+    } else {
+        path
+    };
     let existed_before = fs::symlink_metadata(&path).is_ok();
 
     let paths = StorePaths::new(store_root.to_path_buf());
-    let mut state = if dry_run {
-        None
+    let mut state = if dry_run && name.is_none() && !paths.state_file.exists() {
+        StateFile::default()
     } else {
-        Some(store::read_state(&paths)?)
+        store::read_state(&paths)?
     };
 
     let canonical_path = canonicalize_target_path(&path);
+    if let Some(existing) = state.targets.iter().find(|target| target.id == id)
+        && existing.provider_id() != entry.id
+    {
+        return Err(DaloError::InvalidArgument {
+            reason: format!(
+                "target name `{id}` already belongs to provider `{}`",
+                existing.provider_id()
+            ),
+        });
+    }
+    let updated = upsert_target_state(&mut state, id, &path, &canonical_path)?;
+    if name.is_some() {
+        let target = state
+            .targets
+            .iter_mut()
+            .find(|target| target.id == id)
+            .expect("target just inserted");
+        target.extra.insert(
+            "instance_provider".to_owned(),
+            toml::Value::String(entry.id.to_owned()),
+        );
+    }
+    if matches!(entry.id, "claude" | "codex")
+        && !crate::project::is_project_store(&paths.root)
+        && state.targets.iter().any(|target| {
+            target.enabled && target.provider_id() == entry.id && target.id != entry.id
+        })
+        && let Some(default) = state
+            .targets
+            .iter_mut()
+            .find(|target| target.enabled && target.id == entry.id)
+        && default.pinned_hook_root().is_none()
+    {
+        let root = default_hook_root(entry.id).ok_or_else(|| DaloError::StateError {
+            reason: format!(
+                "HOME is required to pin the {} hook configuration root",
+                entry.id
+            ),
+        })?;
+        let root = store::absolute_path(&root)?;
+        let root = root.to_str().ok_or_else(|| DaloError::StateError {
+            reason: "native hook configuration root is not valid UTF-8".to_owned(),
+        })?;
+        default.extra.insert(
+            "instance_config_root".to_owned(),
+            toml::Value::String(root.to_owned()),
+        );
+    }
+    validate_target_state(&state, !crate::project::is_project_store(&paths.root))
+        .map_err(|reason| DaloError::InvalidArgument { reason })?;
     let status = if dry_run {
         TargetLinkStatus::Planned
     } else {
-        let state = state
-            .as_mut()
-            .expect("state is loaded before non-dry-run target link");
-        let status = upsert_target_state(state, entry.id, &path, &canonical_path)?;
         let created_dirs = if existed_before {
             if !fs::metadata(&path).is_ok_and(|metadata| metadata.is_dir()) {
                 return Err(std::io::Error::new(
@@ -320,19 +420,126 @@ pub fn link_target(
         } else {
             create_target_directories(&path)?
         };
-        if let Err(error) = store::write_state(&paths, state) {
+        if let Err(error) = store::write_state(&paths, &state) {
             remove_created_target_directories(&created_dirs);
             return Err(error);
         }
-        status
+        updated
     };
 
     Ok(TargetLinkReport {
-        target_id: entry.id.to_owned(),
+        target_id: id.to_owned(),
         path,
         canonical_path,
         status,
         created_dir: !existed_before && !dry_run,
+    })
+}
+
+pub(crate) fn valid_instance_name(name: &str) -> bool {
+    name.len() <= 128
+        && name
+            .as_bytes()
+            .first()
+            .is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        && name
+            .bytes()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-' || c == b'_')
+        && !registry().iter().any(|entry| entry.id == name)
+}
+
+pub(crate) fn validate_target_state(
+    state: &StateFile,
+    native_projections: bool,
+) -> Result<(), String> {
+    for (index, target) in state.targets.iter().enumerate() {
+        if target.extra.contains_key("instance_config_root")
+            && (!matches!(target.id.as_str(), "claude" | "codex")
+                || target.extra.contains_key("instance_provider")
+                || !target
+                    .pinned_hook_root()
+                    .is_some_and(|root| root.is_absolute() && !root.as_os_str().is_empty()))
+        {
+            return Err(format!(
+                "invalid pinned hook root for target `{}`",
+                target.id
+            ));
+        }
+        let Some(value) = target.extra.get("instance_provider") else {
+            continue;
+        };
+        let provider = value
+            .as_str()
+            .filter(|provider| registry().iter().any(|entry| entry.id == *provider))
+            .ok_or_else(|| format!("invalid provider for target `{}`", target.id))?;
+        if !valid_instance_name(&target.id) {
+            return Err(format!("invalid named target ID `{}`", target.id));
+        }
+        if !target.path.is_absolute()
+            || !target.canonical_path.is_absolute()
+            || store::comparable_path(&target.path)
+                != store::comparable_path(&target.canonical_path)
+            || (matches!(provider, "codex" | "claude")
+                && target.path.file_name() != Some(std::ffi::OsStr::new("skills")))
+        {
+            return Err(format!(
+                "invalid or changed path for named target `{}`",
+                target.id
+            ));
+        }
+        for (other_index, other) in state.targets.iter().enumerate() {
+            if index == other_index {
+                continue;
+            }
+            if target.id == other.id {
+                return Err(format!("duplicate target ID `{}`", target.id));
+            }
+            if !target.enabled || !other.enabled || provider != other.provider_id() {
+                continue;
+            }
+            let target_path = store::comparable_path(&target.path);
+            let other_path = store::comparable_path(&other.path);
+            let same_skills = target_path == other_path;
+            let same_codex_plugins =
+                native_projections
+                    && provider == "codex"
+                    && target.path.parent().zip(other.path.parent()).is_some_and(
+                        |(left, right)| {
+                            store::comparable_path(left) == store::comparable_path(right)
+                        },
+                    );
+            let same_hooks = native_projections
+                && matches!(provider, "codex" | "claude")
+                && target.path.parent().is_some_and(|root| {
+                    let other_root = other
+                        .configured_hook_root()
+                        .map(Path::to_path_buf)
+                        .or_else(|| default_hook_root(provider));
+                    other_root.is_some_and(|other_root| {
+                        store::comparable_path(root) == store::comparable_path(&other_root)
+                    })
+                });
+            if same_skills || same_codex_plugins || same_hooks {
+                return Err(format!(
+                    "targets `{}` and `{}` share a {provider} destination",
+                    target.id, other.id
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn default_hook_root(provider: &str) -> Option<PathBuf> {
+    let (key, fallback) = match provider {
+        "codex" => ("CODEX_HOME", ".codex"),
+        "claude" => ("CLAUDE_CONFIG_DIR", ".claude"),
+        _ => return None,
+    };
+    env::var_os(key).map(PathBuf::from).or_else(|| {
+        env::var_os("HOME")
+            .map(PathBuf::from)
+            .map(|home| home.join(fallback))
     })
 }
 
@@ -392,10 +599,11 @@ pub fn unlink_target(
     target_id: &str,
     dry_run: bool,
 ) -> DaloResult<TargetUnlinkReport> {
-    registry_entry(target_id)?;
-
     let paths = StorePaths::new(store_root.to_path_buf());
-    let mut state = store::read_state(&paths)?;
+    let mut state = store::read_state_for_target_recovery(&paths)?;
+    if !state.targets.iter().any(|target| target.id == target_id) {
+        registry_entry(target_id)?;
+    }
     let original_len = state.targets.len();
     let linked = state.targets.iter().any(|target| target.id == target_id);
     let status = if dry_run {
@@ -406,6 +614,8 @@ pub fn unlink_target(
         }
     } else {
         state.targets.retain(|target| target.id != target_id);
+        validate_target_state(&state, !crate::project::is_project_store(&paths.root))
+            .map_err(|reason| DaloError::StateError { reason })?;
         state.rebuild_materialization_dirs_for_removal()?;
         store::write_state(&paths, &state)?;
 
@@ -545,6 +755,136 @@ fn upsert_target_state(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn named_targets_preserve_provider_and_reject_conflicts() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("store");
+        let first = temp.path().join("one/skills");
+        let second = temp.path().join("two/skills");
+        store::init_store(root.clone(), false).unwrap();
+        link_target(&root, "claude", Some(&first), false).unwrap();
+        link_named_target(&root, "claude", Some(&second), Some("claude-eg"), false).unwrap();
+        let state = store::read_state(&StorePaths::new(root.clone())).unwrap();
+        assert_eq!(state.schema_version, 2);
+        assert_eq!(state.targets[1].provider_id(), "claude");
+        let pinned = state.targets[0].pinned_hook_root().unwrap().to_path_buf();
+        assert!(
+            detect_targets(&root)
+                .unwrap()
+                .targets
+                .iter()
+                .any(|t| t.id == "claude-eg" && t.linked)
+        );
+        assert!(
+            link_named_target(&root, "codex", Some(&second), Some("claude-eg"), false).is_err()
+        );
+        assert!(link_named_target(&root, "claude", Some(&first), Some("another"), false).is_err());
+        assert!(link_named_target(&root, "claude", Some(&second), Some("codex"), false).is_err());
+        assert!(link_named_target(&root, "claude", Some(&second), Some("../bad"), false).is_err());
+        assert!(link_named_target(&root, "claude", Some(temp.path()), Some("bad"), false).is_err());
+        unlink_target(&root, "claude-eg", false).unwrap();
+        let state = store::read_state(&StorePaths::new(root)).unwrap();
+        assert_eq!(state.targets.len(), 1);
+        assert_eq!(state.targets[0].id, "claude");
+        assert_eq!(state.targets[0].pinned_hook_root(), Some(pinned.as_path()));
+    }
+
+    #[test]
+    fn legacy_state_is_upgraded_when_named_target_is_written() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("store");
+        store::init_store(root.clone(), false).unwrap();
+        let paths = StorePaths::new(root.clone());
+        let original = fs::read_to_string(&paths.state_file).unwrap();
+        fs::write(
+            &paths.state_file,
+            original.replace("schema_version = 2", "schema_version = 1"),
+        )
+        .unwrap();
+        link_named_target(
+            &root,
+            "claude",
+            Some(&temp.path().join("alt/skills")),
+            Some("alt"),
+            false,
+        )
+        .unwrap();
+        assert!(
+            fs::read_to_string(paths.state_file)
+                .unwrap()
+                .contains("schema_version = 2")
+        );
+    }
+
+    #[test]
+    fn legacy_dry_run_does_not_require_initialized_store() {
+        let temp = tempfile::tempdir().unwrap();
+        let result = link_target(
+            &temp.path().join("missing"),
+            "generic",
+            Some(&temp.path().join("skills")),
+            true,
+        )
+        .unwrap();
+        assert_eq!(result.status, TargetLinkStatus::Planned);
+        assert!(!result.path.exists());
+    }
+
+    #[test]
+    fn legacy_unknown_provider_field_stays_inert_after_migration() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("store");
+        store::init_store(root.clone(), false).unwrap();
+        link_target(&root, "generic", Some(&temp.path().join("first")), false).unwrap();
+        let paths = StorePaths::new(root.clone());
+        let original = fs::read_to_string(&paths.state_file).unwrap();
+        let legacy = original
+            .replace("schema_version = 2", "schema_version = 1")
+            .replace(
+                "id = \"generic\"",
+                "id = \"generic\"\nprovider = \"future-value\"",
+            );
+        fs::write(&paths.state_file, legacy).unwrap();
+        link_named_target(
+            &root,
+            "claude",
+            Some(&temp.path().join("alt/skills")),
+            Some("alt"),
+            false,
+        )
+        .unwrap();
+        let state = store::read_state(&paths).unwrap();
+        assert_eq!(state.targets[0].provider_id(), "generic");
+        assert_eq!(
+            state.targets[0].extra["provider"].as_str(),
+            Some("future-value")
+        );
+    }
+
+    #[test]
+    fn named_codex_rejects_shared_legacy_plugin_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("store");
+        store::init_store(root.clone(), false).unwrap();
+        link_target(
+            &root,
+            "codex",
+            Some(&temp.path().join("config/custom")),
+            false,
+        )
+        .unwrap();
+        assert!(
+            link_named_target(
+                &root,
+                "codex",
+                Some(&temp.path().join("config/skills")),
+                Some("other"),
+                true
+            )
+            .is_err()
+        );
+    }
 
     #[test]
     fn registry_should_include_v1_targets() {

@@ -178,14 +178,14 @@ pub fn reconcile(
     for target in state
         .targets
         .iter()
-        .filter(|target| target.enabled && matches!(target.id.as_str(), "codex" | "claude"))
+        .filter(|target| target.enabled && matches!(target.provider_id(), "codex" | "claude"))
     {
         for plugin in projected_plugins
             .iter()
             .filter(|plugin| matches!(plugin.state, PluginState::Selected | PluginState::Blocked))
         {
             let native_name = native_name(&plugin.source_ref);
-            let link_path = install_path(&target.id, &target.path, &native_name)?;
+            let link_path = install_path(target.provider_id(), &target.path, &native_name)?;
             if plugin.state == PluginState::Blocked {
                 reports.push(PluginTargetReport {
                     target: target.id.clone(),
@@ -193,7 +193,7 @@ pub fn reconcile(
                     native_name,
                     path: link_path,
                     artifact_path: PathBuf::new(),
-                    adapter_baseline: baseline(&target.id).to_owned(),
+                    adapter_baseline: baseline(target.provider_id()).to_owned(),
                     projection_hash: String::new(),
                     state: PluginProjectionState::Blocked,
                     components: Vec::new(),
@@ -204,7 +204,7 @@ pub fn reconcile(
             }
             let rendered = match render_package(
                 paths,
-                &target.id,
+                target.provider_id(),
                 plugin,
                 inventories,
                 tools,
@@ -219,7 +219,7 @@ pub fn reconcile(
                         native_name,
                         path: link_path,
                         artifact_path: PathBuf::new(),
-                        adapter_baseline: baseline(&target.id).to_owned(),
+                        adapter_baseline: baseline(target.provider_id()).to_owned(),
                         projection_hash: String::new(),
                         state: PluginProjectionState::Blocked,
                         components: Vec::new(),
@@ -1083,6 +1083,58 @@ mod tests {
         assert_eq!(
             fs::read_to_string(inventories[0].skills[0].path.join("SKILL.md")).expect("source"),
             "---\nname: hello\ndescription: Hello\n---\n\nHello.\n"
+        );
+    }
+
+    #[test]
+    fn named_targets_use_provider_layout_and_independent_ownership() {
+        let root = tempfile::tempdir().expect("temp root");
+        let (paths, mut state, plugins, inventories) = fixture(root.path());
+        for target in &mut state.targets {
+            let provider = target.id.clone();
+            target.id = format!("work-{provider}");
+            target.extra.insert(
+                "instance_provider".to_owned(),
+                toml::Value::String(provider),
+            );
+        }
+        let reports =
+            reconcile(&paths, &state, &plugins, &inventories, &[], &[], false).expect("projection");
+        for report in &reports {
+            assert!(
+                report
+                    .artifact_path
+                    .starts_with(paths.plugins_dir.join("artifacts").join(&report.target))
+            );
+            if report.target == "work-codex" {
+                assert!(
+                    report
+                        .path
+                        .starts_with(root.path().join("codex/plugins/dalo"))
+                );
+                assert!(report.path.join(".codex-plugin/plugin.json").is_file());
+            } else {
+                assert!(report.path.starts_with(root.path().join("claude/skills")));
+                assert!(report.path.join(".claude-plugin/plugin.json").is_file());
+            }
+        }
+        state.targets[0].enabled = false;
+        reconcile(&paths, &state, &plugins, &inventories, &[], &[], false).expect("disable");
+        assert!(
+            !reports
+                .iter()
+                .find(|report| report.target == "work-codex")
+                .unwrap()
+                .path
+                .exists()
+        );
+        assert!(
+            reports
+                .iter()
+                .find(|report| report.target == "work-claude")
+                .unwrap()
+                .path
+                .exists()
         );
     }
 

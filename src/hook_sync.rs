@@ -92,7 +92,7 @@ impl fmt::Display for HookTargetState {
 
 #[derive(Debug, Clone)]
 struct ProviderFacts {
-    target: &'static str,
+    target: String,
     provider: HookProvider,
     sidecar: PathBuf,
     version: Option<String>,
@@ -144,11 +144,17 @@ fn reconcile_with_loaded_hooks(
     }
     let executable = env::current_exe()?;
     let mut reports = Vec::new();
-    for target in state.targets.iter().filter(|target| target.enabled) {
-        if !matches!(target.id.as_str(), "codex" | "claude") {
+    let mut active_sidecars = Vec::new();
+    let mut versions = std::collections::BTreeMap::new();
+    for target in &state.targets {
+        if !matches!(target.provider_id(), "codex" | "claude") {
             continue;
         }
-        let facts = provider_facts(&target.id)?;
+        let facts = provider_facts(target, &mut versions)?;
+        active_sidecars.push(facts.sidecar.clone());
+        if !target.enabled {
+            continue;
+        }
         let selected = hooks
             .iter()
             .filter(|status| {
@@ -168,6 +174,44 @@ fn reconcile_with_loaded_hooks(
             &selected,
             dry_run,
         ));
+    }
+    for (provider, sidecar) in hook_sidecar::owned_sidecars(paths)? {
+        if !sidecar.is_absolute()
+            || active_sidecars
+                .iter()
+                .any(|active| hook_sidecar::same_sidecar(active, &sidecar))
+        {
+            continue;
+        }
+        let facts = ProviderFacts {
+            target: match provider {
+                HookProvider::Codex => "codex",
+                HookProvider::Claude => "claude",
+            }
+            .to_owned(),
+            provider,
+            sidecar,
+            version: None,
+            runtime_available: false,
+            hooks_enabled: true,
+            plugin_hooks_allowed: true,
+        };
+        let result = remove_owned_projection(paths, &facts, &executable, dry_run);
+        reports.push(match result {
+            Ok(action) => report(
+                &facts,
+                if dry_run && action != HookSidecarAction::Noop {
+                    HookTargetState::Planned
+                } else {
+                    HookTargetState::Ready
+                },
+                Some(action),
+                0,
+                dry_run,
+                "stale owned hook entries removed",
+            ),
+            Err(error) => report(&facts, HookTargetState::Conflict, None, 0, dry_run, &error),
+        });
     }
     reports.sort_by(|left, right| left.target.cmp(&right.target));
     Ok(reports)
@@ -440,17 +484,20 @@ pub(crate) fn is_human_output_inert(target: &HookTargetReport) -> bool {
         && target.diagnostic == NO_SELECTED_PORTABLE_HOOKS
 }
 
-fn provider_facts(target: &str) -> DaloResult<ProviderFacts> {
-    let home = env::var_os("HOME")
-        .map(PathBuf::from)
+fn provider_facts(
+    target: &crate::store::TargetState,
+    versions: &mut std::collections::BTreeMap<String, (bool, Option<String>)>,
+) -> DaloResult<ProviderFacts> {
+    let root = target
+        .configured_hook_root()
+        .map(Path::to_path_buf)
+        .or_else(|| crate::target::default_hook_root(target.provider_id()))
         .ok_or_else(|| DaloError::StateError {
             reason: "HOME is required to resolve native provider hook files".to_owned(),
         })?;
-    match target {
+    let root = crate::store::comparable_path(&crate::store::absolute_path(&root)?);
+    match target.provider_id() {
         "codex" => {
-            let root = env::var_os("CODEX_HOME")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| home.join(".codex"));
             let config = read_toml(&root.join("config.toml"));
             let hooks_enabled = config
                 .as_ref()
@@ -463,9 +510,16 @@ fn provider_facts(target: &str) -> DaloResult<ProviderFacts> {
                 .and_then(|value| value.get("allow_managed_hooks_only"))
                 .and_then(toml::Value::as_bool)
                 .unwrap_or(false);
-            let (runtime_available, version) = provider_version("codex", "codex-cli ");
+            let (runtime_available, version) = if target.enabled {
+                versions
+                    .entry("codex".to_owned())
+                    .or_insert_with(|| provider_version("codex", "codex-cli "))
+                    .clone()
+            } else {
+                (false, None)
+            };
             Ok(ProviderFacts {
-                target: "codex",
+                target: target.id.clone(),
                 provider: HookProvider::Codex,
                 sidecar: root.join("hooks.json"),
                 version,
@@ -475,18 +529,22 @@ fn provider_facts(target: &str) -> DaloResult<ProviderFacts> {
             })
         }
         "claude" => {
-            let root = env::var_os("CLAUDE_CONFIG_DIR")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| home.join(".claude"));
             let settings = read_json(&root.join("settings.json"));
             let hooks_enabled = settings
                 .as_ref()
                 .and_then(|value| value.get("disableAllHooks"))
                 .and_then(serde_json::Value::as_bool)
                 != Some(true);
-            let (runtime_available, version) = provider_version("claude", "");
+            let (runtime_available, version) = if target.enabled {
+                versions
+                    .entry("claude".to_owned())
+                    .or_insert_with(|| provider_version("claude", ""))
+                    .clone()
+            } else {
+                (false, None)
+            };
             Ok(ProviderFacts {
-                target: "claude",
+                target: target.id.clone(),
                 provider: HookProvider::Claude,
                 sidecar: root.join("settings.json"),
                 version,
@@ -638,7 +696,7 @@ mod tests {
 
     fn facts(sidecar: PathBuf, runtime_available: bool, version: Option<&str>) -> ProviderFacts {
         ProviderFacts {
-            target: "codex",
+            target: "codex".to_owned(),
             provider: HookProvider::Codex,
             sidecar,
             version: version.map(str::to_owned),

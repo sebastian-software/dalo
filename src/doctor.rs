@@ -460,7 +460,11 @@ pub fn run_doctor(store_root: &Path) -> DoctorReport {
                 crate::plan::attach_tool_status_from_report(&mut plan, &tools.tools);
             }
             if let Some(hooks) = hook_report.as_ref() {
-                crate::plan::attach_hook_status_from_report(&mut plan, &hooks.hooks);
+                crate::plan::attach_hook_status_from_report_with_state(
+                    &mut plan,
+                    &hooks.hooks,
+                    state,
+                );
             }
             Some(plan)
         }
@@ -1165,6 +1169,16 @@ fn check_targets(state: &StateFile, findings: &mut Vec<DoctorFinding>) {
                 ),
             ));
         } else {
+            let relink = if target.id == target.provider_id() {
+                format!("dalo target link {}", target.id)
+            } else {
+                format!(
+                    "dalo target link {} {} --name {}",
+                    target.provider_id(),
+                    crate::error::shell_quote_path(&target.path),
+                    target.id
+                )
+            };
             findings.push(finding_warning(
                 DoctorCode::TargetMissing,
                 format!(
@@ -1172,7 +1186,7 @@ fn check_targets(state: &StateFile, findings: &mut Vec<DoctorFinding>) {
                     target.id,
                     target.path.display()
                 ),
-                Some(format!("dalo target link {}", target.id)),
+                Some(relink),
             ));
         }
 
