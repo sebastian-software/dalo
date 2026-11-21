@@ -8,6 +8,23 @@ use serde::Serialize;
 
 fn main() -> ExitCode {
     sigpipe::reset();
+    let mut arguments = std::env::args_os().skip(1);
+    if arguments.next().as_deref()
+        == Some(std::ffi::OsStr::new(
+            app_tracking::client::BACKGROUND_WORKER_ARGUMENT,
+        ))
+    {
+        return if arguments
+            .next()
+            .as_deref()
+            .and_then(std::ffi::OsStr::to_str)
+            .is_some_and(dalo::telemetry::run_worker)
+        {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::FAILURE
+        };
+    }
     #[cfg(target_os = "linux")]
     if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("__delivery-sandbox")) {
         return match dalo::delivery::run_linux_delivery_sandbox(
@@ -21,6 +38,7 @@ fn main() -> ExitCode {
         };
     }
     let cli = Cli::parse_args();
+    dalo::telemetry::record_invocation(&cli);
     term::set_color_choice(cli.color);
     let json = cli.json;
     let store_root = cli.resolved_store().ok();

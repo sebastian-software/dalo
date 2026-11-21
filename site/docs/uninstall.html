@@ -101,6 +101,11 @@
   <article class="doc-body">
 <h1 id="uninstall-dalo">Uninstall Dalo</h1>
 <p>This guide removes Dalo without leaving broken Dalo-owned symlinks in agent folders.</p>
+<p>If you enabled optional usage reporting, run <code>dalo telemetry disable</code> to
+withdraw consent and discard unsent usage. To request deletion of retained
+reports, run <code>dalo telemetry delete</code> while online and check
+<code>dalo telemetry status</code>. Keep the binary and the private reporting state
+until pending deletion clears. See <a href="/docs/reference.html#optional-usage-reporting">Optional usage reporting</a>.</p>
 <h2 id="1-inspect-current-state"><a class="doc-anchor" href="#1-inspect-current-state">1. Inspect Current State</a></h2>
 <p>Run:</p>
 <pre><code class="language-sh">dalo target detect

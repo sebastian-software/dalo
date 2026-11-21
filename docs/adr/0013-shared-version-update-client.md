@@ -29,7 +29,13 @@ partition checks or cache state. The
 
 Existing disabled/offline/CI/JSON policies remain effective. The update-only
 client creates no telemetry identity, project hash, invocation count, or
-reporting queue. Future telemetry remains a separate opt-in integration.
+reporting queue. Optional usage reporting uses a separate SDK client and
+requires explicit consent through [Dalo telemetry settings](../reference.md#optional-usage-reporting).
+The native executable owns invocation accounting across installation channels.
+The SDK owns consent, local aggregation, and authenticated background delivery.
+CI authorization is separate from the personal profile. Dalo uses the
+registered command categories and supplies the repository origin only after
+the SDK confirms collection is allowed.
 
 ## Consequences
 

@@ -2,6 +2,12 @@
 
 This guide removes Dalo without leaving broken Dalo-owned symlinks in agent folders.
 
+If you enabled optional usage reporting, run `dalo telemetry disable` to
+withdraw consent and discard unsent usage. To request deletion of retained
+reports, run `dalo telemetry delete` while online and check
+`dalo telemetry status`. Keep the binary and the private reporting state
+until pending deletion clears. See [Optional usage reporting](reference.md#optional-usage-reporting).
+
 ## 1. Inspect Current State
 
 Run:

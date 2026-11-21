@@ -37,9 +37,13 @@ interactive initialization, and the versioned definition.
 | Variable | Purpose |
 | --- | --- |
 | `DALO_STORE` | Override the default store path; `--store` takes precedence. |
-| `DALO_GIT_TIMEOUT_SECS` | Positive timeout in seconds for every Git subprocess. Invalid or zero values use the built-in defaults. |
-| `DALO_OFFLINE` | Disable passive update checks when set to a truthy value. |
+| `DALO_GIT_TIMEOUT_SECS` | Positive timeout in seconds for ordinary Git subprocesses. Invalid or zero values use the built-in defaults. Optional reporting uses a separate short bound for its local origin lookup. |
+| `DALO_OFFLINE` | Skip passive update checks and usage-reporting network requests, including deletion. |
 | `DALO_UPDATE_CHECK` | Set to `never` to disable passive update checks. |
+| `DO_NOT_TRACK` | Set to `1` to stop usage collection and discard its unsent data. Update checks still work and request no aggregate service statistics. |
+| `APP_TRACKING_TELEMETRY` | `off` or any value other than `on` suppresses usage reporting. `on` and an unset variable allow Dalo to evaluate the saved choice. |
+| `APP_TRACKING_CI` | `telemetry-v1` identifies the disclosure reviewed by a CI operator before running `dalo telemetry enable-ci`. |
+| `DALO_TELEMETRY_CI_STATE` | Absolute path to an existing private directory dedicated to the authorized CI job. |
 | `DALO_ASSISTANT_CHECK` | Set to `never` to disable automatic bundled assistant preparation and target delivery during setup/sync. Explicit assistant commands still work; an installed bundle remains eligible for ordinary sync. |
 | `DALO_INSTALL_CHANNEL` | Installation context set by a launcher so the update notice recommends the matching upgrade command. |
 | `NO_COLOR` | Disable ANSI color output when set. |
@@ -91,7 +95,7 @@ remain eligible and keep installation-specific or generic upgrade guidance.
 
 Checks are skipped for `--json`, CI, noninteractive stderr, `DALO_OFFLINE=1`,
 and `DALO_UPDATE_CHECK=never` (also `off`, `false`, and `0`, case-insensitively).
-`assistant`, `plugin validate`, migration, completion, and manpage commands also
+`assistant`, `telemetry`, `plugin validate`, migration, completion, and manpage commands also
 skip checks. Global and project commands follow the same eligibility policy.
 The native CLI owns the check; npm wrappers pass installation context and do
 not perform a second passive check. Explicit `DALO_VERSION=latest` installer
@@ -120,14 +124,60 @@ a nonblocking process lock coordinates checks and notices. A busy invocation
 returns immediately. Old `last-check` and `notified-*` files remain untouched
 and are no longer read. Deleting this advisory cache costs another check.
 
-No telemetry identity, repository URL/hash, invocation counter, or reporting
-queue is created or transmitted. The request contains only the public route,
+The update client creates no telemetry identity, repository URL/hash, invocation
+counter, or reporting queue. Its request contains only the public route,
 fixed client user agent, and an optional ETag. `DO_NOT_TRACK=1` additionally
 sends `DNT: 1` to opt out of aggregate service metrics while preserving update
 checks (empty, `0`, `false`, and `off` leave metrics enabled). The service may
 process ordinary transport metadata; update delivery is independent of future
-opt-in telemetry.
+opt-in [usage reporting](#optional-usage-reporting).
 See [ADR 0013](adr/0013-shared-version-update-client.md).
+
+## Optional Usage Reporting
+
+Usage reporting is off by default. An interactive `dalo telemetry enable`
+displays the disclosure and asks for a choice. Ordinary commands and JSON
+output never prompt. The saved choice applies to this Dalo profile regardless
+of which store or project is selected. Reporting uses the published
+app-tracking client and its fixed category catalog.
+
+| Command | Effect |
+| --- | --- |
+| `dalo telemetry enable` | Review the disclosure and make or reconsider a local choice in a terminal. |
+| `dalo --json telemetry status` | Inspect the saved decision, effective collection, queued batch and open counter counts, and whether deletion is pending. |
+| `dalo telemetry preview` | Print the locally held counters and queued payloads as JSON, without credentials. |
+| `dalo telemetry disable` | Withdraw permission and discard unsent usage. |
+| `dalo telemetry delete` | Stop reporting, discard unsent usage, and request authenticated deletion of previously received reports. Keep the local state until pending deletion clears. |
+
+The SDK stores a separate identity and queue below
+`${XDG_STATE_HOME:-~/.local/state}/dalo/app-tracking`. With consent, Dalo
+counts one invocation in the native executable, including calls from the npm
+launcher. Dry runs, management of reporting settings, and internal workers
+are excluded. Local aggregation records UTC day, tool version, and the
+allowlisted command category. Reports also include a random tool-scoped
+installation ID, batch ID, consent time, local or CI context, and categorical
+system information. When Dalo resolves a project with an unambiguous
+supported Git origin, the SDK hashes its normalized origin locally. That
+hash is pseudonymous. Arguments, raw repository URLs, paths, skill names
+and contents, and credentials do not appear in usage payloads.
+
+With `DALO_OFFLINE=1`, consented usage can queue locally and deletion stays
+pending. A later online invocation or another explicit delete request can
+resume a pending deletion. Disabling collection leaves existing server
+reports subject to the published retention limit. Monthly history, profile
+linking, and public totals require separate permissions and are outside
+Dalo's usage reporting controls.
+
+CI reporting requires an operator to review the disclosure, set
+`APP_TRACKING_CI=telemetry-v1`, point `DALO_TELEMETRY_CI_STATE` at an
+existing private directory dedicated to the job, and explicitly run
+`dalo telemetry enable-ci` in that CI environment. The invocation then
+applies only to that isolated CI state. Keep it separate from user state
+and shared CI caches. Ordinary CI commands never create a grant.
+
+See the [reporting explanation](https://app-tracking.sebastian-software.com/)
+and [privacy notice](https://sebastian-software.com/privacy#tool-usage-reports)
+for the controller, processors, retention, deletion, and rights.
 
 ## Command Reference
 

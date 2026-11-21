@@ -19,6 +19,7 @@ macro_rules! apply_test_environment {
         $command
             .env_remove("DALO_STORE")
             .env_remove("DALO_GENERATOR_TIMEOUT_SECS")
+            .env_remove("DALO_TELEMETRY_CI_STATE")
             .env("DALO_UPDATE_CHECK", "never")
             .env("DALO_ASSISTANT_CHECK", "never")
             .env("HOME", &$environment.home)
@@ -28,6 +29,10 @@ macro_rules! apply_test_environment {
             .env("XDG_CONFIG_HOME", $environment.xdg_config_home())
             .env("XDG_DATA_HOME", $environment.xdg_data_home())
             .env("XDG_CACHE_HOME", $environment.xdg_cache_home())
+            .env(
+                "XDG_STATE_HOME",
+                $environment._root.path().join("xdg/state"),
+            )
             .env("GIT_CONFIG_GLOBAL", "/dev/null")
             .env("GIT_CONFIG_NOSYSTEM", "1")
             .env("GIT_TERMINAL_PROMPT", "0")

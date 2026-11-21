@@ -1004,6 +1004,8 @@ refute 'the site targets section still advertises an unverified target path' \
 # assistant's automatic setup is exercised explicitly below.
 export DALO_ASSISTANT_CHECK=never
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/dalo-docs-test.XXXXXX")"
+export XDG_STATE_HOME="$test_root/state"
+unset DALO_TELEMETRY_CI_STATE
 
 cleanup() {
   rm -rf "$test_root"

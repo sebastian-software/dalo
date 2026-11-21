@@ -480,6 +480,26 @@ pub fn remote_url(path: &Path, remote: &str) -> DaloResult<String> {
     run_git(path, &["remote", "get-url", remote]).map(|output| output.trim().to_owned())
 }
 
+pub(crate) fn telemetry_origin(path: &Path) -> Option<String> {
+    let configured = run_git_program(
+        "git",
+        path,
+        &[
+            "config",
+            "--local",
+            "--includes",
+            "--null",
+            "--get-all",
+            "remote.origin.url",
+        ],
+        Duration::from_millis(200),
+    )
+    .ok()?;
+    let origin = configured.strip_suffix('\0')?;
+    (!origin.is_empty() && !origin.contains('\0') && !origin.contains('\u{fffd}'))
+        .then(|| origin.to_owned())
+}
+
 /// List changed paths, including untracked files, from porcelain's NUL-safe output.
 /// Renames report both paths so callers can enforce a narrow changed subtree.
 pub fn status_paths(path: &Path) -> DaloResult<Vec<PathBuf>> {

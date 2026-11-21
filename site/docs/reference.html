@@ -139,15 +139,31 @@ interactive initialization, and the versioned definition.</p>
 </tr>
 <tr>
 <td><code>DALO_GIT_TIMEOUT_SECS</code></td>
-<td>Positive timeout in seconds for every Git subprocess. Invalid or zero values use the built-in defaults.</td>
+<td>Positive timeout in seconds for ordinary Git subprocesses. Invalid or zero values use the built-in defaults. Optional reporting uses a separate short bound for its local origin lookup.</td>
 </tr>
 <tr>
 <td><code>DALO_OFFLINE</code></td>
-<td>Disable passive update checks when set to a truthy value.</td>
+<td>Skip passive update checks and usage-reporting network requests, including deletion.</td>
 </tr>
 <tr>
 <td><code>DALO_UPDATE_CHECK</code></td>
 <td>Set to <code>never</code> to disable passive update checks.</td>
+</tr>
+<tr>
+<td><code>DO_NOT_TRACK</code></td>
+<td>Set to <code>1</code> to stop usage collection and discard its unsent data. Update checks still work and request no aggregate service statistics.</td>
+</tr>
+<tr>
+<td><code>APP_TRACKING_TELEMETRY</code></td>
+<td><code>off</code> or any value other than <code>on</code> suppresses usage reporting. <code>on</code> and an unset variable allow Dalo to evaluate the saved choice.</td>
+</tr>
+<tr>
+<td><code>APP_TRACKING_CI</code></td>
+<td><code>telemetry-v1</code> identifies the disclosure reviewed by a CI operator before running <code>dalo telemetry enable-ci</code>.</td>
+</tr>
+<tr>
+<td><code>DALO_TELEMETRY_CI_STATE</code></td>
+<td>Absolute path to an existing private directory dedicated to the authorized CI job.</td>
 </tr>
 <tr>
 <td><code>DALO_ASSISTANT_CHECK</code></td>
@@ -234,7 +250,7 @@ npm/npx, Cargo, Nix, Debian, mise, hosted-installer, and unknown installations
 remain eligible and keep installation-specific or generic upgrade guidance.</p>
 <p>Checks are skipped for <code>--json</code>, CI, noninteractive stderr, <code>DALO_OFFLINE=1</code>,
 and <code>DALO_UPDATE_CHECK=never</code> (also <code>off</code>, <code>false</code>, and <code>0</code>, case-insensitively).
-<code>assistant</code>, <code>plugin validate</code>, migration, completion, and manpage commands also
+<code>assistant</code>, <code>telemetry</code>, <code>plugin validate</code>, migration, completion, and manpage commands also
 skip checks. Global and project commands follow the same eligibility policy.
 The native CLI owns the check; npm wrappers pass installation context and do
 not perform a second passive check. Explicit <code>DALO_VERSION=latest</code> installer
@@ -259,14 +275,74 @@ and retry state, and the last offered notice. Writes use atomic replacement;
 a nonblocking process lock coordinates checks and notices. A busy invocation
 returns immediately. Old <code>last-check</code> and <code>notified-*</code> files remain untouched
 and are no longer read. Deleting this advisory cache costs another check.</p>
-<p>No telemetry identity, repository URL/hash, invocation counter, or reporting
-queue is created or transmitted. The request contains only the public route,
+<p>The update client creates no telemetry identity, repository URL/hash, invocation
+counter, or reporting queue. Its request contains only the public route,
 fixed client user agent, and an optional ETag. <code>DO_NOT_TRACK=1</code> additionally
 sends <code>DNT: 1</code> to opt out of aggregate service metrics while preserving update
 checks (empty, <code>0</code>, <code>false</code>, and <code>off</code> leave metrics enabled). The service may
 process ordinary transport metadata; update delivery is independent of future
-opt-in telemetry.
+opt-in <a href="#optional-usage-reporting">usage reporting</a>.
 See <a href="https://github.com/sebastian-software/dalo/blob/main/docs/adr/0013-shared-version-update-client.md" rel="noopener">ADR 0013</a>.</p>
+<h2 id="optional-usage-reporting"><a class="doc-anchor" href="#optional-usage-reporting">Optional Usage Reporting</a></h2>
+<p>Usage reporting is off by default. An interactive <code>dalo telemetry enable</code>
+displays the disclosure and asks for a choice. Ordinary commands and JSON
+output never prompt. The saved choice applies to this Dalo profile regardless
+of which store or project is selected. Reporting uses the published
+app-tracking client and its fixed category catalog.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>dalo telemetry enable</code></td>
+<td>Review the disclosure and make or reconsider a local choice in a terminal.</td>
+</tr>
+<tr>
+<td><code>dalo --json telemetry status</code></td>
+<td>Inspect the saved decision, effective collection, queued batch and open counter counts, and whether deletion is pending.</td>
+</tr>
+<tr>
+<td><code>dalo telemetry preview</code></td>
+<td>Print the locally held counters and queued payloads as JSON, without credentials.</td>
+</tr>
+<tr>
+<td><code>dalo telemetry disable</code></td>
+<td>Withdraw permission and discard unsent usage.</td>
+</tr>
+<tr>
+<td><code>dalo telemetry delete</code></td>
+<td>Stop reporting, discard unsent usage, and request authenticated deletion of previously received reports. Keep the local state until pending deletion clears.</td>
+</tr>
+</tbody></table></div>
+<p>The SDK stores a separate identity and queue below
+<code>${XDG_STATE_HOME:-~/.local/state}/dalo/app-tracking</code>. With consent, Dalo
+counts one invocation in the native executable, including calls from the npm
+launcher. Dry runs, management of reporting settings, and internal workers
+are excluded. Local aggregation records UTC day, tool version, and the
+allowlisted command category. Reports also include a random tool-scoped
+installation ID, batch ID, consent time, local or CI context, and categorical
+system information. When Dalo resolves a project with an unambiguous
+supported Git origin, the SDK hashes its normalized origin locally. That
+hash is pseudonymous. Arguments, raw repository URLs, paths, skill names
+and contents, and credentials do not appear in usage payloads.</p>
+<p>With <code>DALO_OFFLINE=1</code>, consented usage can queue locally and deletion stays
+pending. A later online invocation or another explicit delete request can
+resume a pending deletion. Disabling collection leaves existing server
+reports subject to the published retention limit. Monthly history, profile
+linking, and public totals require separate permissions and are outside
+Dalo&#39;s usage reporting controls.</p>
+<p>CI reporting requires an operator to review the disclosure, set
+<code>APP_TRACKING_CI=telemetry-v1</code>, point <code>DALO_TELEMETRY_CI_STATE</code> at an
+existing private directory dedicated to the job, and explicitly run
+<code>dalo telemetry enable-ci</code> in that CI environment. The invocation then
+applies only to that isolated CI state. Keep it separate from user state
+and shared CI caches. Ordinary CI commands never create a grant.</p>
+<p>See the <a href="https://app-tracking.sebastian-software.com/" rel="noopener">reporting explanation</a>
+and <a href="https://sebastian-software.com/privacy#tool-usage-reports" rel="noopener">privacy notice</a>
+for the controller, processors, retention, deletion, and rights.</p>
 <h2 id="command-reference"><a class="doc-anchor" href="#command-reference">Command Reference</a></h2>
 <p>Commands that act on a project declaration have their own sections further
 down: <a href="#dalo-install"><code>dalo install</code></a>, <a href="#dalo-project-add"><code>dalo project add</code></a>,
@@ -3215,6 +3291,7 @@ PR URL when created.</p>
       <li><a href="#environment-variables">Environment Variables</a></li>
       <li><a href="#global-flags">Global Flags</a></li>
       <li><a href="#update-notices">Update Notices</a></li>
+      <li><a href="#optional-usage-reporting">Optional Usage Reporting</a></li>
       <li><a href="#command-reference">Command Reference</a></li>
       <li><a href="#exit-codes">Exit Codes</a></li>
       <li><a href="#json-output-shapes">JSON Output Shapes</a></li>
