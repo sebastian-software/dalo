@@ -73,7 +73,7 @@ version it does not support instead of guessing.
 | File | Location | Version field | Current |
 | --- | --- | --- | --- |
 | [`config.toml`](reference.md#configtoml) | store root | `version` | `2` (version `1` is read and migrated forward) |
-| [`state.toml`](reference.md#statetoml) | store root | `schema_version` | `1` |
+| [`state.toml`](reference.md#statetoml) | store root | `schema_version` | `2` (version `1` is read and migrated forward) |
 | [`lock.toml`](reference.md#locktoml) | store root | `schema_version` | `6` (versions `1`–`5` are read and migrated forward) |
 | [`approvals.toml`](reference.md#approvalstoml) | store root | `schema_version` | `1` |
 | [`source-lock.toml`](reference.md#source-locktoml) | store root | `schema_version` | `3` (versions `1` and `2` are read and migrated forward) |

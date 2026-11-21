@@ -40,8 +40,13 @@ the target and delivers only the bundled assistant on current releases; it does
 not adopt other existing content. Continue with migration if that
 directory is populated.
 
-One target ID currently holds one path. Reusing it with another path changes
-its existing assignment. For skills that belong to a repository, use Dalo's
+Each target ID holds one path. Reusing it with another path updates that
+assignment. To link a second installation of a provider, give it a distinct name
+and an explicit path, for example
+`dalo target link claude ~/.claude-eg/skills --name claude-eg`. For named Claude
+and Codex installations, use the `skills` directory inside the installation's
+configuration root so its hooks and plugins can be projected independently.
+For skills that belong to a repository, use Dalo's
 project definition instead of redirecting the global store into the repository.
 If `dalo-project.toml` exists, preview a pinned selection with `dalo project add`,
 review its source, commit, skills, and targets, then apply the exact commit and

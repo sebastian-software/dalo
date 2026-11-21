@@ -299,7 +299,7 @@ pub fn build_installation_plan(
         &tools.tools,
     )?;
     attach_tool_status_from_report(&mut plan, &tools.tools);
-    attach_hook_status_from_report(&mut plan, &hooks.hooks);
+    attach_hook_status_from_report_with_state(&mut plan, &hooks.hooks, &state);
     plan.native_plugins = crate::plugin_projection::reconcile(
         &paths,
         &state,
@@ -376,6 +376,7 @@ fn build_from_facts_with_skill_slots(
         .filter_map(|destination| {
             destination_plan(
                 destination,
+                state,
                 plugins,
                 inventories,
                 active_skills,
@@ -413,15 +414,35 @@ fn build_from_facts_with_skill_slots(
 /// [`attach_hook_status_from_report`] instead.
 pub fn attach_hook_status(plan: &mut InstallationPlan, paths: &StorePaths) -> DaloResult<()> {
     let hooks = crate::hook::list(paths)?.hooks;
-    attach_hook_status_from_report(plan, &hooks);
+    let state = store::read_state(paths)?;
+    attach_hook_status_from_report_with_state(plan, &hooks, &state);
     Ok(())
 }
 
 /// Attach independently approved hook facts from a precomputed report.
 pub fn attach_hook_status_from_report(plan: &mut InstallationPlan, hooks: &[HookStatusReport]) {
+    attach_hook_status_impl(plan, hooks, None);
+}
+
+pub(crate) fn attach_hook_status_from_report_with_state(
+    plan: &mut InstallationPlan,
+    hooks: &[HookStatusReport],
+    state: &StateFile,
+) {
+    attach_hook_status_impl(plan, hooks, Some(state));
+}
+
+fn attach_hook_status_impl(
+    plan: &mut InstallationPlan,
+    hooks: &[HookStatusReport],
+    state: Option<&StateFile>,
+) {
     plan.hooks = hooks.to_vec();
     for destination in &mut plan.destinations {
         for target in &mut destination.logical_targets {
+            let configured =
+                state.and_then(|state| state.targets.iter().find(|item| item.id == target.id));
+            let provider_id = configured.map_or(target.id.as_str(), |item| item.provider_id());
             for plugin in &mut target.plugins {
                 let prefix = format!("{}#hook:", plugin.source_ref);
                 for status in plan
@@ -433,7 +454,7 @@ pub fn attach_hook_status_from_report(plan: &mut InstallationPlan, hooks: &[Hook
                         HookRequirement::Required => MemberRequirement::Required,
                         HookRequirement::Optional => MemberRequirement::Optional,
                     };
-                    let provider = match target.id.as_str() {
+                    let provider = match provider_id {
                         "codex" => Some(HookProvider::Codex),
                         "claude" => Some(HookProvider::Claude),
                         _ => None,
@@ -527,12 +548,26 @@ pub fn attach_hook_status_from_report(plan: &mut InstallationPlan, hooks: &[Hook
                         compatibility,
                         authored_fallback: optional_omit.then(|| "omit".to_owned()),
                         selected_fallback: (!supported && optional_omit).then(|| "omit".to_owned()),
-                        proposed_artifact: match target.id.as_str() {
-                            "codex" => "~/.codex/hooks.json (Dalo-owned hook groups)",
-                            "claude" => "~/.claude/settings.json (Dalo-owned hook groups)",
-                            _ => "no verified native hook sidecar",
-                        }
-                        .to_owned(),
+                        proposed_artifact: match (
+                            provider_id,
+                            configured.and_then(|item| item.configured_hook_root()),
+                        ) {
+                            ("codex" | "claude", Some(root)) => {
+                                let name = if provider_id == "codex" {
+                                    "hooks.json"
+                                } else {
+                                    "settings.json"
+                                };
+                                format!("{} (Dalo-owned hook groups)", root.join(name).display())
+                            }
+                            ("codex", _) => {
+                                "~/.codex/hooks.json (Dalo-owned hook groups)".to_owned()
+                            }
+                            ("claude", _) => {
+                                "~/.claude/settings.json (Dalo-owned hook groups)".to_owned()
+                            }
+                            _ => "no verified native hook sidecar".to_owned(),
+                        },
                         blocker: if suppressed { None } else { blocker },
                         remediation,
                     });
@@ -684,6 +719,7 @@ fn tool_plan_facts(
 
 fn destination_plan(
     destination: &MaterializationDirState,
+    state: &StateFile,
     plugins: &PluginResolution,
     inventories: &[SourceInventory],
     active_skills: Option<&[crate::resolver::ResolvedSkill]>,
@@ -697,6 +733,11 @@ fn destination_plan(
         .map(|target| {
             logical_target_plan(
                 target,
+                state
+                    .targets
+                    .iter()
+                    .find(|candidate| candidate.id == *target)
+                    .map_or(target.as_str(), |candidate| candidate.provider_id()),
                 plugins,
                 inventories,
                 active_skills,
@@ -724,6 +765,7 @@ fn destination_plan(
 
 fn logical_target_plan(
     target: &str,
+    provider: &str,
     plugins: &PluginResolution,
     inventories: &[SourceInventory],
     active_skills: Option<&[crate::resolver::ResolvedSkill]>,
@@ -736,6 +778,7 @@ fn logical_target_plan(
         .map(|plugin| {
             target_plugin_plan(
                 target,
+                provider,
                 plugin,
                 inventories,
                 active_skills,
@@ -747,13 +790,14 @@ fn logical_target_plan(
     target_plugins.sort_by(|left, right| left.source_ref.cmp(&right.source_ref));
     LogicalTargetPlan {
         id: target.to_owned(),
-        verification_baseline: verification_baseline(target).to_owned(),
+        verification_baseline: verification_baseline(provider).to_owned(),
         plugins: target_plugins,
     }
 }
 
 fn target_plugin_plan(
     target: &str,
+    provider: &str,
     plugin: &crate::plugin::ResolvedPlugin,
     inventories: &[SourceInventory],
     active_skills: Option<&[crate::resolver::ResolvedSkill]>,
@@ -767,6 +811,7 @@ fn target_plugin_plan(
         .map(|member| {
             component_plan(
                 target,
+                provider,
                 member,
                 inventories,
                 active_skills,
@@ -847,6 +892,7 @@ fn target_plugin_plan(
 
 fn component_plan(
     target: &str,
+    provider: &str,
     member: &crate::plugin::ResolvedPluginMember,
     inventories: &[SourceInventory],
     active_skills: Option<&[crate::resolver::ResolvedSkill]>,
@@ -903,7 +949,7 @@ fn component_plan(
                 .flat_map(|inventory| &inventory.agents)
                 .find(|agent| agent.source_ref == identity)
         });
-        match (AgentProvider::parse(target).ok(), agent) {
+        match (AgentProvider::parse(provider).ok(), agent) {
             (Some(provider), Some(agent)) if member.state == PluginComponentState::Active => {
                 let compilation = agent::compile_record(agent, provider);
                 compatibility = map_agent_compatibility(compilation.overall);
@@ -1136,6 +1182,7 @@ mod tests {
 
         let planned = component_plan(
             "generic",
+            "generic",
             &member,
             &[],
             Some(&[]),
@@ -1158,7 +1205,15 @@ mod tests {
             fallback: None,
         };
 
-        let planned = component_plan("codex", &member, &[], Some(&[]), &[], Path::new("/target"));
+        let planned = component_plan(
+            "codex",
+            "codex",
+            &member,
+            &[],
+            Some(&[]),
+            &[],
+            Path::new("/target"),
+        );
 
         assert_eq!(planned.compatibility, PlanCompatibility::Blocked);
         assert_eq!(
@@ -1189,6 +1244,7 @@ mod tests {
         };
 
         let planned = component_plan(
+            "generic",
             "generic",
             &member,
             &[],
@@ -1224,6 +1280,7 @@ mod tests {
         };
 
         let planned = component_plan(
+            "generic",
             "generic",
             &member,
             &[],

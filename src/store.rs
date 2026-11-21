@@ -47,7 +47,7 @@ pub(crate) fn path_io_invocations() -> (usize, usize) {
 }
 
 /// Current internal state schema version.
-pub const STATE_SCHEMA_VERSION: u32 = 1;
+pub const STATE_SCHEMA_VERSION: u32 = 2;
 
 /// Current approval schema version.
 pub const APPROVALS_SCHEMA_VERSION: u32 = 1;
@@ -187,6 +187,33 @@ pub struct TargetState {
     /// Additive fields written by a newer binary, preserved on rewrite.
     #[serde(flatten)]
     pub extra: BTreeMap<String, toml::Value>,
+}
+
+impl TargetState {
+    /// Provider type, falling back to the ID for legacy targets.
+    #[must_use]
+    pub fn provider_id(&self) -> &str {
+        self.extra
+            .get("instance_provider")
+            .and_then(toml::Value::as_str)
+            .unwrap_or(&self.id)
+    }
+
+    /// Stable native hook configuration root, when pinned for named instances.
+    pub(crate) fn pinned_hook_root(&self) -> Option<&Path> {
+        self.extra
+            .get("instance_config_root")
+            .and_then(toml::Value::as_str)
+            .map(Path::new)
+    }
+
+    pub(crate) fn configured_hook_root(&self) -> Option<&Path> {
+        if self.id == self.provider_id() {
+            self.pinned_hook_root()
+        } else {
+            self.path.parent()
+        }
+    }
 }
 
 /// One physical materialization directory shared by one or more logical targets.
@@ -686,6 +713,15 @@ fn validate_initialized_store(paths: &StorePaths) -> Vec<InitValidationWarning> 
 
 /// Read the initialized store state file.
 pub fn read_state(paths: &StorePaths) -> DaloResult<StateFile> {
+    read_state_inner(paths, true)
+}
+
+/// Read state for removing an invalid target without applying target validation.
+pub(crate) fn read_state_for_target_recovery(paths: &StorePaths) -> DaloResult<StateFile> {
+    read_state_inner(paths, false)
+}
+
+fn read_state_inner(paths: &StorePaths, validate_targets: bool) -> DaloResult<StateFile> {
     if !paths.state_file.exists() {
         return Err(DaloError::StoreNotInitialized {
             path: paths.root.clone(),
@@ -698,13 +734,32 @@ pub fn read_state(paths: &StorePaths) -> DaloResult<StateFile> {
             path: paths.state_file.clone(),
             reason: error.to_string(),
         })?;
-    if state.schema_version != STATE_SCHEMA_VERSION {
+    if !matches!(state.schema_version, 1 | STATE_SCHEMA_VERSION) {
         return Err(DaloError::UnsupportedSchema {
             path: paths.state_file.clone(),
             version: state.schema_version,
             supported: STATE_SCHEMA_VERSION,
         });
     }
+    if state.schema_version == 1
+        && state.targets.iter().any(|target| {
+            target.extra.contains_key("instance_provider")
+                || target.extra.contains_key("instance_config_root")
+        })
+    {
+        return Err(DaloError::CorruptState { path: paths.state_file.clone(), reason: "schema 1 contains a reserved named-target field; remove or rename it before migration".to_owned() });
+    }
+    if validate_targets {
+        crate::target::validate_target_state(
+            &state,
+            !crate::project::is_project_store(&paths.root),
+        )
+        .map_err(|reason| DaloError::CorruptState {
+            path: paths.state_file.clone(),
+            reason,
+        })?;
+    }
+    state.schema_version = STATE_SCHEMA_VERSION;
     // Lazy migration: `materialization_dirs` was added after the initial schema
     // without a version bump. A state written before it exists has no block, which
     // would make `sync` treat every owned skill as orphaned and remove its symlink.

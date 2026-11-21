@@ -430,7 +430,7 @@ pub fn build_status_report(store_root: &Path) -> DaloResult<StatusReport> {
     });
     if let Some(plan) = installation_plan.as_mut() {
         crate::plan::attach_tool_status_from_report(plan, &tools.tools);
-        crate::plan::attach_hook_status_from_report(plan, &hooks.hooks);
+        crate::plan::attach_hook_status_from_report_with_state(plan, &hooks.hooks, &state);
         plan.native_plugins = plugin_targets.clone();
     }
     let live_lock = lockfile::build_user_lock_with_head_cache(
@@ -4233,9 +4233,17 @@ pub fn print_target_detect_report(report: &TargetDetectReport, store_root: &Path
         .iter()
         .find(|target| target.exists && !target.linked);
     if let Some(target) = missing_link {
+        let command = if let Some(entry) = crate::target::registry()
+            .iter()
+            .find(|entry| entry.name == target.name && entry.id != target.id)
+        {
+            format!("target link {} <path> --name {}", entry.id, target.id)
+        } else {
+            format!("target link {} <path>", target.id)
+        };
         println!(
             "linked target path is missing; recreate it or relink with: {}",
-            store::dalo_command(store_root, &format!("target link {} <path>", target.id))
+            store::dalo_command(store_root, &command)
         );
     } else if let Some(target) = unlinked {
         println!(

@@ -232,6 +232,154 @@ fn executable(path: &Path, body: &str) {
 }
 
 #[test]
+fn named_provider_targets_keep_independent_plugin_and_hook_ownership() {
+    for provider in [HookProvider::Claude, HookProvider::Codex] {
+        let fixture = Fixture::new(provider);
+        let root = fixture.provider_home.with_file_name("second-provider");
+        let skills = root.join("skills");
+        let sidecar = root.join(fixture.sidecar().file_name().unwrap());
+        let provider_name = fixture.provider_name();
+        fixture
+            .command()
+            .current_dir(root.parent().unwrap())
+            .args(["target", "link", provider_name, "second-provider/skills"])
+            .args(["--name", "second"])
+            .assert()
+            .success();
+        let from_second_instance = || {
+            let mut command = fixture.command();
+            command.env(
+                match provider {
+                    HookProvider::Claude => "CLAUDE_CONFIG_DIR",
+                    HookProvider::Codex => "CODEX_HOME",
+                },
+                &root,
+            );
+            command
+        };
+        let foreign = json!({"foreign": {"retained": true}});
+        fs::write(&sidecar, serde_json::to_vec(&foreign).unwrap()).unwrap();
+        let unmanaged = skills.join("unmanaged");
+        fs::create_dir(&unmanaged).unwrap();
+        let agent = fixture.paths.local_dir.join("agents/reviewer");
+        fs::create_dir_all(&agent).unwrap();
+        fs::write(
+            agent.join("AGENT.md"),
+            "---\nschema_version: 1\nname: reviewer\ndescription: Reviews changes.\n---\nReview carefully.\n",
+        )
+        .unwrap();
+        let descriptor = fixture
+            .paths
+            .local_dir
+            .join("plugins/review-suite/PLUGIN.toml");
+        let existing = fs::read_to_string(&descriptor).unwrap();
+        fs::write(
+            &descriptor,
+            existing.replace(
+                "members = [",
+                "members = [\n  { ref = \"agent:reviewer\", requirement = \"optional\" },",
+            ),
+        )
+        .unwrap();
+
+        fixture
+            .command()
+            .args(["plugin", "select", PACKAGE])
+            .assert()
+            .success();
+        fixture.approve_review();
+        from_second_instance().arg("sync").assert().success();
+
+        for args in [&["target", "detect"][..], &["status"]] {
+            let result = fixture
+                .command()
+                .arg("--json")
+                .args(args)
+                .assert()
+                .success();
+            let report: Value = serde_json::from_slice(&result.get_output().stdout).unwrap();
+            let targets = report["targets"].as_array().unwrap();
+            for id in [provider_name, "second"] {
+                assert!(
+                    targets
+                        .iter()
+                        .any(|target| target["id"] == id && target["linked"] == true)
+                );
+            }
+        }
+        assert_eq!(
+            fs::read_link(skills.join("review")).unwrap(),
+            fs::read_link(fixture.target.join("review")).unwrap(),
+        );
+        let secondary_settings: Value =
+            serde_json::from_slice(&fs::read(&sidecar).unwrap()).unwrap();
+        assert_eq!(secondary_settings["foreign"], foreign["foreign"]);
+        assert!(secondary_settings.get("hooks").is_some());
+        fixture.assert_projection(true);
+
+        let plan = fixture
+            .command()
+            .args(["--json", "plan"])
+            .assert()
+            .success();
+        let report: Value = serde_json::from_slice(&plan.get_output().stdout).unwrap();
+        let plugins = report["native_plugins"].as_array().unwrap();
+        let projection = plugins
+            .iter()
+            .find(|plugin| plugin["target"] == "second")
+            .unwrap();
+        let link = PathBuf::from(projection["path"].as_str().unwrap());
+        assert!(link.is_symlink());
+        let member = projection["components"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|component| component["kind"] == "agent")
+            .unwrap();
+        match provider {
+            HookProvider::Claude => {
+                assert!(link.starts_with(&skills));
+                assert!(
+                    fs::read_to_string(link.join("agents/reviewer.md"))
+                        .unwrap()
+                        .contains("Review carefully."),
+                );
+                assert_eq!(member["state"], "packaged");
+            }
+            HookProvider::Codex => {
+                assert!(link.starts_with(root.join("plugins/dalo")));
+                assert_eq!(member["state"], "external");
+            }
+        }
+
+        from_second_instance()
+            .args(["target", "unlink", "second"])
+            .assert()
+            .success();
+        assert!(link.is_symlink());
+        from_second_instance()
+            .args(["--dry-run", "sync"])
+            .assert()
+            .success();
+        assert!(link.is_symlink());
+        assert_eq!(
+            serde_json::from_slice::<Value>(&fs::read(&sidecar).unwrap()).unwrap(),
+            secondary_settings,
+        );
+        from_second_instance().arg("sync").assert().success();
+        assert!(!link.is_symlink());
+        assert!(!skills.join("review").is_symlink());
+        assert!(unmanaged.is_dir());
+        assert_eq!(
+            serde_json::from_slice::<Value>(&fs::read(&sidecar).unwrap()).unwrap(),
+            foreign
+        );
+        assert!(fixture.target.join("review").is_symlink());
+        fixture.assert_projection(true);
+    }
+}
+
+#[test]
 fn package_lifecycle_preserves_independent_trust_and_user_content() {
     for provider in [HookProvider::Claude, HookProvider::Codex] {
         let fixture = Fixture::new(provider);

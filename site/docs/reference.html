@@ -528,25 +528,44 @@ for invocation and safety results.</p>
 a major version: their IDs, default paths, and behavior may change in any
 release. See <a href="/docs/compatibility.html#tier-2-experimental">Compatibility and stability</a>.</p>
 <p>JSON output shape: <code>TargetDetectReport</code>.</p>
-<h3 id="dalo-target-link-target-path"><a class="doc-anchor" href="#dalo-target-link-target-path"><code>dalo target link &lt;target&gt; [path]</code></a></h3>
+<h3 id="dalo-target-link-target-path---name-name"><a class="doc-anchor" href="#dalo-target-link-target-path---name-name"><code>dalo target link &lt;target&gt; [path] [--name &lt;name&gt;]</code></a></h3>
 <p>Record a target materialization directory. The <code>generic</code> target requires an explicit path. Known targets can use their default path or an explicit override.</p>
 <p>Examples:</p>
 <pre><code class="language-sh">dalo target link codex
 dalo target link generic ./tmp/agent-skills
 dalo --dry-run target link claude ~/.claude/skills
+dalo target link claude ~/.claude-eg/skills --name claude-eg
 </code></pre>
+<p>Use <code>--name</code> to add an instance alongside the built-in target. The name must
+be distinct from built-in IDs and begin with a lowercase ASCII letter or digit.
+Names can include hyphens and underscores and have up to 128 characters.
+Each named instance requires an explicit path and appears as a separate entry
+in <code>target detect</code> and <code>status</code>. Linking the same instance again updates its path.</p>
+<p>For named Claude and Codex instances, pass the <code>skills</code> directory under that
+installation&#39;s configuration root. Dalo uses the same provider adapter as the
+built-in target. It resolves hooks and plugin output from the named instance&#39;s
+path, so the example uses <code>~/.claude-eg/settings.json</code> for native hooks and
+includes Claude agent files in native plugin projections. Codex supports
+<code>&lt;config-root&gt;/hooks.json</code> and native plugin projections with its existing
+adapter capabilities. The installation must be configured to discover the
+linked skills directory.</p>
+<p>When Dalo first links a built-in and named instance of the same native provider,
+it records the built-in instance&#39;s hook configuration root. Link the instances
+with the built-in installation&#39;s <code>CLAUDE_CONFIG_DIR</code> or <code>CODEX_HOME</code> in effect.
+Later syncs use the recorded root from either installation&#39;s environment.</p>
 <p>When a target path does not exist yet, Dalo creates its missing directory
 ancestors only after validating the state update. If persisting <code>state.toml</code>
 fails, newly created empty ancestors are removed again; pre-existing directories
 and any concurrent content are preserved.</p>
 <p>JSON output shape: <code>TargetLinkReport</code>.</p>
 <h3 id="dalo-target-unlink-target"><a class="doc-anchor" href="#dalo-target-unlink-target"><code>dalo target unlink &lt;target&gt;</code></a></h3>
-<p>Disable a target in state. <code>unlink</code> itself removes nothing from the target
-directory. The next <code>dalo sync</code> then reconciles the target and removes the
-Dalo-owned links it had materialized there; unmanaged files and real
-directories are never touched.</p>
+<p>Disable a built-in or named target in state. <code>unlink</code> itself removes nothing
+from the target directory. The next <code>dalo sync</code> removes owned links and
+reconciles owned hook entries for the unlinked instance. Other linked instances
+and unmanaged content are preserved.</p>
 <p>Examples:</p>
 <pre><code class="language-sh">dalo target unlink codex
+dalo target unlink claude-eg
 dalo --json target unlink generic
 </code></pre>
 <p>JSON output shape: <code>TargetUnlinkReport</code>.</p>
@@ -2538,7 +2557,9 @@ is <code>ready</code>, so a lock without staged release binaries is unchanged. E
 <code>approve binary</code>, <code>approve revoke binary</code>, and <code>source unselect</code> change the
 staged files at once, and the list catches up at the next <code>sync</code>.</p>
 <h2 id="statetoml"><a class="doc-anchor" href="#statetoml"><code>state.toml</code></a></h2>
-<p>Schema version: <code>schema_version = 1</code>.</p>
+<p>Schema version: <code>schema_version = 2</code>. Dalo reads version 1 and migrates it
+on the next state write. Older builds that only support version 1 reject
+version 2.</p>
 <p>This is internal state. Users normally inspect it through <code>target detect</code>, <code>status</code>, <code>sync</code>, and <code>resolve list</code>.</p>
 <p>Top-level fields:</p>
 <div class="doc-table"><table>
@@ -2550,7 +2571,7 @@ staged files at once, and the list catches up at the next <code>sync</code>.</p>
 </thead>
 <tbody><tr>
 <td><code>targets[]</code></td>
-<td>Logical target links with <code>id</code>, <code>path</code>, <code>canonical_path</code>, and <code>enabled</code>.</td>
+<td>Logical target links with <code>id</code>, <code>path</code>, <code>canonical_path</code>, and <code>enabled</code>. Named instances record <code>instance_provider</code>. A built-in native target can also record <code>instance_config_root</code> for its hook configuration.</td>
 </tr>
 <tr>
 <td><code>materialization_dirs[]</code></td>

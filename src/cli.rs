@@ -1050,6 +1050,10 @@ pub struct TargetLinkArgs {
 
     /// Optional target path. Required for `generic`.
     pub path: Option<PathBuf>,
+
+    /// Unique name for an additional instance of this provider.
+    #[arg(long)]
+    pub name: Option<String>,
 }
 
 /// Target ID argument.
@@ -4385,7 +4389,7 @@ where
         run_post_lock_phase(PostLockSyncPhase::PluginProjection)?;
         if let Some(plan) = report.installation_plan.as_mut() {
             plan::attach_tool_status_from_report(plan, &tools);
-            plan::attach_hook_status_from_report(plan, &hooks);
+            plan::attach_hook_status_from_report_with_state(plan, &hooks, &target_state);
             plan.native_plugins = report.plugin_targets.clone();
         }
         report.hook_targets = hook_sync::reconcile_with_hooks(
@@ -6228,10 +6232,11 @@ fn run_target(options: &GlobalOptions, command: TargetCommand) -> DaloResult<()>
             } else {
                 Some(store::StoreLock::acquire(&paths)?)
             };
-            let report = target::link_target(
+            let report = target::link_named_target(
                 &options.store,
                 &args.target,
                 args.path.as_deref(),
+                args.name.as_deref(),
                 options.dry_run,
             )?;
             let assistant = automatic_assistant_report(options, Some(&report.target_id));
